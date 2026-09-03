@@ -34,10 +34,11 @@ import {
   BROWSER_SESSION_EVICTION_COOKIE,
   parseBrowserSessionCookie,
 } from './browserSessionRef.ts';
-import { OPERATOR_SUBJECT } from './mode.ts';
+import { ceremonyModeAdmits, OPERATOR_SUBJECT } from './mode.ts';
 import { findCredential, rememberChallenge, consumeChallenge } from './credentialStore.ts';
 import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
+import { requireSession } from '../http/middleware.ts';
 
 /** The single-operator identity this daemon mints sessions for (loopback, one human). The id is shared
  *  with `auth/mode.ts#OPERATOR_SUBJECT` so both auth modes mint sessions for the SAME subject and all
@@ -166,10 +167,42 @@ export function registerBrowserSessionRoute(scope: FastifyInstance, ctx: Surface
 
 /** Register the auth ceremony routes on an ALREADY-GUARDED scope (origin + rate-limit hooks applied). */
 export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext): void {
-  /** Tell the browser which authentication flow applies without exposing operator or server config. */
-  scope.get('/api/auth/context', async (_req, reply) => reply.send({ mode: ctx.authMode }));
+  /**
+   * W47: who may RUN a ceremony.
+   *
+   * In `win32-desktop` the four ceremony routes must stay public: the assertion they run IS the
+   * credential, so gating them on a session would be circular (nobody could ever sign in). Unchanged.
+   *
+   * In `tailnet` there is no circularity - the transport already proves the operator before any
+   * ceremony runs - so leaving them public would mean ANY tailnet principal could drive an enrolment
+   * against the VM's RP and read back a credential to hand a human for provisioning. Tailnet
+   * membership on this VM is root-equivalent (the reason `DASHBOARD_TAILNET_OPERATOR` is pinned at
+   * all, see mode.ts), so the ceremonies join the same peer-uid + pinned-login gate every other
+   * tailnet route uses. `requireSession` IS that gate in this mode (middleware.ts `operatorAuth`
+   * branch): a non-operator identity is refused `403 forbidden / identity-not-allowed`, no session
+   * needed or minted. `/api/auth/context` deliberately stays public in BOTH modes - it is the boot
+   * discovery call, it exposes no operator or server config, and a client that cannot read it fails
+   * closed to the desktop passkey path.
+   */
+  const ceremonyGate = ctx.authMode === 'tailnet'
+    ? { preHandler: requireSession(ctx.sessionConfig) }
+    : {};
+  /**
+   * Tell the browser which authentication flow applies without exposing operator or server config.
+   *
+   * W47 adds `ceremonyAvailable`: the SAME predicate the T3 challenge routes enforce server-side
+   * (`ceremonyModeAdmits(mode) && credentials().length > 0`, control/routes.ts), so the client stops
+   * guessing it from the mode. It is a boolean derived from configuration presence - it leaks no
+   * credential, no id, and no count. The routes remain the authority: a client that ignores this
+   * flag still gets `403 ceremony-unavailable`, and a client told `true` is told nothing that lets
+   * it bypass the assertion.
+   */
+  scope.get('/api/auth/context', async (_req, reply) => reply.send({
+    mode: ctx.authMode,
+    ceremonyAvailable: ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0,
+  }));
 
-  scope.post('/api/auth/register/options', async (_req, reply) => {
+  scope.post('/api/auth/register/options', ceremonyGate, async (_req, reply) => {
     let config;
     try {
       config = ctx.webAuthnConfig();
@@ -182,7 +215,7 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     return reply.code(200).send({ ceremonyId, options });
   });
 
-  scope.post('/api/auth/register/verify', async (req, reply) => {
+  scope.post('/api/auth/register/verify', ceremonyGate, async (req, reply) => {
     const body = asRecord(req.body);
     const ceremonyId = typeof body.ceremonyId === 'string' ? body.ceremonyId : '';
     const expectedChallenge = consumeChallenge(ceremonyId);
@@ -221,7 +254,7 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     });
   });
 
-  scope.post('/api/auth/assert/options', async (_req, reply) => {
+  scope.post('/api/auth/assert/options', ceremonyGate, async (_req, reply) => {
     let config;
     try {
       config = ctx.webAuthnConfig();
@@ -234,7 +267,7 @@ export function registerAuthRoutes(scope: FastifyInstance, ctx: SurfaceContext):
     return reply.code(200).send({ ceremonyId, options });
   });
 
-  scope.post('/api/auth/assert/verify', async (req, reply) => {
+  scope.post('/api/auth/assert/verify', ceremonyGate, async (req, reply) => {
     const body = asRecord(req.body);
     const ceremonyId = typeof body.ceremonyId === 'string' ? body.ceremonyId : '';
     const expectedChallenge = consumeChallenge(ceremonyId);

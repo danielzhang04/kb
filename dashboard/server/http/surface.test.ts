@@ -1207,7 +1207,9 @@ describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)
     const response = await app.inject({ method: 'GET', url: '/api/auth/context', headers: headers(false) });
 
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ mode: authMode });
+    // W47: `ceremonyAvailable` is the server's own ceremonyModeAdmits && credentials().length > 0.
+    // This describe is the NO-PASSKEY-PROVISIONED surface, so it is false in both modes.
+    expect(response.json()).toEqual({ mode: authMode, ceremonyAvailable: false });
   });
 
   it('assert/verify 401s because the credential store is empty (no session can be minted)', async () => {

@@ -308,6 +308,66 @@ dashboard_umask=$(systemctl show kb-dashboard -p UMask --value 2>/dev/null)
   || bad "kb-dashboard UMask=$dashboard_umask, needs 0002 - every worker write inside the run worktree will fail. Fix: add UMask=0002 to [Service] in deploy/systemd/kb-dashboard.service, reinstall the unit on the VM, systemctl daemon-reload, systemctl restart kb-dashboard"
 
 # ---------------------------------------------------------------------------------------------
+# W47: the CONSTRAINED tailnet passkey channel. Both names are OPTIONAL on this unit; when present
+# they must satisfy exactly the rules the daemon asserts at boot and validate_vm_runtime.py asserts at
+# ExecStartPre: RP origin (when set) == https://<tailnet host>; credentials (when set) parse to >=1
+# entry AND require the origin; origin alone is the legal enrolment posture; both absent is the default.
+# Values are never echoed: only presence, equality and a COUNT are reported. (The credential value is
+# WebAuthn PUBLIC keys, harmless by design, but a preflight transcript is not where it belongs.)
+section "T3 passkey channel (optional; governance/risk-tiers.md D2.13)"
+# systemd quotes an Environment= value containing spaces, so a naive space split TRUNCATES it (and a
+# truncated credentials value then "fails to parse" for the wrong reason). shlex is the same splitter
+# deploy/validate_vm_runtime.py#_unit_environment uses, so preflight and ExecStartPre agree exactly.
+unit_env=$(systemctl show kb-dashboard -p Environment --value 2>/dev/null)
+read_unit_env() {
+  KB_UNIT_ENV="$unit_env" KB_UNIT_ENV_NAME="$1" python3 -c '
+import os, shlex, sys
+name = os.environ["KB_UNIT_ENV_NAME"]
+try:
+    tokens = shlex.split(os.environ.get("KB_UNIT_ENV", ""), posix=True)
+except ValueError:
+    sys.exit(0)
+for token in tokens:
+    key, sep, value = token.partition("=")
+    if sep and key == name:
+        sys.stdout.write(value)
+        break
+' 2>/dev/null
+}
+passkey_host=$(read_unit_env DASHBOARD_TAILNET_HOST)
+passkey_origin=$(read_unit_env DASHBOARD_RP_ORIGIN)
+passkey_creds=$(read_unit_env DASHBOARD_WEBAUTHN_CREDENTIALS)
+if [ -z "$passkey_origin" ] && [ -z "$passkey_creds" ]; then
+  warn "no passkey channel provisioned - T3 gates (ceremony: webauthn) cannot be approved in the UI. See docs/runbooks/2026-09-03-vm-agent-launch-preflight.md section h"
+elif [ -z "$passkey_origin" ]; then
+  # Credentials with no RP origin can pin no RP-ID: a store nothing can ever verify against. The
+  # daemon refuses to boot on this, so seeing it here means the unit was edited without a restart.
+  bad "DASHBOARD_WEBAUTHN_CREDENTIALS is set without DASHBOARD_RP_ORIGIN - the daemon refuses to boot on this pair"
+else
+  if [ "$passkey_origin" = "https://$passkey_host" ]; then ok "DASHBOARD_RP_ORIGIN == https://$passkey_host"
+  else bad "DASHBOARD_RP_ORIGIN does not equal https://$passkey_host exactly"; fi
+  if [ -z "$passkey_creds" ]; then
+    # The legal ENROLMENT posture, not a fault: the register ceremony needs the RP origin and is the
+    # only way to obtain a credential. It grants nothing until one is provisioned.
+    ok "RP origin set, no credential yet - enrolment posture (T3 gates stay unavailable until section h step 2)"
+  else
+    cred_count=$(DASHBOARD_WEBAUTHN_CREDENTIALS="$passkey_creds" python3 -c '
+import json, os
+raw = os.environ.get("DASHBOARD_WEBAUTHN_CREDENTIALS", "")
+try:
+    parsed = json.loads(raw)
+except Exception:
+    parsed = None
+if not isinstance(parsed, list):
+    print(0)
+else:
+    print(sum(1 for e in parsed if isinstance(e, dict) and isinstance(e.get("id"), str) and isinstance(e.get("publicKey"), str)))
+' 2>/dev/null)
+    [ "${cred_count:-0}" -ge 1 ] 2>/dev/null       && ok "DASHBOARD_WEBAUTHN_CREDENTIALS parses to $cred_count credential(s)"       || bad "DASHBOARD_WEBAUTHN_CREDENTIALS does not parse to at least one {id, publicKey} credential"
+  fi
+fi
+
+# ---------------------------------------------------------------------------------------------
 section "admission / readiness / health (over the tailnet URL)"
 if [ -z "$tailnet_url" ]; then
   warn "no tailnet URL passed as \$1 — skipping admission/readyz/health checks"
@@ -330,6 +390,15 @@ else
     else
       warn "readyz did not return the expected shape — got: $ready_body"
     fi
+
+    # W47: the server's own answer to "can a T3 passkey ceremony run right now". WARN, never FAIL: a
+    # false here blocks only T3 gates (ceremony: webauthn), not a launch, so it must not gate the run.
+    ceremony_body=$(curl -s --max-time 10 "$tailnet_url/api/auth/context" 2>/dev/null)
+    case "$ceremony_body" in
+      *'"ceremonyAvailable":true'*) ok "/api/auth/context ceremonyAvailable=true (T3 gates approvable)" ;;
+      *'"ceremonyAvailable":false'*) warn "/api/auth/context ceremonyAvailable=false - T3 gates will refuse 403 ceremony-unavailable; see the runbook section h" ;;
+      *) warn "/api/auth/context did not report ceremonyAvailable" ;;
+    esac
   else
     warn "curl not available — cannot check admission/readyz/health"
   fi

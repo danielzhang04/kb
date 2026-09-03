@@ -78,7 +78,7 @@ try:
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
-    from .validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, _unit_environment
+    from .validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, PASSKEY_DROP_IN, PASSKEY_UNIT_ENV, _unit_environment
 except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
     from control_plane_schema import EMPTY_CONTROL_PLANE, assert_control_plane_schema
     from install_pty_broker import (
@@ -90,7 +90,7 @@ except ImportError:  # direct `python deploy/bootstrap_vm.py` execution
         install_units as install_broker_units,
         provision_account_and_directories as provision_broker_account,
     )
-    from validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, _unit_environment
+    from validate_vm_runtime import EXPECTED_UNIT_ENV, OPTIONAL_UNIT_ENV, PASSKEY_DROP_IN, PASSKEY_UNIT_ENV, _unit_environment
 
 DATA_PATTERNS = ("/CLAUDE.md", "/BOSS.md", "/HEARTBEAT.md", "/docs/", "/orgs/", "/queue/", "/ledgers/", "/traces/", "/memory/", "/dashboards/", "/handoffs/", "/governance/", "/agents/", "/skills/")
 PUBLIC_KEY_PATTERN = re.compile(r"ssh-ed25519 ([A-Za-z0-9+/]+={0,3})(?: [^ \r\n][^\r\n]*)?")
@@ -336,6 +336,11 @@ def _fsync_directory(path: Path) -> None:
 def assert_unit_env_complete(rendered: bytes) -> None:
     """What we render must satisfy the resident boot validator's closed env set, exactly.
 
+    W47: it ALSO refuses a rendered fragment carrying DASHBOARD_RP_ORIGIN or
+    DASHBOARD_WEBAUTHN_CREDENTIALS. Those two are legal on the VM again (a constrained passkey channel
+    for T3 ceremonies) but belong in the drop-in this script never writes, not in the fragment it
+    re-renders on every converge.
+
     Everything here is borrowed from deploy/validate_vm_runtime.py - the same module this script
     installs at /usr/local/lib/kb and that the unit's own ExecStartPre runs - so the renderer cannot
     drift from the validator. Its `_unit_environment` reader is used rather than this module's
@@ -352,6 +357,17 @@ def assert_unit_env_complete(rendered: bytes) -> None:
             "rendered kb-dashboard.service environment set does not match what validate_vm_runtime.py"
             f" requires at boot (missing: {','.join(missing) or 'none'};"
             f" unexpected: {','.join(unexpected) or 'none'}); the service would fail ExecStartPre")
+    # W47: the passkey pair is OPTIONAL to the validator but must NEVER live in the fragment this
+    # script renders. Converge rewrites the fragment from the repo copy + the site-specific lines
+    # below, so a pair written here would be silently reverted on the next deploy - and half-reverted
+    # is a boot refusal, since credentials require the RP origin. The operator installs them in a drop-in
+    # instead (see the runbook section h). Refusing here keeps the two paths from ever colliding.
+    stray = sorted(name for name in PASSKEY_UNIT_ENV if name in assigned)
+    if stray:
+        raise RuntimeError(
+            f"rendered kb-dashboard.service must not carry {','.join(stray)}: the W47 passkey pair is"
+            f" installed as a drop-in at {PASSKEY_DROP_IN} (systemctl edit kb-dashboard), never in the"
+            " fragment, which converge re-renders")
 
 
 def unit_fragment_source(tailnet_host: str, tailnet_operator: str, desktop_helper_origin: str) -> bytes:

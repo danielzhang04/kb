@@ -181,6 +181,12 @@ const LIVE_RUN_STATES = new Set(['planned', 'recovering', 'running', 'waiting-hu
 
 /** Dashboard v3 Run: one redacted stream, one inspector, and no second execution canvas. */
 export function RunDetail(props: RunDetailProps): React.JSX.Element {
+  // W47: T3 gate ceremony reachability comes from the SERVER (`/api/auth/context` reports
+  // `ceremonyModeAdmits(mode) && credentials().length > 0`), not from the auth mode. The old
+  // `session.mode === 'win32-desktop'` test disabled Approve on every T3 gate on the tailnet VM even
+  // with a passkey provisioned, which is what parked the first acceptance run at an unapprovable
+  // approval gate. win32-desktop behaviour is unchanged in practice: that mode cannot mint the session
+  // this view already holds without a provisioned credential.
   const session = useSession();
   const [loadedDetail, setLoadedDetail] = useState<RunDetailDto | null>(props.detail ?? null);
   const [replay, setReplay] = useState<OperationalEventDto[]>(props.events ?? []);
@@ -391,7 +397,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
             outputs={outputs}
             gate={openGates[0] ?? null}
             additionalGates={openGates.slice(1)}
-            ceremonyAvailable={session.mode === 'win32-desktop'}
+            ceremonyAvailable={session.ceremonyAvailable}
             details={{
               stepSkeleton,
               envelope: `${detail.run.owner.type} · ${detail.run.executionHost}`,

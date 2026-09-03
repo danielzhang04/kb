@@ -69,7 +69,7 @@ import {
 } from './humanResponse.ts';
 import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
 import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
-import type { AuthMode } from '../auth/mode.ts';
+import { ceremonyModeAdmits } from '../auth/mode.ts';
 import {
   parseDeploymentRef, quiescenceDigest,
 } from '../inbox/deploymentContracts.ts';
@@ -92,23 +92,11 @@ const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
 };
 
 /**
- * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony — an EXHAUSTIVE
- * switch over the closed `AuthMode` union whose `default` arm is a `never` assertion, so a future third
- * auth mode fails to COMPILE rather than being auto-admitted. It loosens the P2-era `win32-desktop`-only
- * restriction to `tailnet` as well, making T3 reachable on the tailnet Linux VM; it never loosens on
- * credential possession (the caller still requires `credentials().length > 0`).
+ * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony. W47 MOVED the
+ * definition to `auth/mode.ts` (unchanged in behaviour) so `auth/routes.ts` can report it on
+ * `/api/auth/context` without importing this module; re-exported here for the existing importers.
  */
-export function ceremonyModeAdmits(mode: AuthMode): boolean {
-  switch (mode) {
-    case 'win32-desktop':
-    case 'tailnet':
-      return true;
-    default: {
-      const never: never = mode;
-      return never;
-    }
-  }
-}
+export { ceremonyModeAdmits };
 
 export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};

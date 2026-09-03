@@ -36,7 +36,7 @@ function freshSession(token = 'ceremony-token', ttlMs = 60_000): Session {
   return { token, expiresAt: Date.now() + ttlMs };
 }
 
-const win32Context = async () => ({ mode: 'win32-desktop' as const });
+const win32Context = async () => ({ mode: 'win32-desktop' as const, ceremonyAvailable: true });
 
 beforeEach(() => clearStoredSession());
 afterEach(() => {
@@ -203,7 +203,7 @@ describe('SessionProvider', () => {
     render(
       <SessionProvider deps={{
         signIn,
-        fetchAuthContext: async () => ({ mode: 'tailnet' }),
+        fetchAuthContext: async () => ({ mode: 'tailnet' as const, ceremonyAvailable: false }),
       }}>
         <Probe id="a" capture={(next) => { require = next; }} />
       </SessionProvider>,

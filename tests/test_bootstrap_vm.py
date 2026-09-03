@@ -300,6 +300,26 @@ def test_bootstrap_and_unit_do_not_use_session_secret_files():
     assert "ExecStartPre=/usr/bin/python3 -I" in unit
 
 
+# --- W47: the passkey pair is drop-in-only ---------------------------------------------------------
+def test_w47_rendered_fragment_is_accepted_without_the_passkey_pair():
+    """The rendered fragment never carries the pair; it must still satisfy the validator's closed set."""
+    bootstrap_vm.assert_unit_env_complete(
+        bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
+    )
+
+
+@pytest.mark.parametrize("name", ["DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"])
+def test_w47_rendered_fragment_refuses_the_passkey_pair(name):
+    """W47 made both names OPTIONAL to validate_vm_runtime, which alone would let converge render them
+    into the fragment it rewrites on every deploy - silently dropping an operator's provisioning, and
+    half-dropping it is a boot refusal (credentials require the origin). They belong in the drop-in.
+    RED ON REVERT: delete the `stray` check in assert_unit_env_complete and this passes silently."""
+    rendered = bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
+    rendered += f"Environment={name}=x\n".encode("utf-8")
+    with pytest.raises(RuntimeError, match="passkey.conf|drop-in"):
+        bootstrap_vm.assert_unit_env_complete(rendered)
+
+
 def test_public_key_module_contains_exact_public_key_and_no_private_key(tmp_path):
     public_key = generated_public_key(tmp_path)
     source = bootstrap_vm.public_key_module_source(public_key)

@@ -524,6 +524,40 @@ describe('createExecutionLatch (runtime unlock)', () => {
       .toBe('tailnet');
   });
 
+  it('W47 SECURITY: the re-admitted passkey env changes NOTHING about the tailnet latch', () => {
+    // The cutover retired DASHBOARD_RP_ORIGIN + DASHBOARD_WEBAUTHN_CREDENTIALS in tailnet mode because
+    // "a passkey unlock could flip the latch source tailnet->passkey and re-open the two historical
+    // passkey-only repair paths" (auth/mode.ts, pre-W47). W47 re-admits the pair for the T3 signing
+    // ceremony ONLY, so that claim now has to be PROVEN rather than enforced by absence. It holds by
+    // construction: tailnet arms at boot (activation.ts, `construct(..., 'tailnet')`) and `unlock()`
+    // short-circuits on an already-constructed execution, so the source can never be re-sourced.
+    // RED ON REVERT: make `unlock` re-construct (or drop the `if (execution)` guard) and the source
+    // flips to 'passkey' here.
+    const PASSKEY_ENV = {
+      DASHBOARD_AUTH_MODE: 'tailnet',
+      DASHBOARD_RP_ORIGIN: 'https://kb.command.ts.net',
+      DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
+    };
+    const bare = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
+    const armed = latchHarness(PASSKEY_ENV);
+    expect(armed.latch.snapshot()).toEqual(bare.latch.snapshot());
+    expect(armed.build).toHaveBeenCalledTimes(bare.build.mock.calls.length);
+
+    // An operator unlock call against either daemon is a no-op that preserves `source: 'tailnet'`.
+    const bareUnlock = bare.latch.unlock({ subject: 'operator' });
+    const armedUnlock = armed.latch.unlock({ subject: 'operator' });
+    expect(armedUnlock).toEqual(bareUnlock);
+    expect(armed.latch.snapshot()).toEqual(bare.latch.snapshot());
+    expect(armed.latch.snapshot().source).toBe('tailnet');
+    expect(armed.build).toHaveBeenCalledTimes(bare.build.mock.calls.length);
+
+    // Lock is identical too, and a post-lock unlock is the only path that mints 'passkey' - the same
+    // in both, so the env pair adds no reachable state the bare tailnet daemon does not already have.
+    expect(armed.latch.lock({ subject: 'operator' })).toEqual(bare.latch.lock({ subject: 'operator' }));
+    expect(armed.latch.unlock({ subject: 'operator' })).toEqual(bare.latch.unlock({ subject: 'operator' }));
+    expect(armed.changes.map((c) => c.state)).toEqual(bare.changes.map((c) => c.state));
+  });
+
   it('lock remains the fail-safe direction in tailnet mode', () => {
     const { latch } = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
     expect(latch.lock({ subject: 'operator' })).toEqual({ state: 'locked', source: null, unlockedAt: null, unlockedBy: null });

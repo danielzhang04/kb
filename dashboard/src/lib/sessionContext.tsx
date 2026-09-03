@@ -37,6 +37,12 @@ export const TAILNET_AMBIENT_SESSION: Session = Object.freeze({
 export interface SessionContextValue {
   /** Server-selected auth mode, or null while the one boot-time discovery request is pending. */
   mode: AuthMode | null;
+  /**
+   * W47: the server's own answer to "can a T3 passkey ceremony run right now" (`/api/auth/context`).
+   * Fail-closed `false` while discovery is pending and on any discovery failure, so a T3 gate is never
+   * offered an Approve button the routes would refuse.
+   */
+  ceremonyAvailable: boolean;
   /** The live bearer, or null when locked. */
   session: Session | null;
   /** Tailnet is always unlocked; desktop remains bearer-derived; loading is fail-closed. */
@@ -66,6 +72,7 @@ export function SessionProvider({
   // `isSessionFresh` so a not-yet-fired timer can never render an expired session as unlocked.
   const [storedSession, setStoredSession] = useState<Session | null>(() => readStoredSession());
   const [mode, setMode] = useState<AuthMode | null>(null);
+  const [ceremonyAvailable, setCeremonyAvailable] = useState(false);
   const sessionRef = useRef<Session | null>(storedSession);
   const modeRef = useRef<AuthMode | null>(null);
   const inFlight = useRef<Promise<Session | null> | null>(null);
@@ -94,11 +101,14 @@ export function SessionProvider({
         if (!alive) return;
         modeRef.current = context.mode;
         setMode(context.mode);
+        setCeremonyAvailable(context.ceremonyAvailable === true);
       })
       .catch(() => {
         if (!alive) return;
         modeRef.current = 'win32-desktop';
         setMode('win32-desktop');
+        // Fail-closed: an unreadable discovery says nothing about provisioning, so no ceremony.
+        setCeremonyAvailable(false);
       });
     return () => { alive = false; };
   }, []);
@@ -156,8 +166,8 @@ export function SessionProvider({
       : !isSessionFresh(storedSession);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ mode, session, locked, requireSession }),
-    [mode, session, locked, requireSession],
+    () => ({ mode, ceremonyAvailable, session, locked, requireSession }),
+    [mode, ceremonyAvailable, session, locked, requireSession],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

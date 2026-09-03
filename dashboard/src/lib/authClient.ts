@@ -21,6 +21,14 @@ export type AuthMode = 'win32-desktop' | 'tailnet';
 
 export interface AuthContext {
   mode: AuthMode;
+  /**
+   * W47: whether the server can actually run a T3 WebAuthn ceremony right now: the server's own
+   * `ceremonyModeAdmits(mode) && credentials().length > 0`. Before this, the client inferred it as
+   * `mode === 'win32-desktop'`, which disabled Approve on every T3 gate on the tailnet VM even once a
+   * passkey was provisioned. Fail-closed: a server that omits the field (an older daemon) reads
+   * `false`, so the client can only ever be MORE restrictive than the routes, never less.
+   */
+  ceremonyAvailable: boolean;
 }
 
 export interface Session {
@@ -182,7 +190,10 @@ export async function fetchAuthContext(fetchImpl: FetchLike = fetch): Promise<Au
   ) {
     throw new Error('auth/context returned an invalid mode');
   }
-  return { mode: (body as AuthContext).mode };
+  return {
+    mode: (body as AuthContext).mode,
+    ceremonyAvailable: (body as Record<string, unknown>).ceremonyAvailable === true,
+  };
 }
 
 /**
