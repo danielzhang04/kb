@@ -16,8 +16,8 @@ large or sensitive local artifacts. The six pod manifests remain ordinary strict
 RunPod harness manifests and inherit the already-live model, ComfyUI, and custom
 node blocks verbatim.
 
-**Tech stack:** Python 3, pytest, JSON-compatible YAML, Pillow, existing RunPod
-harness, Markdown agent declarations, HEARTBEAT YAML frontmatter, PowerShell.
+**Tech stack:** Python 3, pytest, JSON-compatible YAML, Pillow, numpy, existing
+RunPod harness, Markdown agent declarations, HEARTBEAT YAML frontmatter, PowerShell.
 
 **Governing design:** Current v3 at `0e93ad63`, folding
 `REVIEW-2026-09-03-creator-001-design.md` and `REVIEW2-2026-09-03-creator-001-design.md`.
@@ -92,9 +92,13 @@ The source files are g01.jpg, g02.jpg, and g07.jpg; move bytes without recompres
 
 ### Step 1.1: Lock the ignored-artifact boundary
 
-Add narrowly scoped ignore entries:
+Add narrowly scoped ignore entries. The source directory these anchors move out of,
+`personas/anchors/gemini-batch-01/` at the repo root, is untracked today and holds
+g01-g08; only g01, g02, and g07 move out, so the repo-root path needs its own rule
+or g03-g06/g08 stay behind as untracked, uncovered files:
 
 ```gitignore
+personas/anchors/
 orgs/figment/personas/*/anchors/
 orgs/figment/personas/*/batches/*/images/
 orgs/figment/personas/*/batches/*/rejected/
@@ -105,13 +109,17 @@ orgs/figment/pipeline/*/runs/_uploads/
 orgs/figment/pipeline/*/runs/out/
 ```
 
-Move only g01, g02, and g07. Verify all three are ignored:
+Move only g01, g02, and g07. Verify all three are ignored, and that the repo-root
+source directory is ignored too:
 
 ```powershell
 git check-ignore -v orgs/figment/personas/creator-001/anchors/*
+git check-ignore -v personas/anchors/gemini-batch-01/*
 git status --short
 ```
-Expected: three `git check-ignore` rows; no anchor appears in `git status`.
+Expected: three `git check-ignore` rows for the destination, eight for the source;
+`git status --short` shows no anchor under either `orgs/figment/personas/*/anchors/`
+or the repo-root `personas/` path.
 
 ### Step 1.2: Test and implement the persona loader
 
@@ -159,7 +167,16 @@ def next_state(current_state, *, score=None, ruling=None, selected=False, gate_c
 def record_pod_run(batch, row) -> dict: ...
 def require_strata_coverage(cells, selected_ids, required_strata) -> None: ...
 def apply_batch(path, transform) -> dict: ...
+def mark_batch_stage(batch, stage) -> dict: ...
 ```
+
+`mark_batch_stage` writes the batch-level `stage` field (distinct from each cell's own
+`next_state` lifecycle) through a strictly forward-only ordered enum:
+`BATCH_STAGES = ("building", "generated", "scored", "awaiting-eye-gate-a", "gate-a-ruled")`.
+`new_batch` initializes `stage: "building"`. Any call that does not advance to the
+next enum value (a skip, a repeat, or a move backward) raises before any write.
+Add the `batch_state.py mark-stage --batch ... --stage ...` CLI alongside `apply`,
+used by Task 7.
 
 Write a parametrized transition test before implementation:
 
@@ -181,8 +198,34 @@ def test_illegal_terminal_duplicate_cost_and_coverage_cases_fail_closed(): ...
 def test_apply_batch_is_atomic_when_transform_raises(): ...
 ```
 
+Write a parametrized batch-stage transition test before implementation, alongside
+the cell-level one:
+
+```python
+BATCH_STAGE_CASES = [
+    ("building", "generated", True),
+    ("generated", "scored", True),
+    ("scored", "awaiting-eye-gate-a", True),
+    ("awaiting-eye-gate-a", "gate-a-ruled", True),
+    ("building", "scored", False),          # skip
+    ("scored", "building", False),          # backward
+    ("gate-a-ruled", "scored", False),      # backward past terminal
+    ("building", "building", False),        # no-op repeat
+]
+
+@pytest.mark.parametrize(("stage_from", "stage_to", "ok"), BATCH_STAGE_CASES)
+def test_mark_batch_stage_is_forward_only(stage_from, stage_to, ok, batch):
+    batch["stage"] = stage_from
+    if ok:
+        assert mark_batch_stage(batch, stage_to)["stage"] == stage_to
+    else:
+        with pytest.raises(ValueError):
+            mark_batch_stage(batch, stage_to)
+```
+
 `batch.json` contains schema version, persona ID, batch ID, allocation hash, cells,
-append-only pod-run rows, aggregate cost, lifecycle state, and timestamps. Cell
+append-only pod-run rows, aggregate cost, cell-level lifecycle state, a batch-level
+`stage` (see `mark_batch_stage` above), and timestamps. Cell
 records keep generation provenance, raw scores, human rulings, and selection
 separate. Never overwrite an earlier pod-run row or human ruling.
 Add the `batch_state.py apply --batch ... --scores ...` CLI used by Task 7.
@@ -192,9 +235,26 @@ Add the `batch_state.py apply --batch ... --scores ...` CLI used by Task 7.
 Preserve existing embeddings/metrics. Add `--raw-only` and mutually exclusive
 persona/batch inputs alongside the legacy anchor/images CLI; write observations but
 no `rulings.json` or threshold state. Include `face_detected`, face dimensions,
-anchor-cosine values, DINO similarity, Laplacian variance, local variance, and
-clipped-pixel fraction when available. Unsupported observations are null with an
-explicit `unavailable_reason`, never an inferred pass.
+anchor-cosine values, and DINO similarity when available (existing behavior).
+Add three new, concretely implemented raw metrics computed on the detected face
+crop, using Pillow + numpy (no new heavy dependency):
+
+```python
+def compute_raw_metrics(face_crop_rgb) -> dict: ...
+```
+
+- `laplacian_variance`: convert the crop to grayscale, convolve with the discrete
+  3x3 Laplacian kernel `[[0,1,0],[1,-4,1],[0,1,0]]` (`PIL.ImageFilter.Kernel` or an
+  explicit `numpy` 2D convolution), and report `float(numpy.var(result))` — the
+  standard blur-detection statistic; low variance means a blurry crop.
+- `clipped_highlight_fraction`: the fraction (0.0-1.0) of grayscale pixels at or
+  above 250/255.
+- `local_luminance_variance`: split the grayscale crop into 16x16 tiles, take each
+  tile's `numpy.var`, and report the mean of those per-tile variances.
+
+Unsupported observations (no detected face, or an embedder unavailable) are null
+with an explicit `unavailable_reason`, never an inferred pass or a silently omitted
+key.
 
 Write these tests first:
 
@@ -203,7 +263,21 @@ out = evaluate(ANCHOR, IMAGES, tmp_path, *fake_embedders, raw_only=True)
 assert out["mode"] == "raw-only" and not (tmp_path / "rulings.json").exists()
 assert set(out["images"][0]) >= {"image_id", "face_detected", "metrics"}
 assert "pass" not in json.dumps(out).lower()
+
+def test_raw_metrics_are_real_numbers_on_a_synthetic_face_crop():
+    crop = synthetic_face_crop(sharp=True, highlight_fraction=0.10)
+    metrics = compute_raw_metrics(crop)
+    assert metrics["unavailable_reason"] is None
+    assert isinstance(metrics["laplacian_variance"], float) and metrics["laplacian_variance"] > 0
+    assert 0.0 <= metrics["clipped_highlight_fraction"] <= 1.0
+    assert isinstance(metrics["local_luminance_variance"], float) and metrics["local_luminance_variance"] >= 0
+    blurred = synthetic_face_crop(sharp=False, highlight_fraction=0.10)
+    assert compute_raw_metrics(blurred)["laplacian_variance"] < metrics["laplacian_variance"]
 ```
+
+`synthetic_face_crop` is a small deterministic fixture (e.g. a checkerboard vs. a
+flat-blurred variant of the same array) built with numpy, not a real photo — the
+point is to exercise the arithmetic, not face detection.
 
 Do not delete legacy behavior used by existing callers. Make raw-only the required
 mode for expansion-02 and document its output schema in the module help text.
@@ -234,12 +308,21 @@ do not reveal arm or source path in the blind manifest itself.
 
 The board remains read-only: it displays the anonymous image ID and rubric, but
 does not write a ruling. In blind mode it must hide source path, arm name, original
-filename, and allocation cell metadata.
+filename, and allocation cell metadata. Extend `build_grading_board.py`'s existing
+`build(images, title, subtitle, blind, max_w, quality, budget_mb)` to also render a
+fixed, unconditional seven-axis rubric legend (`ALL_SEVEN_AXES` — the four
+`QUALITY_AXES` plus the three `SAFETY_VALUES` keys) on every card; this is a legend
+of labels for the human grader, not a ruling input, so no new parameter or call-site
+change is needed elsewhere. Use the module's existing `load_manifest` and `build`
+functions directly rather than inventing a new `render_board` entry point.
 
 Write a rendered-HTML test:
 
 ```python
-html = render_board(BLIND_MANIFEST, blind=True, seed=20260903)
+images = load_manifest(BLIND_MANIFEST)
+random.Random(20260903).shuffle(images)  # mirrors main()'s own blind-mode shuffle
+html, _ = build(images, "creator-001 expansion-02 — GATE A", "60 image(s)",
+                 blind=True, max_w=1600, quality=85, budget_mb=20.0)
 assert all(axis in html for axis in ALL_SEVEN_AXES)
 assert "source_path" not in html and "expansion-02=" not in html
 assert "img_0001" in html
@@ -424,14 +507,54 @@ assert all(new_card.validate(materialize_test_card(s, tmp_path)) == [] for s in 
 The workflow may describe later phases, but tonight it is declarative only. No
 card is dispatched and no account, scheduler, or publisher is activated.
 
-Run both Python and dashboard parser verification:
+Run the Python workflow-DAG suite plus a pure-Python frontmatter check over the
+nine new declarations (offline, no Node/dashboard toolchain, no `npm install`):
 
 ```powershell
 py -3 -m pytest orgs/figment/workflows/tests/test_figment_creator_workflow.py -q
-node -e "const p=require('./dashboard/server/workflow-defs'); p.parseWorkflowDef('orgs/figment/workflows/figment-creator.md'); console.log('workflow parse ok')"
+$check = @'
+import re
+from pathlib import Path
+import yaml
+
+AGENTS = Path("agents")
+IDS = ["runner", "checker", "expand", "train", "render", "content", "poster", "analyst", "researcher"]
+# The fields every figment-* declaration shares with governance/card-schema.md's own
+# card frontmatter vocabulary (role, runtime, model) plus the declaration-only fields
+# Step 3.1 requires (id, default-profile, allowed-profiles, projects, runner-bound,
+# description).
+REQUIRED = ("id", "role", "runtime", "model", "default-profile", "allowed-profiles",
+            "projects", "runner-bound", "description")
+ROLE_ENUM = {"scout", "manage", "work", "inspect", "consolidate"}
+RUNTIME_ENUM = {"claude", "codex"}
+
+for agent_id in IDS:
+    path = AGENTS / f"figment-{agent_id}.md"
+    text = path.read_text(encoding="utf-8")
+    opening = re.match(r"\A---\r?\n", text)
+    closing = re.search(r"(?m)^---\r?$", text[opening.end():]) if opening else None
+    assert opening and closing, f"{path}: no terminated frontmatter block"
+    fm = yaml.safe_load(text[opening.end():opening.end() + closing.start()])
+    assert isinstance(fm, dict), f"{path}: frontmatter is not a mapping"
+    for field in REQUIRED:
+        assert fm.get(field) not in (None, "", []), f"{path}: missing or empty {field!r}"
+    assert fm["role"] in ROLE_ENUM, f"{path}: bad role {fm['role']!r}"
+    assert fm["runtime"] in RUNTIME_ENUM, f"{path}: bad runtime {fm['runtime']!r}"
+print("agent frontmatter ok")
+'@
+$check | py -3 -
 ```
-Expected: tests pass and stdout ends `workflow parse ok`. If the export name differs,
-use the existing parser interface rather than changing the workflow format.
+A single-quoted PowerShell here-string (`@'...'@`) piped to `py -3 -` on stdin — never
+`py -3 -c "..."` with a double-quoted string, which would let PowerShell try to
+interpolate the Python source's own `$` end-of-line regex anchors as PowerShell
+variables.
+Expected: tests pass and stdout ends `agent frontmatter ok`. This replaces any
+dashboard-parser (`dashboard/server/workflows/defs.ts`) invocation for tonight's
+acceptance bar — that module is ESM TypeScript with a `(source, {knownProfiles})`
+signature, not the CommonJS path-taking shape this step used to assume, and its
+`node_modules` are not installed in this worktree. A TS-side parse check of
+`figment-creator.md` against the real dashboard parser is owed separately and is
+not part of tonight's gate.
 
 Commit after integration: `feat(figment): declare creator pipeline roster and workflow`.
 
@@ -557,11 +680,15 @@ Add a byte-for-byte repeat-build test and assert exactly ten cells per shard.
 
 ### Step 5.2: Make prompt and provisional caption generation testable
 
-Every prompt is 80–250 words and includes: adult fictional subject, requested
-angle and close/half-body framing, identity-lock clause, one wardrobe family as a
-fully opaque intact outfit, environment, requested lighting, mood, phone-camera
-medium, and cleanup constraints. It contains no real person's name, no sexual or
-unclothed term, and none of look-spec-v2 §4's banned phrases.
+Every prompt is 80–250 words and includes: an explicit "adult woman" framing per
+look-spec-v2 §4b (never a bare pronoun or an unqualified noun for the subject),
+requested angle and close/half-body framing, identity-lock clause, one wardrobe
+family as a fully opaque intact outfit, environment, requested lighting, mood,
+phone-camera medium, and cleanup constraints. It contains no real person's name, no
+sexual or unclothed term, and none of look-spec-v2 §4a's banned phrases in any
+form — including negation, since §4a's own rationale ("the fix is to describe the
+absence rather than to name the aesthetic") is that this text encoder doesn't
+reliably negate a named term.
 
 Captions reuse the legacy builder's sidecar/shard pattern but are explicitly
 `provisional_generation_caption`; later training must VLM-recaption selected
@@ -570,31 +697,63 @@ images. Captions describe visible, clothed facts and never claim a safety verdic
 ```python
 for cell in generate_allocation(persona):
     prompt = build_prompt(persona, cell)
-    assert 80 <= len(prompt.split()) <= 250 and "adult" in prompt.lower()
+    assert 80 <= len(prompt.split()) <= 250 and "adult woman" in prompt.lower()
     assert all(x in prompt.lower() for x in ("fully opaque", "intact"))
     assert not any(x.lower() in prompt.lower() for x in BANNED_PHRASES | UNSAFE_TERMS)
 assert provisional_captions_match_all_cell_ids(persona)
+
+def test_all_prompt_and_negative_prompt_templates_are_clean_of_banned_terms():
+    """Greps every prompt/negative-prompt template this plan produces or inherits —
+    the P2 positive-prompt builder above, plus node 5's static negative/cleanup text
+    frozen into the manifest builder in Step 5.3 — against look-spec-v2 §4a's full
+    banned list (age, soft-glam, bronzer/contour, plastic-skin, lip, brow/lash,
+    styling-signature, body, and light families)."""
+    templates = [build_prompt(persona, cell) for cell in generate_allocation(persona)]
+    templates.append(NODE_5_NEGATIVE_PROMPT)
+    for text in templates:
+        assert not any(term in text.lower() for term in BANNED_PHRASES)
 ```
 
-Load the banned list from the owning look-spec fixture or mirror it in the test
-with a comment naming the source section; do not put banned strings in production
-prompts.
+Load `BANNED_PHRASES` from the owning look-spec fixture (look-spec-v2.md §4a) or
+mirror it in the test with a comment naming the source section; do not put banned
+strings in production prompts. `NODE_5_NEGATIVE_PROMPT` is the exact text Step 5.3
+freezes into every manifest's node 5.
 
 ### Step 5.3: Build strict manifests from the verified graph
 
 Start from
-`orgs/figment/pipeline/train/runs/creator-001-composite-02.yaml`. Copy its
-`models`, `comfyui`, and `custom_nodes` blocks verbatim. Do not normalize, reorder,
-or silently update versions.
+`orgs/figment/pipeline/train/runs/creator-001-composite-02.yaml`. Copy its `gpu`,
+`image`, `price_usd_per_hour`, `models`, `comfyui`, `custom_nodes`, and
+`avoid_machine_hosts` fields verbatim — `gpu: {"type": "NVIDIA GeForce RTX 4090",
+"count": 1, "cloud": "SECURE"}`, `image:
+"runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04"`,
+`price_usd_per_hour: 0.80`, `avoid_machine_hosts: ["qvf79yutw3t2"]` — since
+`require_manifest()` in `runpod_run.py` hard-requires `gpu`, `image`/`template_id`,
+and a numeric positive `price_usd_per_hour`, and the S2 cost math ($0.96/pod,
+headroom to the $1.00 cap) only holds at composite-02's $0.80/hr rate. Do not
+normalize, reorder, or silently update versions. Only `max_minutes`,
+`readiness_timeout_seconds`, `job_timeout_seconds`, `container_disk_gb`, and
+`volume_gb` are the fields this task overrides — the 72-minute `max_minutes` (vs.
+composite-02's 40) is what satisfies the P0R slack condition; no other field needs
+widening for that purpose.
 
 Start from
 `orgs/figment/pipeline/train/workflows/klein4b_multiref_api.json`. Retain the three
 `LoadImage` nodes, the ReferenceLatent chains, EmptyFlux2LatentImage at 1024×1280,
 CFGGuider cfg 4, Flux2Scheduler at 50 steps, and Euler sampler. Rebind LoadImage
 nodes 6, 7, and 8 to g01, g02, and g07 in that exact identity-spec order. Node 4
-receives the per-job prompt; node 5 receives only clothed-safe negative/cleanup
-wording. The verified graph exposes no denoise input: preserve it, record r15b's
-0.23 edit band as provenance, and let P2R block rather than invent an unverified node.
+receives the per-job prompt (`build_prompt`, framed as "an adult woman" per §4b).
+Node 5 receives only clothed-safe negative/cleanup wording — do not inherit
+composite-02.yaml's node 5 text verbatim: it reads "underage appearance, adolescent
+features, childlike proportions, ... heavy bronzer, facial contouring, ... studio
+glamour photograph", and "childlike", the bronzer/contour family, and the glam
+family are look-spec-v2 §4a banned terms, banned even in negation per §4a's own
+rationale. Rewrite `NODE_5_NEGATIVE_PROMPT` to keep the safety-exclusion intent in
+neutral wording that names no §4a family, e.g.: "nudity, exposed breasts, exposed
+genitals, transparent clothing, broken clothing, unnatural body proportions, heavy
+visible makeup, plastic-looking skin, studio product photograph." The verified
+graph exposes no denoise input: preserve it, record r15b's 0.23 edit band as
+provenance, and let P2R block rather than invent an unverified node.
 
 Each emitted manifest has exactly the keys allowed by `pod/README.md`; each job has
 only harness-supported job keys. Do not add `identity_set`, captions, stratum data,
@@ -616,7 +775,7 @@ paths = build_manifests(PERSONA, BASE, WORKFLOW, tmp_path)
 assert names(paths) == [f"creator-001-expansion-02-shard-{i:02d}.yaml" for i in range(1, 7)]
 assert all(require_manifest(load_manifest(p), p) is None for p in paths)
 assert all(len(load_manifest(p)["jobs"]) == 10 for p in paths)
-assert copied_blocks(paths[0], BASE, ("models", "comfyui", "custom_nodes"))
+assert copied_blocks(paths[0], BASE, ("gpu", "image", "price_usd_per_hour", "models", "comfyui", "custom_nodes", "avoid_machine_hosts"))
 assert graph_contract(paths[0]) == (["g01", "g02", "g07"], 1024, 1280, 4, 50, "euler")
 assert all(no_network_volume_or_unknown_keys(p) for p in paths)
 ```
@@ -717,10 +876,12 @@ Independently inspect and record:
 
 - six `require_manifest` passes; 60 unique IDs/seeds; 40 strata + 20 specified
   repeats; ten jobs per shard; resume after 1/3/5; six hashed dry runs;
-- g01/g02/g07 chain order; 1024×1280; cfg 4; 50 steps; Euler; verbatim live model,
-  ComfyUI, and custom-node blocks; timeouts 300/900/72;
+- g01/g02/g07 chain order; 1024×1280; cfg 4; 50 steps; Euler; verbatim live `gpu`,
+  `image`, `price_usd_per_hour`, model, ComfyUI, custom-node, and
+  `avoid_machine_hosts` blocks; timeouts 300/900/72;
 - no network volume, training/artifact upload, or unknown key;
-- 80–250-word adult/clothed prompts with no real person or §4 phrase;
+- 80–250-word adult/clothed positive prompts with no real person or §4a phrase, and
+  node 5's negative prompt free of §4a vocabulary in any form, including negation;
 - raw-only scoring; no threshold route; seven-axis fail-closed human rubric;
 - stale-gate rejection after subject mutation.
 
@@ -771,7 +932,8 @@ P2R `LIVE-SAFE` and repeat its reviewed-path SHA pin.
 Record that the current design marks all r15b reports claim-checked and §0/S2/S3/
 S5/S6 reconciliation satisfied at `57221caf`; do not reopen that settled gate.
 Verify six manifest/allocation hashes, staged anchor hashes, and readable arc/daily
-ledgers. Any mismatch stops before spend.
+ledgers at `C:\Users\danie\kb-worktrees\figment\ledgers\cost` (the figment
+worktree's own ledger directory — see Step 7.3). Any mismatch stops before spend.
 
 ### Step 7.2: File the already-human-approved T2 spend card on ops
 
@@ -779,12 +941,18 @@ From the proper ops worktree, pull/rebase `origin ops` immediately before writin
 Create the schema-valid GATE S card before pod 1, containing:
 
 - `owner: figment-expand`, `role: work`, `risk-tier: T2`, `project: figment`;
+- `action: figment:expand:expansion-02`; `target:` the six manifest paths
+  (`orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-01.yaml`
+  through `-06.yaml`) plus the batch directory
+  `orgs/figment/personas/creator-001/batches/expansion-02/`;
 - `runtime: claude`, `model: claude-sonnet-5`, and done P0R/P2R dependencies;
 - objective: run expansion-02 shards 01–06 sequentially and stop at eye gate;
 - six exact manifest paths and their P2R hashes;
 - 10 jobs per pod, six pods maximum;
 - `--max-usd 1.00` per pod and 72-minute maximum per pod ($6.00 total ceiling);
-- arc cap `$50` before each shard; daily ledger $0.87 + worst-case $6.00 = $6.87;
+- arc cap `$52.85` before each shard (read from
+  `C:\Users\danie\kb-worktrees\figment\ledgers\cost`, the figment worktree's own
+  ledger directory, not `dashboard-ops`); daily ledger $0.87 + worst-case $6.00 = $6.87;
 - no network volume; ephemeral pod only;
 - ambient RunPod credential; never record its value;
 - stop on ledger disagreement, timeout, bad harvest, or failed termination proof;
@@ -805,12 +973,12 @@ Before each command check the arc ledger. Do not start N+1 until N has a valid
 Run exactly:
 
 ```powershell
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-01.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-01 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-02.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-02 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-03.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-03 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-04.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-04 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-05.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-05 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
-py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-06.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-06 --max-usd 1.00 --max-minutes 72 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-01.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-01 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-02.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-02 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-03.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-03 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-04.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-04 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-05.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-05 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
+py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/expand/runs/creator-001-expansion-02-shard-06.yaml --out orgs/figment/pipeline/expand/runs/out/creator-001-expansion-02-shard-06 --max-usd 1.00 --max-minutes 72 --ledger-dir C:/Users/danie/kb-worktrees/figment/ledgers/cost --arc-cap-usd 52.85 --arc-ledger-glob 'figment-*.tsv'
 ```
 Expected per shard: exit 0; stdout includes `exit path complete: terminate +
 absence verification succeeded`; `run.json` says 10/10 and termination verified;
@@ -823,11 +991,13 @@ Run:
 
 ```powershell
 py -3 orgs/figment/pipeline/expand/build_expansion_set.py harvest --persona orgs/figment/personas/creator-001/persona.yaml --allocation orgs/figment/pipeline/expand/runs/creator-001-expansion-02-allocation.json --run-root orgs/figment/pipeline/expand/runs/out --batch-dir orgs/figment/personas/creator-001/batches/expansion-02
+py -3 orgs/figment/pipeline/expand/batch_state.py mark-stage --batch orgs/figment/personas/creator-001/batches/expansion-02/batch.json --stage generated
 ```
 Expected: `harvested 6/6 shards, 60 cells`. Verify `batch.json` has six unique
 pod-run rows, 60 generated cells, the allocation hash, approved card reference,
-and aggregate cost equal to the six ledger rows. Verify 60 image files locally and
-12 tracked provenance JSON files. There must be no `approved` or `curated` cell.
+`stage: "generated"`, and aggregate cost equal to the six ledger rows. Verify 60
+image files locally and 12 tracked provenance JSON files. There must be no
+`approved` or `curated` cell.
 
 ### Step 7.5: Produce raw scores and quarantine only deterministic no-face
 
@@ -836,11 +1006,13 @@ Run:
 ```powershell
 py -3 orgs/figment/pipeline/train/identity_check.py --persona orgs/figment/personas/creator-001/persona.yaml --batch orgs/figment/personas/creator-001/batches/expansion-02/batch.json --out orgs/figment/personas/creator-001/batches/expansion-02/scores.json --raw-only
 py -3 orgs/figment/pipeline/expand/batch_state.py apply --batch orgs/figment/personas/creator-001/batches/expansion-02/batch.json --scores orgs/figment/personas/creator-001/batches/expansion-02/scores.json
+py -3 orgs/figment/pipeline/expand/batch_state.py mark-stage --batch orgs/figment/personas/creator-001/batches/expansion-02/batch.json --stage scored
 ```
 Expected: 60 raw score rows. The apply summary is `scored 60; quarantined
-no-face=N; threshold-routed=0`. Move only deterministic no-face files into the
-ignored `rejected/` directory. Null/unavailable metrics stay scored for human
-inspection. Assert no metric threshold caused a cull, quarantine, or promotion.
+no-face=N; threshold-routed=0`; `batch.json` shows `stage: "scored"`. Move only
+deterministic no-face files into the ignored `rejected/` directory.
+Null/unavailable metrics stay scored for human inspection. Assert no metric
+threshold caused a cull, quarantine, or promotion.
 
 ### Step 7.6: Blind the surviving pool and build the eye-gate board
 
@@ -866,26 +1038,56 @@ Do not run `qa_stamp.py`. Do not reveal the blind key. Do not create `gate.json`
 Do not select, curate, approve, train, render, publish, or start expansion-03. A
 gate that has not happened is never stamped.
 
-Set the batch-level status to `awaiting-eye-gate-a` without changing any scored
-cell to approved. Verify:
+Set the batch-level stage to `awaiting-eye-gate-a` via the Task 1 writer — never by
+hand-editing JSON — without changing any scored cell to approved:
 
 ```powershell
+py -3 orgs/figment/pipeline/expand/batch_state.py mark-stage --batch orgs/figment/personas/creator-001/batches/expansion-02/batch.json --stage awaiting-eye-gate-a
 py -3 -m pytest orgs/figment/pipeline/expand/tests orgs/figment/pipeline/tests/test_gates.py -q
 git check-ignore -v orgs/figment/personas/creator-001/batches/expansion-02/images/* orgs/figment/personas/creator-001/batches/expansion-02/blind-key.json orgs/figment/personas/creator-001/batches/expansion-02/board.html
 git status --short
 ```
 
-Expected: tests pass; images, key, and board are ignored; only `batch.json`,
-`scores.json`, and the 12 pod-run provenance files are eligible for this commit.
-Do not stage unrelated pre-existing worktree changes.
+Expected: `batch.json` shows `stage: "awaiting-eye-gate-a"`; tests pass; images,
+key, and board are ignored; only `batch.json`, `scores.json`, and the 12 pod-run
+provenance files are eligible for this commit. Do not stage unrelated pre-existing
+worktree changes.
 
 Commit durable pre-gate metadata only with
 `run(figment): harvest expansion-02 for gate A`.
 
-Report the commit, exact cost, counts, hashes, and eye-gate request ID to the human,
-then STOP. A later, separately authorized continuation may reveal the key, record
-seven-axis rulings, enforce stratum coverage, and call `write_gate` only after the
-human decision.
+### Step 7.8: Publish today's figment ledger rows to ops
+
+The six shard cost rows were written under `--ledger-dir
+C:\Users\danie\kb-worktrees\figment\ledgers\cost` (Step 7.3), inside this worktree —
+not the `ops`-checked-out `dashboard-ops` worktree. Per CLAUDE.md, `ledgers/` is a
+coordination-write path that belongs on `ops`. Never check `ops` out in this
+(the main) checkout; instead cut a temporary branch from `origin/ops`, commit the
+rows there, and push with the `<sha>:ops` refspec:
+
+```powershell
+git fetch origin ops
+$syncBranch = "figment-ledger-sync-$(Get-Date -Format yyyyMMdd-HHmmss)"
+git worktree add -b $syncBranch ..\figment-ledger-sync origin/ops
+Copy-Item C:\Users\danie\kb-worktrees\figment\ledgers\cost\figment-*.tsv ..\figment-ledger-sync\ledgers\cost\ -Force
+git -C ..\figment-ledger-sync add ledgers/cost/figment-*.tsv
+git -C ..\figment-ledger-sync commit -m "ledger(figment): expansion-02 shard 01-06 cost rows"
+$syncSha = (git -C ..\figment-ledger-sync rev-parse HEAD).Trim()
+git push origin "${syncSha}:ops"
+git worktree remove ..\figment-ledger-sync
+git branch -D $syncBranch
+```
+Expected: the push succeeds and the `figment-*.tsv` rows land on `ops` without this
+worktree ever checking `ops` out. On a rejected push (`ops` moved), `git fetch
+origin ops` again, rebase the sync branch onto the new `origin/ops` tip, and retry
+— never force-push. Confirm `git branch --show-current` in this (main) worktree is
+unchanged before and after.
+
+Report the commit, exact cost, counts, hashes, eye-gate request ID, and the ledger
+sync push result to the human, then STOP. A later, separately authorized
+continuation may reveal the key, record seven-axis rulings, enforce stratum
+coverage, call `write_gate` only after the human decision, and mark the batch
+`gate-a-ruled`.
 
 ---
 
