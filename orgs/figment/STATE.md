@@ -88,3 +88,15 @@ final values.
 - **Spend:** arc $5.13 of $52.85; today $3.16 of $10.00 daily (budget.yaml raised to 10 on this branch by ruling).
 - **Next:** operator rules the board (seven axes; adult_read / garment_integrity / real_person_resemblance fail
   closed) → `qa_stamp.py` → `gate.json` GATE A → curated 40 → P5 (opus P0R pass owed) → P7 LoRA v1.
+
+## Update — 2026-09-03 19:20 (operator viewed the GATE A board)
+
+- **expansion-02 FAILED its purpose: identity did not hold across cells** (operator: "90% wrong"; boss sampled six:
+  four different women). Root cause: free generation from an empty latent with 180-word scene prompts and the
+  three references as side input, plus no register words and profile/back angles with no reference information.
+  The package's proven dataset step is anchor img2img at denoise ≈0.23 with short angle/pose templates (r15b
+  module 10). Batch kept as evidence only; NOT to be graded or curated. GATE A card 65d8f246 stays open but its
+  subject is superseded by expansion-03.
+- **Next: expansion-03** — port of the module-10 method to klein 4B Base (anchor as initial latent + reference,
+  denoise 0.20-0.35, ≤40-word prompts with register words, small head/gaze/crop/light/wardrobe variations, no new
+  rooms, no profiles), 6-cell pilot first, then 30-36 cells, then GATE A on that board.
