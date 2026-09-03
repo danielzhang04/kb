@@ -231,6 +231,14 @@ export interface SurfaceContext {
    */
   ptyPersistence?: SessionPersistence;
   /**
+   * Runs the v1/v2 -> v3 PTY document migration exactly once, before any reader of the real document.
+   * `registerWriteSurface` awaits it from an `onReady` hook (before the app accepts its first request);
+   * `ptySessionRuns`'s lazy write-time `migrate` awaits the SAME memoized promise. Without this, the
+   * session registry's raw `persistence.read()`/`.mutate()` calls could observe a v2 document before
+   * anything triggered the migration. Absent without PTY persistence.
+   */
+  ensurePtyDocumentMigrated?: () => Promise<void>;
+  /**
    * The browser-session-ref table. `auth/routes.ts` mints/renews the `kb_browser_session` cookie through
    * it at a verified assertion; the second half of every PTY principal comes from that cookie. Absent, no
    * cookie is issued and PTY work has no principal at all — a closed refusal, never a default principal.

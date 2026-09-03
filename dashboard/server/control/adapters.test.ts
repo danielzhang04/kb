@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -109,6 +109,74 @@ describe('Git worktree adapter', () => {
     expect(additions[0].args.slice(-2)).toEqual([path, 'a'.repeat(40)]);
     expect(fake.calls.some((call) => call.args.includes('remove') || call.args.includes('prune'))).toBe(false);
   });
+
+  it(
+    'chmods the run dir and attempt worktree to 02770 so the kb-shell-group broker can open them (Linux)',
+    async () => {
+      // Regression: run-d7232476 — the broker (uid kb-shell, group-only access) got
+      // "pinned component open refused" because `mkdirSync(dirname(path), { mode: 0o700 })` and
+      // `git worktree add`'s umask-derived mode never gave the shell group access. Both the run-<ref>
+      // parent and the attempt directory must land on exactly 02770 for the broker's launch validator
+      // (fdPinnedPaths.ts) to accept them.
+      const root = temporaryRoot();
+      const repoRoot = join(root, 'repo');
+      const commonDir = join(repoRoot, '.git');
+      const worktreeRoot = join(root, 'worktrees');
+      mkdirSync(commonDir, { recursive: true });
+      const fake = fakeGit(repoRoot, commonDir);
+      const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+      const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+      await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+
+      // Windows has no POSIX mode bits: the call must succeed there, the mode assertions are Linux-only
+      // (the manifest gate forbids skipIf in this file, so the branch lives inside the test).
+      if (process.platform === 'win32') return;
+      const runDirMode = statSync(join(worktreeRoot, 'run-1')).mode & 0o7777;
+      const attemptDirMode = statSync(path).mode & 0o7777;
+      expect(runDirMode).toBe(0o2770);
+      expect(attemptDirMode).toBe(0o2770);
+
+      // Re-`ensure` on the already-existing worktree (the existsSync early-return branch) must also
+      // normalise the mode, not just leave whatever `git worktree add` left behind.
+      await adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path });
+      expect(statSync(path).mode & 0o7777).toBe(0o2770);
+    },
+  );
+
+  it(
+    'refuses to chmod through a symlinked run dir and never touches the symlink target (Linux)',
+    async () => {
+      // Regression: chmodSync(path) follows symlinks. The run-<ref> tree is group-writable by the
+      // kb-shell-sandboxed broker child, so if that child plants a symlink where a run/attempt
+      // directory is expected, a path-based chmod would silently re-mode whatever the symlink
+      // points at. The fd-based (O_NOFOLLOW) rewrite must refuse instead, and must never mutate
+      // the symlink's target.
+      if (process.platform === 'win32') return;
+      const root = temporaryRoot();
+      const repoRoot = join(root, 'repo');
+      const commonDir = join(repoRoot, '.git');
+      const worktreeRoot = join(root, 'worktrees');
+      mkdirSync(commonDir, { recursive: true });
+      const fake = fakeGit(repoRoot, commonDir);
+      const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+
+      // A sibling directory outside the worktree tree, with a known mode that must survive untouched.
+      const sibling = join(root, 'sibling-target');
+      mkdirSync(sibling, { recursive: true, mode: 0o755 });
+      chmodSync(sibling, 0o755); // pin exactly, independent of the process umask
+      mkdirSync(worktreeRoot, { recursive: true });
+      // `run-1` (the parent component `ensure` must chmod) is a symlink to the sibling, not a real dir.
+      symlinkSync(sibling, join(worktreeRoot, 'run-1'));
+      const path = join(worktreeRoot, 'run-1', 'attempt-1');
+
+      await expect(
+        adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path }),
+      ).rejects.toThrow('worktree component is not a directory');
+
+      expect(statSync(sibling).mode & 0o7777).toBe(0o755);
+    },
+  );
 
   it('creates the attempt worktree with core.longpaths=true so deep state-root paths clear Windows MAX_PATH', async () => {
     // Regression: the Wave-A acceptance run parked at waiting-human because `git worktree add` failed

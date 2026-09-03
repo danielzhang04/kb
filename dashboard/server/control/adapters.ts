@@ -1,9 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { sha256Hex } from '../shared/hashing.ts';
 import {
+  closeSync,
+  constants,
   existsSync,
+  fchmodSync,
   lstatSync,
   mkdirSync,
+  openSync,
   readFileSync,
   realpathSync,
   statSync,
@@ -216,6 +220,49 @@ function childOf(root: string, candidate: string): boolean {
   return child !== '' && child !== '..' && !child.startsWith(`..${sep}`) && !isAbsolute(child);
 }
 
+/**
+ * Linux only: chmod `target` and every intermediate directory between `worktreeRoot` and `target`
+ * to 02770 (setgid so files the broker creates under it inherit the `kb-shell` group). The broker
+ * (uid `kb-shell`) only has group access to run/attempt directories the dashboard uid creates, so
+ * `mkdirSync`'s 0700 (and `git worktree add`'s umask-derived mode) leaves them unopenable by the
+ * broker's launch validator (fdPinnedPaths.ts requires exactly 02770 on every worktree component).
+ * Never touches `worktreeRoot` itself (owned/created by the host installer, not this adapter) —
+ * `childOf` returns false for the root and each segment is skipped unless it is a real descendant.
+ * A no-op on win32, where the pre-existing mkdirSync/`worktree add` modes are left as-is.
+ *
+ * Opens each component by fd with O_NOFOLLOW instead of chmodSync(path): the run-<ref> tree is now
+ * group-writable by the kb-shell-sandboxed broker child, so a plain path-based chmod would follow a
+ * symlink an attacker planted there onto an arbitrary target. fchmodSync on the O_NOFOLLOW fd only
+ * ever mutates the directory this call actually opened.
+ */
+function chmodWorktreeComponents(worktreeRoot: string, target: string): void {
+  if (process.platform === 'win32') return;
+  const rel = relative(worktreeRoot, target);
+  if (rel === '' || rel === '..' || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return;
+  let cursor = worktreeRoot;
+  for (const segment of rel.split(sep)) {
+    cursor = join(cursor, segment);
+    if (!childOf(worktreeRoot, cursor)) continue;
+    let fd: number;
+    try {
+      fd = openSync(cursor, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException)?.code;
+      if (code === 'ELOOP' || code === 'ENOTDIR') {
+        throw new ExecutionAdapterError('worktree component is not a directory');
+      }
+      throw new ExecutionAdapterError('worktree component mode could not be normalised');
+    }
+    try {
+      fchmodSync(fd, 0o2770);
+    } catch {
+      throw new ExecutionAdapterError('worktree component mode could not be normalised');
+    } finally {
+      closeSync(fd);
+    }
+  }
+}
+
 function expectedAttemptPath(worktreeRoot: string, runRef: string, candidate: string): string {
   if (!SAFE_FILE_SEGMENT.test(runRef) || runRef.includes('..') || !isSafeRepoRelativePath(runRef)) {
     throw new ExecutionAdapterError('runRef is unsafe');
@@ -330,6 +377,7 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
       ensureHooksDir();
       if (existsSync(path)) {
         if (!lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree path is not a directory');
+        chmodWorktreeComponents(worktreeRoot, path);
         await verify(path);
         const existing = await runGit(runner, prefix, ['rev-parse', 'HEAD'], path, 'attempt base verification');
         if (existing.stdout.toString('utf8').trim() !== baseCommit) {
@@ -338,6 +386,7 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
         return;
       }
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      chmodWorktreeComponents(worktreeRoot, dirname(path));
       // C2: with sparseReadScope AND a non-empty sparse set, materialize only those repo-relative paths
       // (effectiveRead ∪ writeScope). The write-scope paths MUST be included so the worker can write and
       // `inspect` can see the change — sparse checkout bounds READS only; §6 acceptance stays anchored on
@@ -359,9 +408,11 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
         await runGit(runner, prefix, ['sparse-checkout', 'init', '--no-cone'], path, 'sparse-checkout init');
         await runGit(runner, prefix, ['sparse-checkout', 'set', ...sparsePaths], path, 'sparse-checkout set');
         await runGit(runner, prefix, ['checkout'], path, 'sparse worktree checkout');
+        chmodWorktreeComponents(worktreeRoot, path);
       } else {
         await runGit(runner, prefix, ['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
         if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
+        chmodWorktreeComponents(worktreeRoot, path);
       }
       await verify(path);
     },
