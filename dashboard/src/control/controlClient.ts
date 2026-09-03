@@ -1338,12 +1338,28 @@ export async function readRunSessionReplay(
   }
 }
 
+/**
+ * The run-detail envelope is `{ok, value}` PLUS two decorations the server has attached deliberately
+ * since 2026-07-30 (`server/control/routes.ts` "the latch posture every execution-touching response
+ * carries, so the UI never has to guess", now `server/services/runReadService.ts#getRunDetail`):
+ * `replayed`, the idempotent-read flag, and `execution`, the execution-latch posture. Both are decoded
+ * here rather than merely tolerated, so the envelope stays as strictly typed as the exact-keys check it
+ * replaces: an unknown key, a non-boolean `replayed`, or a posture this client cannot parse all still
+ * fail the whole read.
+ */
+function runDetailEnvelopeIsWellFormed(envelope: Record<string, unknown>): boolean {
+  if (!wireKeysWithin(envelope, ['ok', 'value'], ['replayed', 'execution'])) return false;
+  if ('replayed' in envelope && typeof envelope.replayed !== 'boolean') return false;
+  if ('execution' in envelope && parseExecutionPosture(envelope.execution) === null) return false;
+  return true;
+}
+
 export async function getRun(runRef: string, token: string, fetchImpl?: FetchLike): Promise<RunDetailDto> {
   const body = await read<unknown>(
     `/api/control/runs/${segment(runRef)}`, token, fetchImpl,
   );
   const envelope = wireRecord(body);
-  const detail = envelope && exactWireKeys(envelope, ['ok', 'value']) && envelope.ok === true
+  const detail = envelope && runDetailEnvelopeIsWellFormed(envelope) && envelope.ok === true
     ? decodeRunDetail(envelope.value) : null;
   if (!detail) throw new Error('invalid run detail');
   return detail;
@@ -1397,6 +1413,21 @@ function wireRecord(value: unknown): Record<string, unknown> | null {
 
 function exactWireKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
   return Object.keys(value).length === keys.length && Object.keys(value).every((key) => keys.includes(key));
+}
+
+/**
+ * Exact keys with a documented optional tail: every key present must be one this client knows, and
+ * every required key must be there. This is the same wire discipline as `exactWireKeys` for envelopes
+ * whose server deliberately attaches optional decorations.
+ */
+function wireKeysWithin(
+  value: Record<string, unknown>,
+  required: readonly string[],
+  optional: readonly string[],
+): boolean {
+  const keys = Object.keys(value);
+  return keys.every((key) => required.includes(key) || optional.includes(key))
+    && required.every((key) => keys.includes(key));
 }
 
 function nullableString(value: unknown): boolean {

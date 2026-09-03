@@ -336,6 +336,38 @@ describe('control client run and retention writes', () => {
       .rejects.toThrow('invalid run detail');
   });
 
+  it('decodes the shipped run-detail envelope decorations and still rejects any other key', async () => {
+    const value = acceptedRunDetail('published', 'approval', 'approved');
+    // The exact envelope the VM returns for GET /api/control/runs/:runRef (release ee093d2d):
+    // {ok, value} plus the server's `replayed` flag and `execution` latch posture.
+    const live = {
+      ok: true,
+      value,
+      replayed: false,
+      execution: {
+        state: 'unlocked', source: 'tailnet',
+        unlockedAt: '2026-09-03T21:57:43.927Z', unlockedBy: 'dashboard-engine',
+      },
+    };
+    expect((await getRun('run-1', 'bearer', recordedFetch(live))).run.runRef).toBe('run-1');
+    // Locked posture (unlockRoute present) and a replayed read decode the same way.
+    expect((await getRun('run-1', 'bearer', recordedFetch({
+      ok: true, value, replayed: true, execution: LOCKED_EXECUTION,
+    }))).run.runRef).toBe('run-1');
+    // The bare envelope the older server shipped still decodes.
+    expect((await getRun('run-1', 'bearer', recordedFetch({ ok: true, value }))).run.runRef).toBe('run-1');
+
+    // Every other envelope key is still refused, and both decorations are still type-checked.
+    await expect(getRun('run-1', 'bearer', recordedFetch({ ...live, roster: [] })))
+      .rejects.toThrow('invalid run detail');
+    await expect(getRun('run-1', 'bearer', recordedFetch({ ok: true, value, replayed: 'false' })))
+      .rejects.toThrow('invalid run detail');
+    await expect(getRun('run-1', 'bearer', recordedFetch({ ok: true, value, execution: { state: 'melted' } })))
+      .rejects.toThrow('invalid run detail');
+    await expect(getRun('run-1', 'bearer', recordedFetch({ value, replayed: false })))
+      .rejects.toThrow('invalid run detail');
+  });
+
   it('resolves completion and reason-coded iteration-park gates through the dedicated iteration endpoint', async () => {
     const completionFetch = recordedFetch({ ok: true, value: { gate: { requestRef: 'completion/1' }, loop: {}, receipt: {}, receiptVersion: 4, interventionRequest: null } });
     const completion = await resolveIterationGate('completion/1', {
