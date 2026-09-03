@@ -49,12 +49,10 @@ set is the images that read as one woman, used together (klein takes up to four)
 2. `personas/anchors/gemini-batch-01/g02.jpg` (carries the body target; its slightly wider
    face shifts the averaged identity a touch toward g02 — accepted by the operator)
 3. `personas/anchors/gemini-batch-01/g07.jpg`
-4. `personas/creator-001/composite-03/c001-comp03-body-g06-seed-200002.png` (C5, clean
-   sharper-face confirmation; optional)
 
-Every other composite cell is rejected (mask-like face, drifted identity, makeup artifacts) and
-must not be used as a reference. Body exemplars for prompt wording: g02, g07, and
-`composite-03/c001-comp03-body-g02-seed-200002.png` (C2).
+No composites in the reference set (operator, 07:10: all composite cells judged off on second
+look; scrapped). Composite runs 01-03 stay on disk as evidence of the klein reference-order and
+face-pixel-density findings only. Body exemplars for prompt wording: g02 and g07.
 
 **Ordering (operator ruling):** creator 001 is the first influencer AND the pipeline proof, like
 FYT's first channel. Research, infrastructure, tests, audits and reviews come first, in order;
