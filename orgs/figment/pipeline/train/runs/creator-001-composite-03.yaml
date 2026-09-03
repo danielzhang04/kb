@@ -1,0 +1,162 @@
+{
+  "gpu": {"type": "NVIDIA GeForce RTX 4090", "count": 1, "cloud": "SECURE"},
+  "price_usd_per_hour": 0.80,
+  "max_minutes": 40,
+  "container_disk_gb": 60,
+  "volume_gb": 60,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "avoid_machine_hosts": ["qvf79yutw3t2"],
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "readiness_timeout_seconds": 1200,
+  "job_timeout_seconds": 900,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-base-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "custom_nodes": [],
+  "workflow": {
+    "1": {"class_type": "UNETLoader", "inputs": {"unet_name": "flux-2-klein-base-4b.safetensors", "weight_dtype": "default"}},
+    "2": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen_3_4b.safetensors", "type": "flux2", "device": "default"}},
+    "3": {"class_type": "VAELoader", "inputs": {"vae_name": "flux2-vae.safetensors"}},
+    "4": {"class_type": "CLIPTextEncode", "inputs": {"text": "placeholder generation instruction", "clip": ["2", 0]}},
+    "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "underage appearance, adolescent features, childlike proportions, nudity, exposed breasts, exposed genitals, transparent clothing, broken clothing, fuller heavy build, bodybuilding physique, plastic skin, heavy bronzer, facial contouring, augmented lips, studio glamour photograph", "clip": ["2", 0]}},
+    "6": {"class_type": "LoadImage", "inputs": {"image": "creator-001/g02.jpg"}},
+    "7": {"class_type": "LoadImage", "inputs": {"image": "creator-001/g04.jpg"}},
+    "8": {"class_type": "LoadImage", "inputs": {"image": "creator-001/g07.jpg"}},
+    "9": {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": ["6", 0], "upscale_method": "nearest-exact", "megapixels": 1.0, "resolution_steps": 1}},
+    "10": {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": ["7", 0], "upscale_method": "nearest-exact", "megapixels": 1.0, "resolution_steps": 1}},
+    "11": {"class_type": "ImageScaleToTotalPixels", "inputs": {"image": ["8", 0], "upscale_method": "nearest-exact", "megapixels": 1.0, "resolution_steps": 1}},
+    "12": {"class_type": "VAEEncode", "inputs": {"pixels": ["9", 0], "vae": ["3", 0]}},
+    "13": {"class_type": "VAEEncode", "inputs": {"pixels": ["10", 0], "vae": ["3", 0]}},
+    "14": {"class_type": "VAEEncode", "inputs": {"pixels": ["11", 0], "vae": ["3", 0]}},
+    "15": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["4", 0], "latent": ["12", 0]}},
+    "16": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["15", 0], "latent": ["13", 0]}},
+    "17": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["16", 0], "latent": ["14", 0]}},
+    "18": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["5", 0], "latent": ["12", 0]}},
+    "19": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["18", 0], "latent": ["13", 0]}},
+    "20": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["19", 0], "latent": ["14", 0]}},
+    "21": {"class_type": "EmptyFlux2LatentImage", "inputs": {"width": 1024, "height": 1280, "batch_size": 1}},
+    "22": {"class_type": "RandomNoise", "inputs": {"noise_seed": 100001}},
+    "23": {"class_type": "CFGGuider", "inputs": {"cfg": 4.0, "model": ["1", 0], "positive": ["17", 0], "negative": ["20", 0]}},
+    "24": {"class_type": "Flux2Scheduler", "inputs": {"steps": 50, "width": 1024, "height": 1280}},
+    "25": {"class_type": "KSamplerSelect", "inputs": {"sampler_name": "euler"}},
+    "26": {"class_type": "SamplerCustomAdvanced", "inputs": {"noise": ["22", 0], "guider": ["23", 0], "sampler": ["25", 0], "sigmas": ["24", 0], "latent_image": ["21", 0]}},
+    "27": {"class_type": "VAEDecode", "inputs": {"samples": ["26", 0], "vae": ["3", 0]}},
+    "28": {"class_type": "SaveImage", "inputs": {"filename_prefix": "creator-001-composite-02", "images": ["27", 0]}}
+  },
+  "seed_fields": ["noise_seed"],
+  "uploads": [
+    {
+      "files": ["anchors/g02.jpg", "anchors/g04.jpg", "anchors/g06.jpg", "anchors/g07.jpg"],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": false
+    }
+  ],
+  "jobs": [
+    {
+      "seed": 100001,
+      "output_name": "c001-comp03-body-g02-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g02.jpg"},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 200002,
+      "output_name": "c001-comp03-body-g02-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g02.jpg"},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 300003,
+      "output_name": "c001-comp03-body-g02-seed-300003",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g02.jpg"},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-comp03-body-g07-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g07.jpg"},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 200002,
+      "output_name": "c001-comp03-body-g07-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g07.jpg"},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-comp03-body-g06-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g06.jpg"}
+      ]
+    },
+    {
+      "seed": 200002,
+      "output_name": "c001-comp03-body-g06-seed-200002",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second and third reference images, exactly as she appears there, including her own makeup as seen in those images. Do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g06.jpg"}
+      ]
+    },
+    {
+      "seed": 100001,
+      "output_name": "c001-comp03-ctrl-g02-g04-seed-100001",
+      "expected_images": 1,
+      "substitutions": [
+        {"node_id": "4", "field": "text", "value": "Edit the first reference image: keep its body, build, pose, outfit, room, and lighting exactly, and replace the woman's face, hair, and makeup with the woman shown in the second reference image — her face exactly. Keep her own makeup exactly as it appears in the face reference; do not add or change any makeup. A candid phone photo, no retouching."},
+        {"node_id": "6", "field": "image", "value": "creator-001/g02.jpg"},
+        {"node_id": "23", "field": "positive", "value": ["16", 0]}, {"node_id": "23", "field": "negative", "value": ["19", 0]},
+        {"node_id": "21", "field": "width", "value": 896}, {"node_id": "21", "field": "height", "value": 1536},
+        {"node_id": "24", "field": "width", "value": 896}, {"node_id": "24", "field": "height", "value": 1536}
+      ]
+    }
+  ]
+}
