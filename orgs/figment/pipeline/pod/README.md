@@ -140,8 +140,10 @@ temporary file, atomically moved into place, and verified to exist with non-zero
 A live `run` requires `--max-usd`. Before create, the harness computes the manifest estimate,
 reads `governance/budget.yaml` `daily_usd_limit`, sums the `usd` column in today's
 cost ledgers, and refuses when existing spend plus the estimate exceeds the daily limit.
-Files without a `usd` column are skipped with a warning; malformed values in a declared
-`usd` column still fail closed. The ledger directory is selected in this order:
+It also applies the independent whole-arc cap: `--arc-cap-usd` defaults from
+`KB_ARC_CAP_USD`, otherwise `$50.00`, and sums every `figment-*.tsv` in the selected ledger
+directory (override with `--arc-ledger-glob`). Files without a `usd` column are skipped with a
+warning; malformed values in a declared `usd` column still fail closed. The ledger directory is selected in this order:
 `--ledger-dir`, `KB_LEDGER_DIR`,
 `C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost` when that directory exists, then the
 repo's `ledgers/cost`. The selected path is logged. `governance/budget.yaml` always comes from
@@ -155,7 +157,7 @@ for the mandatory terminate-and-verify path.
 
 The manifest rate is never trusted after create. Once the Pod is READY, its
 `adjustedCostPerHr` or `costPerHr` must be present and positive. That real rate is checked
-against both `--max-usd` and the daily limit. A missing, zero, invalid, or over-budget rate
+against `--max-usd`, the daily limit, and the arc cap. A missing, zero, invalid, or over-budget rate
 causes immediate terminate-and-verify.
 
 At Pod acquisition, the cost ledger receives a provisional row with model
@@ -190,7 +192,7 @@ try {
 List Pods or force verified termination:
 
 ```powershell
-py -3 runpod_run.py status
+py -3 runpod_run.py status --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
 py -3 runpod_run.py probe
 py -3 runpod_run.py terminate --pod-id POD_ID
 ```

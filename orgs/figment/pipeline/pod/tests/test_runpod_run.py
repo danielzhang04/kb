@@ -1376,6 +1376,133 @@ def test_N3_daily_budget_sums_mixed_usd_headers_and_skips_headerless(tmp_path):
     assert "skipping cost ledger without usd column" in stream.getvalue()
 
 
+def test_P1n_arc_budget_sums_all_matching_ledgers_with_mixed_headers(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-first.tsv").write_text(
+        "model\tstep\tusd\nrunpod\tfirst\t1.250000\n", encoding="utf-8"
+    )
+    (ledgers / "figment-second.tsv").write_text(
+        "note\tusd\nprior work\t0.500000\n", encoding="utf-8"
+    )
+    (ledgers / "figment-notes.tsv").write_text(
+        "note\tdetail\nprior work\tno spend\n", encoding="utf-8"
+    )
+    (ledgers / "other.tsv").write_text(
+        "model\tstep\tusd\nother\twork\t9.000000\n", encoding="utf-8"
+    )
+    logger, stream = logger_and_stream()
+
+    cap, spent = rr.arc_budget_state(
+        arc_cap_usd=50.0, ledger_dir=ledgers, logger=logger,
+    )
+
+    assert cap == 50.0
+    assert spent == pytest.approx(1.75)
+    assert "skipping arc ledger without usd column" in stream.getvalue()
+
+
+def test_P1n_arc_cap_refuses_before_create_and_records_just_under_cap(tmp_path):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-prior.tsv").write_text(
+        "model\tstep\tusd\nrunpod\tprior\t0.750000\n", encoding="utf-8"
+    )
+
+    class NeverCreateAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(False)
+            self.creates = 0
+
+        def create_pod(self, payload):
+            self.creates += 1
+            return super().create_pod(payload)
+
+    refused = manifest()
+    refused["price_usd_per_hour"] = 0.50
+    api = NeverCreateAPI()
+    logger, _stream = logger_and_stream()
+    with pytest.raises(rr.HarnessError, match="ARC CAP REFUSED"):
+        rr.run_harness(
+            refused, tmp_path / "m.yaml", tmp_path / "refused",
+            max_usd=1, max_minutes=60, dry_run=False, api=api, logger=logger,
+            ledger_dir=ledgers, arc_cap_usd=1.0,
+        )
+    assert api.creates == 0
+
+    class UnderCapAPI(FakeAPI):
+        def get_pod(self, pod_id):
+            pod = super().get_pod(pod_id)
+            if pod is not None:
+                pod["adjustedCostPerHr"] = 0.24
+            return pod
+
+    permitted = manifest()
+    permitted["price_usd_per_hour"] = 0.24
+    result = rr.run_harness(
+        permitted, tmp_path / "m.yaml", tmp_path / "permitted",
+        max_usd=1, max_minutes=60, dry_run=False, api=UnderCapAPI(), logger=logger,
+        comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+        ledger_dir=ledgers, arc_cap_usd=1.0,
+    )
+    assert result["arc_usd_before"] == pytest.approx(0.75)
+    assert result["arc_cap_usd"] == 1.0
+
+
+def test_P1n_ready_price_over_arc_cap_terminates_and_records_cap(tmp_path):
+    class PriceAPI(FakeAPI):
+        def __init__(self):
+            super().__init__(False)
+            self.name = ""
+
+        def create_pod(self, payload):
+            self.alive = True
+            self.name = payload["name"]
+            pod = ready_pod(self.name)
+            pod.pop("adjustedCostPerHr")
+            return pod
+
+        def get_pod(self, _pod_id):
+            if not self.alive:
+                return None
+            pod = ready_pod(self.name)
+            pod["adjustedCostPerHr"] = 0.40
+            return pod
+
+    configured = manifest()
+    configured["price_usd_per_hour"] = 0.20
+    api = PriceAPI()
+    logger, _stream = logger_and_stream()
+    with pytest.raises(rr.HarnessError, match="READY pod hourly price exceeds the arc cap"):
+        rr.run_harness(
+            configured, tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=60, dry_run=False, api=api, logger=logger,
+            comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+            ledger_dir=tmp_path / "ledgers", arc_cap_usd=0.30,
+        )
+    record = json.loads((tmp_path / "out" / "run.json").read_text())
+    assert record["arc_usd_before"] == 0.0
+    assert record["arc_cap_usd"] == 0.30
+    assert record["termination_verified"] is True
+    assert api.deletes == 1
+
+
+def test_P1n_status_prints_arc_total_and_cap(tmp_path, monkeypatch, capsys):
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-prior.tsv").write_text(
+        "model\tstep\tusd\nrunpod\tprior\t1.250000\n", encoding="utf-8"
+    )
+    session = StubSession([StubResponse(200, [])])
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    assert rr.main([
+        "status", "--ledger-dir", str(ledgers), "--arc-cap-usd", "2.5",
+    ]) == 0
+    assert "arc total: $1.2500; arc cap: $2.5000" in capsys.readouterr().out
+
+
 def test_N3_ledger_dir_precedence_and_ops_fallback(tmp_path, monkeypatch):
     cli_dir = tmp_path / "cli"
     env_dir = tmp_path / "env"

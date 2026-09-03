@@ -50,6 +50,8 @@ BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
 LEDGER_LOCK_TIMEOUT = 5.0
 DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
+DEFAULT_ARC_CAP_USD = 50.0
+DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -1475,6 +1477,71 @@ def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
     return daily_limit, spent
 
 
+def configured_arc_cap_usd(explicit: float | None = None) -> float:
+    """Return the operator's whole-arc cap, validating CLI and environment values."""
+    raw_value: float | str = (
+        explicit if explicit is not None
+        else os.environ.get("KB_ARC_CAP_USD", DEFAULT_ARC_CAP_USD)
+    )
+    try:
+        cap = float(raw_value)
+    except (TypeError, ValueError) as exc:
+        raise HarnessError("--arc-cap-usd and KB_ARC_CAP_USD must be numeric") from exc
+    if not math.isfinite(cap) or cap < 0:
+        raise HarnessError("--arc-cap-usd and KB_ARC_CAP_USD must be finite and non-negative")
+    return cap
+
+
+def arc_budget_state(*, arc_cap_usd: float | None = None,
+                     ledger_dir: Path | None = None,
+                     ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
+                     logger: logging.Logger | None = None) -> tuple[float, float]:
+    """Return the arc cap and all matching Figment ledger spend, regardless of date."""
+    cap = configured_arc_cap_usd(arc_cap_usd)
+    if not isinstance(ledger_glob, str) or not ledger_glob:
+        raise HarnessError("--arc-ledger-glob must be a non-empty glob")
+    ledger_dir = configured_ledger_dir(ledger_dir)
+    spent = 0.0
+    try:
+        paths = sorted(ledger_dir.glob(ledger_glob))
+    except (OSError, ValueError) as exc:
+        raise HarnessError(f"could not enumerate arc cost ledgers: {exc}") from exc
+    for path in paths:
+        try:
+            with path.open("r", encoding="utf-8", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if not reader.fieldnames or "usd" not in reader.fieldnames:
+                    if logger:
+                        logger.warning("skipping arc ledger without usd column: %s", path)
+                    continue
+                for row in reader:
+                    value = float(row["usd"])
+                    if not math.isfinite(value) or value < 0:
+                        raise HarnessError(f"arc cost ledger has invalid usd value: {path}")
+                    spent += value
+        except (OSError, TypeError, ValueError) as exc:
+            raise HarnessError(f"could not read arc cost ledger {path}: {exc}") from exc
+    return cap, spent
+
+
+def enforce_arc_cap(estimate: float, *, arc_cap_usd: float | None = None,
+                    ledger_dir: Path | None = None,
+                    ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
+                    logger: logging.Logger | None = None) -> tuple[float, float]:
+    cap, spent = arc_budget_state(
+        arc_cap_usd=arc_cap_usd,
+        ledger_dir=ledger_dir,
+        ledger_glob=ledger_glob,
+        logger=logger,
+    )
+    if estimate < 0 or spent + estimate > cap:
+        raise HarnessError(
+            f"ARC CAP REFUSED: ${spent:.4f} spent + ${estimate:.4f} estimate "
+            f"exceeds ${cap:.4f} cap"
+        )
+    return cap, spent
+
+
 def ready_hourly_price(pod: dict[str, Any]) -> float:
     value = pod.get("adjustedCostPerHr")
     if value is None:
@@ -2412,7 +2479,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 comfy_factory: Callable[[str], Any] | None = None,
                 sleep: Callable[[float], None] = time.sleep,
                 ledger_dir: Path | None = None,
-                 budget_path: Path | None = None) -> dict[str, Any]:
+                budget_path: Path | None = None,
+                arc_cap_usd: float | None = None,
+                arc_ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB) -> dict[str, Any]:
     require_manifest(manifest, manifest_path)
     upload_items = expand_manifest_uploads(manifest, manifest_path)
     artifacts = manifest_artifacts(manifest)
@@ -2432,11 +2501,24 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     logger.info("cost ledger directory: %s", ledger_target)
     daily_limit: float | None = None
     daily_spent: float | None = None
+    arc_cap, arc_spent = arc_budget_state(
+        arc_cap_usd=arc_cap_usd,
+        ledger_dir=ledger_target,
+        ledger_glob=arc_ledger_glob,
+        logger=logger,
+    )
     if not dry_run:
         daily_limit, daily_spent = enforce_daily_budget(
             estimate,
             budget_path=budget_path,
             ledger_dir=ledger_target,
+            logger=logger,
+        )
+        arc_cap, arc_spent = enforce_arc_cap(
+            estimate,
+            arc_cap_usd=arc_cap,
+            ledger_dir=ledger_target,
+            ledger_glob=arc_ledger_glob,
             logger=logger,
         )
     logger.info("preflight cost estimate: $%.4f for %.2f minute(s)", estimate, max_minutes)
@@ -2461,6 +2543,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         "started_utc": started_utc.isoformat(timespec="seconds"),
         "max_minutes": max_minutes,
         "preflight_estimate_usd": round(estimate, 6),
+        "arc_usd_before": round(arc_spent, 6),
+        "arc_cap_usd": arc_cap,
         "uploads": [],
         "jobs": [],
         "artifacts": [],
@@ -2517,6 +2601,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     raise HarnessError(
                         "placement recreation refused: avoided-pod cost plus the next "
                         "full-run estimate exceeds the governance daily budget"
+                    )
+                if arc_spent + avoided_cost_total + estimate > arc_cap:
+                    raise HarnessError(
+                        "placement recreation refused: avoided-pod cost plus the next "
+                        "full-run estimate exceeds the arc cap"
                     )
             payload = create_payload(manifest, manifest_path)
             current_placement_started = (
@@ -2645,6 +2734,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             if (daily_limit is not None and daily_spent is not None
                     and daily_spent + avoided_cost_total + actual_ceiling > daily_limit):
                 raise HarnessError("READY pod hourly price exceeds the governance daily budget")
+            if arc_spent + avoided_cost_total + actual_ceiling > arc_cap:
+                raise HarnessError("READY pod hourly price exceeds the arc cap")
             watchdog.check()
             comfy = proxy_client
             per_job_timeout = float(manifest.get("job_timeout_seconds", 15 * 60))
@@ -2898,6 +2989,8 @@ def command_run(args: argparse.Namespace) -> int:
             logger=logger,
             redactor=redactor,
             ledger_dir=args.ledger_dir,
+            arc_cap_usd=args.arc_cap_usd,
+            arc_ledger_glob=args.arc_ledger_glob,
         )
         if not result["termination_verified"]:
             error = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
@@ -2929,13 +3022,20 @@ def command_terminate(args: argparse.Namespace) -> int:
         session.close()
 
 
-def command_status(_args: argparse.Namespace) -> int:
+def command_status(args: argparse.Namespace) -> int:
     try:
         session, redactor = build_authenticated_session()
     except KeyError as exc:
         raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
     set_active_redactor(redactor)
+    logger = build_logger(redactor)
     try:
+        arc_cap, arc_total = arc_budget_state(
+            arc_cap_usd=args.arc_cap_usd,
+            ledger_dir=args.ledger_dir,
+            ledger_glob=args.arc_ledger_glob,
+            logger=logger,
+        )
         pods = RunPodAPI(session).list_pods()
         safe = [{
             "id": pod.get("id"),
@@ -2946,6 +3046,7 @@ def command_status(_args: argparse.Namespace) -> int:
             "publicIp": pod.get("publicIp"),
             "portMappings": pod.get("portMappings"),
         } for pod in pods]
+        print(f"arc total: ${arc_total:.4f}; arc cap: ${arc_cap:.4f}")
         print(redactor.redact(json.dumps(safe, indent=2, default=str)))
         return 0
     finally:
@@ -2999,11 +3100,31 @@ def build_parser() -> argparse.ArgumentParser:
         "--ledger-dir", type=Path,
         help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
     )
+    run.add_argument(
+        "--arc-cap-usd", type=float,
+        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+    )
+    run.add_argument(
+        "--arc-ledger-glob", default=DEFAULT_ARC_LEDGER_GLOB,
+        help=f"ledger glob below --ledger-dir (default: {DEFAULT_ARC_LEDGER_GLOB})",
+    )
     run.set_defaults(func=command_run)
     terminate = sub.add_parser("terminate", help="terminate a pod and verify it is absent")
     terminate.add_argument("--pod-id", required=True)
     terminate.set_defaults(func=command_terminate)
     status = sub.add_parser("status", help="list pods and their billing status")
+    status.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
+    )
+    status.add_argument(
+        "--arc-cap-usd", type=float,
+        help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+    )
+    status.add_argument(
+        "--arc-ledger-glob", default=DEFAULT_ARC_LEDGER_GLOB,
+        help=f"ledger glob below --ledger-dir (default: {DEFAULT_ARC_LEDGER_GLOB})",
+    )
     status.set_defaults(func=command_status)
     probe = sub.add_parser(
         "probe", help="read-only GET /pods response-shape probe",
