@@ -8,6 +8,7 @@ import atexit
 import base64
 import copy
 import csv
+import hashlib
 import json
 import logging
 import math
@@ -34,7 +35,7 @@ except ModuleNotFoundError:  # --dry-run and the stubbed tests remain intentiona
 
 
 API_BASE = "https://rest.runpod.io/v1"
-DEFAULT_MAX_MINUTES = 60.0
+DEFAULT_MAX_MINUTES = 14 * 60.0
 DEFAULT_READY_TIMEOUT = 15 * 60.0
 DEFAULT_MAX_PLACEMENT_ATTEMPTS = 4
 BAD_HOST_TTL_SECONDS = 24 * 60 * 60
@@ -42,6 +43,23 @@ REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
+UPLOAD_EXTENSIONS = {
+    ".png", ".jpg", ".jpeg", ".webp", ".txt", ".toml", ".json",
+    ".safetensors", ".ready",
+}
+MAX_UPLOAD_FILE_BYTES = 2 * 1024 ** 3
+MAX_UPLOAD_TOTAL_BYTES = 10 * 1024 ** 3
+ARTIFACT_MIN_BYTES_WITHOUT_LENGTH = {
+    ".safetensors": 1024,
+    ".json": 2,
+    ".txt": 1,
+    ".log": 1,
+}
+TRANSIENT_MARKER_HTTP_STATUSES = {502, 503, 504}
+TRANSIENT_MARKER_ERROR_TYPES = {
+    "ConnectionError", "ConnectionResetError", "ConnectTimeout", "ReadTimeout",
+    "Timeout", "TimeoutError",
+}
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 COMFY_PORT = 8188
 COMFY_OUTPUT_DIR = "/workspace/output"
@@ -52,6 +70,7 @@ LEDGER_LOCK_TIMEOUT = 5.0
 DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
 DEFAULT_ARC_CAP_USD = 50.0
 DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
+TRAINING_IDENTIFIER_PLACEHOLDERS = {"trigger", "git_ref", "diffusion_pipe_git_ref"}
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -88,6 +107,10 @@ def redact_pod_state(pod: dict[str, Any]) -> dict[str, Any]:
 
 class HarnessError(RuntimeError):
     """A safe, user-facing harness failure."""
+
+
+class TransientProxyError(HarnessError):
+    """A proxy transport failure that is safe to retry within the job budget."""
 
 
 class ReadinessTimeout(HarnessError):
@@ -142,6 +165,7 @@ class UploadItem:
     remote_name: str
     subfolder: str
     overwrite: bool
+    size_bytes: int | None
 
 
 class ApiKeyRedactionFilter(logging.Filter):
@@ -953,6 +977,41 @@ def load_manifest(path: Path) -> dict[str, Any]:
     return data
 
 
+def prepare_dry_run_manifest(
+        manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
+    """Substitute inert values so an unrendered manifest template can be dry-run."""
+    if ".template." not in manifest_path.name:
+        return manifest
+
+    def placeholder_value(name: str) -> str:
+        normalized = re.sub(r"[^A-Za-z0-9_.-]+", "-", name).strip("-")
+        return f"dry-{normalized or 'value'}"
+
+    def visit(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {str(key): visit(child) for key, child in value.items()}
+        if isinstance(value, list):
+            return [visit(child) for child in value]
+        if not isinstance(value, str):
+            return copy.deepcopy(value)
+        stripped = value.strip()
+        if stripped == "{{winning_arm_models}}":
+            return []
+        if stripped == "{{winning_arm_workflow}}":
+            return {
+                "1": {"class_type": "KSampler", "inputs": {"seed": 1}},
+            }
+        return re.sub(
+            r"{{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*}}",
+            lambda match: placeholder_value(match.group(1)),
+            value,
+        )
+
+    prepared = visit(manifest)
+    assert isinstance(prepared, dict)
+    return prepared
+
+
 def resolve_manifest_path(path: Path) -> Path:
     if path.is_file():
         return path.resolve()
@@ -1005,12 +1064,15 @@ def _safe_remote_subfolder(value: Any) -> str:
         raise HarnessError("upload subfolder must be a relative path without NULs")
     if value == "":
         return ""
-    path = _portable_relative_path(value, "upload subfolder")
-    return path.as_posix()
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", value):
+        raise HarnessError(
+            "upload subfolder must be an identifier using only A-Z, a-z, 0-9, _, ., or -"
+        )
+    return value
 
 
 def expand_manifest_uploads(
-    manifest: dict[str, Any], manifest_path: Path,
+    manifest: dict[str, Any], manifest_path: Path, *, allow_missing: bool = False,
 ) -> list[UploadItem]:
     """Validate and deterministically expand the optional uploads block."""
     if "uploads" not in manifest:
@@ -1021,7 +1083,8 @@ def expand_manifest_uploads(
 
     root = manifest_path.parent.resolve()
     expanded: list[UploadItem] = []
-    remote_names: set[str] = set()
+    remote_destinations: set[tuple[str, str]] = set()
+    total_bytes = 0
     for group_number, group in enumerate(groups, start=1):
         if not isinstance(group, dict):
             raise HarnessError("each uploads entry must be an object")
@@ -1051,9 +1114,11 @@ def expand_manifest_uploads(
                     f"{type(exc).__name__}"
                 ) from exc
             if not matches:
-                raise HarnessError(
-                    f"upload files item {pattern_number} matched no files"
-                )
+                if not allow_missing:
+                    raise HarnessError(
+                        f"upload files item {pattern_number} matched no files"
+                    )
+                matches = [root.joinpath(*pattern.parts)]
             for match in matches:
                 try:
                     local_path = match.resolve()
@@ -1063,19 +1128,49 @@ def expand_manifest_uploads(
                     ) from exc
                 if not local_path.is_relative_to(root):
                     raise HarnessError("upload file traversal outside the manifest directory is forbidden")
-                if not local_path.is_file():
+                missing = not local_path.exists()
+                if not local_path.is_file() and not (allow_missing and missing):
                     raise HarnessError("upload files may not match directories")
                 remote_name = local_path.name
-                if remote_name in remote_names:
+                suffix = local_path.suffix.lower()
+                if suffix not in UPLOAD_EXTENSIONS:
                     raise HarnessError(
-                        f"duplicate upload remote name: {remote_name!r}"
+                        "unsupported upload suffix; allowed suffixes are: "
+                        + ", ".join(sorted(UPLOAD_EXTENSIONS))
                     )
-                remote_names.add(remote_name)
+                size_bytes: int | None = None
+                if not missing:
+                    try:
+                        size_bytes = local_path.stat().st_size
+                    except OSError as exc:
+                        raise HarnessError(
+                            f"upload file size could not be read: {type(exc).__name__}"
+                        ) from exc
+                    if size_bytes > MAX_UPLOAD_FILE_BYTES:
+                        raise HarnessError(
+                            f"upload file exceeds the {MAX_UPLOAD_FILE_BYTES} byte per-file size cap"
+                        )
+                    if size_bytes <= 0 and remote_name != "_dataset.ready":
+                        raise HarnessError(
+                            "upload file verification failed: expected a positive byte count"
+                        )
+                    total_bytes += size_bytes
+                    if total_bytes > MAX_UPLOAD_TOTAL_BYTES:
+                        raise HarnessError(
+                            f"uploads exceed the {MAX_UPLOAD_TOTAL_BYTES} byte aggregate size cap"
+                        )
+                destination = (subfolder, remote_name)
+                if destination in remote_destinations:
+                    raise HarnessError(
+                        f"duplicate upload remote destination: {subfolder!r}/{remote_name!r}"
+                    )
+                remote_destinations.add(destination)
                 expanded.append(UploadItem(
                     local_path=local_path,
                     remote_name=remote_name,
                     subfolder=subfolder,
                     overwrite=overwrite,
+                    size_bytes=size_bytes,
                 ))
 
     marker_positions = [
@@ -1084,6 +1179,16 @@ def expand_manifest_uploads(
     ]
     if marker_positions and (len(marker_positions) != 1 or marker_positions[0] != len(expanded) - 1):
         raise HarnessError("the _dataset.ready upload must be strictly last")
+    if marker_positions:
+        marker_subfolder = expanded[marker_positions[0]].subfolder
+        dataset_subfolders = {
+            item.subfolder for item in expanded
+            if item.remote_name != "_dataset.ready"
+        }
+        if marker_subfolder not in dataset_subfolders or len(dataset_subfolders) != 1:
+            raise HarnessError(
+                "the _dataset.ready upload must share the one dataset subfolder"
+            )
     return expanded
 
 
@@ -1104,6 +1209,48 @@ def _output_marker_name(value: Any, label: str, *, absolute: bool) -> str:
     return path.as_posix()
 
 
+def marker_poll_is_transient(status: int | str) -> bool:
+    if isinstance(status, int):
+        return status in TRANSIENT_MARKER_HTTP_STATUSES
+    if isinstance(status, str) and status.startswith("error:"):
+        return status.removeprefix("error:") in TRANSIENT_MARKER_ERROR_TYPES
+    return False
+
+
+def output_view_params(value: Any, label: str) -> dict[str, str]:
+    path = _portable_relative_path(value, label)
+    parent = path.parent.as_posix()
+    return {
+        "filename": path.name,
+        "subfolder": "" if parent == "." else parent,
+        "type": "output",
+    }
+
+
+def proxy_http_status_is_transient(status: int) -> bool:
+    return status in {408, 429} or 500 <= status < 600
+
+
+def retry_transient_proxy(
+        operation: Callable[[], Any], label: str, watchdog: Watchdog,
+        sleep: Callable[[float], None], logger: logging.Logger) -> Any:
+    for attempt in range(1, 4):
+        watchdog.check()
+        try:
+            return operation()
+        except TransientProxyError:
+            if attempt == 3:
+                raise
+            delay = 15.0 * attempt
+            logger.warning(
+                "%s transient failure on attempt %d/3; retrying in %.0fs",
+                label, attempt, delay,
+            )
+            sleep(delay)
+            watchdog.check()
+    raise AssertionError("unreachable retry loop")
+
+
 def training_failed_marker_name(manifest: dict[str, Any]) -> str:
     training = manifest.get("training")
     if not isinstance(training, dict):
@@ -1121,8 +1268,9 @@ def manifest_artifacts(manifest: dict[str, Any]) -> list[dict[str, str]]:
         raise HarnessError("manifest artifacts must be a non-empty list when present")
     training_failed_marker_name(manifest)
     training = manifest["training"]
+    complete_marker: str | None = None
     if "complete_marker" in training:
-        _output_marker_name(
+        complete_marker = _output_marker_name(
             training["complete_marker"], "training.complete_marker", absolute=True,
         )
 
@@ -1142,6 +1290,10 @@ def manifest_artifacts(manifest: dict[str, Any]) -> list[dict[str, str]]:
         wait_for = _output_marker_name(
             artifact.get("wait_for"), "artifact wait_for", absolute=False,
         )
+        if complete_marker is not None and wait_for != complete_marker:
+            raise HarnessError(
+                "training.complete_marker and every artifact wait_for must agree"
+            )
         remote_suffix = PurePosixPath(remote).suffix.lower()
         local_suffix = PurePosixPath(local).suffix.lower()
         if (remote_suffix not in ARTIFACT_EXTENSIONS
@@ -1154,12 +1306,19 @@ def manifest_artifacts(manifest: dict[str, Any]) -> list[dict[str, str]]:
         if local in local_names:
             raise HarnessError(f"duplicate artifact local name: {local!r}")
         local_names.add(local)
-        validated.append({
+        validated_artifact = {
             "remote": remote,
             "local": local,
             "type": "output",
             "wait_for": wait_for,
-        })
+        }
+        artifact_sha256 = artifact.get("sha256")
+        if artifact_sha256 is not None:
+            if (not isinstance(artifact_sha256, str)
+                    or not re.fullmatch(r"[0-9A-Fa-f]{64}", artifact_sha256)):
+                raise HarnessError("artifact sha256 must be a 64-character hexadecimal digest")
+            validated_artifact["sha256"] = artifact_sha256.lower()
+        validated.append(validated_artifact)
     return validated
 
 
@@ -1213,7 +1372,13 @@ def rendered_training_start_script(
         value = str(context[key])
         if "\x00" in value:
             raise HarnessError(f"training start script value {key!r} contains a NUL")
-        return value
+        if (key in TRAINING_IDENTIFIER_PLACEHOLDERS
+                and not re.fullmatch(r"[A-Za-z0-9_.-]+", value)):
+            raise HarnessError(
+                f"training start script identifier {key!r} must use only "
+                "A-Z, a-z, 0-9, _, ., or -"
+            )
+        return shlex.quote(value)
 
     rendered = re.sub(r"{{\s*([A-Za-z_][A-Za-z0-9_.-]*)\s*}}", replace_placeholder, template)
     if "{{" in rendered or "}}" in rendered:
@@ -1239,7 +1404,37 @@ def manifest_max_placement_attempts(manifest: dict[str, Any]) -> int:
     return value
 
 
-def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
+def manifest_job_timeout_seconds(manifest: dict[str, Any]) -> float:
+    value = manifest.get("job_timeout_seconds", 15 * 60)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HarnessError("job_timeout_seconds must be numeric")
+    timeout = float(value)
+    if not math.isfinite(timeout) or timeout <= 0:
+        raise HarnessError("job_timeout_seconds must be finite and positive")
+    return timeout
+
+
+def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
+    artifacts = manifest.get("artifacts")
+    if artifacts is not None:
+        if not isinstance(artifacts, list) or not artifacts:
+            raise HarnessError("manifest artifacts must be a non-empty list when present")
+        work_units = len(artifacts)
+    else:
+        jobs = manifest.get("jobs")
+        if not isinstance(jobs, list) or not jobs:
+            raise HarnessError("manifest jobs must be a non-empty list")
+        work_units = len(jobs)
+    return (
+        manifest_readiness_timeout_seconds(manifest) / 60.0
+        + manifest_job_timeout_seconds(manifest) * work_units / 60.0
+        + 5.0
+    )
+
+
+def require_manifest(
+        manifest: dict[str, Any], manifest_path: Path,
+        *, allow_missing_uploads: bool = False) -> None:
     gpu = manifest.get("gpu")
     if not isinstance(gpu, dict) or not gpu.get("type"):
         raise HarnessError("manifest gpu.type is required")
@@ -1250,18 +1445,19 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
     manifest_price = float(manifest["price_usd_per_hour"])
     if not math.isfinite(manifest_price) or manifest_price <= 0:
         raise HarnessError("price_usd_per_hour must be finite and positive")
-    readiness_timeout = manifest_readiness_timeout_seconds(manifest)
+    manifest_readiness_timeout_seconds(manifest)
     if manifest.get("max_minutes") is not None:
         try:
             manifest_max_minutes = float(manifest["max_minutes"])
         except (TypeError, ValueError) as exc:
             raise HarnessError("manifest max_minutes must be numeric") from exc
-        minimum_minutes = readiness_timeout / 60.0 + 5.0
+        minimum_minutes = minimum_runtime_minutes(manifest)
         if (not math.isfinite(manifest_max_minutes) or manifest_max_minutes <= 0
                 or manifest_max_minutes < minimum_minutes):
             raise HarnessError(
                 "manifest max_minutes must cover readiness_timeout_seconds plus "
-                f"a 5 minute teardown margin (minimum {minimum_minutes:g})"
+                "job_timeout_seconds for every job/artifact plus a 5 minute teardown "
+                f"margin (minimum {minimum_minutes:g})"
             )
     if not isinstance(manifest.get("jobs"), list) or not manifest["jobs"]:
         raise HarnessError("manifest jobs must be a non-empty list")
@@ -1344,7 +1540,9 @@ def require_manifest(manifest: dict[str, Any], manifest_path: Path) -> None:
         url = node.get("git_url") if isinstance(node, dict) else None
         if not isinstance(url, str) or not url.startswith("https://"):
             raise HarnessError("custom node git_url must be a public https URL")
-    expand_manifest_uploads(manifest, manifest_path)
+    expand_manifest_uploads(
+        manifest, manifest_path, allow_missing=allow_missing_uploads,
+    )
     rendered_training_start_script(manifest, manifest_path)
     manifest_artifacts(manifest)
 
@@ -1405,11 +1603,12 @@ def enforce_effective_readiness_budget(
     if ("readiness_timeout_seconds" not in manifest
             and manifest.get("max_minutes") is None):
         return
-    minimum_minutes = manifest_readiness_timeout_seconds(manifest) / 60.0 + 5.0
+    minimum_minutes = minimum_runtime_minutes(manifest)
     if max_minutes < minimum_minutes:
         raise HarnessError(
             "effective max_minutes must cover readiness_timeout_seconds plus "
-            f"a 5 minute teardown margin (minimum {minimum_minutes:g})"
+            "job_timeout_seconds for every job/artifact plus a 5 minute teardown "
+            f"margin (minimum {minimum_minutes:g})"
         )
 
 
@@ -1961,11 +2160,17 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
 
 
 class ComfyClient:
-    def __init__(self, base_url: str, session: Any = None):
+    def __init__(self, base_url: str, session: Any = None,
+                 logger: logging.Logger | None = None,
+                 sleep: Callable[[float], None] = time.sleep,
+                 monotonic: Callable[[], float] = time.monotonic):
         if session is None and requests is None:
             raise HarnessError("the requests package is required for live commands")
         self.base_url = base_url.rstrip("/")
         self.session = session or requests.Session()
+        self.logger = logger or logging.getLogger(__name__)
+        self._sleep = sleep
+        self._monotonic = monotonic
         if session is None:
             # The Pod proxy is public; never discover credentials from netrc or proxy env.
             self.session.trust_env = False
@@ -2030,42 +2235,67 @@ class ComfyClient:
         }
         try:
             with local_path.open("rb") as handle:
-                response = self.session.post(
-                    self.base_url + "/upload/image",
-                    files={"image": (local_path.name, handle)},
-                    data={
-                        "subfolder": subfolder,
-                        "type": "input",
-                        "overwrite": "true" if overwrite else "false",
-                    },
-                    timeout=REQUEST_TIMEOUT,
-                )
+                try:
+                    response = self.session.post(
+                        self.base_url + "/upload/image",
+                        files={"image": (local_path.name, handle)},
+                        data={
+                            "subfolder": subfolder,
+                            "type": "input",
+                            "overwrite": "true" if overwrite else "false",
+                        },
+                        timeout=REQUEST_TIMEOUT,
+                    )
+                except Exception as exc:
+                    raise TransientProxyError(
+                        "ComfyUI POST /upload/image transport failed: "
+                        f"{type(exc).__name__}"
+                    ) from exc
         except OSError as exc:
             raise HarnessError(
                 f"ComfyUI upload file could not be read: {type(exc).__name__}"
             ) from exc
-        if not 200 <= response.status_code < 300:
-            raise HarnessError(
-                f"ComfyUI POST /upload/image returned HTTP {response.status_code}"
-            )
         try:
-            body = response.json()
-        except (ValueError, TypeError) as exc:
-            raise HarnessError("ComfyUI POST /upload/image returned invalid JSON") from exc
+            if not 200 <= response.status_code < 300:
+                error_type = (
+                    TransientProxyError
+                    if proxy_http_status_is_transient(int(response.status_code))
+                    else HarnessError
+                )
+                raise error_type(
+                    f"ComfyUI POST /upload/image returned HTTP {response.status_code}"
+                )
+            try:
+                body = response.json()
+            except (ValueError, TypeError) as exc:
+                raise HarnessError(
+                    "ComfyUI POST /upload/image returned invalid JSON"
+                ) from exc
         finally:
             close = getattr(response, "close", None)
             if callable(close):
                 close()
-        if not isinstance(body, dict) or any(body.get(key) != value for key, value in expected.items()):
+        if (not overwrite and isinstance(body, dict)
+                and body.get("subfolder") == subfolder and body.get("type") == "input"):
+            returned_name = body.get("name")
+            renamed_pattern = (
+                re.escape(local_path.stem) + r" \(\d+\)" + re.escape(local_path.suffix)
+            )
+            if isinstance(returned_name, str) and re.fullmatch(renamed_pattern, returned_name):
+                raise HarnessError(
+                    "ComfyUI upload found a pre-existing remote file; enable overwrite"
+                )
+        if not isinstance(body, dict) or any(
+                body.get(key) != value for key, value in expected.items()):
             raise HarnessError("ComfyUI POST /upload/image returned mismatched JSON")
-        return expected
+        return body
 
     def marker_status(self, filename: str) -> int | str:
         marker = _output_marker_name(filename, "artifact marker", absolute=False)
         try:
             response = self.session.get(
                 self.base_url + "/view",
-                params={"filename": marker, "type": "output"},
+                params=output_view_params(marker, "artifact marker"),
                 timeout=REQUEST_TIMEOUT,
                 stream=True,
             )
@@ -2080,12 +2310,24 @@ class ComfyClient:
     def wait_for_marker(
         self, marker: str, failed_marker: str, timeout: float, watchdog: Watchdog,
     ) -> None:
-        deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
+        deadline = self._monotonic() + timeout
+        last_transient: int | str | None = None
+        while True:
+            now = self._monotonic()
+            if now >= deadline:
+                break
             watchdog.check()
             failed_status = self.marker_status(failed_marker)
             if failed_status == 200:
                 raise HarnessError("training failed marker appeared")
+            if marker_poll_is_transient(failed_status):
+                last_transient = failed_status
+                self.logger.warning(
+                    "transient training failed-marker poll result %s; retrying",
+                    failed_status,
+                )
+                self._sleep(min(5.0, deadline - now))
+                continue
             if failed_status != 404:
                 raise HarnessError(
                     f"training failed-marker poll returned {failed_status}"
@@ -2094,46 +2336,116 @@ class ComfyClient:
             marker_status = self.marker_status(marker)
             if marker_status == 200:
                 return
+            if marker_poll_is_transient(marker_status):
+                last_transient = marker_status
+                self.logger.warning(
+                    "transient artifact marker poll result %s; retrying",
+                    marker_status,
+                )
+                self._sleep(min(5.0, deadline - now))
+                continue
             if marker_status != 404:
                 raise HarnessError(
                     f"artifact marker poll returned {marker_status}"
                 )
-            time.sleep(1)
+            last_transient = None
+            self._sleep(min(5.0, deadline - now))
+        if last_transient is not None:
+            raise HarnessError(
+                "artifact marker polling encountered persistent transient proxy errors "
+                "and timed out"
+            )
         raise HarnessError(f"artifact marker {marker!r} timed out")
 
     def download_artifact(
         self, remote: str, local_path: Path, timeout: float,
+        *, sha256: str | None = None,
     ) -> None:
         remote_name = _portable_relative_path(remote, "artifact remote").as_posix()
-        if PurePosixPath(remote_name).suffix.lower() not in ARTIFACT_EXTENSIONS:
+        remote_suffix = PurePosixPath(remote_name).suffix.lower()
+        if remote_suffix not in ARTIFACT_EXTENSIONS:
             raise HarnessError("unsupported artifact suffix")
-        response = self.session.get(
-            self.base_url + "/view",
-            params={"filename": remote_name, "type": "output"},
-            timeout=timeout,
-            stream=True,
-        )
-        if not 200 <= response.status_code < 300:
-            raise HarnessError(
-                f"ComfyUI GET /view returned HTTP {response.status_code}"
+        try:
+            response = self.session.get(
+                self.base_url + "/view",
+                params=output_view_params(remote_name, "artifact remote"),
+                timeout=timeout,
+                stream=True,
             )
+        except Exception as exc:
+            raise TransientProxyError(
+                f"ComfyUI GET /view transport failed: {type(exc).__name__}"
+            ) from exc
         temporary = local_path.with_suffix(local_path.suffix + ".partial")
         try:
+            if not 200 <= response.status_code < 300:
+                error_type = (
+                    TransientProxyError
+                    if proxy_http_status_is_transient(int(response.status_code))
+                    else HarnessError
+                )
+                raise error_type(
+                    f"ComfyUI GET /view returned HTTP {response.status_code}"
+                )
+            headers = getattr(response, "headers", {}) or {}
+            raw_content_length = headers.get("Content-Length")
+            expected_length: int | None = None
+            if raw_content_length is not None:
+                try:
+                    expected_length = int(raw_content_length)
+                except (TypeError, ValueError) as exc:
+                    raise HarnessError("artifact response had an invalid Content-Length") from exc
+                if expected_length < 0:
+                    raise HarnessError("artifact response had an invalid Content-Length")
+            else:
+                minimum = ARTIFACT_MIN_BYTES_WITHOUT_LENGTH[remote_suffix]
+                self.logger.warning(
+                    "artifact response Content-Length absent; requiring minimum %d bytes for %s",
+                    minimum, remote_suffix,
+                )
             local_path.parent.mkdir(parents=True, exist_ok=True)
+            digest = hashlib.sha256() if sha256 is not None else None
+            bytes_written = 0
             with temporary.open("wb") as handle:
                 chunks = getattr(response, "iter_content", None)
                 if callable(chunks):
                     for chunk in chunks(chunk_size=1024 * 1024):
                         if chunk:
                             handle.write(chunk)
+                            bytes_written += len(chunk)
+                            if digest is not None:
+                                digest.update(chunk)
                 else:
-                    handle.write(bytes(getattr(response, "content", b"")))
-            if temporary.stat().st_size <= 0:
+                    body = bytes(getattr(response, "content", b""))
+                    handle.write(body)
+                    bytes_written = len(body)
+                    if digest is not None:
+                        digest.update(body)
+            if expected_length is not None and bytes_written != expected_length:
+                raise HarnessError(
+                    "artifact download byte count did not match Content-Length "
+                    f"({bytes_written} received, {expected_length} advertised)"
+                )
+            if expected_length is None:
+                minimum = ARTIFACT_MIN_BYTES_WITHOUT_LENGTH[remote_suffix]
+                if bytes_written < minimum:
+                    raise HarnessError(
+                        f"artifact download was below the minimum {minimum} byte count"
+                    )
+            if bytes_written <= 0:
                 raise HarnessError("artifact download did not have a positive byte count")
+            if digest is not None and digest.hexdigest() != sha256:
+                raise HarnessError("artifact download sha256 verification failed")
             temporary.replace(local_path)
+        except HarnessError:
+            raise
         except OSError as exc:
             raise HarnessError(
                 f"artifact download could not be written: {type(exc).__name__}"
+            ) from exc
+        except Exception as exc:
+            raise TransientProxyError(
+                f"artifact download stream failed: {type(exc).__name__}"
             ) from exc
         finally:
             temporary.unlink(missing_ok=True)
@@ -2252,7 +2564,9 @@ class DryRunComfyClient:
 
     def download_artifact(
         self, remote: str, local_path: Path, _timeout: float,
+        *, sha256: str | None = None,
     ) -> None:
+        del sha256
         if PurePosixPath(remote).suffix.lower() not in ARTIFACT_EXTENSIONS:
             raise HarnessError("unsupported artifact suffix")
         local_path.parent.mkdir(parents=True, exist_ok=True)
@@ -2482,8 +2796,12 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 budget_path: Path | None = None,
                 arc_cap_usd: float | None = None,
                 arc_ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB) -> dict[str, Any]:
-    require_manifest(manifest, manifest_path)
-    upload_items = expand_manifest_uploads(manifest, manifest_path)
+    require_manifest(
+        manifest, manifest_path, allow_missing_uploads=dry_run,
+    )
+    upload_items = expand_manifest_uploads(
+        manifest, manifest_path, allow_missing=dry_run,
+    )
     artifacts = manifest_artifacts(manifest)
     failed_marker = training_failed_marker_name(manifest) if artifacts else None
     max_minutes = effective_max_minutes(max_minutes, manifest)
@@ -2494,6 +2812,21 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     logger = logger or build_logger(redactor)
     if redactor:
         set_active_redactor(redactor)
+    if upload_items:
+        logger.info(
+            "upload preflight: %d files, %d bytes",
+            len(upload_items), sum(item.size_bytes or 0 for item in upload_items),
+        )
+        missing_uploads = sum(item.size_bytes is None for item in upload_items)
+        if missing_uploads:
+            logger.warning(
+                "dry-run simulated %d missing upload pattern(s); live preflight remains strict",
+                missing_uploads,
+            )
+        if any(not item.overwrite for item in upload_items):
+            logger.warning(
+                "upload preflight: overwrite=false may fail on pre-existing remote files"
+            )
     ledger_target = (
         out_dir / "dry-run-ledger"
         if dry_run and ledger_dir is None else configured_ledger_dir(ledger_dir)
@@ -2720,7 +3053,10 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 proxy_client = DryRunComfyClient()
             else:
                 proxy_client = (
-                    comfy_factory(proxy_url) if comfy_factory else ComfyClient(proxy_url)
+                    comfy_factory(proxy_url)
+                    if comfy_factory else ComfyClient(
+                        proxy_url, logger=logger, sleep=sleep,
+                    )
                 )
             ready_pod = wait_ready(
                 api, str(lease.pod_id), ready_timeout, watchdog, logger,
@@ -2738,15 +3074,29 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 raise HarnessError("READY pod hourly price exceeds the arc cap")
             watchdog.check()
             comfy = proxy_client
-            per_job_timeout = float(manifest.get("job_timeout_seconds", 15 * 60))
+            per_job_timeout = manifest_job_timeout_seconds(manifest)
             for item in upload_items:
                 watchdog.check()
-                response = comfy.upload_file(
-                    item.local_path, item.subfolder, item.overwrite,
-                )
-                byte_count = local_file_size(
-                    item.local_path, "uploaded file", positive=False,
-                )
+                if item.size_bytes is None:
+                    if not dry_run:
+                        raise HarnessError("live upload file disappeared after preflight")
+                    byte_count = 0
+                    response = {
+                        "name": item.remote_name,
+                        "subfolder": item.subfolder,
+                        "type": "input",
+                    }
+                else:
+                    byte_count = local_file_size(
+                        item.local_path, "uploaded file",
+                        positive=item.remote_name != "_dataset.ready",
+                    )
+                    response = retry_transient_proxy(
+                        lambda item=item: comfy.upload_file(
+                            item.local_path, item.subfolder, item.overwrite,
+                        ),
+                        f"upload {item.remote_name}", watchdog, sleep, logger,
+                    )
                 result["uploads"].append({
                     "name": response["name"],
                     "subfolder": response["subfolder"],
@@ -2760,18 +3110,32 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 )
 
             if artifacts:
+                artifact_marker_deadline = time.monotonic() + per_job_timeout
                 for artifact in artifacts:
                     watchdog.check()
                     marker = artifact["wait_for"]
                     assert failed_marker is not None
+                    remaining_marker_wait = artifact_marker_deadline - time.monotonic()
+                    if remaining_marker_wait <= 0:
+                        raise HarnessError("shared artifact marker deadline expired")
                     comfy.wait_for_marker(
-                        marker, failed_marker, per_job_timeout, watchdog,
+                        marker, failed_marker, remaining_marker_wait, watchdog,
                     )
                     logger.info("artifact marker ready: %s", marker)
                     local_relative = PurePosixPath(artifact["local"])
                     local_path = out_dir.joinpath(*local_relative.parts)
-                    comfy.download_artifact(
-                        artifact["remote"], local_path, per_job_timeout,
+                    download_kwargs = (
+                        {"sha256": artifact["sha256"]}
+                        if "sha256" in artifact else {}
+                    )
+                    retry_transient_proxy(
+                        lambda artifact=artifact, local_path=local_path,
+                                download_kwargs=download_kwargs: comfy.download_artifact(
+                            artifact["remote"], local_path, per_job_timeout,
+                            **download_kwargs,
+                        ),
+                        f"artifact download {artifact['remote']}",
+                        watchdog, sleep, logger,
                     )
                     byte_count = local_file_size(
                         local_path, "artifact download", positive=True,
@@ -2940,12 +3304,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
             except BaseException as secondary:
                 retain_finalization_failure("manifest.json write", secondary)
-        if result["pod_id"] and not current_placement_settled:
+        unsettled_pod_id = lease.snapshot()[0] if lease is not None else None
+        if unsettled_pod_id and not current_placement_settled:
             try:
                 cost_path = upsert_cost_row(
                     ledger_target,
                     ledger_model,
-                    f"pod-create {result['pod_id']}",
+                    f"pod-create {unsettled_pod_id}",
                     current_cost_for_ledger,
                 )
                 logger.info("cost row: %s", cost_path)
@@ -2963,6 +3328,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
 def command_run(args: argparse.Namespace) -> int:
     manifest_path = resolve_manifest_path(args.manifest)
     manifest = load_manifest(manifest_path)
+    if args.dry_run:
+        manifest = prepare_dry_run_manifest(manifest, manifest_path)
     if not args.dry_run and args.max_usd is None:
         raise HarnessError("--max-usd is required for a live run")
     max_minutes = effective_max_minutes(args.max_minutes, manifest)

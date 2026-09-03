@@ -6,6 +6,7 @@ data_root="/workspace/ComfyUI/input/${trigger}"
 trainer_root=/workspace/diffusion-pipe
 train_output=/workspace/train-output
 mkdir -p /workspace/output "$train_output"
+rm -f /workspace/output/_training.complete /workspace/output/_training.failed
 
 fail() {
   printf '%s\n' "$*" > /workspace/output/_training.failed

@@ -3,7 +3,9 @@
 `runpod_run.py` creates one bounded RunPod Pod, installs and starts ComfyUI, runs an
 API-format workflow for each job, verifies every downloaded image, then terminates the Pod
 and verifies its absence. `--dry-run` exercises the same local flow without network access or
-billable compute.
+billable compute. Dry-run substitutes inert values for unresolved `.template.yaml`
+placeholders and simulates absent upload patterns as zero-byte rows; live preflight still
+requires every upload to exist and every template to be rendered.
 
 ## Requirements and credential boundary
 
@@ -30,8 +32,9 @@ that file. Required fields are:
 - `gpu.type`, with optional `gpu.count` and `gpu.cloud`;
 - `image` or `template_id`, plus optional `network_volume_id`;
 - a conservative `price_usd_per_hour` for pre-create estimation;
-- optional `readiness_timeout_seconds` (default 900); when `max_minutes` is present it
-  must be at least readiness time plus five teardown minutes;
+- optional `readiness_timeout_seconds` (default 900) and `job_timeout_seconds` (default
+  900); `max_minutes` must cover readiness, the job timeout multiplied by all jobs (or
+  artifacts), and five teardown minutes;
 - optional `avoid_machine_hosts` and `avoid_machine_ids` string lists, plus
   `max_placement_attempts` (default 4), for rejecting known-bad RunPod placements;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
@@ -78,7 +81,8 @@ that try to override those transport/output arguments.
 Immediately after each create, the harness performs a machine-aware Pod GET. A matching
 machine host or machine id is terminated and verified absent before recreation. Every rejected
 Pod retains its own provisional ledger row, settled to elapsed time at the manifest ceiling
-rate. If every placement attempt is rejected, the run fails closed with no Pod left running.
+rate. A later definite create refusal does not rewrite that settled row or create a zero-cost
+row. If every placement attempt is rejected, the run fails closed with no Pod left running.
 Network-class bootstrap failures, plus GPU/Torch preflight, ComfyUI import-smoke, and
 ComfyUI health failures, learn the current machine host in both
 `<out>/_harness/bad_hosts.json` and `%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json`; session
@@ -89,29 +93,42 @@ curl rc 6/7/28/35, and Hugging Face HTTP 403/429 responses.
 An `uploads` entry has `files`, `subfolder`, `type: input`, and boolean `overwrite` fields.
 `files` is a non-empty list of local files or globs relative to the manifest directory.
 Matches are sorted within each list item and uploaded in manifest order. Empty matches,
-directories, paths outside the manifest directory, unsafe or absolute input subfolders, and
-duplicate destination names are rejected during preflight. If `_dataset.ready` is present,
-it must be the final expanded upload. After readiness and the READY-price checks, each file
-is sent as multipart field `image` to `POST /upload/image` with form fields `subfolder`,
-`type=input`, and lowercase `overwrite=true|false`. The response must be HTTP 2xx JSON whose
-`name`, `subfolder`, and `type` exactly match the request. The proxy client carries no RunPod
-authorization header and local upload files are only opened for reading.
+directories, paths outside the manifest directory, non-identifier subfolders, and duplicate
+`(subfolder, name)` destinations are rejected during preflight. Allowed suffixes are `.png`,
+`.jpg`, `.jpeg`, `.webp`, `.txt`, `.toml`, `.json`, `.safetensors`, and `.ready`; each file is
+capped at 2 GiB and the batch at 10 GiB. Non-marker files must be non-empty. The file count and
+total bytes are logged before create. If `_dataset.ready` is present, it must be the final
+expanded upload and share the dataset's single subfolder. `overwrite: true` is recommended;
+false logs a preflight warning and a ComfyUI collision rename fails with a specific error.
+After readiness and the READY-price checks, each file is sent as multipart field `image` to
+`POST /upload/image` with form fields `subfolder`, `type=input`, and lowercase
+`overwrite=true|false`. Transient upload failures get three total attempts with 15/30-second
+backoff. The response must be HTTP 2xx JSON whose `name`, `subfolder`, and `type` exactly match
+the request. The proxy client carries no RunPod authorization header and local upload files
+are only opened for reading.
 
 When `training` is present, `start_script_file` must be a file below the manifest directory
 and `start_script_path` must be an absolute child of `volume_mount_path`. The harness renders
 `{{name}}` placeholders from scalar manifest and training values, embeds the result in
 bootstrap, writes it at the requested volume path with mode `0700`, and only then runs
-`comfyui.start_command`. NULs, traversal, missing files, and unresolved placeholders fail
-preflight.
+`comfyui.start_command`. Trigger and Git-ref identifiers are restricted to
+`[A-Za-z0-9_.-]+`; every other rendered scalar is shell-quoted. NULs, traversal, missing
+files, and unresolved placeholders fail preflight. The shipped training launcher removes
+stale `_training.complete` and `_training.failed` markers before launch.
 
 When `artifacts` is present, the normal `jobs` remain compatibility and preflight data but
 are not submitted. Each artifact declares `remote`, `type: output`, `local`, and `wait_for`.
+When `training.complete_marker` is declared, every `wait_for` must name that same marker.
 The harness checks `training.failed_marker` before every completion-marker poll through
-`GET /view`; a failure marker, non-404 polling error, timeout, or watchdog expiry is fatal.
-Once the marker is visible, the artifact is streamed from `/view` to a sibling `.partial`
-file, required to have a positive size, and atomically moved into place. Remote and local
-names must use the same `.safetensors`, `.json`, `.txt`, or `.log` suffix and may not be
-absolute or traverse directories.
+`GET /view`; 502/503/504 and connection/timeout errors retry within one shared artifact-marker
+deadline, while a failure marker, persistent error, other status, timeout, or watchdog expiry
+is fatal. Nested marker and artifact names are split into `/view` `filename` and `subfolder`
+parameters. Once the marker is visible, the artifact download gets three total attempts and is
+streamed to a sibling `.partial` file. A present `Content-Length` must equal bytes received;
+without it, the extension-specific minimum is logged and enforced (1 KiB for safetensors).
+An optional 64-hex `sha256` is verified when supplied. Only then is the file atomically moved
+into place. Remote and local names must use the same `.safetensors`, `.json`, `.txt`, or `.log`
+suffix and may not be absolute or traverse directories.
 
 The create payload carries the base64-encoded script in the string-valued
 `env.FIGMENT_BOOTSTRAP_B64` field. `dockerEntrypoint: ["bash", "-lc"]` and
@@ -148,12 +165,14 @@ warning; malformed values in a declared `usd` column still fail closed. The ledg
 `C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost` when that directory exists, then the
 repo's `ledgers/cost`. The selected path is logged. `governance/budget.yaml` always comes from
 the harness repo root. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
-`DEFAULT_MAX_MINUTES` of 60; a manifest can only lower the ceiling.
+`DEFAULT_MAX_MINUTES` of 840; a manifest can only lower the ceiling.
 
 Pod readiness is separately bounded by `readiness_timeout_seconds` (default 900 seconds).
-Manifest preflight rejects a `max_minutes` value shorter than the readiness budget plus a
-five-minute teardown margin. This keeps the readiness wait from consuming the time reserved
-for the mandatory terminate-and-verify path.
+Manifest preflight rejects a `max_minutes` value shorter than readiness plus
+`job_timeout_seconds` times every compatibility job or artifact plus a five-minute teardown
+margin. Artifact marker polls share one runtime deadline even though preflight reserves the
+conservative per-artifact budget. This keeps work from consuming the time reserved for the
+mandatory terminate-and-verify path.
 
 The manifest rate is never trusted after create. Once the Pod is READY, its
 `adjustedCostPerHr` or `costPerHr` must be present and positive. That real rate is checked
@@ -274,6 +293,10 @@ critical log record, because logging may already be shutting down.
 py -3 -m pytest orgs/figment/pipeline/pod/tests -q
 py -3 orgs/figment/pipeline/pod/runpod_run.py run --manifest orgs/figment/pipeline/pod/manifest.example.yaml --dry-run --out <tmp>
 ```
+
+The pod tests default `PYTEST_DEBUG_TEMPROOT` to a dedicated directory below the OS temp
+root, while honoring an explicit environment override, so plain pytest does not create or
+reuse scratch state inside the repository.
 
 The test suite covers all reviewed lifecycle, spend, watchdog, signal, credential, bootstrap,
 proxy readiness/diagnostics, ComfyUI history, streamed download, image-count, ledger, and YAML

@@ -5,7 +5,7 @@ gpu:
   count: 1
   cloud: SECURE
 price_usd_per_hour: 0.80
-max_minutes: 60
+max_minutes: 70
 container_disk_gb: 80
 volume_gb: 80
 volume_mount_path: /workspace
@@ -34,11 +34,11 @@ uploads:
       - "{{rendered_config_dir}}/training.toml"
     subfolder: "{{trigger}}"
     type: input
-    overwrite: false
+    overwrite: true
   - files: ["{{dataset_dir}}/_dataset.ready"]
     subfolder: "{{trigger}}"
     type: input
-    overwrite: false
+    overwrite: true
 
 training:
   repository: https://github.com/tdrussell/diffusion-pipe.git
