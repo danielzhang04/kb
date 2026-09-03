@@ -20,7 +20,7 @@ cuts, occlusions, crowd interaction, whip pans, or an implausible start frame. [
 | Pass / harness entry | Public source + immutable pin required | Licence / GPU | Start point (calibrate, do not treat as vendor optimum) | Decision and evidence |
 |---|---|---|---|---|
 | **Base I2V — ship candidate** | [Wan2.2 TI2V-5B](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B) `revision=PIN-ON-ADMISSION`; [ComfyUI Wan 2.2 template](https://docs.comfy.org/tutorials/video/wan/wan2_2) `git_ref=PIN-ON-ADMISSION` | Apache-2.0; 24 GB with model/T5 CPU offload (official); 48 GB preferred. | 480×832, 81 frames/16 fps (5.1 s) or 121 (7.6 s); portrait source at same ratio; 20 steps, CFG 4.5, shift 5, fixed seed. Export 16 fps; interpolate only after QA. | Official model card says 720p/24 fps and 4090 with offload; use lower first-pass resolution to leave headroom for identity/QC. Its 5B hybrid is the only recommended 24-GB backbone. [source](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B) (2026-09-03). |
-| **Quality / 48-GB route** | [Wan2.2 I2V-A14B](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B) `revision=PIN-ON-ADMISSION`; [Wan repo](https://github.com/Wan-Video/Wan2.2) `git_ref=PIN-ON-ADMISSION` | Apache-2.0; official full-performance guidance is 80 GB; 48 GB is only an offload/quantized experiment, not a promise. | 480×832/81 frames first; 30 steps, CFG 5, shift 5; no speed LoRA until the baseline passes. | Native I2V MoE supports 480p/720p, but is not the 4090 default. Test only after 5B establishes the reference/QA path. [source](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B) (2026-09-03). |
+| **Quality / 48-GB route** | [Wan2.2 I2V-A14B](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B) `revision=PIN-ON-ADMISSION`; [Wan repo](https://github.com/Wan-Video/Wan2.2) `git_ref=PIN-ON-ADMISSION` | Apache-2.0; official full-performance guidance is 80 GB; 48 GB is only an offload/quantized experiment, not a promise. | 480×832/81 frames first; 30 steps, CFG 5, shift 5; no speed LoRA until the baseline passes. | Native I2V MoE supports 480p/720p, but is not the 4090 default. Test only after 5B establishes the reference/QA path. [source](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B) (2026-09-03; claim-check corrected the source link 2026-09-03 — was pointing at the TI2V-5B card). |
 | **Driver-video / character replacement** | [Wan2.2 Animate-14B](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B) `revision=PIN-ON-ADMISSION`; [Kijai WanVideoWrapper](https://github.com/kijai/ComfyUI-WanVideoWrapper) `git_ref=PIN-ON-ADMISSION` | Apache-2.0; ~24 GB fp8 at 720p is community guidance, 48 GB safer. | Persona-swap a frame from the driver first; 480×832/81 or 121 frames, 20–30 steps, low CFG 3–5. Keep one face, no overlapping people. | The official model is for character animation/replacement; use it when the driver’s exact performance matters. Do not claim 24-GB production reliability until the proof run. [source](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B) (2026-09-03). |
 | **Pose/depth control alternative** | [Wan2.2 Fun Control ComfyUI workflow](https://docs.comfy.org/tutorials/video/wan/wan2-2-fun-control) `git_ref=PIN-ON-ADMISSION`; `alibaba-pai/Wan2.2-Fun-A14B-Control` weights, exact revision recorded in manifest | Apache-2.0; official 4090D result at 640²/81 frames consumed 83–89% of 24 GB. | Pre-extract DWPose or depth; 640×640/81 frames; use matched high/low-noise 4-step LightX2V LoRAs only after fp8 baseline. | Useful for pose fidelity, not the first face-preservation route. Official example: 4-step LoRA cut warm generation from ~524 s to ~138 s but may reduce dynamics. [source](https://docs.comfy.org/tutorials/video/wan/wan2-2-fun-control) (2026-09-03). |
 | **Start/end repair** | [Wan2.2 Fun InP](https://docs.comfy.org/tutorials/video/wan/wan2-2-fun-inp) `git_ref=PIN-ON-ADMISSION`; matching official weight revision | Apache-2.0; budget 24–48 GB until measured. | Supply approved start/end stills only; 81/121 frames; use for loop closure or a damaged tail, never to hide a failed clip. | First/last-frame constraint is the cleanest reel-loop tool; it is not identity control. [source](https://docs.comfy.org/tutorials/video/wan/wan2-2-fun-inp) (2026-09-03). |
@@ -74,7 +74,7 @@ provider route. [FYT voice contract](../../faceless-youtube/.claude/skills/voice
 |---|---|---|---|---|
 | **1. Clone / production candidate: CosyVoice 3 0.5B** | [QwenAudio/CosyVoice](https://github.com/QwenAudio/CosyVoice) `git_ref=PIN-ON-ADMISSION`; `Fun-CosyVoice3-0.5B-2512`, `revision=PIN-ON-ADMISSION` | Apache-2.0 repository; **verify weight card separately**; ~8–12 GB inferred practical budget. | Zero-shot, multilingual/cross-lingual; English, Mandarin, and Guangdong/Cantonese dialect coverage; instruction control for emotion/speed/volume. | Best default because it combines cloning, Mandarin/Cantonese scope, prosody controls, and a permissive code licence. Naturalness ranking is a local blind-test result, not a vendor claim. [source](https://github.com/QwenAudio/CosyVoice) (2026-09-03). |
 | **2. English / tag-rich candidate: Chatterbox Turbo or Multilingual V3** | [resemble-ai/chatterbox](https://github.com/resemble-ai/chatterbox) `git_ref=PIN-ON-ADMISSION`; exact HF weight revision | MIT; 350M Turbo / 500M V3; provision 6–10 GB. | Zero-shot reference; Turbo English with native paralinguistic tags; V3 23+ languages and cross-language clone. | First A/B competitor: V3 targets improved speaker similarity/conversational naturalness; Turbo exposes laughter/chuckle controls. Confirm Cantonese in its current language list before route selection. [source](https://github.com/resemble-ai/chatterbox) (2026-09-03). |
-| **3. Controlled-duration candidate: IndexTTS-2/2.5** | [index-tts/index-tts](https://github.com/index-tts/index-tts) `git_ref=PIN-ON-ADMISSION`; exact weight revision | Bilibili Model Use License; commercial review required (separate licence above stated MAU/revenue thresholds); provision 14–24 GB. | Zero-shot clone; English, Mandarin, Cantonese (`yue`), Japanese; use for timing-critical talking reels. | Keep as an audition arm, not default, because its licence is conditional. vLLM recipe documents reference audio and `yue`; it does not establish quality on figment voices. [source](https://github.com/vllm-project/vllm-omni/blob/main/recipes/IndexTeam/IndexTTS-2_5.md) (2026-09-03). |
+| **3. Controlled-duration candidate: IndexTTS-2/2.5** | [index-tts/index-tts](https://github.com/index-tts/index-tts) `git_ref=PIN-ON-ADMISSION`; exact weight revision | Bilibili Model Use License; commercial review required (separate licence above stated MAU/revenue thresholds); provision 14–24 GB. | Zero-shot clone; English, Mandarin, Japanese, Spanish, Arabic per the **vendor** model card; Cantonese (`yue`) is claimed only by the third-party vLLM-Omni serving recipe below, not by the vendor card — treat as unconfirmed until checked live. | Keep as an audition arm, not default, because its licence is conditional **and** its Cantonese capability is unconfirmed. vLLM recipe documents a `--lang yue` client flag; the vendor's own [HF model card](https://huggingface.co/IndexTeam/IndexTTS-2.5) lists Chinese/English/Japanese/Spanish/Arabic with no Cantonese mention — resolve this conflict before choosing IndexTTS for a Cantonese route. [recipe source](https://github.com/vllm-project/vllm-omni/blob/main/recipes/IndexTeam/IndexTTS-2_5.md) (2026-09-03; conflict flagged by claim-check 2026-09-03). |
 | **4. Expressive candidate: Higgs Audio V2.5** | [boson-ai/higgs-audio](https://github.com/boson-ai/higgs-audio) `git_ref=PIN-ON-ADMISSION`; exact weights/tokenizer revision | Apache-2.0 repository, but audit tokenizer/weight terms; 1B V2.5, provision 16–24 GB. | Zero-shot reference, multi-speaker/dialogue, prosody and background-audio capability. | Audition only. It can overproduce sound/music; keep the output dry and let the reel manifest own the bed. [source](https://github.com/boson-ai/higgs-audio) (2026-09-03). |
 | **Rejected for revenue use: F5-TTS** | [SWivid/F5-TTS](https://github.com/SWivid/F5-TTS) `git_ref=PIN-ON-ADMISSION` | Code MIT; released pretrained models CC-BY-NC / non-commercial. ~3–6 GB. | Zero-shot, English/Mandarin variants. | Strong research baseline, **not commercial route** without different rights-cleared weights. [source](https://github.com/SWivid/F5-TTS) (2026-09-03). |
 | **Rejected for revenue use: Fish Speech / OpenAudio** | [fishaudio/fish-speech](https://github.com/fishaudio/fish-speech) `git_ref=PIN-ON-ADMISSION` | Fish Audio Research License: commercial use needs a separate written licence; ~12–24 GB. | Zero-shot multilingual clone. | Do not route production through it under current terms. [source](https://github.com/fishaudio/fish-speech/blob/main/LICENSE) (2026-09-03). |
@@ -98,9 +98,10 @@ provider route. [FYT voice contract](../../faceless-youtube/.claude/skills/voice
    normalise loudness and hide source/model. Each listener gets A/B then X, plus 1–5 naturalness,
    cadence, breath plausibility, intelligibility, and “would this pass as a phone voice note?”; randomise
    order, require ≥5 local raters, and report confidence intervals. Keep clips as evaluation material,
-   never clone them. Automated companion scores: UTMOS and NISQA-TTS, plus WER from ASR, speaking-rate
-   and pause-share distributions. Metrics triage; human ABX decides. [NISQA](https://github.com/gabrielmittag/NISQA)
-   (2026-09-03) documents TTS naturalness estimation.
+   never clone them. Automated companion scores: [UTMOS](https://github.com/sarulab-speech/UTMOSv2) and
+   NISQA-TTS, plus WER from ASR, speaking-rate and pause-share distributions. Metrics triage; human ABX
+   decides. [NISQA](https://github.com/gabrielmittag/NISQA) (2026-09-03) documents TTS naturalness
+   estimation; UTMOSv2 source added by claim-check (2026-09-03) — was previously uncited.
 5. Lip-sync only the winning final WAV into an already-approved face-motion clip; measure SyncNet
    confidence (LatentSync exposes an evaluation path), inspect consonant closures and teeth/mouth seams,
    then re-run identity/flicker QA. [source](https://github.com/bytedance/LatentSync) (2026-09-03).
@@ -135,7 +136,7 @@ the research result itself authorises neither run.
 | ID | Factual claim | Source (accessed) | Confidence |
 |---|---|---|---|
 | C1 | Wan TI2V-5B is Apache-2.0, supports T2V/I2V 720p at 24 fps, and its official instructions show 24-GB/4090 offload. | [HF model card](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B), 2026-09-03 | High |
-| C2 | Wan I2V-A14B supports 480p/720p; official 5B docs reserve full-speed settings for 80-GB GPUs. | [HF model card](https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B), 2026-09-03 | High |
+| C2 | Wan I2V-A14B supports 480p/720p; its own official docs reserve full-speed single-GPU settings for 80-GB GPUs. | [HF model card](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B), 2026-09-03 | High |
 | C3 | Fun Control is Apache-2.0/commercial and its 4090D 81-frame benchmark shows 4-step acceleration trades some dynamics for speed. | [ComfyUI guide](https://docs.comfy.org/tutorials/video/wan/wan2-2-fun-control), 2026-09-03 | High |
 | C4 | Wan Animate-14B is Apache-2.0 and is released for character animation/replacement. | [HF model card](https://huggingface.co/Wan-AI/Wan2.2-Animate-14B), 2026-09-03 | High |
 | C5 | Stand-In has Wan2.2 and VACE-compatible versions; its authors warn combined VACE control needs balancing. | [Stand-In](https://github.com/WeChatCV/Stand-In), 2026-09-03 | High |
@@ -145,10 +146,49 @@ the research result itself authorises neither run.
 | C9 | SeedVR2 publishes Apache-2.0 code/weights and describes a one-step video restoration model with ComfyUI support. | [SeedVR2](https://github.com/IceClear/SeedVR2), 2026-09-03 | High |
 | C10 | CosyVoice 3 reports zero-shot cross-lingual cloning, English/Chinese and Guangdong dialect coverage, plus instruction controls. | [CosyVoice](https://github.com/QwenAudio/CosyVoice), 2026-09-03 | High |
 | C11 | Chatterbox V3 is 500M/23+ languages; Turbo is 350M English with paralinguistic tags; repo is MIT. | [Chatterbox](https://github.com/resemble-ai/chatterbox), 2026-09-03 | High |
-| C12 | IndexTTS accepts English, Mandarin and Cantonese (`yue`) reference-voice synthesis; its licence has scale conditions. | [vLLM recipe](https://github.com/vllm-project/vllm-omni/blob/main/recipes/IndexTeam/IndexTTS-2_5.md), [licence](https://github.com/index-tts/index-tts/blob/main/LICENSE), 2026-09-03 | High |
+| C12 | IndexTTS-2.5's vendor model card lists English, Mandarin, Japanese, Spanish, Arabic (no Cantonese); a third-party vLLM-Omni serving recipe separately exposes a `--lang yue` (Cantonese) flag not corroborated by the vendor. Its licence has scale conditions (100M MAU / RMB 1B annual revenue trigger a separate licence). | [vendor model card](https://huggingface.co/IndexTeam/IndexTTS-2.5), [vLLM recipe](https://github.com/vllm-project/vllm-omni/blob/main/recipes/IndexTeam/IndexTTS-2_5.md), [licence](https://github.com/index-tts/index-tts/blob/main/LICENSE), 2026-09-03 | Medium |
 | C13 | F5 code is MIT but its released pretrained models are CC-BY-NC. | [F5-TTS](https://github.com/SWivid/F5-TTS), 2026-09-03 | High |
 | C14 | Fish Audio’s current research licence requires separate written commercial permission. | [Fish licence](https://github.com/fishaudio/fish-speech/blob/main/LICENSE), 2026-09-03 | High |
 | C15 | LatentSync 1.6 is 512², has an 18-GB inference minimum, Apache-2.0 code, and an evaluation path. | [LatentSync](https://github.com/bytedance/LatentSync), 2026-09-03 | High |
 | C16 | MuseTalk code is MIT, project-trained models permit commercial use, and its demo was tested at 4 GB. | [MuseTalk](https://github.com/TMElyralab/MuseTalk), 2026-09-03 | High |
 | C17 | NISQA-TTS estimates synthetic speech naturalness; automated MOS is not a replacement for listeners. | [NISQA](https://github.com/gabrielmittag/NISQA), 2026-09-03 | High / inference |
 | C18 | FYT stores spoken transcript/word timing, dry-runs before spend, and its breath logic measures natural silence before padding. | [voice contract](../../faceless-youtube/.claude/skills/voiceover/references/voiceover-contract.md), [breath](../../faceless-youtube/.claude/skills/render-builder/scripts/breath.py), 2026-09-03 | High |
+
+## Claim-check (2026-09-03, sonnet)
+
+Every §6 row (C1–C18) plus the licence/VRAM/capability statements in §1 and §3 were re-fetched
+against primary sources (HF model cards, GitHub repos/LICENSE files, `gh api`) or, for C18, the
+local FYT files. **16 VERIFIED, 1 PARTLY (citation-URL fix), 1 WRONG (factual conflict), 1 not
+externally checkable (C6, an internal claim about r14).** No named model/version was found to be
+hallucinated — Chatterbox Turbo, Chatterbox Multilingual V3, IndexTTS-2.5, Higgs Audio V2.5,
+LatentSync 1.6, and CosyVoice 3 all confirmed as real, currently-shipping releases.
+
+Corrections applied in this file:
+1. **C2 / §1 "Quality / 48-GB route"** — source link pointed at the TI2V-5B model card for a claim
+   about the I2V-A14B model; fixed to link the I2V-A14B card.
+2. **C12 / §3 IndexTTS row (WRONG)** — IndexTTS-2.5's own vendor model card
+   ([IndexTeam/IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5)) lists supported
+   languages as Chinese, English, Japanese, Spanish, Arabic — **no Cantonese**. The Cantonese
+   (`yue`) claim traced only to a third-party vLLM-Omni community serving recipe's `--lang yue`
+   flag, not to the vendor. Reworded to flag the conflict and downgraded confidence High → Medium.
+   This matters because Cantonese capability is part of why CosyVoice 3 is ranked #1 in §3.
+3. **§3.5 step 4** — added a missing citation for UTMOS
+   ([sarulab-speech/UTMOSv2](https://github.com/sarulab-speech/UTMOSv2)); it was the only uncited
+   factual assertion in the document.
+
+Omissions vs. the brief (`briefs/r4-video-voice.md`), not corrected in-place (would require new
+research, out of scope for a claim-check):
+- **Uni3C** — never mentioned, despite being named in brief Q2 alongside VACE/pose-driven paths.
+- **lightx2v/self-forcing distill LoRAs for I2V** — only scoped to the Fun Control row, never
+  evaluated against the base TI2V-5B/I2V-A14B speed path the brief actually asked about.
+- **MAGREF** — named once in §4 with zero licence/version/VRAM detail (Phantom and SkyReels-A2 each
+  get a sentence; MAGREF gets none).
+- **GIMM interpolation** — brief named "RIFE/GIMM"; GIMM never appears.
+- **InfiniteTalk/MultiTalk** — explicitly named in brief Q7, but only deferred in §4's rejected-list
+  ("verify... before any harness entry"), never actually researched for quality/licence/VRAM/ComfyUI
+  support.
+- **"TTS-of-TTS bootstrapping" / voice-design-prompt models** — brief Q6 named these techniques
+  explicitly; §3.5's synthetic-voice steps do the equivalent procedurally but never name or cite them.
+
+Full verdict table with per-claim source quotes: `scratchpad/reviews/claimcheck-r17.md` (this
+session's scratchpad, not in this repo).
