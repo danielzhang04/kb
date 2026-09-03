@@ -40,7 +40,12 @@ TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # now applies without exception — which is what rejects a lingering DASHBOARD_WEBAUTHN_CREDENTIALS.
 TAILNET_HOST_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 EXPECTED_AUTH_MODE = "tailnet"
-STATIC_SHOW = {"Id", "Names", "Slice", "FragmentPath", "DropInPaths", "User", "Group", "ExecStart", "WorkingDirectory", "EnvironmentFiles", "UnsetEnvironment", "KillMode", "ReadOnlyPaths", "ReadWritePaths"}
+STATIC_SHOW = {"Id", "Names", "Slice", "FragmentPath", "DropInPaths", "User", "Group", "ExecStart", "WorkingDirectory", "EnvironmentFiles", "UnsetEnvironment", "KillMode", "UMask", "ReadOnlyPaths", "ReadWritePaths"}
+# The daemon runs `git worktree add` for every attempt, so its umask decides whether the kb-shell
+# worker can write inside the run worktree it was handed. See the UMask= comment in
+# deploy/systemd/kb-dashboard.service for why 0002 is the only value that works and why it removes no
+# control. Pinned EXACTLY: 0022 (the systemd default) is the wall, and anything wider is not intended.
+EXPECTED_UMASK = "0002"
 LIVE_SHOW = {"ControlGroup", "MainPID"}
 COMMAND_TIMEOUT = 30
 
@@ -381,6 +386,12 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("dashboard unit environment assignment set is not closed")
     if environment["DASHBOARD_AUTH_MODE"] != EXPECTED_AUTH_MODE:
         raise RuntimeError("dashboard unit auth mode must be tailnet")
+    if show["UMask"] != EXPECTED_UMASK:
+        raise RuntimeError(
+            "dashboard unit UMask must be 0002 so a kb-shell worker can write in the run worktree the "
+            "daemon created for it; add 'UMask=0002' to [Service] in deploy/systemd/kb-dashboard.service, "
+            "reinstall the unit (deploy/bootstrap_vm.py converge, or copy it and daemon-reload) and restart"
+        )
     if TAILNET_HOST_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_HOST"]) is None:
         raise RuntimeError("dashboard unit tailnet host is invalid")
     if TAILNET_OPERATOR_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_OPERATOR"]) is None:

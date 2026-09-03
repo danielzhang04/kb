@@ -737,6 +737,34 @@ def test_signature_allowed_signers_file_stays_inside_activation_stage(tmp_path, 
     assert not seen[0].exists()
 
 
+@pytest.mark.parametrize("reported", ["0022", "0077", "", "0002 0002", None])
+def test_desktop_deploy_refuses_a_vm_whose_dashboard_umask_is_not_group_writable(tmp_path, reported):
+    """Wall 1 (Gate 4, 2026-09-03). The daemon creates every run worktree with `git worktree add`, so at
+    systemd's default 0022 the kb-shell worker cannot write a byte into the tree it was handed. The unit
+    carries UMask=0002 and the VM validator asserts it, but the RESIDENT validator is refreshed only by
+    `bootstrap_vm.py converge` - so on an unconverged VM this desktop-side probe is the only current
+    guard. It must refuse before anything is uploaded and before the activation runs."""
+    archive = tmp_path / f"kb-platform-{'a' * 40}.tar.gz"
+    archive.write_bytes(b"archive")
+    attestation = tmp_path / "attestation.json"
+    attestation.write_bytes(canonical_attestation(digest=hashlib.sha256(b"archive").hexdigest()))
+    signing_key = tmp_path / "desktop-signing-key"
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        if argv[:4] == ["ssh-keygen", "-Y", "sign", "-f"]:
+            attestation.with_suffix(".json.sig").write_bytes(b"signature")
+        if argv[2:] == deploy_platform_release.DASHBOARD_UMASK_PROBE:
+            return subprocess.CompletedProcess(argv, 0, stdout=reported, stderr="")
+        return subprocess.CompletedProcess(argv, 0)
+
+    with pytest.raises(RuntimeError, match="UMask"):
+        deploy_platform_release.deploy(archive, attestation, signing_key, "vm.example", run=run)
+    assert not any(command[0] == "scp" for command in commands)
+    assert not any("activate_release.py" in argument for command in commands for argument in command)
+
+
 def test_desktop_deploy_signs_locally_and_copies_no_private_key(tmp_path):
     archive = tmp_path / f"kb-platform-{'a' * 40}.tar.gz"
     archive.write_bytes(b"archive")
@@ -749,10 +777,14 @@ def test_desktop_deploy_signs_locally_and_copies_no_private_key(tmp_path):
         commands.append(argv)
         if argv[:4] == ["ssh-keygen", "-Y", "sign", "-f"]:
             attestation.with_suffix(".json.sig").write_bytes(b"signature")
+        if argv[2:] == deploy_platform_release.DASHBOARD_UMASK_PROBE:
+            return subprocess.CompletedProcess(argv, 0, stdout="0002\n", stderr="")
         return subprocess.CompletedProcess(argv, 0)
 
     deploy_platform_release.deploy(archive, attestation, signing_key, "vm.example", run=run)
     assert commands[0] == ["ssh-keygen", "-Y", "sign", "-f", str(signing_key), "-n", "kb-release", str(attestation)]
+    # The umask probe is read-only and precedes every byte sent to the VM.
+    assert commands[1] == ["ssh", "vm.example", *deploy_platform_release.DASHBOARD_UMASK_PROBE]
     assert all(str(signing_key) not in command for command in commands[1:])
     assert not any("token" in argument.lower() for command in commands for argument in command)
     assert not any(command[:3] == ["ssh", "vm.example", "mv"] for command in commands)

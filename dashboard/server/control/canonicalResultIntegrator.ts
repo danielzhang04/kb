@@ -754,6 +754,51 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     if (dirty) throw new CanonicalResultIntegrationError('integration lineage worktree is dirty');
     return { path, branch };
   };
+  /**
+   * THE durability proof for the run-lineage branch, in both places it is needed, publication-aware.
+   *
+   * `direct` (desktop): the lineage commit counts as durable once it is on the REMOTE - push, fetch it
+   * back, compare. Unchanged, byte for byte.
+   *
+   * `outbox` (the VM): the proof is weaker and deliberately named as such - it proves the LOCAL branch
+   * ref equals the integrated commit, in the one object store that holds it. It is not an off-box copy,
+   * and loose refs are not fsynced, so a torn write survives as absence rather than as a wrong value:
+   * the `rev-parse --verify` on the next resume then fails closed instead of promoting a stale commit.
+   * There IS no remote to be durable against. `remote.origin.url`/`pushurl` are
+   * `disabled://desktop-promotion-only` (deploy/bootstrap_vm.py, asserted by
+   * deploy/validate_vm_runtime.py#validate_ops_root) and `gitPrefix` pins `protocol.allow=never`, so
+   * the unconditional push/fetch here died with `fatal: transport 'disabled' not allowed` on EVERY
+   * stage of EVERY run and took the whole run into containment (dashboard/server/control/execution.ts).
+   * Durability is instead proven where the lineage actually lives: the branch ref in the SHARED object
+   * store the integration worktree was cut from (`repoRoot`), which is what the lineage worktree writes
+   * its commits into. Same fail-closed shape - a ref that is missing, unreadable, or different from the
+   * journaled integration commit REFUSES; nothing is promoted on a guess.
+   */
+  const proveLineageDurable = async (
+    lineage: { path: string; branch: string },
+    integrationCommit: string,
+    labels: { publish: string | null; refresh: string; verify: string; stored: string },
+    mismatch: { remote: string; stored: string },
+  ): Promise<void> => {
+    if ((options.publication ?? 'direct') === 'outbox') {
+      const storedCommit = await gitRun(
+        ['rev-parse', '--verify', `refs/heads/${lineage.branch}^{commit}`], repoRoot, labels.stored,
+      );
+      if (storedCommit !== integrationCommit) throw new CanonicalResultIntegrationError(mismatch.stored);
+      return;
+    }
+    if (labels.publish !== null) {
+      await gitRun(['push', 'origin', `HEAD:refs/heads/${lineage.branch}`], lineage.path, labels.publish);
+    }
+    await gitRun([
+      'fetch', '--no-tags', 'origin',
+      `refs/heads/${lineage.branch}:refs/remotes/origin/${lineage.branch}`,
+    ], lineage.path, labels.refresh);
+    const remoteCommit = await gitRun(
+      ['rev-parse', `refs/remotes/origin/${lineage.branch}`], lineage.path, labels.verify,
+    );
+    if (remoteCommit !== integrationCommit) throw new CanonicalResultIntegrationError(mismatch.remote);
+  };
   const verifyCanonical = async (record: IntegrationRecord): Promise<void> => {
     if (!record.integrationCommit) throw new CanonicalResultIntegrationError('canonical integration commit is unavailable');
     if (record.cardRef === null) {
@@ -761,14 +806,16 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
       const localCommit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'generation lineage verification');
       if (localCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage commit differs');
-      await gitRun([
-        'fetch', '--no-tags', 'origin',
-        `refs/heads/${record.integrationBranch}:refs/remotes/origin/${record.integrationBranch}`,
-      ], lineage.path, 'generation lineage refresh');
-      const remoteCommit = await gitRun(
-        ['rev-parse', `refs/remotes/origin/${record.integrationBranch}`], lineage.path, 'generation lineage remote verification',
-      );
-      if (remoteCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('generation lineage is not remotely durable');
+      // Under `outbox` prover and witness are the SAME object store, so this proves the ref is present
+      // and equal to the integrated commit - not that a copy exists off the box. Nothing on the VM can
+      // prove the latter today; see the runbook's open item on `codex/managed-*` having no route off.
+      await proveLineageDurable(lineage, record.integrationCommit, {
+        publish: null, refresh: 'generation lineage refresh',
+        verify: 'generation lineage remote verification', stored: 'generation lineage stored verification',
+      }, {
+        remote: 'generation lineage is not remotely durable',
+        stored: 'generation lineage is not durable in the shared object store',
+      });
       return;
     }
     let publishedCommit: string;
@@ -915,17 +962,13 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       if (lineage.branch !== record.integrationBranch) throw new CanonicalResultIntegrationError('lineage branch identity differs');
       const localCommit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'local lineage verification');
       if (!record.integrationCommit || localCommit !== record.integrationCommit) throw new CanonicalResultIntegrationError('local lineage commit differs');
-      await gitRun(['push', 'origin', `HEAD:refs/heads/${record.integrationBranch}`], lineage.path, 'lineage publication');
-      await gitRun([
-        'fetch', '--no-tags', 'origin',
-        `refs/heads/${record.integrationBranch}:refs/remotes/origin/${record.integrationBranch}`,
-      ], lineage.path, 'published lineage refresh');
-      const remoteCommit = await gitRun(
-        ['rev-parse', `refs/remotes/origin/${record.integrationBranch}`], lineage.path, 'published lineage verification',
-      );
-      if (remoteCommit !== record.integrationCommit) {
-        throw new CanonicalResultIntegrationError('published lineage does not equal the integrated commit');
-      }
+      await proveLineageDurable(lineage, record.integrationCommit, {
+        publish: 'lineage publication', refresh: 'published lineage refresh',
+        verify: 'published lineage verification', stored: 'stored lineage verification',
+      }, {
+        remote: 'published lineage does not equal the integrated commit',
+        stored: 'stored lineage does not equal the integrated commit',
+      });
       record.state = 'lineage-committed';
       saveState(statePath, state);
     }
