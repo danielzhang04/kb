@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import liveVmRunDetail from '../../server/control/__fixtures__/run-detail.live-vm-2026-09-03.json';
+import liveVmRunDetailG2 from '../../server/control/__fixtures__/run-detail.live-vm-2026-09-04-g2.json';
 import { describe, expect, it, vi } from 'vitest';
 import {
   activateRun,
@@ -269,7 +270,9 @@ function acceptedRunDetail(
   Object.assign(value.humanRequests[0], {
     runRef: 'run-1', kind, revision: 2, state: 'resolved',
     response: {
-      requestRevision: 1, decision, response: null, respondedAt: '2026-08-21T12:01:00.000Z',
+      requestRevision: 1, decision, respondedBy: 'operator',
+      idempotencyKey: `human-response:request-1:1:${decision}`,
+      response: null, respondedAt: '2026-08-21T12:01:00.000Z',
     },
   });
   return value;
@@ -324,7 +327,7 @@ describe('control client run and retention writes', () => {
         interventionRef: 'gate-1', parkReason: 'no-progress', unresolvedResidue: residue, version: 7, createdAt: 'now', updatedAt: 'now',
       }],
       iterationRequests: [{ schema: 'kb.iteration-request/v1', requestRef: 'iteration-request-1', iterationLoopRef: 'loop-1', stepId: 'judge', routeId: 'review', senderParticipantId: 'producer', recipientParticipantId: 'judge', kind: 'review', cycle: 2, inputGenerationRefs: ['generation-1'], baseCommit: 'base', artifactHashes: { 'draft.md': 'hash' }, criteria: [{ id: 'quality', description: 'Complete.' }], unresolvedFindingRefs: ['finding-1'], preservedInvariants: ['keep citations'], nextAcceptanceCheck: 'quality', instructions: 'Judge it.' }],
-      iterationReceipts: [{ schema: 'kb.iteration-receipt/v1', receiptRef: 'iteration-receipt-1', requestRef: 'iteration-request-1', iterationLoopRef: 'loop-1', participantId: 'judge', cycle: 2, verdict: 'fail', inputGenerationRefs: ['generation-1'], criteria: [{ criterionId: 'quality', verdict: 'fail', findingIds: ['finding-1'] }], findings: residue.unresolvedFindings, resolvedFindingRefs: [], positions: residue.positions, recordedDissent: residue.recordedDissent, summary: 'Needs evidence.', outcomeHash: 'outcome', outputGenerationRefs: [], baseCommit: 'base', canonicalCommit: 'head', createdAt: 'now', version: 4 }],
+      iterationReceipts: [{ schema: 'kb.iteration-receipt/v1', receiptRef: 'iteration-receipt-1', requestRef: 'iteration-request-1', iterationLoopRef: 'loop-1', participantId: 'judge', cycle: 2, verdict: 'fail', inputGenerationRefs: ['generation-1'], criteria: [{ criterionId: 'quality', verdict: 'fail', findingIds: ['finding-1'] }], findings: residue.unresolvedFindings, resolvedFindingRefs: [], positions: residue.positions, recordedDissent: residue.recordedDissent, summary: 'Needs evidence.', outcomeHash: 'outcome', outputGenerationRefs: [], baseCommit: 'base', canonicalCommit: 'head', participantAttemptRef: 'attempt-1', createdAt: 'now', version: 4 }],
     };
     const detail = await getRun('run-1', 'bearer', recordedFetch({ ok: true, value }));
     expect(detail).toEqual(value);
@@ -800,37 +803,100 @@ describe('[C-M4] RunDetailDto console fields are pinned, not optional', () => {
   });
 });
 
-describe('[W51] the live VM run-detail envelope decodes key-for-key', () => {
+describe('[W51/W53] the live VM run-detail envelopes decode key-for-key', () => {
   /**
-   * The GOLDEN. `run-detail.live-vm-2026-09-03.json` is the byte-for-byte envelope the VM returned for
-   * `GET /api/control/runs/run-dc0e001c-...` (the kb-ops acceptance run), captured after #163. Its stage
-   * rows carry the six compiler-owned checker fields and its attempt rows the three generation-lineage
-   * fields; the client decoder ignored all nine and returned null for the whole detail. Revert the
-   * `stageDto`/`attemptDto` extension in `controlClient.ts` and this test goes red on `getRun` rejecting
-   * with `invalid run detail`.
+   * The GOLDENS. Two byte-for-byte envelopes the VM returned for `GET /api/control/runs/run-dc0e001c-...`
+   * (the kb-ops acceptance run), one per drift this pair of DTO lists has already suffered:
+   *
+   *  - `run-detail.live-vm-2026-09-03.json` (captured after #163) — stage rows carrying the six
+   *    compiler-owned checker fields and attempt rows the three generation-lineage fields. Revert the
+   *    `stageDto`/`attemptDto` extension and this goes red on `getRun` rejecting with `invalid run detail`.
+   *  - `run-detail.live-vm-2026-09-04-g2.json` (captured after Daniel approved g1, 2026-09-04 00:20Z) —
+   *    the SAME run once a human request is RESOLVED, so its `response` carries `respondedBy` and
+   *    `idempotencyKey`. Revert the `humanResponseDto` extension and this goes red the same way.
+   *
+   * Each fixture is read from disk a SECOND time and parsed independently, so the round-trip assertion
+   * compares the decoder's output against a copy the decoder never touched — `decodeRunDetail` returns
+   * its input by reference, which would make a comparison against `envelope.value` true of any decoder.
    */
-  it('decodes the captured VM envelope and round-trips it key-for-key', async () => {
-    const envelope = liveVmRunDetail as unknown as { ok: true; value: unknown; replayed: boolean; execution: unknown };
+  const goldens = [
+    ['2026-09-03', 'run-detail.live-vm-2026-09-03.json', liveVmRunDetail],
+    ['2026-09-04 g2', 'run-detail.live-vm-2026-09-04-g2.json', liveVmRunDetailG2],
+  ] as const;
+
+  function parsedAgain(fileName: string): { ok: true; value: Record<string, unknown> } {
+    return JSON.parse(readFileSync(
+      new URL('../../server/control/__fixtures__/' + fileName, import.meta.url), 'utf8',
+    )) as { ok: true; value: Record<string, unknown> };
+  }
+
+  for (const [label, fileName, imported] of goldens) {
+    it('decodes the captured VM envelope (' + label + ') and round-trips it key-for-key', async () => {
+      const envelope = imported as unknown as { ok: true; value: unknown; replayed: boolean; execution: unknown };
+      const detail = await getRun('run-dc0e001c-a94d-4e4e-8b7b-60766f86caf9', 'bearer', recordedFetch(envelope));
+
+      // Nothing is dropped, reshaped or defaulted on the way through the decoder.
+      const independent = parsedAgain(fileName).value;
+      expect(detail).toEqual(independent);
+      expect(Object.keys(detail).sort()).toEqual(Object.keys(independent).sort());
+      for (const [index, stage] of detail.stages.entries()) {
+        expect(Object.keys(stage).sort())
+          .toEqual(Object.keys((independent as unknown as { stages: object[] }).stages[index] as object).sort());
+      }
+      for (const [index, attempt] of detail.attempts.entries()) {
+        expect(Object.keys(attempt).sort())
+          .toEqual(Object.keys((independent as unknown as { attempts: object[] }).attempts[index] as object).sort());
+      }
+      for (const [index, request] of detail.humanRequests.entries()) {
+        const captured = (independent as unknown as { humanRequests: Array<Record<string, unknown>> })
+          .humanRequests[index]!;
+        expect(Object.keys(request).sort()).toEqual(Object.keys(captured).sort());
+        expect(request.response === null).toBe(captured.response === null);
+        if (request.response) {
+          expect(Object.keys(request.response).sort()).toEqual(Object.keys(captured.response as object).sort());
+        }
+      }
+
+      // The rows the capture actually exercises are present, so an empty-list envelope cannot pass this.
+      expect(detail.stages.length).toBeGreaterThan(0);
+      expect(detail.attempts.length).toBeGreaterThan(0);
+      expect(detail.sessions.length).toBeGreaterThan(0);
+      expect(detail.humanRequests.length).toBeGreaterThan(0);
+      expect(detail.attemptSessions.length).toBeGreaterThan(0);
+    });
+  }
+
+  it('carries a RESOLVED human response in the g2 capture, with the actor and key the server records', async () => {
+    const envelope = liveVmRunDetailG2 as unknown as { ok: true; value: unknown; replayed: boolean; execution: unknown };
     const detail = await getRun('run-dc0e001c-a94d-4e4e-8b7b-60766f86caf9', 'bearer', recordedFetch(envelope));
-
-    // Nothing is dropped, reshaped or defaulted on the way through the decoder.
-    expect(detail).toEqual(envelope.value);
-    expect(Object.keys(detail).sort()).toEqual(Object.keys(envelope.value as object).sort());
-    for (const [index, stage] of detail.stages.entries()) {
-      expect(Object.keys(stage).sort())
-        .toEqual(Object.keys((envelope.value as { stages: object[] }).stages[index] as object).sort());
-    }
-    for (const [index, attempt] of detail.attempts.entries()) {
-      expect(Object.keys(attempt).sort())
-        .toEqual(Object.keys((envelope.value as { attempts: object[] }).attempts[index] as object).sort());
+    const resolved = detail.humanRequests.filter((request) => request.state === 'resolved');
+    expect(resolved.length).toBeGreaterThan(0);
+    for (const request of resolved) {
+      expect(request.response).not.toBeNull();
+      expect(typeof request.response?.respondedBy).toBe('string');
+      expect(typeof request.response?.idempotencyKey).toBe('string');
     }
 
-    // The rows the capture actually exercises are present, so an empty-list envelope cannot pass this.
-    expect(detail.stages.length).toBeGreaterThan(0);
-    expect(detail.attempts.length).toBeGreaterThan(0);
-    expect(detail.sessions.length).toBeGreaterThan(0);
-    expect(detail.humanRequests.length).toBeGreaterThan(0);
-    expect(detail.attemptSessions.length).toBeGreaterThan(0);
+    // The two newly admitted response fields are REQUIRED and TYPED, not merely tolerated.
+    const value = structuredClone(liveVmRunDetailG2).value as unknown as {
+      humanRequests: Array<Record<string, unknown>>;
+    };
+    const index = value.humanRequests.findIndex((request) => request.response !== null);
+    expect(index).toBeGreaterThanOrEqual(0);
+
+    for (const key of ['respondedBy', 'idempotencyKey']) {
+      const missing = structuredClone(value);
+      delete (missing.humanRequests[index]!.response as Record<string, unknown>)[key];
+      expect(decodeRunDetail(missing), key).toBeNull();
+
+      const wrongType = structuredClone(value);
+      (wrongType.humanRequests[index]!.response as Record<string, unknown>)[key] = 7;
+      expect(decodeRunDetail(wrongType), key).toBeNull();
+    }
+
+    const grown = structuredClone(value);
+    (grown.humanRequests[index]!.response as Record<string, unknown>).respondedFrom = 'grown-server-side';
+    expect(decodeRunDetail(grown)).toBeNull();
   });
 
   it('still refuses a stage or attempt row carrying a key neither side knows', () => {

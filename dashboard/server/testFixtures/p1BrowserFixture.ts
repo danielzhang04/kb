@@ -486,6 +486,9 @@ export async function startP1BrowserFixture(options: P1BrowserFixtureOptions): P
         ordinary.revision += 1;
         ordinary.response = {
           requestRevision: body.expectedRevision, decision: body.decision,
+          // Mirrors `store.ts#recordHumanResponse`: the resolving actor and the exact durable key are
+          // part of the served response, so the browser fixture serves them too.
+          respondedBy: 'operator', idempotencyKey: idempotencyKey || `human-response:${ordinary.requestRef}`,
           response: typeof body.response === 'string' ? body.response : null, respondedAt: '2026-08-21T12:02:00.000Z',
         };
         ordinary.updatedAt = '2026-08-21T12:02:00.000Z';
