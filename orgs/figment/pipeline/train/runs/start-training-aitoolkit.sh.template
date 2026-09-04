@@ -22,15 +22,70 @@ checkpoint_steps_raw={{checkpoint_steps}}
 export HF_HOME='{{hf_home}}'
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
+training_log=/workspace/output/_training.log
+heartbeat_file=/workspace/output/_training.heartbeat
+comfy_pid=''
+trainer_pid=''
+heartbeat_pid=''
 mkdir -p /workspace/output "$train_output" "$data_root" "$HF_HOME"
-rm -f /workspace/output/_training.complete /workspace/output/_training.failed
+: > "$training_log"
+rm -f /workspace/output/_training.complete /workspace/output/_training.failed "$heartbeat_file"
 
-log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a /workspace/output/_training.log; }
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$training_log"; }
+cleanup() {
+  [[ -n "$heartbeat_pid" ]] && kill "$heartbeat_pid" 2>/dev/null || true
+  [[ -n "$trainer_pid" ]] && kill "$trainer_pid" 2>/dev/null || true
+  [[ -n "$comfy_pid" ]] && kill "$comfy_pid" 2>/dev/null || true
+}
+trap cleanup EXIT
 fail() {
   printf '%s\n' "$*" > /workspace/output/_training.failed
   log "FAILED $*"
+  if [[ -n "$comfy_pid" ]] && kill -0 "$comfy_pid" 2>/dev/null; then
+    wait "$comfy_pid" || true
+  fi
   exit 1
 }
+log_resource_command() {
+  local label="$1"
+  shift
+  log "RESOURCE ${label}"
+  if ! "$@" 2>&1 | tee -a "$training_log"; then
+    log "RESOURCE ${label} unavailable"
+  fi
+}
+log_resources() {
+  local phase="$1"
+  log "RESOURCE SNAPSHOT ${phase}"
+  if [[ -r /sys/fs/cgroup/memory.max ]]; then
+    { printf 'cgroup memory.max: '; cat /sys/fs/cgroup/memory.max; } 2>&1 \
+      | tee -a "$training_log" || true
+  elif [[ -r /sys/fs/cgroup/memory/memory.limit_in_bytes ]]; then
+    { printf 'cgroup memory.limit_in_bytes: '; cat /sys/fs/cgroup/memory/memory.limit_in_bytes; } 2>&1 \
+      | tee -a "$training_log" || true
+  else
+    log 'RESOURCE cgroup memory limit unavailable'
+  fi
+  log_resource_command free free -g
+  log_resource_command gpu nvidia-smi --query-gpu=memory.total,memory.used --format=csv
+  log_resource_command workspace-disk df -h /workspace
+  log_resource_command ulimit bash -lc 'ulimit -a'
+}
+write_heartbeat() {
+  local last_line heartbeat_tmp
+  last_line="$(tail -n 1 "$training_log" 2>/dev/null || true)"
+  heartbeat_tmp="${heartbeat_file}.tmp"
+  printf '%s %s\n' "$(date +%s)" "$last_line" > "$heartbeat_tmp"
+  mv "$heartbeat_tmp" "$heartbeat_file"
+}
+heartbeat_loop() {
+  while kill -0 "$trainer_pid" 2>/dev/null; do
+    write_heartbeat
+    sleep 30
+  done
+}
+
+log_resources start
 
 # --- 1. trainer install (readiness window) ------------------------------------
 if [[ ! -d "$trainer_root/.git" ]]; then
@@ -69,7 +124,6 @@ log 'hugging face pre-warm complete'
 # --- 3. ComfyUI comes up; the harness only now uploads the dataset -------------
 python /workspace/ComfyUI/main.py "$@" &
 comfy_pid=$!
-trap 'kill "$comfy_pid" 2>/dev/null || true' EXIT
 
 while [[ ! -f "$data_root/_dataset.ready" ]]; do
   kill -0 "$comfy_pid" 2>/dev/null || fail 'ComfyUI stopped before dataset upload'
@@ -140,8 +194,30 @@ log 'captions ready'
 
 # --- 5. train -----------------------------------------------------------------
 cd "$trainer_root"
-python run.py "$config_file" >> /workspace/output/_training.log 2>&1 \
-  || fail 'ai-toolkit run.py failed'
+log_resources before-training
+nohup bash -o pipefail -c 'python run.py "$1" 2>&1 | tee -a "$2"' \
+  _ "$config_file" "$training_log" </dev/null >/dev/null 2>&1 &
+trainer_pid=$!
+heartbeat_loop &
+heartbeat_pid=$!
+trainer_rc=0
+wait "$trainer_pid" || trainer_rc=$?
+kill "$heartbeat_pid" 2>/dev/null || true
+wait "$heartbeat_pid" 2>/dev/null || true
+write_heartbeat
+trainer_pid=''
+heartbeat_pid=''
+if [[ "$trainer_rc" -ne 0 ]]; then
+  log "FAILED ai-toolkit run.py exited rc=${trainer_rc}"
+  {
+    printf 'ai-toolkit run.py exited rc=%s\n' "$trainer_rc"
+    tail -n 40 "$training_log"
+  } > /workspace/output/_training.failed
+  if kill -0 "$comfy_pid" 2>/dev/null; then
+    wait "$comfy_pid" || true
+  fi
+  exit "$trainer_rc"
+fi
 
 # --- 6. publish -----------------------------------------------------------
 # The manifest declares 12 downloadable artifacts: the 11 intermediate

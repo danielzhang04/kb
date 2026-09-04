@@ -18,7 +18,8 @@
     "root": "/workspace/ComfyUI",
     "git_ref": "v0.20.1",
     "port": 8188,
-    "start_command": "bash /workspace/start-training-aitoolkit.sh"
+    "start_command": "bash /workspace/start-training-aitoolkit.sh",
+    "extra_args": ["--cpu", "--disable-all-custom-nodes"]
   },
   "models": [
     {

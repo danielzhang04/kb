@@ -129,7 +129,7 @@ py -3 build_training_set.py --mode class \
    as the full run, but the uploaded `training.json` is the 50-step render from step 3. It
    exercises the entire path — install, `torch.cuda.is_available()`, `ai-toolkit` import, the
    Krea raw `state_dict` load, 50 training steps, one save, publish, completion marker — at a
-   $2.45 ceiling instead of the full run's $6.07+. Its `training.checkpoint_steps`/`final_step`
+   $2.13 ceiling instead of the full run's $6.07+. Its `training.checkpoint_steps`/`final_step`
    both name the single step-50 save (published once under its own step name and once under the
    bare trigger name, mirroring the full run's intermediate+final publish shape at 1+1 instead of
    11+1); a third declared artifact, `_training.log`, downloads the full `ai-toolkit` stdout/
@@ -141,10 +141,13 @@ py -3 build_training_set.py --mode class \
    (former item 3) are exactly what this smoke is designed to catch before the full ceiling is
    spent, not something proved by reading a safetensors header offline.
 4. `runs/creator-001-tensor-train.yaml` — bootstrap pulls the base; the start script installs
-   ai-toolkit at the pin, pre-warms the encoder/VAE, starts ComfyUI; the harness uploads the
+   ai-toolkit at the pin, restores ComfyUI's requirements, pre-warms the encoder/VAE, and then
+   starts ComfyUI as a CPU-only, custom-node-free transport. No package install occurs after
+   ComfyUI is live. The harness uploads the
    dataset (`NN.png`/`NN.txt`/`training.json`, then `_dataset.ready`); the script captions
    (module 04/05 `single_word` fallback only — `provided` is the default and already captioned
-   by step 2), runs `run.py training.json`, then verifies and copies **all 12** declared
+   by step 2), records resource limits, runs `run.py training.json` under `nohup` while
+   streaming `_training.log` and a 30-second heartbeat, then verifies and copies **all 12** declared
    checkpoints (the 11 save-every-250 steps plus the exact step-3000 final, never an
    mtime-sorted guess) into `/workspace/output/`, writes a `_checkpoints.json` index, and only
    then touches `_training.complete` — failing closed with `_training.failed` if any of the 12
@@ -167,7 +170,7 @@ py -3 build_training_set.py --mode class \
 
 | Stage | GPU | readiness / job ceiling | `max_minutes` | rate | preflight estimate | expected actual |
 |---|---|---|---|---|---|---|
-| train-smoke (findings 13/14 gate) | L40S | 3600 s / 2400 s + 2 × 180 s artifact allowance | 113 | $1.30/h | **$2.4483** | ~45–60 min setup + a few min for 50 steps |
+| train-smoke (findings 13/14 gate) | L40S | 3600 s / 1500 s + 2 × 180 s artifact allowance | 98 | $1.30/h | **$2.1233** | ~45–60 min setup + a few min for 50 steps |
 | train | L40S | 3600 s / 10800 s + 11 × 180 s artifact allowance | 280 | $1.30/h | **$6.0667** | 45–60 min setup + unmeasured train |
 | tester | L40S | 2400 s / 300 s × 12 | 105 | $1.30/h | **$2.2750** | ~15 min setup + ~5 min render |
 | gen | L40S | 2400 s / 600 s × 12 | 165 | $1.30/h | **$3.5750** | ~15 min setup + ~20 min render |
@@ -212,7 +215,10 @@ flag must be resolved before trusting any daily total — not addressed by this 
    was already optional and dropped before this pass.
 6. **Their fixed test prompt and their 12-branch graph are not reproduced** — licensed course
    content. Our ranking prompt holds the same variables fixed and is our own text.
-7. **ComfyUI `v0.34.0`, not the repo's usual `v0.20.1`** — `comfy/ldm/krea2` did not exist yet.
+7. **ComfyUI `v0.20.1` is transport only.** ai-toolkit's requirements downgraded PyAV and
+   broke ComfyUI v0.34.0's `ColorPrimaries` import. Training does not need ComfyUI's Krea
+   nodes: the pinned v0.20.1 server runs with `--cpu --disable-all-custom-nodes`, and its own
+   requirements are restored after toolkit install and before launch.
 8. **Start-script templates live in `runs/`** beside their manifests: the harness resolves
    `training.start_script_file` relative to the manifest directory and rejects `..`.
 
@@ -232,7 +238,7 @@ flag must be resolved before trusting any daily total — not addressed by this 
    `reinstall_torch` is `"0"` (use the image's torch) and that combination was untested
    against ai-toolkit's requirements. Rather than an install-only probe pod that never runs a
    step, the training smoke (Step order 3a) runs the entire path — install, `torch.cuda.
-   is_available()`, `ai-toolkit` import, 50 real training steps, save, publish — at $2.45.
+   is_available()`, `ai-toolkit` import, 50 real training steps, save, publish — at $2.13.
    The full run in Step order 4 does not proceed until that smoke's `_bootstrap.log` shows
    every install step `rc=0` and its `_training.log` shows training actually ran.
 4. **State-dict key compatibility — gated on the same smoke.** ai-toolkit derives Krea-2's

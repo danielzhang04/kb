@@ -66,7 +66,8 @@ that file. Required fields are:
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
   `/workspace/ComfyUI` and may not equal the mount itself), with optional public-HTTPS
   `comfyui.source_url` and `comfyui.tarball_url` overrides, and optional
-  `comfyui.extra_args` appended to the ComfyUI launch command;
+  `comfyui.extra_args` appended to the ComfyUI launch command as either a shell-style string
+  or, preferably, a list of argument strings;
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`, plus
   optional `revision` (a 40-hex commit or safe tag) and optional 64-hex `sha256`;
 - optional `env_secret_refs`, restricted to `HF_TOKEN -> <RunPod secret NAME>`, for gated
@@ -152,18 +153,28 @@ and `start_script_path` must be an absolute child of `volume_mount_path`. The ha
 bootstrap, writes it at the requested volume path with mode `0700`, and only then runs
 `comfyui.start_command`. Trigger and Git-ref identifiers are restricted to
 `[A-Za-z0-9_.-]+`; every other rendered scalar is shell-quoted. NULs, traversal, missing
-files, and unresolved placeholders fail preflight. The shipped training launcher removes
-stale `_training.complete` and `_training.failed` markers before launch.
+files, and unresolved placeholders fail preflight. The bootstrap starts this wrapper as its
+background `COMFY_PID` and waits on it after health succeeds. The shipped ai-toolkit wrapper
+installs the pinned toolkit, restores ComfyUI's requirements, and pre-warms model repos before
+starting ComfyUI, so it never swaps Python packages beneath a live server. It then waits for
+the uploaded `_dataset.ready`, starts the trainer under `nohup`, and supervises both trainer
+and a 30-second heartbeat writer. Resource snapshots (cgroup memory ceiling, host memory, GPU
+memory, workspace disk, and ulimits) are appended to `_training.log` at wrapper start and just
+before training. A trainer failure writes `_training.failed` with the last 40 log lines and
+keeps ComfyUI alive so the harness can retrieve that evidence before lease cleanup.
 
 When `artifacts` is present, the normal `jobs` remain compatibility and preflight data but
 are not submitted. Each artifact declares `remote`, `type: output`, `local`, and `wait_for`.
 When `training.complete_marker` is declared, every `wait_for` must name that same marker.
 The harness checks `training.failed_marker` before every completion-marker poll through
-`GET /view`; 502/503/504 and connection/timeout errors retry within one shared artifact-marker
-deadline, while a failure marker, persistent error, other status, timeout, or watchdog expiry
-is fatal. Nested marker and artifact names are split into `/view` `filename` and `subfolder`
-parameters. Once the marker is visible, the artifact download gets three total attempts and is
-streamed to a sibling `.partial` file. A present `Content-Length` must equal bytes received;
+`GET /view`. On every poll cycle it first attempts `_training.heartbeat` and `_training.log`,
+redacts known credentials, and atomically snapshots any available content to `<out>/_harness/`.
+A continuous HTTP 502 streak longer than five minutes is fatal; 502/503/504 and connection or
+timeout errors otherwise retry within the shared artifact-marker deadline. A failure marker,
+other status, timeout, or watchdog expiry is fatal. Nested marker and artifact names are split
+into `/view` `filename` and `subfolder` parameters. Once the marker is visible, its download
+gets three total attempts and is streamed to a sibling `.partial` file. A present
+`Content-Length` must equal bytes received;
 without it, the extension-specific minimum is logged and enforced (1 KiB for safetensors).
 An optional 64-hex `sha256` is verified when supplied. Only then is the file atomically moved
 into place. Remote and local names must use the same `.safetensors`, `.json`, `.txt`, or `.log`
@@ -316,7 +327,12 @@ The output directory contains `run.json`, verified images and `manifest.json` fo
 QA tools, or verified training artifacts. `run.json` records upload and artifact names,
 destinations, byte counts, and marker outcomes, never file contents. Bootstrap diagnostics
 remain in the Pod's `/workspace/output` directory and are available through ComfyUI `/view`
-while the Pod is alive.
+while the Pod is alive. Training runs also retain the newest redacted
+`_harness/_training.heartbeat` and `_harness/_training.log` snapshots recovered before any
+proxy outage. RunPod's live [REST OpenAPI](https://rest.runpod.io/v1/openapi.json) exposes Pod
+lifecycle operations but no container-log endpoint; logs are documented only in the
+[console workflow](https://docs.runpod.io/pods/manage-pods#view-logs). The harness therefore
+does not guess an unsupported `/logs` route or promise `<out>/_harness/pod.log`.
 
 ## Exit-path guarantee
 

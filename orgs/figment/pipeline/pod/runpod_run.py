@@ -62,6 +62,8 @@ TRANSIENT_MARKER_ERROR_TYPES = {
     "ConnectionError", "ConnectionResetError", "ConnectTimeout", "ReadTimeout",
     "Timeout", "TimeoutError",
 }
+PERSISTENT_MARKER_502_SECONDS = 5 * 60.0
+TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat", "_training.log")
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 COMFY_PORT = 8188
 COMFY_OUTPUT_DIR = "/workspace/output"
@@ -1586,6 +1588,21 @@ def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
     )
 
 
+def comfy_extra_args(manifest: dict[str, Any]) -> list[str]:
+    """Return launch arguments while preserving old string manifests."""
+    comfy = manifest.get("comfyui") or {}
+    raw = comfy.get("extra_args", [])
+    if isinstance(raw, str):
+        try:
+            return shlex.split(raw)
+        except ValueError as exc:
+            raise HarnessError(f"invalid comfyui.extra_args: {exc}") from exc
+    if (not isinstance(raw, list)
+            or any(not isinstance(item, str) or not item for item in raw)):
+        raise HarnessError("comfyui.extra_args must be a string or a list of strings")
+    return list(raw)
+
+
 def require_manifest(
         manifest: dict[str, Any], manifest_path: Path,
         *, allow_missing_uploads: bool = False) -> None:
@@ -1639,13 +1656,7 @@ def require_manifest(
             "comfyui.start_command must omit --listen, --port, and --output-directory; "
             "the harness supplies proxy-safe values"
         )
-    extra_args = comfy.get("extra_args", "")
-    if not isinstance(extra_args, str):
-        raise HarnessError("comfyui.extra_args must be a string when set")
-    try:
-        extra_parts = shlex.split(extra_args)
-    except ValueError as exc:
-        raise HarnessError(f"invalid comfyui.extra_args: {exc}") from exc
+    extra_parts = comfy_extra_args(manifest)
     if any(part in controlled_flags for part in extra_parts):
         raise HarnessError(
             "comfyui.extra_args must omit --listen, --port, and --output-directory; "
@@ -2165,8 +2176,8 @@ def bootstrap_script(
     replace_non_git_root = comfy.get("replace_non_git_root") is True
     port = int(comfy.get("port", 8188))
     start_base = str(comfy.get("start_command", "python main.py"))
-    extra_args = str(comfy.get("extra_args", ""))
-    normalized_extra_args = shlex.join(shlex.split(extra_args)) if extra_args else ""
+    extra_args = comfy_extra_args(manifest)
+    normalized_extra_args = shlex.join(extra_args) if extra_args else ""
     start = (
         f"{start_base}{' ' + normalized_extra_args if normalized_extra_args else ''} "
         f"--listen 0.0.0.0 --port {port} "
@@ -2394,7 +2405,8 @@ class ComfyClient:
     def __init__(self, base_url: str, session: Any = None,
                  logger: logging.Logger | None = None,
                  sleep: Callable[[float], None] = time.sleep,
-                 monotonic: Callable[[], float] = time.monotonic):
+                 monotonic: Callable[[], float] = time.monotonic,
+                 training_diagnostics_dir: Path | None = None):
         if session is None and requests is None:
             raise HarnessError("the requests package is required for live commands")
         self.base_url = base_url.rstrip("/")
@@ -2402,6 +2414,7 @@ class ComfyClient:
         self.logger = logger or logging.getLogger(__name__)
         self._sleep = sleep
         self._monotonic = monotonic
+        self.training_diagnostics_dir = training_diagnostics_dir
         if session is None:
             # The Pod proxy is public; never discover credentials from netrc or proxy env.
             self.session.trust_env = False
@@ -2538,21 +2551,93 @@ class ComfyClient:
         except Exception as exc:
             return f"error:{type(exc).__name__}"
 
+    def fetch_training_diagnostic(self, filename: str) -> int | str:
+        if filename not in TRAINING_DIAGNOSTIC_FILENAMES:
+            raise HarnessError(f"unsupported training diagnostic: {filename!r}")
+        target_dir = self.training_diagnostics_dir
+        if target_dir is None:
+            return 404
+        try:
+            response = self.session.get(
+                self.base_url + "/view",
+                params=output_view_params(filename, "training diagnostic"),
+                timeout=REQUEST_TIMEOUT,
+                stream=True,
+            )
+        except Exception as exc:
+            return f"error:{type(exc).__name__}"
+        try:
+            status = int(response.status_code)
+            if status != 200:
+                return status
+            chunks = getattr(response, "iter_content", None)
+            if callable(chunks):
+                body = b"".join(chunk for chunk in chunks(chunk_size=64 * 1024) if chunk)
+            else:
+                body = bytes(getattr(response, "content", b""))
+            safe_text = redact_for_stderr(body.decode("utf-8", errors="replace"))
+            target_dir.mkdir(parents=True, exist_ok=True)
+            destination = target_dir / filename
+            partial = destination.with_name(destination.name + ".partial")
+            try:
+                partial.write_text(safe_text, encoding="utf-8")
+                partial.replace(destination)
+            finally:
+                partial.unlink(missing_ok=True)
+            self.logger.info(
+                "training diagnostic saved: %s bytes=%d", destination, len(body),
+            )
+            return status
+        except OSError as exc:
+            self.logger.warning(
+                "training diagnostic could not be saved: %s: %s",
+                filename, type(exc).__name__,
+            )
+            return f"error:{type(exc).__name__}"
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+
+    def capture_training_diagnostics(self) -> None:
+        if getattr(self, "training_diagnostics_dir", None) is None:
+            return
+        for filename in TRAINING_DIAGNOSTIC_FILENAMES:
+            self.fetch_training_diagnostic(filename)
+
     def wait_for_marker(
         self, marker: str, failed_marker: str, timeout: float, watchdog: Watchdog,
     ) -> None:
         deadline = self._monotonic() + timeout
         last_transient: int | str | None = None
+        persistent_502_since: float | None = None
+
+        def record_cycle_status(status: int | str, now: float) -> None:
+            nonlocal persistent_502_since
+            if status != 502:
+                persistent_502_since = None
+                return
+            if persistent_502_since is None:
+                persistent_502_since = now
+                return
+            if now - persistent_502_since >= PERSISTENT_MARKER_502_SECONDS:
+                raise HarnessError(
+                    "artifact marker polling received HTTP 502 continuously for "
+                    "more than 5 minutes"
+                )
+
         while True:
             now = self._monotonic()
             if now >= deadline:
                 break
             watchdog.check()
+            ComfyClient.capture_training_diagnostics(self)
             failed_status = self.marker_status(failed_marker)
             if failed_status == 200:
                 raise HarnessError("training failed marker appeared")
             if marker_poll_is_transient(failed_status):
                 last_transient = failed_status
+                record_cycle_status(failed_status, now)
                 self.logger.warning(
                     "transient training failed-marker poll result %s; retrying",
                     failed_status,
@@ -2567,6 +2652,7 @@ class ComfyClient:
             marker_status = self.marker_status(marker)
             if marker_status == 200:
                 return
+            record_cycle_status(marker_status, now)
             if marker_poll_is_transient(marker_status):
                 last_transient = marker_status
                 self.logger.warning(
@@ -3317,6 +3403,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     comfy_factory(proxy_url)
                     if comfy_factory else ComfyClient(
                         proxy_url, logger=logger, sleep=sleep,
+                        training_diagnostics_dir=(
+                            out_dir / "_harness" if artifacts else None
+                        ),
                     )
                 )
             ready_pod = wait_ready(

@@ -618,12 +618,18 @@ def test_hf_token_value_is_never_written_to_a_logging_statement():
 
 def test_P1m_extra_args_are_appended_and_transport_flags_remain_owned(tmp_path):
     configured = manifest()
-    configured["comfyui"]["extra_args"] = "--disable-smart-memory --preview-method auto"
+    configured["comfyui"]["extra_args"] = [
+        "--disable-smart-memory", "--preview-method", "auto",
+    ]
     script = rr.bootstrap_script(configured)
 
     assert "python main.py --disable-smart-memory --preview-method auto --listen 0.0.0.0" in script
-    configured["comfyui"]["extra_args"] = "--port 9999"
+    configured["comfyui"]["extra_args"] = ["--port", "9999"]
     with pytest.raises(rr.HarnessError, match="extra_args must omit --listen, --port"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+    configured["comfyui"]["extra_args"] = ["--cpu", 7]
+    with pytest.raises(rr.HarnessError, match="extra_args must be a string or a list of strings"):
         rr.require_manifest(configured, tmp_path / "manifest.yaml")
 
 
@@ -2687,13 +2693,81 @@ def test_marker_polling_tolerates_transient_proxy_errors_then_succeeds():
     )
 
 
+def test_marker_polling_saves_training_diagnostics_on_every_cycle(tmp_path):
+    class DiagnosticSession:
+        headers = {}
+
+        def __init__(self):
+            self.responses = iter([
+                StubResponse(200, "100 trainer starting\n"),
+                StubResponse(200, "first line\n"),
+                StubResponse(404),
+                StubResponse(404),
+                StubResponse(200, "130 first step\n"),
+                StubResponse(200, "first line\nsecond line\n"),
+                StubResponse(404),
+                StubResponse(200),
+            ])
+            self.filenames = []
+
+        def get(self, _url, **kwargs):
+            self.filenames.append(kwargs["params"]["filename"])
+            return next(self.responses)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    client = rr.ComfyClient(
+        "https://proxy", DiagnosticSession(), sleep=lambda _seconds: None,
+        monotonic=iter([0.0, 0.0, 1.0, 1.0]).__next__,
+        training_diagnostics_dir=tmp_path,
+    )
+    client.wait_for_marker(
+        "_training.complete", "_training.failed", 10, QuietWatchdog(),
+    )
+
+    assert client.session.filenames == [
+        "_training.heartbeat", "_training.log", "_training.failed", "_training.complete",
+        "_training.heartbeat", "_training.log", "_training.failed", "_training.complete",
+    ]
+    assert (tmp_path / "_training.heartbeat").read_text(encoding="utf-8") == "130 first step\n"
+    assert (tmp_path / "_training.log").read_text(encoding="utf-8") == "first line\nsecond line\n"
+
+
+def test_training_diagnostic_snapshot_redacts_active_api_key(tmp_path):
+    secret = "diagnostic-secret-key"
+
+    class DiagnosticSession:
+        headers = {}
+
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, f"trainer error Authorization=Bearer {secret}\n")
+
+    class SecretSession:
+        headers = {"Authorization": f"Bearer {secret}"}
+
+    rr.set_active_redactor(rr.ApiKeyRedactionFilter(SecretSession()))
+    try:
+        client = rr.ComfyClient(
+            "https://proxy", DiagnosticSession(), training_diagnostics_dir=tmp_path,
+        )
+        assert client.fetch_training_diagnostic("_training.log") == 200
+    finally:
+        rr.set_active_redactor(None)
+
+    saved = (tmp_path / "_training.log").read_text(encoding="utf-8")
+    assert secret not in saved
+    assert "[REDACTED]" in saved
+
+
 def test_marker_polling_persistent_502_times_out_and_termination_is_verified(tmp_path):
     configured, manifest_path = p1i_training_manifest(tmp_path)
 
     class Persistent502Comfy(FakeComfy):
         def __init__(self, url=""):
             super().__init__(url)
-            ticks = iter([0.0, 0.0, 901.0])
+            ticks = iter([0.0, 0.0, 301.0])
             self._monotonic = lambda: next(ticks)
             self._sleep = lambda _seconds: None
             self.logger = logger_and_stream()[0]
@@ -2707,7 +2781,7 @@ def test_marker_polling_persistent_502_times_out_and_termination_is_verified(tmp
         wait_for_marker = rr.ComfyClient.wait_for_marker
 
     api = FakeAPI()
-    with pytest.raises(rr.HarnessError, match="transient proxy errors.*timed out") as caught:
+    with pytest.raises(rr.HarnessError, match="HTTP 502.*5 minutes") as caught:
         rr.run_harness(
             configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
             dry_run=False, api=api, logger=logger_and_stream()[0],

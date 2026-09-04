@@ -76,25 +76,41 @@ def check_module_11(config: dict) -> list[str]:
     train = process["train"]
     save = process["save"]
     dataset = process["datasets"][0]
+    model = process["model"]
     checks = [
+        ("job", config["job"], "extension"),
+        ("process.type", process["type"], "sd_trainer"),
+        ("network.type", process["network"]["type"], "lora"),
         ("network.linear", process["network"]["linear"], 32),
+        ("network.linear_alpha", process["network"]["linear_alpha"], 32),
         ("save.save_every", save["save_every"], 250),
         ("save.max_step_saves_to_keep", save["max_step_saves_to_keep"], 15),
         ("save.dtype", save["dtype"], "bf16"),
         ("train.steps", train["steps"], 3000),
         ("train.batch_size", train["batch_size"], 1),
         ("train.gradient_accumulation", train["gradient_accumulation"], 1),
+        ("train.train_unet", train["train_unet"], True),
+        ("train.train_text_encoder", train["train_text_encoder"], False),
+        ("train.gradient_checkpointing", train["gradient_checkpointing"], True),
         ("train.lr", float(train["lr"]), 1e-4),
         ("train.optimizer", train["optimizer"], "adamw8bit"),
+        ("train.dtype", train["dtype"], "bf16"),
+        ("train.noise_scheduler", train["noise_scheduler"], "flowmatch"),
         ("train.timestep_type", train["timestep_type"], "linear"),
         ("train.cache_text_embeddings", train["cache_text_embeddings"], True),
         ("train.disable_sampling", train["disable_sampling"], True),
+        ("dataset.caption_ext", dataset["caption_ext"], "txt"),
         ("dataset.caption_dropout_rate", dataset["caption_dropout_rate"], 0.05),
+        ("dataset.shuffle_tokens", dataset["shuffle_tokens"], False),
+        ("dataset.cache_latents_to_disk", dataset["cache_latents_to_disk"], True),
         ("dataset.resolution", dataset["resolution"], [512, 768, 1024]),
-        ("model.arch", process["model"]["arch"], "krea2"),
-        ("model.quantize", process["model"]["quantize"], True),
-        ("model.qtype", process["model"]["qtype"], "qfloat8"),
-        ("model.low_vram", process["model"]["low_vram"], True),
+        ("model.arch", model["arch"], "krea2"),
+        ("model.quantize", model["quantize"], True),
+        ("model.qtype", model["qtype"], "qfloat8"),
+        ("model.quantize_te", model["quantize_te"], True),
+        ("model.qtype_te", model["qtype_te"], "qfloat8"),
+        ("model.low_vram", model["low_vram"], True),
+        ("model.layer_offloading", model["layer_offloading"], False),
     ]
     return [f"{name}: {actual!r} != {expected!r}"
             for name, actual, expected in checks if actual != expected]

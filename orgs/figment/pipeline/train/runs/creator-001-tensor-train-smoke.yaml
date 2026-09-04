@@ -6,20 +6,21 @@
     "cloud": "SECURE"
   },
   "price_usd_per_hour": 1.30,
-  "max_minutes": 113,
+  "max_minutes": 98,
   "max_placement_attempts": 1,
   "container_disk_gb": 80,
   "volume_gb": 200,
   "volume_mount_path": "/workspace",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
   "readiness_timeout_seconds": 3600,
-  "job_timeout_seconds": 2400,
+  "job_timeout_seconds": 1500,
   "artifact_download_seconds": 180,
   "comfyui": {
     "root": "/workspace/ComfyUI",
     "git_ref": "v0.20.1",
     "port": 8188,
-    "start_command": "bash /workspace/start-training-aitoolkit.sh"
+    "start_command": "bash /workspace/start-training-aitoolkit.sh",
+    "extra_args": ["--cpu", "--disable-all-custom-nodes"]
   },
   "models": [
     {

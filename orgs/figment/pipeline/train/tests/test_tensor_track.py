@@ -89,11 +89,32 @@ def test_config_template_leaves_no_unresolved_placeholders():
 
 def test_config_renderer_refuses_a_drifted_config():
     assert renderer.check_module_11(render_config(rank=16)) == [
-        "network.linear: 16 != 32"
+        "network.linear: 16 != 32",
+        "network.linear_alpha: 16 != 32",
     ]
     assert renderer.check_module_11(render_config(steps=5000)) == [
         "train.steps: 5000 != 3000"
     ]
+
+
+@pytest.mark.parametrize(("section", "key", "wrong", "expected"), [
+    ("network", "linear_alpha", 16, "network.linear_alpha: 16 != 32"),
+    ("train", "train_text_encoder", True, "train.train_text_encoder: True != False"),
+    ("train", "gradient_checkpointing", False, "train.gradient_checkpointing: False != True"),
+    ("dataset", "caption_ext", "caption", "dataset.caption_ext: 'caption' != 'txt'"),
+    ("dataset", "shuffle_tokens", True, "dataset.shuffle_tokens: True != False"),
+    ("dataset", "cache_latents_to_disk", False, "dataset.cache_latents_to_disk: False != True"),
+    ("model", "quantize_te", False, "model.quantize_te: False != True"),
+    ("model", "qtype_te", "float8", "model.qtype_te: 'float8' != 'qfloat8'"),
+    ("model", "layer_offloading", True, "model.layer_offloading: True != False"),
+])
+def test_config_renderer_detects_memory_sensitive_drift(section, key, wrong, expected):
+    config = render_config()
+    process = config["config"]["process"][0]
+    target = process["datasets"][0] if section == "dataset" else process[section]
+    target[key] = wrong
+
+    assert expected in renderer.check_module_11(config)
 
 
 def test_config_renderer_rejects_unknown_overrides(tmp_path):
@@ -133,6 +154,29 @@ def test_training_start_script_renders_every_placeholder():
     # The pre-warm must stay ahead of ComfyUI, or the encoder/VAE downloads land
     # inside the job window instead of the readiness window.
     assert rendered.index("snapshot_download") < rendered.index("ComfyUI/main.py")
+
+
+def test_training_start_script_streams_detached_training_evidence():
+    _remote, rendered = runner.rendered_training_start_script(
+        manifest("train_smoke"), MANIFESTS["train_smoke"],
+    )
+
+    assert "/sys/fs/cgroup/memory.max" in rendered
+    assert "/sys/fs/cgroup/memory/memory.limit_in_bytes" in rendered
+    assert "free -g" in rendered
+    assert "nvidia-smi --query-gpu=memory.total,memory.used --format=csv" in rendered
+    assert "df -h /workspace" in rendered
+    assert rendered.count("log_resources ") >= 2
+    assert "nohup bash -o pipefail -c" in rendered
+    assert 'python run.py "$1" 2>&1 | tee -a "$2"' in rendered
+    assert "/workspace/output/_training.heartbeat" in rendered
+    assert "sleep 30" in rendered
+    assert "date +%s" in rendered
+    assert "tail -n 40 \"$training_log\"" in rendered
+    assert "PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True" in rendered
+    failed_marker = rendered.index("> /workspace/output/_training.failed")
+    transport_wait = rendered.index('wait "$comfy_pid"', failed_marker)
+    assert failed_marker < transport_wait, "failure evidence must remain retrievable"
 
 
 def test_training_start_script_publishes_all_twelve_checkpoints_by_exact_name():
@@ -254,8 +298,9 @@ def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
     assert doc["models"] == full["models"]
     assert training["git_ref"] == full["training"]["git_ref"]
     assert training["start_script_file"] == full["training"]["start_script_file"]
-    assert doc["job_timeout_seconds"] == 2400
+    assert doc["job_timeout_seconds"] == 1500
     assert doc["readiness_timeout_seconds"] == 3600
+    assert doc["max_minutes"] == 98
     assert doc["price_usd_per_hour"] == 1.30
     artifacts = runner.manifest_artifacts(doc)
     assert [a["remote"] for a in artifacts] == [
@@ -272,6 +317,13 @@ def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
     assert "{{" not in rendered and "}}" not in rendered
     assert "checkpoint_steps_raw=000000050" in rendered
     assert "final_step='000000050'" in rendered
+
+
+@pytest.mark.parametrize("name", ["train", "train_smoke"])
+def test_training_manifests_run_comfyui_as_cpu_only_transport(name):
+    assert manifest(name)["comfyui"]["extra_args"] == [
+        "--cpu", "--disable-all-custom-nodes",
+    ]
 
 
 def test_tester_takes_the_12_checkpoints_as_an_upload_no_network_volume():
