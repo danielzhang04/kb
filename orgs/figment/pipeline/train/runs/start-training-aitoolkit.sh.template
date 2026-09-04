@@ -49,6 +49,12 @@ if [[ '{{reinstall_torch}}' == '1' ]]; then
 fi
 python -m pip install --no-cache-dir -r "$trainer_root/requirements.txt" \
   || fail 'ai-toolkit requirements install failed'
+# ai-toolkit's pins downgrade packages ComfyUI (the pod's file transport) imports at
+# start-up (PyAV was downgraded below ComfyUI's floor on 2026-09-04 and broke comfy-health).
+# Restore ComfyUI's own requirement floors after the toolkit install.
+python -m pip install --no-cache-dir -r /workspace/ComfyUI/requirements.txt \
+  || fail 'ComfyUI requirements restore failed'
+log 'ComfyUI requirement floors restored after ai-toolkit install'
 
 # --- 2. pre-warm the HF cache for the two ungated companions -------------------
 # Krea2Model loads its text encoder from Qwen/Qwen3-VL-4B-Instruct and its VAE from
