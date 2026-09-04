@@ -52,6 +52,29 @@ def test_claims_every_dashboard_controlled_inbox_and_working_card_without_a_subj
         assert row["state"] in ("inbox", "working")
 
 
+def test_engine_owned_stage_cards_are_not_claimed_by_the_bridge(tmp_path):
+    """W58: a managed workflow stage card carries `workflow: <runRef>` AND the dashboard controller.
+
+    The workflow engine drives it (managed-root activation -> attempt -> canonical result). The bridge
+    claiming it between hops is a second launch path, and — because a stage `owner` is a placement worker
+    id, not a declared agent — it refused `runnable-owner-required` and filed a wake-me every poll tick.
+    Mirrors `bridgeClaimsCard`'s carve-out in dashboard/server/control/queueBridge.ts.
+    """
+    q = tmp_path / "queue"
+    trigger = _card(q, state="inbox", owner="grader", controller="dashboard")
+    for state in ("inbox", "working"):
+        _card(q, state=state, owner="worker-desktop", controller="dashboard",
+              workflow="run-d71ccd8b-a3ec-4fdc-9bac-99f541ce898a")
+    assert [row["id"] for row in qbs.select_owned_dashboard_cards(q)] == [trigger]
+    assert qbs.claims_card({
+        "execution-controller": "dashboard", "state": "inbox",
+        "workflow": "run-d71ccd8b-a3ec-4fdc-9bac-99f541ce898a",
+    }) is False
+    # An explicit null / absent workflow is a trigger card and stays claimable.
+    assert qbs.claims_card({"execution-controller": "dashboard", "state": "inbox", "workflow": None}) is True
+    assert qbs.claims_card({"execution-controller": "dashboard", "state": "inbox"}) is True
+
+
 def test_absent_controller_belongs_to_the_legacy_runner_not_the_bridge(tmp_path):
     q = tmp_path / "queue"
     _card(q, state="inbox", owner=SUBJECT, controller=None)
@@ -107,7 +130,44 @@ def test_wake_operation_calls_the_shared_agent_runner_helper(tmp_path, monkeypat
     })])
     assert rc == 0
     assert calls == [(tmp_path, "runnable-owner-required", "card c1 has no declared owner")]
-    assert json.loads(capsys.readouterr().out) == {"cardId": "wake-1"}
+    # No file on disk for a stubbed helper -> no path, and nothing for the caller to commit.
+    assert json.loads(capsys.readouterr().out) == {
+        "cardId": "wake-1", "path": None, "created": False,
+    }
+
+
+# --- W58: the wake op must tell its caller a NEW file exists, so it can be committed + bundled ---------
+
+def test_wake_operation_reports_the_created_card_path_for_the_coordination_commit(tmp_path, capsys):
+    rc = qbs.main(["prog", json.dumps({
+        "operation": "wake",
+        "repoRoot": str(tmp_path),
+        "reason": "runnable-owner-required",
+        "detail": "queue bridge card wf-488ddbaf9c0b4154102575de refused before proposal creation",
+    })])
+    assert rc == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out["created"] is True
+    assert out["path"] == "queue/inbox/" + out["cardId"] + ".md"
+    assert (tmp_path / out["path"]).is_file()
+
+
+def test_wake_operation_reports_created_false_on_a_dedupe_hit(tmp_path, capsys):
+    op = json.dumps({
+        "operation": "wake",
+        "repoRoot": str(tmp_path),
+        "reason": "runnable-owner-required",
+        "detail": "first refusal",
+    })
+    assert qbs.main(["prog", op]) == 0
+    first = json.loads(capsys.readouterr().out)
+    assert qbs.main(["prog", op]) == 0
+    second = json.loads(capsys.readouterr().out)
+    assert second["cardId"] == first["cardId"]
+    assert second["path"] == first["path"]
+    # The second call wrote nothing; a caller that committed again would commit an unchanged tree.
+    assert second["created"] is False
+    assert len(list((tmp_path / "queue").glob("*/*.md"))) == 1
 
 
 def test_shared_wake_helper_deduplicates_by_target(tmp_path):
