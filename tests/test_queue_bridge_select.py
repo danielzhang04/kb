@@ -75,6 +75,22 @@ def test_engine_owned_stage_cards_are_not_claimed_by_the_bridge(tmp_path):
     assert qbs.claims_card({"execution-controller": "dashboard", "state": "inbox"}) is True
 
 
+def test_blank_workflow_matches_the_ts_predicate_exactly(tmp_path):
+    """Parity with bridgeClaimsCard/isEngineOwnedStageCard: only a NON-BLANK run ref is engine-owned.
+
+    TS tests ``meta.workflow.trim() !== ''``, so a whitespace-only field is a trigger card on that
+    side; a bare truthiness test here would refuse it and re-open a claim gap between the mirrors.
+    """
+    blanks = [None, "", "   ", chr(9) + chr(10)]
+    for blank in blanks:
+        assert qbs.claims_card({
+            "execution-controller": "dashboard", "state": "inbox", "workflow": blank,
+        }) is True, blank
+    assert qbs.claims_card({
+        "execution-controller": "dashboard", "state": "inbox", "workflow": "  run-1  ",
+    }) is False
+
+
 def test_absent_controller_belongs_to_the_legacy_runner_not_the_bridge(tmp_path):
     q = tmp_path / "queue"
     _card(q, state="inbox", owner=SUBJECT, controller=None)
