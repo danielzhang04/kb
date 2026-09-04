@@ -5,7 +5,7 @@ A card belongs to the governed dashboard executor **iff** all three hold:
   * ``execution-controller`` is exactly the literal ``"dashboard"`` (an absent/null
     controller does NOT belong here),
   * ``state`` is ``inbox`` or ``working``,
-  * ``workflow`` is unset/null -- a card carrying a workflow run ref is an
+  * ``workflow`` is unset/null/blank -- a card carrying a workflow run ref is an
     ENGINE-OWNED stage card, minted and driven by the workflow engine's own hops
     (managed-root activation -> attempt -> canonical result integration). The
     bridge is the trigger-card front door, not a second launch path into a run
@@ -48,7 +48,7 @@ def claims_card(meta: dict) -> bool:
         # workflow engine's canonical hops. Claiming it here is a second launch
         # path into a live run and, when its stage owner is not a declared agent,
         # a wake-me storm at every poll tick.
-        and not meta.get("workflow")
+        and not str(meta.get("workflow") or "").strip()
     )
 
 

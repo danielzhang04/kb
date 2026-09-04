@@ -1664,6 +1664,8 @@ describe('publishBridgeWakeCard — a refusal wake is a COMMITTED coordination w
       if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'ops';
       if (args[0] === 'rev-parse' && args[1] === '--verify') return ANCHOR_SHA;
       if (args[0] === 'rev-parse') return commitSha;
+      // The un-write gate reads real porcelain: `??` only until the commit lands.
+      if (args[0] === 'status') return committed ? '' : `?? ${paths[0]}`;
       if (args[0] === 'commit') { committed = true; return ''; }
       if (args[0] === 'rev-list' && args[1] === '--reverse') return committed ? commitSha : '';
       if (args[0] === 'rev-list' && args[1] === '--parents') return `${commitSha} ${ANCHOR_SHA}`;
@@ -1716,7 +1718,15 @@ describe('publishBridgeWakeCard — a refusal wake is a COMMITTED coordination w
 
   it('REMOVES the freshly written card and throws when the coordination commit refuses', async () => {
     const py = wakePy({ cardId: 'wake-2', path: 'queue/inbox/wake-2.md', created: true });
-    const git = fakeGit({ branch: 'claude/x' }); // not the ops checkout -> assertCoordinationCheckout throws
+    // Not the ops checkout -> assertCoordinationCheckout throws BEFORE `git commit`, so the card is still
+    // an untracked bare file and the un-write gate must let the removal through.
+    const base = fakeGit({ branch: 'claude/x' });
+    const git = {
+      calls: base.calls,
+      runGit: (repo: string, args: string[]): string => (
+        args[0] === 'status' ? (base.calls.push(args), '?? queue/inbox/wake-2.md') : base.runGit(repo, args)
+      ),
+    };
     const removed: string[] = [];
     await expect(publishBridgeWakeCard(
       { repoRoot: '/repo', runPy: py.runPy, opsGit: git.runGit, publication: 'outbox', removeFile: (abs) => removed.push(abs) },
@@ -1725,6 +1735,49 @@ describe('publishBridgeWakeCard — a refusal wake is a COMMITTED coordination w
     )).rejects.toThrow(QueueBridgeError);
     expect(removed).toEqual([join('/repo', 'queue/inbox/wake-2.md')]);
     expect(git.calls.some((a) => a[0] === 'add' || a[0] === 'commit')).toBe(false);
+  });
+
+  // Review HIGH (#167 follow-up): commitPreparedCoordination throws on BOTH sides of its `git commit`
+  // (write/branch.ts:1092). A post-commit failure (isCommitSha :1096, the outbox spool :1099, a rejected
+  // push :1108) leaves the card TRACKED - deleting it there would stage a worktree deletion and re-freeze
+  // the drain, trading one dirty-checkout jam for another.
+  it('LEAVES a committed card in place when a POST-commit step throws, and surfaces that', async () => {
+    const py = wakePy({ cardId: 'wake-3', path: 'queue/inbox/wake-3.md', created: true });
+    const commitSha = 'c'.repeat(40);
+    const git = outboxGit(commitSha, ['queue/inbox/wake-3.md']);
+    const inner = git.runGit;
+    const failing = (repo: string, args: string[]): string => {
+      const out = inner(repo, args);
+      // The post-commit spool step: fail it AFTER the commit has landed.
+      if (args[0] === 'bundle') throw new Error('bundle create failed');
+      return out;
+    };
+    const removed: string[] = [];
+    await expect(publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: py.runPy, opsGit: failing, publication: 'outbox', outboxRoot: mkdtempSync(join(tmpdir(), 'bridge-wake-post-')), removeFile: (abs) => removed.push(abs) },
+      'card-post',
+      'runnable-owner-required',
+    )).rejects.toThrow(/COMMITTED but its publication failed/);
+    expect(removed).toEqual([]); // the tracked card is NEVER deleted
+    expect(git.calls.some((a) => a[0] === 'commit')).toBe(true);
+    const statusAfterCommit = git.calls.filter((a) => a[0] === 'status');
+    expect(statusAfterCommit.length).toBeGreaterThan(0); // the gate actually read git back
+  });
+
+  it('leaves the card in place when the untracked check itself cannot be answered (fail-safe)', async () => {
+    const py = wakePy({ cardId: 'wake-4', path: 'queue/inbox/wake-4.md', created: true });
+    const removed: string[] = [];
+    const runGit = (_r: string, args: string[]): string => {
+      if (args[0] === 'status') throw new Error('git status unavailable');
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'claude/x';
+      return '';
+    };
+    await expect(publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: py.runPy, opsGit: runGit, removeFile: (abs) => removed.push(abs) },
+      'card-unknown',
+      'runnable-owner-required',
+    )).rejects.toThrow(QueueBridgeError);
+    expect(removed).toEqual([]);
   });
 
   it('commits NOTHING on a dedupe hit — the earlier card is already committed', async () => {

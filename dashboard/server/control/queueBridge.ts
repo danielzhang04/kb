@@ -648,15 +648,43 @@ export interface BridgeWakeDeps {
  * commit + spooled bundle; this one was the sole exception.
  *
  * So: write via the shared helper (dedupe preserved, untouched), then commit + spool the exact new path
- * with `commitPreparedCoordination` in THIS context's publication mode. Fail-closed both ways — if the
- * commit refuses, the freshly written card is REMOVED again, so the outcome is always "a committed,
- * bundled card" or "no file at all", never a bare file. A dedupe hit creates nothing and commits nothing.
+ * with `commitPreparedCoordination` in THIS context's publication mode. The whole span -- the python
+ * write included -- runs inside `withOpsTransaction`, so no other writer in this process can observe the
+ * bare-file window between `cards.save` and the commit (the same shape as
+ * `reconciliation/realPorts.ts#publishOpsOutbox`); the transaction is reentrant, so a caller already
+ * inside one simply joins it.
+ *
+ * FAILURE HANDLING IS ASYMMETRIC, AND DELIBERATELY SO. `commitPreparedCoordination` can throw on either
+ * side of its `git commit` (`write/branch.ts:1092`): BEFORE it (wrong checkout, dirty index, an outbox
+ * anchor that will not recover) the card is still an untracked bare file and must be un-written; AFTER
+ * it (`isCommitSha`, the post-commit outbox spool, a twice-rejected push) the card is COMMITTED, and
+ * deleting it would replace one dirty-checkout freeze with another -- a worktree deletion of a tracked
+ * path. So the un-write is gated on the path still being untracked, read back from git; anything else,
+ * including a failed or ambiguous status read, LEAVES THE FILE and rethrows saying so. The outcome is
+ * therefore always "committed card", "no file at all", or "committed card plus a loud unspooled/unpushed
+ * error" -- never a bare untracked file, and never a deleted tracked one. A dedupe hit creates nothing.
  */
+/**
+ * Read back from git whether `relpath` is STILL an untracked file. Fail-safe by construction: only an
+ * explicit `??` porcelain status counts as untracked. A clean/tracked path, an empty result, an
+ * unrecognized line, or a throwing git all answer `false` -- because the only action gated on this is a
+ * DELETION, and deleting a tracked file is strictly worse than leaving an extra one behind.
+ */
+async function isStillUntracked(repoRoot: string, runGit: GitRunner, relpath: string): Promise<boolean> {
+  try {
+    const status = (await runGit(repoRoot, ['status', '--porcelain', '--', relpath])).trim();
+    return status.startsWith('??');
+  } catch {
+    return false;
+  }
+}
+
 export async function publishBridgeWakeCard(
   deps: BridgeWakeDeps,
   cardId: string,
   code: 'runnable-owner-conflict' | 'runnable-owner-required',
 ): Promise<BridgeWakeReport> {
+  return withOpsTransaction(async () => {
   const result = (deps.runPy ?? defaultPyRunner)(deps.repoRoot, QUEUE_BRIDGE_SELECT_SCRIPT, JSON.stringify({
     operation: 'wake', repoRoot: deps.repoRoot, reason: code,
     detail: `queue bridge card ${cardId} refused before proposal creation`,
@@ -676,25 +704,32 @@ export async function publishBridgeWakeCard(
   // Dedupe hit (or a best-effort wake that failed inside the helper): nothing new is on disk, so there is
   // nothing to commit. The earlier card was committed by the call that created it.
   if (!created || path === null) return { cardId: wakeCardId, path, created, committed: false };
+  const runGit = deps.opsGit ?? defaultGitRunner;
   try {
     await commitPreparedCoordination(deps.repoRoot, path, {
       runGit: deps.opsGit,
       message: `chore(queue): file bridge wake-me card ${wakeCardId ?? cardId}`,
-      maxRetryPushes: 1,
       publication: deps.publication,
       outboxRoot: deps.outboxRoot,
     });
   } catch (error) {
-    // Un-write it: an uncommitted card here is the exact dirty-checkout poison this function exists to
-    // prevent, and a refused wake must never be worse than no wake (the refusal itself is already
-    // returned to the caller and logged).
+    const detail = error instanceof Error ? error.message : String(error);
+    if (!(await isStillUntracked(deps.repoRoot, runGit, path))) {
+      // The commit landed and only a post-commit step failed. The card is tracked: removing it now would
+      // stage a deletion and re-freeze the very drain this function protects. Leave it and say so.
+      throw new QueueBridgeError(
+        `queue bridge wake card is COMMITTED but its publication failed; the card was left in place: ${detail}`,
+      );
+    }
+    // Still a bare untracked file: un-write it. An uncommitted card here is the exact dirty-checkout
+    // poison this function exists to prevent, and a refused wake must never be worse than no wake (the
+    // refusal itself is already returned to the caller and logged).
     const remove = deps.removeFile ?? ((absolutePath: string) => rmSync(absolutePath, { force: true }));
-    try { remove(join(deps.repoRoot, path)); } catch { /* best effort — the throw below is the signal */ }
-    throw new QueueBridgeError(
-      `queue bridge wake card was not committed (removed again): ${error instanceof Error ? error.message : String(error)}`,
-    );
+    try { remove(join(deps.repoRoot, path)); } catch { /* best effort - the throw below is the signal */ }
+    throw new QueueBridgeError(`queue bridge wake card was not committed (removed again): ${detail}`);
   }
   return { cardId: wakeCardId, path, created, committed: true };
+  });
 }
 
 async function defaultWake(ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required'): Promise<void> {
