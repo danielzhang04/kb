@@ -31,8 +31,8 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
   recorded in briefs-p6/fix-discover7.md: v2 domain search returns prospects with `search_emails_start` (no emails);
   email search async start→poll; v1 domain search 404. Snov discovery lane (`scripts/prospecting/discovery/`, P6-owned,
   registered through P2's lane registry; P2 list builder now takes --finder-provider/--finder-cost) ran for real:
-  30 firms → 15 people (cap 2/firm) → 7 emails, 20 credits, budget stop at 40. Round-3 hardening (resumable
-  polling, per-campaign cap, 50-credit account ceiling) in flight at handoff time.
+  30 firms → 15 people (cap 2/firm) → 7 emails, 20 credits, budget stop at 40. Discovery lane hardened through four review rounds (v2-only, resumable polling, per-campaign cap,
+  50-credit account ceiling, side-table metadata); P6 recorded 704/704 at 74da2d62.
 - Operator surface (`py -3 -m scripts.prospecting.operator`) reviewed x4; runbook "Operator gates" has argv.
 - Files Daniel edits live under %LOCALAPPDATA%\kb-prospecting\: ask-nyc-vc.txt (grammar incl. `credits:N`),
   captures-nyc-vc.csv, company-domains.csv (name,domain), sender-profile.json, operator-vendors.json (names only).
