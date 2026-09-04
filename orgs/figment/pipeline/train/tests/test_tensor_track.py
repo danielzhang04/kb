@@ -189,11 +189,23 @@ def test_training_manifest_replicates_module_11_transport():
     assert {item.subfolder for item in uploads} == {TRIGGER}
     assert any(item.remote_name == "training.json" for item in uploads)
     artifacts = runner.manifest_artifacts(doc)
-    assert [artifact["remote"] for artifact in artifacts] == [f"{TRIGGER}.safetensors"]
-    # One artifact is not a preference: minimum_runtime_minutes multiplies the job
-    # timeout by the artifact count, so a 3-hour marker wait and a 12-checkpoint
-    # ladder cannot both fit under DEFAULT_MAX_MINUTES. See HARNESS-CHANGES.md.
+    # The full 12-checkpoint ladder now comes back through /view like any other
+    # artifact — no network volume required. minimum_runtime_minutes no longer
+    # multiplies the job timeout by the artifact count (that was the defect); it
+    # reserves one shared job timeout for the completion marker plus one
+    # artifact_download_seconds allowance per further artifact. See
+    # HARNESS-CHANGES.md addendum.
+    step_checkpoints = [
+        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 3000, 250)
+    ]
+    assert [artifact["remote"] for artifact in artifacts] == [
+        *step_checkpoints, f"{TRIGGER}.safetensors",
+    ]
+    assert len(artifacts) == 12
+    assert all(artifact["wait_for"] == "_training.complete" for artifact in artifacts)
     assert doc["job_timeout_seconds"] == 10800
+    assert doc["artifact_download_seconds"] == 180
+    assert "network_volume_id" not in doc
 
 
 def test_tester_holds_everything_but_the_checkpoint_fixed():

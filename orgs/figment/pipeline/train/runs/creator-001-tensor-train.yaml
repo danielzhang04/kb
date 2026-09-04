@@ -5,14 +5,14 @@
     "cloud": "SECURE"
   },
   "price_usd_per_hour": 0.89,
-  "max_minutes": 245,
+  "max_minutes": 280,
   "container_disk_gb": 80,
   "volume_gb": 200,
   "volume_mount_path": "/workspace",
-  "network_volume_id": "REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
   "readiness_timeout_seconds": 3600,
   "job_timeout_seconds": 10800,
+  "artifact_download_seconds": 180,
   "comfyui": {
     "root": "/workspace/ComfyUI",
     "git_ref": "v0.34.0",
@@ -90,6 +90,72 @@
     }
   ],
   "artifacts": [
+    {
+      "remote": "creator001krea2_000000250.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000000250.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000000500.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000000500.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000000750.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000000750.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000001000.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000001000.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000001250.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000001250.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000001500.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000001500.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000001750.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000001750.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000002000.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000002000.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000002250.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000002250.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000002500.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000002500.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "creator001krea2_000002750.safetensors",
+      "type": "output",
+      "local": "creator001krea2_000002750.safetensors",
+      "wait_for": "_training.complete"
+    },
     {
       "remote": "creator001krea2.safetensors",
       "type": "output",

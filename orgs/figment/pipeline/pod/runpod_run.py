@@ -1275,6 +1275,7 @@ def manifest_artifacts(manifest: dict[str, Any]) -> list[dict[str, str]]:
     if not isinstance(artifacts, list) or not artifacts:
         raise HarnessError("manifest artifacts must be a non-empty list when present")
     training_failed_marker_name(manifest)
+    manifest_artifact_download_seconds(manifest)
     training = manifest["training"]
     complete_marker: str | None = None
     if "complete_marker" in training:
@@ -1422,6 +1423,21 @@ def manifest_job_timeout_seconds(manifest: dict[str, Any]) -> float:
     return timeout
 
 
+def manifest_artifact_download_seconds(manifest: dict[str, Any]) -> float:
+    """Per-artifact allowance for a second-and-later artifact's own marker poll plus
+    download, once the first artifact has already spent the shared job_timeout_seconds
+    budget confirming the training completion marker. Defaults to 180 seconds so a
+    12-checkpoint ladder does not have to multiply the full job timeout by artifact
+    count (see HARNESS-CHANGES.md addendum)."""
+    value = manifest.get("artifact_download_seconds", 180)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HarnessError("artifact_download_seconds must be numeric")
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise HarnessError("artifact_download_seconds must be finite and positive")
+    return seconds
+
+
 def manifest_env_secret_refs(manifest: dict[str, Any]) -> dict[str, str]:
     """Validate the optional env_secret_refs block.
 
@@ -1477,15 +1493,24 @@ def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
     if artifacts is not None:
         if not isinstance(artifacts, list) or not artifacts:
             raise HarnessError("manifest artifacts must be a non-empty list when present")
-        work_units = len(artifacts)
+        # Artifact mode shares ONE job_timeout_seconds budget for the training
+        # completion marker wait (or the first distinct wait_for marker); every
+        # further artifact only needs its own artifact_download_seconds allowance
+        # for its marker poll plus download, not another full job timeout. See the
+        # HARNESS-CHANGES.md addendum — this is what lets a long marker wait and a
+        # multi-checkpoint ladder both fit under DEFAULT_MAX_MINUTES.
+        work_seconds = (
+            manifest_job_timeout_seconds(manifest)
+            + (len(artifacts) - 1) * manifest_artifact_download_seconds(manifest)
+        )
     else:
         jobs = manifest.get("jobs")
         if not isinstance(jobs, list) or not jobs:
             raise HarnessError("manifest jobs must be a non-empty list")
-        work_units = len(jobs)
+        work_seconds = manifest_job_timeout_seconds(manifest) * len(jobs)
     return (
         manifest_readiness_timeout_seconds(manifest) / 60.0
-        + manifest_job_timeout_seconds(manifest) * work_units / 60.0
+        + work_seconds / 60.0
         + 5.0
     )
 
@@ -1514,7 +1539,9 @@ def require_manifest(
                 or manifest_max_minutes < minimum_minutes):
             raise HarnessError(
                 "manifest max_minutes must cover readiness_timeout_seconds plus "
-                "job_timeout_seconds for every job/artifact plus a 5 minute teardown "
+                "job_timeout_seconds for every compatibility job (or, in artifact mode, "
+                "one job_timeout_seconds for the marker wait plus artifact_download_seconds "
+                "for every artifact after the first) plus a 5 minute teardown "
                 f"margin (minimum {minimum_minutes:g})"
             )
     if not isinstance(manifest.get("jobs"), list) or not manifest["jobs"]:
@@ -1666,7 +1693,9 @@ def enforce_effective_readiness_budget(
     if max_minutes < minimum_minutes:
         raise HarnessError(
             "effective max_minutes must cover readiness_timeout_seconds plus "
-            "job_timeout_seconds for every job/artifact plus a 5 minute teardown "
+            "job_timeout_seconds for every compatibility job (or, in artifact mode, "
+            "one job_timeout_seconds for the marker wait plus artifact_download_seconds "
+            "for every artifact after the first) plus a 5 minute teardown "
             f"margin (minimum {minimum_minutes:g})"
         )
 
@@ -2541,7 +2570,11 @@ class ComfyClient:
             raise HarnessError("ComfyUI did not return prompt_id")
         return str(prompt_id)
 
-    def wait_outputs(self, prompt_id: str, timeout: float, watchdog: Watchdog) -> list[dict[str, str]]:
+    def wait_outputs(
+        self, prompt_id: str, timeout: float, watchdog: Watchdog,
+        *, expected_images: int = 1,
+    ) -> list[dict[str, str]]:
+        del expected_images  # live jobs are counted from ComfyUI's own history entry
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             watchdog.check()
@@ -2607,9 +2640,17 @@ class DryRunComfyClient:
         self.counter += 1
         return f"dry-prompt-{self.counter}"
 
-    def wait_outputs(self, prompt_id: str, _timeout: float, watchdog: Watchdog) -> list[dict[str, str]]:
+    def wait_outputs(
+        self, prompt_id: str, _timeout: float, watchdog: Watchdog,
+        *, expected_images: int = 1,
+    ) -> list[dict[str, str]]:
         watchdog.check()
-        return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
+        if expected_images == 1:
+            return [{"filename": f"{prompt_id}.png", "subfolder": "", "type": "output"}]
+        return [
+            {"filename": f"{prompt_id}_{index:02d}.png", "subfolder": "", "type": "output"}
+            for index in range(1, expected_images + 1)
+        ]
 
     def health_status(self) -> int:
         return 200
@@ -3185,8 +3226,16 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 )
 
             if artifacts:
+                # The shared job_timeout_seconds deadline pays for the training
+                # completion marker wait (or the first distinct wait_for marker); it is
+                # the "existing shared artifact deadline" logic and stays unchanged.
+                # Every artifact after the first no longer borrows that same generous
+                # per_job_timeout as its own download ceiling — it gets the much smaller
+                # artifact_download_seconds allowance instead, matching what preflight
+                # actually reserved for it. See HARNESS-CHANGES.md addendum.
+                artifact_download_seconds = manifest_artifact_download_seconds(manifest)
                 artifact_marker_deadline = time.monotonic() + per_job_timeout
-                for artifact in artifacts:
+                for artifact_index, artifact in enumerate(artifacts):
                     watchdog.check()
                     marker = artifact["wait_for"]
                     assert failed_marker is not None
@@ -3203,10 +3252,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         {"sha256": artifact["sha256"]}
                         if "sha256" in artifact else {}
                     )
+                    download_timeout = (
+                        per_job_timeout if artifact_index == 0 else artifact_download_seconds
+                    )
                     retry_transient_proxy(
                         lambda artifact=artifact, local_path=local_path,
-                                download_kwargs=download_kwargs: comfy.download_artifact(
-                            artifact["remote"], local_path, per_job_timeout,
+                                download_kwargs=download_kwargs,
+                                download_timeout=download_timeout: comfy.download_artifact(
+                            artifact["remote"], local_path, download_timeout,
                             **download_kwargs,
                         ),
                         f"artifact download {artifact['remote']}",
@@ -3235,10 +3288,13 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     output_name = safe_output_name(job.get("output_name"))
                     workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
                     prompt_id = comfy.submit(workflow)
-                    remote_images = comfy.wait_outputs(prompt_id, per_job_timeout, watchdog)
                     expected_images = job.get("expected_images", 1)
                     if isinstance(expected_images, bool) or not isinstance(expected_images, int):
                         raise HarnessError("job expected_images must be a positive integer")
+                    remote_images = comfy.wait_outputs(
+                        prompt_id, per_job_timeout, watchdog,
+                        expected_images=expected_images,
+                    )
                     paths = download_job_outputs(
                         comfy, remote_images, out_dir, output_name,
                         per_job_timeout, expected_images,

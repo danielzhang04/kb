@@ -204,8 +204,9 @@ class FakeComfy:
         self.workflow = workflow
         return "prompt-1"
 
-    def wait_outputs(self, prompt_id, _timeout, watchdog):
+    def wait_outputs(self, prompt_id, _timeout, watchdog, *, expected_images=1):
         assert prompt_id == "prompt-1"
+        del expected_images
         watchdog.check()
         return [{"filename": "remote.png", "subfolder": "", "type": "output"}]
 
@@ -1372,7 +1373,8 @@ def test_C3_job_submit_poll_and_streaming_download_use_proxy_http(tmp_path):
 
 def test_C4_job_expected_four_images_rejects_two(tmp_path):
     class TwoImageComfy(FakeComfy):
-        def wait_outputs(self, _prompt_id, _timeout, watchdog):
+        def wait_outputs(self, _prompt_id, _timeout, watchdog, *, expected_images=1):
+            del expected_images
             watchdog.check()
             return [
                 {"filename": "one.png", "subfolder": "", "type": "output"},
@@ -1391,6 +1393,56 @@ def test_C4_job_expected_four_images_rejects_two(tmp_path):
             ledger_dir=tmp_path / "ledger",
         )
     assert api.deletes == 1
+
+
+def test_dry_run_client_returns_one_placeholder_per_expected_image(tmp_path):
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    watchdog = QuietWatchdog()
+    client = rr.DryRunComfyClient()
+    prompt_id = client.submit({"1": {"class_type": "SaveImage", "inputs": {}}})
+
+    single = client.wait_outputs(prompt_id, 10, watchdog, expected_images=1)
+    assert len(single) == 1
+
+    triple = client.wait_outputs(prompt_id, 10, watchdog, expected_images=3)
+    assert len(triple) == 3
+    assert len({image["filename"] for image in triple}) == 3
+    assert all(image["type"] == "output" for image in triple)
+
+
+def test_dry_run_multi_image_job_downloads_named_per_output_naming_rule(tmp_path):
+    manifest_with_multi_image_job = manifest()
+    manifest_with_multi_image_job["jobs"][0]["expected_images"] = 3
+
+    result = rr.run_harness(
+        manifest_with_multi_image_job, tmp_path / "m.yaml", tmp_path / "out",
+        max_usd=None, max_minutes=1, dry_run=True,
+        logger=logger_and_stream()[0], sleep=lambda _seconds: None,
+    )
+
+    assert len(result["jobs"][0]["files"]) == 3
+    names = sorted(entry["path"] for entry in result["jobs"][0]["files"])
+    assert names == ["job-one_01.png", "job-one_02.png", "job-one_03.png"]
+    for name in names:
+        assert (tmp_path / "out" / name).stat().st_size > 0
+
+
+def test_dry_run_download_count_mismatch_still_fails_closed(tmp_path):
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    watchdog = QuietWatchdog()
+    client = rr.DryRunComfyClient()
+    outputs = client.wait_outputs("dry-prompt-1", 10, watchdog, expected_images=2)
+
+    with pytest.raises(rr.HarnessError, match="expected 3, received 2"):
+        rr.download_job_outputs(
+            client, outputs, tmp_path, "job", timeout=10, expected_images=3,
+        )
 
 
 def test_C6_ledger_is_provisional_at_create_then_updated_at_teardown(tmp_path):
@@ -2088,6 +2140,51 @@ def test_complete_marker_and_wait_for_must_agree(tmp_path):
         rr.require_manifest(configured, manifest_path)
 
 
+def test_artifact_download_seconds_defaults_to_180_and_is_validated(tmp_path):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    assert rr.manifest_artifact_download_seconds(configured) == 180
+
+    configured["artifact_download_seconds"] = 45
+    assert rr.manifest_artifact_download_seconds(configured) == 45
+    rr.require_manifest(configured, manifest_path)
+
+
+@pytest.mark.parametrize(
+    "value", [0, -1, "180", True, float("nan"), float("inf")],
+)
+def test_artifact_download_seconds_rejects_non_positive_or_non_numeric(tmp_path, value):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    configured["artifact_download_seconds"] = value
+    with pytest.raises(rr.HarnessError, match="artifact_download_seconds"):
+        rr.require_manifest(configured, manifest_path)
+
+
+def test_minimum_runtime_minutes_reserves_one_job_timeout_plus_n_minus_one_downloads(
+        tmp_path):
+    configured, _manifest_path = p1i_training_manifest(tmp_path)
+    configured["readiness_timeout_seconds"] = 600
+    configured["job_timeout_seconds"] = 10800
+    configured["artifact_download_seconds"] = 200
+    configured["artifacts"] = [
+        dict(configured["artifacts"][0], local=f"ckpt-{i}.safetensors",
+             remote=f"ckpt-{i}.safetensors")
+        for i in range(12)
+    ]
+
+    minimum = rr.minimum_runtime_minutes(configured)
+
+    # One shared job_timeout_seconds for the marker wait, then 11 further artifacts
+    # each only need their own artifact_download_seconds allowance — not another
+    # full job_timeout_seconds apiece.
+    expected = 600 / 60 + (10800 + 11 * 200) / 60 + 5
+    assert minimum == pytest.approx(expected)
+    # The old (defect) formula would have demanded 12x the job timeout, which blows
+    # straight past DEFAULT_MAX_MINUTES; the fixed formula must not.
+    old_defect_formula = 600 / 60 + 10800 * 12 / 60 + 5
+    assert minimum < old_defect_formula
+    assert minimum <= rr.DEFAULT_MAX_MINUTES
+
+
 def test_P1i_proxy_upload_sends_exact_multipart_without_authorization(tmp_path):
     payload = b"exact png bytes\x00\xff"
     local = tmp_path / "frame.png"
@@ -2329,6 +2426,7 @@ def test_multiple_artifacts_share_one_marker_deadline(tmp_path, monkeypatch):
 
     class DeadlineComfy(FakeComfy):
         waits = []
+        downloads = []
 
         def upload_file(self, local_path, subfolder, _overwrite):
             return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
@@ -2338,7 +2436,8 @@ def test_multiple_artifacts_share_one_marker_deadline(tmp_path, monkeypatch):
             type(self).waits.append(timeout)
             clock["now"] += 10
 
-        def download_artifact(self, _remote, local_path, _timeout):
+        def download_artifact(self, _remote, local_path, timeout):
+            type(self).downloads.append(timeout)
             local_path.write_bytes(b"artifact")
 
     rr.run_harness(
@@ -2348,7 +2447,12 @@ def test_multiple_artifacts_share_one_marker_deadline(tmp_path, monkeypatch):
         ledger_dir=tmp_path / "ledger",
     )
 
+    # The shared job_timeout_seconds deadline still pays for both marker waits
+    # (unchanged "shared artifact deadline" logic); only the second artifact's
+    # download switches from that same generous budget to the much smaller
+    # artifact_download_seconds allowance (default 180) it actually needs.
     assert DeadlineComfy.waits == [30, 20]
+    assert DeadlineComfy.downloads == [30, 180]
 
 
 @pytest.mark.parametrize(

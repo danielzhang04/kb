@@ -5,7 +5,10 @@ API-format workflow for each job, verifies every downloaded image, then terminat
 and verifies its absence. `--dry-run` exercises the same local flow without network access or
 billable compute. Dry-run substitutes inert values for unresolved `.template.yaml`
 placeholders and simulates absent upload patterns as zero-byte rows; live preflight still
-requires every upload to exist and every template to be rendered.
+requires every upload to exist and every template to be rendered. The dry-run ComfyUI stub
+returns one synthetic placeholder image per job's declared `expected_images` (not always
+exactly one), so a job with `expected_images > 1` still passes the same download-count check a
+live run enforces.
 
 ## Requirements and credential boundary
 
@@ -50,8 +53,12 @@ that file. Required fields are:
 - `image` or `template_id`, plus optional `network_volume_id`;
 - a conservative `price_usd_per_hour` for pre-create estimation;
 - optional `readiness_timeout_seconds` (default 900) and `job_timeout_seconds` (default
-  900); `max_minutes` must cover readiness, the job timeout multiplied by all jobs (or
-  artifacts), and five teardown minutes;
+  900); `max_minutes` must cover readiness, five teardown minutes, and the job timeout
+  multiplied by all jobs — or, in artifact mode, one job timeout for the completion-marker
+  wait plus one `artifact_download_seconds` allowance for every artifact after the first;
+- optional `artifact_download_seconds` (default 180, must be finite and positive), the
+  budget each artifact after the first gets for its own marker poll plus download once the
+  first artifact has already spent the shared job timeout;
 - optional `avoid_machine_hosts` and `avoid_machine_ids` string lists, plus
   `max_placement_attempts` (default 4), for rejecting known-bad RunPod placements;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
@@ -150,6 +157,15 @@ An optional 64-hex `sha256` is verified when supplied. Only then is the file ato
 into place. Remote and local names must use the same `.safetensors`, `.json`, `.txt`, or `.log`
 suffix and may not be absolute or traverse directories.
 
+The shared artifact-marker deadline holds exactly one `job_timeout_seconds` budget for
+confirming the training completion marker (or the first distinct `wait_for` marker, if artifacts
+declare their own), no matter how many artifacts are declared — it is not multiplied by artifact
+count. Every artifact after the first downloads under its own much smaller
+`artifact_download_seconds` allowance (optional manifest key, default 180 seconds, must be
+finite and positive) instead of borrowing the full job timeout again. This is what lets a
+multi-hour marker wait and a multi-checkpoint ladder both fit under `DEFAULT_MAX_MINUTES`; see
+`pipeline/train/HARNESS-CHANGES.md` for the defect this replaced.
+
 The create payload carries the base64-encoded script in the string-valued
 `env.FIGMENT_BOOTSTRAP_B64` field. `dockerEntrypoint: ["bash", "-lc"]` and
 `dockerStartCmd` decode it to `/workspace/bootstrap.sh` and execute it as the container start
@@ -188,11 +204,18 @@ the harness repo root. `max_minutes` is the minimum of the CLI value, manifest v
 `DEFAULT_MAX_MINUTES` of 840; a manifest can only lower the ceiling.
 
 Pod readiness is separately bounded by `readiness_timeout_seconds` (default 900 seconds).
-Manifest preflight rejects a `max_minutes` value shorter than readiness plus
-`job_timeout_seconds` times every compatibility job or artifact plus a five-minute teardown
-margin. Artifact marker polls share one runtime deadline even though preflight reserves the
-conservative per-artifact budget. This keeps work from consuming the time reserved for the
-mandatory terminate-and-verify path.
+Manifest preflight rejects a `max_minutes` value shorter than the applicable minimum:
+
+- Job (non-artifact) mode: `readiness_timeout_seconds + job_timeout_seconds x len(jobs) +
+  300` seconds.
+- Artifact mode: `readiness_timeout_seconds + job_timeout_seconds + (len(artifacts) - 1) x
+  artifact_download_seconds + 300` seconds — one shared job timeout for the completion-marker
+  wait, plus one `artifact_download_seconds` allowance (default 180 s) for every artifact after
+  the first, plus the same five-minute teardown margin.
+
+Artifact marker polls share one runtime deadline built from `job_timeout_seconds`, exactly as
+preflight reserves. This keeps work from consuming the time reserved for the mandatory
+terminate-and-verify path.
 
 The manifest rate is never trusted after create. Once the Pod is READY, its
 `adjustedCostPerHr` or `costPerHr` must be present and positive. That real rate is checked
