@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -70,10 +71,57 @@ IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 CAPTION_MODES = ("provided", "class", "qwen3vl")
 READY_MARKER = "_dataset.ready"
 MANIFEST_NAME = "dataset_manifest.json"
+TRAINING_JSON_NAME = "training.json"
+
+HERE = Path(__file__).resolve().parent
+RENDER_MODULE_PATH = HERE / "render_aitoolkit_config.py"
 
 
 class DatasetBuildError(ValueError):
     pass
+
+
+def _load_render_module():
+    spec = importlib.util.spec_from_file_location(
+        "figment_render_aitoolkit_config", RENDER_MODULE_PATH,
+    )
+    if spec is None or spec.loader is None:
+        raise DatasetBuildError(f"cannot load render module: {RENDER_MODULE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _check_existing_training_json(out_dir: Path) -> None:
+    """Refuse to write `_dataset.ready` next to a `training.json` with a bad pod path.
+
+    `render_aitoolkit_config.py` (TENSOR-TRAINING.md step 3) normally writes
+    `training.json` into this same directory *after* this tool runs, so on a
+    first build there is usually nothing here yet. But re-running this tool
+    over a dataset dir that already carries a previously-rendered config must
+    not leave a stale, MSYS-mangled, or otherwise bad pod path sitting next to
+    a freshly written ready marker — that is exactly the shape of the bug that
+    shipped `C:/Program Files/Git/workspace/...` to the pod as `folder_path`.
+    Validates with the same guard `render_aitoolkit_config.py` applies to a
+    config it renders itself; see that module's `validate_rendered_pod_paths`.
+    """
+    training_json = out_dir / TRAINING_JSON_NAME
+    if not training_json.is_file():
+        return
+    try:
+        config = json.loads(training_json.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise DatasetBuildError(
+            f"cannot read existing {TRAINING_JSON_NAME} in {out_dir}: {exc}"
+        ) from exc
+    render_module = _load_render_module()
+    try:
+        render_module.validate_rendered_pod_paths(config)
+    except render_module.PodPathError as exc:
+        raise DatasetBuildError(
+            f"existing {TRAINING_JSON_NAME} in {out_dir} carries a bad pod path: {exc}"
+        ) from exc
 
 
 def load_approved_cells(path: Path) -> list[dict[str, Any]]:
@@ -228,6 +276,10 @@ def build_training_set(
     for entry in files:
         if not (out_dir / entry["image"]).is_file() or not (out_dir / entry["caption_file"]).is_file():
             raise DatasetBuildError(f"post-write verification failed for {entry['image']}")
+
+    # Fail closed rather than write a ready marker next to a config the pod
+    # cannot use — see _check_existing_training_json.
+    _check_existing_training_json(out_dir)
 
     ready_path = out_dir / READY_MARKER
     ready_path.write_text("", encoding="utf-8")

@@ -105,6 +105,73 @@ def test_dataset_ready_marker_is_written_last(tmp_path):
     assert ready.stat().st_mtime_ns >= max(p.stat().st_mtime_ns for p in others)
 
 
+def _training_json_config(
+    dataset_dir: str,
+    output_dir: str = "/workspace/train-output",
+    base_model_path: str = "/workspace/models/krea2/krea2_raw_bf16.safetensors",
+) -> dict:
+    """Minimal shape `validate_rendered_pod_paths` needs, matching what
+    `render_aitoolkit_config.py` actually writes into `training.json`."""
+    return {
+        "config": {
+            "process": [{
+                "training_folder": output_dir,
+                "datasets": [{"folder_path": dataset_dir}],
+                "model": {"name_or_path": base_model_path},
+            }],
+        },
+    }
+
+
+def test_existing_bad_training_json_blocks_the_ready_marker(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    cells_path = tmp_path / "approved.json"
+    cells_path.write_text(
+        json.dumps([{"image": "graded/a.png", "caption": "a woman"}]), encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    bad_config = _training_json_config(
+        dataset_dir="C:/Program Files/Git/workspace/ComfyUI/input/creator001krea2",
+    )
+    (out_dir / "training.json").write_text(json.dumps(bad_config), encoding="utf-8")
+
+    with pytest.raises(bts.DatasetBuildError, match="bad pod path"):
+        bts.build_training_set(
+            approved_cells=cells_path, source_dir=None, caption_mode="provided", out_dir=out_dir,
+        )
+
+    assert not (out_dir / "_dataset.ready").is_file()
+    # The images/captions/manifest were still written before the guard fires —
+    # only the ready marker (the upload-readiness signal) is withheld.
+    assert (out_dir / "01.png").is_file()
+
+
+def test_existing_good_training_json_does_not_block_the_ready_marker(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    cells_path = tmp_path / "approved.json"
+    cells_path.write_text(
+        json.dumps([{"image": "graded/a.png", "caption": "a woman"}]), encoding="utf-8",
+    )
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    good_config = _training_json_config(
+        dataset_dir="/workspace/ComfyUI/input/creator001krea2",
+    )
+    (out_dir / "training.json").write_text(json.dumps(good_config), encoding="utf-8")
+
+    manifest = bts.build_training_set(
+        approved_cells=cells_path, source_dir=None, caption_mode="provided", out_dir=out_dir,
+    )
+
+    assert manifest["count"] == 1
+    assert (out_dir / "_dataset.ready").is_file()
+
+
 def test_provided_mode_requires_non_empty_image_and_caption_fields(tmp_path):
     cells_path = tmp_path / "approved.json"
     cells_path.write_text(json.dumps([{"image": "", "caption": "x"}]), encoding="utf-8")

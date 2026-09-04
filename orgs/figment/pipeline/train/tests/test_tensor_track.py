@@ -121,7 +121,7 @@ def test_config_renderer_rejects_unknown_overrides(tmp_path):
     with pytest.raises(SystemExit):
         renderer.main([
             "--template", str(TRAIN / "ai-toolkit-krea2.yaml.template"),
-            "--trigger", TRIGGER, "--dataset-dir", "/d",
+            "--trigger", TRIGGER, "--dataset-dir", f"/workspace/{TRIGGER}",
             "--set", "quantize=false", "--out", str(tmp_path / "training.json"),
         ])
 

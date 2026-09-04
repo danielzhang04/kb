@@ -2720,7 +2720,10 @@ def test_marker_polling_saves_training_diagnostics_on_every_cycle(tmp_path):
 
     client = rr.ComfyClient(
         "https://proxy", DiagnosticSession(), sleep=lambda _seconds: None,
-        monotonic=iter([0.0, 0.0, 1.0, 1.0]).__next__,
+        # A few spare ticks beyond the minimum wait_for_marker/heartbeat-log
+        # calls need, so this test stays about diagnostics-saved-every-cycle
+        # rather than the exact monotonic() call count.
+        monotonic=iter([0.0, 0.0, 1.0, 1.0, 1.0, 1.0]).__next__,
         training_diagnostics_dir=tmp_path,
     )
     client.wait_for_marker(
@@ -2759,6 +2762,88 @@ def test_training_diagnostic_snapshot_redacts_active_api_key(tmp_path):
     saved = (tmp_path / "_training.log").read_text(encoding="utf-8")
     assert secret not in saved
     assert "[REDACTED]" in saved
+
+
+def test_training_diagnostic_log_line_only_fires_when_content_changes(tmp_path):
+    class RepeatingSession:
+        headers = {}
+
+        def __init__(self):
+            self.bodies = iter([
+                "first line\n", "first line\n", "first line\n", "second line\n",
+            ])
+
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, next(self.bodies))
+
+    logger, stream = logger_and_stream()
+    client = rr.ComfyClient(
+        "https://proxy", RepeatingSession(), logger=logger,
+        training_diagnostics_dir=tmp_path,
+    )
+
+    for _ in range(4):
+        assert client.fetch_training_diagnostic("_training.log") == 200
+
+    logs = stream.getvalue()
+    assert logs.count("training diagnostic saved: ") == 2
+    assert (tmp_path / "_training.log").read_text(encoding="utf-8") == "second line\n"
+
+
+def test_heartbeat_diagnostic_log_throttled_to_once_per_minute(tmp_path):
+    class ChangingHeartbeatSession:
+        headers = {}
+
+        def __init__(self):
+            self.counter = itertools.count(1)
+
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, f"{next(self.counter)} step\n")
+
+    logger, stream = logger_and_stream()
+    # Heartbeat content changes on every call (a live counter), but the clock
+    # only advances past the 60 s threshold on the last call.
+    clock = iter([0.0, 10.0, 30.0, 59.0, 65.0])
+    client = rr.ComfyClient(
+        "https://proxy", ChangingHeartbeatSession(), logger=logger,
+        monotonic=lambda: next(clock),
+        training_diagnostics_dir=tmp_path,
+    )
+
+    for _ in range(5):
+        assert client.fetch_training_diagnostic("_training.heartbeat") == 200
+
+    logs = stream.getvalue()
+    # First call always logs (no prior snapshot); the four calls inside the
+    # same minute window are suppressed except the one past 60 s.
+    assert logs.count("training diagnostic saved: ") == 2
+    assert (tmp_path / "_training.heartbeat").read_text(encoding="utf-8") == "5 step\n"
+
+
+def test_training_log_diagnostic_not_time_throttled_only_heartbeat_is(tmp_path):
+    class ChangingLogSession:
+        headers = {}
+
+        def __init__(self):
+            self.counter = itertools.count(1)
+
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, f"line {next(self.counter)}\n")
+
+    logger, stream = logger_and_stream()
+    # Every call happens within the same second — only the heartbeat file gets
+    # a once-per-minute cap; _training.log logs on every content change.
+    client = rr.ComfyClient(
+        "https://proxy", ChangingLogSession(), logger=logger,
+        monotonic=lambda: 0.0,
+        training_diagnostics_dir=tmp_path,
+    )
+
+    for _ in range(3):
+        assert client.fetch_training_diagnostic("_training.log") == 200
+
+    logs = stream.getvalue()
+    assert logs.count("training diagnostic saved: ") == 3
 
 
 def test_marker_polling_persistent_502_times_out_and_termination_is_verified(tmp_path):

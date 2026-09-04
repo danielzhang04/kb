@@ -24,6 +24,88 @@ import yaml
 
 PLACEHOLDER = re.compile(r"{{\s*([A-Za-z_][A-Za-z0-9_]*)\s*}}")
 
+# Every pod-side path this config carries must be an absolute POSIX path under
+# this prefix — it is read by ai-toolkit inside the pod's Linux container, never
+# on the machine that renders it.
+POD_PATH_PREFIX = "/workspace/"
+
+# Git Bash's MSYS layer rewrites a bare-looking absolute POSIX argument
+# (`/workspace/...`) into a Windows path before Python ever sees it, unless the
+# caller set MSYS_NO_PATHCONV=1 or ran from PowerShell/cmd instead. This is the
+# exact prefix that mangling produces (confirmed by the creator-001 smoke's
+# `_training.log`, which shipped `folder_path` as
+# `C:/Program Files/Git/workspace/ComfyUI/input/creator001krea2`).
+MSYS_MANGLED_PREFIX = "C:/Program Files/Git/"
+
+WINDOWS_DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+class PodPathError(ValueError):
+    """A pod-side path option is not a clean absolute POSIX /workspace/... path."""
+
+
+def validate_pod_path(value: str, option_name: str) -> None:
+    """Fail closed on any pod-side path option that isn't a real POSIX path.
+
+    `--dataset-dir`, `--output-dir`, and `--base-model-path` are all read by
+    ai-toolkit inside the pod's Linux container. If Git Bash's MSYS path
+    conversion (or any other Windows-path leakage) mangles one of these before
+    it reaches this script, the rendered `training.json` silently ships a
+    Windows path the pod can never resolve, and the trainer fails deep inside
+    dataset/model loading with a confusing error. Reject it here instead,
+    where the operator can see exactly which option and why.
+    """
+    if not isinstance(value, str) or not value:
+        raise PodPathError(f"{option_name} must be a non-empty string, got {value!r}")
+    if value.startswith(MSYS_MANGLED_PREFIX):
+        raise PodPathError(
+            f"{option_name}={value!r} looks like Git Bash's MSYS path conversion "
+            "rewrote a POSIX /workspace/... argument into a Windows path. Set "
+            "MSYS_NO_PATHCONV=1 before running this script, or run it from "
+            "PowerShell instead."
+        )
+    if "\\" in value:
+        raise PodPathError(
+            f"{option_name}={value!r} contains a backslash; pod-side paths must be "
+            "POSIX paths (forward slashes only)."
+        )
+    if "Program Files" in value:
+        raise PodPathError(
+            f"{option_name}={value!r} contains 'Program Files', which cannot be a "
+            "pod-side path."
+        )
+    if WINDOWS_DRIVE_LETTER.match(value):
+        raise PodPathError(
+            f"{option_name}={value!r} starts with a Windows drive letter, not a "
+            "pod-side POSIX path."
+        )
+    if not value.startswith(POD_PATH_PREFIX):
+        raise PodPathError(
+            f"{option_name}={value!r} must be an absolute POSIX path starting with "
+            f"{POD_PATH_PREFIX!r}."
+        )
+
+
+def validate_rendered_pod_paths(config: dict) -> None:
+    """Re-check the same pod-side paths after they land in the rendered config.
+
+    Called both by this script's own `main` (belt-and-suspenders on top of the
+    pre-render CLI check) and by `build_training_set.py`, which validates an
+    already-rendered `training.json` sitting in a pod-bound dataset dir before
+    it lets `_dataset.ready` be written next to it.
+    """
+    try:
+        process = config["config"]["process"][0]
+        dataset_dir = process["datasets"][0]["folder_path"]
+        output_dir = process["training_folder"]
+        base_model_path = process["model"]["name_or_path"]
+    except (KeyError, IndexError, TypeError) as exc:
+        raise PodPathError(f"config is missing an expected pod-path field: {exc}") from exc
+    validate_pod_path(dataset_dir, "datasets[0].folder_path (--dataset-dir)")
+    validate_pod_path(output_dir, "training_folder (--output-dir)")
+    validate_pod_path(base_model_path, "model.name_or_path (--base-model-path)")
+
+
 # Module 11's on-screen values. Changing one of these is a deliberate deviation and
 # has to be argued in TENSOR-TRAINING.md, not slipped in through a CLI flag.
 MODULE_11 = {
@@ -134,8 +216,21 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    try:
+        validate_pod_path(args.dataset_dir, "--dataset-dir")
+        validate_pod_path(args.output_dir, "--output-dir")
+        validate_pod_path(args.base_model_path, "--base-model-path")
+    except PodPathError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+
     rendered = render(args.template.read_text(encoding="utf-8"), build_context(args))
     config = yaml.safe_load(rendered)
+    try:
+        validate_rendered_pod_paths(config)
+    except PodPathError as exc:
+        print(f"error: rendered config carries a bad pod path: {exc}", file=sys.stderr)
+        return 1
     drift = check_module_11(config)
     if drift and not args.allow_drift:
         print("config drifted from module 11:", file=sys.stderr)

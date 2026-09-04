@@ -64,6 +64,10 @@ TRANSIENT_MARKER_ERROR_TYPES = {
 }
 PERSISTENT_MARKER_502_SECONDS = 5 * 60.0
 TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat", "_training.log")
+# The heartbeat file can legitimately change on every poll cycle (it is a live
+# counter); throttle its "saved" log line so an unchanged-content guard alone
+# does not still spam once-every-~7s heartbeat log lines.
+HEARTBEAT_DIAGNOSTIC_LOG_MIN_INTERVAL_SECONDS = 60.0
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 COMFY_PORT = 8188
 COMFY_OUTPUT_DIR = "/workspace/output"
@@ -2415,6 +2419,11 @@ class ComfyClient:
         self._sleep = sleep
         self._monotonic = monotonic
         self.training_diagnostics_dir = training_diagnostics_dir
+        # filename -> (size, sha256 hex digest) of the last snapshot actually logged.
+        self._diag_last_logged_snapshot: dict[str, tuple[int, str]] = {}
+        # filename -> monotonic time of the last "saved" log line, for the
+        # heartbeat's additional once-per-minute log throttle.
+        self._diag_last_logged_at: dict[str, float] = {}
         if session is None:
             # The Pod proxy is public; never discover credentials from netrc or proxy env.
             self.session.trust_env = False
@@ -2551,6 +2560,33 @@ class ComfyClient:
         except Exception as exc:
             return f"error:{type(exc).__name__}"
 
+    def _log_training_diagnostic_saved(
+        self, filename: str, destination: Path, body: bytes,
+    ) -> None:
+        """Log the "saved" line only when the snapshot's content actually changed.
+
+        The snapshot is written to disk on every marker-poll cycle (about every
+        7 s) regardless; this only gates the INFO log line so an unchanged file
+        does not spam the log every cycle. The heartbeat file can legitimately
+        change every cycle (it is a live counter), so it gets an additional
+        once-per-minute cap on top of the change check.
+        """
+        snapshot = (len(body), hashlib.sha256(body).hexdigest())
+        if self._diag_last_logged_snapshot.get(filename) == snapshot:
+            return
+        if filename == "_training.heartbeat":
+            now = self._monotonic()
+            last_logged_at = self._diag_last_logged_at.get(filename)
+            if (last_logged_at is not None
+                    and now - last_logged_at < HEARTBEAT_DIAGNOSTIC_LOG_MIN_INTERVAL_SECONDS):
+                self._diag_last_logged_snapshot[filename] = snapshot
+                return
+            self._diag_last_logged_at[filename] = now
+        self._diag_last_logged_snapshot[filename] = snapshot
+        self.logger.info(
+            "training diagnostic saved: %s bytes=%d", destination, len(body),
+        )
+
     def fetch_training_diagnostic(self, filename: str) -> int | str:
         if filename not in TRAINING_DIAGNOSTIC_FILENAMES:
             raise HarnessError(f"unsupported training diagnostic: {filename!r}")
@@ -2584,9 +2620,7 @@ class ComfyClient:
                 partial.replace(destination)
             finally:
                 partial.unlink(missing_ok=True)
-            self.logger.info(
-                "training diagnostic saved: %s bytes=%d", destination, len(body),
-            )
+            self._log_training_diagnostic_saved(filename, destination, body)
             return status
         except OSError as exc:
             self.logger.warning(
