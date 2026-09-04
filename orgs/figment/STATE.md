@@ -162,3 +162,13 @@ final values.
 - No third blind run: codex-deep diagnosis + hardening dispatched (ComfyUI --cpu transport, continuous training log +
   heartbeat via /view, cgroup/RAM/VRAM logging, RunPod pod-log capture on failure, ai-toolkit krea2 config check vs the
   pinned commit, pod-class verdict). Today's spend $2.35; arc ≈ $9.0 of $50.
+
+## 2026-09-04 19:05 — first LoRA steps ever taken; publish naming fix; 2000-step ruling
+
+- Smoke #3: failed on a Git-Bash-mangled dataset path (our render bug; guard added bd55b223). Smoke #4: environment OK,
+  Krea-2 raw loaded + quantized, 50 steps at 3.85 s/step, loss 4.5e-2 → 7e-2 range, checkpoint saved as the bare
+  `creator001krea2.safetensors` — our publish step expected `_000000050` and failed closed (~$0.45). Naming rule
+  (matches the package's tester list): intermediates `<trigger>_<step:09d>`, final = bare trigger name.
+- Ruling: full run at 2000 steps / 250-step saves (8 checkpoints) tonight — 3000 steps at 3.85 s/step is ~3.2 h on an
+  L40S, over the 180-min marker window and the daily budget; revisit 3000 on a fresh budget. Smoke #5 (100 steps)
+  proves the publish path before the full run. Today's spend ≈ $2.9.
