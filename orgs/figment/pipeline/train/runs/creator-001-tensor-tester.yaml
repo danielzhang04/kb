@@ -270,54 +270,6 @@
     },
     {
       "seed": 1595,
-      "output_name": "c001-tensor-tester-000002000",
-      "expected_images": 1,
-      "substitutions": [
-        {
-          "node_id": "4",
-          "field": "lora_name",
-          "value": "creator001krea2_000002000.safetensors"
-        }
-      ]
-    },
-    {
-      "seed": 1595,
-      "output_name": "c001-tensor-tester-000002250",
-      "expected_images": 1,
-      "substitutions": [
-        {
-          "node_id": "4",
-          "field": "lora_name",
-          "value": "creator001krea2_000002250.safetensors"
-        }
-      ]
-    },
-    {
-      "seed": 1595,
-      "output_name": "c001-tensor-tester-000002500",
-      "expected_images": 1,
-      "substitutions": [
-        {
-          "node_id": "4",
-          "field": "lora_name",
-          "value": "creator001krea2_000002500.safetensors"
-        }
-      ]
-    },
-    {
-      "seed": 1595,
-      "output_name": "c001-tensor-tester-000002750",
-      "expected_images": 1,
-      "substitutions": [
-        {
-          "node_id": "4",
-          "field": "lora_name",
-          "value": "creator001krea2_000002750.safetensors"
-        }
-      ]
-    },
-    {
-      "seed": 1595,
       "output_name": "c001-tensor-tester-final",
       "expected_images": 1,
       "substitutions": [

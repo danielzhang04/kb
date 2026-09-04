@@ -5,7 +5,7 @@
     "cloud": "SECURE"
   },
   "price_usd_per_hour": 1.30,
-  "max_minutes": 280,
+  "max_minutes": 270,
   "max_placement_attempts": 1,
   "container_disk_gb": 80,
   "volume_gb": 200,
@@ -74,8 +74,8 @@
     "caption_word": "woman",
     "caption_model": "Qwen/Qwen3-VL-8B-Instruct",
     "dataset_min_images": 20,
-    "checkpoint_steps": "000000250 000000500 000000750 000001000 000001250 000001500 000001750 000002000 000002250 000002500 000002750",
-    "final_step": "000003000",
+    "checkpoint_steps": "000000250 000000500 000000750 000001000 000001250 000001500 000001750",
+    "final_step": "000002000",
     "hf_home": "/workspace/hf",
     "reinstall_torch": "0",
     "torch_spec": "torch==2.13.0",
@@ -136,30 +136,6 @@
       "remote": "creator001krea2_000001750.safetensors",
       "type": "output",
       "local": "creator001krea2_000001750.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002000.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002000.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002250.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002250.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002500.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002500.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002750.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002750.safetensors",
       "wait_for": "_training.complete"
     },
     {

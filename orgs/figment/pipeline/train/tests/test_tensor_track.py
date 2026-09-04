@@ -93,7 +93,7 @@ def test_config_renderer_refuses_a_drifted_config():
         "network.linear_alpha: 16 != 32",
     ]
     assert renderer.check_module_11(render_config(steps=5000)) == [
-        "train.steps: 5000 != 3000"
+        "train.steps: 5000 != 2000"
     ]
 
 
@@ -179,21 +179,52 @@ def test_training_start_script_streams_detached_training_evidence():
     assert failed_marker < transport_wait, "failure evidence must remain retrievable"
 
 
-def test_training_start_script_publishes_all_twelve_checkpoints_by_exact_name():
-    """Finding 10: the start script must copy the 11 intermediate saves plus the
-    exact step-3000 final into /workspace/output under the manifest's declared
-    artifact names, fail closed before the completion marker if any is missing,
-    and never infer "final" from mtime."""
+def test_training_start_script_publishes_all_eight_checkpoints_by_exact_name():
+    """Finding 10 (plus the smoke-#4 final-naming defect): the start script must
+    copy the 7 intermediate saves plus the final step-2000 checkpoint into
+    /workspace/output under the manifest's declared artifact names, fail closed
+    before the completion marker if any is missing, and never infer "final" from
+    mtime. ai-toolkit writes the final step's save ONLY under the bare trigger
+    name, never a step-suffixed one (evidence: smoke #4 wrote
+    creator001krea2.safetensors at the final step, no
+    creator001krea2_<step>.safetensors alongside it) — the source path for the
+    final checkpoint must reflect that, not "${trigger}_${final_step}.safetensors"."""
     _remote, rendered = runner.rendered_training_start_script(
         manifest("train"), MANIFESTS["train"],
     )
-    for step in range(250, 3000, 250):
+    for step in range(250, 2000, 250):
         assert f"{step:09d}" in rendered
-    assert "000003000" in rendered
+    # final_step still renders (used to filter checkpoint_steps below it), but
+    # never as part of a step-suffixed filename.
+    assert "final_step='000002000'" in rendered
+    assert "_${final_step}.safetensors" not in rendered
+    assert 'final_ckpt="${checkpoint_dir}/${trigger}.safetensors"' in rendered
     assert f"cp \"$final_ckpt\" \"/workspace/output/${{trigger}}.safetensors\"" in rendered
     assert "-printf '%T@" not in rendered, "final must not be inferred from mtime"
-    assert rendered.index("missing+=") < rendered.rindex("touch /workspace/output/_training.complete")
+    # the checkpoint directory listing must be logged before the existence check
+    # so a failed publish still shows what was actually on disk.
+    listing_index = rendered.index("RESOURCE checkpoint directory listing")
+    missing_index = rendered.index("missing+=")
+    assert listing_index < missing_index
+    assert missing_index < rendered.rindex("touch /workspace/output/_training.complete")
     assert "fail \"missing checkpoint(s) before publish" in rendered
+    # checkpoint_steps is filtered to strictly-below-final_step before use, so a
+    # manifest that (by mistake) lists the final step among checkpoint_steps can
+    # never send this section looking for a step-suffixed final file.
+    assert "10#$step < 10#$final_step" in rendered
+
+
+def test_training_start_script_smoke_publish_treats_the_final_step_as_bare():
+    """The smoke manifest's checkpoint_steps (one step-50 intermediate) and
+    final_step (100) are genuinely different steps, so the shared publish logic
+    exercises the intermediate-vs-bare-final distinction at 1+1 instead of 7+1."""
+    _remote, rendered = runner.rendered_training_start_script(
+        manifest("train_smoke"), MANIFESTS["train_smoke"],
+    )
+    assert "checkpoint_steps_raw=000000050" in rendered
+    assert "final_step='000000100'" in rendered
+    assert "_${final_step}.safetensors" not in rendered
+    assert 'final_ckpt="${checkpoint_dir}/${trigger}.safetensors"' in rendered
 
 
 def test_lorapath_start_script_renders_for_both_generation_manifests():
@@ -250,6 +281,23 @@ def test_manifest_ceilings_fit_the_daily_budget(name):
     )
 
 
+def test_full_manifest_ceiling_matches_the_recomputed_2000_step_arithmetic():
+    """steps=2000 (not module 11's 3000 — L40S measured at 3.85 s/step makes 3000
+    steps ~3.2 h, over the marker window and the daily budget) drops the artifact
+    ladder from 12 to 8, which lowers the real preflight minimum; max_minutes is
+    set to 270 (a small buffer over the recomputed 266-minute floor), not the
+    stale 280 sized for 12 artifacts."""
+    doc = manifest("train")
+    assert doc["job_timeout_seconds"] == 10800
+    assert doc["readiness_timeout_seconds"] == 3600
+    assert doc["artifact_download_seconds"] == 180
+    assert len(runner.manifest_artifacts(doc)) == 8
+    minimum = runner.minimum_runtime_minutes(doc)
+    assert minimum == pytest.approx(266.0)
+    assert doc["max_minutes"] == 270
+    assert doc["max_minutes"] >= minimum
+
+
 def test_training_manifest_replicates_module_11_transport():
     doc = manifest("train")
     training = doc["training"]
@@ -266,22 +314,25 @@ def test_training_manifest_replicates_module_11_transport():
     assert {item.subfolder for item in uploads} == {TRIGGER}
     assert any(item.remote_name == "training.json" for item in uploads)
     artifacts = runner.manifest_artifacts(doc)
-    # The full 12-checkpoint ladder now comes back through /view like any other
-    # artifact — no network volume required. minimum_runtime_minutes no longer
-    # multiplies the job timeout by the artifact count (that was the defect); it
-    # reserves one shared job timeout for the completion marker plus one
+    # The full 8-checkpoint ladder (steps=2000, save_every=250, module 11's
+    # save-every kept identical while steps was cut from 3000 — see
+    # TENSOR-TRAINING.md) comes back through /view like any other artifact — no
+    # network volume required. minimum_runtime_minutes no longer multiplies the
+    # job timeout by the artifact count (that was the defect); it reserves one
+    # shared job timeout for the completion marker plus one
     # artifact_download_seconds allowance per further artifact. See
     # HARNESS-CHANGES.md addendum.
     step_checkpoints = [
-        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 3000, 250)
+        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 2000, 250)
     ]
     assert [artifact["remote"] for artifact in artifacts] == [
         *step_checkpoints, f"{TRIGGER}.safetensors",
     ]
-    assert len(artifacts) == 12
+    assert len(artifacts) == 8
     assert all(artifact["wait_for"] == "_training.complete" for artifact in artifacts)
     assert doc["job_timeout_seconds"] == 10800
     assert doc["artifact_download_seconds"] == 180
+    assert doc["max_minutes"] == 270
     assert "network_volume_id" not in doc
 
 
@@ -293,14 +344,19 @@ def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
     full = manifest("train")
     training = doc["training"]
     assert training["checkpoint_steps"] == "000000050"
-    assert training["final_step"] == "000000050"
+    # final_step is deliberately a DIFFERENT step than checkpoint_steps: smoke #4
+    # aliased them (both 50) and that made publish look for a step-suffixed
+    # "final" file ai-toolkit never writes (it only ever saves the final step
+    # under the bare trigger name). steps=100/save_every=50 keeps the two saves
+    # genuinely distinct.
+    assert training["final_step"] == "000000100"
     # same model pin, same trainer pin, same start script as the full run
     assert doc["models"] == full["models"]
     assert training["git_ref"] == full["training"]["git_ref"]
     assert training["start_script_file"] == full["training"]["start_script_file"]
-    assert doc["job_timeout_seconds"] == 1500
+    assert doc["job_timeout_seconds"] == 1800
     assert doc["readiness_timeout_seconds"] == 3600
-    assert doc["max_minutes"] == 98
+    assert doc["max_minutes"] == 105
     assert doc["price_usd_per_hour"] == 1.30
     artifacts = runner.manifest_artifacts(doc)
     assert [a["remote"] for a in artifacts] == [
@@ -308,6 +364,7 @@ def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
     ]
     assert all(a["wait_for"] == "_training.complete" for a in artifacts)
     minimum = runner.minimum_runtime_minutes(doc)
+    assert minimum == pytest.approx(101.0)
     assert doc["max_minutes"] >= minimum
     # tight ceiling: this smoke must stay cheap, not creep toward the full run's cost
     assert doc["max_minutes"] < 120
@@ -316,7 +373,7 @@ def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
     _remote, rendered = runner.rendered_training_start_script(doc, MANIFESTS["train_smoke"])
     assert "{{" not in rendered and "}}" not in rendered
     assert "checkpoint_steps_raw=000000050" in rendered
-    assert "final_step='000000050'" in rendered
+    assert "final_step='000000100'" in rendered
 
 
 @pytest.mark.parametrize("name", ["train", "train_smoke"])
@@ -326,7 +383,7 @@ def test_training_manifests_run_comfyui_as_cpu_only_transport(name):
     ]
 
 
-def test_tester_takes_the_12_checkpoints_as_an_upload_no_network_volume():
+def test_tester_takes_the_8_checkpoints_as_an_upload_no_network_volume():
     """Finding 12: tester ranks the checkpoints the training run already downloaded
     locally, uploaded from train/runs/out/creator-001-tensor-train/ — no recurring
     network-volume charge, no REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID sentinel, no
@@ -354,7 +411,7 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
     assert lora["strength_model"] == 1.0 and lora["strength_clip"] == 1.0
 
     jobs = doc["jobs"]
-    assert len(jobs) == 12, "module 11 ranks 11 step saves plus the final checkpoint"
+    assert len(jobs) == 8, "our 2000-step run ranks 7 step saves plus the final checkpoint"
     assert {job["seed"] for job in jobs} == {1595}
     assert {job["expected_images"] for job in jobs} == {1}
     varied = set()
@@ -362,8 +419,10 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
         fields = {(sub["node_id"], sub["field"]) for sub in job["substitutions"]}
         assert fields == {("4", "lora_name")}
         varied.add(job["substitutions"][0]["value"])
-    assert len(varied) == 12
+    assert len(varied) == 8
     assert f"{TRIGGER}_000000250.safetensors" in varied
+    assert f"{TRIGGER}_000001750.safetensors" in varied
+    assert f"{TRIGGER}_000002000.safetensors" not in varied
     assert f"{TRIGGER}.safetensors" in varied
 
 

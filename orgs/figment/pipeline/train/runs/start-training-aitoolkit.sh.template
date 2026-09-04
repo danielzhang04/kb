@@ -220,31 +220,58 @@ if [[ "$trainer_rc" -ne 0 ]]; then
 fi
 
 # --- 6. publish -----------------------------------------------------------
-# The manifest declares 12 downloadable artifacts: the 11 intermediate
-# save-every-250 checkpoints (step 250..2750) plus the final step-3000 save
-# under the bare trigger name. "final" is the exact step-3000 filename, never
-# an mtime-sorted guess — a stray newer file in checkpoint_dir must not be
-# silently published as the model. Every one of the 12 is verified present
-# and non-empty BEFORE anything is copied and before the completion marker is
-# written; a live run must fail closed on a partial checkpoint ladder rather
-# than let the tester or generation stage silently rank/render fewer than 12.
-# The intermediate step numbers plus the final step are rendered from the
-# manifest's training.checkpoint_steps (space-separated, module 11's fixed
-# cadence for a full run: steps=3000, save_every=250, keep=15 -> step 250..2750)
-# and training.final_step (module 11: step 3000) — constants for a given
-# manifest, not derived on the pod, so a partial rename upstream cannot
-# silently shrink the ladder. A reduced-step smoke manifest renders the same
-# template with its own shorter checkpoint_steps/final_step (see
-# creator-001-tensor-train-smoke.yaml and TENSOR-TRAINING.md).
+# ai-toolkit's save naming is NOT uniform across steps (confirmed by the
+# creator-001 smoke's own checkpoint_dir plus the package's dataset tester
+# naming, e.g. nikk_krea2_000000250 .. _000002750 alongside nikk_krea2.safetensors):
+# every intermediate save (any step strictly below the run's final step) is
+# written as "<trigger>_<step:09d>.safetensors", but the save AT the final
+# step is written ONLY under the bare "<trigger>.safetensors" name — there is
+# no "<trigger>_<final_step>.safetensors" file to look for. Treating the final
+# step like just another numbered checkpoint was the exact bug this section
+# fixes (smoke #4 trained fine but publish then looked for a step-suffixed
+# final file that ai-toolkit never wrote).
+#
+# The manifest's training.checkpoint_steps (space-separated, rendered from
+# module 11's fixed cadence for a full run: steps=2000, save_every=250,
+# keep=15 -> step 250..1750) and training.final_step (module 11: step 2000)
+# are constants for a given manifest, not derived on the pod. checkpoint_steps
+# is additionally filtered here to steps strictly below final_step, so a
+# manifest mistake that lists the final step among the "intermediate" steps
+# (as the smoke manifest did before this fix) can never make this section go
+# looking for a step-suffixed final file that will never exist. Every
+# checkpoint — every filtered intermediate plus the bare final — is verified
+# present and non-empty BEFORE anything is copied and before the completion
+# marker is written; a live run must fail closed on a partial checkpoint
+# ladder rather than let the tester or generation stage silently rank/render
+# fewer checkpoints than the manifest declares. "final" is always the exact
+# bare-name file, never an mtime-sorted guess — a stray newer file in
+# checkpoint_dir must not be silently published as the model. A reduced-step
+# smoke manifest renders the same template with its own shorter
+# checkpoint_steps/final_step (see creator-001-tensor-train-smoke.yaml and
+# TENSOR-TRAINING.md).
 checkpoint_dir="${train_output}/${trigger}"
-IFS=' ' read -r -a checkpoint_steps <<< "$checkpoint_steps_raw"
-[[ ${#checkpoint_steps[@]} -gt 0 ]] || fail 'training.checkpoint_steps rendered no intermediate checkpoint steps'
+IFS=' ' read -r -a checkpoint_steps_all <<< "$checkpoint_steps_raw"
+[[ ${#checkpoint_steps_all[@]} -gt 0 ]] \
+  || fail 'training.checkpoint_steps rendered no intermediate checkpoint steps'
+checkpoint_steps=()
+for step in "${checkpoint_steps_all[@]}"; do
+  if (( 10#$step < 10#$final_step )); then
+    checkpoint_steps+=("$step")
+  fi
+done
+[[ ${#checkpoint_steps[@]} -gt 0 ]] \
+  || fail 'training.checkpoint_steps rendered no intermediate checkpoint steps below final_step'
+
+log 'RESOURCE checkpoint directory listing (before publish)'
+find "$checkpoint_dir" -maxdepth 1 -type f -printf '%f\n' 2>&1 \
+  | sort | tee -a "$training_log" || true
+
 missing=()
 for step in "${checkpoint_steps[@]}"; do
   ckpt="${checkpoint_dir}/${trigger}_${step}.safetensors"
   [[ -s "$ckpt" ]] || missing+=("$(basename "$ckpt")")
 done
-final_ckpt="${checkpoint_dir}/${trigger}_${final_step}.safetensors"
+final_ckpt="${checkpoint_dir}/${trigger}.safetensors"
 [[ -s "$final_ckpt" ]] || missing+=("$(basename "$final_ckpt") (final)")
 if [[ ${#missing[@]} -gt 0 ]]; then
   fail "missing checkpoint(s) before publish: ${missing[*]}"

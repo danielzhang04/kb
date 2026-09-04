@@ -1,19 +1,19 @@
 {
-  "_smoke": "Findings 13/14 dependency+compatibility smoke for the training stage (not the module-10 dependency-smoke in expand/). Same image, same trainer pin, same Krea-2 raw model pin, and the SAME start script (start-training-aitoolkit.sh.template) as creator-001-tensor-train.yaml, but training.json is rendered with steps=50/save_every=50 (render_aitoolkit_config.py --set steps=50 --set save_every=50 --allow-drift) before this manifest runs, so the pod exercises the identical install -> torch.cuda -> ai-toolkit import -> Krea raw state-dict load -> N training steps -> save -> publish -> marker path at minimum cost. training.checkpoint_steps/final_step both name the single step-50 save, published twice (once under its own step name, once copied to the bare trigger name) so the publish logic that copies 11 intermediates plus a final is exercised at 1+1 instead of 11+1. A third artifact, _training.log, is declared (same wait_for marker, .log is an allowed artifact suffix per pod/README.md) purely so the harness downloads the full ai-toolkit stdout/stderr locally — TENSOR-TRAINING.md documents that the full run is gated on this file showing the state dict loaded without missing/unexpected keys.",
+  "_smoke": "Findings 13/14 dependency+compatibility smoke for the training stage (not the module-10 dependency-smoke in expand/). Same image, same trainer pin, same Krea-2 raw model pin, and the SAME start script (start-training-aitoolkit.sh.template) as creator-001-tensor-train.yaml, but training.json is rendered with steps=100/save_every=50 (render_aitoolkit_config.py --set steps=100 --set save_every=50 --allow-drift) before this manifest runs, so the pod exercises the identical install -> torch.cuda -> ai-toolkit import -> Krea raw state-dict load -> N training steps -> save -> publish -> marker path at minimum cost. training.checkpoint_steps names the single step-50 intermediate save and training.final_step is 100, a DIFFERENT step, on purpose: smoke #4 (steps=50/save_every=50, checkpoint_steps==final_step==50) proved ai-toolkit only ever writes the step-AT-final under the bare trigger name, never a step-suffixed one, so aliasing the smoke's one intermediate save onto the final step made the wrapper look for a step-suffixed final file that could never exist. With final_step > the one checkpoint_steps entry, the publish logic that copies 7 intermediates plus a bare final on the full run is exercised at 1+1 instead, with the intermediate and final genuinely distinct saves. A third artifact, _training.log, is declared (same wait_for marker, .log is an allowed artifact suffix per pod/README.md) purely so the harness downloads the full ai-toolkit stdout/stderr locally — TENSOR-TRAINING.md documents that the full run is gated on this file showing the state dict loaded without missing/unexpected keys.",
   "gpu": {
     "type": "NVIDIA L40S",
     "count": 1,
     "cloud": "SECURE"
   },
   "price_usd_per_hour": 1.30,
-  "max_minutes": 98,
+  "max_minutes": 105,
   "max_placement_attempts": 1,
   "container_disk_gb": 80,
   "volume_gb": 200,
   "volume_mount_path": "/workspace",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
   "readiness_timeout_seconds": 3600,
-  "job_timeout_seconds": 1500,
+  "job_timeout_seconds": 1800,
   "artifact_download_seconds": 180,
   "comfyui": {
     "root": "/workspace/ComfyUI",
@@ -76,7 +76,7 @@
     "caption_model": "Qwen/Qwen3-VL-8B-Instruct",
     "dataset_min_images": 20,
     "checkpoint_steps": "000000050",
-    "final_step": "000000050",
+    "final_step": "000000100",
     "hf_home": "/workspace/hf",
     "reinstall_torch": "0",
     "torch_spec": "torch==2.13.0",

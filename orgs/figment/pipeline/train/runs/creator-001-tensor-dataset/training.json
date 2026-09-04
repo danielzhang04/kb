@@ -19,7 +19,7 @@
         },
         "datasets": [
           {
-            "folder_path": "C:/Program Files/Git/workspace/ComfyUI/input/creator001krea2",
+            "folder_path": "/workspace/ComfyUI/input/creator001krea2",
             "caption_ext": "txt",
             "caption_dropout_rate": 0.05,
             "shuffle_tokens": false,

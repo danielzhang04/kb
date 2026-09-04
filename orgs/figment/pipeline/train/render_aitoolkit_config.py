@@ -106,14 +106,17 @@ def validate_rendered_pod_paths(config: dict) -> None:
     validate_pod_path(base_model_path, "model.name_or_path (--base-model-path)")
 
 
-# Module 11's on-screen values. Changing one of these is a deliberate deviation and
-# has to be argued in TENSOR-TRAINING.md, not slipped in through a CLI flag.
+# Module 11's on-screen values, EXCEPT steps: module 11 ran 3000, we run 2000
+# (deviation argued in TENSOR-TRAINING.md — L40S measured at 3.85 s/step makes
+# 3000 steps ~3.2 h, over the marker window and the daily budget; 3000 is to be
+# revisited). Changing any of these is a deliberate deviation and has to be
+# argued in TENSOR-TRAINING.md, not slipped in through a CLI flag.
 MODULE_11 = {
     "rank": 32,
     # 1.0e-4, not 1e-4: YAML 1.1 only reads the former as a float, and ai-toolkit
     # hands `lr` straight to the optimizer.
     "lr": "1.0e-4",
-    "steps": 3000,
+    "steps": 2000,
     "save_every": 250,
     "max_step_saves_to_keep": 15,
     "resolutions": "[512, 768, 1024]",
@@ -168,7 +171,7 @@ def check_module_11(config: dict) -> list[str]:
         ("save.save_every", save["save_every"], 250),
         ("save.max_step_saves_to_keep", save["max_step_saves_to_keep"], 15),
         ("save.dtype", save["dtype"], "bf16"),
-        ("train.steps", train["steps"], 3000),
+        ("train.steps", train["steps"], 2000),
         ("train.batch_size", train["batch_size"], 1),
         ("train.gradient_accumulation", train["gradient_accumulation"], 1),
         ("train.train_unet", train["train_unet"], True),

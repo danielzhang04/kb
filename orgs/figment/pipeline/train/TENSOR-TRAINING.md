@@ -2,10 +2,11 @@
 
 Faithful replication of the package's current training path (Ostris AI Toolkit + Krea-2 Raw),
 its checkpoint-ranking harness (module 11's dataset tester), and its generation pass
-(module 09), ported to `pipeline/pod/runpod_run.py`. Nothing here has been run on a GPU:
-every number below is either read off their UI/JSON, read out of upstream source, or a
-declared ceiling. Sources: `research/r15b-training.md` (module 11), `research/r15-10sorlabs-artefacts.md`
-§3e and §3g, and the two package JSONs.
+(module 09), ported to `pipeline/pod/runpod_run.py`. Every number below is either read off
+their UI/JSON, read out of upstream source, a declared ceiling, or (torch/CUDA, state-dict
+compatibility, per-step throughput) measured live by the training smoke — see "Step count:
+2000, not 3000" below. Sources: `research/r15b-training.md` (module 11),
+`research/r15-10sorlabs-artefacts.md` §3e and §3g, and the two package JSONs.
 
 ## Model and licence
 
@@ -48,8 +49,8 @@ Qwen-Image's VAE and a Qwen3-VL encoder. Z-Image Base / klein 4B Base remain the
 | "do not use the turbo with the training adapter" | raw only | raw only | turbo is inference-only for us too |
 | target / rank | LoRA / 32 | `network.linear: 32`, `linear_alpha: 32` | |
 | optimizer / lr / weight decay | AdamW8Bit / 1e-4 / 1e-4 | `adamw8bit` / `1.0e-4` / `optimizer_params.weight_decay` | `1e-4` unquoted is a YAML *string*; must be `1.0e-4` |
-| steps / batch / grad accum | 3000 / 1 / 1 | identical | |
-| save dtype / every / keep | BF16 / 250 / 15 | identical | 15 is what makes all 12 rankable |
+| steps / batch / grad accum | 3000 / 1 / 1 | **2000** / 1 / 1 | deviation — see "Step count: 2000, not 3000" below |
+| save dtype / every / keep | BF16 / 250 / 15 | identical | 15 is what makes every save rankable |
 | quantize transformer / TE | qfloat8 / qfloat8, Low VRAM on, offload off | identical | |
 | timestep / bias / loss | Linear / Balanced / MSE | identical | |
 | cache text embeddings | ON | ON | |
@@ -58,7 +59,7 @@ Qwen-Image's VAE and a Qwen3-VL encoder. Z-Image Base / klein 4B Base remain the
 | caption dropout / ext / repeats | 0.05 / txt / 1 | identical | |
 | captions | Qwen3-VL auto-caption in the toolkit UI | `caption_mode` = `provided` (default) / `auto` / `single_word` | see below |
 | GPU / wall clock | RTX PRO 6000 Blackwell 96 GB, 1 h 17 m | L40S 48 GB, **unmeasured** | the one number we cannot inherit |
-| tester | 12 branches, one graph, seed 1595, 4 steps, cfg 1, res_2s/beta, 1448×2176, LoRA 1.0/1.0 | 12 **jobs**, one graph, all of the above identical | harness counts images per job |
+| tester | 12 branches, one graph, seed 1595, 4 steps, cfg 1, res_2s/beta, 1448×2176, LoRA 1.0/1.0 | 8 **jobs**, one graph, all of the above identical | harness counts images per job; 8 not 12 because our run saves 7 intermediate checkpoints (steps=2000/save_every=250) plus the final, not module 11's 11 |
 | module 09 | base 4-step → NMKD ×4 → ×0.25 → re-encode → 4-step @ 0.35 → FaceDetailer @ 0.15 | base 4-step → RealPLKSR ×4 → ×0.25 → re-encode → 4-step @ 0.35 | style LoRAs and FaceDetailer dropped (finding 16 — see the model/licence table) |
 
 Captioning: their captioner is `Qwen/Qwen3-VL-8B-Instruct` (float8, max res 512, 128 new
@@ -119,27 +120,46 @@ py -3 build_training_set.py --mode class \
    creator001krea2 --dataset-dir /workspace/ComfyUI/input/creator001krea2 --out
    runs/creator-001-tensor-dataset/training.json`. This is the only writer of `training.json`
    in this directory — the ai-toolkit trainer config, uploaded and read by the pod as
-   `training.config_name`. It refuses to write a config that has drifted off the module-11
-   numbers (`--allow-drift` to override, deliberately loud). The same command with
-   `--set steps=50 --set save_every=50 --allow-drift` renders the reduced-step config the
-   training smoke (next) uploads instead — same directory, same filename, run before the
-   smoke and re-rendered back to the module-11 numbers (no `--set`) before the full run.
+   `training.config_name`. It refuses to write a config that has drifted off our numbers
+   (module 11's, except `steps` — see "Step count: 2000, not 3000" below; `--allow-drift` to
+   override, deliberately loud). The same command with `--set steps=100 --set save_every=50
+   --allow-drift` renders the reduced-step config the training smoke (next) uploads instead —
+   same directory, same filename, run before the smoke and re-rendered back to our numbers
+   (no `--set`, no `--allow-drift` needed) before the full run.
+
+   **Checkpoint naming: the final step is bare, every other save is step-suffixed.** ai-toolkit
+   writes every intermediate save (any step strictly below the run's `steps`) as
+   `<trigger>_<step:09d>.safetensors`, but the save it writes AT the final step is named ONLY
+   `<trigger>.safetensors` — there is no `<trigger>_<final step>.safetensors` file. Confirmed two
+   ways: the package's own dataset tester names 11 intermediates `nikk_krea2_000000250` ...
+   `_000002750` alongside a separately-named `nikk_krea2.safetensors`, and smoke #4 (steps=50,
+   save_every=50 — one save point, which was also the final step) wrote only
+   `creator001krea2.safetensors` plus `optimizer.pt`, no `creator001krea2_000000050.safetensors`.
+   Smoke #4 aliased `training.checkpoint_steps` and `training.final_step` onto that same step, so
+   the wrapper's publish stage looked for a step-suffixed final file that could never exist and
+   failed closed (`missing checkpoint(s) before publish`) after training itself had succeeded.
+   `start-training-aitoolkit.sh.template`'s publish stage now sources the final checkpoint from
+   `${trigger}.safetensors` (never `${trigger}_${final_step}.safetensors`) and additionally
+   filters `checkpoint_steps` to entries strictly below `final_step` before treating them as
+   intermediates, so a manifest that repeats the aliasing mistake can't reproduce the failure.
 3a. `runs/creator-001-tensor-train-smoke.yaml` — findings 13/14's gate. Same image, same
    `ai-toolkit` pin, same Krea-2 raw model pin, and the same `start-training-aitoolkit.sh.template`
-   as the full run, but the uploaded `training.json` is the 50-step render from step 3. It
-   exercises the entire path — install, `torch.cuda.is_available()`, `ai-toolkit` import, the
-   Krea raw `state_dict` load, 50 training steps, one save, publish, completion marker — at a
-   $2.13 ceiling instead of the full run's $6.07+. Its `training.checkpoint_steps`/`final_step`
-   both name the single step-50 save (published once under its own step name and once under the
-   bare trigger name, mirroring the full run's intermediate+final publish shape at 1+1 instead of
-   11+1); a third declared artifact, `_training.log`, downloads the full `ai-toolkit` stdout/
-   stderr so it can be inspected locally. **The full training run in step 4 is gated on this
-   smoke's `_training.log` showing the Krea raw checkpoint's `state_dict` loaded with no
+   as the full run, but the uploaded `training.json` is the steps=100/save_every=50 render from
+   step 3. It exercises the entire path — install, `torch.cuda.is_available()`, `ai-toolkit`
+   import, the Krea raw `state_dict` load, 100 training steps, two saves, publish, completion
+   marker — at a $2.28 ceiling instead of the full run's $5.85+. Its `training.checkpoint_steps`
+   names the one step-50 intermediate save and `training.final_step` is 100 — deliberately a
+   different step, not the same one smoke #4 used, so the intermediate and bare-final publish
+   paths are genuinely exercised as distinct files (1+1) instead of the same step aliased twice.
+   A third declared artifact, `_training.log`, downloads the full `ai-toolkit` stdout/stderr so
+   it can be inspected locally. **The full training run in step 4 is gated on this smoke's
+   `_training.log` showing the Krea raw checkpoint's `state_dict` loaded with no
    `missing_keys`/`unexpected_keys` lines** (PyTorch's default `load_state_dict` behavior surfaces
    any key mismatch there) — the state-dict compatibility this document previously listed as
    unproved (former "What blocks a live run" item 4) and the torch/CUDA install combination
    (former item 3) are exactly what this smoke is designed to catch before the full ceiling is
-   spent, not something proved by reading a safetensors header offline.
+   spent, not something proved by reading a safetensors header offline. Smoke #4 already cleared
+   both: it trained at 3.85 s/step on L40S and ai-toolkit loaded the Krea raw checkpoint cleanly.
 4. `runs/creator-001-tensor-train.yaml` — bootstrap pulls the base; the start script installs
    ai-toolkit at the pin, restores ComfyUI's requirements, pre-warms the encoder/VAE, and then
    starts ComfyUI as a CPU-only, custom-node-free transport. No package install occurs after
@@ -147,17 +167,17 @@ py -3 build_training_set.py --mode class \
    dataset (`NN.png`/`NN.txt`/`training.json`, then `_dataset.ready`); the script captions
    (module 04/05 `single_word` fallback only — `provided` is the default and already captioned
    by step 2), records resource limits, runs `run.py training.json` under `nohup` while
-   streaming `_training.log` and a 30-second heartbeat, then verifies and copies **all 12** declared
-   checkpoints (the 11 save-every-250 steps plus the exact step-3000 final, never an
-   mtime-sorted guess) into `/workspace/output/`, writes a `_checkpoints.json` index, and only
-   then touches `_training.complete` — failing closed with `_training.failed` if any of the 12
-   is missing or empty (finding 10).
-5. `runs/creator-001-tensor-tester.yaml` — no network volume. It uploads the 12 checkpoints the
+   streaming `_training.log` and a 30-second heartbeat, then verifies and copies **all 8**
+   declared checkpoints (the 7 save-every-250 steps plus the exact step-2000 final under its
+   bare trigger name, never an mtime-sorted guess) into `/workspace/output/`, writes a
+   `_checkpoints.json` index, and only then touches `_training.complete` — failing closed with
+   `_training.failed` if any of the 8 is missing or empty (finding 10).
+5. `runs/creator-001-tensor-tester.yaml` — no network volume. It uploads the 8 checkpoints the
    training run downloaded locally (`uploads` glob on `out/creator-001-tensor-train/*.safetensors`,
    same shape as the dataset upload) into `ComfyUI/input/creator001krea2`, and the launcher
    symlinks that directory to `models/loras` (finding 12). Renders the same
-   prompt/seed/sampler/resolution 12 times with only `lora_name` varying. Operator eye-picks
-   the winner (theirs was step 1250).
+   prompt/seed/sampler/resolution 8 times with only `lora_name` varying. Operator eye-picks
+   the winner (theirs, on their 3000-step/12-checkpoint run, was step 1250).
 6. Copy the winner into `runs/creator-001-tensor-winner/`, then
    `runs/creator-001-tensor-gen.yaml` — 6 prompts × 2 seeds of angles and scenes the dataset
    never contained, identity LoRA at 0.80. Two `SaveImage` outputs per job (base, refined) —
@@ -170,39 +190,60 @@ py -3 build_training_set.py --mode class \
 
 | Stage | GPU | readiness / job ceiling | `max_minutes` | rate | preflight estimate | expected actual |
 |---|---|---|---|---|---|---|
-| train-smoke (findings 13/14 gate) | L40S | 3600 s / 1500 s + 2 × 180 s artifact allowance | 98 | $1.30/h | **$2.1233** | ~45–60 min setup + a few min for 50 steps |
-| train | L40S | 3600 s / 10800 s + 11 × 180 s artifact allowance | 280 | $1.30/h | **$6.0667** | 45–60 min setup + unmeasured train |
-| tester | L40S | 2400 s / 300 s × 12 | 105 | $1.30/h | **$2.2750** | ~15 min setup + ~5 min render |
+| train-smoke (findings 13/14 gate) | L40S | 3600 s / 1800 s + 2 × 180 s artifact allowance | 105 | $1.30/h | **$2.2750** | ~45–60 min setup + a few min for 100 steps (measured: 3.85 s/step) |
+| train | L40S | 3600 s / 10800 s + 7 × 180 s artifact allowance | 270 | $1.30/h | **$5.8500** | 45–60 min setup + ~2000 × 3.85 s ≈ 128 min train |
+| tester | L40S | 2400 s / 300 s × 8 | 105 | $1.30/h | **$2.2750** | ~15 min setup + ~5 min render |
 | gen | L40S | 2400 s / 600 s × 12 | 165 | $1.30/h | **$3.5750** | ~15 min setup + ~20 min render |
 
 Rate is Track-1 review finding 15: `$0.89/h` was an underdeclared, unverified L40S price; use the
 conservative `$1.30/h` the dataset port already uses everywhere until a live quote is recorded.
-`max_minutes` for train is **280**, not the stale 245 (`readiness 3600 + job_timeout 10800 + 11 ×
-artifact_download_seconds 180 + teardown 300 = 16680 s = 278 min` floor; see `HARNESS-CHANGES.md`
-and `pod/runpod_run.py::minimum_runtime_minutes` — one shared job-timeout budget for the
-completion marker, not `job_timeout × 12`). Ceiling = rate × `max_minutes` / 60 for each stage.
-All three are `--dry-run` green and network-free, and all three (plus the dataset shards) now
-also set `max_placement_attempts: 1` (finding 15 — no automatic multi-pod retry on a live run).
-Run each with `--max-usd` at roughly the estimate. `governance/budget.yaml` caps the day at
-**$10.00**; train ($6.07) and tester ($2.28) together are $8.34, so gen must run on its own day
-(or a day where nothing else has spent yet), and the ledger reconciliation review findings 1-2
-flag must be resolved before trusting any daily total — not addressed by this pass, see
-`REVIEW-2026-09-03-track1.md`.
+`max_minutes` for train is **270** (`readiness 3600 + job_timeout 10800 + artifact_download_seconds
+180 × 8 + teardown 300 = 16140 s = 269 min` floor, rounded up for buffer; see
+`HARNESS-CHANGES.md` and `pod/runpod_run.py::minimum_runtime_minutes` — one shared job-timeout
+budget for the completion marker plus one `artifact_download_seconds` allowance per further
+artifact, not `job_timeout × 8`). `max_minutes` for train-smoke is **105**
+(`3600 + 1800 + 180 × 3 + 300 = 6240 s = 104 min` floor, rounded up). Ceiling = rate ×
+`max_minutes` / 60 for each stage. All manifests are `--dry-run` green and network-free, and all
+of them (plus the dataset shards) also set `max_placement_attempts: 1` (finding 15 — no
+automatic multi-pod retry on a live run). Run each with `--max-usd` at roughly the estimate.
+`governance/budget.yaml` caps the day at **$10.00**; train ($5.85) and tester ($2.28) together
+are $8.13, so gen must run on its own day (or a day where nothing else has spent yet), and the
+ledger reconciliation review findings 1-2 flag must be resolved before trusting any daily total —
+not addressed by this pass, see `REVIEW-2026-09-03-track1.md`.
+
+## Step count: 2000, not 3000
+
+Module 11 trained 3000 steps. Smoke #4 measured this harness's actual L40S throughput at
+**3.85 s/step** (2026-09-04, `runs/out/creator-001-tensor-train-smoke/_harness/_training.log`).
+At that rate, 3000 steps of train time alone is `3000 × 3.85 s ≈ 11550 s ≈ 3.2 h` — past the
+`job_timeout_seconds` marker-wait window this harness budgets, and (at $1.30/h) past what the
+$10.00 daily budget can spend on a single stage alongside the tester. 2000 steps
+(`2000 × 3.85 s ≈ 7700 s`, `job_timeout_seconds: 10800` is comfortably above that with setup
+headroom) is the largest step count that fits both constraints without widening either the job
+timeout or the daily budget. `MODULE_11["steps"]` in `render_aitoolkit_config.py` (and its
+`check_module_11` drift guard) is set to `2000`; the full manifest renders it with no `--set`/
+`--allow-drift` needed. `save_every` stays module 11's `250`, so the checkpoint ladder is 7
+intermediates (`250..1750`) plus the bare final at `2000` — 8 checkpoints, not module 11's 12.
+3000 steps is not ruled out permanently — it is a candidate to revisit once either the job-timeout
+window or the daily budget has room, not something this pass decided against on the merits.
 
 ## Deviations, and why
 
-1. **All twelve artifacts publish, no network volume (findings 10, 12).**
+1. **All eight artifacts publish, no network volume (findings 10, 12).**
    `minimum_runtime_minutes` reserves one shared `job_timeout_seconds` budget for the
    completion-marker wait plus `artifact_download_seconds` (180 s) for each further artifact,
    not `job_timeout × artifact_count` — see `HARNESS-CHANGES.md`'s addendum. The start script
-   verifies and copies the 11 save-every-250 checkpoints plus the exact step-3000 final into
-   `/workspace/output/` (never an mtime-sorted guess) and fails closed before touching
-   `_training.complete` if any is missing. The tester then uploads those 12 files from the
-   harness's own local download directory — no recurring network-volume charge, no
-   `REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID` sentinel.
-2. **Tester is 12 jobs, not 12 graph branches.** The dry-run client returns exactly one image
-   per job, so `expected_images > 1` can never be dry-run green. Twelve one-image jobs keep
-   every variable except the checkpoint fixed, which is the whole point of §3g.
+   verifies and copies the 7 save-every-250 checkpoints plus the exact step-2000 final (under
+   its bare trigger name — see "Checkpoint naming" under Step order 3) into `/workspace/output/`
+   (never an mtime-sorted guess) and fails closed before touching `_training.complete` if any is
+   missing. The tester then uploads those 8 files from the harness's own local download
+   directory — no recurring network-volume charge, no `REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID`
+   sentinel.
+2. **Tester is 8 jobs, not 12 graph branches.** The dry-run client returns exactly one image
+   per job, so `expected_images > 1` can never be dry-run green. Eight one-image jobs keep
+   every variable except the checkpoint fixed, which is the whole point of §3g — eight because
+   our run's checkpoint ladder (steps=2000/save_every=250, see "Step count" above) is shorter
+   than module 11's (steps=3000/save_every=250).
 3. **Generation has two `SaveImage` outputs (base, refined), not the package's three
    (finding 16).** `expected_images: 2` is dry-run green now that multi-image dry-run support
    exists (commit `fda03ba2`). The third output — the package's FaceDetailer "final" — has no
@@ -233,29 +274,33 @@ flag must be resolved before trusting any daily total — not addressed by this 
    review findings 1-2 flag (canonical ops ledger vs. this worktree's untracked rows, UTC vs.
    America/New_York day boundary) is unresolved and out of this pass's scope — do not trust a
    daily total from either ledger location until it lands.
-3. **torch/CUDA pin — gated on `creator-001-tensor-train-smoke.yaml` (findings 13/14).**
+3. **torch/CUDA pin — CLEARED by smoke #4 (findings 13/14).**
    Upstream installs `torch==2.13.0+cu130`; our proven image is cuda 12.8.1.
    `reinstall_torch` is `"0"` (use the image's torch) and that combination was untested
-   against ai-toolkit's requirements. Rather than an install-only probe pod that never runs a
-   step, the training smoke (Step order 3a) runs the entire path — install, `torch.cuda.
-   is_available()`, `ai-toolkit` import, 50 real training steps, save, publish — at $2.13.
-   The full run in Step order 4 does not proceed until that smoke's `_bootstrap.log` shows
-   every install step `rc=0` and its `_training.log` shows training actually ran.
-4. **State-dict key compatibility — gated on the same smoke.** ai-toolkit derives Krea-2's
-   MMDiT keys from `krea/Krea-2-Raw`'s `raw.safetensors`; the Comfy-Org bf16 repackage is
+   against ai-toolkit's requirements before smoke #4. Rather than an install-only probe pod
+   that never runs a step, the training smoke (Step order 3a) runs the entire path — install,
+   `torch.cuda.is_available()`, `ai-toolkit` import, real training steps, save, publish — at
+   ~$2.28. Smoke #4 (2026-09-04, steps=50/save_every=50) ran this combination and trained
+   cleanly at 3.85 s/step on L40S; the publish-stage failure it hit afterward was the
+   step-suffixed-final-filename defect this pass fixes (see "Checkpoint naming" under Step
+   order 3), not a torch/CUDA problem.
+4. **State-dict key compatibility — CLEARED by smoke #4.** ai-toolkit derives Krea-2's
+   MMDiT keys from `krea/Krea-2-Raw`'s `raw.safetensors`; the Comfy-Org bf16 repackage was
    assumed key-for-key identical. A safetensors-header read only proves the tensor names on
    disk match — it does not prove ai-toolkit's own key-mapping/renaming code accepts them
-   without silently dropping or defaulting parameters. The smoke's `_training.log` is what
-   settles this: it must show the checkpoint's `state_dict` loaded with no
-   `missing_keys`/`unexpected_keys` lines before the full run is approved. See Step order 3a.
+   without silently dropping or defaulting parameters. Smoke #4's `_training.log` settles
+   this: PyTorch's default `load_state_dict` prints `missing_keys`/`unexpected_keys` lines on
+   any mismatch, and none appear anywhere in the log — the checkpoint loaded clean. See Step
+   order 3a.
 5. **Third-party node input names** (`res_2s`) are transcribed from the package graph and are
    not validated by dry-run.
-6. **Throughput on 48 GB is unmeasured.** Their 77 min was a 96 GB Blackwell. If the L40S runs
-   past the 10800 s marker deadline the run fails closed with nothing to show; a training-side
-   smoke at reduced steps is the honest way to buy that number first — separate from, and
-   still owed beyond, the dependency smoke in item 1. The findings 13/14 smoke (item 3/4 above)
-   reports its own 50-step wall-clock in `_training.log`, which is a lower bound only — it does
-   not extrapolate linearly to 3000 steps (fixed setup/caching costs do not repeat per step).
+6. **Throughput on 48 GB — measured by smoke #4: 3.85 s/step.** Their 77 min was a 96 GB
+   Blackwell. At 3.85 s/step, our 2000-step run's train time alone is `2000 × 3.85 s ≈ 7700 s`,
+   comfortably inside the `job_timeout_seconds: 10800` marker deadline with setup headroom; see
+   "Step count: 2000, not 3000" above for why 2000 rather than module 11's 3000. This is a
+   lower bound only — it does not necessarily extrapolate linearly to 2000 steps (fixed
+   setup/caching costs do not repeat per step, but memory pressure or thermal throttling over a
+   longer run are not ruled out by a 50-step sample).
 7. **Model provenance — closed (review finding 5).** Every model entry across
    `creator-001-tensor-train.yaml`, `-train-smoke.yaml`, `-tester.yaml`, and `-gen.yaml` now
    carries an immutable `revision` (40-hex commit) and a verified `sha256`, fetched from the
