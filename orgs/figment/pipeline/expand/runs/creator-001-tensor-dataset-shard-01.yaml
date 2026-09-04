@@ -5,6 +5,7 @@
   "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},
   "price_usd_per_hour": 1.30,
   "max_minutes": 125,
+  "max_placement_attempts": 1,
   "container_disk_gb": 100,
   "volume_gb": 0,
   "volume_mount_path": "/workspace",

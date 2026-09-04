@@ -133,9 +133,29 @@ def test_training_start_script_renders_every_placeholder():
     assert rendered.index("snapshot_download") < rendered.index("ComfyUI/main.py")
 
 
+def test_training_start_script_publishes_all_twelve_checkpoints_by_exact_name():
+    """Finding 10: the start script must copy the 11 intermediate saves plus the
+    exact step-3000 final into /workspace/output under the manifest's declared
+    artifact names, fail closed before the completion marker if any is missing,
+    and never infer "final" from mtime."""
+    _remote, rendered = runner.rendered_training_start_script(
+        manifest("train"), MANIFESTS["train"],
+    )
+    for step in range(250, 3000, 250):
+        assert f"{step:09d}" in rendered
+    assert "000003000" in rendered
+    assert f"cp \"$final_ckpt\" \"/workspace/output/${{trigger}}.safetensors\"" in rendered
+    assert "-printf '%T@" not in rendered, "final must not be inferred from mtime"
+    assert rendered.index("missing+=") < rendered.rindex("touch /workspace/output/_training.complete")
+    assert "fail \"missing checkpoint(s) before publish" in rendered
+
+
 def test_lorapath_start_script_renders_for_both_generation_manifests():
+    # Finding 12: tester takes the 12 checkpoints as an upload (no network
+    # volume), so its lora_source_dir is the ComfyUI input subfolder the
+    # harness uploads into — same shape as gen's, not /workspace/train-output.
     for name, expected in (
-        ("tester", f"/workspace/train-output/{TRIGGER}"),
+        ("tester", f"/workspace/ComfyUI/input/{TRIGGER}"),
         ("gen", f"/workspace/ComfyUI/input/{TRIGGER}"),
     ):
         remote, rendered = runner.rendered_training_start_script(
@@ -160,6 +180,15 @@ def test_manifest_passes_harness_preflight(name):
     runner.require_manifest(
         manifest(name), MANIFESTS[name], allow_missing_uploads=True,
     )
+
+
+@pytest.mark.parametrize("name", sorted(MANIFESTS))
+def test_manifest_uses_the_conservative_rate_and_never_retries_placement(name):
+    """Finding 15: $1.30/h everywhere (not the underdeclared $0.89/h), and nothing
+    retries live placement automatically."""
+    doc = manifest(name)
+    assert doc["price_usd_per_hour"] == 1.30
+    assert doc["max_placement_attempts"] == 1
 
 
 @pytest.mark.parametrize("name", sorted(MANIFESTS))
@@ -208,6 +237,21 @@ def test_training_manifest_replicates_module_11_transport():
     assert "network_volume_id" not in doc
 
 
+def test_tester_takes_the_12_checkpoints_as_an_upload_no_network_volume():
+    """Finding 12: tester ranks the checkpoints the training run already downloaded
+    locally, uploaded from train/runs/out/creator-001-tensor-train/ — no recurring
+    network-volume charge, no REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID sentinel, no
+    /workspace/train-output read."""
+    doc = manifest("tester")
+    assert "network_volume_id" not in doc
+    assert "train-output" not in json.dumps(doc)
+    uploads = doc["uploads"]
+    assert len(uploads) == 1
+    assert uploads[0]["files"] == ["out/creator-001-tensor-train/*.safetensors"]
+    assert uploads[0]["subfolder"] == TRIGGER
+    assert doc["training"]["lora_source_dir"] == f"/workspace/ComfyUI/input/{TRIGGER}"
+
+
 def test_tester_holds_everything_but_the_checkpoint_fixed():
     doc = manifest("tester")
     sampler = doc["workflow"]["8"]["inputs"]
@@ -248,11 +292,16 @@ def test_generation_manifest_replicates_module_09_chain():
             refine["scheduler"], refine["denoise"]) == (
                 4, 1.0, "euler_ancestral", "simple", 0.35)
     assert refine["latent_image"] == ["14", 0]
-    detailer = workflow["19"]["inputs"]
-    assert (detailer["denoise"], detailer["guide_size"], detailer["max_size"],
-            detailer["bbox_threshold"], detailer["bbox_crop_factor"],
-            detailer["noise_mask_feather"]) == (0.15, 512, 1024, 0.4, 3.0, 100)
     assert workflow["4"]["inputs"]["strength_model"] == 0.8
+    # Finding 16: FaceDetailer/UltralyticsDetectorProvider are gone — no verifiable
+    # Apache/MIT non-pickle face detector exists to replace face_yolov8s.pt, and the
+    # brief forbids any .pt/.pth pickle entering a pod. Two SaveImage nodes survive
+    # (base, refined) instead of the package's three (base, upscaled, FaceDetailer
+    # final); node 20 now reads the refine output directly.
+    assert "18" not in workflow and "19" not in workflow
+    savers = {nid: node["inputs"]["images"] for nid, node in workflow.items()
+              if node["class_type"] == "SaveImage"}
+    assert savers == {"20": ["16", 0], "21": ["9", 0]}
 
     # 6 prompts x 2 seeds, angles and scenes the dataset never contained.
     jobs = doc["jobs"]
@@ -261,12 +310,28 @@ def test_generation_manifest_replicates_module_09_chain():
                if sub["field"] == "text"}
     assert len(prompts) == 6
     assert len({job["seed"] for job in jobs}) == 2
-    # The harness writes the job seed into every seed field, so the refine and
-    # detailer seeds have to be substituted back or they stop being fixed.
+    assert {job["expected_images"] for job in jobs} == {2}
+    # The harness writes the job seed into every seed field, so the refine
+    # seed has to be substituted back or it stops being fixed. There is no
+    # detailer seed left to restore.
     for job in jobs:
         restored = {sub["node_id"]: sub["value"] for sub in job["substitutions"]
                     if sub["field"] == "seed"}
-        assert restored == {"15": 40, "19": 137053700462745}
+        assert restored == {"15": 40}
+
+
+@pytest.mark.parametrize("name", sorted(MANIFESTS))
+def test_no_manifest_downloads_a_pickle_model(name):
+    """Finding 16: the brief forbids any .pt/.pth pickle entering a pod."""
+    for model in manifest(name).get("models", []):
+        assert not model["filename"].lower().endswith((".pt", ".pth")), model
+
+
+def test_generation_manifest_has_no_impact_pack_dependency():
+    """With the FaceDetailer branch gone, gen no longer needs Impact-Pack/Subpack
+    (they existed only to supply UltralyticsDetectorProvider/FaceDetailer)."""
+    urls = [node["git_url"] for node in manifest("gen")["custom_nodes"]]
+    assert not any("Impact-Pack" in url or "Impact-Subpack" in url for url in urls)
 
 
 def test_generation_manifests_declare_the_sampler_pack_they_depend_on():
@@ -275,9 +340,6 @@ def test_generation_manifests_declare_the_sampler_pack_they_depend_on():
         assert "https://github.com/ClownsharkBatwing/RES4LYF" in urls, (
             "res_2s is a RES4LYF sampler, not a ComfyUI core one"
         )
-    gen_urls = [node["git_url"] for node in manifest("gen")["custom_nodes"]]
-    assert "https://github.com/ltdrdata/ComfyUI-Impact-Pack" in gen_urls
-    assert "https://github.com/ltdrdata/ComfyUI-Impact-Subpack" in gen_urls
 
 
 def test_no_manifest_reaches_a_gated_repository():

@@ -4,8 +4,9 @@
     "count": 1,
     "cloud": "SECURE"
   },
-  "price_usd_per_hour": 0.89,
+  "price_usd_per_hour": 1.30,
   "max_minutes": 280,
+  "max_placement_attempts": 1,
   "container_disk_gb": 80,
   "volume_gb": 200,
   "volume_mount_path": "/workspace",

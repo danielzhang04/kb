@@ -97,6 +97,32 @@ with the short identity string only. 15 + 15 = ~30 images from 2 photos.
 `--max-usd 2.75`. If L40S SECURE is unavailable, `NVIDIA RTX 6000 Ada Generation` is the like-for-like
 alternate; `NVIDIA RTX A6000` also has 48 GB but is Ampere, so fp8 is emulated and jobs run slower.
 
+## Dependency smoke — required before shard-01 (finding 8)
+
+`expand/runs/creator-001-tensor-smoke.yaml` is the same `custom_nodes`, same `models`, and same
+`comfyui` as the three dataset shards, but ONE job — template row 1 of the face branch (a real
+cell, not a stub) on the g01/g07 anchor pair — with `job_timeout_seconds 600`,
+`readiness_timeout_seconds 2700`, `max_minutes 65`, `max_placement_attempts 1`. It answers the
+"Open risks" below cheaply (≤$1.41 at `$1.30/h`) instead of finding out 125 minutes and $2.71
+into shard-01.
+
+**Shard-01 may run only after all three of the following hold, read from the smoke pod's own
+output:**
+
+1. `_bootstrap.log` shows `STEP node-deps-<n> rc=0` for every custom-node dependency install —
+   `ComfyUI_FaceAnalysis` in particular (open risk 1: insightface/dlib can fail to compile).
+2. Every declared model's sha256 check passes (once the harness model schema carries
+   `revision`/`sha256` — review finding 5; until then, confirm each download completed at its
+   expected byte size and the workflow's `/object_info` classes are all present, per open
+   risk 2/3 below).
+3. The one job succeeds and its image downloads and verifies — proving the ported graph
+   actually executes on this ComfyUI/node/model combination, not just that the pod became
+   ready.
+
+Dry-run green (`--dry-run`) is a separate, weaker check: it proves the manifest shape and
+harness plumbing, never that FaceAnalysis, insightface, spandrel, or RealPLKSR actually import
+or execute on the pod.
+
 ## Grading protocol
 
 Nothing is kept by a score. After each shard, view every image **at full resolution beside the anchor it

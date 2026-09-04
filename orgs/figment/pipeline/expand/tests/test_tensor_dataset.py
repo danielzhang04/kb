@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -40,11 +41,28 @@ bes_test = load_module(
 BANNED_PHRASES = bes_test.BANNED_PHRASES
 UNSAFE_TERMS = bes_test.UNSAFE_TERMS
 
+# look-spec-v2.md section 4c ("Adult-coded age phrasing for an apparent age of
+# about 21") bans a handful of single words that section 4a's mirror does not
+# carry (4a mirrors the *rejected-look* vocabulary; these are the *reads-as-a-
+# minor* words banned on their own, even where 4a only bans a multi-word
+# combination such as "cute little"). Checked as whole words via regex so
+# "small"/"little"/"cute" cannot false-hit on a longer word, and so they can
+# be told apart from the digit-only "bare age numeral" rule, which is
+# checked separately in test_prompts_state_adulthood_without_a_bare_numeral
+# because prompt rows legitimately contain non-age digits ("45-degree angle").
+AGE_4C_TOKENS = frozenset({
+    "young", "girlish", "small", "little", "cute", "fresh-faced",
+})
+AGE_4C_PATTERN = re.compile(
+    r"\b(?:" + "|".join(re.escape(t) for t in AGE_4C_TOKENS) + r")\b"
+)
+
 WORKFLOW = EXPAND / "workflows" / "tensor_dataset_v2_api.json"
 TEMPLATES = EXPAND / "templates" / "tensor-dataset-prompts.yaml"
 SHARDS = tuple(
     EXPAND / "runs" / f"creator-001-tensor-dataset-shard-{i:02d}.yaml" for i in (1, 2, 3)
 )
+SMOKE = EXPAND / "runs" / "creator-001-tensor-smoke.yaml"
 SOURCE_GRAPH = (
     RESEARCH / "10sorlabs-package" / "10_dataset_generator_v2"
     / "10sorlabs_dataset_generator_v2.json"
@@ -271,7 +289,9 @@ def test_templates_hold_two_lists_of_fifteen_rows(templates):
         assert templates[side]["identity"].endswith(", ")
 
 
-def test_templates_and_every_prompt_in_graph_and_shards_are_clean(templates, workflow, manifests):
+def _all_prompt_texts(templates, workflow, manifests):
+    """Every identity/row/prompt string that reaches the API graph or a
+    rendered shard job — the full surface section 4 must be clean over."""
     texts = []
     for side in ("face", "body"):
         texts.append(templates[side]["identity"])
@@ -284,9 +304,23 @@ def test_templates_and_every_prompt_in_graph_and_shards_are_clean(templates, wor
         for sub in job["substitutions"]:
             if sub["field"] == "prompt":
                 texts.append(sub["value"])
-    for text in texts:
+    return texts
+
+
+def test_templates_and_every_prompt_in_graph_and_shards_are_clean(templates, workflow, manifests):
+    for text in _all_prompt_texts(templates, workflow, manifests):
         lowered = text.lower()
         hits = sorted(t for t in BANNED_PHRASES | UNSAFE_TERMS if t in lowered)
+        assert not hits, f"{hits} in {text[:80]!r}"
+
+
+def test_no_section_4c_age_ambiguous_token_in_any_prompt(templates, workflow, manifests):
+    """Finding 4: section 4a's mirror alone let 'small' through in the body
+    identity. This is the full section-4c word list (4a ∪ 4c), whole-word
+    matched, over the same API-graph-and-shard text surface as the 4a/4b
+    check above."""
+    for text in _all_prompt_texts(templates, workflow, manifests):
+        hits = sorted(set(AGE_4C_PATTERN.findall(text.lower())))
         assert not hits, f"{hits} in {text[:80]!r}"
 
 
@@ -357,11 +391,71 @@ def test_shards_run_on_a_48gb_class_gpu_under_a_three_dollar_ceiling(manifests):
         assert manifest["max_minutes"] / 60 * manifest["price_usd_per_hour"] <= 3.00
 
 
+def test_shards_never_retry_placement_automatically(manifests):
+    """Finding 15: nothing retries live placement automatically."""
+    for manifest in manifests:
+        assert manifest["max_placement_attempts"] == 1
+
+
 def test_shards_copy_the_proven_comfyui_and_host_denylist_from_composite_02(manifests):
     base = pod.load_manifest(PIPELINE / "train" / "runs" / "creator-001-composite-02.yaml")
     for manifest in manifests:
         assert manifest["comfyui"] == base["comfyui"]
         assert manifest["avoid_machine_hosts"] == base["avoid_machine_hosts"]
+
+
+# ---------------------------------------------------------------------------
+# Finding 8: dependency-smoke pod runs before shard-01 spends the full ceiling
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def smoke():
+    return pod.load_manifest(SMOKE)
+
+
+def test_smoke_manifest_passes_the_pod_manifest_contract(smoke):
+    assert pod.require_manifest(smoke, SMOKE) is None
+
+
+def test_smoke_shares_custom_nodes_models_and_comfyui_with_the_shards(smoke, manifests):
+    shard01 = manifests[0]
+    assert smoke["custom_nodes"] == shard01["custom_nodes"]
+    assert smoke["models"] == shard01["models"]
+    assert smoke["comfyui"] == shard01["comfyui"]
+    assert smoke["workflow"] == shard01["workflow"]
+
+
+def test_smoke_is_exactly_one_real_job_not_a_stub(smoke, templates):
+    assert len(smoke["jobs"]) == 1
+    job = smoke["jobs"][0]
+    assert job["expected_images"] == 1
+    table = subs(job)
+    identity = templates["face"]["identity"]
+    first_row = templates["face"]["rows"][0]
+    assert table[("174", "prompt")] == identity + first_row
+    assert job["seed"] == 241731167782064
+    assert table[("788", "seed")] == 1098688918602660
+    assert table[("832", "images")] == ["791", 0]
+
+
+def test_smoke_job_prompt_is_also_section_4_clean(smoke):
+    text = subs(smoke["jobs"][0])[("174", "prompt")].lower()
+    hits = sorted(t for t in BANNED_PHRASES | UNSAFE_TERMS if t in text)
+    assert not hits
+    assert not AGE_4C_PATTERN.findall(text)
+
+
+def test_smoke_ceiling_and_timeouts_match_the_brief(smoke):
+    assert smoke["gpu"]["type"] == "NVIDIA L40S"
+    assert smoke["price_usd_per_hour"] == 1.30
+    assert smoke["readiness_timeout_seconds"] == 2700
+    assert smoke["job_timeout_seconds"] == 600
+    assert smoke["max_minutes"] == 65
+    assert smoke["max_placement_attempts"] == 1
+    minimum = smoke["readiness_timeout_seconds"] + smoke["job_timeout_seconds"] + 300
+    assert minimum <= smoke["max_minutes"] * 60
+    assert smoke["max_minutes"] / 60 * smoke["price_usd_per_hour"] <= 1.50
 
 
 def test_seeds_stay_fixed_at_the_package_values(manifests):

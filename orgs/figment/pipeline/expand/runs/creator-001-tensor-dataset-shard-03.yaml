@@ -5,6 +5,7 @@
   "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},
   "price_usd_per_hour": 1.30,
   "max_minutes": 125,
+  "max_placement_attempts": 1,
   "container_disk_gb": 100,
   "volume_gb": 0,
   "volume_mount_path": "/workspace",
@@ -53,7 +54,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Photorealistic angled shot from behind and above, looking down at the back of the shoulders and upper spine, head turned to look over the left shoulder, hair falling slightly forward, against a plain white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Photorealistic angled shot from behind and above, looking down at the back of the shoulders and upper spine, head turned to look over the left shoulder, hair falling slightly forward, against a plain white wall."}
       ]
     },
     {
@@ -63,7 +64,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Ultra-realistic medium shot framing the torso from mid-thigh to neck, standing straight, hands tucked into the pockets, natural posture, skin texture detailed, against a stark white wall background."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Ultra-realistic medium shot framing the torso from mid-thigh to neck, standing straight, hands tucked into the pockets, natural posture, skin texture detailed, against a stark white wall background."}
       ]
     },
     {
@@ -73,7 +74,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Hyperrealistic three-quarter rear view from the right, looking back over the shoulder at the camera, against a clean white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Hyperrealistic three-quarter rear view from the right, looking back over the shoulder at the camera, against a clean white wall."}
       ]
     },
     {
@@ -83,7 +84,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, DSLR photograph capturing a low-angle shot framing the hips and thighs, standing with weight shifted to one leg to create natural asymmetry, against a plain white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, DSLR photograph capturing a low-angle shot framing the hips and thighs, standing with weight shifted to one leg to create natural asymmetry, against a plain white wall."}
       ]
     },
     {
@@ -93,7 +94,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Photorealistic profile view from the left rear, the torso twisted slightly toward the camera, arms hanging naturally, against a plain white wall background."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Photorealistic profile view from the left rear, the torso twisted slightly toward the camera, arms hanging naturally, against a plain white wall background."}
       ]
     },
     {
@@ -103,7 +104,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Hyperrealistic shot from directly behind at waist height, soft overhead lighting to reduce harsh shadows, against a clean white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Hyperrealistic shot from directly behind at waist height, soft overhead lighting to reduce harsh shadows, against a clean white wall."}
       ]
     },
     {
@@ -113,7 +114,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Ultra-realistic rear view from a high angle looking down, standing straight with arms crossed behind the back, against a stark white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Ultra-realistic rear view from a high angle looking down, standing straight with arms crossed behind the back, against a stark white wall."}
       ]
     },
     {
@@ -123,7 +124,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, DSLR photo capturing a low-angle shot from behind, looking up at the lower back, emphasising posture and vertical lines, against a plain white wall."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, DSLR photo capturing a low-angle shot from behind, looking up at the lower back, emphasising posture and vertical lines, against a plain white wall."}
       ]
     },
     {
@@ -133,7 +134,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Photorealistic shot of her walking away from the camera, mid-stride, capturing natural movement, motion blur on the feet, sharp focus on the torso, against a plain white wall background."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Photorealistic shot of her walking away from the camera, mid-stride, capturing natural movement, motion blur on the feet, sharp focus on the torso, against a plain white wall background."}
       ]
     },
     {
@@ -143,7 +144,7 @@
       "substitutions": [
         {"node_id": "832", "field": "images", "value": ["776", 0]},
         {"node_id": "778", "field": "seed", "value": 1098688918602660},
-        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, Photorealistic shot of her lying on her side, top leg bent and resting on the bottom leg, soft natural light from the window direction, against a plain white wall background."}
+        {"node_id": "676", "field": "prompt", "value": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, Photorealistic shot of her lying on her side, top leg bent and resting on the bottom leg, soft natural light from the window direction, against a plain white wall background."}
       ]
     }
   ]

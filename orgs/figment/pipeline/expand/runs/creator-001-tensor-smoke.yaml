@@ -1,0 +1,140 @@
+{
+  "_replicates": "orgs/figment/research/10sorlabs-package/10_dataset_generator_v2/10sorlabs_dataset_generator_v2.json (module 10, dataset generator 2.0). This is the dependency-smoke pod (finding 8 / review T1-R): same custom_nodes, same models, same comfyui as the three dataset shards, ONE real job (template row 1 of the face branch, not a stub) on the anchor pair. Proves the pinned node/model dependency closure before a 125-minute shard spends the full ceiling. See expand/TENSOR-REPLICATION.md 'Open risks' for the required green signal.",
+  "_shard": "dependency smoke: one face-branch job, template row 1",
+  "_pin_enforcement": "installer_pin records the commit dataset_generator_model_installer.bat (and, for KJNodes, krea2_model_installer.bat) checks out. The pod harness clones custom nodes with `git clone --depth 1` from the default branch and cannot check out a ref, so these pins are RECORDED, NOT ENFORCED. Tightening this means changing runpod_run.py, not this file.",
+  "gpu": {
+    "type": "NVIDIA L40S",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "price_usd_per_hour": 1.3,
+  "max_minutes": 65,
+  "max_placement_attempts": 1,
+  "container_disk_gb": 100,
+  "volume_gb": 0,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "avoid_machine_hosts": [
+    "qvf79yutw3t2"
+  ],
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "readiness_timeout_seconds": 2700,
+  "job_timeout_seconds": 600,
+  "models": [
+    {
+      "repo_id": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+      "filename": "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "filename": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "filename": "split_files/vae/qwen_image_vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    },
+    {
+      "repo_id": "lightx2v/Qwen-Image-Edit-2511-Lightning",
+      "filename": "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/loras"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/diffusion_models/flux-2-klein-4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/flux2-klein-4B",
+      "filename": "split_files/vae/flux2-vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    },
+    {
+      "repo_id": "Phips/4xNomosWebPhoto_RealPLKSR",
+      "filename": "4xNomosWebPhoto_RealPLKSR.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/upscale_models"
+    }
+  ],
+  "custom_nodes": [
+    {
+      "name": "RES4LYF",
+      "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git",
+      "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"
+    },
+    {
+      "name": "ComfyUI-Impact-Pack",
+      "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git",
+      "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"
+    },
+    {
+      "name": "ComfyUI-Impact-Subpack",
+      "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git",
+      "installer_pin": "50c7b71a6a224734cc9b21963c6d1926816a97f1"
+    },
+    {
+      "name": "ComfyUI_FaceAnalysis",
+      "git_url": "https://github.com/cubiq/ComfyUI_FaceAnalysis.git",
+      "installer_pin": "8846653446a6b13582da11793faf950325a398e0"
+    },
+    {
+      "name": "ComfyUI-KJNodes",
+      "git_url": "https://github.com/kijai/ComfyUI-KJNodes.git",
+      "installer_pin": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b"
+    }
+  ],
+  "workflow": "../workflows/tensor_dataset_v2_api.json",
+  "seed_fields": [
+    "seed"
+  ],
+  "uploads": [
+    {
+      "files": [
+        "_uploads/creator-001/g01.jpg",
+        "_uploads/creator-001/g02.jpg",
+        "_uploads/creator-001/g07.jpg"
+      ],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true
+    }
+  ],
+  "jobs": [
+    {
+      "seed": 241731167782064,
+      "output_name": "c001-tensor-smoke-f01",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "832",
+          "field": "images",
+          "value": [
+            "791",
+            0
+          ]
+        },
+        {
+          "node_id": "788",
+          "field": "seed",
+          "value": 1098688918602660
+        },
+        {
+          "node_id": "174",
+          "field": "prompt",
+          "value": "jet-black hair, shoulder length and parted in the middle, dark brown eyes, a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, fair skin with visible pores and texture, a sharp black liner line drawn along the upper lash and flicked out past the corner, long defined lashes, straight dark brows brushed flat, soft blush high on the cheek, a soft pink lip with a wet shine, DSLR photograph capturing a straight-on frontal view of her face, eyes locked directly on the lens, against a plain white wall."
+        }
+      ]
+    }
+  ]
+}

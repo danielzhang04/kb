@@ -135,15 +135,43 @@ cd "$trainer_root"
 python run.py "$config_file" >> /workspace/output/_training.log 2>&1 \
   || fail 'ai-toolkit run.py failed'
 
-# --- 6. publish ---------------------------------------------------------------
+# --- 6. publish -----------------------------------------------------------
+# The manifest declares 12 downloadable artifacts: the 11 intermediate
+# save-every-250 checkpoints (step 250..2750) plus the final step-3000 save
+# under the bare trigger name. "final" is the exact step-3000 filename, never
+# an mtime-sorted guess — a stray newer file in checkpoint_dir must not be
+# silently published as the model. Every one of the 12 is verified present
+# and non-empty BEFORE anything is copied and before the completion marker is
+# written; a live run must fail closed on a partial checkpoint ladder rather
+# than let the tester or generation stage silently rank/render fewer than 12.
+# Module 11's fixed cadence: steps=3000, save_every=250, keep=15 — these 11
+# intermediate step numbers plus the step-3000 final are constants, not
+# derived, so a partial rename upstream cannot silently shrink the ladder.
 checkpoint_dir="${train_output}/${trigger}"
-final=$(find "$checkpoint_dir" -maxdepth 1 -type f -name '*.safetensors' \
-  -printf '%T@ %p\n' | sort -nr | head -1 | cut -d' ' -f2-)
-[[ -n "$final" && -s "$final" ]] || fail 'no LoRA safetensors produced'
-cp "$final" "/workspace/output/${trigger}.safetensors"
+checkpoint_steps=(
+  000000250 000000500 000000750 000001000 000001250 000001500
+  000001750 000002000 000002250 000002500 000002750
+)
+missing=()
+for step in "${checkpoint_steps[@]}"; do
+  ckpt="${checkpoint_dir}/${trigger}_${step}.safetensors"
+  [[ -s "$ckpt" ]] || missing+=("$(basename "$ckpt")")
+done
+final_ckpt="${checkpoint_dir}/${trigger}_000003000.safetensors"
+[[ -s "$final_ckpt" ]] || missing+=("$(basename "$final_ckpt") (final)")
+if [[ ${#missing[@]} -gt 0 ]]; then
+  fail "missing checkpoint(s) before publish: ${missing[*]}"
+fi
+
+for step in "${checkpoint_steps[@]}"; do
+  ckpt="${checkpoint_dir}/${trigger}_${step}.safetensors"
+  cp "$ckpt" "/workspace/output/$(basename "$ckpt")"
+done
+cp "$final_ckpt" "/workspace/output/${trigger}.safetensors"
+
 find "$checkpoint_dir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' \
   | sort | python -c 'import json,sys; print(json.dumps(sorted(l.strip() for l in sys.stdin if l.strip())))' \
   > /workspace/output/_checkpoints.json
-log "final checkpoint $(basename "$final")"
+log "published 12 checkpoints; final $(basename "$final_ckpt")"
 touch /workspace/output/_training.complete
 wait "$comfy_pid"

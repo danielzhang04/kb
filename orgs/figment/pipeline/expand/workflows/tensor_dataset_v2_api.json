@@ -54,7 +54,7 @@
   "767": {"class_type": "ImageUpscaleWithModel", "inputs": {"upscale_model": ["770", 0], "image": ["771", 0]}},
   "768": {"class_type": "ImageScaleBy", "inputs": {"image": ["767", 0], "upscale_method": "lanczos", "scale_by": 0.5}},
   "772": {"class_type": "VAEEncode", "inputs": {"pixels": ["768", 0], "vae": ["769", 0]}},
-  "780": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["775", 0], "text": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, "}},
+  "780": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["775", 0], "text": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, "}},
   "777": {"class_type": "ReferenceLatent", "inputs": {"conditioning": ["780", 0]}},
   "766": {"class_type": "CLIPTextEncode", "inputs": {"clip": ["775", 0], "text": ""}},
   "778": {"class_type": "KSampler", "inputs": {"model": ["774", 0], "positive": ["777", 0], "negative": ["766", 0], "latent_image": ["772", 0], "seed": 1098688918602660, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "beta", "denoise": 0.23}},
