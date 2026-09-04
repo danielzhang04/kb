@@ -131,3 +131,14 @@ final values.
   by the operator at FULL resolution beside the anchors. Track 2 (Apache port: Qwen-Image / Qwen-Image-Edit) only after
   Track 1 sets the reference.
 - Krea-2 is gated on HF: the operator adds a RunPod Secret `HF_TOKEN`; the harness references it by name only.
+
+## Update — 2026-09-03 23:50 — Track-1 ports reviewed and fixed; awaiting delta re-review before the first paid pod
+
+- Ports committed: dataset (e629617e), training (b2c679b9); harness secret refs (52ab87db), ladder budget (fda03ba2).
+- Review (codex sol, dbc868c6): LIVE-SAFE NO on all stages, 18 findings. Fix wave: manifests/scripts/bridge/smoke
+  (1dc406e9, sonnet) + harness/ledgers (794668c0, codex sol). 458 tests green; smoke, shard-01, train, tester, gen all
+  dry-run green. FaceDetailer removed from module-09 generation (no verifiable non-pickle face detector); rest faithful.
+- Ledgers reconciled: 09-02 $1.97, 09-03 $4.68, arc $6.65 (midnight provisional duplicate removed). Arc cap enforced
+  at $50.00 (contract text) from here.
+- Next: delta re-review (in flight) → dependency-smoke pod (1 job, L40S, ceiling $1.41) → dataset shard-01 (10 cells,
+  ceiling $2.75) → operator full-res grade → shards 02-03 → training next ledger day.
