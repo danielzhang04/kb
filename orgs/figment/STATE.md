@@ -116,3 +116,18 @@ final values.
 - **expansion-02** stays quarantined evidence. Arc spend $8.74 of $52.85; today $5.38 of $10.
 - **Next:** operator rules the expansion-03 board (7 axes) → qa_stamp → GATE A → curated set (≥30 target; regenerate
   the culled templates with new seeds if short) → P5 → LoRA v1 with checkpoint ranking.
+
+## Reset — 2026-09-03 22:10 (operator ruling)
+
+- **Operator verdict on expansion-03 at full resolution: mostly trash.** The boss's 24/35 keep grading was done on
+  460-px thumbnails and is withdrawn. expansion-02 AND expansion-03 are shelved as datasets (evidence only).
+- **Root failure (boss):** the mandate was research → replicate the package's process → trial on our anchors → adapt.
+  We read the process, then built our own klein multi-ref variant and spent on it twice; we never ran their pipeline
+  once and never ran a LoRA training at all.
+- **Track 1 now (faithful replication):** module 10 dataset generator (Z-Image Turbo + Qwen-Image-Edit-2511 +
+  Lightning LoRA, their templates, denoise 0.23 refine, face bbox; removal branch excluded) → module 11 training
+  (Ostris ai-toolkit headless, Krea-2 RAW if licence/gating allow, rank 32, LR 1e-4, 250-step saves, Qwen3-VL
+  captions) → dataset tester (12 branches) → module 09 generation (FaceDetailer 0.15-0.35 + refine). Every stage graded
+  by the operator at FULL resolution beside the anchors. Track 2 (Apache port: Qwen-Image / Qwen-Image-Edit) only after
+  Track 1 sets the reference.
+- Krea-2 is gated on HF: the operator adds a RunPod Secret `HF_TOKEN`; the harness references it by name only.
