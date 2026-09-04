@@ -15,16 +15,20 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
   Daniel's literal workflow and a fix wave (P2: executor-only vendor I/O, enforceable LinkedIn guard, runnable
   `list_builder run`; P4: live CLI assembly, D0+3 cadence, post-claim stop re-check, opaque audit; P5: desktop
   stage adapter with real argv, real inspectors, PII guard on every bridge exit, idempotent runner).
-- P6 (claude/prospecting-p6): tasks 0–8 built + reviewed; fixes 3c/7/8 were in flight at handoff time; then:
-  boss fills manifest hashes (fill_manifest_p6.py), runs run-gate-p6.ps1 detached, records, launches the P6
-  phase review. Frozen-file rule held throughout (verify P1–P5 `--verify-recorded` before every commit).
+- P6 (claude/prospecting-p6): tasks 0–9 built; two phase reviews + fix waves; gate recorded 656/656 then
+  extended by the OPERATOR SURFACE (`py -3 -m scripts.prospecting.operator`: campaign new --ask-file, capture add,
+  list, vendors attach, bakeoff run/report, executor run) after four security review rounds (credentials
+  transient in-frame only, ask via file, argparse never echoes values, transport closure minted per claimed
+  request, durable provider selection, scorer-blind A/B). Last gate re-record + round-4 review were in flight
+  at handoff time; runbook.md "Operator gates" has the exact argv for the P2/P3/P4 human gates.
 - P7-UI: spec amendment + plan v2.1 on branch claude/boss-2026-09-02 (commit 2239637c). NOT scaffolded —
   approval gate.
 
 ## Daniel's gates, in order (present one at a time)
-1. P1: run scratchpad `p1-gate-demo.ps1`; reply "P1 pass".
-2. P2: real 30-firm list on the desktop (`py -3 -m scripts.prospecting.list_builder run --campaign <id> --lanes manual,pitchbook`);
-   Hunter vs Snov 50-contact blind bake-off; pick the rented finder + budget.
+1. P1: PASSED 2026-09-04 (Datasette loopback read-only, hook rejected the planted email).
+2. P2: per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
+   --providers hunter,snov → bakeoff run --contacts 50 → bakeoff report; keys live only in Daniel's user env
+   (HUNTER_API_KEY, SNOV_CLIENT_ID/SECRET, optional PDL_API_KEY, APIFY_TOKEN). Pick the finder (~$35–39/mo).
 3. P3: read 20 drafts; edit the synthetic sender profile into the real one (desktop-local file only).
 4. P4: live ten-email DRAFT run (tier 0) with the real Gmail adapter attached.
 5. P5: one `outreach-run` from the VM terminal with an opaque ask ref → drafts, no hand steps.
