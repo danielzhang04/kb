@@ -1,0 +1,101 @@
+{
+  "schema": "figment/runpod-run@1",
+  "dry_run": false,
+  "pod_id": "2o77w9s7n6pb2d",
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 4090",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "started_utc": "2026-09-04T00:40:39+00:00",
+  "max_minutes": 82.0,
+  "preflight_estimate_usd": 1.093333,
+  "arc_usd_before": 7.59385,
+  "arc_cap_usd": 52.85,
+  "uploads": [
+    {
+      "name": "g01.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 737366
+    },
+    {
+      "name": "g02.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 750657
+    },
+    {
+      "name": "g07.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 730186
+    }
+  ],
+  "jobs": [
+    {
+      "job": 1,
+      "output_name": "c001-exp03-g07-t09-mechA",
+      "seed": 532009,
+      "prompt_id": "72c52082-c0a6-4465-ae8b-bc9f1379f8d9",
+      "seconds": 164.721,
+      "files": [
+        {
+          "path": "c001-exp03-g07-t09-mechA.png",
+          "bytes": 1412335
+        }
+      ]
+    },
+    {
+      "job": 2,
+      "output_name": "c001-exp03-g07-t10-mechA",
+      "seed": 532010,
+      "prompt_id": "06756e7a-3f56-4a16-be7b-7300023d95a9",
+      "seconds": 160.013,
+      "files": [
+        {
+          "path": "c001-exp03-g07-t10-mechA.png",
+          "bytes": 2016107
+        }
+      ]
+    },
+    {
+      "job": 3,
+      "output_name": "c001-exp03-g07-t11-mechA",
+      "seed": 532011,
+      "prompt_id": "b8bdec57-2fa7-4ddf-a3b6-4892692e38e0",
+      "seconds": 160.464,
+      "files": [
+        {
+          "path": "c001-exp03-g07-t11-mechA.png",
+          "bytes": 2195802
+        }
+      ]
+    }
+  ],
+  "artifacts": [],
+  "placement_attempts": [
+    {
+      "attempt": 1,
+      "pod_id": "2o77w9s7n6pb2d",
+      "machine_host": "2pq5f32wv38g",
+      "machine_id": "2pq5f32wv38g",
+      "avoided": false,
+      "termination_verified": true,
+      "elapsed_seconds": 750.504,
+      "estimated_actual_usd": 0.15427,
+      "estimated_actual_usd_basis": "READY-rate measured"
+    }
+  ],
+  "termination_verified": true,
+  "daily_usd_limit": 10.0,
+  "daily_usd_before_create": 0.734223,
+  "finished_utc": "2026-09-04T00:53:10+00:00",
+  "elapsed_seconds": 750.504,
+  "hourly_price_usd": 0.74,
+  "estimated_actual_usd": 0.15427,
+  "estimated_actual_usd_basis": "READY-rate measured"
+}

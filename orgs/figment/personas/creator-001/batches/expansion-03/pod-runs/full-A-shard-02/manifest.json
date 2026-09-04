@@ -1,0 +1,64 @@
+{
+  "images": [
+    {
+      "image_id": "c001-exp03-g01-t12-mechA",
+      "path": "c001-exp03-g01-t12-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t01-mechA",
+      "path": "c001-exp03-g02-t01-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t02-mechA",
+      "path": "c001-exp03-g02-t02-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t03-mechA",
+      "path": "c001-exp03-g02-t03-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t04-mechA",
+      "path": "c001-exp03-g02-t04-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t05-mechA",
+      "path": "c001-exp03-g02-t05-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t06-mechA",
+      "path": "c001-exp03-g02-t06-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t07-mechA",
+      "path": "c001-exp03-g02-t07-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t08-mechA",
+      "path": "c001-exp03-g02-t08-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g02-t09-mechA",
+      "path": "c001-exp03-g02-t09-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    }
+  ]
+}

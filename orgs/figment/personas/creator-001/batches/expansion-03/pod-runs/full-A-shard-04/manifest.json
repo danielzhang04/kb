@@ -1,0 +1,22 @@
+{
+  "images": [
+    {
+      "image_id": "c001-exp03-g07-t09-mechA",
+      "path": "c001-exp03-g07-t09-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g07-t10-mechA",
+      "path": "c001-exp03-g07-t10-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    },
+    {
+      "image_id": "c001-exp03-g07-t11-mechA",
+      "path": "c001-exp03-g07-t11-mechA.png",
+      "review_status": "unreviewed",
+      "parked_reasons": []
+    }
+  ]
+}

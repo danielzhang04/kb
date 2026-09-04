@@ -1,0 +1,886 @@
+{
+  "mode": "raw-only",
+  "anchor": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\anchors\\g01.jpg",
+  "training_set": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images",
+  "anchor_error": null,
+  "fail_closed": false,
+  "models": {
+    "face": {
+      "implementation": "facenet-pytorch InceptionResnetV1",
+      "license": "https://github.com/timesler/facenet-pytorch/blob/master/LICENSE.md"
+    },
+    "cohesion": {
+      "implementation": "DINOv2 ViT-S/14",
+      "license": "https://github.com/facebookresearch/dinov2/blob/main/LICENSE"
+    }
+  },
+  "summary": {
+    "total": 36
+  },
+  "images": [
+    {
+      "image_id": "c001-exp03-g01-t01-mechA",
+      "path": "c001-exp03-g01-t01-mechA.png",
+      "cell_id": "exp03-g01-t01",
+      "face_detected": true,
+      "face_cosine": 0.9103890737456807,
+      "anchor_cosines": {
+        "g07": 0.8740138043451938,
+        "g02": 0.8623194829829626,
+        "g01": 0.9103890737456807
+      },
+      "anchor_cosine_max": 0.9103890737456807,
+      "anchor_cosine_own": 0.9103890737456807,
+      "anchor_cosine": 0.9103890737456807,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.9307930243627351,
+      "metrics": {
+        "laplacian_variance": 276.9844144017426,
+        "clipped_highlight_fraction": 0.0009765625,
+        "local_luminance_variance": 337.4167124000978,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t02-mechA",
+      "path": "c001-exp03-g01-t02-mechA.png",
+      "cell_id": "exp03-g01-t02",
+      "face_detected": true,
+      "face_cosine": 0.7977431716493475,
+      "anchor_cosines": {
+        "g07": 0.7966302963598028,
+        "g02": 0.7325761220718248,
+        "g01": 0.7977431716493475
+      },
+      "anchor_cosine_max": 0.7977431716493475,
+      "anchor_cosine_own": 0.7977431716493475,
+      "anchor_cosine": 0.7977431716493475,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8969911592270727,
+      "metrics": {
+        "laplacian_variance": 385.50103049981686,
+        "clipped_highlight_fraction": 0.00381317138671875,
+        "local_luminance_variance": 409.10349779929993,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t03-mechA",
+      "path": "c001-exp03-g01-t03-mechA.png",
+      "cell_id": "exp03-g01-t03",
+      "face_detected": true,
+      "face_cosine": 0.7771173759341494,
+      "anchor_cosines": {
+        "g07": 0.7270333453377429,
+        "g02": 0.7542688003991969,
+        "g01": 0.7771173759341494
+      },
+      "anchor_cosine_max": 0.7771173759341494,
+      "anchor_cosine_own": 0.7771173759341494,
+      "anchor_cosine": 0.7771173759341494,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.713516824337139,
+      "metrics": {
+        "laplacian_variance": 204.50455014734035,
+        "clipped_highlight_fraction": 0.003865814208984375,
+        "local_luminance_variance": 303.6848961825384,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t04-mechA",
+      "path": "c001-exp03-g01-t04-mechA.png",
+      "cell_id": "exp03-g01-t04",
+      "face_detected": true,
+      "face_cosine": 0.8929694515460184,
+      "anchor_cosines": {
+        "g07": 0.87276419708169,
+        "g02": 0.8742972139981355,
+        "g01": 0.8929694515460184
+      },
+      "anchor_cosine_max": 0.8929694515460184,
+      "anchor_cosine_own": 0.8929694515460184,
+      "anchor_cosine": 0.8929694515460184,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8724772829459039,
+      "metrics": {
+        "laplacian_variance": 254.40819814765928,
+        "clipped_highlight_fraction": 0.0036834716796875,
+        "local_luminance_variance": 314.80865090945326,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t05-mechA",
+      "path": "c001-exp03-g01-t05-mechA.png",
+      "cell_id": "exp03-g01-t05",
+      "face_detected": true,
+      "face_cosine": 0.8321173446383664,
+      "anchor_cosines": {
+        "g07": 0.8228013230386617,
+        "g02": 0.8398950317719326,
+        "g01": 0.8321173446383664
+      },
+      "anchor_cosine_max": 0.8398950317719326,
+      "anchor_cosine_own": 0.8321173446383664,
+      "anchor_cosine": 0.8398950317719326,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8928590676733213,
+      "metrics": {
+        "laplacian_variance": 276.3007626428421,
+        "clipped_highlight_fraction": 0.014626312255859374,
+        "local_luminance_variance": 356.06716729947067,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t06-mechA",
+      "path": "c001-exp03-g01-t06-mechA.png",
+      "cell_id": "exp03-g01-t06",
+      "face_detected": true,
+      "face_cosine": 0.7120268502092741,
+      "anchor_cosines": {
+        "g07": 0.720643368998586,
+        "g02": 0.7327885293350808,
+        "g01": 0.7120268502092741
+      },
+      "anchor_cosine_max": 0.7327885293350808,
+      "anchor_cosine_own": 0.7120268502092741,
+      "anchor_cosine": 0.7327885293350808,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.7852191907233842,
+      "metrics": {
+        "laplacian_variance": 252.52926079882354,
+        "clipped_highlight_fraction": 0.011301422119140625,
+        "local_luminance_variance": 390.15056823739997,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t07-mechA",
+      "path": "c001-exp03-g01-t07-mechA.png",
+      "cell_id": "exp03-g01-t07",
+      "face_detected": true,
+      "face_cosine": 0.7793550460151834,
+      "anchor_cosines": {
+        "g07": 0.7876136450470037,
+        "g02": 0.7301870454135502,
+        "g01": 0.7793550460151834
+      },
+      "anchor_cosine_max": 0.7876136450470037,
+      "anchor_cosine_own": 0.7793550460151834,
+      "anchor_cosine": 0.7876136450470037,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8312860330572132,
+      "metrics": {
+        "laplacian_variance": 311.3104971155456,
+        "clipped_highlight_fraction": 0.003032684326171875,
+        "local_luminance_variance": 385.1695439661968,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t08-mechA",
+      "path": "c001-exp03-g01-t08-mechA.png",
+      "cell_id": "exp03-g01-t08",
+      "face_detected": true,
+      "face_cosine": 0.8643195797844262,
+      "anchor_cosines": {
+        "g07": 0.8910685614269667,
+        "g02": 0.808904633675882,
+        "g01": 0.8643195797844262
+      },
+      "anchor_cosine_max": 0.8910685614269667,
+      "anchor_cosine_own": 0.8643195797844262,
+      "anchor_cosine": 0.8910685614269667,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8430946357271171,
+      "metrics": {
+        "laplacian_variance": 129.16239235834195,
+        "clipped_highlight_fraction": 0.0,
+        "local_luminance_variance": 254.65145734640572,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t09-mechA",
+      "path": "c001-exp03-g01-t09-mechA.png",
+      "cell_id": "exp03-g01-t09",
+      "face_detected": false,
+      "face_cosine": null,
+      "anchor_cosines": {
+        "g07": null,
+        "g02": null,
+        "g01": null
+      },
+      "anchor_cosine_max": null,
+      "anchor_cosine_own": null,
+      "anchor_cosine": null,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.7828134323657399,
+      "metrics": {
+        "laplacian_variance": null,
+        "clipped_highlight_fraction": null,
+        "local_luminance_variance": null,
+        "unavailable_reason": "no face detected"
+      },
+      "unavailable_reason": "IdentityCheckError: no face detected"
+    },
+    {
+      "image_id": "c001-exp03-g01-t10-mechA",
+      "path": "c001-exp03-g01-t10-mechA.png",
+      "cell_id": "exp03-g01-t10",
+      "face_detected": true,
+      "face_cosine": 0.7429411870414429,
+      "anchor_cosines": {
+        "g07": 0.7617247609005855,
+        "g02": 0.7333000454820701,
+        "g01": 0.7429411870414429
+      },
+      "anchor_cosine_max": 0.7617247609005855,
+      "anchor_cosine_own": 0.7429411870414429,
+      "anchor_cosine": 0.7617247609005855,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.7967593149168416,
+      "metrics": {
+        "laplacian_variance": 340.54685365909415,
+        "clipped_highlight_fraction": 0.015927886962890624,
+        "local_luminance_variance": 354.13496114027504,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t11-mechA",
+      "path": "c001-exp03-g01-t11-mechA.png",
+      "cell_id": "exp03-g01-t11",
+      "face_detected": true,
+      "face_cosine": 0.8863434772350688,
+      "anchor_cosines": {
+        "g07": 0.9107332597508867,
+        "g02": 0.877490143578862,
+        "g01": 0.8863434772350688
+      },
+      "anchor_cosine_max": 0.9107332597508867,
+      "anchor_cosine_own": 0.8863434772350688,
+      "anchor_cosine": 0.9107332597508867,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.7417880540913973,
+      "metrics": {
+        "laplacian_variance": 314.623631244342,
+        "clipped_highlight_fraction": 0.017583465576171874,
+        "local_luminance_variance": 270.65328723439046,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g01-t12-mechA",
+      "path": "c001-exp03-g01-t12-mechA.png",
+      "cell_id": "exp03-g01-t12",
+      "face_detected": true,
+      "face_cosine": 0.8744734339602559,
+      "anchor_cosines": {
+        "g07": 0.8450904938761366,
+        "g02": 0.8770823659671111,
+        "g01": 0.8744734339602559
+      },
+      "anchor_cosine_max": 0.8770823659671111,
+      "anchor_cosine_own": 0.8744734339602559,
+      "anchor_cosine": 0.8770823659671111,
+      "own_anchor": "g01",
+      "dinov2_cohesion": 0.8442840264632807,
+      "metrics": {
+        "laplacian_variance": 545.6445741103773,
+        "clipped_highlight_fraction": 0.00639190673828125,
+        "local_luminance_variance": 456.4878454472129,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t01-mechA",
+      "path": "c001-exp03-g02-t01-mechA.png",
+      "cell_id": "exp03-g02-t01",
+      "face_detected": true,
+      "face_cosine": 0.8493186947710244,
+      "anchor_cosines": {
+        "g07": 0.8202650606698533,
+        "g02": 0.8996562736120499,
+        "g01": 0.8493186947710244
+      },
+      "anchor_cosine_max": 0.8996562736120499,
+      "anchor_cosine_own": 0.8996562736120499,
+      "anchor_cosine": 0.8996562736120499,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.9247028390334293,
+      "metrics": {
+        "laplacian_variance": 604.5944443798339,
+        "clipped_highlight_fraction": 0.01396484375,
+        "local_luminance_variance": 485.5040496758521,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t02-mechA",
+      "path": "c001-exp03-g02-t02-mechA.png",
+      "cell_id": "exp03-g02-t02",
+      "face_detected": true,
+      "face_cosine": 0.7251493455257604,
+      "anchor_cosines": {
+        "g07": 0.7353669575669519,
+        "g02": 0.675151457787948,
+        "g01": 0.7251493455257604
+      },
+      "anchor_cosine_max": 0.7353669575669519,
+      "anchor_cosine_own": 0.675151457787948,
+      "anchor_cosine": 0.7353669575669519,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8573352817490869,
+      "metrics": {
+        "laplacian_variance": 409.73687163313446,
+        "clipped_highlight_fraction": 0.007265472412109375,
+        "local_luminance_variance": 416.12255608584564,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t03-mechA",
+      "path": "c001-exp03-g02-t03-mechA.png",
+      "cell_id": "exp03-g02-t03",
+      "face_detected": true,
+      "face_cosine": 0.7160185627232395,
+      "anchor_cosines": {
+        "g07": 0.7244920641639122,
+        "g02": 0.6725311433543872,
+        "g01": 0.7160185627232395
+      },
+      "anchor_cosine_max": 0.7244920641639122,
+      "anchor_cosine_own": 0.6725311433543872,
+      "anchor_cosine": 0.7244920641639122,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.819099158069266,
+      "metrics": {
+        "laplacian_variance": 417.1452207138733,
+        "clipped_highlight_fraction": 0.015081024169921875,
+        "local_luminance_variance": 394.83890568028863,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t04-mechA",
+      "path": "c001-exp03-g02-t04-mechA.png",
+      "cell_id": "exp03-g02-t04",
+      "face_detected": true,
+      "face_cosine": 0.8519490104115355,
+      "anchor_cosines": {
+        "g07": 0.8566588225461821,
+        "g02": 0.8416609060590923,
+        "g01": 0.8519490104115355
+      },
+      "anchor_cosine_max": 0.8566588225461821,
+      "anchor_cosine_own": 0.8416609060590923,
+      "anchor_cosine": 0.8566588225461821,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8711556150924141,
+      "metrics": {
+        "laplacian_variance": 553.4335507616012,
+        "clipped_highlight_fraction": 0.005364990234375,
+        "local_luminance_variance": 571.2285455795334,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t05-mechA",
+      "path": "c001-exp03-g02-t05-mechA.png",
+      "cell_id": "exp03-g02-t05",
+      "face_detected": true,
+      "face_cosine": 0.8611583878724962,
+      "anchor_cosines": {
+        "g07": 0.8478107144386402,
+        "g02": 0.8251569093700415,
+        "g01": 0.8611583878724962
+      },
+      "anchor_cosine_max": 0.8611583878724962,
+      "anchor_cosine_own": 0.8251569093700415,
+      "anchor_cosine": 0.8611583878724962,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8649995913539662,
+      "metrics": {
+        "laplacian_variance": 335.7049579222671,
+        "clipped_highlight_fraction": 0.014685821533203126,
+        "local_luminance_variance": 339.84539519758073,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t06-mechA",
+      "path": "c001-exp03-g02-t06-mechA.png",
+      "cell_id": "exp03-g02-t06",
+      "face_detected": true,
+      "face_cosine": 0.8072765892351377,
+      "anchor_cosines": {
+        "g07": 0.7828058301742394,
+        "g02": 0.8300159459958073,
+        "g01": 0.8072765892351377
+      },
+      "anchor_cosine_max": 0.8300159459958073,
+      "anchor_cosine_own": 0.8300159459958073,
+      "anchor_cosine": 0.8300159459958073,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8692525391073554,
+      "metrics": {
+        "laplacian_variance": 377.3856643116577,
+        "clipped_highlight_fraction": 0.013724517822265626,
+        "local_luminance_variance": 434.07386245022127,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t07-mechA",
+      "path": "c001-exp03-g02-t07-mechA.png",
+      "cell_id": "exp03-g02-t07",
+      "face_detected": true,
+      "face_cosine": 0.8721821799458368,
+      "anchor_cosines": {
+        "g07": 0.876564100275806,
+        "g02": 0.8283209504279776,
+        "g01": 0.8721821799458368
+      },
+      "anchor_cosine_max": 0.876564100275806,
+      "anchor_cosine_own": 0.8283209504279776,
+      "anchor_cosine": 0.876564100275806,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8187700225261636,
+      "metrics": {
+        "laplacian_variance": 396.15693285481103,
+        "clipped_highlight_fraction": 0.004821014404296875,
+        "local_luminance_variance": 425.713766571345,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t08-mechA",
+      "path": "c001-exp03-g02-t08-mechA.png",
+      "cell_id": "exp03-g02-t08",
+      "face_detected": true,
+      "face_cosine": 0.742519452331845,
+      "anchor_cosines": {
+        "g07": 0.7459519593162786,
+        "g02": 0.7108986781592362,
+        "g01": 0.742519452331845
+      },
+      "anchor_cosine_max": 0.7459519593162786,
+      "anchor_cosine_own": 0.7108986781592362,
+      "anchor_cosine": 0.7459519593162786,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8046977897187044,
+      "metrics": {
+        "laplacian_variance": 306.0452109630402,
+        "clipped_highlight_fraction": 0.00049285888671875,
+        "local_luminance_variance": 288.2664166293617,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t09-mechA",
+      "path": "c001-exp03-g02-t09-mechA.png",
+      "cell_id": "exp03-g02-t09",
+      "face_detected": true,
+      "face_cosine": 0.8393394696755967,
+      "anchor_cosines": {
+        "g07": 0.7825981407704234,
+        "g02": 0.8893876279922225,
+        "g01": 0.8393394696755967
+      },
+      "anchor_cosine_max": 0.8893876279922225,
+      "anchor_cosine_own": 0.8893876279922225,
+      "anchor_cosine": 0.8893876279922225,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.8504554948558121,
+      "metrics": {
+        "laplacian_variance": 118.49878194149017,
+        "clipped_highlight_fraction": 0.0,
+        "local_luminance_variance": 113.19322123058755,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t10-mechA",
+      "path": "c001-exp03-g02-t10-mechA.png",
+      "cell_id": "exp03-g02-t10",
+      "face_detected": true,
+      "face_cosine": 0.814585751044633,
+      "anchor_cosines": {
+        "g07": 0.8146398599031216,
+        "g02": 0.8640973453104278,
+        "g01": 0.814585751044633
+      },
+      "anchor_cosine_max": 0.8640973453104278,
+      "anchor_cosine_own": 0.8640973453104278,
+      "anchor_cosine": 0.8640973453104278,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.7692742176833725,
+      "metrics": {
+        "laplacian_variance": 335.6336119984161,
+        "clipped_highlight_fraction": 0.01722259521484375,
+        "local_luminance_variance": 335.9732643673336,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t11-mechA",
+      "path": "c001-exp03-g02-t11-mechA.png",
+      "cell_id": "exp03-g02-t11",
+      "face_detected": true,
+      "face_cosine": 0.9104358621655347,
+      "anchor_cosines": {
+        "g07": 0.8995899447950664,
+        "g02": 0.8834953527109358,
+        "g01": 0.9104358621655347
+      },
+      "anchor_cosine_max": 0.9104358621655347,
+      "anchor_cosine_own": 0.8834953527109358,
+      "anchor_cosine": 0.9104358621655347,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.7667839985141256,
+      "metrics": {
+        "laplacian_variance": 268.2508161123001,
+        "clipped_highlight_fraction": 0.02097015380859375,
+        "local_luminance_variance": 255.18969477843035,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g02-t12-mechA",
+      "path": "c001-exp03-g02-t12-mechA.png",
+      "cell_id": "exp03-g02-t12",
+      "face_detected": true,
+      "face_cosine": 0.8678412102852251,
+      "anchor_cosines": {
+        "g07": 0.8877942509023441,
+        "g02": 0.9088840333886955,
+        "g01": 0.8678412102852251
+      },
+      "anchor_cosine_max": 0.9088840333886955,
+      "anchor_cosine_own": 0.9088840333886955,
+      "anchor_cosine": 0.9088840333886955,
+      "own_anchor": "g02",
+      "dinov2_cohesion": 0.5072219603189896,
+      "metrics": {
+        "laplacian_variance": 450.7962485809845,
+        "clipped_highlight_fraction": 0.020783233642578124,
+        "local_luminance_variance": 418.328350850848,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t01-mechA",
+      "path": "c001-exp03-g07-t01-mechA.png",
+      "cell_id": "exp03-g07-t01",
+      "face_detected": true,
+      "face_cosine": 0.8973074874377751,
+      "anchor_cosines": {
+        "g07": 0.9157637741414247,
+        "g02": 0.8564332513873231,
+        "g01": 0.8973074874377751
+      },
+      "anchor_cosine_max": 0.9157637741414247,
+      "anchor_cosine_own": 0.9157637741414247,
+      "anchor_cosine": 0.9157637741414247,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.8933703375869679,
+      "metrics": {
+        "laplacian_variance": 529.5335804700132,
+        "clipped_highlight_fraction": 0.009795379638671876,
+        "local_luminance_variance": 437.1839845871782,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t02-mechA",
+      "path": "c001-exp03-g07-t02-mechA.png",
+      "cell_id": "exp03-g07-t02",
+      "face_detected": true,
+      "face_cosine": 0.718079172649693,
+      "anchor_cosines": {
+        "g07": 0.7278679697151024,
+        "g02": 0.7123678627309488,
+        "g01": 0.718079172649693
+      },
+      "anchor_cosine_max": 0.7278679697151024,
+      "anchor_cosine_own": 0.7278679697151024,
+      "anchor_cosine": 0.7278679697151024,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.9039262736547069,
+      "metrics": {
+        "laplacian_variance": 333.2080994585602,
+        "clipped_highlight_fraction": 0.0024383544921875,
+        "local_luminance_variance": 363.1220963662363,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t03-mechA",
+      "path": "c001-exp03-g07-t03-mechA.png",
+      "cell_id": "exp03-g07-t03",
+      "face_detected": true,
+      "face_cosine": 0.8646012700745,
+      "anchor_cosines": {
+        "g07": 0.8988878182338244,
+        "g02": 0.8454790003706814,
+        "g01": 0.8646012700745
+      },
+      "anchor_cosine_max": 0.8988878182338244,
+      "anchor_cosine_own": 0.8988878182338244,
+      "anchor_cosine": 0.8988878182338244,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.8986545967900641,
+      "metrics": {
+        "laplacian_variance": 280.14091062805323,
+        "clipped_highlight_fraction": 0.003812408447265625,
+        "local_luminance_variance": 357.0965374375734,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t04-mechA",
+      "path": "c001-exp03-g07-t04-mechA.png",
+      "cell_id": "exp03-g07-t04",
+      "face_detected": true,
+      "face_cosine": 0.8148457482848882,
+      "anchor_cosines": {
+        "g07": 0.8214382343491338,
+        "g02": 0.8004029902196368,
+        "g01": 0.8148457482848882
+      },
+      "anchor_cosine_max": 0.8214382343491338,
+      "anchor_cosine_own": 0.8214382343491338,
+      "anchor_cosine": 0.8214382343491338,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.8953946242151818,
+      "metrics": {
+        "laplacian_variance": 322.66863551989434,
+        "clipped_highlight_fraction": 0.00166168212890625,
+        "local_luminance_variance": 349.65025845193463,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t05-mechA",
+      "path": "c001-exp03-g07-t05-mechA.png",
+      "cell_id": "exp03-g07-t05",
+      "face_detected": true,
+      "face_cosine": 0.8044866923151223,
+      "anchor_cosines": {
+        "g07": 0.8670956789005364,
+        "g02": 0.7363598697216013,
+        "g01": 0.8044866923151223
+      },
+      "anchor_cosine_max": 0.8670956789005364,
+      "anchor_cosine_own": 0.8670956789005364,
+      "anchor_cosine": 0.8670956789005364,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.9231202088523239,
+      "metrics": {
+        "laplacian_variance": 260.3296512372787,
+        "clipped_highlight_fraction": 1.52587890625e-05,
+        "local_luminance_variance": 318.1155349441319,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t06-mechA",
+      "path": "c001-exp03-g07-t06-mechA.png",
+      "cell_id": "exp03-g07-t06",
+      "face_detected": true,
+      "face_cosine": 0.9032987200743751,
+      "anchor_cosines": {
+        "g07": 0.8747410445636256,
+        "g02": 0.8710084024372108,
+        "g01": 0.9032987200743751
+      },
+      "anchor_cosine_max": 0.9032987200743751,
+      "anchor_cosine_own": 0.8747410445636256,
+      "anchor_cosine": 0.9032987200743751,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.7946923505379999,
+      "metrics": {
+        "laplacian_variance": 234.80031279634096,
+        "clipped_highlight_fraction": 0.007189178466796875,
+        "local_luminance_variance": 277.3664213618866,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t07-mechA",
+      "path": "c001-exp03-g07-t07-mechA.png",
+      "cell_id": "exp03-g07-t07",
+      "face_detected": true,
+      "face_cosine": 0.846897707478963,
+      "anchor_cosines": {
+        "g07": 0.8745550070384099,
+        "g02": 0.8071099416672533,
+        "g01": 0.846897707478963
+      },
+      "anchor_cosine_max": 0.8745550070384099,
+      "anchor_cosine_own": 0.8745550070384099,
+      "anchor_cosine": 0.8745550070384099,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.8156356731767261,
+      "metrics": {
+        "laplacian_variance": 357.5011134763641,
+        "clipped_highlight_fraction": 7.62939453125e-07,
+        "local_luminance_variance": 352.3035843555223,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t08-mechA",
+      "path": "c001-exp03-g07-t08-mechA.png",
+      "cell_id": "exp03-g07-t08",
+      "face_detected": true,
+      "face_cosine": 0.7512485218778711,
+      "anchor_cosines": {
+        "g07": 0.8198200602067311,
+        "g02": 0.7209082483805854,
+        "g01": 0.7512485218778711
+      },
+      "anchor_cosine_max": 0.8198200602067311,
+      "anchor_cosine_own": 0.8198200602067311,
+      "anchor_cosine": 0.8198200602067311,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.7758762273548442,
+      "metrics": {
+        "laplacian_variance": 134.26037624606474,
+        "clipped_highlight_fraction": 4.57763671875e-06,
+        "local_luminance_variance": 248.37153293117967,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t09-mechA",
+      "path": "c001-exp03-g07-t09-mechA.png",
+      "cell_id": "exp03-g07-t09",
+      "face_detected": true,
+      "face_cosine": 0.841902497610109,
+      "anchor_cosines": {
+        "g07": 0.8778357792273569,
+        "g02": 0.8244327582844267,
+        "g01": 0.841902497610109
+      },
+      "anchor_cosine_max": 0.8778357792273569,
+      "anchor_cosine_own": 0.8778357792273569,
+      "anchor_cosine": 0.8778357792273569,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.8534369103001865,
+      "metrics": {
+        "laplacian_variance": 60.42059112164916,
+        "clipped_highlight_fraction": 0.010352325439453126,
+        "local_luminance_variance": 59.95300160368451,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t10-mechA",
+      "path": "c001-exp03-g07-t10-mechA.png",
+      "cell_id": "exp03-g07-t10",
+      "face_detected": true,
+      "face_cosine": 0.678451042376213,
+      "anchor_cosines": {
+        "g07": 0.7356537719543119,
+        "g02": 0.6421796113511983,
+        "g01": 0.678451042376213
+      },
+      "anchor_cosine_max": 0.7356537719543119,
+      "anchor_cosine_own": 0.7356537719543119,
+      "anchor_cosine": 0.7356537719543119,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.7795150234169842,
+      "metrics": {
+        "laplacian_variance": 445.5274319384231,
+        "clipped_highlight_fraction": 0.000730133056640625,
+        "local_luminance_variance": 323.8289446272387,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t11-mechA",
+      "path": "c001-exp03-g07-t11-mechA.png",
+      "cell_id": "exp03-g07-t11",
+      "face_detected": true,
+      "face_cosine": 0.8887685178497002,
+      "anchor_cosines": {
+        "g07": 0.9572588187017929,
+        "g02": 0.8496995065972192,
+        "g01": 0.8887685178497002
+      },
+      "anchor_cosine_max": 0.9572588187017929,
+      "anchor_cosine_own": 0.9572588187017929,
+      "anchor_cosine": 0.9572588187017929,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.6735573131530471,
+      "metrics": {
+        "laplacian_variance": 504.6143056139634,
+        "clipped_highlight_fraction": 0.025029754638671874,
+        "local_luminance_variance": 323.05177106784436,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    },
+    {
+      "image_id": "c001-exp03-g07-t12-mechA",
+      "path": "c001-exp03-g07-t12-mechA.png",
+      "cell_id": "exp03-g07-t12",
+      "face_detected": true,
+      "face_cosine": 0.9070503923919191,
+      "anchor_cosines": {
+        "g07": 0.9482852765698726,
+        "g02": 0.9098986649870764,
+        "g01": 0.9070503923919191
+      },
+      "anchor_cosine_max": 0.9482852765698726,
+      "anchor_cosine_own": 0.9482852765698726,
+      "anchor_cosine": 0.9482852765698726,
+      "own_anchor": "g07",
+      "dinov2_cohesion": 0.7111604062677181,
+      "metrics": {
+        "laplacian_variance": 298.8507946742004,
+        "clipped_highlight_fraction": 0.0,
+        "local_luminance_variance": 263.43366407817854,
+        "unavailable_reason": null
+      },
+      "unavailable_reason": null
+    }
+  ]
+}

@@ -1,0 +1,192 @@
+{
+  "schema": "figment/runpod-run@1",
+  "dry_run": false,
+  "pod_id": "nc27uic26ifb2s",
+  "gpu": {
+    "type": "NVIDIA GeForce RTX 4090",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "started_utc": "2026-09-03T23:41:06+00:00",
+  "max_minutes": 82.0,
+  "preflight_estimate_usd": 1.093333,
+  "arc_usd_before": 5.766294,
+  "arc_cap_usd": 52.85,
+  "uploads": [
+    {
+      "name": "g01.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 737366
+    },
+    {
+      "name": "g02.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 750657
+    },
+    {
+      "name": "g07.jpg",
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true,
+      "bytes": 730186
+    }
+  ],
+  "jobs": [
+    {
+      "job": 1,
+      "output_name": "c001-exp03-g01-t12-mechA",
+      "seed": 530012,
+      "prompt_id": "76699788-0dd2-4cbf-bedb-fca68b8d5ce6",
+      "seconds": 160.106,
+      "files": [
+        {
+          "path": "c001-exp03-g01-t12-mechA.png",
+          "bytes": 1939208
+        }
+      ]
+    },
+    {
+      "job": 2,
+      "output_name": "c001-exp03-g02-t01-mechA",
+      "seed": 531001,
+      "prompt_id": "0f1becda-1dc0-4ad6-88e0-6ff6a700495a",
+      "seconds": 155.512,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t01-mechA.png",
+          "bytes": 2013163
+        }
+      ]
+    },
+    {
+      "job": 3,
+      "output_name": "c001-exp03-g02-t02-mechA",
+      "seed": 531002,
+      "prompt_id": "df38c52f-b1d1-4540-a203-49d485803fd3",
+      "seconds": 154.863,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t02-mechA.png",
+          "bytes": 1939343
+        }
+      ]
+    },
+    {
+      "job": 4,
+      "output_name": "c001-exp03-g02-t03-mechA",
+      "seed": 531003,
+      "prompt_id": "386668a6-2fe3-40e6-93df-76e4ca9dee4f",
+      "seconds": 154.994,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t03-mechA.png",
+          "bytes": 1867797
+        }
+      ]
+    },
+    {
+      "job": 5,
+      "output_name": "c001-exp03-g02-t04-mechA",
+      "seed": 531004,
+      "prompt_id": "9c133f95-540f-4f37-908e-7b9513e624e7",
+      "seconds": 155.222,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t04-mechA.png",
+          "bytes": 1916119
+        }
+      ]
+    },
+    {
+      "job": 6,
+      "output_name": "c001-exp03-g02-t05-mechA",
+      "seed": 531005,
+      "prompt_id": "7f6b9b9a-54fa-41d4-9989-aef7b5d3427e",
+      "seconds": 156.317,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t05-mechA.png",
+          "bytes": 1880943
+        }
+      ]
+    },
+    {
+      "job": 7,
+      "output_name": "c001-exp03-g02-t06-mechA",
+      "seed": 531006,
+      "prompt_id": "9d9f29e7-1d69-4b66-8402-0a29539b4970",
+      "seconds": 154.613,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t06-mechA.png",
+          "bytes": 1961349
+        }
+      ]
+    },
+    {
+      "job": 8,
+      "output_name": "c001-exp03-g02-t07-mechA",
+      "seed": 531007,
+      "prompt_id": "0ffe35b3-50c9-4db0-a320-a98dc7e1e723",
+      "seconds": 154.664,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t07-mechA.png",
+          "bytes": 1919174
+        }
+      ]
+    },
+    {
+      "job": 9,
+      "output_name": "c001-exp03-g02-t08-mechA",
+      "seed": 531008,
+      "prompt_id": "53d51f02-fada-4668-b2fc-747e86eb571f",
+      "seconds": 154.806,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t08-mechA.png",
+          "bytes": 1785580
+        }
+      ]
+    },
+    {
+      "job": 10,
+      "output_name": "c001-exp03-g02-t09-mechA",
+      "seed": 531009,
+      "prompt_id": "1a7d5393-9463-4703-ba8e-ae5072a6fcb3",
+      "seconds": 154.753,
+      "files": [
+        {
+          "path": "c001-exp03-g02-t09-mechA.png",
+          "bytes": 1716956
+        }
+      ]
+    }
+  ],
+  "artifacts": [],
+  "placement_attempts": [
+    {
+      "attempt": 1,
+      "pod_id": "nc27uic26ifb2s",
+      "machine_host": "6zun4fp0zqrz",
+      "machine_id": "6zun4fp0zqrz",
+      "avoided": false,
+      "termination_verified": true,
+      "elapsed_seconds": 1859.801,
+      "estimated_actual_usd": 0.382293,
+      "estimated_actual_usd_basis": "READY-rate measured"
+    }
+  ],
+  "termination_verified": true,
+  "daily_usd_limit": 10.0,
+  "daily_usd_before_create": 3.793672,
+  "finished_utc": "2026-09-04T00:12:06+00:00",
+  "elapsed_seconds": 1859.801,
+  "hourly_price_usd": 0.74,
+  "estimated_actual_usd": 0.382293,
+  "estimated_actual_usd_basis": "READY-rate measured"
+}
