@@ -40,12 +40,16 @@ def _commit_all(root, msg):
 
 # Baseline daemon-read content laid down on main in every scenario. The STATE.md
 # file sits next to a workflows dir but is NOT a daemon-read path — it must never
-# appear in any drift report (guards the pattern matcher).
+# appear in any drift report (guards the pattern matcher). governance/ carries the
+# one mirrored FILE entry plus a sibling that must stay unmirrored, which is what
+# keeps "one registry file" from quietly becoming "the governance tree".
 MAIN_LAYOUT = {
     "agents/fyt.md": "agent one\n",
     "orgs/foo/workflows/run.md": "workflow one\n",
     "orgs/foo/workflows/seg/a.js": "console.log(1)\n",
     "orgs/foo/STATE.md": "not a daemon-read dir\n",
+    "governance/model-routing.yaml": "runtimes:\n  claude:\n    known_models: [claude-fable-5]\n",
+    "governance/risk-tiers.md": "not a daemon-read path\n",
 }
 
 
@@ -90,6 +94,25 @@ def test_matcher_covers_daemon_dirs_only():
     assert not sdd._matches("orgs/foo/docs/plan.md", matchers)
 
 
+def test_matcher_file_entry_is_exactly_one_file():
+    """W61: governance/model-routing.yaml is a FILE entry, not a governance/ doorway.
+
+    The daemon compiles its execution-profile catalogue from that one registry file
+    (dashboard/server/control/environment.ts#loadExecutionProfiles); everything else
+    under governance/ is human-edited policy that must never ride the mirror.
+    """
+    matchers = sdd._compile(sdd.DAEMON_READ_DIRS)
+    assert sdd._matches("governance/model-routing.yaml", matchers)
+    for miss in (
+        "governance/risk-tiers.md",
+        "governance/budget.yaml",
+        "governance/model-routing.yaml.bak",
+        "governance/model-routing.yaml/nested.yaml",
+        "governance",
+    ):
+        assert not sdd._matches(miss, matchers), miss
+
+
 # --- check() in refs-fallback mode (no ops worktree on disk) ----------------
 def test_check_clean_no_drift(tmp_path):
     wc = build(tmp_path)  # ops == main
@@ -128,6 +151,44 @@ def test_check_detects_ops_only(tmp_path):
                        main_ref="origin/main", ops_ref="origin/ops")
     assert report["ops_only"] == ["agents/ghost.md"]
     assert sdd.has_drift(report)
+
+
+def test_check_detects_model_routing_drift(tmp_path):
+    """W61: the file entry is reported when ops drifts - the 2026-09-04 VM symptom.
+
+    ops carried claude-opus-4-8 while main had moved to claude-fable-5, so the daemon
+    compiled a catalogue with no manager:claude:claude-fable-5 and every launch of that
+    assignment answered 400 assigned-profile-not-found. Before the file entry existed this
+    report came back clean, which is why the drift went unseen.
+    """
+    def mutate(wc):
+        _write(wc, "governance/model-routing.yaml",
+               "runtimes:\n  claude:\n    known_models: [claude-opus-4-8]\n")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["differs"] == ["governance/model-routing.yaml"]
+    assert sdd.has_drift(report)
+
+
+def test_check_detects_model_routing_missing_from_ops(tmp_path):
+    """A fresh ops checkout without the registry file is main-only drift, not silence."""
+    def mutate(wc):
+        _git(wc, "rm", "-q", "governance/model-routing.yaml")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert report["main_only"] == ["governance/model-routing.yaml"]
+
+
+def test_check_ignores_other_governance_files(tmp_path):
+    """An ops-side edit to another governance file is NOT drift this tool reports or fixes."""
+    def mutate(wc):
+        _write(wc, "governance/risk-tiers.md", "ops edited policy\n")
+    wc = build(tmp_path, mutate)
+    report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
+                       main_ref="origin/main", ops_ref="origin/ops")
+    assert not sdd.has_drift(report), report
 
 
 def test_check_ignores_non_daemon_dirs(tmp_path):
@@ -215,6 +276,28 @@ def test_sync_pushes_main_content_to_ops(tmp_path):
     report = sdd.check(wc, sdd.DAEMON_READ_DIRS, ops_root=None,
                        main_ref="origin/main", ops_ref="origin/ops")
     assert not sdd.has_drift(report), report
+
+
+def test_sync_mirrors_model_routing_and_leaves_governance_alone(tmp_path):
+    """W61 end-to-end: --sync fixes the registry file and touches nothing else in governance/."""
+    def mutate(wc):
+        _write(wc, "governance/model-routing.yaml",
+               "runtimes:\n  claude:\n    known_models: [claude-opus-4-8]\n")
+        _write(wc, "governance/risk-tiers.md", "ops-side policy edit\n")
+    wc = build(tmp_path, mutate)
+    ops_root = _add_ops_worktree(wc, tmp_path / "ops_wt")
+
+    result = sdd.sync(ops_root, sdd.DAEMON_READ_DIRS, ops_root, main_ref="origin/main")
+    assert result["committed"] and result["pushed"]
+
+    _git(wc, "fetch", "-q", "origin")
+    mirrored = _git(wc, "show", "origin/ops:governance/model-routing.yaml").stdout
+    assert "claude-fable-5" in mirrored and "claude-opus-4-8" not in mirrored
+    # The mirror commit carries the registry file ONLY.
+    committed = _git(ops_root, "show", "--name-only", "--format=", "HEAD").stdout
+    assert committed.split() == ["governance/model-routing.yaml"], committed
+    # The sibling policy file keeps its ops-side content: not mirrored, not reverted.
+    assert "ops-side policy edit" in _git(wc, "show", "origin/ops:governance/risk-tiers.md").stdout
 
 
 def test_sync_noop_when_already_synced(tmp_path):

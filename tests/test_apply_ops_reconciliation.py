@@ -420,6 +420,74 @@ def test_reconciliation_accepts_daemon_read_mirror_and_atlas_transcripts(tmp_pat
     assert (vm / "orgs" / "atlas" / "output" / "transcripts" / "2026-08-21-abc.jsonl").is_file()
 
 
+def test_reconciliation_accepts_a_model_routing_only_range(tmp_path, monkeypatch):
+    """W61: a range whose ONLY non-coordination change is governance/model-routing.yaml lands.
+
+    dashboard/server/control/environment.ts#loadExecutionProfiles compiles the execution-profile
+    catalogue from that file in the daemon's ops checkout, so when ops drifts behind main every
+    launch naming a newer model answers 400 assigned-profile-not-found. On 2026-09-04 the mirror
+    commit that would have fixed it was itself refused here with 'non-coordination path'. Revert
+    the RECONCILED entry and this goes red on exactly that message.
+    """
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    commit_identity(monkeypatch)
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+
+    def mirror(work: Path) -> None:
+        path = work / "governance" / "model-routing.yaml"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            "runtimes:\n  claude:\n    known_models: [claude-fable-5, claude-opus-5]\n",
+            encoding="utf-8",
+        )
+
+    target, _work = desktop_ops_commit(tmp_path, origin, "model-routing-mirror", mirror)
+    assert apply_reconciliation(
+        vm, spool, return_bundle(tmp_path, origin, target), returned_receipt_dir(tmp_path, spool, manifest),
+        source, target,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+        run=make_git_runner(git_user=None),
+    ) == target
+    assert "claude-fable-5" in (vm / "governance" / "model-routing.yaml").read_text(encoding="utf-8")
+
+
+def test_reconciliation_refuses_the_rest_of_governance(tmp_path, monkeypatch):
+    """Admitting one daemon-read registry file must not admit the governance/ tree.
+
+    governance/ is human-edited policy (CLAUDE.md); risk-tiers.md in particular decides what a VM
+    approval may authorize, so a promotion that could rewrite it on the VM would let the loop
+    relax its own ceiling. A commit carrying BOTH the admitted file and a second governance path
+    is refused whole -- there is no partial apply.
+    """
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    commit_identity(monkeypatch)
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+
+    def mirror(work: Path) -> None:
+        for relpath, body in (
+            ("governance/model-routing.yaml", "runtimes: {}\n"),
+            ("governance/risk-tiers.md", "# tiers, rewritten by a compromised promotion\n"),
+        ):
+            path = work / relpath
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+
+    target, _work = desktop_ops_commit(tmp_path, origin, "governance-widening", mirror)
+    with pytest.raises(RuntimeError, match="non-coordination path"):
+        apply_reconciliation(
+            vm, spool, return_bundle(tmp_path, origin, target), returned_receipt_dir(tmp_path, spool, manifest),
+            source, target,
+            readiness=lambda: {"quiescent": True, "blockers": []},
+            run=make_git_runner(git_user=None),
+        )
+    assert git(vm, "rev-parse", "HEAD").stdout.strip() == source
+    assert not (vm / "governance" / "risk-tiers.md").exists()
+
+
 @pytest.mark.parametrize(
     "relpath",
     [
@@ -461,12 +529,15 @@ def test_reconciliation_still_refuses_runtime_and_work_product_paths(tmp_path, m
 def test_reconciled_allowlist_covers_every_daemon_read_dir():
     """Pin RECONCILED to scripts/sync_daemon_dirs.DAEMON_READ_DIRS.
 
-    That script is what puts agents/ and orgs/*/workflows/ onto ops. Adding an entry there while
-    leaving this allowlist behind would wedge the reconciliation leg again, silently, the way it was
-    wedged for two weeks -- so the two move together or this fails.
+    That script is what puts agents/, orgs/*/workflows/ and governance/model-routing.yaml onto
+    ops. Adding an entry there while leaving this allowlist behind would wedge the reconciliation
+    leg again, silently, the way it was wedged for two weeks (agents/**) and again on 2026-09-04
+    (the model-routing mirror) -- so the two move together or this fails. The entry rule is that
+    script's own: trailing "/" is a directory prefix, no trailing "/" is one exact file.
     """
     for pattern in DAEMON_READ_DIRS:
-        sample = pattern.rstrip("/").replace("*", "sample-org") + "/sample.md"
+        body = pattern.rstrip("/").replace("*", "sample-org")
+        sample = body if not pattern.endswith("/") else body + "/sample.md"
         assert RECONCILED.fullmatch(sample) is not None, f"{pattern} is not reconcilable"
 
 
@@ -476,6 +547,7 @@ def test_vm_source_allowlist_stays_narrower_than_the_reconciled_one():
         "agents/grader.md",
         "orgs/faceless-youtube/workflows/segments/segment-a.workflow.js",
         "orgs/atlas/output/transcripts/2026-08-21-abc.jsonl",
+        "governance/model-routing.yaml",
     ):
         assert RECONCILED.fullmatch(relpath) is not None
         assert COORDINATION.fullmatch(relpath) is None
@@ -490,6 +562,15 @@ def test_vm_source_allowlist_stays_narrower_than_the_reconciled_one():
         "deploy/apply_ops_reconciliation.py",
         "scripts/sync_daemon_dirs.py",
         "governance/risk-tiers.md",
+        # The model-routing entry is ONE file, not a doorway into governance/: its siblings, a
+        # look-alike name, a directory of the same name, and a copy under another root all stay out.
+        "governance/budget.yaml",
+        "governance/card-schema.md",
+        "governance/model-routing.yml",
+        "governance/model-routing.yaml.bak",
+        "governance/model-routing.yaml/nested.yaml",
+        "governance/sub/model-routing.yaml",
+        "orgs/atlas/governance/model-routing.yaml",
         "HEARTBEAT.md",
         "CLAUDE.md",
         ".claude/settings.json",

@@ -9,13 +9,19 @@
 # fd-pinning walk (dashboard/server/pty/fdPinnedPaths.ts) demands. This script inspects it first.
 # See docs/runbooks/2026-09-03-vm-agent-launch-preflight.md for the full narrative and citations.
 #
-# Usage: sudo ./vm_launch_preflight.sh [https://tailnet-url]
+# Usage: sudo ./vm_launch_preflight.sh [https://tailnet-url] [model-routing-sha256]
 #   The tailnet URL is optional. Without it, the admission/health/readyz checks are skipped (they
 #   need a real HTTP round trip); everything else — identities, filesystem shape, sockets, systemd
 #   units, session state — is checked regardless.
+#   The second argument (or $KB_MODEL_ROUTING_SHA256) is main's sha256 of
+#   governance/model-routing.yaml, which the model-routing drift check below compares the ops
+#   checkout against. Get it on the desktop with:
+#     git show origin/main:governance/model-routing.yaml | sha256sum
+#   Without it that check falls back to the release copy, and warns if the release has none.
 
 fail=0
 tailnet_url="${1:-}"
+model_routing_sha="${2:-${KB_MODEL_ROUTING_SHA256:-}}"
 ok()   { echo "  ok    $*"; }
 bad()  { echo "  FAIL  $*"; fail=1; }
 warn() { echo "  warn  $*"; }
@@ -306,6 +312,52 @@ dashboard_umask=$(systemctl show kb-dashboard -p UMask --value 2>/dev/null)
 [ "$dashboard_umask" = "0002" ] \
   && ok "kb-dashboard UMask=0002 (workers can write in their run worktree)" \
   || bad "kb-dashboard UMask=$dashboard_umask, needs 0002 - every worker write inside the run worktree will fail. Fix: add UMask=0002 to [Service] in deploy/systemd/kb-dashboard.service, reinstall the unit on the VM, systemctl daemon-reload, systemctl restart kb-dashboard"
+
+# ---------------------------------------------------------------------------------------------
+# W61: the execution-profile catalogue the daemon compiles at launch admission comes from
+# governance/model-routing.yaml IN THE OPS CHECKOUT - dashboard/server/control/environment.ts
+# loadExecutionProfiles() -> loadRuntimeSkillRegistry(repoRoot) reads runtimes.<runtime>.known_models
+# and turns each into manager:<runtime>:<model> / worker:<runtime>:<model>. That copy is mirrored
+# from main by scripts/sync_daemon_dirs.py and only ever reaches the VM through a desktop-signed
+# promotion, so it drifts silently: on 2026-09-04 ops still listed claude-opus-4-8 and one codex
+# model, and every launch of an assignment naming claude-fable-5 answered 400
+# assigned-profile-not-found. Nothing else on the box compares the two copies. See the runbook
+# section "the execution-profile catalogue lives on ops".
+section "execution-profile catalogue (governance/model-routing.yaml in the ops checkout)"
+ops_routing=/var/lib/kb/ops/governance/model-routing.yaml
+if [ ! -s "$ops_routing" ]; then
+  bad "$ops_routing missing or empty - loadExecutionProfiles compiles an EMPTY catalogue and EVERY launch refuses 400 assigned-profile-not-found. Fix: python scripts/sync_daemon_dirs.py --sync on the desktop, then a promotion"
+elif [ -n "$model_routing_sha" ]; then
+  ops_sha=$(sha256sum "$ops_routing" 2>/dev/null | cut -d' ' -f1)
+  if [ "$ops_sha" = "$model_routing_sha" ]; then
+    ok "ops copy matches main's sha256 ($model_routing_sha)"
+  else
+    bad "ops copy is $ops_sha, main is $model_routing_sha - the ops mirror has DRIFTED. Fix: python scripts/sync_daemon_dirs.py --sync on the desktop, then python scripts/promote_vm_outbox.py (the reconciler admits this one governance path; the resident /usr/local/lib/kb/apply_ops_reconciliation.py must already carry the W61 allowlist)"
+  fi
+else
+  # There is no on-VM copy of main's version to fall back to: the release payload ships no
+  # governance/ (scripts/build_platform_release.py RELEASE_ROOTS), so an unhashed run cannot tell a
+  # synced ops checkout from a drifted one. Unknown is a FAIL, not a pass.
+  bad "no reference to compare against - pass main's sha256 as \$2 or \$KB_MODEL_ROUTING_SHA256: git show origin/main:governance/model-routing.yaml | sha256sum"
+fi
+# Whatever the comparison said, name what the daemon will actually compile - a launch names a model,
+# not a file, and this is the list it is checked against.
+if [ -s "$ops_routing" ] && command -v python3 >/dev/null 2>&1; then
+  KB_OPS_ROUTING="$ops_routing" python3 -c '
+import os, re, sys
+text = open(os.environ["KB_OPS_ROUTING"], encoding="utf-8", errors="replace").read()
+runtime = None
+for line in text.splitlines():
+    m = re.match(r"^  ([A-Za-z0-9_-]+):\s*$", line)
+    if m:
+        runtime = m.group(1)
+        continue
+    m = re.match(r"^    known_models:\s*\[(.*)\]\s*$", line)
+    if m and runtime:
+        models = [v.strip().strip("\"" + chr(39)) for v in m.group(1).split(",") if v.strip()]
+        print("        %s: %s" % (runtime, ", ".join(models)))
+' 2>/dev/null
+fi
 
 # ---------------------------------------------------------------------------------------------
 # W47: the CONSTRAINED tailnet passkey channel. Both names are OPTIONAL on this unit; when present
