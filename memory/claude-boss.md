@@ -186,3 +186,12 @@
   steps INTO the harvest/apply CLIs, not in the runbook.
 - **Identity drift is real and measurable**: anchor cosine median 0.68, six cells < 0.32 (flash/low-angle and
   replicate families). Expect the eye-gate to cull ~10-15 of 56; 40 curated is still reachable.
+
+## 2026-09-04 early — P6 build + P7-UI planning (boss lessons)
+- Integration night: five gates recorded on one tree (P1 122, P2 205, P3 289, P4 183, P5 562). Every cross-phase collision was a NAME: shared fixture filename (P2/P3), eval-card directory (P3 personalizer/ vs agent-id dirs), card `test_file` refs renamed by later fixes, parametrize ids with backslashes corrupted by the manifest filler. Rule: per-phase namespaces (agent-id dirs, phase-prefixed fixtures), explicit parametrize ids, and a card-ref collect check before every gate.
+- `pytest.raises(Exception)` around a guard call is vacuous (unknown-sink ValueError also matches). Always assert the guard's own error type.
+- Workers keep editing frozen earlier-phase files when the plan names them (P4 T9 gate.py; P6 T3 campaigner/cli.py). Verify `--verify-recorded` for every earlier phase in the worktree BEFORE committing any later-phase task.
+- Foreground `timeout N` around a gate + `&&` chains bit me four times: a failed/killed step still let commit+merge+launch run. Every launch is now gated on parsed test output ("N passed", "missing []"), and gate runs are always detached with a Monitor.
+- Planning workers must run INSIDE the integrated worktree: the first P7-UI plan was written on the boss branch (no scripts/prospecting) and got a REWRITE verdict for guessed columns/argv; the rewrite in the P6 worktree got PATCH.
+- Review briefs generated from plan text name plan-invented files; when the build deviated by ruling, prepend a REVIEW CONTEXT header naming the real files or the review is wasted (P6 review-6 → 6b).
+- Time-dependent tests (wall clock vs fixture window) pass at build time and fail hours later; every CLI takes --now and tests inject it.
