@@ -1,0 +1,52 @@
+{
+  "id": "tensor-dataset-prompts",
+  "persona": "creator-001",
+  "replicates": "10sorlabs_dataset_generator_v2.json nodes 179 (CR Prompt List, face) and 697 (CR Prompt List, body)",
+  "structure": {
+    "note": "Their two CR Prompt List nodes each hold prepend_text + 15 multiline rows (start_index 0, max_rows 15, append_text empty). The node concatenates prepend_text + row and emits a STRING list, so one graph run fans out to 15 face images and 15 body images. Our harness has no list-fanout node: the 15 rows become 15 jobs, each job substituting prepend + row into TextEncodeQwenImageEditPlus. Identical result, identical order.",
+    "prepend_is_the_hand_typed_description": "The lesson's own rule (module 10 @3:59-4:21): the stock prepend ships mismatched to the input photo and MUST be rewritten to match it. face.identity matches anchors/g01.jpg; body.identity matches anchors/g07.jpg.",
+    "identity_also_drives_the_refine_pass": "Their SetNode/GetNode pair routes the same prepend string to the FLUX.2 refine CLIPTextEncode (nodes 800 / 780). Ours bakes it into the graph at those same node ids; only the two Qwen-edit prompts vary per job.",
+    "register_source": "pipeline/look-spec-v2.md section 0 (operator taste anchor, 2026-09-03) supplies the makeup/skin/hair/jewellery slot words. Section 4a banned phrases and section 4c age phrasing are binding: no banned literal appears anywhere in this file, and age is stated as a life stage with adult physical markers, never as a numeral.",
+    "quotation": "Only the short angle/pose/lighting phrases are carried over from the package. Their anatomical and wardrobe language is dropped; wardrobe lives in body.identity, drawn from persona.yaml grammar.wardrobe_families (corset-bustier)."
+  },
+  "face": {
+    "identity": "jet-black hair, shoulder length and parted in the middle, dark brown eyes, a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, fair skin with visible pores and texture, a sharp black liner line drawn along the upper lash and flicked out past the corner, long defined lashes, straight dark brows brushed flat, soft blush high on the cheek, a soft pink lip with a wet shine, ",
+    "rows": [
+      "DSLR photograph capturing a straight-on frontal view of her face, eyes locked directly on the lens, against a plain white wall.",
+      "DSLR photograph, three-quarter view of her face, looking towards the camera, against a plain white wall.",
+      "Hyperrealistic three-quarter view from the right, looking slightly downward with a contemplative expression, against a clean white wall.",
+      "Photorealistic profile view of her face from the left, with soft side lighting across the side of the face, against a plain white wall background.",
+      "Hyperrealistic side profile from the right, capturing the curve of the nose and lips in sharp detail, against a clean white wall.",
+      "Hyperrealistic shot of her looking over her shoulder at the camera, against a white wall background.",
+      "Ultra-realistic shot from behind the right shoulder, showing the back of the head and ear as she turns her face partially toward the camera, against a white wall.",
+      "Low-angle shot, looking up at her face with a neutral expression, against a plain white wall.",
+      "High-angle close-up framing the forehead and eyes, looking down at the camera lens, against a stark white wall background.",
+      "Extreme close-up macro shot centred on the eyes, with shallow depth of field blurring the background slightly, against a white wall.",
+      "Dramatic Rembrandt lighting portrait, with one side of her face lit, from a three-quarter angle against a white wall.",
+      "Photorealistic headshot with her head tilted slightly to the side, looking directly at the camera, against a white wall.",
+      "Photorealistic headshot with her head tilted forward slightly, looking up through her lashes at the camera, against a plain white wall background.",
+      "Ultra-realistic shot taken from a low three-quarter angle, emphasising the line of the jaw, looking slightly up toward the camera, against a white wall.",
+      "Photorealistic portrait from a 45-degree angle, showing the face and shoulders, against a plain white wall."
+    ]
+  },
+  "body": {
+    "identity": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, slim with a small frame and an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a small cross pendant, ",
+    "rows": [
+      "candid medium shot of her upper torso from the front, arms hanging loosely at her sides, natural skin texture with visible pores, against a plain white wall background.",
+      "candid three-quarter view from the right, soft side lighting creating subtle shadows on the left side of the body, looking directly at the camera, against a clean white wall.",
+      "Hyperrealistic three-quarter view from the left front, looking directly at the lens with a slight smirk, natural skin imperfections visible, against a clean white wall background.",
+      "DSLR photo capturing her upper body in profile facing right, arms crossed over the chest, soft side lighting creating shadows on the opposite side, against a plain white wall.",
+      "Photorealistic rear view of the upper body, standing straight with the head turned slightly to the right, against a plain white wall.",
+      "Photorealistic angled shot from behind and above, looking down at the back of the shoulders and upper spine, head turned to look over the left shoulder, hair falling slightly forward, against a plain white wall.",
+      "Ultra-realistic medium shot framing the torso from mid-thigh to neck, standing straight, hands tucked into the pockets, natural posture, skin texture detailed, against a stark white wall background.",
+      "Hyperrealistic three-quarter rear view from the right, looking back over the shoulder at the camera, against a clean white wall.",
+      "DSLR photograph capturing a low-angle shot framing the hips and thighs, standing with weight shifted to one leg to create natural asymmetry, against a plain white wall.",
+      "Photorealistic profile view from the left rear, the torso twisted slightly toward the camera, arms hanging naturally, against a plain white wall background.",
+      "Hyperrealistic shot from directly behind at waist height, soft overhead lighting to reduce harsh shadows, against a clean white wall.",
+      "Ultra-realistic rear view from a high angle looking down, standing straight with arms crossed behind the back, against a stark white wall.",
+      "DSLR photo capturing a low-angle shot from behind, looking up at the lower back, emphasising posture and vertical lines, against a plain white wall.",
+      "Photorealistic shot of her walking away from the camera, mid-stride, capturing natural movement, motion blur on the feet, sharp focus on the torso, against a plain white wall background.",
+      "Photorealistic shot of her lying on her side, top leg bent and resting on the bottom leg, soft natural light from the window direction, against a plain white wall background."
+    ]
+  }
+}
