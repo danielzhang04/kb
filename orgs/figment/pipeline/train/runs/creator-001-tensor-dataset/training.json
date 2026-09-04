@@ -1,0 +1,83 @@
+{
+  "job": "extension",
+  "config": {
+    "name": "creator001krea2",
+    "process": [
+      {
+        "type": "sd_trainer",
+        "training_folder": "/workspace/train-output",
+        "device": "cuda:0",
+        "network": {
+          "type": "lora",
+          "linear": 32,
+          "linear_alpha": 32
+        },
+        "save": {
+          "dtype": "bf16",
+          "save_every": 50,
+          "max_step_saves_to_keep": 15
+        },
+        "datasets": [
+          {
+            "folder_path": "/workspace/ComfyUI/input/creator001krea2",
+            "caption_ext": "txt",
+            "caption_dropout_rate": 0.05,
+            "shuffle_tokens": false,
+            "cache_latents_to_disk": true,
+            "resolution": [
+              512,
+              768,
+              1024
+            ]
+          }
+        ],
+        "train": {
+          "batch_size": 1,
+          "steps": 50,
+          "gradient_accumulation": 1,
+          "train_unet": true,
+          "train_text_encoder": false,
+          "gradient_checkpointing": true,
+          "noise_scheduler": "flowmatch",
+          "timestep_type": "linear",
+          "content_or_style": "balanced",
+          "loss_type": "mse",
+          "optimizer": "adamw8bit",
+          "lr": 0.0001,
+          "optimizer_params": {
+            "weight_decay": 0.0001
+          },
+          "dtype": "bf16",
+          "cache_text_embeddings": true,
+          "disable_sampling": true
+        },
+        "model": {
+          "name_or_path": "/workspace/models/krea2/krea2_raw_bf16.safetensors",
+          "arch": "krea2",
+          "quantize": true,
+          "qtype": "qfloat8",
+          "quantize_te": true,
+          "qtype_te": "qfloat8",
+          "low_vram": true,
+          "layer_offloading": false
+        },
+        "sample": {
+          "sampler": "flowmatch",
+          "sample_every": 50,
+          "width": 1024,
+          "height": 1024,
+          "prompts": [],
+          "neg": "",
+          "seed": 42,
+          "walk_seed": true,
+          "guidance_scale": 4,
+          "sample_steps": 30
+        }
+      }
+    ]
+  },
+  "meta": {
+    "name": "creator001krea2",
+    "version": "1.0"
+  }
+}

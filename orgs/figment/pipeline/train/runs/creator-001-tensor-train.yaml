@@ -16,7 +16,7 @@
   "artifact_download_seconds": 180,
   "comfyui": {
     "root": "/workspace/ComfyUI",
-    "git_ref": "v0.34.0",
+    "git_ref": "v0.20.1",
     "port": 8188,
     "start_command": "bash /workspace/start-training-aitoolkit.sh"
   },
