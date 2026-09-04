@@ -12,6 +12,8 @@ import {
   QUEUE_BRIDGE_SELECT_SCRIPT,
   QUEUE_BRIDGE_READ_CARD_SCRIPT,
   resolveQueueBridgeRunnable,
+  isEngineOwnedStageCard,
+  publishBridgeWakeCard,
   type OwnedCard,
 } from './queueBridge.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
@@ -71,6 +73,31 @@ describe('bridgeClaimsCard — inverse of agent_runner.ps1 on the controller axi
     for (const state of ['blocked', 'done', 'approvals', 'approved', 'rejected', undefined]) {
       expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: SUBJECT, state: state as string })).toBe(false);
     }
+  });
+
+  // W58: the engine-owned stage-card carve-out. `server/write/workflowRun.ts` stamps `workflow: <runRef>`
+  // and `execution-controller: dashboard` on the SAME managed stage card, so between two canonical hops it
+  // sits in queue/inbox looking exactly like a claimable bridge card.
+  it('refuses an engine-owned stage card (workflow run ref set) in every claimable state', () => {
+    for (const state of ['inbox', 'working']) {
+      expect(bridgeClaimsCard({
+        'execution-controller': 'dashboard', owner: 'worker-desktop', state,
+        workflow: 'run-d71ccd8b-a3ec-4fdc-9bac-99f541ce898a',
+      })).toBe(false);
+    }
+  });
+
+  it('still claims a trigger card whose workflow field is null/absent/blank', () => {
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'grader', state: 'inbox', workflow: null })).toBe(true);
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'grader', state: 'inbox', workflow: '   ' })).toBe(true);
+    expect(bridgeClaimsCard({ 'execution-controller': 'dashboard', owner: 'grader', state: 'inbox' })).toBe(true);
+  });
+
+  it('isEngineOwnedStageCard is the exact engine-ownership test the carve-out uses', () => {
+    expect(isEngineOwnedStageCard({ workflow: 'run-1' })).toBe(true);
+    expect(isEngineOwnedStageCard({ workflow: null })).toBe(false);
+    expect(isEngineOwnedStageCard({ workflow: '' })).toBe(false);
+    expect(isEngineOwnedStageCard({})).toBe(false);
   });
 
   it('partitions the owner/state-matched space with the legacy predicate — no overlap, no gap', () => {
@@ -1173,6 +1200,31 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(launch).not.toHaveBeenCalled();
   });
 
+  // W58 regression: the live defect. wf-488ddbaf9c0b4154102575de (an acceptance-run stage card owned by
+  // the placement worker `worker-desktop`, not a declared agent) was claimed between canonical hops,
+  // refused `runnable-owner-required`, and filed a wake-me on every 15 s tick.
+  it('skips an engine-owned stage card without launching OR waking (no second launch path)', async () => {
+    const { ctx, store } = fakeCtx();
+    const launch = vi.fn();
+    const wake = vi.fn();
+    const compile = vi.fn();
+    const stage = baseCard();
+    stage.meta.owner = 'worker-desktop';
+    stage.meta.workflow = 'run-d71ccd8b-a3ec-4fdc-9bac-99f541ce898a';
+    const res = await dispatchClaimedCard(ctx, { ...owned, id: 'wf-488ddbaf9c0b4154102575de' }, commonDeps({
+      readCard: () => stage,
+      declaredRunnableOwners: () => [],
+      compile,
+      launch: launch as never,
+      wake,
+    }));
+    expect(res).toMatchObject({ outcome: 'skipped', reconciled: false, detail: 'card no longer claimed by the bridge' });
+    expect(wake).not.toHaveBeenCalled();
+    expect(launch).not.toHaveBeenCalled();
+    expect(compile).not.toHaveBeenCalled();
+    expect(store.createProposalRevision).not.toHaveBeenCalled();
+  });
+
   it('refuses an unresolved card owner before synthesizing, compiling, or writing a proposal', async () => {
     const { ctx, store } = fakeCtx();
     const compile = vi.fn();
@@ -1588,6 +1640,121 @@ function fakeGit(opts: { branch?: string; pushFailures?: number } = {}): { runGi
   };
   return { runGit, calls };
 }
+
+describe('publishBridgeWakeCard — a refusal wake is a COMMITTED coordination write, never a bare file', () => {
+  // W58: on the VM (`KB_COORDINATION_PUBLICATION=outbox`, origin `disabled://`) a bare `cards.save` left an
+  // UNTRACKED queue/inbox card that deploy/apply_ops_reconciliation.py's dirty-checkout guard refuses to
+  // drain past. The wake must go through the same commit + bundle path as every other coordination write.
+  function wakePy(payload: unknown, exitCode = 0): { runPy: (r: string, c: string, a: string) => PyRunResult; ops: string[] } {
+    const ops: string[] = [];
+    return {
+      ops,
+      runPy: (_r, _c, arg) => { ops.push(arg); return { exitCode, stdout: JSON.stringify(payload), stderr: 'boom' }; },
+    };
+  }
+
+  // A git fake that walks the real outbox spool: ops checkout, an initialized anchor, one new commit
+  // carrying exactly the wake card, and a `bundle create` that actually writes the tmp bundle file.
+  const ANCHOR_SHA = 'a'.repeat(40);
+  function outboxGit(commitSha: string, paths: string[]): { runGit: (r: string, a: string[]) => string; calls: string[][] } {
+    const calls: string[][] = [];
+    let committed = false;
+    const runGit = (_repo: string, args: string[]): string => {
+      calls.push(args);
+      if (args[0] === 'rev-parse' && args[1] === '--abbrev-ref') return 'ops';
+      if (args[0] === 'rev-parse' && args[1] === '--verify') return ANCHOR_SHA;
+      if (args[0] === 'rev-parse') return commitSha;
+      if (args[0] === 'commit') { committed = true; return ''; }
+      if (args[0] === 'rev-list' && args[1] === '--reverse') return committed ? commitSha : '';
+      if (args[0] === 'rev-list' && args[1] === '--parents') return `${commitSha} ${ANCHOR_SHA}`;
+      if (args[0] === 'diff-tree') return paths.join(' ');
+      if (args[0] === 'bundle') { writeFileSync(args[2], 'bundle-bytes'); return ''; }
+      return '';
+    };
+    return { runGit, calls };
+  }
+
+  it('commits and spools the exact new card path under publication=outbox (no push, a bundle)', async () => {
+    const py = wakePy({ cardId: '6a99ce29-bcb98447', path: 'queue/inbox/6a99ce29-bcb98447.md', created: true });
+    const commitSha = 'b'.repeat(40);
+    const git = outboxGit(commitSha, ['queue/inbox/6a99ce29-bcb98447.md']);
+    const outboxRoot = mkdtempSync(join(tmpdir(), 'bridge-wake-outbox-'));
+    try {
+      const report = await publishBridgeWakeCard(
+        { repoRoot: '/repo', runPy: py.runPy, opsGit: git.runGit, publication: 'outbox', outboxRoot },
+        'wf-488ddbaf9c0b4154102575de',
+        'runnable-owner-required',
+      );
+      expect(report).toEqual({
+        cardId: '6a99ce29-bcb98447', path: 'queue/inbox/6a99ce29-bcb98447.md', created: true, committed: true,
+      });
+      expect(JSON.parse(py.ops[0])).toMatchObject({ operation: 'wake', reason: 'runnable-owner-required' });
+      expect(git.calls.find((a) => a[0] === 'add')).toEqual(['add', '--', 'queue/inbox/6a99ce29-bcb98447.md']);
+      const commit = git.calls.find((a) => a[0] === 'commit');
+      expect(commit?.slice(-1)).toEqual(['queue/inbox/6a99ce29-bcb98447.md']);
+      // outbox mode spools a bundle instead of pushing to a disabled origin.
+      expect(git.calls.some((a) => a[0] === 'push')).toBe(false);
+      const manifest = JSON.parse(readFileSync(join(outboxRoot, 'ready', `${commitSha}.json`), 'utf8')) as { paths: string[]; commit: string };
+      expect(manifest).toMatchObject({ commit: commitSha, paths: ['queue/inbox/6a99ce29-bcb98447.md'] });
+      expect(existsSync(join(outboxRoot, 'ready', `${commitSha}.bundle`))).toBe(true);
+    } finally {
+      rmSync(outboxRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('commits + pushes the card under publication=direct (the desk path)', async () => {
+    const py = wakePy({ cardId: 'wake-1', path: 'queue/inbox/wake-1.md', created: true });
+    const git = fakeGit();
+    const report = await publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: py.runPy, opsGit: git.runGit },
+      'card-x',
+      'runnable-owner-conflict',
+    );
+    expect(report.committed).toBe(true);
+    expect(git.calls.filter((a) => a[0] === 'push' && a[1] === 'origin' && a[2] === 'ops')).toHaveLength(1);
+  });
+
+  it('REMOVES the freshly written card and throws when the coordination commit refuses', async () => {
+    const py = wakePy({ cardId: 'wake-2', path: 'queue/inbox/wake-2.md', created: true });
+    const git = fakeGit({ branch: 'claude/x' }); // not the ops checkout -> assertCoordinationCheckout throws
+    const removed: string[] = [];
+    await expect(publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: py.runPy, opsGit: git.runGit, publication: 'outbox', removeFile: (abs) => removed.push(abs) },
+      'card-y',
+      'runnable-owner-required',
+    )).rejects.toThrow(QueueBridgeError);
+    expect(removed).toEqual([join('/repo', 'queue/inbox/wake-2.md')]);
+    expect(git.calls.some((a) => a[0] === 'add' || a[0] === 'commit')).toBe(false);
+  });
+
+  it('commits NOTHING on a dedupe hit — the earlier card is already committed', async () => {
+    const py = wakePy({ cardId: 'wake-1', path: 'queue/inbox/wake-1.md', created: false });
+    const git = fakeGit();
+    const report = await publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: py.runPy, opsGit: git.runGit, publication: 'outbox' },
+      'card-z',
+      'runnable-owner-required',
+    );
+    expect(report).toEqual({ cardId: 'wake-1', path: 'queue/inbox/wake-1.md', created: false, committed: false });
+    expect(git.calls).toHaveLength(0);
+  });
+
+  it('fails closed on a non-zero selector exit and on unparseable stdout', async () => {
+    const git = fakeGit();
+    await expect(publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: wakePy({}, 1).runPy, opsGit: git.runGit }, 'c', 'runnable-owner-required',
+    )).rejects.toThrow(QueueBridgeError);
+    await expect(publishBridgeWakeCard(
+      { repoRoot: '/repo', runPy: () => ({ exitCode: 0, stdout: 'not json', stderr: '' }), opsGit: git.runGit },
+      'c', 'runnable-owner-required',
+    )).rejects.toThrow(QueueBridgeError);
+    expect(git.calls).toHaveLength(0);
+  });
+
+  it('the embedded wake op asks the selector for the created flag and path, not just an id', () => {
+    expect(QUEUE_BRIDGE_SELECT_SCRIPT).toContain('queue_bridge_select');
+  });
+});
 
 describe('emitFleetCostRow', () => {
   it('appends {usd, billing:subscription, model, card_id} and returns the appended shard path', () => {

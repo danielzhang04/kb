@@ -7,7 +7,11 @@
  *   - this bridge claims iff `execution-controller === "dashboard"` (the exact literal) AND
  *     `state ∈ {inbox, working}`; owner is resolved only after the full card is read.
  * The two predicates partition the controller/state-matched card space with no overlap and no gap — that is
- * the double-execution guard. `bridgeClaimsCard` is the authoritative TS statement of the bridge side;
+ * the double-execution guard. A THIRD executor joined later: the workflow engine drives its own minted
+ * stage cards (`workflow: <runRef>` + the same `dashboard` controller) through managed-root activation ->
+ * attempt -> canonical-result integration. Those are carved out of BOTH runner predicates here by
+ * `isEngineOwnedStageCard`, so the bridge stays the trigger-card front door and never becomes a second
+ * launch path into a run already in flight. `bridgeClaimsCard` is the authoritative TS statement of the bridge side;
  * `scripts/queue_bridge_select.py#claims_card` is its Python mirror (unit-tested for parity on both
  * sides). Keeping the controller test an EXACT string equality — never a truthiness or "not legacy"
  * test — is what makes the partition hold.
@@ -19,7 +23,7 @@
  * Strip-only floor: no TS enums, parameter properties, or namespaces. ESM with explicit `.ts` specifiers.
  */
 import { defaultPyRunner, type PyRunner } from '../write/launch.ts';
-import { existsSync, lstatSync, readFileSync, realpathSync } from 'node:fs';
+import { existsSync, lstatSync, readFileSync, realpathSync, rmSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { assertFleetRunnable, type PreambleRunner } from '../write/preambleGate.ts';
@@ -51,6 +55,8 @@ export interface CardClaimMeta {
   'execution-controller'?: string | null;
   owner?: string | null;
   state?: string | null;
+  /** The workflow RUN ref stamped on an engine-minted stage card (`wf-<24hex>`); null on a trigger card. */
+  workflow?: string | null;
 }
 
 /** The literal controller value that routes a card to the dashboard engine. */
@@ -67,7 +73,26 @@ export const CLAIMABLE_STATES: readonly string[] = ['inbox', 'working'];
 export function bridgeClaimsCard(meta: CardClaimMeta): boolean {
   return meta['execution-controller'] === DASHBOARD_CONTROLLER
     && typeof meta.state === 'string'
-    && CLAIMABLE_STATES.includes(meta.state);
+    && CLAIMABLE_STATES.includes(meta.state)
+    && !isEngineOwnedStageCard(meta);
+}
+
+/**
+ * True for a card the WORKFLOW ENGINE minted and owns: `workflow` carries the run ref it belongs to
+ * (`server/write/workflowRun.ts` WORKFLOW_CARD_OP_SCRIPT sets `workflow` + `execution-controller:
+ * dashboard` together on every managed stage card; the failed-run reconciler re-projects the same pair).
+ *
+ * WHY THE BRIDGE MUST NOT CLAIM ONE. A managed stage card is driven by the engine's own hops —
+ * managed-root activation flips it `blocked -> inbox`, the attempt port runs it, the canonical result
+ * integrator walks it to `done`. Between two hops it sits in `queue/inbox` with `state: inbox` and the
+ * dashboard controller, which is exactly the shape the controller/state predicate claims. Claiming it is
+ * a SECOND launch path into a run that is already executing; and because a stage `owner` is a placement
+ * worker id (e.g. `worker-desktop`), not a declared `agents/*.md` runnable, owner resolution refuses
+ * `runnable-owner-required` on every 15 s tick and files a wake-me. The bridge's job is the trigger card
+ * that STARTS a run (`workflow-def` / a declared-agent owner), never a stage card inside one.
+ */
+export function isEngineOwnedStageCard(meta: CardClaimMeta): boolean {
+  return typeof meta.workflow === 'string' && meta.workflow.trim() !== '';
 }
 
 /** One discovered, bridge-owned card. `path` is repo-relative (as emitted by the Python selector). */
@@ -259,6 +284,7 @@ export interface ParsedCard {
     owner?: string | null;
     state?: string | null;
     'execution-controller'?: string | null;
+    workflow?: string | null;
     scheduled_for?: string | null;
   };
   body: string;
@@ -559,7 +585,7 @@ export interface DispatchCardDeps {
   resolveScheduleReceiptOwner?: (cardId: string) => RunnableRef | null;
   bindScheduleOccurrenceRun?: (cardId: string, runRef: string) => void | Promise<void>;
   declaredRunnableOwners?: (repoRoot: string) => readonly RunnableRef[];
-  wake?: (ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required') => void;
+  wake?: (ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required') => void | Promise<void>;
 }
 
 export interface DispatchCardResult {
@@ -591,12 +617,94 @@ function defaultDeclaredRunnableOwners(repoRoot: string): RunnableRef[] {
   }));
 }
 
-function defaultWake(ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required'): void {
-  const result = (ctx.runPy ?? defaultPyRunner)(ctx.repoRoot, QUEUE_BRIDGE_SELECT_SCRIPT, JSON.stringify({
-    operation: 'wake', repoRoot: ctx.repoRoot, reason: code,
+/** The wake operation's report: which card was filed, where, and whether THIS call created the file. */
+export interface BridgeWakeReport {
+  cardId: string | null;
+  path: string | null;
+  created: boolean;
+  committed: boolean;
+}
+
+export interface BridgeWakeDeps {
+  repoRoot: string;
+  runPy?: PyRunner;
+  /** Ops-checkout git seam (D2.5), as every other governed coordination writer takes it. */
+  opsGit?: GitRunner;
+  publication?: CoordinationPublication;
+  outboxRoot?: string;
+  /** Removal seam for un-writing a wake card whose coordination commit refused. Injected in tests. */
+  removeFile?: (absolutePath: string) => void;
+}
+
+/**
+ * File the bridge's bounded wake-me card THROUGH the governed coordination writer.
+ *
+ * `agent_runner.py#wake_me` (the deduped escalation path the design pins) does a bare `cards.save` into
+ * `queue/inbox`. On the desk that is harmless — the ops checkout is committed by hand soon after. On the
+ * VM, where `KB_COORDINATION_PUBLICATION=outbox` and the origin is `disabled://`, a bare save leaves an
+ * UNTRACKED file that no bundle carries and that
+ * `deploy/apply_ops_reconciliation.py` (dirty-checkout guard) refuses to drain past, freezing every
+ * subsequent coordination write until a human deletes it. Every other coordination write on the VM is a
+ * commit + spooled bundle; this one was the sole exception.
+ *
+ * So: write via the shared helper (dedupe preserved, untouched), then commit + spool the exact new path
+ * with `commitPreparedCoordination` in THIS context's publication mode. Fail-closed both ways — if the
+ * commit refuses, the freshly written card is REMOVED again, so the outcome is always "a committed,
+ * bundled card" or "no file at all", never a bare file. A dedupe hit creates nothing and commits nothing.
+ */
+export async function publishBridgeWakeCard(
+  deps: BridgeWakeDeps,
+  cardId: string,
+  code: 'runnable-owner-conflict' | 'runnable-owner-required',
+): Promise<BridgeWakeReport> {
+  const result = (deps.runPy ?? defaultPyRunner)(deps.repoRoot, QUEUE_BRIDGE_SELECT_SCRIPT, JSON.stringify({
+    operation: 'wake', repoRoot: deps.repoRoot, reason: code,
     detail: `queue bridge card ${cardId} refused before proposal creation`,
   }));
-  if (result.exitCode !== 0) throw new QueueBridgeError(`queue bridge wake failed: ${result.stderr.trim() || result.stdout.trim()}`);
+  if (result.exitCode !== 0) {
+    throw new QueueBridgeError(`queue bridge wake failed: ${result.stderr.trim() || result.stdout.trim()}`);
+  }
+  let parsed: { cardId?: unknown; path?: unknown; created?: unknown };
+  try {
+    parsed = JSON.parse(result.stdout.trim()) as { cardId?: unknown; path?: unknown; created?: unknown };
+  } catch {
+    throw new QueueBridgeError(`queue bridge wake returned unparseable stdout: ${result.stdout.trim() || '(empty)'}`);
+  }
+  const wakeCardId = typeof parsed.cardId === 'string' ? parsed.cardId : null;
+  const path = typeof parsed.path === 'string' && parsed.path.length > 0 ? parsed.path : null;
+  const created = parsed.created === true;
+  // Dedupe hit (or a best-effort wake that failed inside the helper): nothing new is on disk, so there is
+  // nothing to commit. The earlier card was committed by the call that created it.
+  if (!created || path === null) return { cardId: wakeCardId, path, created, committed: false };
+  try {
+    await commitPreparedCoordination(deps.repoRoot, path, {
+      runGit: deps.opsGit,
+      message: `chore(queue): file bridge wake-me card ${wakeCardId ?? cardId}`,
+      maxRetryPushes: 1,
+      publication: deps.publication,
+      outboxRoot: deps.outboxRoot,
+    });
+  } catch (error) {
+    // Un-write it: an uncommitted card here is the exact dirty-checkout poison this function exists to
+    // prevent, and a refused wake must never be worse than no wake (the refusal itself is already
+    // returned to the caller and logged).
+    const remove = deps.removeFile ?? ((absolutePath: string) => rmSync(absolutePath, { force: true }));
+    try { remove(join(deps.repoRoot, path)); } catch { /* best effort — the throw below is the signal */ }
+    throw new QueueBridgeError(
+      `queue bridge wake card was not committed (removed again): ${error instanceof Error ? error.message : String(error)}`,
+    );
+  }
+  return { cardId: wakeCardId, path, created, committed: true };
+}
+
+async function defaultWake(ctx: SurfaceContext, cardId: string, code: 'runnable-owner-conflict' | 'runnable-owner-required'): Promise<void> {
+  await publishBridgeWakeCard({
+    repoRoot: ctx.repoRoot,
+    runPy: ctx.runPy,
+    opsGit: ctx.opsGit,
+    publication: ctx.coordinationPublication,
+    outboxRoot: ctx.outboxRoot,
+  }, cardId, code);
 }
 
 /**
@@ -639,7 +747,7 @@ export async function dispatchClaimedCard(
     const scheduled = typeof parsed.meta.scheduled_for === 'string';
     const receiptOwner = deps.resolveScheduleReceiptOwner?.(card.id) ?? null;
     if (scheduled && receiptOwner === null) {
-      wake(ctx, card.id, 'runnable-owner-required');
+      await wake(ctx, card.id, 'runnable-owner-required');
       return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: 'runnable-owner-required' };
     }
 
@@ -662,7 +770,7 @@ export async function dispatchClaimedCard(
     declaredAgents: (deps.declaredRunnableOwners ?? defaultDeclaredRunnableOwners)(ctx.repoRoot),
   });
   if (!runnable.ok) {
-    wake(ctx, card.id, runnable.code);
+    await wake(ctx, card.id, runnable.code);
     return { cardId: card.id, outcome: 'failed', status: 409, reconciled: false, detail: runnable.code };
   }
   if (mapped === null) {
