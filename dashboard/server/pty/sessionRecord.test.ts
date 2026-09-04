@@ -765,6 +765,7 @@ describe('composite-principal session policy', () => {
       },
       attach: async () => ({ ok: true, value: { attachmentId: `att-${'a'.repeat(32)}` } }),
       write: async (_id, data) => ({ ok: true, value: { accepted: data.byteLength } }),
+      endInput: async () => ({ ok: true, value: { ended: true } }),
       resize: async (_id, size) => ({ ok: true, value: size }),
       close,
       listEpoch: async () => ({ ok: true, value: { epochId: `epoch-${'e'.repeat(32)}`, sessionIds: [] } }),

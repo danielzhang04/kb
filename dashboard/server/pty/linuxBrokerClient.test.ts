@@ -61,7 +61,9 @@ function droppingPair(dropTypes: string | readonly string[]): [DroppingMemoryDup
 class FakePty implements BrokerPty {
   pid = 7; identity = { pid: 7, pgid: 7, startTimeTicks: '7' };
   onDataListener: (data: Uint8Array) => void = () => {}; onExitListener: (c: number | null, s: number | null) => void = () => {};
-  write(): Promise<void> { return Promise.resolve(); } resize(): void {} kill(): void {}
+  inputEnds = 0;
+  write(): Promise<boolean> { return Promise.resolve(true); } endInput(): void { this.inputEnds += 1; }
+  resize(): void {} kill(): void {}
   onData(cb: (data: Uint8Array) => void): void { this.onDataListener = cb; }
   onExit(cb: (c: number | null, s: number | null) => void): void { this.onExitListener = cb; }
 }
@@ -378,6 +380,48 @@ describe('LinuxBrokerClient', () => {
     child.onExitListener(null, null);
     expect((await launch.exit).reason).toBe('closed');
     expect(exits).toEqual(['closed']);
+  });
+
+  /**
+   * `endInput` across the real client AND the real server, because the client half is nothing but a
+   * frame plus a sequence number and it is the SEQUENCE that matters: an end-of-input that took a
+   * number out of order, or one taken from a separate counter, could reach the child before the prompt
+   * it terminates. Driven against a headless recipe, the only kind a broker will end.
+   */
+  it('half-closes a headless session in the same ordered input sequence as its writes', async () => {
+    const child = new FakePty();
+    const [clientSocket, serverSocket] = pair();
+    const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: { launch: async () => child }, makeSessionId: () => sessionId,
+      now: () => '2026-08-22T00:00:00.000Z' });
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 4 });
+    let request = 0;
+    // A short request timeout so the close below settles on its synthesized `closed` exit rather than
+    // waiting five seconds for an exit frame this fake child never emits.
+    const client = new LinuxBrokerClient({ connect: async () => clientSocket, dashboardEpochId: epochId,
+      makeRequestId: () => `req-${(++request).toString(16).padStart(32, '0')}`, requestTimeoutMs: 200 });
+    const sink: SessionSink = { data: () => {}, exit: () => {}, closed: () => false };
+    const launch = client.create({ operationKey, principal,
+      recipe: { launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+        toolPolicyId: 'producer', sandbox: 'codex-workspace-write' },
+      rootId: 'worktrees', relativeCwd: 'run-1', cols: 80, rows: 24 }, sink);
+    expect(await launch.receipt).toMatchObject({ ok: true });
+
+    expect(await client.write(sessionId, Buffer.from('prompt'))).toEqual({ ok: true, value: { accepted: 6 } });
+    expect(await client.endInput(sessionId)).toEqual({ ok: true, value: { ended: true } });
+    expect(child.inputEnds).toBe(1);
+    // The broker refuses a repeat, and the client surfaces it as a refusal rather than an exception.
+    expect(await client.endInput(sessionId)).toMatchObject({ ok: false, refusal: 'invalid-request' });
+    // ...and a session this client never bound is `not-found` without a frame leaving the process.
+    expect(await client.endInput(`pty-${'e'.repeat(32)}`)).toMatchObject({ ok: false, refusal: 'not-found' });
+    expect(child.inputEnds).toBe(1);
+
+    // THE REGRESSION: a refusal does not consume the broker's `inputSequence`, so a client that kept
+    // counting would send its next request one number ahead and the broker would refuse that, and
+    // everything after it. The compensating close that cleans up a stranded codex session is exactly
+    // the request that would have been lost, so it is the one asserted here.
+    expect(await client.close(sessionId)).toMatchObject({ ok: true });
+    client.disconnect();
   });
 
   it('reports the launchers the BROKER enumerated, not a literal, and fails closed when it cannot', async () => {

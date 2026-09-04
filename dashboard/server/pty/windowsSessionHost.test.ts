@@ -388,6 +388,50 @@ describe('Windows SessionHost', () => {
     child.emitExit(0);
   });
 
+  /**
+   * End of input on ConPTY. Every Windows child's fd 0 is a terminal shared with fd 1/2, so there is
+   * no write end to half-close and U+0004 on a terminal IS the end-of-input a CLI's stdin reader takes.
+   * These are the exact bytes this host saw before the frame existed - the codex prompt used to arrive
+   * as `<prompt>U+0004` in one write - so the assertion is that nothing about a Windows launch changed
+   * except where the byte comes from.
+   */
+  it('ends Windows input with one EOT byte through the ordered queue, and reports a dead session', async () => {
+    const child = new FakePty(171);
+    const host = createWindowsSessionHost({
+      platform: 'win32',
+      epochId: `epoch-${'7'.repeat(32)}`,
+      randomId: () => '7'.repeat(32),
+      roots: { repo: 'C:\\repo', worktrees: 'C:\\worktrees' },
+      resolveLaunch: async () => ({ ok: true, value: fakeLaunch() }),
+      spawn: () => child,
+      killProcessTree: async () => {},
+    });
+    const receipt = await host.create(request('9'), sink([])).receipt;
+    expect(receipt.ok).toBe(true);
+    if (!receipt.ok) return;
+    const sessionId = receipt.value.sessionId;
+
+    await expect(host.write(sessionId, new TextEncoder().encode('prompt'))).resolves.toEqual({
+      ok: true, value: { accepted: 6 },
+    });
+    await expect(host.endInput(sessionId)).resolves.toEqual({ ok: true, value: { ended: true } });
+    // ONE byte, and it is the EOT - not a newline, not a CRLF, and behind the prompt rather than
+    // ahead of it, because it travels the same FIFO input queue every write does.
+    expect(child.writes).toEqual(['prompt', String.fromCharCode(0x04)]);
+    expect(Uint8Array.from(Buffer.from(child.writes[1]!, 'utf8'))).toEqual(Uint8Array.of(0x04));
+
+    // It is `write` underneath, so a dead session refuses exactly as a write on one would.
+    child.emitExit(0);
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    await expect(host.endInput(sessionId)).resolves.toEqual({
+      ok: false, refusal: 'not-found', detail: null,
+    });
+    await expect(host.endInput(`pty-${'e'.repeat(32)}`)).resolves.toEqual({
+      ok: false, refusal: 'not-found', detail: null,
+    });
+    expect(child.writes).toHaveLength(2);
+  });
+
   it('refuses cumulative queued input above 262,144 bytes without loss or reordering', async () => {
     // [C-M2] third clause. The 65,536 per-chunk bound caps ONE frame; without a cumulative bound an
     // authenticated operator pipelines chunks faster than the child drains and grows daemon memory

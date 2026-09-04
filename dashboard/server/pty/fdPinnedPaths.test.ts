@@ -22,6 +22,7 @@ import {
   launcherExecutable,
   pinBrokerLaunch,
   pinnableLauncher,
+  recipeEndsInputOnEof,
   resolveLinuxRoot,
   validateRelativeCwd,
 } from './fdPinnedPaths.ts';
@@ -75,12 +76,22 @@ describe('fdPinnedPaths', () => {
       launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
       toolPolicyId: 'producer', sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 100, rows: 30 });
+    // CONTRACT (W64): the fresh headless branch ends at the pins - NO `--cd`. `pinBrokerLaunch`
+    // rewrites any argv token equal to the cwd into `/proc/self/fd/<n>`, and that descriptor is
+    // FD_CLOEXEC, so the flag named a directory that no longer existed by the time codex read it
+    // (VM: exit 1 in 0.1 s with `--cd`, exit 0 with the work done without it). The child still runs
+    // IN the worktree - `spawn(cwd)` chdir'd it there - so the flag was redundant as well as wrong.
     expect(codex.args).toEqual([
       'exec', '-', '--json', '--model', 'gpt-5.6-terra', '-s', 'workspace-write',
       '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
       '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
-      '-c', 'web_search="disabled"', '--cd', '/var/lib/kb-shell/worktrees/run-1',
+      '-c', 'web_search="disabled"',
     ]);
+    // Not just "no --cd": the cwd must not reach a headless codex child as an ARGUMENT at all, under
+    // any flag, because every spelling of it is rewritten to the same dead descriptor path.
+    expect(codex.args).not.toContain('--cd');
+    expect(codex.args).not.toContain(codex.cwd);
+    expect(codex.cwd).toBe('/var/lib/kb-shell/worktrees/run-1');
     expect(Object.keys(codex.env).sort()).toEqual([...LINUX_CHILD_ENV_KEYS].sort());
     expect(codex.env).not.toHaveProperty('TOKEN');
 
@@ -258,8 +269,55 @@ describe('fdPinnedPaths', () => {
       toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write',
     }, 'worktrees', 'run-1', { cols: 80, rows: 24 });
     expect(interactive.args.slice(0, 4)).toEqual(['--model', 'gpt-5.6-terra', '-s', 'read-only']);
+    // ...and it reaches its worktree by the pinned chdir, never by a `--cd` naming a dead descriptor.
+    expect(interactive.args).not.toContain('--cd');
+    expect(interactive.cwd).toBe('/var/lib/kb-shell/worktrees/run-1');
     // ...and an interactive recipe keeps its tty on stdin, on the same launcher.
     expect(interactive.stdinMode).toBe('tty');
+  });
+
+  /**
+   * The resume branch is the one every rework turn takes, and W64 changed the branch beside it - so its
+   * argv is pinned verbatim here rather than left to the ordering test. It has never carried `--cd`,
+   * it pins the sandbox through `-c sandbox_mode` because `exec resume` has no `-s` flag, and it is
+   * still a FRESH child reading a fresh stdin, which is why end-of-input applies to it too.
+   */
+  it('leaves the codex resume argv untouched, with no --cd and the sandbox pinned by -c', () => {
+    const resumed = buildBrokerLaunch({
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'checker-readonly', sandbox: 'codex-workspace-write', resumeRef: 'thread-1',
+    }, 'worktrees', 'run-1', { cols: 100, rows: 30 });
+    expect(resumed.args).toEqual([
+      'exec', 'resume', 'thread-1', '-', '--json', '-c', 'model=gpt-5.6-terra',
+      '-c', 'sandbox_mode="read-only"',
+      '-c', 'approval_policy=never', '-c', 'forced_login_method="chatgpt"',
+      '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
+      '-c', 'web_search="disabled"',
+    ]);
+    expect(resumed.args).not.toContain('--cd');
+    expect(resumed.stdinMode).toBe('pipe');
+  });
+
+  /**
+   * WHICH recipes must be told their input has ended, decided from the closed table and nothing else.
+   * Getting this wrong in either direction is a live hang: a codex child never starts its turn without
+   * EOF (VM probe A4), and a claude child loses every turn after the first if its pipe is closed.
+   */
+  it('marks exactly the headless codex recipes as reading stdin until EOF', () => {
+    const recipe = (over: Record<string, unknown>) => ({
+      launcher: 'codex', mode: 'headless-json', model: 'gpt-5.6-terra',
+      toolPolicyId: 'producer', sandbox: 'codex-workspace-write', ...over,
+    }) as Parameters<typeof recipeEndsInputOnEof>[0];
+    expect(recipeEndsInputOnEof(recipe({}))).toBe(true);
+    expect(recipeEndsInputOnEof(recipe({ resumeRef: 'thread-1' }))).toBe(true);
+    expect(recipeEndsInputOnEof(recipe({ mode: 'interactive' }))).toBe(false);
+    expect(recipeEndsInputOnEof(recipe({
+      launcher: 'claude', model: 'claude-opus-5', sandbox: 'claude-policy',
+    }))).toBe(false);
+    expect(recipeEndsInputOnEof(recipe({
+      launcher: 'shell', mode: 'interactive', model: null,
+      toolPolicyId: 'shell-default', sandbox: 'interactive',
+    }))).toBe(false);
   });
 
   /**
@@ -274,10 +332,15 @@ describe('fdPinnedPaths', () => {
       '-c', 'mcp_servers={}', '-c', 'sandbox_workspace_write.network_access=false',
       '-c', 'web_search="disabled"',
     ];
+    // CONTRACT (W64): `trailing` is how many argv tokens follow the pins, and it is now 0 on EVERY
+    // codex branch. `--cd <cwd>` is gone from the interactive branch too - the cwd token is rewritten
+    // to a CLOEXEC `/proc/self/fd/<n>` there as well, so the flag named a directory the child could
+    // not open, while its process cwd was already the pinned worktree. The pins are therefore the
+    // whole tail of codex argv, which is the strongest form of the last-wins guarantee this test owns.
     const branches = [
-      { mode: 'headless-json', resumeRef: undefined, trailing: 2 },
+      { mode: 'headless-json', resumeRef: undefined, trailing: 0 },
       { mode: 'headless-json', resumeRef: 'thread-1', trailing: 0 },
-      { mode: 'interactive', resumeRef: undefined, trailing: 2 },
+      { mode: 'interactive', resumeRef: undefined, trailing: 0 },
     ] as const;
     for (const branch of branches) {
       for (const toolPolicyId of ['checker-readonly', 'producer']) {
@@ -289,7 +352,9 @@ describe('fdPinnedPaths', () => {
         // Only `--cd <cwd>` may follow the pins, and nothing else may.
         const tail = branch.trailing === 0 ? args : args.slice(0, -branch.trailing);
         expect(tail.slice(-PINS.length)).toEqual(PINS);
-        if (branch.trailing === 2) expect(args.slice(-2)).toEqual(['--cd', '/var/lib/kb-shell/worktrees/run-1']);
+        // No branch may hand codex the cwd as an ARGUMENT under any flag.
+        expect(args).not.toContain('--cd');
+        expect(args).not.toContain('/var/lib/kb-shell/worktrees/run-1');
         // Every `-c` the branch adds of its own sits BEFORE the pins.
         const lastPin = args.lastIndexOf('web_search="disabled"');
         expect(args.slice(lastPin + 1).some((value) => value === '-c')).toBe(false);

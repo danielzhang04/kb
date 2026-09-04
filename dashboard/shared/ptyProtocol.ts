@@ -154,7 +154,31 @@ export type BrokerClientFrame =
    *  2. Enumeration walks the real filesystem as `kb-shell`. On `ready` that walk would run on every
    *     connect, including the session host's; as its own request it runs once, when the probe asks.
    */
-  | { type: 'launchers'; requestId: string; sessionId: null; epochId: string };
+  | { type: 'launchers'; requestId: string; sessionId: null; epochId: string }
+  /**
+   * "This session will never receive another byte of stdin" - a HALF-CLOSE of the child's stdin pipe,
+   * never a kill. stdout/stderr stay on the pty and the exit is still observed exactly as before.
+   *
+   * It exists because `input` cannot express end-of-input on a PIPE. On a tty the U+0004 byte IS the
+   * line discipline's EOF, which is why the ConPTY path has always worked; on a pipe 0x04 is an
+   * ordinary data byte, so `codex exec -` (which reads its whole instruction from stdin UNTIL EOF)
+   * never starts its turn (VM probe A4: stdin held open with a trailing U+0004, hung to the 90 s kill
+   * with zero output; A3, the same launch with stdin CLOSED, exited 0 in 17 s with the work done).
+   *
+   * A NEW frame type rather than a flag on `input`, and the protocol stays `kb-shell-broker/v1`, for
+   * the reason spelled out on `launchers` above: this grammar's decoder is exact-key, so a new optional
+   * key on an EXISTING frame is a breaking change wearing an optional field's clothes, while a new type
+   * an old dashboard never sends is free in the direction that matters.
+   *
+   * `sequence` is the same ordered input counter `input`/`resize`/`close` share, so an end-input can
+   * never overtake a prompt sent before it. The broker refuses it for a tty-mode session (there is no
+   * pipe to end), refuses a second one for the same session, and refuses every `input` after it - so
+   * "ended" is a one-way door rather than a state later bytes silently fall through.
+   *
+   * Deliberately NOT reachable from the browser grammar (`BrowserClientFrame`): half-closing an
+   * agent's stdin is a launch-recipe consequence the control plane owns, not a terminal user action.
+   */
+  | { type: 'end-input'; requestId: string; sessionId: string; epochId: string; sequence: number };
 export type BrokerServerFrame =
   | { type: 'ready'; requestId: string; sessionId: null; protocol: 'kb-shell-broker/v1';
       epochId: string; maxFrameBytes: 98_304; maxInputBytes: 65_536;
@@ -178,6 +202,10 @@ export type BrokerServerFrame =
       sequence: number; size: SessionSize }
   | { type: 'ack'; requestId: string; action: 'close'; sessionId: string; epochId: string;
       sequence: number; replayed: boolean }
+  /** Carries no payload of its own: end-input is refused on repeat, so there is no `replayed` to
+   *  report and no size/count to echo. The ack itself is the whole answer. */
+  | { type: 'ack'; requestId: string; action: 'end-input'; sessionId: string; epochId: string;
+      sequence: number }
   | { type: 'error'; requestId: string | null; sessionId: string | null;
       epochId: string | null; code: HostRefusalCode; detail: string | null }
   | { type: 'data'; requestId: null; sessionId: string; epochId: string; sequence: number;

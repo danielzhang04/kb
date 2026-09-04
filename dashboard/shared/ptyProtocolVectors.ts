@@ -82,6 +82,9 @@ export const validBrokerClientFrames = [
   { type: 'resize', requestId, sessionId, epochId, sequence: 1, cols: 80, rows: 24 },
   { type: 'close', requestId, sessionId, epochId, sequence: 2 },
   { type: 'launchers', requestId, sessionId: null, epochId },
+  // APPENDED, never inserted: the indices above are addressed positionally by brokerProtocol.test.ts
+  // and by the invalid-vector table below.
+  { type: 'end-input', requestId, sessionId, epochId, sequence: 3 },
 ] as const satisfies readonly BrokerClientFrame[];
 
 export const validBrokerServerFrames = [
@@ -101,6 +104,7 @@ export const validBrokerServerFrames = [
   // The empty set is a LEGAL answer, not a malformed one: a broker that can launch nothing says so.
   { type: 'launchers', requestId, sessionId: null, epochId, launchers: [] },
   { type: 'launchers', requestId, sessionId: null, epochId, launchers: ['shell'] },
+  { type: 'ack', requestId, action: 'end-input', sessionId, epochId, sequence: 7 },
 ] as const satisfies readonly BrokerServerFrame[];
 
 export const invalidPtyProtocolVectors = [
@@ -123,6 +127,10 @@ export const invalidPtyProtocolVectors = [
   { case: 'raw-browser-frame-over-90112', rawBytes: 90_113, frame: validBrowserClientFrames[4] },
   { case: 'raw-broker-frame-over-98304', rawBytes: 98_305, frame: validBrokerClientFrames[3] },
   { case: 'queued-input-over-262144', queuedBytes: 262_145, frame: validBrokerClientFrames[3] },
+  // An end-input with no `sequence` is the shape that matters: unordered, it could reach the child
+  // ahead of the prompt it terminates and close the pipe on an empty instruction. The exact-key rule
+  // is what refuses it, so the vector carries the frame MINUS that one key.
+  { case: 'end-input-unsequenced', frame: { type: 'end-input', requestId, sessionId, epochId } },
   { case: 'response-request-id-null', frame: { ...validBrowserServerFrames[5], requestId: null } },
   { case: 'unsolicited-request-id-non-null', frame: { ...validBrowserServerFrames[3], requestId } },
   { case: 'missing-key', frame: { type: 'close', requestId } },

@@ -365,13 +365,43 @@ export function buildBrokerLaunch(
   // inherited whatever the CLI happened to default to and could silently outrank the fresh launch it
   // continues. `pinnedCodexConfig` STAYS LAST in every branch: codex is last-wins on `-c`, and that
   // ordering is what keeps `approval_policy=never` and the network/mcp/web-search pins un-overridable.
+  // CONTRACT CHANGE (W64) - the fresh headless branch carries NO `--cd`, and this is the fix for a
+  // launch that could never have worked. `pinBrokerLaunch` rewrites every argv token equal to the cwd
+  // into `/proc/self/fd/<cwdFd>`, and that descriptor is FD_CLOEXEC: it is gone by the time codex
+  // resolves the flag, two execve hops later (the pipe-stdin shim closes every non-kept fd besides).
+  // Measured on the VM as kb-shell against the real binary: `--cd /proc/self/fd/<n>` exits 1 in 0.1 s,
+  // the identical launch WITHOUT it exits 0 in 17 s with the work done. Nothing is lost by dropping it
+  // - `spawn(cwd)` has already chdir'd the child into the pinned dirfd, so codex's own process cwd IS
+  // the worktree - and the resume branch has always omitted it. The INTERACTIVE branch carries none
+  // either, for exactly the same reason: node-pty forks and execs from the pinned dirfd, so its child's
+  // cwd is already the worktree, while the flag it used to pass named the same dead descriptor. One
+  // codex argv table, one answer about how codex learns its directory - the chdir, never a flag.
   const args = recipe.mode === 'headless-json'
     ? recipe.resumeRef === undefined
-      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd]
+      ? ['exec', '-', '--json', '--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig]
       : ['exec', 'resume', recipe.resumeRef, '-', '--json', '-c', `model=${recipe.model!}`,
         '-c', `sandbox_mode="${sandboxMode}"`, ...pinnedCodexConfig]
-    : ['--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig, '--cd', cwd];
+    : ['--model', recipe.model!, '-s', sandboxMode, ...pinnedCodexConfig];
   return { executable: '/var/lib/kb-shell/home/.local/bin/codex', args, ...common };
+}
+
+/**
+ * Does this recipe's child read its instruction from stdin UNTIL EOF?
+ *
+ * The one place that question is answered, beside the argv table it is a property of. `codex exec -`
+ * and `codex exec resume <ref> -` both name stdin as the prompt source and block until it closes, so
+ * their sender must half-close after the last approved prompt; `claude -p --input-format stream-json`
+ * frames each turn itself and needs the pipe HELD OPEN for the next one (Gate 4a proved multi-turn
+ * over the held pipe), so ending its stdin would break it.
+ *
+ * Derived from the closed recipe table - the launcher and the mode - and from nothing else. It is
+ * deliberately NOT a field on `LaunchRecipe` or on `BrokerLaunchSpec`: on the wire it would be the
+ * SENDER's claim about a child whose argv this module owns, and the broker never needs it (it acts on
+ * an explicit `end-input` request and refuses one only when the session has no stdin pipe at all).
+ * An interactive recipe answers false: its stdin is a tty, where U+0004 is already EOF.
+ */
+export function recipeEndsInputOnEof(recipe: LaunchRecipe): boolean {
+  return recipe.launcher === 'codex' && recipe.mode === 'headless-json';
 }
 
 function identity(stats: BigIntStats): PinnedIdentity {

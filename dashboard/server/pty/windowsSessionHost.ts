@@ -117,6 +117,8 @@ const MAX_INPUT_BYTES = 65_536;
  * before it enters the ordered write queue.
  */
 const MAX_QUEUED_INPUT_BYTES = 262_144;
+/** The end-of-input byte a terminal's line discipline reads as EOF; see `endInput` below. */
+const EOT = Uint8Array.of(0x04);
 const MAX_OUTPUT_BACKLOG = 1_048_576;
 const MAX_ATTACHMENTS = 64;
 /** Terminal operation receipts retained for replay; older terminal entries are evicted first. */
@@ -643,6 +645,22 @@ export function createWindowsSessionHost(options: WindowsSessionHostOptions): Se
         session.queuedInputBytes -= data.byteLength;
       }
       return { ok: true, value: { accepted: data.byteLength } };
+    },
+
+    /**
+     * End-of-input on Windows is the EOT BYTE, not a half-close, and that is not a compromise: every
+     * Windows child is a ConPTY child, so fd 0 is a terminal that fd 1/2 share and there is no write
+     * end to close - the same reason `NodePtyChild.endInput` refuses on Linux. U+0004 on a terminal is
+     * what a CLI's stdin reader takes as end of input, which is why the ConPTY path has worked all
+     * along while the Linux PIPE path could not.
+     *
+     * These are the exact bytes this host already saw: the codex prompt used to arrive as
+     * `<prompt>U+0004` in ONE write, and now arrives as `<prompt>` followed by this one. Same bytes,
+     * same order, through the same FIFO input queue - so nothing about a Windows launch changes.
+     */
+    async endInput(sessionId) {
+      const written = await host.write(sessionId, EOT);
+      return written.ok ? { ok: true, value: { ended: true } } : written;
     },
 
     async resize(sessionId, size) {

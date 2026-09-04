@@ -49,6 +49,7 @@ const brokerVectorRules: Record<string, { owner: 'W4' } | {
   'raw-broker-frame-over-98304': { marker: 'rawBytes', message: 'declared broker frame exceeds 98,304 bytes' },
   // The decoder accepts this frame by design; LinuxBrokerServer enforces the in-flight bound.
   'queued-input-over-262144': { marker: 'queuedBytes', message: 'enforced by LinuxBrokerServer' },
+  'end-input-unsequenced': { message: 'broker frame keys are invalid' },
   'decoded-input-over-65536': { marker: 'decodedBytes', message: 'decoded input exceeds 65,536 bytes',
     refusal: 'input-too-large' },
   // Server-frame vectors: the enumerated launcher set has exactly one wire form, and the rule that
@@ -156,6 +157,43 @@ describe('brokerProtocol', () => {
         expect(repaired.refusal, vector.case).toBe('invalid-request');
       }
     }
+  });
+
+  /**
+   * The `end-input` grammar, in the decoder that is the only thing standing between a hostile frame and
+   * the broker's session table. Everything about WHICH sessions may be ended is the server's job; this
+   * suite owns the shape - exact keys, a real session id, and a sequence in the shared input space.
+   */
+  it('holds end-input to the exact broker request shape and the ack to its own', () => {
+    const frame = { type: 'end-input', requestId: 'req-00000000000000000000000000000000',
+      sessionId: 'pty-00000000000000000000000000000000', epochId, sequence: 4 };
+    expect(decodeBrokerClientFrame(frame)).toEqual(frame);
+
+    // A sessionless end-input is meaningless, and `null` is how `hello`/`create`/`launchers` spell
+    // "no session" - so it must not pass here.
+    expect(refusalOf(() => decodeBrokerClientFrame({ ...frame, sessionId: null })).message)
+      .toBe('sessionId must be a string');
+    expect(refusalOf(() => decodeBrokerClientFrame({ ...frame, sessionId: 'pty-0' })).message)
+      .toBe('sessionId is invalid');
+    // No sequence means unordered, which is exactly how an end-input could overtake its prompt.
+    const { sequence: _dropped, ...noSequence } = frame;
+    expect(refusalOf(() => decodeBrokerClientFrame(noSequence)).message).toBe('broker frame keys are invalid');
+    expect(refusalOf(() => decodeBrokerClientFrame({ ...frame, sequence: -1 })).message)
+      .toBe('sequence is outside the safe integer range');
+    // Exact-key, like every other frame in this grammar: no smuggled payload rides along.
+    expect(refusalOf(() => decodeBrokerClientFrame({ ...frame, data: 'YQ==' })).message)
+      .toBe('broker frame keys are invalid');
+    // A recognized request type with a valid requestId refuses RECOVERABLY - one failed request, not a
+    // torn-down broker connection.
+    expect(refusalOf(() => decodeBrokerClientFrame({ ...frame, epochId: 'epoch-0' })).requestId)
+      .toBe(frame.requestId);
+
+    const ack = { type: 'ack', requestId: frame.requestId, action: 'end-input',
+      sessionId: frame.sessionId, epochId, sequence: 9 };
+    expect(decodeBrokerServerFrame(ack)).toEqual(ack);
+    // The ack carries no payload; a `replayed` borrowed from `close` is a different frame.
+    expect(refusalOf(() => decodeBrokerServerFrame({ ...ack, replayed: false })).message)
+      .toBe('broker frame keys are invalid');
   });
 
   it('rejects raw authority keys and non-canonical base64 on broker frames', () => {

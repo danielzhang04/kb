@@ -17,7 +17,7 @@ import {
 import { parseCodexStream } from './codexResultParser.ts';
 import { parseIterationOutcome } from './iterationOutcome.ts';
 import type { AttemptIoSink } from './attemptIo.ts';
-import { validateRelativeCwd } from '../pty/fdPinnedPaths.ts';
+import { recipeEndsInputOnEof, validateRelativeCwd } from '../pty/fdPinnedPaths.ts';
 import type { SessionRecordRegistry } from '../pty/sessionRecord.ts';
 import {
   type ApprovedAttemptDeclaration,
@@ -429,8 +429,13 @@ function prepareAttempt(
     toolPolicyId: input.workflowProfile,
     sandbox: 'codex-workspace-write', ...(resumeRef ? { resumeRef } : {}),
   };
-  // In a PTY, EOT is the closed-contract equivalent of the old adapter's endStdin().
-  return { recipe, prompts: [Buffer.from(`${prompt}\u0004`, 'utf8')], agentId };
+  // No EOT byte in the prompt any more. `codex exec -` reads its instruction from stdin UNTIL EOF, and
+  // the Linux broker hands a headless child a real PIPE, where U+0004 is an ordinary data byte: the
+  // trailing EOT bought nothing there (VM probe A4 hung to the 90 s kill with it) and only appended a
+  // stray byte to the work order. End of input is now stated as such, once, after the last approved
+  // prompt - see `recipeEndsInputOnEof` (pty/fdPinnedPaths.ts) and the `host.endInput` call in `begin`.
+  // On the ConPTY host that call still delivers exactly this byte, so Windows stdin bytes are unchanged.
+  return { recipe, prompts: [Buffer.from(prompt, 'utf8')], agentId };
 }
 
 function countClaudeResults(stdout: string): number {
@@ -1073,6 +1078,14 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       if ((attempt.record?.promptsDelivered ?? 0) > prepared.prompts.length) {
         return failAfterStart(refuse('internal', 'durable prompt progress exceeds the approved declaration'));
       }
+      // Whether THIS instance wrote the final approved prompt. Only the instance that delivered it may
+      // end the input: an adopted replay (the `binding-conflict` branch above, whose record already
+      // shows every prompt delivered) writes no bytes and must not send an end-input the winner has
+      // already sent - the broker refuses a repeat, which would turn a legitimate replay into a failed
+      // start. The cost is the same at-most-once loss the prompt reservation already carries: a crash
+      // between the last write and the end-input strands that child until the attempt timer, rather
+      // than risking a duplicate.
+      let deliveredFinalPrompt = false;
       for (;;) {
         const delivered = attempt.record?.promptsDelivered ?? 0;
         if (delivered >= prepared.prompts.length) break;
@@ -1107,6 +1120,20 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
         if (attempt.exited && (attempt.record?.promptsDelivered ?? 0) < prepared.prompts.length) {
           return failAfterStart(refuse('internal', 'session exited during approved prompt delivery'));
         }
+        deliveredFinalPrompt = (attempt.record?.promptsDelivered ?? 0) >= prepared.prompts.length;
+      }
+      // ---- END OF INPUT, for the recipes whose CLI reads stdin until EOF. ----
+      // `codex exec -` (and `exec resume <ref> -`) will not start a turn until stdin CLOSES, so this is
+      // part of delivering the approved prompt, not cleanup: skipping it leaves a child that hangs to
+      // the attempt timeout, and a refusal here fails the start exactly as a refused prompt write does.
+      // Claude's stream-json reader frames its own turns and needs the pipe HELD OPEN for the next one,
+      // so its recipes never reach this call.
+      if (deliveredFinalPrompt && recipeEndsInputOnEof(prepared.recipe) && !attempt.exited && !attempt.cancelled) {
+        let ended: PortResult<{ ended: true }>;
+        try { ended = await options.host.endInput(started.value.sessionId); } catch (error) {
+          return failAfterStart(internal(error));
+        }
+        if (!ended.ok) return failAfterStart(ended);
       }
       attempt.openingPromptsWritten = true;
       const cancelledBeforeReceipt = await cancellationRefusal(attempt);

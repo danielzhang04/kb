@@ -172,6 +172,10 @@ export function createDeterministicSessionHost(): SessionHost {
       emitData(sessionId, entry, Buffer.from(data));
       return { ok: true, value: { accepted: data.byteLength } };
     },
+    async endInput(sessionId) {
+      if (!live.has(sessionId)) return { ok: false, refusal: 'not-found', detail: null };
+      return { ok: true, value: { ended: true } };
+    },
     async resize(sessionId, size) {
       if (!live.has(sessionId)) return { ok: false, refusal: 'not-found', detail: null };
       return { ok: true, value: size };

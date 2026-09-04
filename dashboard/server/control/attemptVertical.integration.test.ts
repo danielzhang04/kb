@@ -71,6 +71,8 @@ class LinuxShapedSessionHost implements SessionHost {
   readonly epochId: string;
   readonly writes: Array<{ sessionId: string; data: Uint8Array }> = [];
   readonly closeCalls: string[] = [];
+  /** Asserted EMPTY by the claude cases below: a stream-json child needs its pipe held open. */
+  readonly endInputCalls: string[] = [];
   createCount = 0;
   createCalls = 0;
   probeCalls = 0;
@@ -160,6 +162,12 @@ class LinuxShapedSessionHost implements SessionHost {
   async write(sessionId: string, data: Uint8Array) {
     this.writes.push({ sessionId, data: Uint8Array.from(data) });
     return this.track({ ok: true as const, value: { accepted: data.byteLength } });
+  }
+
+  /** Recorded, not simulated: this suite asserts WHICH sessions get an end-of-input and when. */
+  async endInput(sessionId: string) {
+    this.endInputCalls.push(sessionId);
+    return this.track({ ok: true as const, value: { ended: true as const } });
   }
 
   async resize(_sessionId: string, size: SessionSize) {
@@ -383,6 +391,10 @@ describe('attempt-start real document vertical', () => {
     expect(afterBind.sessions).toHaveLength(1);
     expect(statuses).toContain('bound');
     expect(host.writes).toHaveLength(2);
+    // Two prompts, and NO end-of-input: this is a claude attempt, and `--input-format stream-json`
+    // frames its own turns off a pipe that has to stay open for the next one. Half-closing it here
+    // would end the session after the binding prompt.
+    expect(host.endInputCalls).toEqual([]);
     expect(events.indexOf('start-run-session:done'))
       .toBeLessThan(events.indexOf('operation-session:bound:1'));
     expect(host.probeCalls).toBe(0);

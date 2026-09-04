@@ -143,7 +143,11 @@ class MemorySessionHost implements SessionHost {
   private outputSequence = 0;
   readonly attempts: HostAttempt[] = [];
   readonly writes: Array<{ sessionId: string; bytes: Uint8Array }> = [];
+  /** `write:`/`endInput:` in the order the adapter issued them. */
+  readonly callOrder: string[] = [];
   readonly closeCalls: string[] = [];
+  readonly endInputCalls: string[] = [];
+  refuseEndInput = false;
   readonly receipts = new Map<string, HostStartReceipt>();
   readonly writeGates = new Map<number, Deferred<void>>();
   readonly rejectedWrites = new Set<number>();
@@ -238,11 +242,22 @@ class MemorySessionHost implements SessionHost {
       return { ok: false as const, refusal: 'not-found' as const, detail: 'session already finished' };
     }
     this.writes.push({ sessionId, bytes: Uint8Array.from(data) });
+    this.callOrder.push(`write:${sessionId}`);
     if (this.finishAfterWrite === call) {
       const index = this.attempts.findIndex((attempt) => attempt.sessionId === sessionId && !attempt.finished);
       if (index >= 0) this.finish(index, 0);
     }
     return { ok: true as const, value: { accepted: data.byteLength } };
+  }
+  /** Ordered against `writes` on purpose: an end-of-input that raced ahead of the prompt it terminates
+   *  would be indistinguishable here without the interleaving both arrays share. */
+  async endInput(sessionId: string) {
+    this.endInputCalls.push(sessionId);
+    this.callOrder.push(`endInput:${sessionId}`);
+    if (this.refuseEndInput) {
+      return { ok: false as const, refusal: 'invalid-request' as const, detail: 'end-input refused' };
+    }
+    return { ok: true as const, value: { ended: true as const } };
   }
   async resize(_sessionId: string, size: SessionSize) { return { ok: true as const, value: size }; }
   async close(sessionId: string) {
@@ -609,6 +624,63 @@ describe('registry-owned attempt session adapter', () => {
       operator: input.subject, browserSessionRef: RUN_CONTROLLER_NULL_BROWSER_SESSION_REF,
     });
     expect(RUN_CONTROLLER_NULL_BROWSER_SESSION_REF).toBe('run-controller-null');
+  });
+
+  /**
+   * The stdin contract, per runtime, in the one place the adapter decides it.
+   *
+   * codex: the work order goes out with NO trailing U+0004 - on the Linux broker's PIPE that byte was
+   * just data, and `codex exec -` reads until EOF, so the turn never started (VM probe A4 hung to the
+   * 90 s kill; A3, the same launch with stdin closed, finished in 17 s). End of input is a separate,
+   * ordered call AFTER the last approved prompt.
+   *
+   * claude: `--input-format stream-json` frames its own turns and the pipe must stay OPEN for the next
+   * one, so it never gets an end-of-input. Gate 4a's live multi-turn run is what would break.
+   */
+  it('ends codex stdin after the approved prompt, with no EOT byte, and never ends claude stdin', async () => {
+    const codexHost = new MemorySessionHost();
+    const codexInput = declaration('codex');
+    const codexLaunch = createAttemptSessionAdapter({ host: codexHost, bindings: new MemoryBindings() })
+      .begin(codexInput);
+    await vi.waitFor(() => expect(codexHost.attempts).toHaveLength(1));
+    codexHost.resolveCreate(0);
+    await expect(codexLaunch.receipt).resolves.toMatchObject({ ok: true });
+    const codexSessionId = codexHost.attempts[0].sessionId;
+    expect(codexHost.writes).toHaveLength(1);
+    const codexPrompt = Buffer.from(codexHost.writes[0].bytes).toString('utf8');
+    expect(codexPrompt).toContain(codexInput.workOrder);
+    expect(codexPrompt).not.toContain('\u0004');
+    // Ordered, and after: an end-of-input that overtook the prompt would close the pipe on an empty
+    // instruction and codex would run a turn on nothing.
+    expect(codexHost.callOrder).toEqual([`write:${codexSessionId}`, `endInput:${codexSessionId}`]);
+
+    const claudeHost = new MemorySessionHost();
+    const claudeLaunch = createAttemptSessionAdapter({ host: claudeHost, bindings: new MemoryBindings() })
+      .begin(declaration('claude'));
+    await vi.waitFor(() => expect(claudeHost.attempts).toHaveLength(1));
+    claudeHost.resolveCreate(0);
+    await expect(claudeLaunch.receipt).resolves.toMatchObject({ ok: true });
+    expect(claudeHost.writes.length).toBeGreaterThan(0);
+    expect(claudeHost.endInputCalls).toEqual([]);
+    expect(claudeHost.callOrder.some((entry) => entry.startsWith('endInput:'))).toBe(false);
+  });
+
+  /**
+   * A refused end-of-input is a FAILED START, not a warning. The child is sitting on a pipe that will
+   * never close, so it would produce nothing at all and burn the full attempt timeout before anyone
+   * heard about it; refusing here surfaces the reason immediately and closes the session.
+   */
+  it('fails a codex start whose end-of-input is refused, and closes the stranded session', async () => {
+    const host = new MemorySessionHost();
+    host.refuseEndInput = true;
+    const input = declaration('codex');
+    const bindings = new MemoryBindings();
+    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'invalid-request' });
+    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
   });
 
   it('writes the durable pending intent before the host session exists and settles it terminally', async () => {

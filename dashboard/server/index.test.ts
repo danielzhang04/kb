@@ -116,7 +116,7 @@ function refusingSessionHost(touches?: { count: number }): SessionHost {
     throw new Error('unauthenticated PTY matrix must not reach the host');
   };
   return {
-    probe: boom, create: boom, attach: boom, write: boom,
+    probe: boom, create: boom, attach: boom, write: boom, endInput: boom,
     resize: boom, close: boom, listEpoch: boom, drain: boom,
   };
 }

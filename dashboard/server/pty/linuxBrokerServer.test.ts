@@ -50,9 +50,15 @@ class FakePty implements BrokerPty {
   readonly writes: Uint8Array[] = [];
   readonly resizes: Array<{ cols: number; rows: number }> = [];
   kills = 0;
+  inputEnds = 0;
   private dataListener: (data: Uint8Array) => void = () => {};
   private exitListener: (exitCode: number | null, signal: number | null) => void = () => {};
-  write(data: Uint8Array): Promise<void> { this.writes.push(data); return Promise.resolve(); }
+  /** Records the ORDER of both operations: an end-input that overtook a write is visible here. */
+  readonly calls: string[] = [];
+  write(data: Uint8Array): Promise<boolean> {
+    this.writes.push(data); this.calls.push('write'); return Promise.resolve(true);
+  }
+  endInput(): void { this.inputEnds += 1; this.calls.push('endInput'); }
   resize(cols: number, rows: number): void { this.resizes.push({ cols, rows }); }
   kill(): void { this.kills += 1; }
   onData(listener: (data: Uint8Array) => void): void { this.dataListener = listener; }
@@ -81,11 +87,23 @@ class TwoSinkPty implements BrokerPty {
   readonly identity = { pid: 5150, pgid: 5150, startTimeTicks: '7' };
   readonly pipeWrites: Uint8Array[] = [];
   readonly ptyWrites: Uint8Array[] = [];
+  inputEnds = 0;
   private readonly stdinMode: BrokerLaunchSpec['stdinMode'];
   constructor(stdinMode: BrokerLaunchSpec['stdinMode']) { this.stdinMode = stdinMode; }
-  write(data: Uint8Array): Promise<void> {
+  readonly calls: string[] = [];
+  /** Gated so a test can hold a write in flight and prove an end-input queues BEHIND it. */
+  gate: Promise<void> | null = null;
+  async write(data: Uint8Array): Promise<boolean> {
+    if (this.gate !== null) await this.gate;
     (this.stdinMode === 'pipe' ? this.pipeWrites : this.ptyWrites).push(Buffer.from(data));
-    return Promise.resolve();
+    this.calls.push('write');
+    return true;
+  }
+  /** A tty-mode child would throw here, as `NodePtyChild` does; the server must never call it. */
+  endInput(): void {
+    if (this.stdinMode !== 'pipe') throw new Error('a tty session has no stdin pipe to end');
+    this.inputEnds += 1;
+    this.calls.push('endInput');
   }
   resize(): void {}
   kill(): void {}
@@ -245,7 +263,7 @@ describe('LinuxBrokerServer', () => {
     // Without an observable master socket the in-flight window is bounded only by the 262,144-byte cap.
     const opaque = new NodePtyChild({ ...native, _socket: undefined } as never,
       { pid: 92, pgid: 92, startTimeTicks: '9' });
-    await expect(opaque.write(Buffer.from('a'))).resolves.toBeUndefined();
+    await expect(opaque.write(Buffer.from('a'))).resolves.toBe(true);
   });
 
   it('enforces runtime state ownership, mode, and runtime directory mode from policy', async () => {
@@ -405,6 +423,135 @@ describe('LinuxBrokerServer', () => {
   });
 
   /**
+   * Frames arriving in ONE socket chunk are decoded in one synchronous loop, and every handler awaits
+   * `persist()` before it touches the child - so an `end-input` decoded second could reach the child
+   * FIRST and close the pipe on a prompt still in flight, which is the same lost-instruction failure
+   * the frame exists to prevent. The child's work is queued per session, so the order the frames were
+   * decoded in is the order the child sees.
+   *
+   * RED ON REVERT: drop `session.inputTail` and call `child.write`/`child.endInput` directly, and the
+   * gated write below lets the end-input past - `calls` comes back `['endInput', 'write']`.
+   */
+  it('runs a queued end-input behind the write that was decoded before it', async () => {
+    const children: TwoSinkPty[] = [];
+    let release = (): void => {};
+    const server = new LinuxBrokerServer({
+      epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: {
+        launch: async (spec) => {
+          const child = new TwoSinkPty(spec.stdinMode);
+          child.gate = new Promise<void>((resolve) => { release = resolve; });
+          children.push(child);
+          return child;
+        },
+      },
+      makeSessionId: () => `pty-${'0'.repeat(32)}`,
+      now: () => '2026-09-03T00:00:00.000Z',
+    });
+    const [clientSocket, serverSocket] = pair();
+    const frames: BrokerServerFrame[] = [];
+    const decoder = new BrokerFrameDecoder(decodeBrokerServerFrame);
+    clientSocket.on('data', (chunk: Buffer) => frames.push(...decoder.push(chunk)));
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 99 });
+    const sessionId = `pty-${'0'.repeat(32)}`;
+    clientSocket.write(encodeBrokerFrame({ type: 'hello', requestId, sessionId: null,
+      protocol: 'kb-shell-broker/v1', dashboardEpochId: epochId }));
+    clientSocket.write(encodeBrokerFrame({ type: 'create', requestId, sessionId: null, epochId,
+      operationKey, recipe: headlessRecipe, rootId: 'worktrees', relativeCwd: 'run-1', cols: 80, rows: 24 }));
+    await tick();
+
+    // ONE chunk, so both frames are decoded before either handler resumes past its first await.
+    clientSocket.write(Buffer.concat([
+      encodeBrokerFrame({ type: 'input', requestId: `req-${'1'.repeat(32)}`, sessionId, epochId,
+        sequence: 0, encoding: 'base64', data: Buffer.from('prompt').toString('base64') }),
+      encodeBrokerFrame({ type: 'end-input', requestId: `req-${'2'.repeat(32)}`, sessionId, epochId, sequence: 1 }),
+    ]));
+    await tick();
+    // The write is still gated, so nothing has reached the child - least of all the EOF.
+    expect(children[0]!.calls).toEqual([]);
+    release();
+    await vi.waitFor(() => expect(children[0]!.calls).toEqual(['write', 'endInput']));
+    expect(children[0]!.pipeWrites).toEqual([Buffer.from('prompt')]);
+    expect(frames.filter((frame) => frame.type === 'error')).toEqual([]);
+    expect(frames).toContainEqual(expect.objectContaining({ type: 'ack', action: 'input', accepted: 6 }));
+    expect(frames).toContainEqual(expect.objectContaining({ type: 'ack', action: 'end-input' }));
+  });
+
+  /**
+   * `end-input` end to end through the server, on the same two-recipe harness as the routing test
+   * above - because the whole point of the frame is that it means something on ONE of them.
+   *
+   * Four rules, one session table:
+   *   - a pipe-mode session's end-input reaches THAT child's `endInput`, after the input already sent;
+   *   - a tty session's is refused (there is no write end to close, and `TwoSinkPty.endInput` throws
+   *     if it is ever called for one, so a regression cannot pass this quietly);
+   *   - a second one for the same session is refused - EOF is a one-way door;
+   *   - and every `input` after an accepted end-input is refused, rather than acked as accepted into
+   *     a pipe that can no longer take it.
+   */
+  it('half-closes a pipe-mode child once, and refuses end-input on a tty, twice, or after it', async () => {
+    const children: TwoSinkPty[] = [];
+    let sessionCounter = 0;
+    const server = new LinuxBrokerServer({
+      epochId, expectedClientUid: 1000, expectedClientGid: 1000,
+      launcher: {
+        launch: async (spec) => { const child = new TwoSinkPty(spec.stdinMode); children.push(child); return child; },
+      },
+      makeSessionId: () => `pty-${(sessionCounter++).toString(16).padStart(32, '0')}`,
+      now: () => '2026-09-03T00:00:00.000Z',
+    });
+    const [clientSocket, serverSocket] = pair();
+    const frames: BrokerServerFrame[] = [];
+    const decoder = new BrokerFrameDecoder(decodeBrokerServerFrame);
+    clientSocket.on('data', (chunk: Buffer) => frames.push(...decoder.push(chunk)));
+    server.accept(serverSocket, { uid: 1000, gid: 1000, pid: 99 });
+    const send = (frame: BrokerClientFrame): void => { clientSocket.write(encodeBrokerFrame(frame)); };
+    const req = (index: number): string => `req-${index.toString(16).padStart(32, '0')}`;
+    const sessionOf = (index: number): string => `pty-${index.toString(16).padStart(32, '0')}`;
+    send({ type: 'hello', requestId, sessionId: null, protocol: 'kb-shell-broker/v1', dashboardEpochId: epochId });
+    for (const [index, recipe] of [headlessRecipe, shellRecipe].entries()) {
+      send({ type: 'create', requestId: req(index), sessionId: null, epochId,
+        operationKey: `op-${index.toString(16).padStart(64, '0')}`, recipe,
+        rootId: 'worktrees', relativeCwd: 'run-1', cols: 80, rows: 24 });
+      await tick();
+    }
+
+    send({ type: 'input', requestId: req(10), sessionId: sessionOf(0), epochId, sequence: 0,
+      encoding: 'base64', data: Buffer.from('prompt').toString('base64') });
+    await tick();
+    send({ type: 'end-input', requestId: req(11), sessionId: sessionOf(0), epochId, sequence: 1 });
+    await tick();
+    expect(children[0]!.inputEnds).toBe(1);
+    expect(children[0]!.pipeWrites).toEqual([Buffer.from('prompt')]);
+    expect(frames).toContainEqual(expect.objectContaining({
+      type: 'ack', action: 'end-input', requestId: req(11), sessionId: sessionOf(0) }));
+
+    // Unknown session: answered `not-found` off the session table, never routed anywhere.
+    send({ type: 'end-input', requestId: req(12), sessionId: `pty-${'f'.repeat(32)}`, epochId, sequence: 0 });
+    // A tty session, which has no stdin pipe at all.
+    send({ type: 'end-input', requestId: req(13), sessionId: sessionOf(1), epochId, sequence: 0 });
+    // The same pipe session a second time.
+    send({ type: 'end-input', requestId: req(14), sessionId: sessionOf(0), epochId, sequence: 2 });
+    // ...and bytes after the door closed.
+    send({ type: 'input', requestId: req(15), sessionId: sessionOf(0), epochId, sequence: 2,
+      encoding: 'base64', data: Buffer.from('late').toString('base64') });
+    await tick();
+
+    const refusalOf = (id: string): unknown => frames.find(
+      (frame) => frame.type === 'error' && frame.requestId === id);
+    expect(refusalOf(req(12))).toMatchObject({ code: 'not-found' });
+    expect(refusalOf(req(13))).toMatchObject({ code: 'invalid-request' });
+    expect(refusalOf(req(14))).toMatchObject({ code: 'invalid-request' });
+    expect(refusalOf(req(15))).toMatchObject({ code: 'invalid-request' });
+    // Not one refused frame moved the child: no second half-close, and no late byte.
+    expect(children[0]!.inputEnds).toBe(1);
+    expect(children[0]!.pipeWrites).toEqual([Buffer.from('prompt')]);
+    expect(children[1]!.inputEnds).toBe(0);
+    expect(frames.some((frame) => frame.type === 'ack' && frame.action === 'end-input'
+      && frame.requestId !== req(11))).toBe(false);
+  });
+
+  /**
    * The two descriptor rules a pipe-mode child lives under, on the one interleaving that separates
    * them from `settled`: the pty master can go BEFORE the process is reaped (the child closed fd 1
    * and fd 2, or the master reported EIO first), which leaves `settle` waiting on the exit status
@@ -448,6 +595,51 @@ describe('LinuxBrokerServer', () => {
     await tick();
     expect(exits).toEqual([7]);
     expect(resizes).toHaveLength(1);
+  });
+
+  /**
+   * `PipeStdinChild.endInput` is a HALF-close and nothing more. `end()`, not `destroy()`: the child
+   * must see EOF on fd 0 while its output keeps arriving on the pty master and its exit is still
+   * observed the ordinary way. If this ever became a destroy, a codex child would lose the tail of its
+   * own transcript at the exact moment it started producing it.
+   */
+  it('half-closes a pipe-mode child stdin without touching its output or its exit', async () => {
+    const chunks: string[] = [];
+    const exits: Array<number | null> = [];
+    const stdin = new PassThrough();
+    const master = new PassThrough();
+    const child = Object.assign(new EventEmitter(), { stdin, kill: () => {} });
+    const wrapped = new PipeStdinChild(4321, child as never, master as never, 78, () => {});
+    wrapped.onData((data) => chunks.push(Buffer.from(data).toString('utf8')));
+    wrapped.onExit((exitCode) => exits.push(exitCode));
+
+    await expect(wrapped.write(Buffer.from('prompt'))).resolves.toBe(true);
+    wrapped.endInput();
+    expect(stdin.writableEnded).toBe(true);
+    expect(stdin.destroyed).toBe(false);
+    // RED ON REVERT: make `write` resolve `true` unconditionally and this goes red - the broker would
+    // then ack bytes that the closed write end swallowed as `accepted`, which is the silent input loss
+    // the end-input frame exists to end.
+    await expect(wrapped.write(Buffer.from('after-eof'))).resolves.toBe(false);
+    // A second call is a no-op rather than an ERR_STREAM_WRITE_AFTER_END thrown at the frame handler.
+    expect(() => wrapped.endInput()).not.toThrow();
+
+    // Output after EOF still arrives, and the exit still reports.
+    master.write(Buffer.from('AFTER-EOF'));
+    await tick();
+    expect(chunks.join('')).toContain('AFTER-EOF');
+    master.destroy();
+    child.emit('exit', 0, null);
+    await tick();
+    expect(exits).toEqual([0]);
+
+    // The other half of the contract: an interactive child REFUSES to pretend. Its fd 0 is the pty
+    // slave it shares with fd 1/2, so there is no write end to close and closing the master would take
+    // its output with it - the server never asks, and this is what happens if it ever does.
+    const native = { pid: 91, write: () => {}, resize: () => {}, kill: () => {},
+      onData: () => ({ dispose() {} }), onExit: () => ({ dispose() {} }) };
+    expect(() => new NodePtyChild(native as never).endInput())
+      .toThrow('an interactive pty session has no stdin pipe to end');
   });
 
   /**
@@ -529,8 +721,8 @@ describe('LinuxBrokerServer', () => {
     const writes: Uint8Array[] = [];
     const child: BrokerPty = {
       pid: 55, identity: { pid: 55, pgid: 55, startTimeTicks: '5' },
-      write: (data) => { writes.push(data); return new Promise<void>((resolve) => gates.push(resolve)); },
-      resize: () => {}, kill: () => {}, onData: () => {}, onExit: () => {},
+      write: (data) => { writes.push(data); return new Promise<boolean>((resolve) => gates.push(() => resolve(true))); },
+      endInput: () => {}, resize: () => {}, kill: () => {}, onData: () => {}, onExit: () => {},
     };
     const server = new LinuxBrokerServer({ epochId, expectedClientUid: 1000, expectedClientGid: 1000,
       launcher: { launch: async () => child }, makeSessionId: () => 'pty-0123456789abcdef0123456789abcdef',

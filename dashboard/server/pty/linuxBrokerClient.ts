@@ -210,12 +210,39 @@ export class LinuxBrokerClient implements SessionHost {
       if (this.ready === null || session === undefined || session.exited) return failure('not-found', null);
       const socketQueued = this.socket?.writableLength ?? 0;
       if (socketQueued + data.byteLength > BROKER_MAX_QUEUED_INPUT_BYTES) return failure('input-too-large', null);
+      const sequence = session.nextInputSequence++;
       const response = await this.request({ type: 'input', requestId: this.options.makeRequestId(), sessionId,
-        epochId: this.ready.epochId, sequence: session.nextInputSequence++, encoding: 'base64',
+        epochId: this.ready.epochId, sequence, encoding: 'base64',
         data: Buffer.from(data).toString('base64') });
-      if (response.type === 'error') return failure(response.code, response.detail);
+      if (response.type === 'error') {
+        this.releaseSequence(session, sequence);
+        return failure(response.code, response.detail);
+      }
       if (response.type !== 'ack' || response.action !== 'input') return failure('internal', null);
       return { ok: true, value: { accepted: response.accepted } };
+    } catch { return failure('unavailable', null); }
+  }
+
+  /**
+   * Half-close this session's stdin on the broker side. It takes a slot in the SAME ordered input
+   * sequence `write` and `resize` use, so it cannot overtake a prompt already sent; the broker refuses
+   * it for a tty session and refuses a repeat, and both arrive here as an ordinary refusal rather than
+   * an exception.
+   */
+  async endInput(sessionId: string): Promise<PortResult<{ ended: true }>> {
+    try {
+      await this.ensureConnected();
+      const session = this.sessions.get(sessionId);
+      if (this.ready === null || session === undefined || session.exited) return failure('not-found', null);
+      const sequence = session.nextInputSequence++;
+      const response = await this.request({ type: 'end-input', requestId: this.options.makeRequestId(), sessionId,
+        epochId: this.ready.epochId, sequence });
+      if (response.type === 'error') {
+        this.releaseSequence(session, sequence);
+        return failure(response.code, response.detail);
+      }
+      if (response.type !== 'ack' || response.action !== 'end-input') return failure('internal', null);
+      return { ok: true, value: { ended: true } };
     } catch { return failure('unavailable', null); }
   }
 
@@ -224,9 +251,13 @@ export class LinuxBrokerClient implements SessionHost {
       await this.ensureConnected();
       const session = this.sessions.get(sessionId);
       if (this.ready === null || session === undefined || session.exited) return failure('not-found', null);
+      const sequence = session.nextInputSequence++;
       const response = await this.request({ type: 'resize', requestId: this.options.makeRequestId(), sessionId,
-        epochId: this.ready.epochId, sequence: session.nextInputSequence++, cols: size.cols, rows: size.rows });
-      if (response.type === 'error') return failure(response.code, response.detail);
+        epochId: this.ready.epochId, sequence, cols: size.cols, rows: size.rows });
+      if (response.type === 'error') {
+        this.releaseSequence(session, sequence);
+        return failure(response.code, response.detail);
+      }
       if (response.type !== 'ack' || response.action !== 'resize') return failure('internal', null);
       return { ok: true, value: response.size };
     } catch { return failure('unavailable', null); }
@@ -237,9 +268,13 @@ export class LinuxBrokerClient implements SessionHost {
       await this.ensureConnected();
       const session = this.sessions.get(sessionId);
       if (this.ready === null || session === undefined) return failure('not-found', null);
+      const sequence = session.nextInputSequence++;
       const response = await this.request({ type: 'close', requestId: this.options.makeRequestId(), sessionId,
-        epochId: this.ready.epochId, sequence: session.nextInputSequence++ });
-      if (response.type === 'error') return failure(response.code, response.detail);
+        epochId: this.ready.epochId, sequence });
+      if (response.type === 'error') {
+        this.releaseSequence(session, sequence);
+        return failure(response.code, response.detail);
+      }
       if (response.type !== 'ack' || response.action !== 'close') return failure('internal', null);
       // The broker acks the close before the child's exit frame, and a broker that never emits that
       // frame would leave this promise pending forever — hanging the caller's start receipt, and with it
@@ -247,6 +282,22 @@ export class LinuxBrokerClient implements SessionHost {
       // sharpens it, so it is raced against the same timeout every other request uses.
       return { ok: true, value: await this.exitWithinTimeout(session, sessionId, response.sequence) };
     } catch { return failure('unavailable', null); }
+  }
+
+  /**
+   * Give a REFUSED input slot back. The broker consumes a session's `inputSequence` only on a request
+   * it ACCEPTS: `epoch-lost`, `not-found`, a sequence mismatch, `input-too-large` and both end-input
+   * refusals all return before the increment. So a client that kept counting after a refusal would
+   * send its NEXT request one number ahead, the broker would refuse that one as out of order, and
+   * every request on that session afterwards - one refused frame desyncs the session permanently. The
+   * codex path made that reachable in production: an end-input refused for any reason would strand the
+   * compensating close that is supposed to clean the session up.
+   *
+   * Only the TOP of the counter is returned. If another request has already taken a number since,
+   * rolling back would hand the same sequence to two requests, so the gap is left visible instead.
+   */
+  private releaseSequence(session: Session, sequence: number): void {
+    if (session.nextInputSequence === sequence + 1) session.nextInputSequence = sequence;
   }
 
   /** The session's real exit if it lands within the request timeout, else a synthesized `closed` one. */
@@ -309,6 +360,7 @@ export class LinuxBrokerClient implements SessionHost {
         const closeSequence = session === undefined ? 0 : session.nextInputSequence++;
         const response = await this.request({ type: 'close', requestId: this.options.makeRequestId(), sessionId,
           epochId, sequence: closeSequence });
+        if (response.type === 'error' && session !== undefined) this.releaseSequence(session, closeSequence);
         if (response.type === 'error' && response.code === 'not-found') alreadyGone.push(sessionId);
         else if (response.type === 'ack' && response.action === 'close') closed.push(sessionId);
         else if (response.type === 'error') return failure(response.code, response.detail);
