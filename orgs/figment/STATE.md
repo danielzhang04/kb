@@ -150,3 +150,15 @@ final values.
   1728×2416: front-on dataset portrait with real skin texture, register intact, reads as the g01/g07 woman — the
   first output of this project that looks like the package's. Shard-01 (10 cells, ceiling $2.75) launched 23:49
   under card d126c410 stage 1; operator grades all 11 at full resolution before anything trains.
+
+## 2026-09-04 17:40 — dataset complete; training smoke failed twice; diagnosis in flight
+
+- Dataset (module-10 port): smoke + shards 01-03 = 31 cells on L40S, $0.22 + $0.28 + $0.29 + $0.28; operator graded
+  the face cells at full res: "a lot closer", identity not exact, faces glossy, GO to judge at the LoRA test grid.
+- Training smoke (50 steps, module-11 port): attempt 1 failed at ComfyUI health (ai-toolkit downgraded PyAV under
+  ComfyUI v0.34.0) — fixed: transport = v0.20.1 + requirement floors restored (591e98da, 7fbda213), ~$0.30. Attempt 2
+  reached readiness and uploaded the dataset, then every /view poll returned 502 for the whole 40-min window (transport
+  server dead during the Krea-2 load), ~$0.90, no training log recovered. Terminate verified both times.
+- No third blind run: codex-deep diagnosis + hardening dispatched (ComfyUI --cpu transport, continuous training log +
+  heartbeat via /view, cgroup/RAM/VRAM logging, RunPod pod-log capture on failure, ai-toolkit krea2 config check vs the
+  pinned commit, pod-class verdict). Today's spend $2.35; arc ≈ $9.0 of $50.
