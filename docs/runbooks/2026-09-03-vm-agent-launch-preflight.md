@@ -206,6 +206,46 @@ bundle that carries an **instruction path** (anything that would execute on the 
 at a **24 hour ceiling** (`DEFAULT_OUTBOX_MAX_AGE_MS`) — past that, admission degrades to 503 on every
 new-work route until a drain runs, whether or not anyone touched the VM in between.
 
+## e2. The execution-profile catalogue lives on ops (W61, 2026-09-04)
+
+`dashboard/server/control/environment.ts#loadExecutionProfiles` builds the whole
+`manager:<runtime>:<model>` / `worker:<runtime>:<model>` catalogue from
+`governance/model-routing.yaml` **as it exists in the daemon's ops checkout** (`/var/lib/kb/ops`,
+via `loadRuntimeSkillRegistry(repoRoot)` over `runtimes.<runtime>.known_models`). Nothing on the VM
+reads main.
+
+- **Symptom.** `POST /api/workflows/<id>/launch` -> `400 assigned-profile-not-found` for a profile
+  id that plainly exists on main (2026-09-04: `manager:claude:claude-fable-5`, with
+  `worker:codex:gpt-5.6-terra` queued to fail next). The workflow, the agent and the assignment are
+  all fine; the VM's copy of the registry is simply older than main's.
+- **Fix.** On the desktop: `python scripts/sync_daemon_dirs.py --check` (the file is a
+  `DAEMON_READ_DIRS` entry, so drift shows as `content-differs`), then `--sync` to mirror main onto
+  ops, then promote (`python scripts/promote_vm_outbox.py ...`) so the reconciler moves the ops
+  checkout on the VM. `governance/` is human-edited: never hand-edit either copy to close the gap.
+- **The resident reconciler must be refreshed first.** `deploy/apply_ops_reconciliation.py`
+  `RECONCILED` admits exactly `governance/model-routing.yaml` as of W61; the VM runs the resident
+  copy at `/usr/local/lib/kb/apply_ops_reconciliation.py`, which a release deploy does NOT refresh.
+  Until it is refreshed, the promotion pushes to `origin/ops` and the VM leg refuses the range with
+  `reconciled ref contains a non-coordination path`, leaving the ops checkout untouched (no
+  `kb-before-reconcile-*` branch: the refusal happens before that branch is cut). On the VM, as root:
+
+  ```bash
+  install -m 0555 -o root -g root \
+    /opt/kb-releases/current/deploy/apply_ops_reconciliation.py \
+    /usr/local/lib/kb/apply_ops_reconciliation.py
+  # or, equivalently, re-run the converge that owns the resident tree:
+  # python3 /opt/kb-releases/current/deploy/bootstrap_vm.py converge ...
+  ```
+
+- **Preflight.** `scripts/vm_launch_preflight.sh` FAILs on this drift and prints the model list the
+  daemon will actually compile. It needs a reference: pass main's hash as `$2` (or
+  `$KB_MODEL_ROUTING_SHA256`), obtained on the desktop with
+  `git show origin/main:governance/model-routing.yaml | sha256sum`. With no hash it compares against
+  `/opt/kb-releases/current/governance/model-routing.yaml` and warns when the release carries none -
+  as of this writing `RELEASE_ROOTS` in `scripts/build_platform_release.py` ships
+  `dashboard/**`, `scripts`, `schemas` and `deploy`, but no `governance/`, so the hash argument is
+  the working path.
+
 ## f. Diagnosis tools that worked
 
 - **`strace -f -p <daemon-pid>`** on the daemon's broker fd was what actually proved the "Terminal

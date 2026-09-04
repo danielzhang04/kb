@@ -12,7 +12,9 @@ You are agent `dispatcher-cloud` operating in the kb repo. Follow CLAUDE.md (the
    If it still fails, write a wake-me card into queue/inbox/ (risk-tier T1), commit + push
    ops, and STOP — do not continue without pyyaml.
 2b. Run `python scripts/sync_daemon_dirs.py --check` (main→ops mirror check for the
-   daemon-read dirs: agents/ and orgs/*/workflows/; on the cloud VM this runs in
+   daemon-read paths: agents/, orgs/*/workflows/, and governance/model-routing.yaml -
+   the registry the daemon compiles its execution-profile catalogue from, whose drift
+   shows up as a 400 assigned-profile-not-found on launch; on the cloud VM this runs in
    refs-fallback mode). Exit 0 = in sync — note it in the run summary's health line
    alongside the sync_skills check. Nonzero = drift: write a wake-me card into
    queue/inbox/ (risk-tier T1) pasting the drift report and noting that a desktop

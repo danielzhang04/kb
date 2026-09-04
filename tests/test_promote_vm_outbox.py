@@ -26,6 +26,7 @@ from scripts.promote_vm_outbox import (
     validate_snapshot,
     upload_and_apply_reconciliation,
 )
+import deploy.apply_ops_reconciliation as reconcile_module
 from deploy.apply_ops_reconciliation import apply_reconciliation
 
 
@@ -902,3 +903,25 @@ def test_pull_only_flag_fails_closed_on_diverged_local_ops(tmp_path, monkeypatch
     assert git(operator, "rev-parse", "refs/heads/ops").stdout.strip() == local
     assert git(origin, "rev-parse", "refs/heads/ops").stdout.strip() == advanced
     assert upstream_state(origin) == before
+
+
+def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
+    """W61: the desktop's VM-source allowlist and the VM's must stay the SAME regex.
+
+    scripts/promote_vm_outbox.py keeps its own copy of COORDINATION and checks every quarantined
+    VM commit against it (validate_quarantine_chain); deploy/apply_ops_reconciliation.py checks the
+    same commits again on the VM (_validate_source_claims). Two copies that disagree mean one leg
+    accepts what the other refuses, and the promotion dies mid-flight. Only the VM-side RECONCILED
+    superset -- which governs the DESKTOP-originated writes in the reconciled range, never anything
+    the VM originates -- is allowed to be wider, so widening it (the daemon-read mirror, and W61's
+    governance/model-routing.yaml) must not leak into this outbound check.
+    """
+    assert promote_module.COORDINATION.pattern == reconcile_module.COORDINATION.pattern
+    for relpath in (
+        "governance/model-routing.yaml",
+        "agents/grader.md",
+        "orgs/faceless-youtube/workflows/segments/segment-a.workflow.js",
+        "orgs/atlas/output/transcripts/2026-08-21-abc.jsonl",
+    ):
+        assert promote_module.COORDINATION.fullmatch(relpath) is None, relpath
+        assert reconcile_module.RECONCILED.fullmatch(relpath) is not None, relpath

@@ -22,30 +22,53 @@ from pathlib import Path, PurePosixPath
 COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$")
 
 # What the *reconciled ops history* may touch.  A deliberate superset of COORDINATION, because the
-# desktop half of the loop has two more legitimate ops writers that the VM never originates.  It is
+# desktop half of the loop has three more legitimate ops writers that the VM never originates.  It is
 # built by appending to COORDINATION.pattern so the superset relation holds by construction rather
 # than by two lists agreeing:
 #
 #   agents/**  and  orgs/*/workflows/**
 #       main-authored, PR-reviewed content that the daemon reads out of its ops worktree and that
 #       scripts/sync_daemon_dirs.py mirrors from main onto ops.  These two entries ARE that script's
-#       DAEMON_READ_DIRS, compiled by its own rule (trailing "/" = directory prefix, "*" = one
-#       segment), and tests/test_apply_ops_reconciliation.py pins them to it so that adding a
-#       daemon-read dir there can never silently wedge this leg again.  Refusing them is not
-#       hypothetical damage: the agent catalog is load-bearing for runnable-owner resolution
-#       (dashboard/server/agents/roster.ts -> dashboard/server/control/queueBridge.ts), and while
-#       this leg was stuck the VM sat on 4 agent files against ops' 10.
+#       DAEMON_READ_DIRS, compiled by its own rule (trailing "/" = directory prefix, no trailing
+#       "/" = one exact file, "*" = one segment), and tests/test_apply_ops_reconciliation.py pins
+#       every entry of that list to this regex so that adding a daemon-read path there can never
+#       silently wedge this leg again.  Refusing them is not hypothetical damage: the agent catalog
+#       is load-bearing for runnable-owner resolution (dashboard/server/agents/roster.ts ->
+#       dashboard/server/control/queueBridge.ts), and while this leg was stuck the VM sat on 4 agent
+#       files against ops' 10.
 #
 #   orgs/atlas/output/transcripts/*.jsonl
 #       the Atlas voice worker's per-session transcript, committed straight to ops from the desktop
 #       ops worktree (atlas/worker/ledgerwriter.py TRANSCRIPTS_DIR / _flush_session).  Pinned to
 #       that one directory, flat, and .jsonl only -- its sibling orgs/atlas/output/persona-samples/
 #       holds .wav/.mp3 blobs that have no business crossing this boundary.
+#
+#   governance/model-routing.yaml
+#       ONE file, not the governance/ tree.  It is the daemon-read *registry* the execution-profile
+#       catalogue is compiled from: dashboard/server/control/environment.ts#loadExecutionProfiles
+#       reads it out of the ops checkout via loadRuntimeSkillRegistry and turns
+#       `runtimes.<runtime>.known_models` into the `manager:<runtime>:<model>` /
+#       `worker:<runtime>:<model>` ids a workflow assignment names.  Same shape as agents/** above --
+#       main-authored, PR-reviewed, human-edited content the daemon only READS -- so it is mirrored
+#       main -> ops by scripts/sync_daemon_dirs.py and must be reconcilable for that mirror to land.
+#       Left out, ops drifts: on 2026-09-04 the VM's copy still listed claude-opus-4-8 and one codex
+#       model, so `POST /api/workflows/<id>/launch` answered 400 assigned-profile-not-found for
+#       manager:claude:claude-fable-5 -- and the mirror commit that would have fixed it was refused
+#       by THIS allowlist ("reconciled ref contains a non-coordination path").
+#       Blast radius, deliberately: the worst a change here can do is add, remove or rename entries
+#       in the model/runtime registry the daemon compiles profiles from (a launch that then names a
+#       missing profile is refused at admission, and every other governance file -- risk-tiers,
+#       budget, card-schema -- stays outside this regex).  It grants no new *route*: the reconciler
+#       still demands the trusted-chain ancestry, the receipted promotion chain, safe object modes,
+#       and a quiescent VM, so the only writer that can move this path is a desktop-signed
+#       promotion.  The VM itself still cannot originate it -- COORDINATION, checked against every
+#       VM-authored commit by _validate_source_claims, is unchanged.
 RECONCILED = re.compile(
     COORDINATION.pattern
     + r"|^agents/.+$"
     + r"|^orgs/[^/]+/workflows/.+$"
     + r"|^orgs/atlas/output/transcripts/[^/]+\.jsonl$"
+    + r"|^governance/model-routing\.yaml$"
 )
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
