@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import base64
+import calendar
 import copy
 import csv
 import hashlib
@@ -23,10 +24,11 @@ import traceback
 import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import quote
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 try:
     import requests
@@ -37,7 +39,7 @@ except ModuleNotFoundError:  # --dry-run and the stubbed tests remain intentiona
 API_BASE = "https://rest.runpod.io/v1"
 DEFAULT_MAX_MINUTES = 14 * 60.0
 DEFAULT_READY_TIMEOUT = 15 * 60.0
-DEFAULT_MAX_PLACEMENT_ATTEMPTS = 4
+DEFAULT_MAX_PLACEMENT_ATTEMPTS = 1
 BAD_HOST_TTL_SECONDS = 24 * 60 * 60
 REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
@@ -73,6 +75,13 @@ DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
 TRAINING_IDENTIFIER_PLACEHOLDERS = {"trigger", "git_ref", "diffusion_pipe_git_ref"}
 ENV_SECRET_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
 RUNPOD_SECRET_REF_PATTERN = re.compile(r"\{\{\s*RUNPOD_SECRET_[A-Za-z0-9_]*\s*\}\}")
+GOVERNANCE_TIMEZONE_NAME = "America/New_York"
+try:
+    GOVERNANCE_TIMEZONE = ZoneInfo(GOVERNANCE_TIMEZONE_NAME)
+except ZoneInfoNotFoundError:  # Windows Python may not ship the optional tzdata package.
+    GOVERNANCE_TIMEZONE = None
+HF_REVISION_RE = re.compile(r"(?:[0-9A-Fa-f]{40}|[A-Za-z0-9][A-Za-z0-9._/-]{0,127})")
+GIT_COMMIT_RE = re.compile(r"[0-9A-Fa-f]{40}")
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -157,6 +166,31 @@ class BootstrapFailed(HarnessError):
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def governance_ledger_day(instant: datetime | None = None) -> str:
+    """Return the America/New_York operating date for one captured instant."""
+    instant = utc_now() if instant is None else instant
+    if instant.tzinfo is None:
+        raise HarnessError("governance ledger day requires a timezone-aware datetime")
+    if GOVERNANCE_TIMEZONE is not None:
+        eastern = instant.astimezone(GOVERNANCE_TIMEZONE)
+    else:
+        # US Eastern has observed the current second-Sunday-in-March / first-Sunday-
+        # in-November rule since 2007. Compute the UTC transition instants so the
+        # governance day remains correct without an undeclared tzdata dependency.
+        instant_utc = instant.astimezone(timezone.utc)
+        year = instant_utc.year
+        march_first_weekday, _ = calendar.monthrange(year, 3)
+        first_march_sunday = 1 + (6 - march_first_weekday) % 7
+        second_march_sunday = first_march_sunday + 7
+        november_first_weekday, _ = calendar.monthrange(year, 11)
+        first_november_sunday = 1 + (6 - november_first_weekday) % 7
+        dst_start = datetime(year, 3, second_march_sunday, 7, tzinfo=timezone.utc)
+        dst_end = datetime(year, 11, first_november_sunday, 6, tzinfo=timezone.utc)
+        offset_hours = -4 if dst_start <= instant_utc < dst_end else -5
+        eastern = instant_utc.astimezone(timezone(timedelta(hours=offset_hours)))
+    return eastern.strftime("%Y-%m-%d")
 
 
 @dataclass(frozen=True)
@@ -1413,6 +1447,39 @@ def manifest_max_placement_attempts(manifest: dict[str, Any]) -> int:
     return value
 
 
+def model_revision(model: dict[str, Any]) -> str:
+    revision = model.get("revision", "main")
+    if (not isinstance(revision, str) or not HF_REVISION_RE.fullmatch(revision)
+            or ".." in revision or "//" in revision or revision.endswith(("/", ".lock"))):
+        raise HarnessError(
+            "model revision must be a 40-character commit or a safe tag"
+        )
+    return revision
+
+
+def model_sha256(model: dict[str, Any]) -> str | None:
+    digest = model.get("sha256")
+    if digest is None:
+        return None
+    if not isinstance(digest, str) or not re.fullmatch(r"[0-9A-Fa-f]{64}", digest):
+        raise HarnessError("model sha256 must be a 64-character hexadecimal digest")
+    return digest.lower()
+
+
+def custom_node_git_ref(node: dict[str, Any]) -> str:
+    git_ref = node.get("git_ref")
+    installer_pin = node.get("installer_pin")
+    if git_ref is not None and installer_pin is not None and git_ref != installer_pin:
+        raise HarnessError("custom node git_ref and installer_pin must match when both are set")
+    pin = git_ref if git_ref is not None else installer_pin
+    if not isinstance(pin, str) or not GIT_COMMIT_RE.fullmatch(pin):
+        raise HarnessError(
+            "each custom node git_ref (or installer_pin alias) must be a 40-character "
+            "hexadecimal commit"
+        )
+    return pin.lower()
+
+
 def manifest_job_timeout_seconds(manifest: dict[str, Any]) -> float:
     value = manifest.get("job_timeout_seconds", 15 * 60)
     if isinstance(value, bool) or not isinstance(value, (int, float)):
@@ -1456,6 +1523,10 @@ def manifest_env_secret_refs(manifest: dict[str, Any]) -> dict[str, str]:
         if not isinstance(env_var, str) or not ENV_SECRET_NAME_RE.fullmatch(env_var):
             raise HarnessError(
                 f"env_secret_refs env var name must match [A-Z][A-Z0-9_]*: {env_var!r}"
+            )
+        if env_var != "HF_TOKEN":
+            raise HarnessError(
+                "manifest env_secret_refs supports only HF_TOKEN -> <RunPod secret NAME>"
             )
         if not isinstance(secret_name, str) or not secret_name:
             raise HarnessError(
@@ -1621,10 +1692,13 @@ def require_manifest(
             raise HarnessError(f"unsafe model filename: {model['filename']!r}")
         if not PurePosixPath(str(model["destination_dir"])).is_absolute():
             raise HarnessError("model destination_dir must be an absolute pod path")
+        model_revision(model)
+        model_sha256(model)
     for node in manifest.get("custom_nodes", []):
         url = node.get("git_url") if isinstance(node, dict) else None
         if not isinstance(url, str) or not url.startswith("https://"):
             raise HarnessError("custom node git_url must be a public https URL")
+        custom_node_git_ref(node)
     expand_manifest_uploads(
         manifest, manifest_path, allow_missing=allow_missing_uploads,
     )
@@ -1719,9 +1793,24 @@ def configured_ledger_dir(explicit: Path | None = None) -> Path:
     return repo_ledger_dir()
 
 
+def require_arc_ledger_baseline(ledger_dir: Path, *, allow_empty: bool) -> None:
+    """Refuse a live create when no Figment arc ledger baseline is visible."""
+    try:
+        has_baseline = next(ledger_dir.glob(DEFAULT_ARC_LEDGER_GLOB), None) is not None
+    except (OSError, ValueError) as exc:
+        raise HarnessError(f"could not enumerate arc cost ledgers: {exc}") from exc
+    if not has_baseline and not allow_empty:
+        raise HarnessError(
+            f"live create refused: resolved ledger directory {ledger_dir} has no "
+            "figment-*.tsv baseline; pass --allow-empty-ledger only for an intentional "
+            "new arc"
+        )
+
+
 def daily_budget_state(*, budget_path: Path | None = None,
                        ledger_dir: Path | None = None,
-                       logger: logging.Logger | None = None) -> tuple[float, float]:
+                       logger: logging.Logger | None = None,
+                       ledger_day: str | None = None) -> tuple[float, float]:
     budget_path = budget_path or repo_root() / "governance" / "budget.yaml"
     ledger_dir = configured_ledger_dir(ledger_dir)
     budget = parse_simple_yaml(budget_path.read_text(encoding="utf-8"))
@@ -1730,7 +1819,7 @@ def daily_budget_state(*, budget_path: Path | None = None,
     daily_limit = float(budget["daily_usd_limit"])
     if not math.isfinite(daily_limit) or daily_limit <= 0:
         raise HarnessError("governance daily_usd_limit must be positive")
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = governance_ledger_day() if ledger_day is None else ledger_day
     spent = 0.0
     for path in sorted(ledger_dir.glob(f"*-{today}.tsv")):
         try:
@@ -1752,9 +1841,11 @@ def daily_budget_state(*, budget_path: Path | None = None,
 
 def enforce_daily_budget(estimate: float, *, budget_path: Path | None = None,
                          ledger_dir: Path | None = None,
-                         logger: logging.Logger | None = None) -> tuple[float, float]:
+                         logger: logging.Logger | None = None,
+                         ledger_day: str | None = None) -> tuple[float, float]:
     daily_limit, spent = daily_budget_state(
         budget_path=budget_path, ledger_dir=ledger_dir, logger=logger,
+        ledger_day=ledger_day,
     )
     if estimate < 0 or spent + estimate > daily_limit:
         raise HarnessError(
@@ -2192,7 +2283,13 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     for index, model in enumerate(manifest.get("models", []), start=1):
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
         encoded_filename = quote(str(model["filename"]), safe="/")
-        url = f"https://huggingface.co/{model['repo_id']}/resolve/main/{encoded_filename}?download=true"
+        revision = model_revision(model)
+        encoded_revision = quote(revision, safe="")
+        url = (
+            f"https://huggingface.co/{model['repo_id']}/resolve/"
+            f"{encoded_revision}/{encoded_filename}?download=true"
+        )
+        digest = model_sha256(model)
         # $HF_TOKEN, when the container env carries it (via env_secret_refs), is expanded
         # by the shell directly into curl's argv. It is never passed to log_line/echo/
         # printf, so it never reaches _bootstrap.log or the harness's own output.
@@ -2200,14 +2297,37 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
             'hf_auth=(); if [ -n "${HF_TOKEN:-}" ]; then '
             'hf_auth=(-H "Authorization: Bearer $HF_TOKEN"); fi; '
         )
-        command = (
-            f"mkdir -p {shlex.quote(str(model['destination_dir']))} && "
-            f"if [ -s {shlex.quote(destination)} ]; then true; else "
-            f"tmp={shlex.quote(destination + '.partial')}; "
-            f"{hf_auth_snippet}"
-            f'curl --fail --location "${{hf_auth[@]}}" --output "$tmp" {shlex.quote(url)} && '
-            f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
-        )
+        if digest is None:
+            command = (
+                f"mkdir -p {shlex.quote(str(model['destination_dir']))} && "
+                f"if [ -s {shlex.quote(destination)} ]; then true; else "
+                f"tmp={shlex.quote(destination + '.partial')}; "
+                f"{hf_auth_snippet}"
+                f'curl --fail --location "${{hf_auth[@]}}" --output "$tmp" {shlex.quote(url)} && '
+                f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
+            )
+        else:
+            checksum_existing = (
+                f"printf '%s  %s\\n' {shlex.quote(digest)} "
+                f"{shlex.quote(destination)} | sha256sum --check --status -"
+            )
+            checksum_partial = (
+                f"printf '%s  %s\\n' {shlex.quote(digest)} \"$tmp\" "
+                "| sha256sum --check --status -"
+            )
+            command = (
+                f"mkdir -p {shlex.quote(str(model['destination_dir']))} && "
+                f"if [ -s {shlex.quote(destination)} ]; then "
+                f"if ! {checksum_existing}; then echo 'MODEL sha256 mismatch' >&2; "
+                f"rm -f {shlex.quote(destination)}; exit 86; fi; else "
+                f"tmp={shlex.quote(destination + '.partial')}; "
+                f"{hf_auth_snippet}"
+                f'curl --fail --location "${{hf_auth[@]}}" --output "$tmp" {shlex.quote(url)} && '
+                "test -s \"$tmp\" || exit $?; "
+                f"if ! {checksum_partial}; then echo 'MODEL sha256 mismatch' >&2; "
+                "rm -f \"$tmp\"; exit 86; fi; "
+                f"mv \"$tmp\" {shlex.quote(destination)}; fi"
+            )
         lines.append(f"retry_required model-{index} bash -lc {shlex.quote(command)}")
     # Drop the token from the container env once model downloads are done and well before
     # ComfyUI starts, regardless of whether any model was actually configured.
@@ -2216,11 +2336,18 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
     for index, node in enumerate(manifest.get("custom_nodes", []), start=1):
         name = _safe_node_name(str(node["git_url"]), node.get("name"))
         target = f"{nodes_root}/{name}"
+        git_ref = custom_node_git_ref(node)
+        commit_object = f"{git_ref}^{{commit}}"
         command = (
             f"mkdir -p {shlex.quote(nodes_root)} && "
-            f"if [ -d {shlex.quote(target + '/.git')} ]; then "
-            f"git -C {shlex.quote(target)} pull --ff-only; else "
-            f"git clone --depth 1 {shlex.quote(str(node['git_url']))} {shlex.quote(target)}; fi"
+            f"if [ ! -d {shlex.quote(target + '/.git')} ]; then "
+            f"git clone --depth 1 {shlex.quote(str(node['git_url']))} {shlex.quote(target)}; fi && "
+            f"if ! git -C {shlex.quote(target)} cat-file -e {shlex.quote(commit_object)}; then "
+            f"git -C {shlex.quote(target)} fetch --depth 1 origin {shlex.quote(git_ref)}; fi && "
+            f"git -C {shlex.quote(target)} checkout --detach {shlex.quote(git_ref)} && "
+            f"head=$(git -C {shlex.quote(target)} rev-parse HEAD) && "
+            f"test \"$head\" = {shlex.quote(git_ref)} && "
+            f"printf 'CUSTOM NODE %s checked-out %s\\n' {shlex.quote(name)} \"$head\""
         )
         lines.append(f"retry_required node-{index} bash -lc {shlex.quote(command)}")
         requirements = f"{target}/requirements.txt"
@@ -2816,9 +2943,12 @@ def write_json(path: Path, value: Any, redactor: ApiKeyRedactionFilter | None) -
     path.write_text(text, encoding="utf-8")
 
 
-def append_cost_row(ledger_dir: Path, gpu: str, step: str, usd: float) -> Path:
+def append_cost_row(
+        ledger_dir: Path, gpu: str, step: str, usd: float,
+        *, ledger_day: str | None = None) -> Path:
     ledger_dir.mkdir(parents=True, exist_ok=True)
-    path = ledger_dir / f"figment-{datetime.now(timezone.utc):%Y-%m-%d}.tsv"
+    day = governance_ledger_day() if ledger_day is None else ledger_day
+    path = ledger_dir / f"figment-{day}.tsv"
     needs_header = not path.exists() or path.stat().st_size == 0
     with path.open("a", encoding="utf-8", newline="") as handle:
         if needs_header:
@@ -2855,11 +2985,14 @@ def exclusive_ledger_lock(path: Path, timeout: float = LEDGER_LOCK_TIMEOUT):
             raise HarnessError(f"could not release cost ledger lock {lock_path}: {exc}") from exc
 
 
-def upsert_cost_row(ledger_dir: Path, model: str, step: str, usd: float) -> Path:
+def upsert_cost_row(
+        ledger_dir: Path, model: str, step: str, usd: float,
+        *, ledger_day: str | None = None) -> Path:
     if any(char in model + step for char in "\t\r\n"):
         raise HarnessError("ledger model and step must be single TSV fields")
     ledger_dir.mkdir(parents=True, exist_ok=True)
-    path = ledger_dir / f"figment-{datetime.now(timezone.utc):%Y-%m-%d}.tsv"
+    day = governance_ledger_day() if ledger_day is None else ledger_day
+    path = ledger_dir / f"figment-{day}.tsv"
     with exclusive_ledger_lock(path):
         rows: list[dict[str, str]] = []
         if path.exists() and path.stat().st_size:
@@ -2911,7 +3044,8 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 ledger_dir: Path | None = None,
                 budget_path: Path | None = None,
                 arc_cap_usd: float | None = None,
-                arc_ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB) -> dict[str, Any]:
+                arc_ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
+                allow_empty_ledger: bool = False) -> dict[str, Any]:
     require_manifest(
         manifest, manifest_path, allow_missing_uploads=dry_run,
     )
@@ -2948,6 +3082,12 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         if dry_run and ledger_dir is None else configured_ledger_dir(ledger_dir)
     )
     logger.info("cost ledger directory: %s", ledger_target)
+    # Capture the operating day once for this create transaction. Every provisional and
+    # settled row from the invocation reuses it even if teardown crosses local midnight.
+    started_utc = utc_now().replace(microsecond=0)
+    ledger_day = governance_ledger_day(started_utc)
+    if not dry_run:
+        require_arc_ledger_baseline(ledger_target, allow_empty=allow_empty_ledger)
     daily_limit: float | None = None
     daily_spent: float | None = None
     arc_cap, arc_spent = arc_budget_state(
@@ -2956,12 +3096,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         ledger_glob=arc_ledger_glob,
         logger=logger,
     )
+    logger.info("arc total before create: $%.6f", arc_spent)
     if not dry_run:
         daily_limit, daily_spent = enforce_daily_budget(
             estimate,
             budget_path=budget_path,
             ledger_dir=ledger_target,
             logger=logger,
+            ledger_day=ledger_day,
         )
         arc_cap, arc_spent = enforce_arc_cap(
             estimate,
@@ -2979,17 +3121,18 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
 
     ledger_model = gpu_model_label(manifest["gpu"]["type"])
     started = time.monotonic()  # The budget clock begins immediately before create.
-    started_utc = utc_now().replace(microsecond=0)
     avoid_hosts, avoid_ids = manifest_machine_avoidance(manifest)
     learned_hosts = load_recent_bad_hosts(session_bad_hosts_path(), logger=logger)
     avoid_hosts.update(learned_hosts)
     max_placement_attempts = manifest_max_placement_attempts(manifest)
+    logger.info("max placement attempts: %d", max_placement_attempts)
     result: dict[str, Any] = {
         "schema": "figment/runpod-run@1",
         "dry_run": dry_run,
         "pod_id": None,
         "gpu": manifest["gpu"],
         "started_utc": started_utc.isoformat(timespec="seconds"),
+        "ledger_day": ledger_day,
         "max_minutes": max_minutes,
         "preflight_estimate_usd": round(estimate, 6),
         "arc_usd_before": round(arc_spent, 6),
@@ -3071,6 +3214,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     ledger_model,
                     f"pod-create {pod_id}",
                     0.0 if dry_run else estimate,
+                    ledger_day=ledger_day,
                 )
                 logger.info(
                     "provisional cost row for placement %d/%d: %s",
@@ -3135,6 +3279,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             upsert_cost_row(
                 ledger_target, ledger_model,
                 f"pod-create {lease.pod_id}", placement_cost,
+                ledger_day=ledger_day,
             )
             current_placement_settled = True
             if placement_attempt == max_placement_attempts:
@@ -3237,11 +3382,15 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 artifact_marker_deadline = time.monotonic() + per_job_timeout
                 for artifact_index, artifact in enumerate(artifacts):
                     watchdog.check()
+                    artifact_deadline = (
+                        artifact_marker_deadline if artifact_index == 0
+                        else time.monotonic() + artifact_download_seconds
+                    )
                     marker = artifact["wait_for"]
                     assert failed_marker is not None
-                    remaining_marker_wait = artifact_marker_deadline - time.monotonic()
+                    remaining_marker_wait = artifact_deadline - time.monotonic()
                     if remaining_marker_wait <= 0:
-                        raise HarnessError("shared artifact marker deadline expired")
+                        raise HarnessError("artifact marker/download deadline expired")
                     comfy.wait_for_marker(
                         marker, failed_marker, remaining_marker_wait, watchdog,
                     )
@@ -3252,16 +3401,22 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         {"sha256": artifact["sha256"]}
                         if "sha256" in artifact else {}
                     )
-                    download_timeout = (
-                        per_job_timeout if artifact_index == 0 else artifact_download_seconds
-                    )
-                    retry_transient_proxy(
-                        lambda artifact=artifact, local_path=local_path,
-                                download_kwargs=download_kwargs,
-                                download_timeout=download_timeout: comfy.download_artifact(
+
+                    def download_with_remaining_deadline(
+                            *, artifact: dict[str, str] = artifact,
+                            local_path: Path = local_path,
+                            download_kwargs: dict[str, str] = download_kwargs,
+                            artifact_deadline: float = artifact_deadline) -> None:
+                        download_timeout = artifact_deadline - time.monotonic()
+                        if download_timeout <= 0:
+                            raise HarnessError("artifact marker/download deadline expired")
+                        comfy.download_artifact(
                             artifact["remote"], local_path, download_timeout,
                             **download_kwargs,
-                        ),
+                        )
+
+                    retry_transient_proxy(
+                        download_with_remaining_deadline,
                         f"artifact download {artifact['remote']}",
                         watchdog, sleep, logger,
                     )
@@ -3443,6 +3598,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                     ledger_model,
                     f"pod-create {unsettled_pod_id}",
                     current_cost_for_ledger,
+                    ledger_day=ledger_day,
                 )
                 logger.info("cost row: %s", cost_path)
             except BaseException as secondary:
@@ -3489,6 +3645,7 @@ def command_run(args: argparse.Namespace) -> int:
             ledger_dir=args.ledger_dir,
             arc_cap_usd=args.arc_cap_usd,
             arc_ledger_glob=args.arc_ledger_glob,
+            allow_empty_ledger=args.allow_empty_ledger,
         )
         if not result["termination_verified"]:
             error = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
@@ -3597,6 +3754,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--ledger-dir", type=Path,
         help="cost ledger root (fallback: KB_LEDGER_DIR, ops worktree, then repo ledger)",
+    )
+    run.add_argument(
+        "--allow-empty-ledger", action="store_true",
+        help="permit a live create with no figment-*.tsv baseline (intentional new arcs only)",
     )
     run.add_argument(
         "--arc-cap-usd", type=float,

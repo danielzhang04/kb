@@ -22,12 +22,13 @@ the separate ComfyUI proxy session. Log records, REST errors, the last-resort
 that carries an `Authorization` header.
 
 A gated Hugging Face download (a private or access-gated model repo) can authenticate the
-same way, without the harness ever holding that token either. An optional manifest
-`env_secret_refs` mapping (pod env var name -> RunPod secret NAME, e.g.
-`{HF_TOKEN: HF_TOKEN}`) is validated during preflight: both the env var name and the secret
-NAME must match `[A-Z][A-Z0-9_]*`, and any value that looks like a pasted token rather than a
-secret's NAME (contains `hf_`, contains whitespace, or is longer than 64 characters) is
-refused. The create payload then carries only the RunPod reference string
+same way, without the harness ever holding that token either. The optional manifest
+`env_secret_refs` block supports exactly one mapping: `HF_TOKEN -> <RunPod secret NAME>`
+(for example `{HF_TOKEN: HF_TOKEN}`). Any other environment-variable name is refused because
+only `HF_TOKEN` has a proved cleanup path. The secret NAME must match `[A-Z][A-Z0-9_]*`, and
+any value that looks like a pasted token rather than a secret's NAME (contains `hf_`, contains
+whitespace, or is longer than 64 characters) is refused. The create payload then carries only
+the RunPod reference string
 `{{ RUNPOD_SECRET_<name> }}` for that env var; RunPod itself substitutes the encrypted
 secret's value into the Pod's container environment at start time, so this harness process
 never reads it. When bootstrap finds `HF_TOKEN` set in that environment, every model download
@@ -60,16 +61,19 @@ that file. Required fields are:
   budget each artifact after the first gets for its own marker poll plus download once the
   first artifact has already spent the shared job timeout;
 - optional `avoid_machine_hosts` and `avoid_machine_ids` string lists, plus
-  `max_placement_attempts` (default 4), for rejecting known-bad RunPod placements;
+  `max_placement_attempts` (default 1), for rejecting known-bad RunPod placements; a manifest
+  must raise this explicitly when its approved run permits paid placement recreation;
 - `comfyui.git_ref` and a `comfyui.root` below `volume_mount_path` (the root defaults to
   `/workspace/ComfyUI` and may not equal the mount itself), with optional public-HTTPS
   `comfyui.source_url` and `comfyui.tarball_url` overrides, and optional
   `comfyui.extra_args` appended to the ComfyUI launch command;
-- public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
-- optional `env_secret_refs`, a mapping of pod env var name -> RunPod secret NAME (both
-  `[A-Z][A-Z0-9_]*`) for gated Hugging Face downloads via a RunPod Secret the harness never
-  sees — see the credential boundary above;
-- optional public-HTTPS `custom_nodes`;
+- public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`, plus
+  optional `revision` (a 40-hex commit or safe tag) and optional 64-hex `sha256`;
+- optional `env_secret_refs`, restricted to `HF_TOKEN -> <RunPod secret NAME>`, for gated
+  Hugging Face downloads via a RunPod Secret the harness never sees — see the credential
+  boundary above;
+- optional public-HTTPS `custom_nodes`; every node requires a 40-hex `git_ref`, with
+  `installer_pin` accepted as an alias for existing manifests;
 - a ComfyUI API-format `workflow` object or JSON path;
 - optional `seed_fields`, a non-empty list of workflow input names to receive every job's
   `seed` (defaults to `["seed", "noise_seed"]`);
@@ -104,6 +108,14 @@ dependency install, model download, or start is fatal and short-circuits later b
 steps. `comfyui.start_command` is the launch executable only; the harness supplies
 `--listen 0.0.0.0 --port 8188 --output-directory /workspace/output` and rejects manifests
 that try to override those transport/output arguments.
+
+Model URLs use `/resolve/<revision>/` when `revision` is present and otherwise retain the
+legacy `/resolve/main/` path. When `sha256` is present, bootstrap checks both a reusable
+existing file and a newly downloaded `.partial` before the atomic move. A mismatch removes
+the bad file and is a fatal model-download failure; it is not learned as a bad machine host.
+Each custom node is cloned, its pinned commit is fetched when the depth-1 clone lacks the
+object, checked out detached, verified against `git rev-parse HEAD`, and the checked-out SHA
+is written to `_bootstrap.log` before requirements are installed.
 
 Immediately after each create, the harness performs a machine-aware Pod GET. A matching
 machine host or machine id is terminated and verified absent before recreation. Every rejected
@@ -157,14 +169,13 @@ An optional 64-hex `sha256` is verified when supplied. Only then is the file ato
 into place. Remote and local names must use the same `.safetensors`, `.json`, `.txt`, or `.log`
 suffix and may not be absolute or traverse directories.
 
-The shared artifact-marker deadline holds exactly one `job_timeout_seconds` budget for
-confirming the training completion marker (or the first distinct `wait_for` marker, if artifacts
-declare their own), no matter how many artifacts are declared — it is not multiplied by artifact
-count. Every artifact after the first downloads under its own much smaller
-`artifact_download_seconds` allowance (optional manifest key, default 180 seconds, must be
-finite and positive) instead of borrowing the full job timeout again. This is what lets a
-multi-hour marker wait and a multi-checkpoint ladder both fit under `DEFAULT_MAX_MINUTES`; see
-`pipeline/train/HARNESS-CHANGES.md` for the defect this replaced.
+The first artifact's marker poll and download share exactly one `job_timeout_seconds`
+deadline: time spent waiting for the marker is subtracted from the first download's timeout.
+Every artifact after the first gets one much smaller `artifact_download_seconds` allowance
+(optional manifest key, default 180 seconds, finite and positive) shared by its own marker poll
+and download. The allowance is not multiplied or refreshed by retries. This makes the
+preflight formula a provable bound beneath the global watchdog and preserves the five-minute
+terminate-and-verify margin; see `pipeline/train/HARNESS-CHANGES.md` for the earlier defect.
 
 The create payload carries the base64-encoded script in the string-valued
 `env.FIGMENT_BOOTSTRAP_B64` field. `dockerEntrypoint: ["bash", "-lc"]` and
@@ -199,9 +210,12 @@ directory (override with `--arc-ledger-glob`). Files without a `usd` column are 
 warning; malformed values in a declared `usd` column still fail closed. The ledger directory is selected in this order:
 `--ledger-dir`, `KB_LEDGER_DIR`,
 `C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost` when that directory exists, then the
-repo's `ledgers/cost`. The selected path is logged. `governance/budget.yaml` always comes from
-the harness repo root. `max_minutes` is the minimum of the CLI value, manifest value, and the hard
-`DEFAULT_MAX_MINUTES` of 840; a manifest can only lower the ceiling.
+repo's `ledgers/cost`. `governance/budget.yaml` always comes from the harness repo root. Before
+any live create, the selected directory and current arc total are logged, and the run is refused
+if that directory contains no `figment-*.tsv`. Only an intentional new arc may bypass that
+baseline check with explicit `--allow-empty-ledger`. `max_minutes` is the minimum of the CLI
+value, manifest value, and the hard `DEFAULT_MAX_MINUTES` of 840; a manifest can only lower the
+ceiling.
 
 Pod readiness is separately bounded by `readiness_timeout_seconds` (default 900 seconds).
 Manifest preflight rejects a `max_minutes` value shorter than the applicable minimum:
@@ -229,7 +243,9 @@ READY price is available, the final ledger value is elapsed seconds times the ma
 ceiling rate; `run.json` labels this a `ceiling-rate estimate`. An unverified teardown after a
 READY price keeps at least the provisional estimate. Dry-run rows remain under
 `<out>/dry-run-ledger/` at zero USD unless `--ledger-dir` is explicitly supplied. Ledger
-upserts use an exclusive bounded lock and a unique atomic-replace temporary file.
+upserts use an exclusive bounded lock and a unique atomic-replace temporary file. The ledger
+day is the America/New_York local date captured once for the create transaction; settlement
+reuses that captured day even when teardown crosses UTC or New York midnight.
 
 ## Commands
 
@@ -245,7 +261,7 @@ typing the secret into PowerShell history:
 ```powershell
 $env:RUNPOD_API_KEY = (Get-Content -Raw 'C:\secure\runpod-api-key.txt').Trim()
 try {
-  py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20 --ledger-dir C:\Users\danie\kb-worktrees\dashboard-ops\ledgers\cost
+  py -3 runpod_run.py run --manifest manifest.yaml --out .\run-001 --max-usd 0.30 --max-minutes 20 --ledger-dir C:\path\to\reconciled\ledgers\cost
 } finally {
   Remove-Item Env:RUNPOD_API_KEY -ErrorAction SilentlyContinue
 }

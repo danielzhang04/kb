@@ -124,6 +124,14 @@ def test_env_secret_refs_documented_example_HF_TOKEN_HF_TOKEN_is_accepted(tmp_pa
     assert rr.manifest_env_secret_refs(configured) == {"HF_TOKEN": "HF_TOKEN"}
 
 
+def test_track1_env_secret_refs_rejects_every_env_name_except_hf_token(tmp_path):
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": "FIGMENT_HF", "OTHER_SECRET": "OTHER"}
+
+    with pytest.raises(rr.HarnessError, match="only HF_TOKEN"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
 def test_P1h_wait_ready_requires_proxy_system_stats_200_and_logs_bootstrap_tail():
     class OnePodAPI:
         def get_pod(self, _pod_id):
@@ -303,6 +311,7 @@ def logger_and_stream(redactor=None):
 def run_with(api, tmp_path, comfy=FakeComfy, **kwargs):
     logger, stream = logger_and_stream(kwargs.pop("redactor", None))
     ledger_dir = kwargs.pop("ledger_dir", tmp_path / "ledger")
+    allow_empty_ledger = kwargs.pop("allow_empty_ledger", True)
     result = rr.run_harness(
         manifest(),
         tmp_path / "m.yaml",
@@ -315,6 +324,7 @@ def run_with(api, tmp_path, comfy=FakeComfy, **kwargs):
         comfy_factory=comfy,
         sleep=lambda _seconds: None,
         ledger_dir=ledger_dir,
+        allow_empty_ledger=allow_empty_ledger,
         **kwargs,
     )
     return result, stream.getvalue()
@@ -469,7 +479,7 @@ def test_P1k_bootstrap_failure_logs_tail_persists_ten_lines_and_uses_ceiling_rat
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1.0, max_minutes=1.0, dry_run=False, api=api, logger=logger,
             comfy_factory=FailedBootstrapProxy, sleep=lambda _seconds: None,
-            ledger_dir=ledger_dir,
+            ledger_dir=ledger_dir, allow_empty_ledger=True,
         )
 
     record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
@@ -746,7 +756,7 @@ def test_watchdog_fires_at_max_minutes_and_terminates(tmp_path):
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1.0, max_minutes=0.0002, dry_run=False, api=api, logger=logger,
             comfy_factory=SlowComfy,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
     assert api.deletes >= 1
 
@@ -774,6 +784,7 @@ def test_api_key_never_appears_in_logs_or_written_files(tmp_path):
             max_usd=1.0, max_minutes=1.0, dry_run=False, api=FakeAPI(), logger=logger,
             redactor=redactor, comfy_factory=SecretComfy,
             sleep=lambda _n: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
     all_written = "".join(
         path.read_text(encoding="utf-8", errors="replace")
@@ -981,7 +992,7 @@ def test_P1j_timeout_logs_create_error_and_uses_uncertain_banner(tmp_path, monke
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=1, dry_run=False, api=InvisibleCreate(), logger=logger,
             comfy_factory=FakeComfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
 
     assert "TimeoutError: POST timed out" in stream.getvalue()
@@ -1008,7 +1019,7 @@ def test_P1j_http_429_logs_redacted_body_and_no_visible_pod_banner(tmp_path, mon
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=1, dry_run=False, api=rr.RunPodAPI(session), logger=logger,
             redactor=redactor, comfy_factory=FakeComfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
 
     logs = stream.getvalue()
@@ -1034,7 +1045,7 @@ def test_P1j_definite_create_refusal_scans_once_without_ledger(tmp_path):
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=1, dry_run=False, api=rr.RunPodAPI(session), logger=logger,
             comfy_factory=FakeComfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
 
     assert [call[0] for call in session.calls] == ["POST", "GET"]
@@ -1113,7 +1124,7 @@ def test_A4_ready_price_is_required_and_never_falls_back(
             low_manifest, tmp_path / "m.yaml", tmp_path / "out",
             max_usd=max_usd, max_minutes=60, dry_run=False, api=api, logger=logger,
             comfy_factory=FakeComfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
     assert api.deletes == 1
     assert json.loads((tmp_path / "out" / "run.json").read_text())["termination_verified"]
@@ -1146,7 +1157,7 @@ def test_A5_daily_budget_is_summed_and_refused_before_create(tmp_path):
     budget.write_text("daily_usd_limit: 5.00\n", encoding="utf-8")
     daily_ledgers = tmp_path / "daily-ledgers"
     daily_ledgers.mkdir()
-    today = time.strftime("%Y-%m-%d", time.gmtime())
+    today = rr.governance_ledger_day()
     (daily_ledgers / f"prior-{today}.tsv").write_text(
         "model\tstep\tusd\nprior\twork\t4.800000\n", encoding="utf-8"
     )
@@ -1166,7 +1177,7 @@ def test_A5_daily_budget_is_summed_and_refused_before_create(tmp_path):
         rr.run_harness(
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=60, dry_run=False, api=api, logger=logger,
-            ledger_dir=daily_ledgers, budget_path=budget,
+            ledger_dir=daily_ledgers, budget_path=budget, allow_empty_ledger=True,
         )
     assert api.creates == 0
 
@@ -1203,7 +1214,7 @@ def test_A6_create_elapsed_time_is_subtracted_from_watchdog(tmp_path, monkeypatc
         manifest(), tmp_path / "m.yaml", tmp_path / "out",
         max_usd=1, max_minutes=0.05, dry_run=False, api=SlowCreateAPI(), logger=logger,
         comfy_factory=FakeComfy, sleep=lambda _seconds: None,
-        ledger_dir=tmp_path / "ledger",
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
     )
     assert len(configured) == 1
     assert 1.0 < configured[0] < 3.0
@@ -1227,6 +1238,7 @@ def test_A7_finally_waits_for_watchdog_slow_teardown_before_run_json(tmp_path):
             manifest(), tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=0.0002, dry_run=False, api=api, logger=logger,
             comfy_factory=BudgetOverrunComfy, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
     record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["termination_verified"] is True
@@ -1390,7 +1402,7 @@ def test_C4_job_expected_four_images_rejects_two(tmp_path):
             four_image_manifest, tmp_path / "m.yaml", tmp_path / "out",
             max_usd=1, max_minutes=1, dry_run=False, api=api, logger=logger,
             comfy_factory=TwoImageComfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
     assert api.deletes == 1
 
@@ -1536,6 +1548,118 @@ def test_N0_manifest_requires_git_ref_and_nested_comfy_root(tmp_path):
         rr.require_manifest(mount_as_root, tmp_path / "manifest.yaml")
 
 
+def test_track1_model_revision_and_sha256_are_validated_and_rendered(tmp_path):
+    configured = manifest()
+    revision = "a" * 40
+    digest = "b" * 64
+    configured["models"] = [{
+        "repo_id": "owner/repo",
+        "filename": "weights/model.safetensors",
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+        "revision": revision,
+        "sha256": digest,
+    }]
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+    script = rr.bootstrap_script(configured)
+
+    assert f"/resolve/{revision}/weights/model.safetensors" in script
+    assert digest in script
+    assert "sha256sum" in script
+    assert "MODEL sha256 mismatch" in script
+    assert "rm -f \"$tmp\"; exit 86" in script
+
+
+def test_track1_model_revision_accepts_a_tag_and_pins_the_url(tmp_path):
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "owner/repo",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/models",
+        "revision": "weights-v1.2.3",
+    }]
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+    assert "/resolve/weights-v1.2.3/model.safetensors" in rr.bootstrap_script(configured)
+
+
+def test_track1_model_digest_failure_is_not_learned_as_a_bad_host():
+    failure = rr.BootstrapFailed(
+        "model-1 failed after 3 attempts with rc=86",
+        ["MODEL sha256 mismatch", "STEP model-1 attempt=3 rc=86"],
+    )
+
+    assert rr.bootstrap_network_failure_reason(failure) is None
+    assert rr.bootstrap_host_class_failure_reason(failure) is None
+
+
+@pytest.mark.parametrize("revision", ["", "two words", "../main", "x" * 129])
+def test_track1_model_revision_rejects_unsafe_non_tags(tmp_path, revision):
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "owner/repo",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/models",
+        "revision": revision,
+    }]
+
+    with pytest.raises(rr.HarnessError, match="model revision"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_track1_model_sha256_rejects_non_digest(tmp_path):
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "owner/repo",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/models",
+        "sha256": "not-a-digest",
+    }]
+
+    with pytest.raises(rr.HarnessError, match="model sha256"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_track1_custom_nodes_require_and_checkout_a_40_hex_pin(tmp_path):
+    configured = manifest()
+    configured["custom_nodes"] = [{
+        "name": "PinnedNode",
+        "git_url": "https://github.com/example/pinned-node.git",
+    }]
+    with pytest.raises(rr.HarnessError, match="git_ref.*40-character"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+    pin = "c" * 40
+    configured["custom_nodes"][0]["git_ref"] = pin
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+    script = rr.bootstrap_script(configured)
+
+    assert "cat-file -e" in script
+    assert f"{pin}^{{commit}}" in script
+    assert f"fetch --depth 1 origin {pin}" in script
+    assert f"checkout --detach {pin}" in script
+    assert "CUSTOM NODE %s checked-out %s" in script
+    assert "PinnedNode" in script
+
+
+def test_track1_custom_node_installer_pin_is_an_alias_and_conflicts_fail(tmp_path):
+    pin = "d" * 40
+    configured = manifest()
+    configured["custom_nodes"] = [{
+        "name": "AliasNode",
+        "git_url": "https://github.com/example/alias-node.git",
+        "installer_pin": pin,
+    }]
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+    assert f"checkout --detach {pin}" in rr.bootstrap_script(configured)
+
+    configured["custom_nodes"][0]["git_ref"] = "e" * 40
+    with pytest.raises(rr.HarnessError, match="git_ref and installer_pin must match"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
 @pytest.mark.parametrize(
     "unsafe_root", ["/workspace/ComfyUI/..", "/other/ComfyUI", "relative/ComfyUI"],
 )
@@ -1623,7 +1747,7 @@ def test_N3_daily_budget_sums_mixed_usd_headers_and_skips_headerless(tmp_path):
     budget.write_text("daily_usd_limit: 5.00\n", encoding="utf-8")
     ledgers = tmp_path / "ledgers"
     ledgers.mkdir()
-    today = time.strftime("%Y-%m-%d", time.gmtime())
+    today = rr.governance_ledger_day()
     (ledgers / f"model-{today}.tsv").write_text(
         "model\tstep\tusd\na\tb\t1.250000\n", encoding="utf-8"
     )
@@ -1747,6 +1871,7 @@ def test_P1n_ready_price_over_arc_cap_terminates_and_records_cap(tmp_path):
             max_usd=1, max_minutes=60, dry_run=False, api=api, logger=logger,
             comfy_factory=FakeComfy, sleep=lambda _seconds: None,
             ledger_dir=tmp_path / "ledgers", arc_cap_usd=0.30,
+            allow_empty_ledger=True,
         )
     record = json.loads((tmp_path / "out" / "run.json").read_text())
     assert record["arc_usd_before"] == 0.0
@@ -2334,6 +2459,7 @@ def test_P1i_training_flow_orders_readiness_uploads_marker_wait_and_artifact(tmp
         configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
         dry_run=False, api=api, logger=logger, comfy_factory=TrainingComfy,
         sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        allow_empty_ledger=True,
     )
 
     upload_events = [event for event in events if event.startswith("upload:")]
@@ -2374,7 +2500,7 @@ def test_upload_retries_then_succeeds(tmp_path):
         configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
         dry_run=False, api=api, logger=logger_and_stream()[0],
         comfy_factory=RetryUploadComfy, sleep=lambda _seconds: None,
-        ledger_dir=tmp_path / "ledger",
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
     )
 
     assert RetryUploadComfy.attempts == len(result["uploads"]) + 2
@@ -2404,7 +2530,7 @@ def test_artifact_download_retries_then_succeeds(tmp_path):
         configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
         dry_run=False, api=api, logger=logger_and_stream()[0],
         comfy_factory=RetryDownloadComfy, sleep=lambda _seconds: None,
-        ledger_dir=tmp_path / "ledger",
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
     )
 
     assert RetryDownloadComfy.attempts == 3
@@ -2444,15 +2570,13 @@ def test_multiple_artifacts_share_one_marker_deadline(tmp_path, monkeypatch):
         configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
         dry_run=False, api=FakeAPI(), logger=logger_and_stream()[0],
         comfy_factory=DeadlineComfy, sleep=lambda _seconds: None,
-        ledger_dir=tmp_path / "ledger",
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
     )
 
-    # The shared job_timeout_seconds deadline still pays for both marker waits
-    # (unchanged "shared artifact deadline" logic); only the second artifact's
-    # download switches from that same generous budget to the much smaller
-    # artifact_download_seconds allowance (default 180) it actually needs.
-    assert DeadlineComfy.waits == [30, 20]
-    assert DeadlineComfy.downloads == [30, 180]
+    # Marker polling and download share the first artifact's 30-second deadline.
+    # Each later artifact gets exactly its own 180-second marker+download allowance.
+    assert DeadlineComfy.waits == [30, 180]
+    assert DeadlineComfy.downloads == [20, 170]
 
 
 @pytest.mark.parametrize(
@@ -2491,6 +2615,7 @@ def test_P1i_new_stage_failures_still_terminate_and_verify(tmp_path, stage, mess
             configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
             dry_run=False, api=api, logger=logger, comfy_factory=FailingTrainingComfy,
             sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
     assert api.deletes == 1 and api.alive is False
     assert getattr(caught.value, "termination_verified") is True
@@ -2587,7 +2712,7 @@ def test_marker_polling_persistent_502_times_out_and_termination_is_verified(tmp
             configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
             dry_run=False, api=api, logger=logger_and_stream()[0],
             comfy_factory=Persistent502Comfy, sleep=lambda _seconds: None,
-            ledger_dir=tmp_path / "ledger",
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
         )
 
     assert api.deletes == 1 and api.alive is False
@@ -2780,6 +2905,7 @@ class PlacementAPI:
 def test_P1l_avoided_host_is_verified_then_recreated_with_two_ledger_rows(tmp_path):
     configured = manifest()
     configured["avoid_machine_hosts"] = ["bad-host"]
+    configured["max_placement_attempts"] = 2
     ledger_dir = tmp_path / "ledger"
     api = PlacementAPI(["bad-host", "good-host"])
     api.ledger_dir = ledger_dir
@@ -2789,13 +2915,14 @@ def test_P1l_avoided_host_is_verified_then_recreated_with_two_ledger_rows(tmp_pa
         configured, tmp_path / "m.yaml", tmp_path / "out",
         max_usd=1, max_minutes=1, dry_run=False, api=api, logger=logger,
         comfy_factory=FakeComfy, sleep=lambda _seconds: None, ledger_dir=ledger_dir,
+        allow_empty_ledger=True,
     )
 
     assert api.creates == ["pod-1", "pod-2"]
     assert api.deletes == ["pod-1", "pod-2"]
     assert api.pods == {}
     assert "AVOIDED HOST bad-host" in stream.getvalue()
-    assert "attempt 1/4" in stream.getvalue()
+    assert "attempt 1/2" in stream.getvalue()
     assert "pod-create pod-1" in api.provisional_snapshots[0]
     assert "pod-create pod-2" in api.provisional_snapshots[1]
     rows = next(ledger_dir.glob("*.tsv")).read_text(encoding="utf-8").splitlines()
@@ -2821,6 +2948,7 @@ def test_avoided_placement_row_survives_a_later_definite_create_failure(
 
     configured = manifest()
     configured["avoid_machine_hosts"] = ["bad-host"]
+    configured["max_placement_attempts"] = 2
     ledger_dir = tmp_path / "ledger"
     api = RefusedSecondPlacementAPI(["bad-host"])
     api.ledger_dir = ledger_dir
@@ -2833,6 +2961,7 @@ def test_avoided_placement_row_survives_a_later_definite_create_failure(
             max_usd=1, max_minutes=1, dry_run=False, api=api,
             logger=logger_and_stream()[0], comfy_factory=FakeComfy,
             sleep=lambda _seconds: None, ledger_dir=ledger_dir,
+            allow_empty_ledger=True,
         )
 
     ledger_after_refusal = next(ledger_dir.glob("*.tsv")).read_text(encoding="utf-8")
@@ -2847,6 +2976,7 @@ def test_avoided_placement_row_survives_a_later_definite_create_failure(
 def test_P1l_all_placement_attempts_avoided_fails_closed(tmp_path):
     configured = manifest()
     configured["avoid_machine_hosts"] = ["bad-host"]
+    configured["max_placement_attempts"] = 4
     api = PlacementAPI(["bad-host"] * 4)
 
     with pytest.raises(rr.HarnessError, match="all 4 placement attempts landed on avoided"):
@@ -2855,6 +2985,7 @@ def test_P1l_all_placement_attempts_avoided_fails_closed(tmp_path):
             max_usd=1, max_minutes=1, dry_run=False, api=api,
             logger=logger_and_stream()[0], comfy_factory=FakeComfy,
             sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
 
     assert api.creates == ["pod-1", "pod-2", "pod-3", "pod-4"]
@@ -2888,6 +3019,7 @@ def test_P1l_network_bootstrap_failure_learns_host_and_entries_expire(
             max_usd=1, max_minutes=1, dry_run=False, api=api,
             logger=logger_and_stream()[0], comfy_factory=FailedBootstrapProxy,
             sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
 
     run_file = tmp_path / "out" / "_harness" / "bad_hosts.json"
@@ -2927,6 +3059,7 @@ def test_P1m_host_class_bootstrap_failure_learns_host(tmp_path, monkeypatch, fai
             max_usd=1, max_minutes=1, dry_run=False, api=api,
             logger=logger_and_stream()[0], comfy_factory=FailedBootstrapProxy,
             sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
         )
 
     for path in (
@@ -2954,6 +3087,7 @@ def test_P1l_recent_session_hosts_are_merged_into_manifest_avoidance(tmp_path, m
         max_usd=1, max_minutes=1, dry_run=False, api=api,
         logger=logger_and_stream()[0], comfy_factory=FakeComfy,
         sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+        allow_empty_ledger=True,
     )
 
     assert api.creates == ["pod-1", "pod-2"]
@@ -3014,3 +3148,168 @@ def test_example_manifest_shows_env_secret_refs_commented_out():
     # Nothing about it should be live/parsed by default.
     data = rr.load_manifest(POD_DIR / "manifest.example.yaml")
     assert "env_secret_refs" not in data
+
+
+def test_track1_default_empty_ops_ledger_refuses_before_create(tmp_path, monkeypatch):
+    class NeverCreateAPI(FakeAPI):
+        def create_pod(self, _payload):
+            raise AssertionError("empty-ledger preflight must refuse before create")
+
+    ledger_dir = tmp_path / "empty-ledger"
+    ledger_dir.mkdir()
+    monkeypatch.setattr(rr, "OPS_LEDGER_DIR", ledger_dir)
+    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
+    logger, stream = logger_and_stream()
+
+    with pytest.raises(rr.HarnessError, match=r"no figment-\*\.tsv baseline"):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=NeverCreateAPI(),
+            logger=logger, comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+        )
+
+    assert str(ledger_dir) in stream.getvalue()
+
+
+def test_track1_allow_empty_ledger_is_explicit_and_logs_dir_arc_total_and_attempts(tmp_path):
+    ledger_dir = tmp_path / "empty-ledger"
+    logger, stream = logger_and_stream()
+
+    rr.run_harness(
+        manifest(), tmp_path / "m.yaml", tmp_path / "out",
+        max_usd=1, max_minutes=1, dry_run=False, api=FakeAPI(),
+        logger=logger, comfy_factory=FakeComfy, sleep=lambda _seconds: None,
+        ledger_dir=ledger_dir, allow_empty_ledger=True,
+    )
+
+    logs = stream.getvalue()
+    assert f"cost ledger directory: {ledger_dir}" in logs
+    assert "arc total before create: $0.000000" in logs
+    assert "max placement attempts: 1" in logs
+
+
+@pytest.mark.parametrize(
+    ("instant", "expected_day"),
+    [
+        (datetime(2026, 9, 4, 23, 59, tzinfo=timezone.utc), "2026-09-04"),
+        (datetime(2026, 9, 5, 0, 1, tzinfo=timezone.utc), "2026-09-04"),
+        (datetime(2026, 9, 5, 3, 59, tzinfo=timezone.utc), "2026-09-04"),
+        (datetime(2026, 9, 5, 4, 1, tzinfo=timezone.utc), "2026-09-05"),
+    ],
+)
+def test_track1_governance_day_is_new_york_not_utc(instant, expected_day):
+    assert rr.governance_ledger_day(instant) == expected_day
+
+
+def test_track1_daily_budget_uses_the_new_york_day_across_utc_midnight(tmp_path, monkeypatch):
+    budget = tmp_path / "budget.yaml"
+    budget.write_text("daily_usd_limit: 10\n", encoding="utf-8")
+    ledgers = tmp_path / "ledgers"
+    ledgers.mkdir()
+    (ledgers / "figment-2026-09-04.tsv").write_text(
+        "model\tstep\tusd\nrunpod:test\tpod-create local-day\t1.250000\n",
+        encoding="utf-8",
+    )
+    (ledgers / "figment-2026-09-05.tsv").write_text(
+        "model\tstep\tusd\nrunpod:test\tpod-create utc-day\t7.500000\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        rr, "utc_now", lambda: datetime(2026, 9, 5, 0, 1, tzinfo=timezone.utc),
+    )
+
+    _limit, spent = rr.daily_budget_state(budget_path=budget, ledger_dir=ledgers)
+
+    assert spent == pytest.approx(1.25)
+
+
+def test_track1_settlement_reuses_the_create_day_across_local_midnight(tmp_path, monkeypatch):
+    ledger_dir = tmp_path / "ledgers"
+    ledger_dir.mkdir()
+    (ledger_dir / "figment-2026-09-03.tsv").write_text(
+        "model\tstep\tusd\nrunpod:test\tprior\t0.000000\n", encoding="utf-8",
+    )
+    created = datetime(2026, 9, 4, 3, 59, tzinfo=timezone.utc)
+    settled = datetime(2026, 9, 4, 4, 1, tzinfo=timezone.utc)
+    calls = {"count": 0}
+
+    def crossing_clock():
+        calls["count"] += 1
+        return created if calls["count"] == 1 else settled
+
+    monkeypatch.setattr(rr, "utc_now", crossing_clock)
+    rr.run_harness(
+        manifest(), tmp_path / "m.yaml", tmp_path / "out",
+        max_usd=1, max_minutes=1, dry_run=False, api=FakeAPI(),
+        logger=logger_and_stream()[0], comfy_factory=FakeComfy,
+        sleep=lambda _seconds: None, ledger_dir=ledger_dir,
+    )
+
+    assert "pod-create pod-123" in (
+        ledger_dir / "figment-2026-09-03.tsv"
+    ).read_text(encoding="utf-8")
+    assert not (ledger_dir / "figment-2026-09-04.tsv").exists()
+
+
+def test_track1_default_placement_attempts_is_one():
+    assert rr.manifest_max_placement_attempts(manifest()) == 1
+
+
+def test_track1_first_artifact_download_uses_only_marker_deadline_remainder(
+        tmp_path, monkeypatch):
+    configured, manifest_path = p1i_training_manifest(tmp_path)
+    configured["job_timeout_seconds"] = 30
+    clock = {"now": 0.0}
+    monkeypatch.setattr(rr.time, "monotonic", lambda: clock["now"])
+
+    class DeadlineComfy(FakeComfy):
+        download_timeouts = []
+
+        def upload_file(self, local_path, subfolder, _overwrite):
+            return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
+
+        def wait_for_marker(self, _marker, _failed_marker, _timeout, watchdog):
+            watchdog.check()
+            clock["now"] += 29.5
+
+        def download_artifact(self, _remote, local_path, timeout):
+            type(self).download_timeouts.append(timeout)
+            local_path.write_bytes(b"artifact")
+
+    rr.run_harness(
+        configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+        dry_run=False, api=FakeAPI(), logger=logger_and_stream()[0],
+        comfy_factory=DeadlineComfy, sleep=lambda _seconds: None,
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
+    )
+
+    assert DeadlineComfy.download_timeouts == [pytest.approx(0.5)]
+
+
+def test_track1_local_figment_ledgers_have_no_duplicate_pod_ids():
+    seen: dict[str, Path] = {}
+    duplicates: list[str] = []
+    for ledger_path in sorted(rr.repo_ledger_dir().glob("figment-*.tsv")):
+        for row in ledger_path.read_text(encoding="utf-8").splitlines()[1:]:
+            fields = row.split("\t")
+            if len(fields) != 3 or not fields[1].startswith("pod-create "):
+                continue
+            pod_id = fields[1].removeprefix("pod-create ")
+            if pod_id in seen:
+                duplicates.append(f"{pod_id}: {seen[pod_id].name}, {ledger_path.name}")
+            else:
+                seen[pod_id] = ledger_path
+
+    assert not duplicates, "duplicate pod ids in Figment ledgers: " + "; ".join(duplicates)
+
+
+def test_track1_readme_documents_the_hardened_live_contract():
+    readme = (POD_DIR / "README.md").read_text(encoding="utf-8")
+
+    assert "America/New_York" in readme
+    assert "--allow-empty-ledger" in readme
+    assert "`max_placement_attempts` (default 1)" in readme
+    assert "optional `revision`" in readme and "optional 64-hex `sha256`" in readme
+    assert "every node requires a 40-hex `git_ref`" in readme
+    assert "supports exactly one mapping: `HF_TOKEN -> <RunPod secret NAME>`" in readme
+    assert "marker poll and download share exactly one `job_timeout_seconds`" in readme
