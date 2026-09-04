@@ -1,0 +1,78 @@
+# Ostris AI Toolkit headless config — faithful port of 10sorLabs module 11.
+# Render with scripts/render (see TENSOR-TRAINING.md) to `training.json`, which is
+# what the harness uploads; ai-toolkit's get_config reads .json and .yaml alike, and
+# the harness upload allowlist has no .yaml entry.
+#
+# Placeholders: trigger, dataset_dir, output_dir, base_model_path, steps, save_every,
+# max_step_saves_to_keep, rank, lr, resolutions.
+job: extension
+config:
+  name: "{{trigger}}"
+  process:
+    - type: 'sd_trainer'
+      training_folder: "{{output_dir}}"
+      device: cuda:0
+      network:
+        type: "lora"
+        linear: {{rank}}
+        linear_alpha: {{rank}}
+      save:
+        # Module 11: Save data type BF16, save every 250, keep enough for every
+        # checkpoint you intend to rank (they bumped 4 -> 15 live).
+        dtype: bf16
+        save_every: {{save_every}}
+        max_step_saves_to_keep: {{max_step_saves_to_keep}}
+      datasets:
+        - folder_path: "{{dataset_dir}}"
+          caption_ext: "txt"
+          caption_dropout_rate: 0.05
+          shuffle_tokens: false
+          cache_latents_to_disk: true
+          resolution: {{resolutions}}
+      train:
+        batch_size: 1
+        steps: {{steps}}
+        gradient_accumulation: 1
+        train_unet: true
+        train_text_encoder: false
+        gradient_checkpointing: true
+        noise_scheduler: "flowmatch"
+        timestep_type: "linear"
+        content_or_style: "balanced"
+        loss_type: "mse"
+        optimizer: "adamw8bit"
+        lr: {{lr}}
+        optimizer_params:
+          weight_decay: 0.0001
+        dtype: bf16
+        # Spoken twice in module 11 and the reason sampling can be switched off.
+        cache_text_embeddings: true
+        # "This drastically improves the training time — over two hours down to
+        # 70 to 80 minutes." Sampling off is what buys the run its cost profile.
+        disable_sampling: true
+      model:
+        # Ungated Comfy-Org repackage of krea/Krea-2-Raw, downloaded by the harness
+        # `models` block; ai-toolkit accepts a local .safetensors path here.
+        name_or_path: "{{base_model_path}}"
+        arch: "krea2"
+        quantize: true
+        qtype: "qfloat8"
+        quantize_te: true
+        qtype_te: "qfloat8"
+        low_vram: true
+        layer_offloading: false
+      sample:
+        # Present only so the schema is complete; train.disable_sampling wins.
+        sampler: "flowmatch"
+        sample_every: {{save_every}}
+        width: 1024
+        height: 1024
+        prompts: []
+        neg: ""
+        seed: 42
+        walk_seed: true
+        guidance_scale: 4
+        sample_steps: 30
+meta:
+  name: "{{trigger}}"
+  version: '1.0'

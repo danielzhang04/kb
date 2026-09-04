@@ -1,0 +1,100 @@
+{
+  "gpu": {
+    "type": "NVIDIA L40S",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "price_usd_per_hour": 0.89,
+  "max_minutes": 245,
+  "container_disk_gb": 80,
+  "volume_gb": 200,
+  "volume_mount_path": "/workspace",
+  "network_volume_id": "REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "readiness_timeout_seconds": 3600,
+  "job_timeout_seconds": 10800,
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.34.0",
+    "port": 8188,
+    "start_command": "bash /workspace/start-training-aitoolkit.sh"
+  },
+  "models": [
+    {
+      "repo_id": "Comfy-Org/Krea-2",
+      "filename": "diffusion_models/krea2_raw_bf16.safetensors",
+      "destination_dir": "/workspace/models/krea2"
+    }
+  ],
+  "custom_nodes": [],
+  "workflow": {
+    "1": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 100001
+      }
+    }
+  },
+  "seed_fields": [
+    "seed",
+    "noise_seed"
+  ],
+  "uploads": [
+    {
+      "files": [
+        "creator-001-tensor-dataset/*.png",
+        "creator-001-tensor-dataset/*.txt",
+        "creator-001-tensor-dataset/training.json"
+      ],
+      "subfolder": "creator001krea2",
+      "type": "input",
+      "overwrite": true
+    },
+    {
+      "files": [
+        "creator-001-tensor-dataset/_dataset.ready"
+      ],
+      "subfolder": "creator001krea2",
+      "type": "input",
+      "overwrite": true
+    }
+  ],
+  "training": {
+    "repository": "https://github.com/ostris/ai-toolkit.git",
+    "git_ref": "b36bb3998ae596a566d85513299696a3a78f0dcb",
+    "trainer_root": "/workspace/ai-toolkit",
+    "train_output": "/workspace/train-output",
+    "trigger": "creator001krea2",
+    "config_name": "training.json",
+    "caption_mode": "provided",
+    "caption_word": "woman",
+    "caption_model": "Qwen/Qwen3-VL-8B-Instruct",
+    "dataset_min_images": 20,
+    "hf_home": "/workspace/hf",
+    "reinstall_torch": "0",
+    "torch_spec": "torch==2.13.0",
+    "torchvision_spec": "torchvision==0.28.0",
+    "torch_index_url": "https://download.pytorch.org/whl/cu130",
+    "ready_marker": "/workspace/ComfyUI/input/creator001krea2/_dataset.ready",
+    "complete_marker": "/workspace/output/_training.complete",
+    "failed_marker": "/workspace/output/_training.failed",
+    "start_script_path": "/workspace/start-training-aitoolkit.sh",
+    "start_script_file": "start-training-aitoolkit.sh.template"
+  },
+  "jobs": [
+    {
+      "seed": 100001,
+      "output_name": "training-transport-sentinel-creator001krea2",
+      "substitutions": [],
+      "expected_images": 1
+    }
+  ],
+  "artifacts": [
+    {
+      "remote": "creator001krea2.safetensors",
+      "type": "output",
+      "local": "creator001krea2.safetensors",
+      "wait_for": "_training.complete"
+    }
+  ]
+}

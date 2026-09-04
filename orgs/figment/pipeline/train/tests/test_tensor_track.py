@@ -1,0 +1,276 @@
+"""Tests for the tensor track — the 10sorLabs module-11 replication.
+
+Covers the three things that can silently rot: the ai-toolkit config template no
+longer carrying module 11's numbers, the start-script templates no longer rendering
+under the harness's placeholder rules, and the three run manifests no longer passing
+harness preflight (spend ceilings included).
+"""
+import importlib.util
+import json
+import sys
+from pathlib import Path
+
+import pytest
+import yaml
+
+
+TRAIN = Path(__file__).resolve().parents[1]
+PIPELINE = TRAIN.parent
+POD = PIPELINE / "pod"
+RUNS = TRAIN / "runs"
+
+TRIGGER = "creator001krea2"
+MANIFESTS = {
+    "train": RUNS / "creator-001-tensor-train.yaml",
+    "tester": RUNS / "creator-001-tensor-tester.yaml",
+    "gen": RUNS / "creator-001-tensor-gen.yaml",
+}
+
+
+def load_module(name, path):
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+runner = load_module("figment_pod_runpod_run_tensor", POD / "runpod_run.py")
+renderer = load_module("figment_render_aitoolkit", TRAIN / "render_aitoolkit_config.py")
+
+
+def manifest(name):
+    return runner.load_manifest(MANIFESTS[name])
+
+
+# --- ai-toolkit config template ----------------------------------------------
+
+def render_config(**overrides):
+    context = {
+        "trigger": TRIGGER,
+        "dataset_dir": f"/workspace/ComfyUI/input/{TRIGGER}",
+        "output_dir": "/workspace/train-output",
+        "base_model_path": "/workspace/models/krea2/krea2_raw_bf16.safetensors",
+    }
+    context.update(renderer.MODULE_11)
+    context.update(overrides)
+    template = (TRAIN / "ai-toolkit-krea2.yaml.template").read_text(encoding="utf-8")
+    return yaml.safe_load(renderer.render(template, context))
+
+
+def test_config_template_renders_module_11_settings_with_no_drift():
+    config = render_config()
+    assert renderer.check_module_11(config) == []
+    process = config["config"]["process"][0]
+    assert process["train"]["lr"] == pytest.approx(1e-4)
+    assert isinstance(process["train"]["lr"], float)
+    assert process["model"]["name_or_path"].endswith("krea2_raw_bf16.safetensors")
+    assert process["training_folder"] == "/workspace/train-output"
+    assert process["datasets"][0]["folder_path"].endswith(TRIGGER)
+    # Sampling off is what buys the 70-80 minute run; cache_text_embeddings is what
+    # makes sampling-off safe. Neither may drift without the other.
+    assert process["train"]["disable_sampling"] is True
+    assert process["train"]["cache_text_embeddings"] is True
+
+
+def test_config_template_leaves_no_unresolved_placeholders():
+    template = (TRAIN / "ai-toolkit-krea2.yaml.template").read_text(encoding="utf-8")
+    rendered = renderer.render(template, {
+        **renderer.MODULE_11,
+        "trigger": TRIGGER,
+        "dataset_dir": "/d",
+        "output_dir": "/o",
+        "base_model_path": "/b.safetensors",
+    })
+    assert "{{" not in rendered and "}}" not in rendered
+
+
+def test_config_renderer_refuses_a_drifted_config():
+    assert renderer.check_module_11(render_config(rank=16)) == [
+        "network.linear: 16 != 32"
+    ]
+    assert renderer.check_module_11(render_config(steps=5000)) == [
+        "train.steps: 5000 != 3000"
+    ]
+
+
+def test_config_renderer_rejects_unknown_overrides(tmp_path):
+    with pytest.raises(SystemExit):
+        renderer.main([
+            "--template", str(TRAIN / "ai-toolkit-krea2.yaml.template"),
+            "--trigger", TRIGGER, "--dataset-dir", "/d",
+            "--set", "quantize=false", "--out", str(tmp_path / "training.json"),
+        ])
+
+
+def test_config_renderer_writes_json_the_harness_can_upload(tmp_path):
+    out = tmp_path / "training.json"
+    assert renderer.main([
+        "--template", str(TRAIN / "ai-toolkit-krea2.yaml.template"),
+        "--trigger", TRIGGER,
+        "--dataset-dir", f"/workspace/ComfyUI/input/{TRIGGER}",
+        "--out", str(out),
+    ]) == 0
+    assert out.suffix in runner.UPLOAD_EXTENSIONS
+    assert json.loads(out.read_text(encoding="utf-8"))["config"]["name"] == TRIGGER
+
+
+# --- start-script templates ---------------------------------------------------
+
+def test_training_start_script_renders_every_placeholder():
+    remote, rendered = runner.rendered_training_start_script(
+        manifest("train"), MANIFESTS["train"],
+    )
+    assert remote == "/workspace/start-training-aitoolkit.sh"
+    assert "{{" not in rendered and "}}" not in rendered
+    assert f"trigger='{TRIGGER}'" in rendered
+    assert "python run.py" in rendered
+    # The three caption modes module 11 and module 04/05 between them define.
+    for mode in ("provided", "single_word", "auto"):
+        assert f"  {mode})" in rendered
+    # The pre-warm must stay ahead of ComfyUI, or the encoder/VAE downloads land
+    # inside the job window instead of the readiness window.
+    assert rendered.index("snapshot_download") < rendered.index("ComfyUI/main.py")
+
+
+def test_lorapath_start_script_renders_for_both_generation_manifests():
+    for name, expected in (
+        ("tester", f"/workspace/train-output/{TRIGGER}"),
+        ("gen", f"/workspace/ComfyUI/input/{TRIGGER}"),
+    ):
+        remote, rendered = runner.rendered_training_start_script(
+            manifest(name), MANIFESTS[name],
+        )
+        assert remote == "/workspace/start-comfy-lorapath.sh"
+        assert f"lora_source='{expected}'" in rendered
+        assert "{{" not in rendered and "}}" not in rendered
+
+
+def test_training_start_script_rejects_a_shell_unsafe_trigger():
+    broken = manifest("train")
+    broken["training"]["trigger"] = "creator 001; rm -rf /"
+    with pytest.raises(runner.HarnessError):
+        runner.rendered_training_start_script(broken, MANIFESTS["train"])
+
+
+# --- manifests ----------------------------------------------------------------
+
+@pytest.mark.parametrize("name", sorted(MANIFESTS))
+def test_manifest_passes_harness_preflight(name):
+    runner.require_manifest(
+        manifest(name), MANIFESTS[name], allow_missing_uploads=True,
+    )
+
+
+@pytest.mark.parametrize("name", sorted(MANIFESTS))
+def test_manifest_ceilings_fit_the_daily_budget(name):
+    doc = manifest(name)
+    minimum = runner.minimum_runtime_minutes(doc)
+    assert doc["max_minutes"] >= minimum
+    estimate = runner.estimate_cost(doc, doc["max_minutes"], None)
+    daily_limit, _spent = runner.daily_budget_state()
+    assert estimate <= daily_limit, (
+        f"{name} estimate ${estimate:.2f} cannot clear the ${daily_limit:.2f} "
+        "daily limit even on a day with no prior figment spend"
+    )
+
+
+def test_training_manifest_replicates_module_11_transport():
+    doc = manifest("train")
+    training = doc["training"]
+    assert training["git_ref"] == "b36bb3998ae596a566d85513299696a3a78f0dcb"
+    assert doc["models"] == [{
+        "repo_id": "Comfy-Org/Krea-2",
+        "filename": "diffusion_models/krea2_raw_bf16.safetensors",
+        "destination_dir": "/workspace/models/krea2",
+    }], "the base must stay the ungated Comfy-Org repackage of Krea-2 Raw"
+    uploads = runner.expand_manifest_uploads(doc, MANIFESTS["train"], allow_missing=True)
+    assert uploads[-1].remote_name == "_dataset.ready"
+    assert {item.subfolder for item in uploads} == {TRIGGER}
+    assert any(item.remote_name == "training.json" for item in uploads)
+    artifacts = runner.manifest_artifacts(doc)
+    assert [artifact["remote"] for artifact in artifacts] == [f"{TRIGGER}.safetensors"]
+    # One artifact is not a preference: minimum_runtime_minutes multiplies the job
+    # timeout by the artifact count, so a 3-hour marker wait and a 12-checkpoint
+    # ladder cannot both fit under DEFAULT_MAX_MINUTES. See HARNESS-CHANGES.md.
+    assert doc["job_timeout_seconds"] == 10800
+
+
+def test_tester_holds_everything_but_the_checkpoint_fixed():
+    doc = manifest("tester")
+    sampler = doc["workflow"]["8"]["inputs"]
+    assert sampler["seed"] == 1595
+    assert sampler["steps"] == 4 and sampler["cfg"] == 1.0
+    assert sampler["sampler_name"] == "res_2s" and sampler["scheduler"] == "beta"
+    assert sampler["denoise"] == 1.0
+    latent = doc["workflow"]["7"]["inputs"]
+    assert (latent["width"], latent["height"]) == (1448, 2176)
+    lora = doc["workflow"]["4"]["inputs"]
+    assert lora["strength_model"] == 1.0 and lora["strength_clip"] == 1.0
+
+    jobs = doc["jobs"]
+    assert len(jobs) == 12, "module 11 ranks 11 step saves plus the final checkpoint"
+    assert {job["seed"] for job in jobs} == {1595}
+    assert {job["expected_images"] for job in jobs} == {1}
+    varied = set()
+    for job in jobs:
+        fields = {(sub["node_id"], sub["field"]) for sub in job["substitutions"]}
+        assert fields == {("4", "lora_name")}
+        varied.add(job["substitutions"][0]["value"])
+    assert len(varied) == 12
+    assert f"{TRIGGER}_000000250.safetensors" in varied
+    assert f"{TRIGGER}.safetensors" in varied
+
+
+def test_generation_manifest_replicates_module_09_chain():
+    doc = manifest("gen")
+    workflow = doc["workflow"]
+    base = workflow["8"]["inputs"]
+    assert (base["steps"], base["cfg"], base["sampler_name"], base["scheduler"],
+            base["denoise"]) == (4, 1.0, "res_2s", "beta", 1.0)
+    # The upscaler is a mid-chain resolution bump a second low-denoise sampler
+    # re-renders into, not a final filter: x4 model, back down x0.25, re-encode.
+    assert workflow["13"]["inputs"]["scale_by"] == 0.25
+    refine = workflow["15"]["inputs"]
+    assert (refine["steps"], refine["cfg"], refine["sampler_name"],
+            refine["scheduler"], refine["denoise"]) == (
+                4, 1.0, "euler_ancestral", "simple", 0.35)
+    assert refine["latent_image"] == ["14", 0]
+    detailer = workflow["19"]["inputs"]
+    assert (detailer["denoise"], detailer["guide_size"], detailer["max_size"],
+            detailer["bbox_threshold"], detailer["bbox_crop_factor"],
+            detailer["noise_mask_feather"]) == (0.15, 512, 1024, 0.4, 3.0, 100)
+    assert workflow["4"]["inputs"]["strength_model"] == 0.8
+
+    # 6 prompts x 2 seeds, angles and scenes the dataset never contained.
+    jobs = doc["jobs"]
+    assert len(jobs) == 12
+    prompts = {sub["value"] for job in jobs for sub in job["substitutions"]
+               if sub["field"] == "text"}
+    assert len(prompts) == 6
+    assert len({job["seed"] for job in jobs}) == 2
+    # The harness writes the job seed into every seed field, so the refine and
+    # detailer seeds have to be substituted back or they stop being fixed.
+    for job in jobs:
+        restored = {sub["node_id"]: sub["value"] for sub in job["substitutions"]
+                    if sub["field"] == "seed"}
+        assert restored == {"15": 40, "19": 137053700462745}
+
+
+def test_generation_manifests_declare_the_sampler_pack_they_depend_on():
+    for name in ("tester", "gen"):
+        urls = [node["git_url"] for node in manifest(name)["custom_nodes"]]
+        assert "https://github.com/ClownsharkBatwing/RES4LYF" in urls, (
+            "res_2s is a RES4LYF sampler, not a ComfyUI core one"
+        )
+    gen_urls = [node["git_url"] for node in manifest("gen")["custom_nodes"]]
+    assert "https://github.com/ltdrdata/ComfyUI-Impact-Pack" in gen_urls
+    assert "https://github.com/ltdrdata/ComfyUI-Impact-Subpack" in gen_urls
+
+
+def test_no_manifest_reaches_a_gated_repository():
+    for name in MANIFESTS:
+        for model in manifest(name).get("models", []):
+            assert not model["repo_id"].startswith("krea/"), (
+                "krea/Krea-2-Raw is gated; the harness sends no Hugging Face token"
+            )

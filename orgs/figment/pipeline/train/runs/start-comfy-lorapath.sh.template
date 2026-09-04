@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Generation-side launcher for the tester and module-09 runs. ComfyUI has no CLI
+# flag for an extra LoRA directory, and harness uploads can only land in
+# ComfyUI/input, so the LoRA folder is repointed before ComfyUI starts. The source
+# is either a network volume the training run wrote to, or the upload subfolder.
+set -euo pipefail
+
+lora_source='{{lora_source_dir}}'
+lora_link='/workspace/ComfyUI/models/loras'
+
+mkdir -p /workspace/output "$lora_source"
+if [[ -L "$lora_link" ]]; then
+  rm -f "$lora_link"
+elif [[ -d "$lora_link" ]]; then
+  rmdir "$lora_link" 2>/dev/null || {
+    printf 'models/loras is a non-empty real directory\n' > /workspace/output/_bootstrap.failed
+    exit 1
+  }
+fi
+ln -s "$lora_source" "$lora_link"
+printf 'lora source: %s\n' "$lora_source" > /workspace/output/_lorapath.log
+
+exec python /workspace/ComfyUI/main.py "$@"

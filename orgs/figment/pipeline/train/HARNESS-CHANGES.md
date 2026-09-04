@@ -42,3 +42,34 @@ in `pipeline/pod/runpod_run.py`; this document is a work order, not executable b
   neither `uploads` nor `artifacts` is present.
 - Every injected failure asserts the Pod lease still performs terminate plus verified
   absence, matching the existing exit-path matrix.
+
+## Addendum — the artifact budget blocks multi-checkpoint training (tensor track)
+
+Found while porting 10sorLabs module 11 (`TENSOR-TRAINING.md`). Two implemented
+behaviours make a long training run and a checkpoint ladder mutually exclusive.
+
+1. `minimum_runtime_minutes` reserves `job_timeout_seconds x len(artifacts)`, but the
+   runtime marker wait is one shared `per_job_timeout` and each download is bounded by
+   the same value. A 3-hour marker wait with 13 declared checkpoints demands
+   `13 x 180 + readiness + 5` minutes of ceiling — far past `DEFAULT_MAX_MINUTES` of
+   840, and past the `$10.00` daily budget at any GPU rate. Reserve
+   `job_timeout_seconds + (len(artifacts) - 1) x artifact_download_timeout_seconds`
+   instead, with the download timeout its own manifest key defaulting to a few minutes.
+   Until then the tensor track ships one artifact and persists the ladder on a network
+   volume, which is a paid dependency the harness should not be forcing.
+2. `DryRunComfyClient.wait_outputs` always returns exactly one output image, so any
+   manifest declaring `expected_images > 1` fails `--dry-run` on the download-count
+   check even though it is correct for a live run. Return `expected_images` synthetic
+   entries for the job under test. Until then every tensor-track workflow is limited to
+   a single `SaveImage`, which cost module 09's `image_base`/`image_upscaled` outputs
+   and forced module 11's 12-branch graph to become 12 one-image jobs.
+
+Both are preflight/simulation artefacts, not safety properties: neither change weakens
+the spend ceiling, the shared runtime deadline, or terminate-and-verify.
+
+## Required tests for the addendum
+
+- The reserved minimum for N artifacts equals one job timeout plus N-1 download
+  timeouts, and a manifest whose `max_minutes` covers exactly that is accepted.
+- A dry run of a manifest with `expected_images: 3` verifies three downloaded files and
+  still fails when the workflow declares a count the client is asked to exceed.

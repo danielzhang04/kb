@@ -1,0 +1,315 @@
+{
+  "gpu": {
+    "type": "NVIDIA L40S",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "price_usd_per_hour": 0.89,
+  "max_minutes": 105,
+  "container_disk_gb": 80,
+  "volume_gb": 200,
+  "volume_mount_path": "/workspace",
+  "network_volume_id": "REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "readiness_timeout_seconds": 2400,
+  "job_timeout_seconds": 300,
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.34.0",
+    "port": 8188,
+    "start_command": "bash /workspace/start-comfy-lorapath.sh"
+  },
+  "models": [
+    {
+      "repo_id": "Comfy-Org/Krea-2",
+      "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/Krea-2",
+      "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/Krea-2",
+      "filename": "vae/qwen_image_vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    }
+  ],
+  "custom_nodes": [
+    {
+      "git_url": "https://github.com/ClownsharkBatwing/RES4LYF"
+    }
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "krea2_turbo_fp8_scaled.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen3vl_4b_fp8_scaled.safetensors",
+        "type": "krea2",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "qwen_image_vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "LoraLoader",
+      "inputs": {
+        "lora_name": "creator001krea2.safetensors",
+        "strength_model": 1.0,
+        "strength_clip": 1.0,
+        "model": [
+          "1",
+          0
+        ],
+        "clip": [
+          "2",
+          0
+        ]
+      }
+    },
+    "5": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "text": "Close-up portrait photograph of an adult woman in her mid twenties, shoulders up, facing the camera, neutral relaxed expression with a faint smile. Natural skin texture with visible pores and fine flyaway hairs, no retouching. She wears a plain fitted black crew-neck top. Soft even daylight from a window camera-left, plain warm off-white wall behind her, shallow depth of field, shot on a phone camera.",
+        "clip": [
+          "4",
+          1
+        ]
+      }
+    },
+    "6": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "5",
+          0
+        ]
+      }
+    },
+    "7": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1448,
+        "height": 2176,
+        "batch_size": 1
+      }
+    },
+    "8": {
+      "class_type": "KSampler",
+      "inputs": {
+        "seed": 1595,
+        "steps": 4,
+        "cfg": 1.0,
+        "sampler_name": "res_2s",
+        "scheduler": "beta",
+        "denoise": 1.0,
+        "model": [
+          "4",
+          0
+        ],
+        "positive": [
+          "5",
+          0
+        ],
+        "negative": [
+          "6",
+          0
+        ],
+        "latent_image": [
+          "7",
+          0
+        ]
+      }
+    },
+    "9": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "8",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "10": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "creator-001-tensor-tester",
+        "images": [
+          "9",
+          0
+        ]
+      }
+    }
+  },
+  "seed_fields": [
+    "seed",
+    "noise_seed"
+  ],
+  "training": {
+    "lora_source_dir": "/workspace/train-output/creator001krea2",
+    "start_script_path": "/workspace/start-comfy-lorapath.sh",
+    "start_script_file": "start-comfy-lorapath.sh.template"
+  },
+  "jobs": [
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000000250",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000000250.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000000500",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000000500.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000000750",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000000750.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000001000",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000001000.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000001250",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000001250.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000001500",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000001500.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000001750",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000001750.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000002000",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000002000.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000002250",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000002250.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000002500",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000002500.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-000002750",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2_000002750.safetensors"
+        }
+      ]
+    },
+    {
+      "seed": 1595,
+      "output_name": "c001-tensor-tester-final",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "lora_name",
+          "value": "creator001krea2.safetensors"
+        }
+      ]
+    }
+  ]
+}
