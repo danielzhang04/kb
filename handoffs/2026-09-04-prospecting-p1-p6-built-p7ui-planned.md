@@ -24,9 +24,22 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
 - P7-UI: spec amendment + plan v2.1 on branch claude/boss-2026-09-02 (commit 2239637c). NOT scaffolded —
   approval gate.
 
+## Real-run state (2026-09-04 evening)
+- Desktop store `%LOCALAPPDATA%\kb-prospecting\store.sqlite` (dev; reset twice today when schema_p6.sql changed —
+  the migration ledger refuses modified migrations; after release, P6 schema changes go in a NEW numbered file).
+- Snov keys in Daniel's user env (SNOV_CLIENT_ID/SECRET); Hunter deferred by Daniel. Real Snov shapes probed and
+  recorded in briefs-p6/fix-discover7.md: v2 domain search returns prospects with `search_emails_start` (no emails);
+  email search async start→poll; v1 domain search 404. Snov discovery lane (`scripts/prospecting/discovery/`, P6-owned,
+  registered through P2's lane registry; P2 list builder now takes --finder-provider/--finder-cost) ran for real:
+  30 firms → 15 people (cap 2/firm) → 7 emails, 20 credits, budget stop at 40. Round-3 hardening (resumable
+  polling, per-campaign cap, 50-credit account ceiling) in flight at handoff time.
+- Operator surface (`py -3 -m scripts.prospecting.operator`) reviewed x4; runbook "Operator gates" has argv.
+- Files Daniel edits live under %LOCALAPPDATA%\kb-prospecting\: ask-nyc-vc.txt (grammar incl. `credits:N`),
+  captures-nyc-vc.csv, company-domains.csv (name,domain), sender-profile.json, operator-vendors.json (names only).
+
 ## Daniel's gates, in order (present one at a time)
 1. P1: PASSED 2026-09-04 (Datasette loopback read-only, hook rejected the planted email).
-2. P2: per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
+2. P2: IN PROGRESS — list handed to Daniel 2026-09-04 (campaign camp_4ac6a3a2a2a6445b). Per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
    --providers hunter,snov → bakeoff run --contacts 50 → bakeoff report; keys live only in Daniel's user env
    (HUNTER_API_KEY, SNOV_CLIENT_ID/SECRET, optional PDL_API_KEY, APIFY_TOKEN). Pick the finder (~$35–39/mo).
 3. P3: read 20 drafts; edit the synthetic sender profile into the real one (desktop-local file only).
