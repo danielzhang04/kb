@@ -687,3 +687,23 @@
   is read. The routine reads memory at WO4, which is too late for the step-2b drift-card decision.
 - Anomaly noted for the desk: stale working card 6a6bc3dd-5494006b (kb-ops iter-smoke-t2,
   codex-worker, T1) idle ~5 weeks in working/ — stranded-archiver or human walk-back candidate.
+
+## 2026-09-04 (nightly cloud run)
+- Clean dispatch run: preamble OK, pyyaml OK, sync_skills --check clean (exit 0). Dispatched 1
+  card (6a9a62f9 nightly-review, T1 acts-alone, sonnet-5), executed it, regenerated both
+  dashboards, card -> done. Push path in run summary.
+- SAME SLIP, FOURTH TIME: at step 2b I wrote a fresh wake card
+  wake-daniel-2026-09-04-sync-daemon-dirs-drift BEFORE reading this shard (routine reads memory
+  at WO4, too late). Caught it at WO4: the drift finding (single ops-only acceptance-run.md) is
+  UNCHANGED and already covered by umbrella 6a7c0ebf (drift) + 6a605ebb (script absent on ops).
+  Deleted the new card; net inbox filed NOTHING new. Reported the state in the regenerated
+  dashboards only (they rewrite in full, never churn cards).
+- HARD RULE, now the FIRST thing after preamble on a fresh cloud clone: READ THIS SHARD, then
+  do NOT create/churn any drift or script-absence card. The drift umbrella is 6a7c0ebf; the
+  script-absence umbrella is 6a605ebb; both owned by human-operator, both open. sync_daemon_dirs.py
+  still absent on ops -> run origin/main's copy in refs-fallback mode for the check.
+- Stale-card status CHANGED: 6a6bc3dd (kb-ops iter-smoke-t2, codex) is now state `halted`
+  (terminal), not idle-working — resident in working/ only because halted resolves there. No
+  longer a stranded-archiver candidate; a human walk-back to a terminal sink is all that's left.
+- Drift magnitude unchanged from 08-30: still just orgs/kb-ops/workflows/acceptance-run.md
+  ops-only. No desktop --sync owed beyond what the umbrella already asks (back-port-vs-prune).

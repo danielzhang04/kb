@@ -1,27 +1,26 @@
 # System Handover
-_Generated: 2026-09-03 06:21 UTC_
+_Generated: 2026-09-04 06:21 UTC_
 
-**What happened.** The nightly cloud dispatcher ran cleanly. Preamble passed, pyyaml is
-importable, and the skills mirror check (`sync_skills --check`) shows no drift. The dispatcher
-emitted one card — the standard `nightly-review` cadence — which this run executed: dashboards
-regenerated, memory updated, coordination writes committed to `ops`. Nothing cost real money
-today ($0.00 of the $30.00 daily ceiling).
+**What happened overnight.** The nightly cloud dispatcher ran cleanly. Preamble and the
+skills-sync check both passed. It dispatched and executed one card — the nightly-review
+cadence — which regenerated these dashboards. Yesterday was a busy build day across figment
+and prospecting: 312 cost rows, but only $4.68 of real spend (RunPod GPU for the figment
+Track-1 replication); everything else was subscription-billed at $0. Today's spend so far is
+$0.00 of the $30 daily limit.
 
-**What is waiting on you.** Nothing is parked in the approvals queue. Two project decisions
-sit at your desk. Atlas has a fully re-reviewed remediation diff on
-`codex/atlas-enhancements-20260820` that exceeds the 400-line contract limit, so it needs your
-sign-off before commit (see `handoffs/2026-08-20-atlas-omni-remediation-review.md`). Faceless-
-youtube's bricks-fresh video is paused at the P1–P5 shot-board gate, and its Variant D trial
-(25/25 shots verified) needs your keep / edit / iterate / revert call
-(`handoffs/2026-08-21-fyt-bricks-variant-d-L25.md`).
+**What is waiting on you.** One approval card sits in the queue: the **figment** GATE A
+"eye-gate" — you need to open the blind expansion-03 board in a browser and rule it on the
+seven axes before curation to 40 can proceed. Beyond that, four project gates are parked at
+your desk: **atlas** (a >400-line remediation diff re-reviewed and ready, but the contract
+needs your review before commit), **faceless-youtube** (keep / edit / iterate / revert on
+bricks Variant D), and **prospecting** (P2 onward — list-builder run, drafts, and the P7-UI
+plan approval; P1 passed today). None of these are blocked on the system — they are blocked
+on your judgment.
 
-Two housekeeping items also need a desktop touch when convenient: `scripts/sync_daemon_dirs.py`
-is still missing from the `ops` branch (the nightly works around it via the `main` copy), and one
-daemon-dir path (`orgs/kb-ops/workflows/acceptance-run.md`) drifts ops-only, awaiting a
-back-port-or-prune decision. Both are carded (`6a605ebb`, `6a7c0ebf`). A ~5-week-old kb-ops
-`iter-smoke-t2` card is also stranded in `working/`.
-
-**What the system will do next unattended.** The nightly dispatcher will run again on schedule:
-preamble/health checks, dispatch due cadences, regenerate these dashboards, and push coordination
-writes to `ops`. The `self-lint-report` cadence stays dormant (no scheduler). No autonomous
-work will touch project code or spend money without a card and, where required, your approval.
+**What the system will do next, unattended.** The cloud dispatcher will keep running nightly:
+preamble → skills/daemon-dir checks → dispatch → dashboard refresh → push to `ops`. One
+known nuisance keeps recurring and is worth a five-minute fix: `scripts/sync_daemon_dirs.py`
+lives on `main` but not on `ops`, so the daemon-dir drift gate can't run natively. Two open
+wake-me cards already track it (`6a7c0ebf` for the drift, `6a605ebb` for the missing script) —
+re-adding the script to `ops` and running `--sync` from the dashboard-ops worktree stops it. Nothing else acts on its own; all real work stays behind
+your gates.
