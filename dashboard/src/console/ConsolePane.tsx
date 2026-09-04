@@ -154,10 +154,14 @@ export type ConsoleReplayFrame = { sequence: number; encoding: 'base64'; data: s
  * A whole terminal attempt's transcript, already read. `lostOutput` says the retention window dropped
  * the head, so the pane writes {@link LOST_OUTPUT_NOTICE} before the bytes instead of presenting a
  * spliced stream as continuous; `notice` is the ONE sentence a refused read shows instead of frames.
+ * `retryable` marks a refusal the caller believes was transient (e.g. the server's stat-vs-extent
+ * consistency check catching a session mid closing-to-exited transition) — the pane retries those a
+ * couple of times before it settles on `notice`; a 404/`not-found` or an already-retried `gap` is not
+ * marked retryable and is shown immediately, exactly as before.
  */
 export type ConsoleReplayLoad =
   | { ok: true; frames: readonly ConsoleReplayFrame[]; lostOutput?: boolean }
-  | { ok: false; notice: string };
+  | { ok: false; notice: string; retryable?: boolean };
 
 export interface ConsolePaneProps {
   target: ConsoleTarget;
@@ -320,12 +324,25 @@ export function ConsolePane({
     const replayTarget = targetRef.current;
     if (!replaySource || replayTarget.mode !== 'replay') return;
     let disposed = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
     setState('connecting');
     setDiagnostic(null);
-    void (async () => {
+
+    // A `retryable` refusal (server-side "unreadable" near the closing->exited transition, [C-R6]'s
+    // stat-vs-extent check catching its own write) is retried a couple of times with a short backoff
+    // before the notice is shown — a 404/`not-found` or an already-retried `gap` is never `retryable`
+    // and still shows on the FIRST attempt, exactly as before.
+    const RETRY_DELAYS_MS = [250, 750];
+
+    const attempt = async (retryIndex: number): Promise<void> => {
       const [grid, load] = await Promise.all([ensureGrid(), replaySource(replayTarget.sessionId)]);
       if (disposed) return;
       if (!load.ok) {
+        if (load.retryable && retryIndex < RETRY_DELAYS_MS.length) {
+          await new Promise<void>((resolve) => { timer = setTimeout(resolve, RETRY_DELAYS_MS[retryIndex]); });
+          if (disposed) return;
+          return attempt(retryIndex + 1);
+        }
         setState('error');
         setDiagnostic(load.notice);
         return;
@@ -335,8 +352,13 @@ export function ConsolePane({
       for (const frame of load.frames) grid?.write(decodeOutput(frame.data));
       setState('closed');
       fitAndResize();
-    })();
-    return () => { disposed = true; };
+    };
+    void attempt(0);
+
+    return () => {
+      disposed = true;
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [ensureGrid, fitAndResize, replaySource, targetKey, reconnectTick]);
 
   // Connect: lazily create xterm + fit addon, open ONE socket, send the opening frame, pump the rest.

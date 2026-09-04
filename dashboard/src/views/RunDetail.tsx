@@ -120,7 +120,13 @@ function RunConsole({ runRef, token, serverSelectedSessionId, attemptSessions, f
       lostOutput = true;
       page = await readRunSessionReplay(runRef, sessionId, page.refusal.nextSequence, token, fetchImpl);
     }
-    if (!page.ok) return { ok: false as const, notice: replayNotice(page.refusal) };
+    // `unreadable` is the one refusal kind the server can hand back transiently (its stat-vs-extent
+    // consistency check catching a session mid closing-to-exited transition, per the ConsolePane replay
+    // effect's retry) — a 404/`not-found`, an `invalid` request, or a `gap` this call already retried
+    // once are never marked retryable, so ConsolePane shows those on the first attempt as before.
+    if (!page.ok) {
+      return { ok: false as const, notice: replayNotice(page.refusal), retryable: page.refusal.kind === 'unreadable' };
+    }
     return { ok: true as const, frames: page.value.frames, lostOutput };
   }, [fetchImpl, runRef, token]);
 

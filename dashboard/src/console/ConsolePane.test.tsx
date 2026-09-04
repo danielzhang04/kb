@@ -570,4 +570,93 @@ describe('[C-R6] REST-fed read-only replay', () => {
     expect(sockets).toHaveLength(0);
     expect(xtermReg.instances[0]?.writes ?? []).toEqual([]);
   });
+
+  it('does NOT retry a non-retryable refusal — a 404 shows on the first attempt', async () => {
+    const { factory } = makeFactory();
+    const replaySource = vi.fn(async () => ({ ok: false as const, notice: 'This attempt has no terminal output on this run.' }));
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(screen.getByTestId('console-panel-diagnostic').textContent)
+      .toContain('This attempt has no terminal output on this run.'));
+    expect(replaySource).toHaveBeenCalledTimes(1);
+  });
+
+  it('retries a transient unreadable refusal and renders frames on the second attempt', async () => {
+    const { factory } = makeFactory();
+    let calls = 0;
+    const replaySource = vi.fn(async () => {
+      calls += 1;
+      if (calls === 1) {
+        return { ok: false as const, notice: 'This attempt’s terminal output could not be read.', retryable: true };
+      }
+      return { ok: true as const, frames: [{ sequence: 0, encoding: 'base64' as const, data: encodeInput('hello') }] };
+    });
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(xtermReg.instances[0]?.writes).toEqual(['hello']), { timeout: 3000 });
+    expect(replaySource).toHaveBeenCalledTimes(2);
+    expect(screen.queryByTestId('console-panel-diagnostic')).toBeNull();
+  });
+
+  it('gives up after exhausting retries on a persistently unreadable refusal and shows the notice', async () => {
+    const { factory } = makeFactory();
+    const replaySource = vi.fn(async () => ({
+      ok: false as const, notice: 'This attempt’s terminal output could not be read.', retryable: true,
+    }));
+    render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(
+      () => expect(screen.getByTestId('console-panel-diagnostic').textContent)
+        .toContain('This attempt’s terminal output could not be read.'),
+      { timeout: 3000 },
+    );
+    // Three attempts total: the first plus two retries, one per RETRY_DELAYS_MS entry.
+    expect(replaySource).toHaveBeenCalledTimes(3);
+  });
+
+  it('unmounting between retry attempts never sets state on the unmounted pane', async () => {
+    const { factory } = makeFactory();
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const replaySource = vi.fn(async () => ({
+      ok: false as const, notice: 'This attempt’s terminal output could not be read.', retryable: true,
+    }));
+    const view = render(unlocked(
+      <ConsolePane
+        target={{ mode: 'replay', sessionId: SESSION_ID }}
+        visible
+        replaySource={replaySource}
+        socketFactory={factory}
+        sessionsClient={stubSessionsClient()}
+      />,
+    ));
+    await waitFor(() => expect(replaySource).toHaveBeenCalledTimes(1));
+    view.unmount();
+    // Give the 250 ms backoff time to elapse — if the retry fired after unmount and called setState,
+    // React logs an act/state-update warning, which the assertion below catches.
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    expect(replaySource).toHaveBeenCalledTimes(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
 });
