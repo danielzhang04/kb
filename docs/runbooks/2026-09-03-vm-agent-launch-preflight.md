@@ -238,13 +238,12 @@ reads main.
   ```
 
 - **Preflight.** `scripts/vm_launch_preflight.sh` FAILs on this drift and prints the model list the
-  daemon will actually compile. It needs a reference: pass main's hash as `$2` (or
-  `$KB_MODEL_ROUTING_SHA256`), obtained on the desktop with
-  `git show origin/main:governance/model-routing.yaml | sha256sum`. With no hash it compares against
-  `/opt/kb-releases/current/governance/model-routing.yaml` and warns when the release carries none -
-  as of this writing `RELEASE_ROOTS` in `scripts/build_platform_release.py` ships
-  `dashboard/**`, `scripts`, `schemas` and `deploy`, but no `governance/`, so the hash argument is
-  the working path.
+  daemon will actually compile. It needs a reference and FAILs without one: pass main's hash as
+  `$2` (or `$KB_MODEL_ROUTING_SHA256`), obtained on the desktop with
+  `git show origin/main:governance/model-routing.yaml | sha256sum`. There is no on-VM fallback --
+  `RELEASE_ROOTS` in `scripts/build_platform_release.py` ships `dashboard/**`, `scripts`, `schemas`
+  and `deploy`, but no `governance/`, so the release carries no copy of main's version to compare
+  against.
 
 ## f. Diagnosis tools that worked
 

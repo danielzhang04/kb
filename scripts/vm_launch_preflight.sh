@@ -325,7 +325,6 @@ dashboard_umask=$(systemctl show kb-dashboard -p UMask --value 2>/dev/null)
 # section "the execution-profile catalogue lives on ops".
 section "execution-profile catalogue (governance/model-routing.yaml in the ops checkout)"
 ops_routing=/var/lib/kb/ops/governance/model-routing.yaml
-release_routing=/opt/kb-releases/current/governance/model-routing.yaml
 if [ ! -s "$ops_routing" ]; then
   bad "$ops_routing missing or empty - loadExecutionProfiles compiles an EMPTY catalogue and EVERY launch refuses 400 assigned-profile-not-found. Fix: python scripts/sync_daemon_dirs.py --sync on the desktop, then a promotion"
 elif [ -n "$model_routing_sha" ]; then
@@ -335,16 +334,11 @@ elif [ -n "$model_routing_sha" ]; then
   else
     bad "ops copy is $ops_sha, main is $model_routing_sha - the ops mirror has DRIFTED. Fix: python scripts/sync_daemon_dirs.py --sync on the desktop, then python scripts/promote_vm_outbox.py (the reconciler admits this one governance path; the resident /usr/local/lib/kb/apply_ops_reconciliation.py must already carry the W61 allowlist)"
   fi
-elif [ -s "$release_routing" ]; then
-  # The release is built from a main commit, so its copy IS main's for that release. Only present
-  # if the release payload carries governance/ (scripts/build_platform_release.py RELEASE_ROOTS).
-  if cmp -s "$ops_routing" "$release_routing"; then
-    ok "ops copy is byte-identical to the deployed release's copy"
-  else
-    bad "$ops_routing differs from $release_routing - the ops mirror has DRIFTED behind the release's main commit. Fix: python scripts/sync_daemon_dirs.py --sync on the desktop, then a promotion"
-  fi
 else
-  warn "no reference copy to compare against (this release ships no governance/model-routing.yaml). Pass main's hash as \$2 or \$KB_MODEL_ROUTING_SHA256: git show origin/main:governance/model-routing.yaml | sha256sum"
+  # There is no on-VM copy of main's version to fall back to: the release payload ships no
+  # governance/ (scripts/build_platform_release.py RELEASE_ROOTS), so an unhashed run cannot tell a
+  # synced ops checkout from a drifted one. Unknown is a FAIL, not a pass.
+  bad "no reference to compare against - pass main's sha256 as \$2 or \$KB_MODEL_ROUTING_SHA256: git show origin/main:governance/model-routing.yaml | sha256sum"
 fi
 # Whatever the comparison said, name what the daemon will actually compile - a launch names a model,
 # not a file, and this is the list it is checked against.

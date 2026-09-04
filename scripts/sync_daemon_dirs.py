@@ -447,7 +447,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--prune", action="store_true",
                     help="in --sync, git rm ops-only files under the mirrored paths "
                          "that are not on main (WARNING: this DELETES an ops-staged "
-                         "workflow/agent still awaiting its main merge)")
+                         "workflow/agent still awaiting its main merge, and, for a file "
+                         "entry, DELETES the ops copy of governance/model-routing.yaml "
+                         "if main does not carry it (empty profile catalogue = every "
+                         "launch refused))")
     args = ap.parse_args(argv)
 
     repo_root = args.repo_root or Path.cwd()
