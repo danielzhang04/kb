@@ -6,6 +6,19 @@ $2.28) that is now parked on the blind board for the operator's eye-gate. Everyt
 (HEAD `dfee3ba5`, pushed, unmerged). Two cards on `ops`: build card `b618941b-dbd9c768`, spend card
 `044ea509-1b337cf6`. This handoff supersedes `2026-09-03-figment-anchor-first-overnight-build.md` (consumed).
 
+
+### UPDATE 2026-09-03 21:05 — expansion-02 failed identity; expansion-03 (arm A) is the board to grade
+- Operator viewed the expansion-02 board: "90% wrong" — different women. Root cause: free generation from an empty
+  latent with 180-word scene prompts. Batch kept as evidence only.
+- expansion-03 = the package's reference-conditioned EDIT method ported: verified klein multi-ref graph, target anchor
+  as canvas, ≤25-word edit prompts, 12 templates × 3 anchors. Paired A/B pilot ($0.62): arm B (img2img 0.28-0.35)
+  = near-copies; arm A = true edits, identity held. Rotation wording fixed ("a quarter turn, face toward camera").
+- Batch `batches/expansion-03/`: 36 cells, $1.44, 35 scored, own-anchor median 0.864 (calibrated floor 0.836;
+  anchors pairwise 0.886-0.926), 1 no-face. Blind board 35 cards; stage awaiting-eye-gate-a (e723a1ec).
+  Cards: pilot/full 57c33efe (done); eye-gate 65d8f246 retargeted. Branch HEAD 3d046460.
+- Exact next step: rule `batches/expansion-03/board.html` (NOT expansion-02) → qa_stamp → GATE A → curated set
+  (regenerate culled templates with new seeds if < 30) → P5 → LoRA v1.
+
 ### What WORKED (with evidence)
 - **Research pass, claim-checked** — r15 package artefacts (168 files, all 8 workflow JSONs' settings, .bat audit
   7/7 clean, 3 compliance rejections) 43/47 verified; r15b video lessons ×3 (faster-whisper narration, 114 rows

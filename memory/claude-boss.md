@@ -195,3 +195,10 @@
 - Planning workers must run INSIDE the integrated worktree: the first P7-UI plan was written on the boss branch (no scripts/prospecting) and got a REWRITE verdict for guessed columns/argv; the rewrite in the P6 worktree got PATCH.
 - Review briefs generated from plan text name plan-invented files; when the build deviated by ruling, prepend a REVIEW CONTEXT header naming the real files or the review is wasted (P6 review-6 → 6b).
 - Time-dependent tests (wall clock vs fixture window) pass at build time and fail hours later; every CLI takes --now and tests inject it.
+- **(expansion-03 lesson) Identity holds when the model EDITS the reference, not when it generates from a prompt.**
+  60 free-generation cells with long scene prompts = different women (cosine 0.68). The same graph with the
+  target anchor as canvas and a ≤25-word "same woman; one change; same room" prompt = same woman (0.86). img2img at
+  0.28-0.35 = near-copies (0.99) that ignore the instruction. Calibrate the floor from the anchors themselves
+  (pairwise 0.89-0.93) before setting any threshold; a 6-cell paired A/B pilot ($0.62) settled the mechanism.
+- **Pilot the cell before the batch.** $2.28 was spent on a method never validated at cell level; the review
+  rounds checked arithmetic and safety, not whether one cell looked right. One cell, then ten.
