@@ -71,25 +71,75 @@ the pod (transformers + their caption instruction) and is **unverified — no po
 `single_word` writes module 04/05's legacy `woman`; module 11 explicitly retired it, so it is
 a fallback for a caption-free dataset only.
 
+**Tonight's run (finding 9 closure): `class` captions, not descriptive-caption equivalence.**
+`build_training_set.py --mode class` (via the new `--images-from <dir>...` multi-directory
+form below) writes the single word `woman` as every image's caption sidecar — module 04/05's
+legacy scheme, the one that actually produced the package's 2250-step winner per
+`research/r15b-training.md`. Module 11's Qwen3-VL descriptive captioning remains a documented
+`qwen3vl` hook only (raises `DatasetBuildError`, never silently substitutes); nothing here
+claims it is implemented or equivalent. Because the dataset build step already writes the
+caption sidecars, the train manifest's `training.caption_mode` stays `"provided"` — the start
+script only verifies every image already has a non-empty `.txt` sidecar, it does not re-caption,
+so `class`-mode output and human-provided captions take the identical runtime path.
+
+`build_training_set.py` now also accepts `--images-from <dir> [<dir> ...]` (an alternative to
+the single-directory `--source-dir`, `--mode class` only) plus an optional `--exclude <name>
+...`. Images are collected in argument order and sorted by filename within each directory, so
+several run output directories become one dataset without a manual copy/merge step; `--exclude`
+drops named source files (matched by full filename or bare stem, e.g. a bad frame) before
+numbering. Tonight's dataset is built from the anchor-pair dependency smoke plus dataset shards
+01–03 (`expand/runs/out/creator-001-tensor-smoke`,
+`expand/runs/out/creator-001-tensor-dataset-shard-01/02/03`), 31 images total:
+
+```text
+py -3 build_training_set.py --mode class \
+  --images-from ../expand/runs/out/creator-001-tensor-smoke \
+                ../expand/runs/out/creator-001-tensor-dataset-shard-01 \
+                ../expand/runs/out/creator-001-tensor-dataset-shard-02 \
+                ../expand/runs/out/creator-001-tensor-dataset-shard-03 \
+  --out runs/creator-001-tensor-dataset
+```
+
 ## Step order
 
 1. Dataset stage (module-10 replication, `expand/`) produces shard PNGs. The operator grades
    them per `expand/TENSOR-REPLICATION.md`'s grading protocol and records the approved subset
    as `[{"image": ..., "caption": ...}]` (or leaves them for `--mode class`).
 2. `py -3 build_training_set.py --approved-cells <operator-graded.json> --out
-   runs/creator-001-tensor-dataset` (or `--source-dir <dir> --mode class`) — the dataset-to-
-   training bridge (Track-1 review finding 9). Writes `NN.png` + same-basename `.txt` captions,
-   `dataset_manifest.json` (count, per-file sha256, caption mode; **not** `training.json` — see
-   below), verifies every image/sidecar pair is on disk, then `_dataset.ready` last.
-   `caption_mode`: `provided` (from the JSON, the default here), `class` (the single word
-   `woman`), or `qwen3vl` (documented hook for module 11's auto-captioner — **not implemented**,
-   raises rather than silently writing garbage captions).
+   runs/creator-001-tensor-dataset` (or `--source-dir <dir> --mode class`, or the new
+   `--images-from <dir> ... [--exclude <name> ...] --mode class` multi-directory form) — the
+   dataset-to-training bridge (Track-1 review finding 9). Writes `NN.png` + same-basename
+   `.txt` captions, `dataset_manifest.json` (count, per-file sha256, caption mode; **not**
+   `training.json` — see below), verifies every image/sidecar pair is on disk, then
+   `_dataset.ready` last. `caption_mode`: `provided` (from the JSON, the default here), `class`
+   (the single word `woman` — tonight's choice, see "Captioning" above), or `qwen3vl`
+   (documented hook for module 11's auto-captioner — **not implemented**, raises rather than
+   silently writing garbage captions).
 3. `py -3 render_aitoolkit_config.py --template ai-toolkit-krea2.yaml.template --trigger
    creator001krea2 --dataset-dir /workspace/ComfyUI/input/creator001krea2 --out
    runs/creator-001-tensor-dataset/training.json`. This is the only writer of `training.json`
    in this directory — the ai-toolkit trainer config, uploaded and read by the pod as
    `training.config_name`. It refuses to write a config that has drifted off the module-11
-   numbers (`--allow-drift` to override, deliberately loud).
+   numbers (`--allow-drift` to override, deliberately loud). The same command with
+   `--set steps=50 --set save_every=50 --allow-drift` renders the reduced-step config the
+   training smoke (next) uploads instead — same directory, same filename, run before the
+   smoke and re-rendered back to the module-11 numbers (no `--set`) before the full run.
+3a. `runs/creator-001-tensor-train-smoke.yaml` — findings 13/14's gate. Same image, same
+   `ai-toolkit` pin, same Krea-2 raw model pin, and the same `start-training-aitoolkit.sh.template`
+   as the full run, but the uploaded `training.json` is the 50-step render from step 3. It
+   exercises the entire path — install, `torch.cuda.is_available()`, `ai-toolkit` import, the
+   Krea raw `state_dict` load, 50 training steps, one save, publish, completion marker — at a
+   $2.45 ceiling instead of the full run's $6.07+. Its `training.checkpoint_steps`/`final_step`
+   both name the single step-50 save (published once under its own step name and once under the
+   bare trigger name, mirroring the full run's intermediate+final publish shape at 1+1 instead of
+   11+1); a third declared artifact, `_training.log`, downloads the full `ai-toolkit` stdout/
+   stderr so it can be inspected locally. **The full training run in step 4 is gated on this
+   smoke's `_training.log` showing the Krea raw checkpoint's `state_dict` loaded with no
+   `missing_keys`/`unexpected_keys` lines** (PyTorch's default `load_state_dict` behavior surfaces
+   any key mismatch there) — the state-dict compatibility this document previously listed as
+   unproved (former "What blocks a live run" item 4) and the torch/CUDA install combination
+   (former item 3) are exactly what this smoke is designed to catch before the full ceiling is
+   spent, not something proved by reading a safetensors header offline.
 4. `runs/creator-001-tensor-train.yaml` — bootstrap pulls the base; the start script installs
    ai-toolkit at the pin, pre-warms the encoder/VAE, starts ComfyUI; the harness uploads the
    dataset (`NN.png`/`NN.txt`/`training.json`, then `_dataset.ready`); the script captions
@@ -117,6 +167,7 @@ a fallback for a caption-free dataset only.
 
 | Stage | GPU | readiness / job ceiling | `max_minutes` | rate | preflight estimate | expected actual |
 |---|---|---|---|---|---|---|
+| train-smoke (findings 13/14 gate) | L40S | 3600 s / 2400 s + 2 × 180 s artifact allowance | 113 | $1.30/h | **$2.4483** | ~45–60 min setup + a few min for 50 steps |
 | train | L40S | 3600 s / 10800 s + 11 × 180 s artifact allowance | 280 | $1.30/h | **$6.0667** | 45–60 min setup + unmeasured train |
 | tester | L40S | 2400 s / 300 s × 12 | 105 | $1.30/h | **$2.2750** | ~15 min setup + ~5 min render |
 | gen | L40S | 2400 s / 600 s × 12 | 165 | $1.30/h | **$3.5750** | ~15 min setup + ~20 min render |
@@ -176,19 +227,62 @@ flag must be resolved before trusting any daily total — not addressed by this 
    review findings 1-2 flag (canonical ops ledger vs. this worktree's untracked rows, UTC vs.
    America/New_York day boundary) is unresolved and out of this pass's scope — do not trust a
    daily total from either ledger location until it lands.
-3. **torch/CUDA pin.** Upstream installs `torch==2.13.0+cu130`; our proven image is
-   cuda 12.8.1. `reinstall_torch` is `"0"` (use the image's torch) and that combination is
-   untested against ai-toolkit's requirements. One install-only probe pod settles it.
-4. **State-dict key compatibility.** ai-toolkit derives Krea-2's MMDiT keys from
-   `krea/Krea-2-Raw`'s `raw.safetensors`; the Comfy-Org bf16 repackage is assumed key-for-key
-   identical and has not been checked. Cheap to check: read the safetensors header only.
+3. **torch/CUDA pin — gated on `creator-001-tensor-train-smoke.yaml` (findings 13/14).**
+   Upstream installs `torch==2.13.0+cu130`; our proven image is cuda 12.8.1.
+   `reinstall_torch` is `"0"` (use the image's torch) and that combination was untested
+   against ai-toolkit's requirements. Rather than an install-only probe pod that never runs a
+   step, the training smoke (Step order 3a) runs the entire path — install, `torch.cuda.
+   is_available()`, `ai-toolkit` import, 50 real training steps, save, publish — at $2.45.
+   The full run in Step order 4 does not proceed until that smoke's `_bootstrap.log` shows
+   every install step `rc=0` and its `_training.log` shows training actually ran.
+4. **State-dict key compatibility — gated on the same smoke.** ai-toolkit derives Krea-2's
+   MMDiT keys from `krea/Krea-2-Raw`'s `raw.safetensors`; the Comfy-Org bf16 repackage is
+   assumed key-for-key identical. A safetensors-header read only proves the tensor names on
+   disk match — it does not prove ai-toolkit's own key-mapping/renaming code accepts them
+   without silently dropping or defaulting parameters. The smoke's `_training.log` is what
+   settles this: it must show the checkpoint's `state_dict` loaded with no
+   `missing_keys`/`unexpected_keys` lines before the full run is approved. See Step order 3a.
 5. **Third-party node input names** (`res_2s`) are transcribed from the package graph and are
    not validated by dry-run.
 6. **Throughput on 48 GB is unmeasured.** Their 77 min was a 96 GB Blackwell. If the L40S runs
    past the 10800 s marker deadline the run fails closed with nothing to show; a training-side
    smoke at reduced steps is the honest way to buy that number first — separate from, and
-   still owed beyond, the dependency smoke in item 1.
-7. **Model provenance is unpinned (review finding 5).** Downloads resolve mutable `main` with
-   no `revision`/`sha256` verification on the model schema. Out of this pass's scope
-   (`pod/runpod_run.py` model-download validation); manifests here declare no `revision`/`sha256`
-   fields pending that harness change.
+   still owed beyond, the dependency smoke in item 1. The findings 13/14 smoke (item 3/4 above)
+   reports its own 50-step wall-clock in `_training.log`, which is a lower bound only — it does
+   not extrapolate linearly to 3000 steps (fixed setup/caching costs do not repeat per step).
+7. **Model provenance — closed (review finding 5).** Every model entry across
+   `creator-001-tensor-train.yaml`, `-train-smoke.yaml`, `-tester.yaml`, and `-gen.yaml` now
+   carries an immutable `revision` (40-hex commit) and a verified `sha256`, fetched from the
+   Hugging Face tree API and cross-checked against each file's own `lastCommit.id`/`lfs.oid` —
+   the same field shapes and method the re-review used to pin the smoke/shard manifests. See
+   "Model and node pins" below for the table.
+
+## Model and node pins
+
+Finding 5 closure for this directory's four manifests. Fetched
+`https://huggingface.co/api/models/<repo>/tree/<revision>?recursive=true&expand=true`, took each
+file's own `lastCommit.id` as `revision` and its `lfs.oid` as `sha256` (both 8/8 present since
+every file here is Git-LFS), and additionally fetched
+`https://huggingface.co/api/models/Comfy-Org/Krea-2` to confirm the repo `sha` (its current
+default-branch HEAD, `e5ea8b4dd7f38f348b138eb0fe29f92c0e367e96`) postdates every pinned
+`lastCommit.id` below, i.e. each pin is reachable from the repo's current history. The
+`Phips/4xNomosWebPhoto_RealPLKSR` row reuses the pin `expand/runs/creator-001-tensor-smoke.yaml`
+already carries for the same file — same repo, same filename, same digest.
+
+| repo / file | used by | revision (`lastCommit.id`) | sha256 (`lfs.oid`) |
+| --- | --- | --- | --- |
+| `Comfy-Org/Krea-2` / `diffusion_models/krea2_raw_bf16.safetensors` | train, train-smoke | `5ea0b6cb7e43749e5202aed076e8ecbe04d2deee` | `f99bb0ff8e362b77342bc4994e0c50906fe7ef7074864b181b7d48d2fa6d03d7` |
+| `Comfy-Org/Krea-2` / `diffusion_models/krea2_turbo_fp8_scaled.safetensors` | tester, gen | `3da2809e72fa04ba266e3b51c2a366fd04500b5a` | `eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1` |
+| `Comfy-Org/Krea-2` / `text_encoders/qwen3vl_4b_fp8_scaled.safetensors` | tester, gen | `4aa0eed112bd2780ceea37583edbdcd2df6c2c09` | `54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094` |
+| `Comfy-Org/Krea-2` / `vae/qwen_image_vae.safetensors` | tester, gen | `a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e` | `a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f` |
+| `Phips/4xNomosWebPhoto_RealPLKSR` / `4xNomosWebPhoto_RealPLKSR.safetensors` | gen | `ee1791235ab82e639bf6fde5581a2440771a14c0` | `9be0228f98156a100d6636d99b373ed2785b999723f9adc4cca504329ab157f2` |
+
+The `vae/qwen_image_vae.safetensors` digest is byte-identical to the one
+`expand/runs/creator-001-tensor-smoke.yaml` already carries for
+`Comfy-Org/Qwen-Image_ComfyUI`'s copy of the same file — consistent with Krea-2's package
+repackaging the same Qwen-Image VAE, not a coincidence.
+
+All 8/8 unique file pins across this directory's four manifests are now verified; 0/8 resolve
+mutable `main`. `pod/tests/test_runpod_run.py`'s `model_revision`/`model_sha256` accept every
+value above (exercised by `train/tests/test_tensor_track.py::
+test_every_model_entry_is_pinned_with_revision_and_sha256`).

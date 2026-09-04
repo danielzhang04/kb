@@ -23,21 +23,29 @@
     {
       "repo_id": "Comfy-Org/Krea-2",
       "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors",
+      "revision": "3da2809e72fa04ba266e3b51c2a366fd04500b5a",
+      "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1",
       "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
     },
     {
       "repo_id": "Comfy-Org/Krea-2",
       "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors",
+      "revision": "4aa0eed112bd2780ceea37583edbdcd2df6c2c09",
+      "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094",
       "destination_dir": "/workspace/ComfyUI/models/text_encoders"
     },
     {
       "repo_id": "Comfy-Org/Krea-2",
       "filename": "vae/qwen_image_vae.safetensors",
+      "revision": "a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
       "destination_dir": "/workspace/ComfyUI/models/vae"
     },
     {
       "repo_id": "Phips/4xNomosWebPhoto_RealPLKSR",
       "filename": "4xNomosWebPhoto_RealPLKSR.safetensors",
+      "revision": "ee1791235ab82e639bf6fde5581a2440771a14c0",
+      "sha256": "9be0228f98156a100d6636d99b373ed2785b999723f9adc4cca504329ab157f2",
       "destination_dir": "/workspace/ComfyUI/models/upscale_models"
     }
   ],

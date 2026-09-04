@@ -17,6 +17,8 @@ caption_mode='{{caption_mode}}'
 caption_word='{{caption_word}}'
 caption_model='{{caption_model}}'
 min_images='{{dataset_min_images}}'
+final_step='{{final_step}}'
+checkpoint_steps_raw={{checkpoint_steps}}
 export HF_HOME='{{hf_home}}'
 export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
@@ -144,20 +146,23 @@ python run.py "$config_file" >> /workspace/output/_training.log 2>&1 \
 # and non-empty BEFORE anything is copied and before the completion marker is
 # written; a live run must fail closed on a partial checkpoint ladder rather
 # than let the tester or generation stage silently rank/render fewer than 12.
-# Module 11's fixed cadence: steps=3000, save_every=250, keep=15 — these 11
-# intermediate step numbers plus the step-3000 final are constants, not
-# derived, so a partial rename upstream cannot silently shrink the ladder.
+# The intermediate step numbers plus the final step are rendered from the
+# manifest's training.checkpoint_steps (space-separated, module 11's fixed
+# cadence for a full run: steps=3000, save_every=250, keep=15 -> step 250..2750)
+# and training.final_step (module 11: step 3000) — constants for a given
+# manifest, not derived on the pod, so a partial rename upstream cannot
+# silently shrink the ladder. A reduced-step smoke manifest renders the same
+# template with its own shorter checkpoint_steps/final_step (see
+# creator-001-tensor-train-smoke.yaml and TENSOR-TRAINING.md).
 checkpoint_dir="${train_output}/${trigger}"
-checkpoint_steps=(
-  000000250 000000500 000000750 000001000 000001250 000001500
-  000001750 000002000 000002250 000002500 000002750
-)
+IFS=' ' read -r -a checkpoint_steps <<< "$checkpoint_steps_raw"
+[[ ${#checkpoint_steps[@]} -gt 0 ]] || fail 'training.checkpoint_steps rendered no intermediate checkpoint steps'
 missing=()
 for step in "${checkpoint_steps[@]}"; do
   ckpt="${checkpoint_dir}/${trigger}_${step}.safetensors"
   [[ -s "$ckpt" ]] || missing+=("$(basename "$ckpt")")
 done
-final_ckpt="${checkpoint_dir}/${trigger}_000003000.safetensors"
+final_ckpt="${checkpoint_dir}/${trigger}_${final_step}.safetensors"
 [[ -s "$final_ckpt" ]] || missing+=("$(basename "$final_ckpt") (final)")
 if [[ ${#missing[@]} -gt 0 ]]; then
   fail "missing checkpoint(s) before publish: ${missing[*]}"
@@ -172,6 +177,6 @@ cp "$final_ckpt" "/workspace/output/${trigger}.safetensors"
 find "$checkpoint_dir" -maxdepth 1 -type f -name '*.safetensors' -printf '%f\n' \
   | sort | python -c 'import json,sys; print(json.dumps(sorted(l.strip() for l in sys.stdin if l.strip())))' \
   > /workspace/output/_checkpoints.json
-log "published 12 checkpoints; final $(basename "$final_ckpt")"
+log "published $(( ${#checkpoint_steps[@]} + 1 )) checkpoints; final $(basename "$final_ckpt")"
 touch /workspace/output/_training.complete
 wait "$comfy_pid"

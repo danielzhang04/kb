@@ -7,6 +7,7 @@ harness preflight (spend ceilings included).
 """
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -22,6 +23,7 @@ RUNS = TRAIN / "runs"
 TRIGGER = "creator001krea2"
 MANIFESTS = {
     "train": RUNS / "creator-001-tensor-train.yaml",
+    "train_smoke": RUNS / "creator-001-tensor-train-smoke.yaml",
     "tester": RUNS / "creator-001-tensor-tester.yaml",
     "gen": RUNS / "creator-001-tensor-gen.yaml",
 }
@@ -211,8 +213,10 @@ def test_training_manifest_replicates_module_11_transport():
     assert doc["models"] == [{
         "repo_id": "Comfy-Org/Krea-2",
         "filename": "diffusion_models/krea2_raw_bf16.safetensors",
+        "revision": "5ea0b6cb7e43749e5202aed076e8ecbe04d2deee",
+        "sha256": "f99bb0ff8e362b77342bc4994e0c50906fe7ef7074864b181b7d48d2fa6d03d7",
         "destination_dir": "/workspace/models/krea2",
-    }], "the base must stay the ungated Comfy-Org repackage of Krea-2 Raw"
+    }], "the base must stay the ungated Comfy-Org repackage of Krea-2 Raw, now pinned (finding 5)"
     uploads = runner.expand_manifest_uploads(doc, MANIFESTS["train"], allow_missing=True)
     assert uploads[-1].remote_name == "_dataset.ready"
     assert {item.subfolder for item in uploads} == {TRIGGER}
@@ -235,6 +239,39 @@ def test_training_manifest_replicates_module_11_transport():
     assert doc["job_timeout_seconds"] == 10800
     assert doc["artifact_download_seconds"] == 180
     assert "network_volume_id" not in doc
+
+
+def test_training_smoke_manifest_exercises_the_full_path_at_minimum_cost():
+    """Findings 13/14: a reduced-step smoke that proves install -> torch.cuda ->
+    trainer import -> Krea raw state-dict load -> save -> publish -> marker before
+    the full 280-minute training run spends its ceiling."""
+    doc = manifest("train_smoke")
+    full = manifest("train")
+    training = doc["training"]
+    assert training["checkpoint_steps"] == "000000050"
+    assert training["final_step"] == "000000050"
+    # same model pin, same trainer pin, same start script as the full run
+    assert doc["models"] == full["models"]
+    assert training["git_ref"] == full["training"]["git_ref"]
+    assert training["start_script_file"] == full["training"]["start_script_file"]
+    assert doc["job_timeout_seconds"] == 2400
+    assert doc["readiness_timeout_seconds"] == 3600
+    assert doc["price_usd_per_hour"] == 1.30
+    artifacts = runner.manifest_artifacts(doc)
+    assert [a["remote"] for a in artifacts] == [
+        "creator001krea2_000000050.safetensors", "creator001krea2.safetensors", "_training.log",
+    ]
+    assert all(a["wait_for"] == "_training.complete" for a in artifacts)
+    minimum = runner.minimum_runtime_minutes(doc)
+    assert doc["max_minutes"] >= minimum
+    # tight ceiling: this smoke must stay cheap, not creep toward the full run's cost
+    assert doc["max_minutes"] < 120
+
+    # the shared template renders cleanly for the reduced schedule too
+    _remote, rendered = runner.rendered_training_start_script(doc, MANIFESTS["train_smoke"])
+    assert "{{" not in rendered and "}}" not in rendered
+    assert "checkpoint_steps_raw=000000050" in rendered
+    assert "final_step='000000050'" in rendered
 
 
 def test_tester_takes_the_12_checkpoints_as_an_upload_no_network_volume():
@@ -318,6 +355,23 @@ def test_generation_manifest_replicates_module_09_chain():
         restored = {sub["node_id"]: sub["value"] for sub in job["substitutions"]
                     if sub["field"] == "seed"}
         assert restored == {"15": 40}
+
+
+@pytest.mark.parametrize("name", sorted(MANIFESTS))
+def test_every_model_entry_is_pinned_with_revision_and_sha256(name):
+    """Finding 5: every train/tester/gen model must resolve an immutable commit,
+    not mutable `main`, and its content must be verified — same field shapes as
+    the smoke/shard manifests (expand/runs/creator-001-tensor-smoke.yaml)."""
+    models = manifest(name).get("models", [])
+    assert models, f"{name} manifest declares no models"
+    for model in models:
+        revision = model.get("revision")
+        assert isinstance(revision, str) and re.fullmatch(r"[0-9a-f]{40}", revision), model
+        sha256 = model.get("sha256")
+        assert isinstance(sha256, str) and re.fullmatch(r"[0-9a-f]{64}", sha256), model
+        # runner.model_revision/model_sha256 must accept what we wrote.
+        assert runner.model_revision(model) == revision
+        assert runner.model_sha256(model) == sha256
 
 
 @pytest.mark.parametrize("name", sorted(MANIFESTS))

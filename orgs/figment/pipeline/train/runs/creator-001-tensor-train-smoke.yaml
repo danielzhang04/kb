@@ -1,18 +1,19 @@
 {
+  "_smoke": "Findings 13/14 dependency+compatibility smoke for the training stage (not the module-10 dependency-smoke in expand/). Same image, same trainer pin, same Krea-2 raw model pin, and the SAME start script (start-training-aitoolkit.sh.template) as creator-001-tensor-train.yaml, but training.json is rendered with steps=50/save_every=50 (render_aitoolkit_config.py --set steps=50 --set save_every=50 --allow-drift) before this manifest runs, so the pod exercises the identical install -> torch.cuda -> ai-toolkit import -> Krea raw state-dict load -> N training steps -> save -> publish -> marker path at minimum cost. training.checkpoint_steps/final_step both name the single step-50 save, published twice (once under its own step name, once copied to the bare trigger name) so the publish logic that copies 11 intermediates plus a final is exercised at 1+1 instead of 11+1. A third artifact, _training.log, is declared (same wait_for marker, .log is an allowed artifact suffix per pod/README.md) purely so the harness downloads the full ai-toolkit stdout/stderr locally — TENSOR-TRAINING.md documents that the full run is gated on this file showing the state dict loaded without missing/unexpected keys.",
   "gpu": {
     "type": "NVIDIA L40S",
     "count": 1,
     "cloud": "SECURE"
   },
   "price_usd_per_hour": 1.30,
-  "max_minutes": 280,
+  "max_minutes": 113,
   "max_placement_attempts": 1,
   "container_disk_gb": 80,
   "volume_gb": 200,
   "volume_mount_path": "/workspace",
   "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
   "readiness_timeout_seconds": 3600,
-  "job_timeout_seconds": 10800,
+  "job_timeout_seconds": 2400,
   "artifact_download_seconds": 180,
   "comfyui": {
     "root": "/workspace/ComfyUI",
@@ -73,8 +74,8 @@
     "caption_word": "woman",
     "caption_model": "Qwen/Qwen3-VL-8B-Instruct",
     "dataset_min_images": 20,
-    "checkpoint_steps": "000000250 000000500 000000750 000001000 000001250 000001500 000001750 000002000 000002250 000002500 000002750",
-    "final_step": "000003000",
+    "checkpoint_steps": "000000050",
+    "final_step": "000000050",
     "hf_home": "/workspace/hf",
     "reinstall_torch": "0",
     "torch_spec": "torch==2.13.0",
@@ -89,82 +90,28 @@
   "jobs": [
     {
       "seed": 100001,
-      "output_name": "training-transport-sentinel-creator001krea2",
+      "output_name": "training-transport-sentinel-creator001krea2-smoke",
       "substitutions": [],
       "expected_images": 1
     }
   ],
   "artifacts": [
     {
-      "remote": "creator001krea2_000000250.safetensors",
+      "remote": "creator001krea2_000000050.safetensors",
       "type": "output",
-      "local": "creator001krea2_000000250.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000000500.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000000500.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000000750.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000000750.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000001000.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000001000.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000001250.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000001250.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000001500.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000001500.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000001750.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000001750.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002000.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002000.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002250.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002250.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002500.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002500.safetensors",
-      "wait_for": "_training.complete"
-    },
-    {
-      "remote": "creator001krea2_000002750.safetensors",
-      "type": "output",
-      "local": "creator001krea2_000002750.safetensors",
+      "local": "creator001krea2_000000050.safetensors",
       "wait_for": "_training.complete"
     },
     {
       "remote": "creator001krea2.safetensors",
       "type": "output",
       "local": "creator001krea2.safetensors",
+      "wait_for": "_training.complete"
+    },
+    {
+      "remote": "_training.log",
+      "type": "output",
+      "local": "_training.log",
       "wait_for": "_training.complete"
     }
   ]

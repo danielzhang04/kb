@@ -190,6 +190,120 @@ def test_class_mode_rejects_an_empty_directory(tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# mode: class, --images-from (finding 9: tonight's multi-run-dir class captions)
+# ---------------------------------------------------------------------------
+
+
+def test_images_from_combines_multiple_dirs_in_argument_order(tmp_path):
+    smoke_dir = tmp_path / "smoke"
+    shard01_dir = tmp_path / "shard-01"
+    shard02_dir = tmp_path / "shard-02"
+    for d in (smoke_dir, shard01_dir, shard02_dir):
+        d.mkdir()
+    _make_image(smoke_dir / "c001-tensor-smoke-f01.png", (10, 10, 10))
+    _make_image(shard01_dir / "c001-tds-f02.png", (20, 20, 20))
+    _make_image(shard01_dir / "c001-tds-f01.png", (30, 30, 30))
+    _make_image(shard02_dir / "c001-tds-f11.png", (40, 40, 40))
+    out_dir = tmp_path / "out"
+
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=None, caption_mode="class", out_dir=out_dir,
+        images_from=[smoke_dir, shard01_dir, shard02_dir],
+    )
+
+    assert manifest["count"] == 4
+    assert manifest["caption_mode"] == "class"
+    # argument order across dirs, sorted by filename within each dir:
+    # smoke (1 file), then shard-01 sorted (f01 before f02), then shard-02.
+    assert [entry["image"] for entry in manifest["files"]] == ["01.png", "02.png", "03.png", "04.png"]
+    for entry in manifest["files"]:
+        assert (out_dir / entry["caption_file"]).read_text(encoding="utf-8") == "woman\n"
+
+
+def test_images_from_applies_exclude_by_filename_and_by_stem(tmp_path):
+    shard_dir = tmp_path / "shard-01"
+    shard_dir.mkdir()
+    _make_image(shard_dir / "c001-tds-f01.png")
+    _make_image(shard_dir / "c001-tds-f02.png")
+    _make_image(shard_dir / "c001-tds-f03.png")
+    out_dir = tmp_path / "out"
+
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=None, caption_mode="class", out_dir=out_dir,
+        images_from=[shard_dir],
+        # one excluded by full filename, one excluded by bare stem
+        exclude=["c001-tds-f01.png", "c001-tds-f02"],
+    )
+
+    assert manifest["count"] == 1
+    on_disk_sources = {Path(e["image"]).name for e in manifest["files"]}
+    assert on_disk_sources == {"01.png"}
+
+
+def test_images_from_rejects_a_missing_directory(tmp_path):
+    with pytest.raises(bts.DatasetBuildError):
+        bts.build_training_set(
+            approved_cells=None, source_dir=None, caption_mode="class",
+            out_dir=tmp_path / "out", images_from=[tmp_path / "nope"],
+        )
+
+
+def test_images_from_rejects_empty_result_after_exclude(tmp_path):
+    shard_dir = tmp_path / "shard-01"
+    shard_dir.mkdir()
+    _make_image(shard_dir / "c001-tds-f01.png")
+    with pytest.raises(bts.DatasetBuildError):
+        bts.build_training_set(
+            approved_cells=None, source_dir=None, caption_mode="class",
+            out_dir=tmp_path / "out", images_from=[shard_dir],
+            exclude=["c001-tds-f01.png"],
+        )
+
+
+def test_images_from_and_source_dir_together_is_rejected(tmp_path):
+    shard_dir = tmp_path / "shard-01"
+    shard_dir.mkdir()
+    _make_image(shard_dir / "a.png")
+    with pytest.raises(bts.DatasetBuildError):
+        bts.build_training_set(
+            approved_cells=None, source_dir=shard_dir, caption_mode="class",
+            out_dir=tmp_path / "out", images_from=[shard_dir],
+        )
+
+
+def test_exclude_requires_images_from(tmp_path):
+    shard_dir = tmp_path / "shard-01"
+    shard_dir.mkdir()
+    _make_image(shard_dir / "a.png")
+    with pytest.raises(bts.DatasetBuildError):
+        bts.build_training_set(
+            approved_cells=None, source_dir=shard_dir, caption_mode="class",
+            out_dir=tmp_path / "out", exclude=["a.png"],
+        )
+
+
+def test_cli_images_from_multiple_dirs_with_exclude(tmp_path):
+    shard01 = tmp_path / "shard-01"
+    shard02 = tmp_path / "shard-02"
+    shard01.mkdir()
+    shard02.mkdir()
+    _make_image(shard01 / "c001-tds-f01.png")
+    _make_image(shard01 / "c001-tds-f02.png")
+    _make_image(shard02 / "c001-tds-f11.png")
+    out_dir = tmp_path / "out"
+
+    rc = bts.main([
+        "--images-from", str(shard01), str(shard02),
+        "--exclude", "c001-tds-f02.png",
+        "--out", str(out_dir),
+    ])
+    assert rc == 0
+    on_disk = json.loads((out_dir / "dataset_manifest.json").read_text(encoding="utf-8"))
+    assert on_disk["count"] == 2
+    assert on_disk["caption_mode"] == "class"
+
+
+# ---------------------------------------------------------------------------
 # mode: qwen3vl (documented hook, not implemented)
 # ---------------------------------------------------------------------------
 
