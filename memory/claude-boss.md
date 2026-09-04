@@ -108,3 +108,10 @@
   steps INTO the harvest/apply CLIs, not in the runbook.
 - **Identity drift is real and measurable**: anchor cosine median 0.68, six cells < 0.32 (flash/low-angle and
   replicate families). Expect the eye-gate to cull ~10-15 of 56; 40 curated is still reachable.
+- **(expansion-03 lesson) Identity holds when the model EDITS the reference, not when it generates from a prompt.**
+  60 free-generation cells with long scene prompts = different women (cosine 0.68). The same graph with the
+  target anchor as canvas and a ≤25-word "same woman; one change; same room" prompt = same woman (0.86). img2img at
+  0.28-0.35 = near-copies (0.99) that ignore the instruction. Calibrate the floor from the anchors themselves
+  (pairwise 0.89-0.93) before setting any threshold; a 6-cell paired A/B pilot ($0.62) settled the mechanism.
+- **Pilot the cell before the batch.** $2.28 was spent on a method never validated at cell level; the review
+  rounds checked arithmetic and safety, not whether one cell looked right. One cell, then ten.

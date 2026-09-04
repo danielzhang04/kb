@@ -100,3 +100,19 @@ final values.
 - **Next: expansion-03** — port of the module-10 method to klein 4B Base (anchor as initial latent + reference,
   denoise 0.20-0.35, ≤40-word prompts with register words, small head/gaze/crop/light/wardrobe variations, no new
   rooms, no profiles), 6-cell pilot first, then 30-36 cells, then GATE A on that board.
+
+## Update — 2026-09-03 21:05 — expansion-03 parked at GATE A (supersedes expansion-02's board)
+
+- **Method that worked: Mechanism A** = the verified klein multi-ref EDIT graph (target anchor first as canvas, empty
+  latent, full denoise) with ≤25-word edit-grammar prompts ("the same woman as the reference, identical face; <one
+  change>; same room, same light"). Pilot A/B: arm B (anchor as initial latent, denoise 0.28-0.35) returned near-copies
+  with the requested change ignored; arm A made true edits with identity held. Rotation wording matters: "thirty
+  degrees" rendered a full profile; "a quarter turn, face toward camera, both eyes visible" works.
+- **Batch `expansion-03`** (`orgs/figment/personas/creator-001/batches/expansion-03/`): 36 arm-A cells (12 templates
+  × g01/g02/g07), 5 pods, $1.44 (+$0.16 pilot-B); 35 scored, own-anchor cosine median 0.864 (min 0.673), 19 ≥ 0.836
+  (calibrated floor; anchors pairwise 0.886-0.926), 1 no-face quarantined (g01-t09). Blind board 35 cards; stage
+  `awaiting-eye-gate-a`. Spend card 57c33efe (ops). Head-turn cells score 0.78-0.83 while reading as the same woman;
+  the eye-gate, not the floor, decides them.
+- **expansion-02** stays quarantined evidence. Arc spend $8.74 of $52.85; today $5.38 of $10.
+- **Next:** operator rules the expansion-03 board (7 axes) → qa_stamp → GATE A → curated set (≥30 target; regenerate
+  the culled templates with new seeds if short) → P5 → LoRA v1 with checkpoint ranking.
