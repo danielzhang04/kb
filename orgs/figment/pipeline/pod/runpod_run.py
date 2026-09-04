@@ -71,6 +71,8 @@ DEFAULT_COMFY_SOURCE_URL = "https://github.com/comfyanonymous/ComfyUI"
 DEFAULT_ARC_CAP_USD = 50.0
 DEFAULT_ARC_LEDGER_GLOB = "figment-*.tsv"
 TRAINING_IDENTIFIER_PLACEHOLDERS = {"trigger", "git_ref", "diffusion_pipe_git_ref"}
+ENV_SECRET_NAME_RE = re.compile(r"[A-Z][A-Z0-9_]*")
+RUNPOD_SECRET_REF_PATTERN = re.compile(r"\{\{\s*RUNPOD_SECRET_[A-Za-z0-9_]*\s*\}\}")
 
 
 _active_redactor: ApiKeyRedactionFilter | None = None
@@ -179,7 +181,13 @@ class ApiKeyRedactionFilter(logging.Filter):
         text = str(value)
         auth = self._session.headers.get("Authorization", "")
         key = auth.removeprefix("Bearer ")
-        return text.replace(key, "[REDACTED]") if key else text
+        if key:
+            text = text.replace(key, "[REDACTED]")
+        # These are never sensitive by themselves (the RunPod reference string carries no
+        # secret value, and HF_TOKEN is just a name) but keep them out of logs/run.json too.
+        text = text.replace("HF_TOKEN", "[REDACTED]")
+        text = RUNPOD_SECRET_REF_PATTERN.sub("[REDACTED]", text)
+        return text
 
     def filter(self, record: logging.LogRecord) -> bool:
         record.msg = self.redact(record.getMessage())
@@ -1414,6 +1422,56 @@ def manifest_job_timeout_seconds(manifest: dict[str, Any]) -> float:
     return timeout
 
 
+def manifest_env_secret_refs(manifest: dict[str, Any]) -> dict[str, str]:
+    """Validate the optional env_secret_refs block.
+
+    Values are RunPod secret NAMEs, never secret values. The harness only ever embeds a
+    "{{ RUNPOD_SECRET_<name> }}" reference string in the create payload; RunPod substitutes
+    the encrypted secret's value into the Pod's own environment at start time, so the
+    harness process never reads, prints, or stores it.
+    """
+    refs = manifest.get("env_secret_refs")
+    if refs is None:
+        return {}
+    if not isinstance(refs, dict) or not refs:
+        raise HarnessError("manifest env_secret_refs must be a non-empty mapping when present")
+    validated: dict[str, str] = {}
+    for env_var, secret_name in refs.items():
+        if not isinstance(env_var, str) or not ENV_SECRET_NAME_RE.fullmatch(env_var):
+            raise HarnessError(
+                f"env_secret_refs env var name must match [A-Z][A-Z0-9_]*: {env_var!r}"
+            )
+        if not isinstance(secret_name, str) or not secret_name:
+            raise HarnessError(
+                f"env_secret_refs value for {env_var} must be a non-empty string"
+            )
+        if len(secret_name) > 64:
+            raise HarnessError(
+                f"env_secret_refs value for {env_var} looks like a token, not a RunPod "
+                "secret NAME (too long); pass only the secret's NAME, never its value"
+            )
+        if any(char.isspace() for char in secret_name):
+            raise HarnessError(
+                f"env_secret_refs value for {env_var} looks like a token, not a RunPod "
+                "secret NAME (contains whitespace); pass only the secret's NAME, never its "
+                "value"
+            )
+        if "hf_" in secret_name:
+            # Case-sensitive: real Hugging Face tokens carry a lowercase "hf_" prefix.
+            # The all-uppercase secret NAME "HF_TOKEN" is the documented example and must
+            # not trip this check.
+            raise HarnessError(
+                f"env_secret_refs value for {env_var} looks like a Hugging Face token, not "
+                "a RunPod secret NAME; pass only the secret's NAME, never its value"
+            )
+        if not ENV_SECRET_NAME_RE.fullmatch(secret_name):
+            raise HarnessError(
+                f"env_secret_refs secret NAME must match [A-Z][A-Z0-9_]*: {secret_name!r}"
+            )
+        validated[env_var] = secret_name
+    return validated
+
+
 def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
     artifacts = manifest.get("artifacts")
     if artifacts is not None:
@@ -1545,6 +1603,7 @@ def require_manifest(
     )
     rendered_training_start_script(manifest, manifest_path)
     manifest_artifacts(manifest)
+    manifest_env_secret_refs(manifest)
 
 
 def load_workflow(manifest: dict[str, Any], manifest_path: Path) -> dict[str, Any]:
@@ -1799,6 +1858,11 @@ def create_payload(
         "env": {"FIGMENT_BOOTSTRAP_B64": encoded_bootstrap},
         "volumeMountPath": str(manifest.get("volume_mount_path", "/workspace")),
     }
+    for env_var, secret_name in manifest_env_secret_refs(manifest).items():
+        # A RunPod reference string, never a value: RunPod substitutes the encrypted
+        # secret at Pod start time, so this literal "{{ RUNPOD_SECRET_<name> }}" text is
+        # all the create payload — and this harness process — ever holds.
+        payload["env"][env_var] = "{{ RUNPOD_SECRET_" + secret_name + " }}"
     if manifest.get("template_id"):
         payload["templateId"] = manifest["template_id"]
     else:
@@ -2100,14 +2164,25 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         destination = str(PurePosixPath(str(model["destination_dir"])) / PurePosixPath(str(model["filename"])).name)
         encoded_filename = quote(str(model["filename"]), safe="/")
         url = f"https://huggingface.co/{model['repo_id']}/resolve/main/{encoded_filename}?download=true"
+        # $HF_TOKEN, when the container env carries it (via env_secret_refs), is expanded
+        # by the shell directly into curl's argv. It is never passed to log_line/echo/
+        # printf, so it never reaches _bootstrap.log or the harness's own output.
+        hf_auth_snippet = (
+            'hf_auth=(); if [ -n "${HF_TOKEN:-}" ]; then '
+            'hf_auth=(-H "Authorization: Bearer $HF_TOKEN"); fi; '
+        )
         command = (
             f"mkdir -p {shlex.quote(str(model['destination_dir']))} && "
             f"if [ -s {shlex.quote(destination)} ]; then true; else "
             f"tmp={shlex.quote(destination + '.partial')}; "
-            f"curl --fail --location --output \"$tmp\" {shlex.quote(url)} && "
+            f"{hf_auth_snippet}"
+            f'curl --fail --location "${{hf_auth[@]}}" --output "$tmp" {shlex.quote(url)} && '
             f"test -s \"$tmp\" && mv \"$tmp\" {shlex.quote(destination)}; fi"
         )
         lines.append(f"retry_required model-{index} bash -lc {shlex.quote(command)}")
+    # Drop the token from the container env once model downloads are done and well before
+    # ComfyUI starts, regardless of whether any model was actually configured.
+    lines.append("unset HF_TOKEN")
     nodes_root = f"{root}/custom_nodes"
     for index, node in enumerate(manifest.get("custom_nodes", []), start=1):
         name = _safe_node_name(str(node["git_url"]), node.get("name"))

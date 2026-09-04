@@ -18,6 +18,23 @@ the separate ComfyUI proxy session. Log records, REST errors, the last-resort
 `sys.excepthook`, and `run.json` are redacted. The public proxy client rejects any session
 that carries an `Authorization` header.
 
+A gated Hugging Face download (a private or access-gated model repo) can authenticate the
+same way, without the harness ever holding that token either. An optional manifest
+`env_secret_refs` mapping (pod env var name -> RunPod secret NAME, e.g.
+`{HF_TOKEN: HF_TOKEN}`) is validated during preflight: both the env var name and the secret
+NAME must match `[A-Z][A-Z0-9_]*`, and any value that looks like a pasted token rather than a
+secret's NAME (contains `hf_`, contains whitespace, or is longer than 64 characters) is
+refused. The create payload then carries only the RunPod reference string
+`{{ RUNPOD_SECRET_<name> }}` for that env var; RunPod itself substitutes the encrypted
+secret's value into the Pod's container environment at start time, so this harness process
+never reads it. When bootstrap finds `HF_TOKEN` set in that environment, every model download
+adds it as `-H "Authorization: Bearer $HF_TOKEN"` — the shell expands the variable straight
+into curl's argv, so the value is never echoed, `printf`'d, or written to `_bootstrap.log`.
+Bootstrap unconditionally `unset`s `HF_TOKEN` once model downloads finish and before ComfyUI
+starts. The redactor additionally strips the literal `HF_TOKEN` name and any
+`{{ RUNPOD_SECRET_` reference string from logs and `run.json`, even though the reference
+string itself carries no secret value.
+
 Install the two Python packages if needed:
 
 ```powershell
@@ -42,6 +59,9 @@ that file. Required fields are:
   `comfyui.source_url` and `comfyui.tarball_url` overrides, and optional
   `comfyui.extra_args` appended to the ComfyUI launch command;
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`;
+- optional `env_secret_refs`, a mapping of pod env var name -> RunPod secret NAME (both
+  `[A-Z][A-Z0-9_]*`) for gated Hugging Face downloads via a RunPod Secret the harness never
+  sees — see the credential boundary above;
 - optional public-HTTPS `custom_nodes`;
 - a ComfyUI API-format `workflow` object or JSON path;
 - optional `seed_fields`, a non-empty list of workflow input names to receive every job's

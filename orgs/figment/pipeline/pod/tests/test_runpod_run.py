@@ -61,6 +61,69 @@ def test_P1h_create_payload_embeds_bootstrap_in_start_command_without_api_key(mo
     assert secret not in serialized
 
 
+def test_env_secret_refs_produce_the_runpod_secret_reference_string_verbatim():
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": "HF_TOKEN"}
+
+    payload = rr.create_payload(configured)
+
+    assert payload["env"]["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
+    assert payload["env"]["FIGMENT_BOOTSTRAP_B64"]
+
+
+def test_env_secret_refs_are_absent_from_the_payload_when_not_configured():
+    payload = rr.create_payload(manifest())
+
+    assert "HF_TOKEN" not in payload["env"]
+    assert set(payload["env"]) == {"FIGMENT_BOOTSTRAP_B64"}
+
+
+def test_env_secret_refs_must_be_a_non_empty_mapping_when_present(tmp_path):
+    configured = manifest()
+    configured["env_secret_refs"] = []
+    with pytest.raises(rr.HarnessError, match="non-empty mapping"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+    configured["env_secret_refs"] = {}
+    with pytest.raises(rr.HarnessError, match="non-empty mapping"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_env_secret_refs_rejects_a_lowercase_or_malformed_env_var_name(tmp_path):
+    configured = manifest()
+    configured["env_secret_refs"] = {"hf_token": "HF_TOKEN"}
+    with pytest.raises(rr.HarnessError, match=r"env var name must match"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_env_secret_refs_rejects_a_malformed_secret_name(tmp_path):
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": "not-a-valid-name"}
+    with pytest.raises(rr.HarnessError, match=r"secret NAME must match"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize("bad_value", [
+    "hf_AbCdEfGhIjKlMnOpQrStUvWxYz0123456789ABCD",
+    "HAS A SPACE",
+    "A" * 65,
+], ids=["contains-hf-prefix", "contains-whitespace", "too-long"])
+def test_env_secret_refs_refuses_a_value_that_looks_like_a_real_token(tmp_path, bad_value):
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": bad_value}
+    with pytest.raises(rr.HarnessError, match="looks like"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_env_secret_refs_documented_example_HF_TOKEN_HF_TOKEN_is_accepted(tmp_path):
+    # This is the exact key/value pair documented in README.md/manifest.example.yaml; the
+    # "looks like a token" heuristic must not trip on the all-uppercase name itself.
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": "HF_TOKEN"}
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+    assert rr.manifest_env_secret_refs(configured) == {"HF_TOKEN": "HF_TOKEN"}
+
+
 def test_P1h_wait_ready_requires_proxy_system_stats_200_and_logs_bootstrap_tail():
     class OnePodAPI:
         def get_pod(self, _pod_id):
@@ -489,6 +552,59 @@ def test_P1m_gpu_and_import_preflight_precede_model_downloads():
     assert "timeout 120 python -c" in script
 
 
+def _model_manifest():
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "org/model",
+        "filename": "model.safetensors",
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+    }]
+    return configured
+
+
+def test_model_download_sends_hf_token_as_a_bearer_header_when_present():
+    script = rr.bootstrap_script(_model_manifest())
+
+    assert script.count('Authorization: Bearer $HF_TOKEN') == 1
+    assert 'if [ -n "${HF_TOKEN:-}" ]' in script
+    model_line = next(line for line in script.splitlines() if "retry_required model-1" in line)
+    assert "Authorization: Bearer $HF_TOKEN" in model_line
+    assert '"${hf_auth[@]}"' in model_line
+    assert model_line.index("Authorization: Bearer $HF_TOKEN") < model_line.index("curl --fail")
+
+
+def test_model_download_omits_the_header_entirely_without_hf_token_set():
+    configured = manifest()
+    script = rr.bootstrap_script(configured)  # no models configured at all
+
+    assert "Authorization: Bearer $HF_TOKEN" not in script
+
+
+def test_bootstrap_unsets_hf_token_after_downloads_and_before_comfy_start():
+    script = rr.bootstrap_script(_model_manifest())
+
+    model_index = script.index("retry_required model-1")
+    unset_index = script.index("unset HF_TOKEN")
+    comfy_start_index = script.index("run_required comfy-start")
+
+    assert script.count("unset HF_TOKEN") == 1
+    assert model_index < unset_index < comfy_start_index
+
+
+def test_hf_token_value_is_never_written_to_a_logging_statement():
+    script = rr.bootstrap_script(_model_manifest())
+
+    assert "set -x" not in script
+    for line in script.splitlines():
+        if "$HF_TOKEN" not in line:
+            continue
+        # The only permitted appearance of $HF_TOKEN is inside the curl argv it is
+        # expanded into; it must never be handed to log_line, echo, or printf.
+        assert "log_line" not in line
+        assert "echo " not in line
+        assert "printf " not in line
+
+
 def test_P1m_extra_args_are_appended_and_transport_flags_remain_owned(tmp_path):
     configured = manifest()
     configured["comfyui"]["extra_args"] = "--disable-smart-memory --preview-method auto"
@@ -665,6 +781,36 @@ def test_api_key_never_appears_in_logs_or_written_files(tmp_path):
     assert secret not in stream.getvalue()
     assert secret not in all_written
     assert "[REDACTED]" in all_written
+
+
+def test_redactor_strips_hf_token_name_and_the_runpod_secret_reference_string():
+    session = StubSession([], key="unrelated-runpod-key")
+    redactor = rr.ApiKeyRedactionFilter(session)
+
+    redacted = redactor.redact(
+        "bootstrap env carries HF_TOKEN set to {{ RUNPOD_SECRET_HF_TOKEN }}"
+    )
+
+    assert "HF_TOKEN" not in redacted
+    assert "RUNPOD_SECRET_HF_TOKEN" not in redacted
+    assert redacted.count("[REDACTED]") == 2
+
+
+def test_env_secret_ref_reference_string_is_redacted_out_of_run_json(tmp_path):
+    session = StubSession([], key="unrelated-runpod-key")
+    redactor = rr.ApiKeyRedactionFilter(session)
+
+    configured = manifest()
+    configured["env_secret_refs"] = {"HF_TOKEN": "HF_TOKEN"}
+    payload = rr.create_payload(configured)
+    assert payload["env"]["HF_TOKEN"] == "{{ RUNPOD_SECRET_HF_TOKEN }}"
+
+    rr.write_json(tmp_path / "run.json", {"create_payload_env": payload["env"]}, redactor)
+
+    written = (tmp_path / "run.json").read_text(encoding="utf-8")
+    assert "RUNPOD_SECRET_HF_TOKEN" not in written
+    assert "HF_TOKEN" not in written
+    assert "[REDACTED]" in written
 
 
 def test_dry_run_executes_whole_flow_without_network(tmp_path, monkeypatch):
@@ -2746,3 +2892,21 @@ def test_P1l_grid_01_dry_run_carries_failed_machine_host(tmp_path):
         "run", "--manifest", str(valid_manifest_path), "--dry-run",
         "--out", str(tmp_path / "grid-01"),
     ]) == 0
+
+
+def test_readme_documents_env_secret_refs_in_the_existing_style():
+    readme = (POD_DIR / "README.md").read_text(encoding="utf-8")
+
+    assert "env_secret_refs" in readme
+    assert "RUNPOD_SECRET_" in readme
+    assert "[A-Z][A-Z0-9_]*" in readme
+    assert "HF_TOKEN" in readme
+
+
+def test_example_manifest_shows_env_secret_refs_commented_out():
+    text = (POD_DIR / "manifest.example.yaml").read_text(encoding="utf-8")
+
+    assert "\n# env_secret_refs:\n#   HF_TOKEN: HF_TOKEN" in text
+    # Nothing about it should be live/parsed by default.
+    data = rr.load_manifest(POD_DIR / "manifest.example.yaml")
+    assert "env_secret_refs" not in data

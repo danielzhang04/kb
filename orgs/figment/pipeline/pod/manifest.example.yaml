@@ -65,6 +65,13 @@ models:
     filename: "model.safetensors"
     destination_dir: "/workspace/ComfyUI/models/checkpoints"
 
+# Optional: authenticate a gated (private or access-restricted) Hugging Face model
+# download via a RunPod Secret, without the harness ever seeing its value. Create the
+# secret in the RunPod dashboard first, name it HF_TOKEN (must match [A-Z][A-Z0-9_]*),
+# then uncomment:
+# env_secret_refs:
+#   HF_TOKEN: HF_TOKEN
+
 custom_nodes:
   - name: "example-node"
     git_url: "https://github.com/OWNER/PUBLIC_CUSTOM_NODE.git"
