@@ -342,3 +342,37 @@ deploy) and the three CI PRs (run the workflow's steps once on WSL). Rule: befor
 4. Say "deployed" — boss runs the preflight on the VM (expects CLEAN now), relaunches Gate 4a
    (`acceptance-run`, sonnet driver + journal monitor), and pings you one Inbox gate at a time.
 5. Gate 4b (`iteration-loop-demo`) follows; codex launches are now expected to work (native-binary pin).
+
+## 2026-09-03 DAY — Gate 4a ran END TO END through the CLI; parked at g2 on Daniel's click (state 2026-09-04 01:40Z)
+
+Deployed today (all reviewed by opus, all merged by Daniel): #159 stdin-pipe exec shim + codex native-binary pin;
+#158 P4e; #160 TOOL CAP (`--tools` + strict MCP); #161 UMask=0002 + outbox-aware lineage; #162 constrained VM
+passkey channel; #163 + #164 + #165 Run-detail wire drift (envelope, stage/attempt DTOs, human-response DTO) with a
+cross-tier guard built through the real store. Live: release 33b14ea0, broker 53e342ab.
+
+**Proven on the VM (run dc0e001c):** claude launched through the pipe, init tools == Glob/Grep/Read/Write with no
+MCP, worker Write succeeded under the new umask, draft AND revise stages reached canonical-committed (no push), the
+declared g1 and g2 gates appeared, Daniel's passkey (enrolled today, credential 6qBol29aX8NrODLFa35JCg) signed g1 as
+a T3 authorization in the audit ledger, and the revise worker ran. **g2 open, awaiting Daniel's click; signoff then
+runs unattended.** Then Gate 4b (codex now pins the native ELF).
+
+**Walls found and fixed today, in order (each by running the real thing, not by reading):** codex npm entrypoint is a
+shebang wrapper; daemon umask 0022 made checkouts unwritable; lineage push vs `disabled://` origin; scanner worker
+held 68 tools incl. Gmail/Drive connectors; T3 ceremony unsatisfiable (tailnet retired the WebAuthn vars); a stale
+untracked wake-me card blocked the drain reconciler; PowerShell quoting broke the remote unit edit (fixed with
+`cmd /c ssh ... bash -s < file`); Run detail rejected the server envelope, then the stage/attempt rows, then the
+resolved response (fourth latent drift found by the completed guard: `participantAttemptRef`).
+
+**Owed to Daniel:** re-pin `governance/webauthn-credentials.yaml` (rp-id kb.tail82dd4f.ts.net, origin
+https://kb.tail82dd4f.ts.net, credential-id 6qBol29aX8NrODLFa35JCg, x xbvEYIomvI-dzMmz3KJMDC4CG81AqG5wBNLO3Jd5GbM,
+y XaMcMdb1cSnubvenI6I_ELDR1UDiC_5RFaIzy4drPjY); rulings on P7 (drain cadence plan, PR #157 merged as a doc), P14
+(iteration-gate resolve route is a ceremony-free T3 path), the connector-free CLI login question.
+
+**Open follow-ups (tasks in the boss session):** P10 p3DeletionClosure cap; P11 work products have no route off
+the VM; P12b codex scanner == producer; P4c queue bridge writes untracked wake-me cards; P15d guard decodes the real
+body; P16 replay pane cannot read an exited attempt (investigation running); Inbox projection of run gates.
+
+**Scratchpad tooling that now works (boss session 4dd42e67):** `morning-rebuild.ps1` (guarded by the merge sha),
+`deploy-pty-fix.ps1` (A2 unit umask, C2 validator refresh, G preflight), `drain-step1/2.ps1` (CHAINBASE 9d03cfcb,
+generic step H), `passkey-enrol.ps1` (phases 1/3), `decode-bisect.test.ts` + `wsl-bisect.sh` (run the real client
+decoder on live JSON under WSL).
