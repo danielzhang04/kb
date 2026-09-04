@@ -115,3 +115,8 @@
   (pairwise 0.89-0.93) before setting any threshold; a 6-cell paired A/B pilot ($0.62) settled the mechanism.
 - **Pilot the cell before the batch.** $2.28 was spent on a method never validated at cell level; the review
   rounds checked arithmetic and safety, not whether one cell looked right. One cell, then ten.
+- **(Track-1 lesson) Replicate the proven pipeline BEFORE inventing.** Two klein-variant expansions ($3.9) produced
+  different women; the faithful port of the package's module-10 step (Qwen-Image-Edit-2511 edit + klein base +
+  Lightning + refine + face bbox + 4x upscale, their templates, their node ids) produced a clean dataset portrait on the
+  first cell for $0.22. The engine class (a 20B purpose-trained edit model) and the finishing passes were the gap, not
+  prompts. Smoke-first (one real cell, every dep pinned and digest-checked) turned a $2.75 risk into a $0.22 proof.

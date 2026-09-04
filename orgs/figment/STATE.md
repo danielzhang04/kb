@@ -142,3 +142,11 @@ final values.
   at $50.00 (contract text) from here.
 - Next: delta re-review (in flight) → dependency-smoke pod (1 job, L40S, ceiling $1.41) → dataset shard-01 (10 cells,
   ceiling $2.75) → operator full-res grade → shards 02-03 → training next ledger day.
+
+## 2026-09-03 23:50 — Track-1 dependency smoke PASSED; shard-01 running
+
+- Smoke pod xxviaztv52cxl0 (L40S): readiness 11 min (all node-deps rc=0, all pinned model digests verified), one real
+  cell in 36 s, terminate verified, $0.22. Output `runs/out/creator-001-tensor-smoke/c001-tensor-smoke-f01.png`
+  1728×2416: front-on dataset portrait with real skin texture, register intact, reads as the g01/g07 woman — the
+  first output of this project that looks like the package's. Shard-01 (10 cells, ceiling $2.75) launched 23:49
+  under card d126c410 stage 1; operator grades all 11 at full resolution before anything trains.
