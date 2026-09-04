@@ -273,6 +273,10 @@ export interface HumanRequestDto {
   response: {
     requestRevision: number;
     decision: HumanRequestDecision;
+    /** WHO answered — the responding subject, never the request's owner. See `store.ts#recordHumanResponse`. */
+    respondedBy: string;
+    /** The exact durable key the resolving write was keyed on; a replay returns the same record. */
+    idempotencyKey: string;
     response: string | null;
     respondedAt: string;
   } | null;
@@ -417,6 +421,8 @@ export interface IterationReceiptDto extends Omit<IterationOutcomeDto, 'schema'>
   outputGenerationRefs: string[];
   baseCommit: string;
   canonicalCommit: string;
+  /** Exact participant attempt that produced this outcome. */
+  participantAttemptRef: string;
   createdAt: string;
   version: number;
 }
@@ -1150,8 +1156,19 @@ const managedSessionDto: WireValidator = (value) => exactDto(value, {
   role: wireString, generation: wireNumber, predecessorSessionRef: nullable(wireString), runtime: wireString,
   model: wireString, state: wireString, version: wireNumber, createdAt: wireString, updatedAt: wireString,
 }, { attemptOperationKey: nullable(wireString) });
+/**
+ * Every field of the server's `HumanResponse` (`server/control/types.ts` `HumanResponse`), mirrored
+ * key-for-key. `respondedBy` and `idempotencyKey` are REQUIRED on both sides: the server declares both
+ * non-optional, every writer stamps both in the same object literal (`store.ts#recordHumanResponse`,
+ * the iteration-gate resolution in `store.ts#resolveIterationGate`, and the auto-close sweep), the
+ * legacy-record migration reads both unconditionally (`migrations.ts` `respondedBy: String(...)`), and
+ * `routes.ts#humanRequestDisplay` spreads the stored request through untouched — so a resolved request
+ * on the wire never omits them. Omitting them here is exactly what broke the Run view the moment
+ * Daniel approved his first gate.
+ */
 const humanResponseDto: WireValidator = (value) => exactDto(value, {
-  requestRevision: wireNumber, decision: wireString, response: nullable(wireString), respondedAt: wireString,
+  requestRevision: wireNumber, decision: wireString, respondedBy: wireString, idempotencyKey: wireString,
+  response: nullable(wireString), respondedAt: wireString,
 });
 const humanRequestDto: WireValidator = (value) => exactDto(value, {
   requestRef: wireString, runRef: wireString, displayName: wireString, shortRef: wireNumber,
@@ -1216,7 +1233,9 @@ const iterationReceiptDto: WireValidator = (value) => exactDto(value, {
   criteria: arrayOf(criterionOutcomeDto), findings: arrayOf(findingDto), positions: arrayOf(positionDto),
   recordedDissent: arrayOf(dissentDto), summary: wireString, outcomeHash: wireString,
   outputGenerationRefs: arrayOf(wireString), baseCommit: wireString, canonicalCommit: wireString,
-  createdAt: wireString, version: wireNumber,
+  // Required on the server (`types.ts` `IterationReceipt.participantAttemptRef`) and stamped by
+  // `store.ts#recordIterationReceipt` on every receipt; the decoder refused it until W53.
+  participantAttemptRef: wireString, createdAt: wireString, version: wireNumber,
 }, { resolvedFindingRefs: arrayOf(wireString) });
 const stageGenerationDto: WireValidator = (value) => exactDto(value, {
   generationRef: wireString, runRef: wireString, logicalStageRef: wireString, logicalStageId: wireString,

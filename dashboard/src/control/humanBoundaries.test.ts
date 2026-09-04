@@ -26,6 +26,8 @@ function request(
       ? {
           requestRevision: 1,
           decision,
+          respondedBy: 'operator',
+          idempotencyKey: `human-response:request-1:1:${decision}`,
           response: null,
           respondedAt: '2026-07-24T03:58:56.782Z',
         }
