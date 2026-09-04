@@ -283,7 +283,8 @@ abstract class BufferedBrokerChild implements BrokerPty {
     listener(buffered.exitCode, buffered.signal);
   }
 
-  abstract write(data: Uint8Array): Promise<void>;
+  abstract write(data: Uint8Array): Promise<boolean>;
+  abstract endInput(): void;
   abstract resize(cols: number, rows: number): void;
   abstract kill(): void;
 }
@@ -320,12 +321,19 @@ export class NodePtyChild extends BufferedBrokerChild {
    * writability comes from its master socket's drain watermark; where that is not observable the
    * write is in flight only until the server's 262,144-byte queued-input cap refuses more.
    */
-  write(data: Uint8Array): Promise<void> {
+  write(data: Uint8Array): Promise<boolean> {
     this.child.write(Buffer.from(data) as never);
     const socket = (this.child as IPty & { _socket?: PtyMasterSocket })._socket;
-    if (socket?.writableNeedDrain !== true) return Promise.resolve();
-    return new Promise<void>((resolve) => socket.once('drain', () => resolve()));
+    if (socket?.writableNeedDrain !== true) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => socket.once('drain', () => resolve(true)));
   }
+  /**
+   * Unreachable in production, and it throws rather than pretending. An interactive child's fd 0 is the
+   * pty slave it shares with fd 1/2 - there is no write end this process could close, and closing the
+   * master would take the child's OUTPUT with it. The server refuses `end-input` for a tty session
+   * before it ever gets here; this is the second lock on the same door.
+   */
+  endInput(): void { throw new Error('an interactive pty session has no stdin pipe to end'); }
   resize(cols: number, rows: number): void { this.child.resize(cols, rows); }
   kill(): void { this.killGroup(() => this.child.kill('SIGKILL')); }
 }
@@ -403,20 +411,45 @@ export class PipeStdinChild extends BufferedBrokerChild {
     return adopted;
   }
 
-  /** Resolves when the stdin PIPE has taken the bytes, or when it can never take them again. */
-  write(data: Uint8Array): Promise<void> {
+  /**
+   * Resolves TRUE when the stdin pipe has taken the bytes, FALSE when it can never take them again.
+   *
+   * The distinction is the whole point. A destroyed or half-closed stdin swallows a write without
+   * error, so a `void` return let the broker ack bytes that reached nobody as `accepted` - the same
+   * class of silent loss the end-input frame exists to end. `writableEnded` is the half-close this
+   * class performs itself; `destroyed` is the pipe closed at settle when the child exited.
+   */
+  write(data: Uint8Array): Promise<boolean> {
     const stdin = this.child.stdin;
-    if (stdin === null || stdin.destroyed || stdin.writableEnded) return Promise.resolve();
-    if (stdin.write(Buffer.from(data))) return Promise.resolve();
-    return new Promise<void>((resolve) => {
-      const settle = (): void => {
-        stdin.off('drain', settle);
-        stdin.off('close', settle);
-        resolve();
+    if (stdin === null || stdin.destroyed || stdin.writableEnded) return Promise.resolve(false);
+    if (stdin.write(Buffer.from(data))) return Promise.resolve(true);
+    return new Promise<boolean>((resolve) => {
+      // 'close' rather than 'drain' means the reader went away mid-write: the bytes buffered here are
+      // gone with it, so that is a FALSE, not a slow success.
+      const settle = (drained: boolean): void => {
+        stdin.off('drain', onDrain);
+        stdin.off('close', onClose);
+        resolve(drained);
       };
-      stdin.once('drain', settle);
-      stdin.once('close', settle);
+      const onDrain = (): void => settle(true);
+      const onClose = (): void => settle(false);
+      stdin.once('drain', onDrain);
+      stdin.once('close', onClose);
     });
+  }
+
+  /**
+   * Half-close: the child sees EOF on fd 0 while fd 1/2 stay on the pty, so it can still print
+   * everything it produces and its exit is observed the ordinary way. `end()` rather than `destroy()`
+   * for exactly that reason, and because a pending `write` resolves on the stream's own close.
+   *
+   * Idempotent here even though the server refuses a repeat: `writableEnded` makes a second call a
+   * no-op rather than an ERR_STREAM_WRITE_AFTER_END thrown across the frame handler.
+   */
+  endInput(): void {
+    const stdin = this.child.stdin;
+    if (stdin === null || stdin.destroyed || stdin.writableEnded) return;
+    stdin.end();
   }
 
   resize(cols: number, rows: number): void {

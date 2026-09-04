@@ -39,7 +39,20 @@ export type BrokerProcessIdentity = { pid: number; pgid: number; startTimeTicks:
 export interface BrokerPty {
   readonly pid: number;
   readonly identity: BrokerProcessIdentity;
-  write(data: Uint8Array): Promise<void>;
+  /**
+   * Hand these bytes to the child's stdin. Resolves TRUE once the sink has taken them, FALSE when it
+   * can never take them again - a pipe whose write end is closed (half-closed by `endInput`, or
+   * destroyed at settle), which accepts a write silently and drops it. A `void` return could not tell
+   * those apart, so the server acked swallowed bytes as accepted; see the `accepted: 0` path below.
+   */
+  write(data: Uint8Array): Promise<boolean>;
+  /**
+   * Half-close the child's stdin: the child observes EOF, its stdout/stderr stay open, and its exit is
+   * still observed the ordinary way. REQUIRED rather than optional so every child states what it does
+   * here; a tty-mode child has no pipe to end and throws, which the server never reaches because it
+   * refuses `end-input` for a tty session first (`stdinMode` below).
+   */
+  endInput(): void;
   resize(cols: number, rows: number): void;
   kill(): void;
   onData(listener: (data: Uint8Array) => void): void;
@@ -69,6 +82,21 @@ type Session = {
   operationKey: string;
   requestHash: string;
   child: BrokerPty;
+  /**
+   * Every write this child has in flight, joined. Frames arrive in one socket chunk and are dispatched
+   * in one synchronous loop, but each handler waits for `persist()` before it touches the child - so
+   * without this an `end-input` decoded AFTER an `input` could reach the child first and close the pipe
+   * on a prompt still in flight. Each input joins this tail synchronously as its frame is dispatched,
+   * and `end-input` waits on the tail, so the half-close can never overtake a byte that was sequenced
+   * before it. Per session: one child's slow write must not hold another child's.
+   */
+  inputTail: Promise<void>;
+  /** What kind of fd 0 this child was launched with, off its own `BrokerLaunchSpec`. Only a `pipe`
+   *  can be half-closed, so this is what `end-input` is refused against - the spec the broker built,
+   *  never a claim on the request. */
+  stdinMode: BrokerLaunchSpec['stdinMode'];
+  /** Set by an accepted `end-input`. One-way: a second end-input and every later `input` are refused. */
+  inputEnded: boolean;
   sequence: number;
   inputSequence: number;
   queuedInputBytes: number;
@@ -295,6 +323,14 @@ export class LinuxBrokerServer {
         this.sendError(socket, frame.requestId, frame.sessionId, 'not-found', null);
         return;
       }
+      // Bytes after an accepted end-input reach nobody: the write end of the pipe is already closed,
+      // so `PipeStdinChild.write` resolves without writing and would ack them as ACCEPTED - input
+      // silently swallowed, which is the failure mode this whole change exists to end. Refused, in the
+      // one place the state is known.
+      if (session.inputEnded) {
+        this.sendError(socket, frame.requestId, frame.sessionId, 'invalid-request', null);
+        return;
+      }
       if (frame.sequence !== session.inputSequence) {
         this.sendError(socket, frame.requestId, frame.sessionId, 'invalid-request', null);
         return;
@@ -309,9 +345,19 @@ export class LinuxBrokerServer {
         socket.pause();
         session.pausedInputs.add(socket);
       }
-      await this.persist();
+      // Reserved SYNCHRONOUSLY, while this frame is still being dispatched, so an `end-input` decoded
+      // after it in the same socket chunk chains BEHIND this write. Reserving after an await would hand
+      // that end-input a tail which does not yet know about this write, and the pipe would close on a
+      // prompt still in flight - the exact loss the frame exists to prevent.
+      //
+      // The write itself still waits for the durable record, and writes stay CONCURRENT with each
+      // other: they are already ordered by `persist()`'s own FIFO chain and by the stream underneath,
+      // and serializing them would collapse the in-flight window the 262,144-byte cap measures.
+      const writing = this.persist().then(() => session.child.write(input));
+      session.inputTail = Promise.allSettled([session.inputTail, writing]).then(() => undefined);
+      let written: boolean;
       try {
-        await session.child.write(input);
+        written = await writing;
       } finally {
         session.queuedInputBytes -= input.byteLength;
         if (session.queuedInputBytes < INPUT_PAUSE_BYTES) {
@@ -319,8 +365,39 @@ export class LinuxBrokerServer {
           session.pausedInputs.clear();
         }
       }
+      // The sequence is CONSUMED either way - the broker took the slot the moment it advanced
+      // `inputSequence` above - so bytes the child could not take are reported as `accepted: 0` rather
+      // than as an error frame. An error here would tell the client to roll its counter back onto a
+      // number this session has already spent, and every request after it would be refused.
       this.send(socket, { type: 'ack', requestId: frame.requestId, action: 'input', sessionId: session.sessionId,
-        epochId: session.epochId, sequence: nextSequence(session), accepted: input.byteLength });
+        epochId: session.epochId, sequence: nextSequence(session), accepted: written ? input.byteLength : 0 });
+      await this.persist();
+      return;
+    }
+    if (frame.type === 'end-input') {
+      if (session.state !== 'live') { this.sendError(socket, frame.requestId, frame.sessionId, 'not-found', null); return; }
+      // Ordered with every other input operation, so an end-input can never overtake the prompt it
+      // terminates.
+      if (frame.sequence !== session.inputSequence) {
+        this.sendError(socket, frame.requestId, frame.sessionId, 'invalid-request', null); return;
+      }
+      // A tty child's fd 0 is the pty slave, shared with fd 1/2: there is no write end to close, and
+      // U+0004 already IS its EOF. A second end-input has nothing left to close either. Both are
+      // sender bugs, so both are refused rather than absorbed - and the sequence is NOT consumed by a
+      // refusal, exactly as `input`/`resize`/`close` treat theirs.
+      if (session.stdinMode !== 'pipe' || session.inputEnded) {
+        this.sendError(socket, frame.requestId, frame.sessionId, 'invalid-request', null); return;
+      }
+      session.inputSequence += 1;
+      // Flagged SYNCHRONOUSLY, so a later `input` frame decoded in the same chunk is refused rather
+      // than queued behind an EOF that was sequenced before it; the half-close itself goes to the back
+      // of this child's queue, so every byte already in flight reaches it before the pipe closes.
+      session.inputEnded = true;
+      const ending = session.inputTail.then(() => { session.child.endInput(); });
+      session.inputTail = ending.then(() => undefined, () => undefined);
+      await ending;
+      this.send(socket, { type: 'ack', requestId: frame.requestId, action: 'end-input', sessionId: session.sessionId,
+        epochId: session.epochId, sequence: nextSequence(session) });
       await this.persist();
       return;
     }
@@ -386,7 +463,8 @@ export class LinuxBrokerServer {
     const sessionId = this.options.makeSessionId();
     const session: Session = {
       sessionId, epochId: this.options.epochId, operationKey: frame.operationKey, requestHash,
-      child, sequence: 0, inputSequence: 0, queuedInputBytes: 0, state: 'live', attachments: new Set(),
+      child, inputTail: Promise.resolve(), stdinMode: spec.stdinMode, inputEnded: false,
+      sequence: 0, inputSequence: 0, queuedInputBytes: 0, state: 'live', attachments: new Set(),
       pausedInputs: new Set(), durable: false, pendingData: [], pendingExit: null, closeAckSent: false,
     };
     this.sessions.set(sessionId, session);

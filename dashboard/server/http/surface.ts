@@ -120,8 +120,8 @@ export const PTY_OPEN_FLEET_FROZEN = 'pty open refused: fleet-frozen';
  * stdout/stderr can name environment or credential problems, and none of it may reach a browser frame,
  * an audit row, or a close reason.
  *
- * Only `create` is gated. `attach`/`write`/`resize`/`close`/`drain` act on sessions that already exist,
- * and a freeze must never strand a live child or block reaping one.
+ * Only `create` is gated. `attach`/`write`/`endInput`/`resize`/`close`/`drain` act on sessions that
+ * already exist, and a freeze must never strand a live child or block reaping one.
  */
 function fleetGatedSessionHost(host: SessionHost, repoRoot: string, runPreamble: PreambleRunner): SessionHost {
   const fleetRunnable = (): boolean => {
@@ -149,6 +149,7 @@ function fleetGatedSessionHost(host: SessionHost, repoRoot: string, runPreamble:
     },
     attach: (sessionId, sink) => host.attach(sessionId, sink),
     write: (sessionId, data) => host.write(sessionId, data),
+    endInput: (sessionId) => host.endInput(sessionId),
     resize: (sessionId, size) => host.resize(sessionId, size),
     close: (sessionId) => host.close(sessionId),
     listEpoch: () => host.listEpoch(),

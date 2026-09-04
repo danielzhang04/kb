@@ -146,6 +146,13 @@ export interface SessionHost {
   create(request: SessionHostRequest, sink: SessionSink): HostLaunch;
   attach(sessionId: string, sink: SessionSink): Promise<PortResult<{ attachmentId: string }>>;
   write(sessionId: string, data: Uint8Array): Promise<PortResult<{ accepted: number }>>;
+  /**
+   * "No further input for this session" - a half-close, never a kill: output keeps flowing and the exit
+   * is observed as usual. Required on the port because a headless recipe whose CLI reads stdin until
+   * EOF (`recipeEndsInputOnEof`, pty/fdPinnedPaths.ts) cannot start its turn without it, and a host
+   * that silently lacked the operation would hang that child instead of refusing it.
+   */
+  endInput(sessionId: string): Promise<PortResult<{ ended: true }>>;
   resize(sessionId: string, size: SessionSize): Promise<PortResult<SessionSize>>;
   close(sessionId: string): Promise<PortResult<ObservedExit>>;
   listEpoch(): Promise<PortResult<{ epochId: string; sessionIds: string[] }>>;

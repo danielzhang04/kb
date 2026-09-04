@@ -110,6 +110,7 @@ function recordingSessionHost(): {
   create: ReturnType<typeof vi.fn>;
   attach: ReturnType<typeof vi.fn>;
   write: ReturnType<typeof vi.fn>;
+  endInput: ReturnType<typeof vi.fn>;
   resize: ReturnType<typeof vi.fn>;
   close: ReturnType<typeof vi.fn>;
   listEpoch: ReturnType<typeof vi.fn>;
@@ -139,6 +140,8 @@ function recordingSessionHost(): {
     ({ ok: true as const, value: { attachmentId: 'att-0123456789abcdef0123456789abcdef' } }));
   const write = vi.fn(async (_sessionId: string, _data: Uint8Array) =>
     ({ ok: true as const, value: { accepted: 3 } }));
+  const endInput = vi.fn(async (_sessionId: string) =>
+    ({ ok: true as const, value: { ended: true as const } }));
   const resize = vi.fn(async (_sessionId: string, size: { cols: number; rows: number }) =>
     ({ ok: true as const, value: size }));
   const close = vi.fn(async (_sessionId: string) => ({ ok: true as const, value: exit }));
@@ -147,8 +150,8 @@ function recordingSessionHost(): {
   const drain = vi.fn(async (epochId: string) =>
     ({ ok: true as const, value: { epochId, closed: [HOST_SESSION_ID], alreadyGone: [] } }));
   return {
-    host: { probe, create, attach, write, resize, close, listEpoch, drain },
-    launch, exit, probe, create, attach, write, resize, close, listEpoch, drain,
+    host: { probe, create, attach, write, endInput, resize, close, listEpoch, drain },
+    launch, exit, probe, create, attach, write, endInput, resize, close, listEpoch, drain,
   };
 }
 

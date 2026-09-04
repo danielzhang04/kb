@@ -42,8 +42,10 @@ describe('P3 closed contracts', () => {
     expectTypeOf<BrowserServerFrame['type']>().toEqualTypeOf<
       'session' | 'created' | 'attached' | 'data' | 'exit' | 'ack' | 'error'
     >();
+    // `end-input` is part of the broker grammar, and only of the BROKER grammar: the browser union
+    // above must never gain it, or an operator's terminal could half-close an agent's stdin.
     expectTypeOf<BrokerClientFrame['type']>().toEqualTypeOf<
-      'hello' | 'create' | 'attach' | 'input' | 'resize' | 'close' | 'launchers'
+      'hello' | 'create' | 'attach' | 'input' | 'resize' | 'close' | 'launchers' | 'end-input'
     >();
     expectTypeOf<BrokerServerFrame['type']>().toEqualTypeOf<
       'ready' | 'ack' | 'error' | 'data' | 'exit' | 'launchers'
@@ -84,11 +86,13 @@ describe('P3 closed contracts', () => {
   it('publishes every wire branch and the recipe/refusal matrices', () => {
     expect(validBrowserClientFrames).toHaveLength(8);
     expect(validBrowserServerFrames).toHaveLength(10);
-    expect(validBrokerClientFrames).toHaveLength(7);
-    expect(validBrokerServerFrames).toHaveLength(12);
+    expect(validBrokerClientFrames).toHaveLength(8);
+    expect(validBrokerServerFrames).toHaveLength(13);
     expect(validLaunchRecipeVectors).toHaveLength(7);
     expect(invalidLaunchRecipeVectors).toHaveLength(9);
-    expect(invalidPtyProtocolVectors).toHaveLength(29);
+    // 30 since W64: `end-input-unsequenced`, the one shape of the new frame that would let an
+    // end-of-input overtake the prompt it terminates.
+    expect(invalidPtyProtocolVectors).toHaveLength(30);
   });
 });
 

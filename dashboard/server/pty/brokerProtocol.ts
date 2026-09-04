@@ -227,6 +227,17 @@ export function decodeBrokerClientFrame(value: unknown): BrokerClientFrame {
       exact(frame, ['type', 'requestId', 'sessionId', 'epochId']);
       commonRequest(frame, true); identifier(frame.epochId, 'epochId', epochIdPattern);
       break;
+    // Half-close of the child's stdin. Validated exactly like `close` - same key set minus nothing,
+    // same session-scoped ordered `sequence` - because it IS an ordered input-stream operation: it
+    // says "no more bytes after the ones already sequenced", and a decoder that let it carry its own
+    // numbering could let an end-input overtake the prompt it is meant to terminate. Everything about
+    // WHICH sessions may be ended (pipe-mode only, once) is the server's judgement, not the grammar's:
+    // this decoder has no session table and must never pretend to one.
+    case 'end-input':
+      recognizedRequestType = true;
+      exact(frame, ['type', 'requestId', 'sessionId', 'epochId', 'sequence']);
+      commonRequest(frame, false); identifier(frame.epochId, 'epochId', epochIdPattern); sequence(frame.sequence);
+      break;
     default:
       throw new BrokerProtocolError('broker client frame type is invalid');
     }
@@ -304,6 +315,7 @@ export function decodeBrokerServerFrame(value: unknown): BrokerServerFrame {
         input: ['type', 'requestId', 'action', 'sessionId', 'epochId', 'sequence', 'accepted'],
         resize: ['type', 'requestId', 'action', 'sessionId', 'epochId', 'sequence', 'size'],
         close: ['type', 'requestId', 'action', 'sessionId', 'epochId', 'sequence', 'replayed'],
+        'end-input': ['type', 'requestId', 'action', 'sessionId', 'epochId', 'sequence'],
       };
       if (typeof action !== 'string' || !(action in actionKeys)) throw new BrokerProtocolError('ack action is invalid');
       exact(frame, actionKeys[action]!); commonRequest(frame, false);

@@ -80,6 +80,13 @@ const NONBLOCK_PROBE = 'NB=$(sed -n "s/^flags:[[:space:]]*//p" /proc/self/fdinfo
   + ' echo "NONBLOCK=$(( (NB & 04000) != 0 ))"';
 const BURST_SCRIPT = `${NONBLOCK_PROBE}; echo READY; read -r GO; head -c ${BURST_BYTES} /dev/zero | tr -c x y;`
   + ' echo "BURST-END"; exit 0';
+// The EOF-terminated stand-in, mirroring VM probes A3/A4: `codex exec -` reads its whole instruction
+// from stdin and blocks until the pipe CLOSES, so `cat` is the honest bash equivalent. With the
+// end-input frame the child gets EOF, echoes what it read, and exits 0; revert either half of the
+// change (the adapter's `host.endInput` call, or `PipeStdinChild.endInput`) and this script hangs on
+// `cat` until the test's own 30 s timeout kills it - the same shape as the 90 s kill on the VM.
+const CODEX_EOF_SCRIPT = TTY_PROBE + '; echo READY; PROMPT=$(cat); echo "GOT-EOF"; echo "$PROMPT"; exit 0';
+const CODEX_WORK_ORDER_MARKER = 'CODEX-READS-UNTIL-EOF';
 const SHELL_RECIPE = { launcher: 'shell', mode: 'interactive', model: null,
   toolPolicyId: 'shell-default', sandbox: 'interactive' } as const;
 const HEADLESS_RECIPE = { launcher: 'claude', mode: 'headless-json', model: 'claude-opus-5',
@@ -157,6 +164,30 @@ function claudeDeclaration(index: number, workOrder = `work-order-${index}`): Ap
   };
 }
 
+/**
+ * The codex twin of `claudeDeclaration`. Same stage shape, different runtime - which is the whole
+ * point: everything about the launch (argv table, stdin mode, prompt delivery, end of input) is
+ * decided from `profile.runtime` and the recipe it produces, so a codex attempt is the only way to
+ * exercise the EOF-terminated half of that table.
+ */
+function codexDeclaration(index: number): ApprovedAttemptDeclaration {
+  const base = claudeDeclaration(index, `${CODEX_WORK_ORDER_MARKER} ${index}`);
+  const profile: ExecutionProfile & { runtime: 'codex' } = {
+    id: 'codex-worker', role: 'worker', runtime: 'codex', model: 'gpt-5.6-terra',
+    capabilities: ['read', 'write-approved-scope', 'emit-events'],
+  };
+  const assignment: ResolvedAgentAssignment = {
+    ...base.assignment!, profileId: profile.id, runtime: profile.runtime, model: profile.model,
+  };
+  return {
+    ...base,
+    profile,
+    assignment,
+    instructionMarkdown: base.instructionMarkdown!,
+    proposalStage: { ...base.proposalStage, worker: { runtime: 'codex', model: profile.model }, assignment },
+  };
+}
+
 function hostOperationKey(controlKey: string): string {
   return `op-${createHash('sha256').update(controlKey).digest('hex')}`;
 }
@@ -219,7 +250,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
       // Only the two executables this harness drives; which stdin each recipe earns is asserted by
       // the tests themselves, so a wrong `stdinMode` fails on the CHILD's own STDIN_TTY report rather
       // than here, before the child has run at all.
-      expect(spec.executable).toMatch(/\/(claude|bash)$/);
+      expect(spec.executable).toMatch(/\/(claude|codex|bash)$/);
       expect(spec.cwd.endsWith('/orgs/example/worktree')).toBe(true);
       const script = launchScripts.shift();
       if (script === undefined) throw new Error('real broker launcher had no queued test script');
@@ -336,6 +367,9 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     const originalWrite = client.write.bind(client);
     vi.spyOn(client, 'write').mockImplementation(async (sessionId, data) =>
       track(await originalWrite(sessionId, data)));
+    const originalEndInput = client.endInput.bind(client);
+    vi.spyOn(client, 'endInput').mockImplementation(async (sessionId) =>
+      track(await originalEndInput(sessionId)));
     const originalClose = client.close.bind(client);
     vi.spyOn(client, 'close').mockImplementation(async (sessionId) => track(await originalClose(sessionId)));
     const originalStart = registry.startRunSession.bind(registry);
@@ -638,6 +672,61 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
   }, 60_000);
 
   /**
+   * W64's live proof, on the production spawner and the production adapter: a headless CODEX attempt
+   * whose child reads stdin until EOF starts, finishes, and keeps its output.
+   *
+   * The two defects this closes were both confirmed on the VM against the real binary. `--cd` pointed
+   * at `/proc/self/fd/<n>`, a CLOEXEC descriptor already gone two execve hops later - exit 1 in 0.1 s.
+   * And the prompt's trailing U+0004 is an ordinary byte on a PIPE, so `codex exec -` never saw the end
+   * of its instruction and hung to the 90 s kill with zero output.
+   *
+   * RED ON REVERT, both halves:
+   *   - drop the `host.endInput` call in `attemptSessionAdapter.begin`, or make `PipeStdinChild.endInput`
+   *     a no-op, and `PROMPT=$(cat)` never returns: no `GOT-EOF`, no exit, and this test dies on its own
+   *     30 s timeout;
+   *   - put `'--cd', cwd` back on the fresh headless branch and the argv assertion below goes red before
+   *     the child is even reached.
+   */
+  it.sequential('starts a headless codex attempt, ends its stdin, and keeps the child output', async () => {
+    launchScripts.push(CODEX_EOF_SCRIPT);
+    // This case runs after the raw-socket test, which parks a DELIBERATE `unsafe-cwd` error in
+    // `brokerErrors`; the claim here is that THIS attempt adds none, not that the file has seen none.
+    const brokerErrorsBefore = brokerErrors.length;
+    const input = codexDeclaration(7);
+    const launch = adapter.begin(input);
+    const receipt = await launch.receipt;
+    expect(receipt).toMatchObject({ ok: true });
+    if (!receipt.ok) throw new Error('the codex EOF attempt was refused');
+    await launch.result;
+
+    // The recipe the broker actually built for this launch - before the harness swapped in bash.
+    const spec = launchSpecs.at(-1)!;
+    expect(spec.executable.endsWith('/codex')).toBe(true);
+    expect(spec.stdinMode).toBe('pipe');
+    expect(spec.args.slice(0, 5)).toEqual(['exec', '-', '--json', '--model', 'gpt-5.6-terra']);
+    expect(spec.args).not.toContain('--cd');
+    expect(spec.args).not.toContain(spec.cwd);
+
+    const transcriptPath = join(stateRoot, 'pty', 'transcripts', `${receipt.value.sessionId}.raw`);
+    await vi.waitFor(() => {
+      const output = readFileSync(transcriptPath).toString('utf8');
+      expect(output).toContain('STDIN_TTY=0');
+      // The child reached the far side of `cat`, which only happens on a real EOF...
+      expect(output).toContain('GOT-EOF');
+      // ...with the whole approved work order intact, and no stray EOT byte in it.
+      expect(output).toContain(CODEX_WORK_ORDER_MARKER);
+      expect(output).not.toContain('\u0004');
+      expect(persistence.read().sessions.find((item) => item.sessionId === receipt.value.sessionId))
+        .toMatchObject({ state: 'exited', exit: { exitCode: 0, reason: 'exited' } });
+    }, { timeout: 15_000, interval: 25 });
+
+    const operationKey = hostOperationKey(input.operationKey);
+    expect(persistence.read().attemptOperations[operationKey]).toMatchObject({ promptsDelivered: 1 });
+    expect(refusalResults).toEqual([]);
+    expect(brokerErrors).toHaveLength(brokerErrorsBefore);
+  }, 30_000);
+
+  /**
    * The write-after-exit path, which the two-prompt scripts elsewhere deliberately avoid: the stdin
    * pipe is gone (settle destroys it), so a write has no reader, no drain and no 'close' left to wait
    * on. It must resolve rather than hang, and its EPIPE must not surface as an unhandled 'error'.
@@ -651,8 +740,10 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     process.on('unhandledRejection', onRejection);
     const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
     await expect(exited).resolves.toBe(0);
-    await expect(child.write(Buffer.from('after-exit\n'))).resolves.toBeUndefined();
-    await expect(child.write(Buffer.from('again\n'))).resolves.toBeUndefined();
+    // FALSE, not a silent success: the pipe was destroyed at settle, so these bytes reached nobody
+    // and the broker must be able to say so rather than ack them as accepted.
+    await expect(child.write(Buffer.from('after-exit\n'))).resolves.toBe(false);
+    await expect(child.write(Buffer.from('again\n'))).resolves.toBe(false);
     // ...and a resize after the master is gone is a no-op, not an ioctl on a recycled descriptor.
     expect(() => child.resize(80, 24)).not.toThrow();
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
