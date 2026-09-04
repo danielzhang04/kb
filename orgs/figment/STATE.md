@@ -172,3 +172,15 @@ final values.
 - Ruling: full run at 2000 steps / 250-step saves (8 checkpoints) tonight — 3000 steps at 3.85 s/step is ~3.2 h on an
   L40S, over the 180-min marker window and the daily budget; revisit 3000 on a fresh budget. Smoke #5 (100 steps)
   proves the publish path before the full run. Today's spend ≈ $2.9.
+
+## 2026-09-04 19:40 — training path PROVEN (smoke #5); full 2000-step run + tester launched
+
+- Smoke #5 (pod 9dd4nur6in3hqa, $0.30): 100 steps at 3.8 s/step, intermediate `creator001krea2_000000050` + final bare
+  `creator001krea2.safetensors` published and downloaded (228 MB each), log retrieved, terminate verified. Five smokes
+  total (~$1.9) bought a proven, instrumented training path: transport v0.20.1 --cpu, requirement floors restored,
+  POSIX path guard, streamed log + heartbeat, real checkpoint names.
+- Full run launched 19:36 via the chain driver (smoke skipped): 2000 steps / 250-step saves = 8 checkpoints,
+  --max-usd 5.85 / 270 min, then the 8-branch tester (--max-usd 2.28). Today $3.18 before the full run.
+- Operator rule (memory: figment-pipeline-not-influencer): the deliverable is the pipeline; after this loop closes,
+  generalise the chain into `figment train --creator <id>` from persona.yaml, then re-run creator-001 as the
+  acceptance test, then fixture persona 002 (task T1-G).
