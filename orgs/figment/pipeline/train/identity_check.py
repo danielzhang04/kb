@@ -319,6 +319,11 @@ def _resolve_cell_id(image_id: str, cell_ids: list[str]) -> str | None:
     matches = [cid for cid in cell_ids if image_id.endswith("-" + cid)]
     if len(matches) == 1:
         return matches[0]
+    # Mechanism-suffixed output names (expansion-03 arm A: `<short>-<cell_id>-mechA`)
+    # are joined by stripping one trailing `-mech<letter>` token and retrying.
+    stripped = re.sub(r"-mech[A-Za-z]$", "", image_id)
+    if stripped != image_id:
+        return _resolve_cell_id(stripped, cell_ids)
     return None
 
 

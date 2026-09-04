@@ -723,3 +723,11 @@ def test_resolve_scoring_inputs_persona_batch_mode_resolves_paths(tmp_path):
     anchor, image_dir = checker.resolve_scoring_inputs(args)
     assert anchor == anchor_file.resolve()
     assert image_dir == (batch_dir / "images").resolve()
+
+
+def test_resolve_cell_id_strips_mechanism_suffix():
+    from identity_check import _resolve_cell_id
+    ids = ["exp03-g01-t01", "exp03-g01-t02"]
+    assert _resolve_cell_id("c001-exp03-g01-t01-mechA", ids) == "exp03-g01-t01"
+    assert _resolve_cell_id("c001-exp03-g01-t02", ids) == "exp03-g01-t02"
+    assert _resolve_cell_id("c001-exp03-g01-t09-mechA", ids) is None
