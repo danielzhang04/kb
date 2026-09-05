@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { chmodSync, constants as fsConstants, existsSync, mkdtempSync, openSync, readFileSync, rmSync,
-  writeFileSync } from 'node:fs';
+  statSync, writeFileSync } from 'node:fs';
 import { createServer, connect as connectSocket, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -798,5 +798,45 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     process.off('unhandledRejection', onRejection);
     expect(process.listeners('unhandledRejection')).not.toContain(onRejection);
     expect(errors).toEqual([]);
+  }, 30_000);
+
+  /**
+   * W70 (Gate 4b run 3, Fix 1): kb-shell-broker.service now ships UMask=0002, for the same reason
+   * kb-dashboard.service already does - a codex/claude worker's own `mkdir -p` inside its run worktree
+   * must come out group-writable (2775/664), or the daemon (uid kb-dashboard, group kb-shell) gets
+   * EACCES unlinking the worker's own files during `git worktree remove --force`. Before this fix the
+   * unit carried no UMask=, so systemd's 0022 default made every worker-created directory 2755
+   * kb-shell:kb-shell.
+   *
+   * This harness cannot start kb-shell-broker.service itself - there is no systemd here, and (see
+   * `launch()` above) the child's cwd is deliberately the harness's own stateRoot, not a
+   * systemd-managed one - so it cannot prove the INSTALLED unit's UMask reaches a child on the VM.
+   * Said honestly: what this test proves instead is that the broker's spawn path applies whatever
+   * `process.umask()` the broker process runs under to its children exactly as a plain fork/exec
+   * would, with nothing in `spawnBrokerChild`/node-pty that overrides or ignores it. Given that, and
+   * given the unit ships UMask=0002 (asserted statically by deploy/validate_vm_runtime.py's
+   * BROKER_SERVICE_DIRECTIVES and tests/test_install_pty_broker.py), the worker's own directories on
+   * the VM come out group-writable.
+   */
+  it.sequential("applies the broker process's umask to a child's own mkdir, matching UMask=0002", async () => {
+    const previousUmask = process.umask(0o002);
+    try {
+      launchScripts.push('mkdir -p sub/dir && touch sub/dir/f; echo READY; exit 0');
+      const child = await launcher.launch(buildBrokerLaunch(HEADLESS_RECIPE, 'worktrees',
+        'orgs/example/worktree', { cols: 120, rows: 42 }));
+      let output = '';
+      child.onData((data) => { output += Buffer.from(data).toString('utf8'); });
+      const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+      await vi.waitFor(() => expect(output).toContain('READY'), { timeout: 10_000, interval: 25 });
+      await expect(exited).resolves.toBe(0);
+      // Group-write on both: the bit kb-shell needs to write its own files, and the daemon (a
+      // DIFFERENT uid, same supplementary group) needs to remove them back out at attempt cleanup.
+      expect(statSync(join(stateRoot, 'sub', 'dir')).mode & 0o020).not.toBe(0);
+      expect(statSync(join(stateRoot, 'sub', 'dir', 'f')).mode & 0o020).not.toBe(0);
+    } finally {
+      process.umask(previousUmask);
+      rmSync(join(stateRoot, 'sub'), { recursive: true, force: true });
+    }
+    expect(refusalResults).toEqual([]);
   }, 30_000);
 });

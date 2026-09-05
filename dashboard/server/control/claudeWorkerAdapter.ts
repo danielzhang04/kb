@@ -150,6 +150,7 @@ function iterationContractLines(contract: IterationOutcomeContract, inputStage: 
     'SERVER-OWNED ITERATION CONTRACT (binding authority):',
     'Return ONLY one UTF-8 JSON object in your final result. No markdown, prose, WAITING-HUMAN marker, array, or extra object.',
     'Its exact shape is {schema:"kb.iteration-outcome/v1",requestRef,iterationLoopRef,participantId,cycle,verdict,inputGenerationRefs,criteria:[{criterionId,verdict:"pass"|"fail"|"unverified",findingIds:string[]}],findings:[{findingId,criterionId,severity:"blocking"|"advisory",summary,evidencePaths:string[]}],resolvedFindingRefs?:string[],positions:[{positionId,participantId,summary,generationRefs:string[]}],recordedDissent:[{dissentId,participantId,positionId,summary}],summary}.',
+    'positions and recordedDissent MUST be [] unless the verdict is exactly "consensus" or "continue".',
     `RECIPIENT PARTICIPANT (immutable): ${participant.participantId}`,
     `RECIPIENT MANDATE (immutable): ${participant.mandate}`,
     `RECIPIENT PERSPECTIVE (immutable): ${participant.perspective}`,

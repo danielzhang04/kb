@@ -159,13 +159,32 @@ does **not** refuse; it refuses only once the resident validator has been refres
 is desktop-side: `scripts/deploy_platform_release.py#assert_dashboard_umask` probes
 `systemctl show kb-dashboard -p UMask --value` over ssh and refuses the deploy before uploading a byte.
 
-**Order matters, and it is the opposite of `bootstrap_vm.py`'s internal one.** `UMask=0002` is inert to
-the old resident validator (it has no rule about `UMask`), while a refreshed validator against an old
-unit fails `ExecStartPre` on the next start. So: **install the unit + `daemon-reload` FIRST, refresh the
-resident validators SECOND, restart the daemon LAST.** `converge` does both writes with no start in
-between, which is why its own note reads the other way; a hand ceremony has no such atomicity. If you
-do refresh the validators first anyway, **do not restart or stop the daemon until the new unit is
-installed** - between those two steps the service cannot start.
+**Order matters, and it is the opposite of `bootstrap_vm.py`'s internal one - and it now names BOTH
+units, not just the dashboard's.** `UMask=0002` is inert to the old resident validator (it has no rule
+about `UMask`), while a refreshed validator against an old unit fails `ExecStartPre` on the next start.
+So: **install BOTH unit files (`kb-dashboard.service` AND `kb-shell-broker.service`) + `daemon-reload`
+FIRST, refresh the resident validators SECOND, restart the daemons LAST.** `converge` does both writes
+with no start in between, which is why its own note reads the other way; a hand ceremony has no such
+atomicity. If you do refresh the validators first anyway, **do not restart or stop either daemon until
+BOTH new units are installed** - between those steps the service cannot start. This is stricter than it
+was before W70 (Gate 4b run 3): `validate_vm_runtime.py`'s static phase calls `validate_broker_units()`
+unconditionally, from inside the SAME invocation the dashboard's own `ExecStartPre` runs (`main()`,
+`--phase static`). So refreshing the resident validator while `kb-shell-broker.service` on disk still
+lacks `UMask=0002` does not merely leave the broker unfixed - `validate_broker_units()` raises on the
+drifted broker unit BEFORE the dashboard's `ExecStartPre` can exit 0, which fails the DASHBOARD's own
+start.
+
+**The deadlock (W70, Gate 4b run 3), stated explicitly:** `scripts/deploy_platform_release.py#assert_dashboard_umask`
+now probes BOTH `kb-dashboard` and `kb-shell-broker` and refuses the deploy unless EVERY probe reports
+`0002` - and, exactly like the dashboard unit, a release deploy and its activation never write
+`/etc/systemd/system/kb-shell-broker.service`. That unit's only writer is
+`deploy/install_pty_broker.py#install_units`, which lays it down `install -m 0444` from a release
+payload's `deploy/systemd/` - and nothing in a plain `deploy_platform_release.py` run invokes
+`install_pty_broker.py`. So on a VM whose broker unit predates this fix, there is no release path that
+reaches a passing pre-check by itself: **the hand edit below MUST come first.** Whenever
+`install_pty_broker.py` next runs (this repo's `deploy/systemd/kb-shell-broker.service` already carries
+`UMask=0002` after this fix), it re-lays byte-identical content over the hand-edited file - no drift,
+and the hand edit was harmless plumbing to the same destination in the meantime.
 
 ```sh
 # ON THE VM, as root. Preferred - re-renders the unit exactly as bootstrap does, in one step:
@@ -188,6 +207,20 @@ python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static \
   --ops-root /var/lib/kb/ops --unit kb-dashboard.service
 # 3. RESTART LAST.
 systemctl restart kb-dashboard.service
+
+# Twin ceremony for kb-shell-broker.service - do this FIRST if the broker unit still lacks UMask=0002
+# (see the deadlock note above). The installed unit is 0444 (deploy/install_pty_broker.py#install_units),
+# so edit a working copy and lay it down the same way the installer does, rather than editing the
+# 0444 file in place.
+cp /etc/systemd/system/kb-shell-broker.service /root/kb-shell-broker.service.pre-$(date -u +%Y%m%dT%H%M%SZ)
+cp /etc/systemd/system/kb-shell-broker.service /root/kb-shell-broker.service.next
+# add UMask=0002 to [Service] in /root/kb-shell-broker.service.next, keeping every existing directive
+install -o root -g root -m 0444 /root/kb-shell-broker.service.next /etc/systemd/system/kb-shell-broker.service
+systemctl daemon-reload
+systemctl show kb-shell-broker -p UMask --value       # must print 0002 BEFORE any restart
+# Restart only once no PTY session is live: KillMode=control-group means a restart kills every
+# worker child under the unit's cgroup, not just the broker process.
+systemctl restart kb-shell-broker.service
 ```
 
 **Wall 1, the reason this section exists** (first successful claude launch, 2026-09-03): the daemon runs

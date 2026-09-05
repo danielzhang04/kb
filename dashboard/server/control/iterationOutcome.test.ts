@@ -223,6 +223,23 @@ describe('parseIterationOutcome', () => {
     }), fulfilled)).toMatchObject({ ok: false, detail: expect.stringMatching(/no positions|recorded dissent/i) });
   });
 
+  it('pins the exact rejection detail for rework carrying one position (W70, Gate 4b run 3)', () => {
+    // The worker prompt now states this rule (claudeWorkerAdapter.ts iterationContractLines), but the
+    // server-side refusal is the actual gate: a codex checker returned "rework" with one position and
+    // the run failed here, on a detail string nothing upstream had told it to expect.
+    const position: IterationPosition = {
+      positionId: 'position-a', participantId: 'source', summary: 'Keep the safe implementation.', generationRefs: ['generation-1'],
+    };
+    const peer = iterationContract('peer', ['rework']);
+    expect(parseIterationOutcome(iterationOutcome(peer, 'rework', {
+      ...negativeFields(),
+      positions: [position],
+    }), peer)).toMatchObject({
+      ok: false,
+      detail: 'invalid iteration outcome: rework must carry no positions or recorded dissent',
+    });
+  });
+
   it('binds mediated positions and dissent to the current server position set', () => {
     const current: IterationPosition = {
       positionId: 'position-a', participantId: 'source', summary: 'Server-known position.', generationRefs: ['generation-1'],

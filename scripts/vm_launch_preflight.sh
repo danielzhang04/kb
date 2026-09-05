@@ -312,6 +312,15 @@ dashboard_umask=$(systemctl show kb-dashboard -p UMask --value 2>/dev/null)
 [ "$dashboard_umask" = "0002" ] \
   && ok "kb-dashboard UMask=0002 (workers can write in their run worktree)" \
   || bad "kb-dashboard UMask=$dashboard_umask, needs 0002 - every worker write inside the run worktree will fail. Fix: add UMask=0002 to [Service] in deploy/systemd/kb-dashboard.service, reinstall the unit on the VM, systemctl daemon-reload, systemctl restart kb-dashboard"
+# Twin of the check above, found in the same run (Gate 4b run 3): the BROKER's children (codex/claude
+# worker processes) `mkdir -p` under the 2775 setgid run worktree, and at the systemd default 0022 those
+# dirs come out 2755 kb-shell:kb-shell, which the daemon (uid kb-dashboard, group kb-shell) cannot
+# unlink during `git worktree remove --force`. The unit ships UMask=0002; this proves the INSTALLED
+# unit still carries it.
+broker_umask=$(systemctl show kb-shell-broker -p UMask --value 2>/dev/null)
+[ "$broker_umask" = "0002" ] \
+  && ok "kb-shell-broker UMask=0002 (worker mkdirs stay group-writable for daemon cleanup)" \
+  || bad "kb-shell-broker UMask=$broker_umask, needs 0002 - the daemon cannot clean up worker-created dirs. Fix: add UMask=0002 to [Service] in deploy/systemd/kb-shell-broker.service, reinstall the unit on the VM, systemctl daemon-reload, systemctl restart kb-shell-broker"
 
 # ---------------------------------------------------------------------------------------------
 # W61: the execution-profile catalogue the daemon compiles at launch admission comes from
