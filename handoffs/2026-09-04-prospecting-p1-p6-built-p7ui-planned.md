@@ -1,4 +1,4 @@
-# Prospecting — P1–P5 recorded, P6 built (gate pending), P7-UI planned (boss handoff 2026-09-04 early)
+# Prospecting — P1–P6 recorded (P6 737), real Snov fill converged, P2 gate awaiting rulings (boss handoff 2026-09-05 night)
 
 Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
 
@@ -24,22 +24,34 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
 - P7-UI: spec amendment + plan v2.1 on branch claude/boss-2026-09-02 (commit 2239637c). NOT scaffolded —
   approval gate.
 
-## Real-run state (2026-09-04 evening)
-- Desktop store `%LOCALAPPDATA%\kb-prospecting\store.sqlite` (dev; reset twice today when schema_p6.sql changed —
-  the migration ledger refuses modified migrations; after release, P6 schema changes go in a NEW numbered file).
-- Snov keys in Daniel's user env (SNOV_CLIENT_ID/SECRET); Hunter deferred by Daniel. Real Snov shapes probed and
-  recorded in briefs-p6/fix-discover7.md: v2 domain search returns prospects with `search_emails_start` (no emails);
-  email search async start→poll; v1 domain search 404. Snov discovery lane (`scripts/prospecting/discovery/`, P6-owned,
-  registered through P2's lane registry; P2 list builder now takes --finder-provider/--finder-cost) ran for real:
-  30 firms → 15 people (cap 2/firm) → 7 emails, 20 credits, budget stop at 40. Discovery lane hardened through four review rounds (v2-only, resumable polling, per-campaign cap,
-  50-credit account ceiling, side-table metadata); P6 recorded 704/704 at 74da2d62.
-- Operator surface (`py -3 -m scripts.prospecting.operator`) reviewed x4; runbook "Operator gates" has argv.
-- Files Daniel edits live under %LOCALAPPDATA%\kb-prospecting\: ask-nyc-vc.txt (grammar incl. `credits:N`),
-  captures-nyc-vc.csv, company-domains.csv (name,domain), sender-profile.json, operator-vendors.json (names only).
+## Real-run state (2026-09-05 ~00:30, supersedes the evening block)
+- P6 branch `claude/prospecting-p6` HEAD 644c0e16, gate 737/737 recorded. Six real-run defects fixed tonight, each via
+  probe → codex fix brief (scratchpad briefs-p6/fix-{unfiltered,refusals,quality,domains,reserve-ids,snapshot-host}.md) →
+  manifest refill → detached gate → real pass: (1) Snov `positions[]` is exact-match → discovery now unfiltered + local title
+  classes + 4-page/firm budget; (2) `vendors attach` dropped `snov_account_credit_ceiling` from operator-vendors.json → attach
+  preserves keys; budget refusals surface as `shortfall_reason` (never "exhausted"); (3) `DEFAULT_TITLE_FUNCTION_EXCLUSIONS`
+  (finance/IT/talent/marketing/ops/...; override key `title_function_exclusions`, CLI `--title-exclusions`); (4) fill backfills
+  `company.website_url` from company-domains.csv at start (`domains_backfilled`); (5) reserve firms get typed `cmp_` ids;
+  profile queueing skips untyped ids (`profiles_skipped_untyped`) instead of aborting; (6) homepage snapshot allowlists
+  `www.` redirect, typed fetch rejections. Schema untouched (new state expressed as status=short + reason).
+- Live campaign `camp_c57b52cc14d54104` (current-campaign.txt; run-fill.ps1 targets it): 22 people / 13 firms with valid
+  email, titles Associate/Senior Associate/Director only, website + LinkedIn on every row, blurb on 8 (5/8 homepages
+  fetched); 113 of the ask's 150 credits used; 17 firms had no matching titles within 4 pages, 9 firms no confident email,
+  18 email searches refused at the credit cap. Old campaign camp_842bf7a6b415488b is dead (its 12 reserve firms carry UUID
+  ids — those 5 delivered firms get no profile until a fresh campaign; fixing ids in place is not worth it).
+- Datasette on 127.0.0.1:8765 (serve_datasette.ps1 -Port 8765); campaign-scoped deliverable SQL URL saved in
+  %LOCALAPPDATA%\kb-prospecting\deliverable-url.txt (the `deliverable_v1` view is NOT campaign-scoped — double-counts).
+- Snov keys in Daniel's user env (SNOV_CLIENT_ID/SECRET); Hunter deferred. Snov Starter monthly active.
+- Files Daniel edits live under %LOCALAPPDATA%\kb-prospecting\: ask-nyc-vc.txt (grammar incl. `credits:N`, `title:`),
+  captures-nyc-vc.csv, company-domains.csv (name,domain), reserve-firms-nyc-vc.csv, sender-profile.json,
+  operator-vendors.json (providers, per_firm, snov_account_credit_ceiling, title_function_exclusions).
 
 ## Daniel's gates, in order (present one at a time)
 1. P1: PASSED 2026-09-04 (Datasette loopback read-only, hook rejected the planted email).
-2. P2: IN PROGRESS — list handed to Daniel 2026-09-04 (campaign camp_4ac6a3a2a2a6445b). Per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
+2. P2: AWAITING RULINGS — list in browser 2026-09-05 (campaign camp_c57b52cc14d54104). Rulings asked: (a) title classes
+   beyond associate/director (principal / vice president / partner?), (b) credit budget above 150. Then re-run
+   scratchpad run-fill.ps1 → run-executor.ps1 → refresh the saved Datasette URL → ask "P2 pass".
+   Original recipe: Per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
    --providers hunter,snov → bakeoff run --contacts 50 → bakeoff report; keys live only in Daniel's user env
    (HUNTER_API_KEY, SNOV_CLIENT_ID/SECRET, optional PDL_API_KEY, APIFY_TOKEN). Pick the finder (~$35–39/mo).
 3. P3: read 20 drafts; edit the synthetic sender profile into the real one (desktop-local file only).

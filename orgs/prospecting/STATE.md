@@ -9,7 +9,7 @@ Updated: 2026-09-04 evening by boss session.
 | P3 personalizer | 289/289 recorded | pending — 20 drafts |
 | P4 campaigner T0 | 183/183 recorded | pending — live ten-email draft run |
 | P5 manager/agents/workflows | 562/562 recorded (integrated tree) | pending — one outreach-run from the VM |
-| P6 T1 approvals + sends + deployment | 707/707 recorded (Snov discovery lane reviewed x4; self-contained `operator fill`; positions-filter fix in flight) | pending — cadence blocks on main, live T1 run |
+| P6 T1 approvals + sends + deployment | 737/737 recorded @ 644c0e16 (unfiltered Snov discovery, title exclusions, fill refusal/backfill/typed-id/snapshot fixes) | pending — cadence blocks on main, live T1 run |
 | P7-UI local desktop dashboard | plan v2.1 on claude/boss-2026-09-02 | pending — approve plan before scaffolding |
 
 Branches unpushed; worktrees under C:/Users/danie/kb-worktrees/prospecting-p{1..6}. Handoff: handoffs/2026-09-04-prospecting-p1-p6-built-p7ui-planned.md
