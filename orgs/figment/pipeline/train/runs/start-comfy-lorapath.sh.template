@@ -7,17 +7,38 @@ set -euo pipefail
 
 lora_source='{{lora_source_dir}}'
 lora_link='/workspace/ComfyUI/models/loras'
+lora_log='/workspace/output/_lorapath.log'
 
 mkdir -p /workspace/output "$lora_source"
+
+log() {
+  # Every decision goes to the persisted log AND to stderr, so it survives in
+  # _comfy.log (the harness captures this script's stderr there) even when the
+  # pod is torn down before /workspace/output can be fetched.
+  printf '%s\n' "$1" >> "$lora_log"
+  printf '%s\n' "$1" >&2
+}
+
+fail() {
+  printf '%s\n' "$1" > /workspace/output/_bootstrap.failed
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
 if [[ -L "$lora_link" ]]; then
-  rm -f "$lora_link"
+  log "lorapath: $lora_link is already a symlink, removing it"
+  rm -f "$lora_link" || fail "lorapath: could not remove existing symlink at $lora_link"
 elif [[ -d "$lora_link" ]]; then
-  rmdir "$lora_link" 2>/dev/null || {
-    printf 'models/loras is a non-empty real directory\n' > /workspace/output/_bootstrap.failed
-    exit 1
-  }
+  # ComfyUI ships models/loras as a real directory (with a put_loras_here
+  # placeholder file), so it is never empty and rmdir always fails ENOTEMPTY.
+  # Move it aside instead of deleting it — it may hold user-placed LoRAs.
+  log "lorapath: $lora_link is a real directory, moving it aside to ${lora_link}.stock"
+  mv "$lora_link" "${lora_link}.stock" \
+    || fail "lorapath: could not move $lora_link aside to ${lora_link}.stock"
 fi
-ln -s "$lora_source" "$lora_link"
-printf 'lora source: %s\n' "$lora_source" > /workspace/output/_lorapath.log
+
+ln -s "$lora_source" "$lora_link" \
+  || fail "lorapath: could not symlink $lora_source to $lora_link"
+log "lorapath: lora source $lora_source linked at $lora_link"
 
 exec python /workspace/ComfyUI/main.py "$@"

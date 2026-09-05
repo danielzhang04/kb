@@ -2178,10 +2178,16 @@ def dump_full_bootstrap_artifacts(
                 "could not fetch full %s for postmortem: %s", filename, type(exc).__name__,
             )
             continue
-        if status != 200 or not text:
+        if status != 200:
             logger.warning(
                 "could not fetch full %s for postmortem: /view returned %s",
                 filename, status,
+            )
+            continue
+        if not text:
+            logger.warning(
+                "could not fetch full %s for postmortem: empty",
+                filename,
             )
             continue
         redacted = "\n".join(redact_for_stderr(line) for line in text.splitlines()) + "\n"

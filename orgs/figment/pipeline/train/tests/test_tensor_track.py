@@ -7,7 +7,10 @@ harness preflight (spend ceilings included).
 """
 import importlib.util
 import json
+import os
 import re
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -241,6 +244,111 @@ def test_lorapath_start_script_renders_for_both_generation_manifests():
         assert remote == "/workspace/start-comfy-lorapath.sh"
         assert f"lora_source='{expected}'" in rendered
         assert "{{" not in rendered and "}}" not in rendered
+
+
+def _lorapath_git_bash():
+    """Same detection pattern the pod suite uses for its bash-executed script
+    tests: prefer Git Bash proper (a real shell, unlike WSL's bash shim) and
+    skip outright when neither is available."""
+    bash = shutil.which("bash")
+    git_bash = Path("C:/Program Files/Git/bin/bash.exe")
+    if os.name == "nt" and git_bash.is_file():
+        bash = str(git_bash)
+    return bash
+
+
+def _render_lorapath_script(tmp_path):
+    """Render the real template for the tester manifest, then relocate every
+    hardcoded /workspace path onto a private tmp_path tree so the script can
+    be executed for real without touching the machine's actual filesystem
+    root. A stub main.py records the argv it was execed with."""
+    _remote, rendered = runner.rendered_training_start_script(
+        manifest("tester"), MANIFESTS["tester"],
+    )
+    root = tmp_path.as_posix()
+    script = rendered.replace("/workspace", root)
+
+    comfy_dir = tmp_path / "ComfyUI"
+    comfy_dir.mkdir(parents=True, exist_ok=True)
+    (comfy_dir / "main.py").write_text(
+        "import sys\nprint('MAIN_RAN:' + ' '.join(sys.argv[1:]))\n",
+        encoding="utf-8",
+    )
+    return script
+
+
+def _run_lorapath_script(bash, script, *args):
+    # Without this, Git Bash's `ln -s` on a directory silently falls back to an
+    # NT junction instead of a real symlink (no elevation needed either way on
+    # this host), which `Path.is_symlink()` does not recognize as one.
+    env = {**os.environ, "MSYS": "winsymlinks:nativestrict"}
+    return subprocess.run(
+        [bash, "-c", script, "bash", *args],
+        capture_output=True, text=True, check=False, env=env,
+    )
+
+
+def test_lorapath_script_moves_a_real_loras_directory_aside_and_starts_comfy(tmp_path):
+    """Regression for the live pod failure: ComfyUI ships models/loras as a real,
+    non-empty directory (a put_loras_here placeholder), so the old `rmdir`
+    always failed ENOTEMPTY, comfy-start exited 1 in under a second, and
+    _comfy.log stayed empty. The fix must move the shipped directory aside
+    (never delete it), symlink the real LoRA source in its place, log every
+    decision to both _lorapath.log and stderr, and still exec ComfyUI."""
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    loras = tmp_path / "ComfyUI" / "models" / "loras"
+    loras.mkdir(parents=True)
+    (loras / "put_loras_here").write_text("", encoding="utf-8")
+
+    result = _run_lorapath_script(bash, script, "--extra-arg", "42")
+
+    assert result.returncode == 0, result.stderr
+    assert "MAIN_RAN:--extra-arg 42" in result.stdout, result.stdout
+
+    stock = tmp_path / "ComfyUI" / "models" / "loras.stock"
+    assert (stock / "put_loras_here").is_file(), "shipped placeholder must survive the move"
+    assert loras.is_symlink()
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    assert os.path.realpath(loras) == os.path.realpath(lora_source)
+    assert not (tmp_path / "output" / "_bootstrap.failed").exists()
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "real directory" in log_text
+    assert "linked at" in log_text
+    # every decision must also reach stderr, which the harness captures into _comfy.log
+    assert "real directory" in result.stderr
+    assert "linked at" in result.stderr
+
+
+def test_lorapath_script_replaces_an_existing_symlink(tmp_path):
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    models_dir = tmp_path / "ComfyUI" / "models"
+    models_dir.mkdir(parents=True)
+    stale_target = tmp_path / "stale-loras"
+    stale_target.mkdir()
+    loras = models_dir / "loras"
+    loras.symlink_to(stale_target, target_is_directory=True)
+
+    result = _run_lorapath_script(bash, script)
+
+    assert result.returncode == 0, result.stderr
+    assert "MAIN_RAN:" in result.stdout, result.stdout
+    assert loras.is_symlink()
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    assert os.path.realpath(loras) == os.path.realpath(lora_source)
+    assert not (models_dir / "loras.stock").exists()
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "already a symlink" in log_text
+    assert "already a symlink" in result.stderr
 
 
 def test_training_start_script_rejects_a_shell_unsafe_trigger():

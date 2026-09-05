@@ -3418,6 +3418,29 @@ def test_dump_full_bootstrap_artifacts_writes_redacted_full_logs(tmp_path):
     assert "pip download progress" in comfy_text
 
 
+def test_dump_full_bootstrap_artifacts_logs_empty_not_status_200(tmp_path):
+    """A 200 with an empty body is not a fetch failure — the artifact exists but
+    has nothing in it (for example ComfyUI never got far enough to write to
+    _comfy.log). The warning must say so plainly rather than the misleading
+    "/view returned 200", which reads as if 200 itself were the problem."""
+    class Proxy:
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.log":
+                return 200, "STEP comfy-start rc=1\n"
+            if filename == "_comfy.log":
+                return 200, ""
+            return 404, ""
+
+    logger, stream = logger_and_stream()
+    harness_dir = tmp_path / "_harness"
+    rr.dump_full_bootstrap_artifacts(Proxy(), harness_dir, logger)
+
+    assert "could not fetch full _comfy.log for postmortem: empty" in stream.getvalue()
+    assert "/view returned 200" not in stream.getvalue()
+    assert not (harness_dir / "_comfy.log").exists()
+    assert (harness_dir / "_bootstrap.log").read_text(encoding="utf-8") == "STEP comfy-start rc=1\n"
+
+
 def test_dump_full_bootstrap_artifacts_is_a_no_op_without_harness_dir():
     class ExplodingProxy:
         def fetch_artifact(self, _filename):
