@@ -240,12 +240,69 @@ describe('buildActivatedExecution — gate ON', () => {
       })).toThrow(new RegExp(`attempt budget ${field} .* exceeds the window budget`));
       expect(deps.createEngine).not.toHaveBeenCalled();
     }
-    // Equality on every field is admissible (it is a ceiling, not a strict bound) — only excess throws.
+    // Equality is no longer admissible on any field, at any concurrency. An attempt allowed to consume
+    // the whole window admits exactly one attempt per day and refuses the next stage of the same chain
+    // the moment the first settles - the W66 defect - so the check demands room for the concurrent wave
+    // PLUS one settled attempt.
     const deps = spyDeps();
     expect(() => buildActivatedExecution({
       ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
       attemptBudget: { ...DEFAULT_BUDGET },
-    })).not.toThrow();
+      maxConcurrency: 1,
+    })).toThrow(/attempt budget maxAttempts .* exceeds the window budget/);
+  });
+
+  /**
+   * W67 wall 1. The check used to compare ONE attempt against the window, so the shipped pairing -
+   * `maxConcurrency: 2` with a 1,000,000-input attempt budget against a 2,000,000-input window - passed
+   * construction and then made the second worker of a two-worker stage arithmetically impossible: two
+   * held reservations are exactly the whole window, so any settled row at all pushed the projection
+   * over. The assertion is now the adapter's own arithmetic, `attempt x concurrency <= window`.
+   */
+  it('refuses the pre-W67 budget pairing at the default concurrency of 2', () => {
+    const deps = spyDeps();
+    // The exact pairing that shipped and stalled Gate 4b: a 2,000,000-input window with a
+    // 1,000,000-input attempt budget at concurrency 2. Two held reservations are the whole window, so
+    // any settled row at all refused the second worker of a two-worker stage.
+    expect(() => buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      budget: { maxAttempts: 30, maxInputTokens: 2_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
+      attemptBudget: { maxAttempts: 1, maxInputTokens: 1_000_000, maxOutputTokens: 200_000, maxCostUsdMicros: 2_500_000 },
+    })).toThrow(/attempt budget maxInputTokens \(1000000 x 2 concurrent \+ 1 settled = 3000000\) exceeds the window budget \(2000000\)/);
+    expect(deps.createEngine).not.toHaveBeenCalled();
+
+    const shipped = spyDeps();
+    expect(() => buildActivatedExecution(baseOptions(shipped, { DASHBOARD_EXECUTION_ACTIVATED: '1' }))).not.toThrow();
+  });
+
+  /**
+   * The ceilings are a claim about MEASURED usage, so the test states the measurement. Sources: every
+   * settled reservation in the VM's control/execution-accounting/*.json - max input 1,223,899, max
+   * output 22,106, max cost 1,214,264 micro-USD (all attempt-ad7b42c6, 2026-07-24); and
+   * governance/budget.yaml `daily_usd_limit: 5.00`. The 400,000-input ceiling this replaces was refuted
+   * by three of those settled attempts outright.
+   */
+  it('sizes the attempt ceilings above the measured ledger maxima and the window under the human cap', () => {
+    const ledgerMax = { input: 1_223_899, output: 22_106, costUsdMicros: 1_214_264 };
+    const governanceDailyCapMicros = 5_000_000;
+    expect(DEFAULT_ATTEMPT_BUDGET.maxInputTokens).toBeGreaterThan(ledgerMax.input);
+    expect(DEFAULT_ATTEMPT_BUDGET.maxOutputTokens).toBeGreaterThanOrEqual(Math.ceil(ledgerMax.output * 1.5));
+    expect(DEFAULT_ATTEMPT_BUDGET.maxCostUsdMicros).toBeGreaterThan(ledgerMax.costUsdMicros);
+    // One concurrent wave plus a settled attempt fits every field, at the shipped concurrency of 2.
+    for (const field of ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const) {
+      expect(DEFAULT_ATTEMPT_BUDGET[field] * 3).toBeLessThanOrEqual(DEFAULT_BUDGET[field]);
+    }
+    // The window's cost ceiling never outruns the human daily cap - it is held AT it.
+    expect(DEFAULT_BUDGET.maxCostUsdMicros).toBe(governanceDailyCapMicros);
+  });
+
+  it('hands the accounting adapter a window RESOLVER, so a long-lived daemon rolls at UTC midnight', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const call = (deps.createAccounting as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(typeof call.windowId).toBe('function');
+    expect(call.windowId(new Date('2026-09-03T23:59:59.000Z'))).toBe('2026-09-03');
+    expect(call.windowId(new Date('2026-09-04T00:11:58.000Z'))).toBe('2026-09-04');
   });
 
   it('delegates run, stop, and recoverable Manager-start containment to the engine', async () => {

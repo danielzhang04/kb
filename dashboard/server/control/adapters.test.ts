@@ -496,9 +496,11 @@ describe('file accounting adapter', () => {
       limits: { maxAttempts: 1, maxInputTokens: 60, maxOutputTokens: 40, maxCostUsdMicros: 600 },
     };
     const first = await create().reserve(input);
-    expect(first).toEqual({ ok: true, value: { reservationRef: 'reservation-id-1', replayed: false } });
+    // A reservation reference carries the window it was minted in, ahead of the generated id: that is
+    // how a settlement after UTC midnight still finds its record in the window it was RESERVED in.
+    expect(first).toEqual({ ok: true, value: { reservationRef: 'reservation-2026-07-18:id-1', replayed: false } });
     const replay = await create().reserve(input);
-    expect(replay).toEqual({ ok: true, value: { reservationRef: 'reservation-id-1', replayed: true } });
+    expect(replay).toEqual({ ok: true, value: { reservationRef: 'reservation-2026-07-18:id-1', replayed: true } });
     if (!first.ok) throw new Error(first.reason);
     await create().settle({
       operationKey: 'settle:attempt-1', reservationRef: first.value.reservationRef,
@@ -561,13 +563,13 @@ describe('file accounting adapter', () => {
     };
     // Measured acceptance baseline: the draft stage settles at ~180k input tokens / ~$0.25.
     const draft = await reserveAttempt(1);
-    expect(draft).toEqual({ ok: true, value: { reservationRef: 'reservation-id-1', replayed: false } });
+    expect(draft).toEqual({ ok: true, value: { reservationRef: 'reservation-window-chain:id-1', replayed: false } });
     if (!draft.ok) throw new Error(draft.reason);
     await settleAttempt(1, draft.value.reservationRef, 180_177);
 
     // The regression: a second stage in the same window must still be admissible after that settlement.
     const revise = await reserveAttempt(2);
-    expect(revise).toEqual({ ok: true, value: { reservationRef: 'reservation-id-2', replayed: false } });
+    expect(revise).toEqual({ ok: true, value: { reservationRef: 'reservation-window-chain:id-2', replayed: false } });
     if (!revise.ok) throw new Error(revise.reason);
     await settleAttempt(2, revise.value.reservationRef, 180_177);
 
@@ -580,13 +582,215 @@ describe('file accounting adapter', () => {
     expect(retry.ok).toBe(true);
     if (!retry.ok) throw new Error(retry.reason);
 
-    // The window ceiling is NOT loosened: settle the retry at the full attempt limit and the next
-    // reservation is refused, because 540,531 + 1,000,000 settled + 1,000,000 held > 2,000,000.
-    await adapter.settle({
-      operationKey: 'settle:attempt-4', reservationRef: retry.value.reservationRef,
-      usage: { inputTokens: DEFAULT_ATTEMPT_BUDGET.maxInputTokens, outputTokens: 1_024, costUsdMicros: 250_000 },
+    // The window ceiling is NOT loosened. Settle every remaining attempt at the FULL per-attempt input
+    // limit and the window still closes, on tokens rather than on the attempt count: 540,531 (three
+    // measured stages) + 1,500,000 x 3 settled + 1,500,000 held = 6,540,531 > 6,000,000.
+    for (const attempt of [4, 5, 6]) {
+      const reservation = attempt === 4 ? retry : await reserveAttempt(attempt);
+      expect(reservation.ok).toBe(true);
+      if (!reservation.ok) throw new Error(reservation.reason);
+      await adapter.settle({
+        operationKey: `settle:attempt-${attempt}`, reservationRef: reservation.value.reservationRef,
+        usage: { inputTokens: DEFAULT_ATTEMPT_BUDGET.maxInputTokens, outputTokens: 1_024, costUsdMicros: 250_000 },
+      });
+    }
+    expect(await reserveAttempt(7)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+  });
+
+  /**
+   * W67 wall 1, the live Gate 4b refusal. Two workers run concurrently (`maxConcurrency: 2`) and a
+   * prior stage has already settled. With the pre-W67 1,000,000-input attempt budget the second of the
+   * two concurrent reservations was refused - 180,177 settled + 1,000,000 + 1,000,000 > 2,000,000 - and
+   * the stage stalled. Under the shipped budgets both are admitted with room to spare.
+   */
+  it('admits two concurrent reservations on top of a settled row', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: 'window-concurrent-pair',
+      maxConcurrency: 2,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
     });
-    expect(await reserveAttempt(5)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const settled = await reserveAttempt(1);
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) throw new Error(settled.reason);
+    await adapter.settle({
+      operationKey: 'settle:attempt-1', reservationRef: settled.value.reservationRef,
+      usage: { inputTokens: 180_177, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+    const left = await reserveAttempt(2);
+    const right = await reserveAttempt(3);
+    expect(left.ok).toBe(true);
+    expect(right.ok).toBe(true);
+    // The third concurrent one is still refused - the concurrency slot cap is untouched.
+    expect(await reserveAttempt(4)).toEqual({ ok: false, reason: 'global concurrency limit reached' });
+  });
+
+  /**
+   * W67 wall 1, second half. The window id used to be computed ONCE at activation, so a daemon started
+   * on the 3rd was still writing the 3rd's file at 00:11 on the 4th (observed on the VM in
+   * control/execution-accounting/2026-09-03.json). With a resolver the file follows the clock, and a
+   * reservation made before midnight still SETTLES into its own window's file.
+   */
+  it('rolls the accounting window at UTC midnight and settles into the reserving window', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    let clock = new Date('2026-09-03T23:59:12.000Z');
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: (at: Date) => at.toISOString().slice(0, 10),
+      maxConcurrency: 2,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+      now: () => clock,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const before = await reserveAttempt(1);
+    expect(before).toEqual({ ok: true, value: { reservationRef: 'reservation-2026-09-03:id-1', replayed: false } });
+    if (!before.ok) throw new Error(before.reason);
+
+    clock = new Date('2026-09-04T00:11:58.000Z');
+    const after = await reserveAttempt(2);
+    expect(after).toEqual({ ok: true, value: { reservationRef: 'reservation-2026-09-04:id-2', replayed: false } });
+    // Settled AFTER midnight, but written into the window it was reserved in.
+    await adapter.settle({
+      operationKey: 'settle:attempt-1', reservationRef: before.value.reservationRef,
+      usage: { inputTokens: 180_177, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+
+    // A reserve RETRIED across the boundary replays its own reservation instead of opening a second
+    // one in the new window - the idempotency guarantee is not allowed to lapse at midnight.
+    expect(await reserveAttempt(1)).toEqual({ ok: true, value: { reservationRef: 'reservation-2026-09-03:id-1', replayed: true } });
+
+    const read = (windowId: string) => JSON.parse(
+      readFileSync(join(stateRoot, 'control', 'execution-accounting', `${windowId}.json`), 'utf8'),
+    ) as { windowId: string; reservations: { attemptRef: string; state: string }[] };
+    const third = read('2026-09-03');
+    const fourth = read('2026-09-04');
+    expect(third.windowId).toBe('2026-09-03');
+    expect(third.reservations.map((item) => [item.attemptRef, item.state])).toEqual([['attempt-1', 'settled']]);
+    expect(fourth.windowId).toBe('2026-09-04');
+    expect(fourth.reservations.map((item) => [item.attemptRef, item.state])).toEqual([['attempt-2', 'active']]);
+  });
+
+  /**
+   * Review item 3. An attempt that started at 23:50 is still running at 00:05: it holds a worker and
+   * can still spend its full limit. Reading only the new window's file made it invisible at midnight -
+   * its concurrency slot was handed out a second time and its held limit counted against nothing.
+   */
+  it('carries a prior window active hold into the new window concurrency and headroom', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    let clock = new Date('2026-09-03T23:50:00.000Z');
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: (at: Date) => at.toISOString().slice(0, 10),
+      maxConcurrency: 2,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+      now: () => clock,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const straddling = await reserveAttempt(1);
+    expect(straddling.ok).toBe(true);
+    if (!straddling.ok) throw new Error(straddling.reason);
+
+    clock = new Date('2026-09-04T00:05:00.000Z');
+    // One slot is still occupied by yesterday's live attempt, so only ONE more fits, not two.
+    expect((await reserveAttempt(2)).ok).toBe(true);
+    expect(await reserveAttempt(3)).toEqual({ ok: false, reason: 'global concurrency limit reached' });
+
+    // The straddling reservation settles into ITS OWN window, not the current one.
+    await adapter.settle({
+      operationKey: 'settle:attempt-1', reservationRef: straddling.value.reservationRef,
+      usage: { inputTokens: 180_177, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+    const third = JSON.parse(readFileSync(join(stateRoot, 'control', 'execution-accounting', '2026-09-03.json'), 'utf8')) as
+      { reservations: { attemptRef: string; state: string }[] };
+    expect(third.reservations.map((item) => [item.attemptRef, item.state])).toEqual([['attempt-1', 'settled']]);
+    // Settled, so no longer carried: the freed slot is available again in the new window.
+    expect((await reserveAttempt(4)).ok).toBe(true);
+  });
+
+  /**
+   * The held half of the same carry-over: a prior window's live hold counts against the NEW window's
+   * token headroom, not only against its concurrency slots.
+   */
+  it('counts a prior window active hold against the new window token headroom', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    let clock = new Date('2026-09-03T23:50:00.000Z');
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: (at: Date) => at.toISOString().slice(0, 10),
+      // Concurrency 3, so the refusal below can only come from the token projection.
+      maxConcurrency: 3,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+      now: () => clock,
+    });
+    const straddling = await adapter.reserve({
+      operationKey: 'reserve:straddle', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-straddle',
+      limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    expect(straddling.ok).toBe(true);
+
+    clock = new Date('2026-09-04T00:05:00.000Z');
+    // Exactly the window ceiling minus the carried hold still fits...
+    const room = DEFAULT_BUDGET.maxInputTokens - DEFAULT_ATTEMPT_BUDGET.maxInputTokens;
+    expect((await adapter.reserve({
+      operationKey: 'reserve:fits', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-fits',
+      limits: { ...DEFAULT_ATTEMPT_BUDGET, maxInputTokens: room },
+    })).ok).toBe(true);
+    // ...and one token more than the whole window would fit without the carry-over does not.
+    expect(await adapter.reserve({
+      operationKey: 'reserve:overruns', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-overruns',
+      limits: { ...DEFAULT_ATTEMPT_BUDGET, maxInputTokens: 1 },
+    })).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+  });
+
+  /**
+   * Review item 4. A corrupt or oversized file for a window that is already OVER must not park every
+   * run for the whole of the new day. The read falls through and the current window is still fully
+   * enforced - what is lost is only the carry-over, bounded by maxConcurrency.
+   */
+  it('falls through to the current window when the prior window file cannot be read', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    let clock = new Date('2026-09-03T23:50:00.000Z');
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: (at: Date) => at.toISOString().slice(0, 10),
+      maxConcurrency: 2,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+      now: () => clock,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    expect((await reserveAttempt(1)).ok).toBe(true);
+    writeFileSync(join(stateRoot, 'control', 'execution-accounting', '2026-09-03.json'), 'not json at all', 'utf8');
+
+    clock = new Date('2026-09-04T00:05:00.000Z');
+    // Both slots are available again (the carry-over is what was lost), and the new window's own
+    // accounting is untouched: a third concurrent reservation is still refused.
+    expect((await reserveAttempt(2)).ok).toBe(true);
+    expect((await reserveAttempt(3)).ok).toBe(true);
+    expect(await reserveAttempt(4)).toEqual({ ok: false, reason: 'global concurrency limit reached' });
   });
 
   it('serializes concurrent reservations through the durable global CAS', async () => {

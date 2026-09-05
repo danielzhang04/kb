@@ -715,8 +715,13 @@ function withinBudget(usage: ExecutionUsage, budget: ExecutionBudget): boolean {
 
 export interface FileAccountingAdapterOptions {
   stateRoot: string;
-  /** Server-owned accounting period, for example an ISO date. */
-  windowId: string;
+  /**
+   * Server-owned accounting period, for example an ISO date. A RESOLVER is the live shape: the daemon
+   * outlives a UTC day, so a fixed string pins every reservation to the process's boot date and the
+   * window never rolls. A literal string is still accepted for hermetic tests and for the one-shot
+   * inactive bundle, and behaves exactly as before.
+   */
+  windowId: string | ((now: Date) => string);
   maxConcurrency: number;
   globalBudget: ExecutionBudget;
   now?: () => Date;
@@ -724,20 +729,60 @@ export interface FileAccountingAdapterOptions {
   lockTimeoutMs?: number;
 }
 
+/**
+ * Separator between the window id and the generated id inside a reservation reference. ':' is legal in
+ * SAFE_REF and illegal in SAFE_FILE_SEGMENT, so a window id can never contain one and the split is
+ * unambiguous. Settlement needs it: a reservation made at 23:59 settles in the NEXT window, and its
+ * record lives in the file for the window it was reserved in, not the current one.
+ */
+const RESERVATION_WINDOW_SEPARATOR = ':';
+
+/** One UTC day, the step back to the only other window a cross-midnight reserve retry can be in. */
+const MILLISECONDS_PER_DAY = 86_400_000;
+
+/**
+ * The window a reservation reference was minted in, or null for a pre-W67 `reservation-<uuid>` ref.
+ *
+ * UPGRADE STRADDLE: a reservation opened by the PREVIOUS build carries no window in its reference, so
+ * after a restart it settles into whatever window is current - correct on the same UTC day, and into
+ * the wrong file if the restart crosses midnight (the old record stays `active` in yesterday's file and
+ * the settlement lands in today's, where `settle` will not find it and throws 'accounting reservation
+ * was not found'). Drain in-flight attempts before restarting onto this build; the deploy note says so.
+ */
+function reservationWindowId(reservationRef: string): string | null {
+  const prefix = 'reservation-';
+  if (!reservationRef.startsWith(prefix)) return null;
+  const rest = reservationRef.slice(prefix.length);
+  const index = rest.indexOf(RESERVATION_WINDOW_SEPARATOR);
+  if (index <= 0) return null;
+  return rest.slice(0, index);
+}
+
 /** Durable global reservation ledger with lock-serialized version CAS and exact idempotency. */
 export function createFileAccountingAdapter(options: FileAccountingAdapterOptions): AccountingAdapter {
   const stateRoot = requireAbsolute(options.stateRoot, 'stateRoot');
-  if (!SAFE_FILE_SEGMENT.test(options.windowId) || options.windowId.includes('..') || !isSafeRepoRelativePath(options.windowId)) {
-    throw new ExecutionAdapterError('windowId is invalid');
-  }
+  const requireWindowId = (value: string): string => {
+    if (typeof value !== 'string' || !SAFE_FILE_SEGMENT.test(value) || value.includes('..')
+      || !isSafeRepoRelativePath(value) || value.includes(RESERVATION_WINDOW_SEPARATOR)) {
+      throw new ExecutionAdapterError('windowId is invalid');
+    }
+    return value;
+  };
+  const windowIdOption = options.windowId;
+  // A literal is validated ONCE, at construction, exactly as it always was; a resolver is validated on
+  // every call, because its answer changes.
+  const literalWindowId = typeof windowIdOption === 'string' ? requireWindowId(windowIdOption) : null;
+  const resolveWindowId = (at: Date): string => (literalWindowId !== null
+    ? literalWindowId
+    : requireWindowId((windowIdOption as (now: Date) => string)(at)));
   requireSafeInteger(options.maxConcurrency, 'maxConcurrency', 1);
   assertBudget(options.globalBudget, 'globalBudget');
   const policyHash = digest({ maxConcurrency: options.maxConcurrency, globalBudget: options.globalBudget });
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
-  const document = createAtomicJsonDocument<AccountingDocument>({
-    path: join(stateRoot, 'control', 'execution-accounting', `${options.windowId}.json`),
-    empty: () => ({ schema: 'kb.execution-accounting/v1', revision: 0, policyHash, windowId: options.windowId, reservations: [] }),
+  const openDocument = (windowId: string) => createAtomicJsonDocument<AccountingDocument>({
+    path: join(stateRoot, 'control', 'execution-accounting', `${windowId}.json`),
+    empty: () => ({ schema: 'kb.execution-accounting/v1', revision: 0, policyHash, windowId, reservations: [] }),
     validate: assertAccountingDocument,
     error: (message) => new ExecutionAdapterError(message === 'atomic document state exceeds its limit'
       ? 'execution adapter state exceeds its limit'
@@ -747,8 +792,21 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
     maxBytes: MAX_STATE_BYTES,
     lockTimeoutMs: options.lockTimeoutMs,
   });
-  const requirePolicy = (value: AccountingDocument): void => {
-    if (value.policyHash !== policyHash || value.windowId !== options.windowId) {
+  // One document object per window id, so the lock/CAS serialization inside a window stays with a
+  // single instance. Only two ids are ever reachable from `reserve` (the current window and the one 24 h
+  // back) plus whatever window a settling reservation names, so the map is bounded by the settlement
+  // lag in practice; it is trimmed to the windows still reachable after every reserve so a daemon that
+  // runs for months cannot accumulate one entry per day it has been up.
+  const documents = new Map<string, ReturnType<typeof openDocument>>();
+  const documentFor = (windowId: string): ReturnType<typeof openDocument> => {
+    const existing = documents.get(windowId);
+    if (existing) return existing;
+    const created = openDocument(windowId);
+    documents.set(windowId, created);
+    return created;
+  };
+  const requirePolicy = (value: AccountingDocument, windowId: string): void => {
+    if (value.policyHash !== policyHash || value.windowId !== windowId) {
       throw new ExecutionAdapterError('accounting policy differs from the durable window policy');
     }
   };
@@ -758,26 +816,78 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
       requireOperationKey(input.operationKey);
       assertBudget(input.limits, 'reservation limits');
       const fingerprint = digest(input);
-      return document.mutate((state) => {
-        requirePolicy(state);
+      // Resolved HERE, per reservation: the window a reservation belongs to is the window it is made
+      // in. Everything below - the attempt count, the concurrency slots, and the settled-usage sum -
+      // reads that window's own file and nothing else.
+      const windowId = resolveWindowId(now());
+      // Idempotency has to survive the window boundary too: a reserve retried across UTC midnight must
+      // REPLAY the reservation it already made, not open a second one in the new window's file. The
+      // resolver's answer for 24 h earlier is the only other window a retry can plausibly sit in.
+      const priorWindowId = resolveWindowId(new Date(now().getTime() - MILLISECONDS_PER_DAY));
+      // Reservations still ACTIVE in the prior window are real, live occupancy: an attempt that started
+      // at 23:50 is still running at 00:05, still holding a worker and still able to spend its full
+      // limit. Reading only the new window's file would have made it invisible at midnight - the
+      // concurrency slot it occupies would be handed out twice and its held limit would not count
+      // against the new window's ceiling. Both are carried across below.
+      let carried: { activeCount: number; held: ExecutionUsage } = {
+        activeCount: 0,
+        held: { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 },
+      };
+      if (priorWindowId !== windowId) {
+        let priorReservations: readonly AccountingReservationRecord[] | null = null;
+        try {
+          priorReservations = documentFor(priorWindowId).read().reservations;
+        } catch {
+          // FAIL OPEN, deliberately and narrowly. An unreadable, oversized or corrupt file for a window
+          // that is already over is not a reason to refuse every reservation for the whole of the new
+          // day - that would park every run until a human repaired yesterday's ledger. The current
+          // window's own accounting below is unaffected and still fully enforced; what is lost is only
+          // the carry-over of a straddling attempt, and `maxConcurrency` bounds the damage to one wave.
+          priorReservations = null;
+        }
+        if (priorReservations) {
+          // Idempotency has to survive the window boundary too: a reserve retried across UTC midnight
+          // must REPLAY the reservation it already made, not open a second one in the new window's
+          // file. The resolver's answer for 24 h earlier is the only other window a retry can sit in.
+          const replay = priorReservations.find((item) => item.operationKey === input.operationKey);
+          if (replay) {
+            if (replay.fingerprint !== fingerprint) throw new ExecutionAdapterError('reservation operationKey was reused with different content');
+            return { ok: true as const, value: { reservationRef: replay.reservationRef, replayed: true } };
+          }
+          const stillActive = priorReservations.filter((item) => item.state === 'active');
+          carried = {
+            activeCount: stillActive.length,
+            held: stillActive.reduce<ExecutionUsage>((sum, item) => plusUsage(sum, budgetAsUsage(item.limits)),
+              { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 }),
+          };
+        }
+      }
+      // Keep only the windows still reachable: the one being written and the one being carried.
+      for (const key of [...documents.keys()]) {
+        if (key !== windowId && key !== priorWindowId) documents.delete(key);
+      }
+      return documentFor(windowId).mutate((state) => {
+        requirePolicy(state, windowId);
         const prior = state.reservations.find((item) => item.operationKey === input.operationKey);
         if (prior) {
           if (prior.fingerprint !== fingerprint) throw new ExecutionAdapterError('reservation operationKey was reused with different content');
           return { ok: true as const, value: { reservationRef: prior.reservationRef, replayed: true } };
         }
         if (state.reservations.length >= options.globalBudget.maxAttempts) return { ok: false as const, reason: 'global attempt budget exhausted' };
-        if (state.reservations.filter((item) => item.state === 'active').length >= options.maxConcurrency) {
+        if (state.reservations.filter((item) => item.state === 'active').length + carried.activeCount >= options.maxConcurrency) {
           return { ok: false as const, reason: 'global concurrency limit reached' };
         }
         if (input.limits.maxAttempts > options.globalBudget.maxAttempts) {
           return { ok: false as const, reason: 'reservation exceeds the global attempt budget' };
         }
+        // Seeded with the prior window's live holds. Its SETTLED usage is deliberately NOT carried:
+        // that spend belongs to the day it happened and the window ceiling is a per-window cap.
         const committedOrHeld = state.reservations.reduce<ExecutionUsage>((sum, item) =>
           plusUsage(sum, item.state === 'settled' ? item.usage as ExecutionUsage : budgetAsUsage(item.limits)),
-        { inputTokens: 0, outputTokens: 0, costUsdMicros: 0 });
+        carried.held);
         const projected = plusUsage(committedOrHeld, budgetAsUsage(input.limits));
         if (!withinBudget(projected, options.globalBudget)) return { ok: false as const, reason: 'global token or cost budget exhausted' };
-        const reservationRef = `reservation-${newId()}`;
+        const reservationRef = `reservation-${windowId}${RESERVATION_WINDOW_SEPARATOR}${newId()}`;
         if (!SAFE_REF.test(reservationRef)) throw new ExecutionAdapterError('generated reservation reference is invalid');
         state.reservations.push({
           operationKey: input.operationKey,
@@ -802,8 +912,12 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
     async settle(input) {
       requireOperationKey(input.operationKey);
       assertUsage(input.usage, 'settlement usage');
-      await document.mutate((state) => {
-        requirePolicy(state);
+      // The reservation's OWN window, carried in its reference - not the window it happens to be
+      // settling in. An attempt reserved at 23:59 settles after midnight and its record is in
+      // yesterday's file. A pre-W67 reference carries no window; those settle in the current one.
+      const settlementWindowId = requireWindowId(reservationWindowId(input.reservationRef) ?? resolveWindowId(now()));
+      await documentFor(settlementWindowId).mutate((state) => {
+        requirePolicy(state, settlementWindowId);
         const reservation = state.reservations.find((item) => item.reservationRef === input.reservationRef);
         if (!reservation) throw new ExecutionAdapterError('accounting reservation was not found');
         const fingerprint = digest(input);

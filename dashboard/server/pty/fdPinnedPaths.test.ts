@@ -10,7 +10,9 @@ import {
   BROKER_RUNTIME_POLICY,
   BROKER_SYSTEMD_POLICY,
   FdPinnedPathError,
+  LINUX_CHILD_BASE_ENV_KEYS,
   LINUX_CHILD_ENV_KEYS,
+  LINUX_CHILD_GIT_ENV_KEYS,
   type PinnedIdentity,
   type PinningFileSystem,
   buildBrokerLaunch,
@@ -98,6 +100,40 @@ describe('fdPinnedPaths', () => {
     // `codex exec -` names stdin as its prompt source and `claude -p` refuses a tty there, so BOTH
     // headless launchers earn a pipe on fd 0 - the mode decides it, not the launcher's name.
     expect([claude.stdinMode, codex.stdinMode]).toEqual(['pipe', 'pipe']);
+  });
+
+  /**
+   * W67 wall 3. An attempt worktree is kb-dashboard-owned (2770) with its gitdir under
+   * /var/lib/kb/ops/.git/worktrees, and the child runs as kb-shell, so git 2.53 refuses every command
+   * in it with "detected dubious ownership in repository". There is no /etc/gitconfig and no gitconfig
+   * in the child's HOME, and the child environment is a closed key set, so the config has to arrive on
+   * the environment. Verified as kb-shell on the VM: GIT_CONFIG_COUNT/KEY_0/VALUE_0 makes `git status`
+   * succeed in the worktree.
+   */
+  it('trusts a worktree launch to git by its own cwd, and never widens that trust to the repo root', () => {
+    const recipe = {
+      launcher: 'shell', mode: 'interactive', model: null,
+      toolPolicyId: 'shell-default', sandbox: 'interactive',
+    } as const;
+    const worktree = buildBrokerLaunch(recipe, 'worktrees', 'run-1/attempt-2', { cols: 80, rows: 24 });
+    expect(worktree.cwd).toBe('/var/lib/kb-shell/worktrees/run-1/attempt-2');
+    expect(worktree.env.GIT_CONFIG_COUNT).toBe('1');
+    expect(worktree.env.GIT_CONFIG_KEY_0).toBe('safe.directory');
+    // The EXACT validated cwd, never a wildcard and never a parent.
+    expect(worktree.env.GIT_CONFIG_VALUE_0).toBe(worktree.cwd);
+
+    // The canonical repository is not the child's to trust: widening kb-shell's git trust to
+    // /var/lib/kb/ops is the thing the ownership check exists to prevent.
+    // Nor the SHARED worktrees parent: it is every attempt's container, so trusting it would hand one
+    // attempt's child git trust over every other attempt's worktree at once.
+    const parent = buildBrokerLaunch(recipe, 'worktrees', '', { cols: 80, rows: 24 });
+    expect(parent.cwd).toBe('/var/lib/kb-shell/worktrees');
+    for (const key of LINUX_CHILD_GIT_ENV_KEYS) expect(parent.env).not.toHaveProperty(key);
+
+    const repo = buildBrokerLaunch(recipe, 'repo', '', { cols: 80, rows: 24 });
+    expect(repo.cwd).toBe('/var/lib/kb/ops');
+    for (const key of LINUX_CHILD_GIT_ENV_KEYS) expect(repo.env).not.toHaveProperty(key);
+    expect(Object.keys(repo.env).sort()).toEqual([...LINUX_CHILD_BASE_ENV_KEYS].sort());
   });
 
   /**

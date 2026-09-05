@@ -65,7 +65,27 @@ export const CODEX_EXECUTABLE_CANDIDATES = [
 ] as const;
 export const PIPE_STDIN_EXEC_CHILD_FD = 3;
 export const PIPE_STDIN_SHIM_CHILD_FD = 4;
-export const LINUX_CHILD_ENV_KEYS = ['HOME', 'PATH', 'LANG', 'TERM', 'COLUMNS', 'LINES'] as const;
+export const LINUX_CHILD_BASE_ENV_KEYS = ['HOME', 'PATH', 'LANG', 'TERM', 'COLUMNS', 'LINES'] as const;
+/**
+ * The git ownership escape hatch, and the ONLY conditional part of the child environment.
+ *
+ * An attempt worktree is created by the dashboard (kb-dashboard:kb-dashboard, mode 2770, its gitdir
+ * under /var/lib/kb/ops/.git/worktrees) and the child runs as kb-shell, so git 2.53 refuses every
+ * command in it with "detected dubious ownership in repository". There is no /etc/gitconfig and no
+ * gitconfig in the child's HOME, and the child environment is a closed key set, so the only way to
+ * tell git this directory is trusted is to pass the config on the environment. Verified on the VM:
+ * `GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=safe.directory GIT_CONFIG_VALUE_0=<worktree>` makes
+ * `git status` succeed as kb-shell.
+ *
+ * Emitted ONLY for a `worktrees`-rooted launch, and only for that launch's own validated cwd. A
+ * `repo`-rooted launch gets none: trusting /var/lib/kb/ops would widen kb-shell's git trust to the
+ * canonical repository itself, which is exactly the thing the ownership check is protecting.
+ *
+ * Broker-side only - these keys are derived here from the pinned root and the validated cwd, and
+ * never travel on the wire.
+ */
+export const LINUX_CHILD_GIT_ENV_KEYS = ['GIT_CONFIG_COUNT', 'GIT_CONFIG_KEY_0', 'GIT_CONFIG_VALUE_0'] as const;
+export const LINUX_CHILD_ENV_KEYS = [...LINUX_CHILD_BASE_ENV_KEYS, ...LINUX_CHILD_GIT_ENV_KEYS] as const;
 /**
  * Runtime-directory + state-file facts the BROKER PROCESS checks at boot. It carries no copy of the
  * unit's path sandbox: `ReadOnlyPaths`/`ReadWritePaths`/`InaccessiblePaths` live once, in
@@ -269,7 +289,8 @@ export type BrokerLaunchSpec = {
   executable: string;
   args: string[];
   cwd: string;
-  env: Record<(typeof LINUX_CHILD_ENV_KEYS)[number], string>;
+  env: Record<(typeof LINUX_CHILD_BASE_ENV_KEYS)[number], string>
+    & Partial<Record<(typeof LINUX_CHILD_GIT_ENV_KEYS)[number], string>>;
   cols: number;
   rows: number;
   /**
@@ -296,8 +317,8 @@ export function validateRelativeCwd(value: string): string {
   return value;
 }
 
-function childEnvironment(size: SessionSize): BrokerLaunchSpec['env'] {
-  return {
+function childEnvironment(size: SessionSize, rootId: SafeRootId, cwd: string): BrokerLaunchSpec['env'] {
+  const base = {
     HOME: '/var/lib/kb-shell/home',
     PATH: '/var/lib/kb-shell/home/.local/bin:/usr/local/bin:/usr/bin:/bin',
     LANG: 'C.UTF-8',
@@ -305,6 +326,13 @@ function childEnvironment(size: SessionSize): BrokerLaunchSpec['env'] {
     COLUMNS: String(size.cols),
     LINES: String(size.rows),
   };
+  // See LINUX_CHILD_GIT_ENV_KEYS: a launch's OWN worktree only. Never the canonical repo root, and
+  // never the shared worktrees parent either - `/var/lib/kb-shell/worktrees` is every attempt's
+  // container, so trusting it would hand one attempt's child git trust over every other attempt's
+  // worktree at once. The value is this launch's already-validated absolute cwd, a real subdirectory
+  // of the root: not a wildcard, not a parent.
+  if (rootId !== 'worktrees' || cwd === resolveLinuxRoot(rootId)) return base;
+  return { ...base, GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'safe.directory', GIT_CONFIG_VALUE_0: cwd };
 }
 
 function absoluteCwd(rootId: SafeRootId, relative: string): string {
@@ -329,7 +357,7 @@ export function buildBrokerLaunch(
   // list of launcher names, so a headless launcher added later inherits the pipe by declaring itself
   // headless rather than by someone remembering to edit a second table.
   const stdinMode: BrokerLaunchSpec['stdinMode'] = recipe.mode === 'headless-json' ? 'pipe' : 'tty';
-  const common = { cwd, env: childEnvironment(size), cols: size.cols, rows: size.rows, stdinMode };
+  const common = { cwd, env: childEnvironment(size, rootId, cwd), cols: size.cols, rows: size.rows, stdinMode };
   if (recipe.launcher === 'shell') return { executable: '/bin/bash', args: [], ...common };
   if (!MODEL_PREFIXES[recipe.launcher].test(recipe.model!)) {
     throw new FdPinnedPathError('recipe model does not belong to this launcher');

@@ -61,6 +61,13 @@ const PTMX_PROBE = 'echo "PTMX=$(ls -l /proc/self/fd | grep -c ptmx)'
 const CTTY_PROBE = 'echo "CTTY=$(if : < /dev/tty; then echo yes; else echo no; fi)"';
 const FIRST_SCRIPT = `${TTY_PROBE}; ${PTMX_PROBE}; echo READY; for i in 1 2 3 4 5; do printf "line-%s-%s\\n" $i "$(head -c 300 /dev/zero | tr "\\0" x)"; done; read -r FIRST; read -r SECOND; echo "GOT1:$FIRST"; echo "GOT2:$SECOND"; exit 7`;
 const SHELL_SCRIPT = `${TTY_PROBE}; echo READY; read -r FIRST; echo "GOT1:$FIRST"; exit 7`;
+// W67 wall 3. The child reports the git trust it was handed AND what git itself makes of it. The
+// second half is the load-bearing one: `git config --get safe.directory` is git parsing
+// GIT_CONFIG_COUNT/KEY_0/VALUE_0 out of the environment it was actually given, which is the only
+// channel left (attempt worktrees are kb-dashboard-owned and the child is kb-shell, there is no
+// /etc/gitconfig, no gitconfig in the child's HOME, and the child environment is a closed key set).
+const GIT_TRUST_SCRIPT = `echo "GIT_ENV=$GIT_CONFIG_COUNT|$GIT_CONFIG_KEY_0|$GIT_CONFIG_VALUE_0";`
+  + ` echo "GIT_READS=$(git config --get safe.directory)"; echo READY; read -r GO; exit 0`;
 // `stty` reads fd 0, so it is pointed at fd 2 - the pty slave, and the one descriptor a command
 // substitution does not replace with a pipe. It reports the master's window, which is what `resize`
 // moves for a pipe-mode child just as it does for a tty one.
@@ -618,6 +625,45 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
     expect(launchSpecs.filter((item) => item.executable.endsWith('/claude'))).not.toHaveLength(0);
     expect(launchSpecs.filter((item) => item.executable.endsWith('/claude'))
       .every((item) => item.stdinMode === 'pipe')).toBe(true);
+    expect(refusalResults).toEqual([]);
+  }, 30_000);
+
+  /**
+   * W67 wall 3, end to end through the PRODUCTION spawner. The first Gate 4b run's worker could not
+   * run a single git command in its attempt worktree: the worktree is kb-dashboard-owned (2770, its
+   * gitdir under /var/lib/kb/ops/.git/worktrees) and the child runs as kb-shell, so git 2.53 answers
+   * "detected dubious ownership in repository".
+   *
+   * This harness cannot reproduce the OWNERSHIP half - its worktree path is not a repository and the
+   * child runs as the same uid that owns everything under it, so `git status` would succeed here with
+   * or without the fix, and asserting on it would prove nothing. What it can prove, and does, is the
+   * thing the fix is: the three keys are derived broker-side from the pinned root, survive the real
+   * spawn into the child's own environment, and are READ BY GIT there. The ownership refusal itself
+   * stays a VM observation until the next live run.
+   */
+  it.sequential('hands a worktree-rooted child a git safe.directory trust for its own cwd', async () => {
+    launchScripts.push(GIT_TRUST_SCRIPT);
+    const spec = buildBrokerLaunch(SHELL_RECIPE, 'worktrees', 'orgs/example/worktree',
+      { cols: 120, rows: 42 });
+    expect(spec.env.GIT_CONFIG_COUNT).toBe('1');
+    expect(spec.env.GIT_CONFIG_KEY_0).toBe('safe.directory');
+    expect(spec.env.GIT_CONFIG_VALUE_0).toBe(spec.cwd);
+    const child = await launcher.launch(spec);
+    let output = '';
+    child.onData((data) => { output += Buffer.from(data).toString('utf8'); });
+    const exited = new Promise<number | null>((resolve) => child.onExit((exitCode) => resolve(exitCode)));
+    await vi.waitFor(() => expect(output).toContain('READY'), { timeout: 10_000, interval: 25 });
+    await child.write(Buffer.from('go\n'));
+    await expect(exited).resolves.toBe(0);
+    expect(output).toContain(`GIT_ENV=1|safe.directory|${spec.cwd}`);
+    expect(output).toContain(`GIT_READS=${spec.cwd}`);
+
+    // The canonical repository never earns the trust: granting it would widen kb-shell's git trust to
+    // /var/lib/kb/ops, which is the thing the ownership check is there to stop.
+    const repoSpec = buildBrokerLaunch(SHELL_RECIPE, 'repo', '', { cols: 120, rows: 42 });
+    expect(repoSpec.env.GIT_CONFIG_COUNT).toBeUndefined();
+    expect(repoSpec.env.GIT_CONFIG_KEY_0).toBeUndefined();
+    expect(repoSpec.env.GIT_CONFIG_VALUE_0).toBeUndefined();
     expect(refusalResults).toEqual([]);
   }, 30_000);
 
