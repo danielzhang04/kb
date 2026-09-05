@@ -1,26 +1,27 @@
 # System Handover
-_Generated: 2026-09-04 06:21 UTC_
+_Generated: 2026-09-05 06:09 UTC_
 
-**What happened overnight.** The nightly cloud dispatcher ran cleanly. Preamble and the
-skills-sync check both passed. It dispatched and executed one card — the nightly-review
-cadence — which regenerated these dashboards. Yesterday was a busy build day across figment
-and prospecting: 312 cost rows, but only $4.68 of real spend (RunPod GPU for the figment
-Track-1 replication); everything else was subscription-billed at $0. Today's spend so far is
-$0.00 of the $30 daily limit.
+**What happened overnight.** The cloud dispatcher ran clean: preamble passed, skills are in sync,
+and it dispatched two cadence cards — the nightly dashboard regeneration (this run) and the weekly
+system audit. Yesterday's real spend was $6.32 of the $30 daily ceiling, all of it GPU pods for the
+figment image-replication run; everything else ran on subscription billing at zero cost.
 
-**What is waiting on you.** One approval card sits in the queue: the **figment** GATE A
-"eye-gate" — you need to open the blind expansion-03 board in a browser and rule it on the
-seven axes before curation to 40 can proceed. Beyond that, four project gates are parked at
-your desk: **atlas** (a >400-line remediation diff re-reviewed and ready, but the contract
-needs your review before commit), **faceless-youtube** (keep / edit / iterate / revert on
-bricks Variant D), and **prospecting** (P2 onward — list-builder run, drafts, and the P7-UI
-plan approval; P1 passed today). None of these are blocked on the system — they are blocked
-on your judgment.
+**What is waiting on you.** Four decisions are parked, none urgent:
+1. **figment GATE A** — an eye-gate approval card asking you to rule a blind seven-axis board before
+   the creator set expands to 40 (`queue/approvals/65d8f246`).
+2. **atlas** — the omni-interface remediation diff is reviewed and ready but exceeds 400 lines, so
+   the contract holds it for your sign-off before it can be committed.
+3. **faceless-youtube** — the bricks Variant D trial is fully verified (25/25); it needs your call:
+   keep D, keep with edits, iterate, or revert.
+4. **prospecting** — P1 passed; you're mid-judgement on the live Snov list-builder run.
 
-**What the system will do next, unattended.** The cloud dispatcher will keep running nightly:
-preamble → skills/daemon-dir checks → dispatch → dashboard refresh → push to `ops`. One
-known nuisance keeps recurring and is worth a five-minute fix: `scripts/sync_daemon_dirs.py`
-lives on `main` but not on `ops`, so the daemon-dir drift gate can't run natively. Two open
-wake-me cards already track it (`6a7c0ebf` for the drift, `6a605ebb` for the missing script) —
-re-adding the script to `ops` and running `--sync` from the dashboard-ops worktree stops it. Nothing else acts on its own; all real work stays behind
-your gates.
+**One thing to fix when you're at the desk.** The nightly drift-check script still isn't on the
+`ops` branch, and it reports one ops-only file drifted from main. Neither blocks anything, but from
+the `dashboard-ops` worktree please restore `scripts/sync_daemon_dirs.py` to ops and run it with
+`--sync` (see wake cards `2026-08-15` and `2026-08-30`). Until then this gate runs by borrowing
+main's copy each night.
+
+**What the system does next, unattended.** The dispatcher keeps firing declared cadences nightly and
+regenerating these dashboards. The weekly audit dispatched this run will file any gaps it finds as
+unowned inbox cards for later dispatch. No agent will merge to main, publish externally, or spend
+real money beyond the figment GPU pods without a human gate.

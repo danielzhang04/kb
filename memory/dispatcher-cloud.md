@@ -707,3 +707,18 @@
   longer a stranded-archiver candidate; a human walk-back to a terminal sink is all that's left.
 - Drift magnitude unchanged from 08-30: still just orgs/kb-ops/workflows/acceptance-run.md
   ops-only. No desktop --sync owed beyond what the umbrella already asks (back-port-vs-prune).
+
+## 2026-09-05 (nightly cloud run)
+- HARD RULE HELD (first time cleanly): read this shard right after preamble, so at step 2b I did
+  NOT file any drift/script-absence card. Condition unchanged — sync_daemon_dirs.py still absent
+  from ops, ran origin/main's copy in refs-fallback mode, drift = still the single ops-only
+  orgs/kb-ops/workflows/acceptance-run.md. Both umbrellas verified OPEN in inbox
+  (6a7c0ebf drift, 6a605ebb script-absent, owner human-operator). Reported in dashboards only.
+- Dispatched 2 cards this run: 6a9bb1a1-22f3e326 nightly-review + 6a9bb1a1-b106a674 weekly-audit
+  (both T1 acts-alone, sonnet-5). Executed both inline as owner, regenerated both dashboards.
+- weekly-audit finding: activity ledger is EMPTY for 2026-09-04 and 2026-09-05 (0 rows) while
+  dispatch+cost+grades show real work — activity logging not wired on these run paths. Filed as a
+  gap card (unowned, T1) per the WO rather than fixing silently.
+- Yesterday's real spend $6.32/$30 (all runpod:l40s figment pods); today $0. Well under budget.
+- 6a6bc3dd still `halted` in working/ (terminal, human walk-back only). figment d126c410 track1
+  replicate long-running `working` — not a stranded candidate while its run is live.
