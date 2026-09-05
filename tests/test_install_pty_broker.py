@@ -65,6 +65,11 @@ def test_service_freezes_the_section_three_sandbox_directive_set():
     assert service["NoNewPrivileges"] == "yes"
     assert service["RestrictSUIDSGID"] == "yes"
     assert service["KillMode"] == "control-group"
+    # Contract change (W70, Gate 4b run 3): codex/claude workers `mkdir -p` under the 2775 setgid run
+    # worktree, and at the systemd default 0022 those mkdirs came out 2755 kb-shell:kb-shell, which the
+    # daemon (uid kb-dashboard, group kb-shell) could not unlink during `git worktree remove --force`.
+    # 0002 mirrors kb-dashboard.service's own UMask=0002 (deploy/systemd/kb-dashboard.service).
+    assert service["UMask"] == "0002"
 
 
 def test_service_omits_restrict_address_families_protect_proc_and_proc_subset():

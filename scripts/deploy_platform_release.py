@@ -34,6 +34,12 @@ CANONICAL_DECIMAL = re.compile(r"(?:0|[1-9][0-9]*)")
 # guard guaranteed to be as current as the repo, so it probes the live unit before uploading anything.
 DASHBOARD_UMASK_PROBE = ["systemctl", "show", "kb-dashboard", "-p", "UMask", "--value"]
 EXPECTED_DASHBOARD_UMASK = "0002"
+# W70 (Gate 4b run 3): the BROKER's UMask needs the same guard, for the same reason - its children
+# (codex/claude workers) `mkdir -p` under the 2775 setgid run worktree, and at 0022 those dirs come out
+# 2755 kb-shell:kb-shell, which the daemon (uid kb-dashboard, group kb-shell) cannot unlink during
+# `git worktree remove --force`.
+BROKER_UMASK_PROBE = ["systemctl", "show", "kb-shell-broker", "-p", "UMask", "--value"]
+EXPECTED_BROKER_UMASK = "0002"
 
 
 def parse_local_attestation(attestation: Path, archive: Path) -> dict[str, str]:
@@ -75,20 +81,32 @@ def parse_local_attestation(attestation: Path, archive: Path) -> dict[str, str]:
 
 
 def assert_dashboard_umask(host: str, run=subprocess.run) -> None:
-    """Refuse the deploy unless the LIVE kb-dashboard unit already carries UMask=0002.
+    """Refuse the deploy unless the LIVE kb-dashboard AND kb-shell-broker units already carry UMask=0002.
 
     Read-only and fail-closed: an unreadable value, a systemd default 0022, or anything else refuses.
     Fixing it is the unit-install ceremony in docs/runbooks/2026-09-03-vm-agent-launch-preflight.md d1,
-    which a release deploy does not perform (it never writes /etc/systemd/system/kb-dashboard.service).
+    which a release deploy does not perform (it never writes /etc/systemd/system/kb-dashboard.service
+    or kb-shell-broker.service). The broker check exists for the same reason as the dashboard's: its
+    codex/claude worker children `mkdir -p` under the 2775 setgid run worktree, and at the systemd
+    default 0022 those dirs come out 2755 kb-shell:kb-shell, which the daemon (uid kb-dashboard, group
+    kb-shell) cannot unlink during `git worktree remove --force`.
     """
-    result = run(["ssh", host, *DASHBOARD_UMASK_PROBE], check=True, text=True, capture_output=True)
-    value = (result.stdout or "").strip()
-    if value != EXPECTED_DASHBOARD_UMASK:
-        raise RuntimeError(
-            f"refusing to deploy: kb-dashboard UMask is {value!r}, must be {EXPECTED_DASHBOARD_UMASK}. "
-            "Every worker write inside the run worktree fails without it. Install the unit and reload "
-            "systemd first - see docs/runbooks/2026-09-03-vm-agent-launch-preflight.md section d1."
-        )
+    for unit_label, probe, expected, rationale in (
+        ("kb-dashboard", DASHBOARD_UMASK_PROBE, EXPECTED_DASHBOARD_UMASK,
+         "every worker write inside the run worktree fails without it (the daemon's own "
+         "`git worktree add` sets the tree's modes)"),
+        ("kb-shell-broker", BROKER_UMASK_PROBE, EXPECTED_BROKER_UMASK,
+         "the daemon cannot clean up worker-created directories without it "
+         "(`git worktree remove --force` fails EACCES on the worker's own dirs)"),
+    ):
+        result = run(["ssh", host, *probe], check=True, text=True, capture_output=True)
+        value = (result.stdout or "").strip()
+        if value != expected:
+            raise RuntimeError(
+                f"refusing to deploy: {unit_label} UMask is {value!r}, must be {expected} - {rationale}. "
+                "Install the unit and reload systemd first - see "
+                "docs/runbooks/2026-09-03-vm-agent-launch-preflight.md section d1."
+            )
 
 
 def deploy(archive: Path, attestation: Path, signing_key: Path, host: str, run=subprocess.run) -> None:

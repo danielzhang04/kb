@@ -765,6 +765,36 @@ def test_desktop_deploy_refuses_a_vm_whose_dashboard_umask_is_not_group_writable
     assert not any("activate_release.py" in argument for command in commands for argument in command)
 
 
+@pytest.mark.parametrize("reported", ["0022", "0077", "", "0002 0002", None])
+def test_desktop_deploy_refuses_a_vm_whose_broker_umask_is_not_group_writable(tmp_path, reported):
+    """W70 (Gate 4b run 3): twin of the dashboard check above, for kb-shell-broker. Its codex/claude
+    worker children `mkdir -p` under the 2775 setgid run worktree, and at the systemd default 0022
+    those dirs come out 2755 kb-shell:kb-shell, which the daemon (uid kb-dashboard, group kb-shell)
+    cannot unlink during `git worktree remove --force`. The dashboard's own UMask reports fine here -
+    only the broker's is bad - to prove this is an independent check, not a single probe."""
+    archive = tmp_path / f"kb-platform-{'a' * 40}.tar.gz"
+    archive.write_bytes(b"archive")
+    attestation = tmp_path / "attestation.json"
+    attestation.write_bytes(canonical_attestation(digest=hashlib.sha256(b"archive").hexdigest()))
+    signing_key = tmp_path / "desktop-signing-key"
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        if argv[:4] == ["ssh-keygen", "-Y", "sign", "-f"]:
+            attestation.with_suffix(".json.sig").write_bytes(b"signature")
+        if argv[2:] == deploy_platform_release.DASHBOARD_UMASK_PROBE:
+            return subprocess.CompletedProcess(argv, 0, stdout="0002\n", stderr="")
+        if argv[2:] == deploy_platform_release.BROKER_UMASK_PROBE:
+            return subprocess.CompletedProcess(argv, 0, stdout=reported, stderr="")
+        return subprocess.CompletedProcess(argv, 0)
+
+    with pytest.raises(RuntimeError, match="UMask"):
+        deploy_platform_release.deploy(archive, attestation, signing_key, "vm.example", run=run)
+    assert not any(command[0] == "scp" for command in commands)
+    assert not any("activate_release.py" in argument for command in commands for argument in command)
+
+
 def test_desktop_deploy_signs_locally_and_copies_no_private_key(tmp_path):
     archive = tmp_path / f"kb-platform-{'a' * 40}.tar.gz"
     archive.write_bytes(b"archive")
@@ -779,12 +809,15 @@ def test_desktop_deploy_signs_locally_and_copies_no_private_key(tmp_path):
             attestation.with_suffix(".json.sig").write_bytes(b"signature")
         if argv[2:] == deploy_platform_release.DASHBOARD_UMASK_PROBE:
             return subprocess.CompletedProcess(argv, 0, stdout="0002\n", stderr="")
+        if argv[2:] == deploy_platform_release.BROKER_UMASK_PROBE:
+            return subprocess.CompletedProcess(argv, 0, stdout="0002\n", stderr="")
         return subprocess.CompletedProcess(argv, 0)
 
     deploy_platform_release.deploy(archive, attestation, signing_key, "vm.example", run=run)
     assert commands[0] == ["ssh-keygen", "-Y", "sign", "-f", str(signing_key), "-n", "kb-release", str(attestation)]
-    # The umask probe is read-only and precedes every byte sent to the VM.
+    # Both umask probes are read-only and precede every byte sent to the VM.
     assert commands[1] == ["ssh", "vm.example", *deploy_platform_release.DASHBOARD_UMASK_PROBE]
+    assert commands[2] == ["ssh", "vm.example", *deploy_platform_release.BROKER_UMASK_PROBE]
     assert all(str(signing_key) not in command for command in commands[1:])
     assert not any("token" in argument.lower() for command in commands for argument in command)
     assert not any(command[:3] == ["ssh", "vm.example", "mv"] for command in commands)

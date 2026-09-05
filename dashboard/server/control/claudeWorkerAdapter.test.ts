@@ -16,6 +16,7 @@ import type {
 import {
   ATTEMPT_SESSION_COLS,
   ATTEMPT_SESSION_ROWS,
+  buildWorkerPrompt,
   createClaudeWorkerAdapter,
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS,
@@ -481,5 +482,28 @@ describe('createClaudeWorkerAdapter two-phase start', () => {
     }
     expect(serialized).not.toMatch(/"(env|argv|args|command|executable|token|apiKey|password|credential)"/i);
     expect(Object.keys(recorder.declarations[0])).not.toContain('env');
+  });
+});
+
+describe('buildWorkerPrompt iteration contract emptiness rule', () => {
+  /**
+   * W70 (Gate 4b run 3, Fix 2): iterationOutcome.ts refuses any verdict other than "consensus"/
+   * "continue" that carries positions or recorded dissent, but the prompt never told the worker that -
+   * a codex checker returned "rework" with one position and the run failed on a rule it never saw.
+   * `buildWorkerPrompt` is the ONE prompt builder for both runtimes (attemptSessionAdapter.ts calls it
+   * unconditionally, branching only on `input.profile.runtime` afterward to pick claude vs codex argv),
+   * so this one assertion covers both.
+   */
+  it('states the positions/recordedDissent emptiness rule right after the JSON shape line', () => {
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Review the change.', readScope: ['dashboard'], writeScope: [],
+      iterationContract: ITERATION_CONTRACT, proposalStage: STAGE,
+    });
+    const lines = prompt.split('\n');
+    const shapeIndex = lines.findIndex((line) => line.startsWith('Its exact shape is'));
+    expect(shapeIndex).toBeGreaterThanOrEqual(0);
+    expect(lines[shapeIndex + 1]).toBe(
+      'positions and recordedDissent MUST be [] unless the verdict is exactly "consensus" or "continue".',
+    );
   });
 });

@@ -92,6 +92,12 @@ BROKER_SERVICE_DIRECTIVES = {
     "Restart": "on-failure",
     "KillMode": "control-group",
     "TimeoutStopSec": "90",
+    # Added alongside kb-dashboard's own UMask=0002 (see EXPECTED_UMASK above): codex/claude workers
+    # `mkdir -p` under the 2775 setgid run worktree, and at the systemd default 0022 those dirs come out
+    # 2755 kb-shell:kb-shell, which the daemon (uid kb-dashboard, group kb-shell) cannot unlink during
+    # `git worktree remove --force`. This is a contract change, not a relaxation: it is enforced the
+    # same way every other frozen directive is, by _exact_directives against the installed unit file.
+    "UMask": "0002",
     "NoNewPrivileges": "yes",
     "UnsetEnvironment": ("GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET"
                          " KB_CANARY_SESSION"),

@@ -32,6 +32,13 @@ ExecStart=/usr/bin/node /opt/kb-shell-broker/current/main.js --socket-fd=3 --pro
 Restart=on-failure
 KillMode=control-group
 TimeoutStopSec=90
+# UMask=0002 mirrors kb-dashboard.service's UMask= comment: every codex/claude worker this unit spawns
+# does `mkdir -p` under the 2775 setgid run worktree the daemon created. At systemd's default 0022 those
+# mkdirs come out 2755 kb-shell:kb-shell, and the daemon (uid kb-dashboard, supplementary group
+# kb-shell) then gets EACCES trying to unlink the worker's own files during `git worktree remove
+# --force` (adapters.ts). 0002 makes the worker's own mkdir/creat calls group-writable (2775/664), so
+# the daemon can still clean up a worktree the worker wrote into.
+UMask=0002
 NoNewPrivileges=yes
 # The broker must not inherit the manager environment (DefaultEnvironment, systemctl set-environment):
 # the same list kb-dashboard.service unsets, because the same secrets would otherwise reach a process

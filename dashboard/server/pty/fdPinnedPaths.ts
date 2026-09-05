@@ -147,6 +147,11 @@ export const BROKER_SYSTEMD_POLICY = {
     Restart: 'on-failure',
     KillMode: 'control-group',
     TimeoutStopSec: '90',
+    // Added alongside kb-dashboard.service's own UMask=0002: codex/claude worker children `mkdir -p`
+    // under the 2775 setgid run worktree, and at the systemd default 0022 those dirs come out 2755
+    // kb-shell:kb-shell, which the daemon (uid kb-dashboard, group kb-shell) cannot unlink during
+    // `git worktree remove --force`.
+    UMask: '0002',
     NoNewPrivileges: 'yes',
     UnsetEnvironment: 'GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION',
     PrivateTmp: 'yes',

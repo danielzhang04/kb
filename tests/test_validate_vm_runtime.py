@@ -539,6 +539,9 @@ def test_the_broker_units_carry_the_ruled_directive_values():
     assert service["PrivateTmp"] == "yes"
     assert service["UnsetEnvironment"] == dict(
         validate_vm_runtime.parse_unit(dashboard)["Service"])["UnsetEnvironment"]
+    # W70 (Gate 4b run 3): the broker's own UMask must match the dashboard's, for the same reason -
+    # both units' children `git worktree add` / `mkdir -p` under the 2775 setgid run worktree.
+    assert service["UMask"] == dict(validate_vm_runtime.parse_unit(dashboard)["Service"])["UMask"] == "0002"
     assert service["ReadWritePaths"] == "/var/lib/kb-shell/worktrees /run/kb-shell /var/lib/kb-shell/home/.claude /var/lib/kb-shell/home/.codex"
     # The provider CLIs must be able to persist their own state under the read-only home.
     assert service["ReadOnlyPaths"] == "/var/lib/kb/ops /var/lib/kb-shell/home"
