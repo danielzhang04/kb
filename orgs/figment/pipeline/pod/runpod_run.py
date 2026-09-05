@@ -10,6 +10,7 @@ import calendar
 import copy
 import csv
 import hashlib
+import io
 import json
 import logging
 import math
@@ -57,6 +58,27 @@ ARTIFACT_MIN_BYTES_WITHOUT_LENGTH = {
     ".txt": 1,
     ".log": 1,
 }
+# The RunPod HTTP proxy sits behind Cloudflare, whose documented request-body cap is
+# 100 MB on Free/Pro, 200 MB on Business, and up to 5 GB only on Enterprise
+# (https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/),
+# and whose connection timeout is "approximately 100 seconds" per RunPod's own proxy
+# guide (https://www.runpod.io/blog/runpod-proxy-guide) — the official
+# expose-ports doc puts the same number at "a maximum connection time of 100
+# seconds" before a 524 (https://docs.runpod.io/pods/configuration/expose-ports).
+# A raw multi-hundred-MB LoRA checkpoint upload can exceed the body cap outright and,
+# even when it does not, the harness's OWN fixed 30s REQUEST_TIMEOUT (far tighter than
+# either proxy limit) was what actually produced the observed
+# "upload ... transient failure" x3 -> ConnectionError pattern. chunk_bytes keeps every
+# part comfortably under the smallest known body cap and gives each part a timeout
+# sized to its own size instead of one fixed 30s window for any file.
+MIN_UPLOAD_CHUNK_BYTES = 1 * 1024 ** 2
+MAX_UPLOAD_CHUNK_BYTES = 64 * 1024 ** 2
+UPLOAD_CHUNK_MIN_TIMEOUT_SECONDS = 60.0
+# Deliberately pessimistic: sized so a genuinely slow-but-working part transfer is not
+# mistaken for a hung connection, not a throughput assumption used for time budgeting.
+UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND = 200_000
+PARTS_READY_MARKER_NAME = "_parts.ready"
+PARTS_MANIFEST_SUFFIX = ".parts.json"
 TRANSIENT_MARKER_HTTP_STATUSES = {502, 503, 504}
 TRANSIENT_MARKER_ERROR_TYPES = {
     "ConnectionError", "ConnectionResetError", "ConnectTimeout", "ReadTimeout",
@@ -208,6 +230,8 @@ class UploadItem:
     subfolder: str
     overwrite: bool
     size_bytes: int | None
+    chunk_bytes: int | None = None
+    group_index: int = 0
 
 
 class ApiKeyRedactionFilter(logging.Filter):
@@ -1200,6 +1224,17 @@ def expand_manifest_uploads(
         if not isinstance(overwrite, bool):
             raise HarnessError("each upload overwrite value must be true or false")
         subfolder = _safe_remote_subfolder(group.get("subfolder"))
+        chunk_bytes: int | None = None
+        if "chunk_bytes" in group:
+            raw_chunk_bytes = group["chunk_bytes"]
+            if isinstance(raw_chunk_bytes, bool) or not isinstance(raw_chunk_bytes, int):
+                raise HarnessError("uploads chunk_bytes must be an integer")
+            if not MIN_UPLOAD_CHUNK_BYTES <= raw_chunk_bytes <= MAX_UPLOAD_CHUNK_BYTES:
+                raise HarnessError(
+                    "uploads chunk_bytes must be between "
+                    f"{MIN_UPLOAD_CHUNK_BYTES} and {MAX_UPLOAD_CHUNK_BYTES} bytes"
+                )
+            chunk_bytes = raw_chunk_bytes
 
         for pattern_number, pattern_text in enumerate(files, start=1):
             pattern = _portable_relative_path(
@@ -1273,6 +1308,8 @@ def expand_manifest_uploads(
                     subfolder=subfolder,
                     overwrite=overwrite,
                     size_bytes=size_bytes,
+                    chunk_bytes=chunk_bytes,
+                    group_index=group_number - 1,
                 ))
 
     marker_positions = [
@@ -1292,6 +1329,34 @@ def expand_manifest_uploads(
                 "the _dataset.ready upload must share the one dataset subfolder"
             )
     return expanded
+
+
+def upload_chunk_part_count(size_bytes: int, chunk_bytes: int) -> int:
+    """Number of `<name>.part-NNNN` uploads a chunked file expands to (see the chunked
+    upload contract in README.md). Always at least 1, even for a zero-byte file, so a
+    part sequence is never empty."""
+    if chunk_bytes <= 0:
+        raise HarnessError("chunk_bytes must be positive")
+    if size_bytes <= 0:
+        return 1
+    return math.ceil(size_bytes / chunk_bytes)
+
+
+def upload_chunk_part_timeout(part_bytes: int) -> float:
+    """Per-part request timeout: generous enough for a genuinely slow (not hung) part
+    transfer, sized to the part instead of one fixed window for every file size."""
+    return max(
+        UPLOAD_CHUNK_MIN_TIMEOUT_SECONDS,
+        part_bytes / UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND,
+    )
+
+
+def sibling_failed_marker_name(marker: str) -> str:
+    """The `<marker-stem>.failed` sibling the harness polls alongside a job `wait_for`
+    marker, mirroring exactly how artifact mode already treats `training.failed_marker`
+    as a first-class check ahead of the success marker (see wait_for_marker)."""
+    path = PurePosixPath(marker)
+    return str(path.with_suffix(".failed"))
 
 
 def _output_marker_name(value: Any, label: str, *, absolute: bool) -> str:
@@ -1565,6 +1630,35 @@ def manifest_artifact_download_seconds(manifest: dict[str, Any]) -> float:
     return seconds
 
 
+def manifest_job_wait_for_seconds(manifest: dict[str, Any]) -> float:
+    """Wall-clock allowance for a job's optional `wait_for` marker poll (for example
+    `_loras.assembled`, written by a background assembler the launcher starts before
+    ComfyUI) ahead of that job's own submit/wait_outputs budget. Defaults to 180
+    seconds, matching artifact_download_seconds' allowance style."""
+    value = manifest.get("job_wait_for_seconds", 180)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HarnessError("job_wait_for_seconds must be numeric")
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds <= 0:
+        raise HarnessError("job_wait_for_seconds must be finite and positive")
+    return seconds
+
+
+def manifest_upload_allowance_seconds(manifest: dict[str, Any]) -> float:
+    """Optional wall-clock allowance reserved ahead of the per-job budget for the
+    upload phase. A chunked upload now spends real transfer time across many
+    sequential part requests instead of one quick multipart POST per file, so
+    minimum_runtime_minutes must be able to account for it explicitly. Defaults to 0,
+    which preserves every existing manifest's minimum_runtime_minutes value exactly."""
+    value = manifest.get("upload_allowance_seconds", 0)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise HarnessError("upload_allowance_seconds must be numeric")
+    seconds = float(value)
+    if not math.isfinite(seconds) or seconds < 0:
+        raise HarnessError("upload_allowance_seconds must be finite and non-negative")
+    return seconds
+
+
 def manifest_env_secret_refs(manifest: dict[str, Any]) -> dict[str, str]:
     """Validate the optional env_secret_refs block.
 
@@ -1638,7 +1732,14 @@ def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
         jobs = manifest.get("jobs")
         if not isinstance(jobs, list) or not jobs:
             raise HarnessError("manifest jobs must be a non-empty list")
-        work_seconds = manifest_job_timeout_seconds(manifest) * len(jobs)
+        wait_for_jobs = sum(
+            1 for job in jobs if isinstance(job, dict) and job.get("wait_for") is not None
+        )
+        work_seconds = (
+            manifest_job_timeout_seconds(manifest) * len(jobs)
+            + manifest_upload_allowance_seconds(manifest)
+            + (manifest_job_wait_for_seconds(manifest) * wait_for_jobs if wait_for_jobs else 0.0)
+        )
     return (
         manifest_readiness_timeout_seconds(manifest) / 60.0
         + work_seconds / 60.0
@@ -1740,6 +1841,12 @@ def require_manifest(
         if (not isinstance(job, dict) or isinstance(expected, bool)
                 or not isinstance(expected, int) or expected <= 0):
             raise HarnessError("each job expected_images must be a positive integer")
+        if "wait_for" in job:
+            _output_marker_name(job["wait_for"], "job wait_for", absolute=False)
+    if any(isinstance(job, dict) and job.get("wait_for") is not None
+           for job in manifest["jobs"]):
+        manifest_job_wait_for_seconds(manifest)
+    manifest_upload_allowance_seconds(manifest)
     workflow = load_workflow(manifest, manifest_path)
     seed_fields = manifest_seed_fields(manifest)
     if not any(
@@ -2661,6 +2768,57 @@ class ComfyClient:
             raise HarnessError("ComfyUI POST /upload/image returned mismatched JSON")
         return body
 
+    def upload_part(
+        self, data: bytes, remote_name: str, subfolder: str, overwrite: bool,
+        timeout: float,
+    ) -> dict[str, str]:
+        """Upload one chunk's raw bytes as its own ComfyUI input file (see the
+        chunked upload contract in README.md: `<name>.part-NNNN`, `<name>.parts.json`,
+        then `_parts.ready`). Mirrors upload_file's proxy-response handling, but reads
+        from an in-memory buffer with a timeout sized to the part instead of the fixed
+        REQUEST_TIMEOUT used for a whole small file."""
+        expected = {"name": remote_name, "subfolder": subfolder, "type": "input"}
+        try:
+            response = self.session.post(
+                self.base_url + "/upload/image",
+                files={"image": (remote_name, io.BytesIO(data))},
+                data={
+                    "subfolder": subfolder,
+                    "type": "input",
+                    "overwrite": "true" if overwrite else "false",
+                },
+                timeout=timeout,
+            )
+        except Exception as exc:
+            raise TransientProxyError(
+                "ComfyUI POST /upload/image transport failed: "
+                f"{type(exc).__name__}"
+            ) from exc
+        try:
+            if not 200 <= response.status_code < 300:
+                error_type = (
+                    TransientProxyError
+                    if proxy_http_status_is_transient(int(response.status_code))
+                    else HarnessError
+                )
+                raise error_type(
+                    f"ComfyUI POST /upload/image returned HTTP {response.status_code}"
+                )
+            try:
+                body = response.json()
+            except (ValueError, TypeError) as exc:
+                raise HarnessError(
+                    "ComfyUI POST /upload/image returned invalid JSON"
+                ) from exc
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+        if not isinstance(body, dict) or any(
+                body.get(key) != value for key, value in expected.items()):
+            raise HarnessError("ComfyUI POST /upload/image returned mismatched JSON")
+        return body
+
     def marker_status(self, filename: str) -> int | str:
         marker = _output_marker_name(filename, "artifact marker", absolute=False)
         try:
@@ -3038,6 +3196,13 @@ class DryRunComfyClient:
             ) from exc
         return {"name": local_path.name, "subfolder": subfolder, "type": "input"}
 
+    def upload_part(
+        self, data: bytes, remote_name: str, subfolder: str, overwrite: bool,
+        timeout: float,
+    ) -> dict[str, str]:
+        del data, overwrite, timeout
+        return {"name": remote_name, "subfolder": subfolder, "type": "input"}
+
     def wait_for_marker(
         self, _marker: str, _failed_marker: str, _timeout: float, watchdog: Watchdog,
     ) -> None:
@@ -3315,6 +3480,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             logger.warning(
                 "upload preflight: overwrite=false may fail on pre-existing remote files"
             )
+        for item in upload_items:
+            if item.chunk_bytes is None or item.size_bytes is None:
+                continue
+            parts = upload_chunk_part_count(item.size_bytes, item.chunk_bytes)
+            logger.info(
+                "upload chunk plan: %s -> %d parts (chunk_bytes=%d, bytes=%d)",
+                item.remote_name, parts, item.chunk_bytes, item.size_bytes,
+            )
     ledger_target = (
         out_dir / "dry-run-ledger"
         if dry_run and ledger_dir is None else configured_ledger_dir(ledger_dir)
@@ -3578,8 +3751,83 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             watchdog.check()
             comfy = proxy_client
             per_job_timeout = manifest_job_timeout_seconds(manifest)
+
+            def upload_one_part(
+                    data: bytes, part_name: str, subfolder: str, overwrite: bool,
+                    *, comfy: Any = comfy) -> None:
+                timeout = upload_chunk_part_timeout(len(data))
+                retry_transient_proxy(
+                    lambda: comfy.upload_part(data, part_name, subfolder, overwrite, timeout),
+                    f"upload {part_name}", watchdog, sleep, logger,
+                )
+
+            def upload_chunked_file(item: UploadItem) -> dict[str, Any]:
+                assert item.chunk_bytes is not None
+                size = local_file_size(item.local_path, "uploaded file", positive=True)
+                parts = upload_chunk_part_count(size, item.chunk_bytes)
+                digest = hashlib.sha256()
+                with item.local_path.open("rb") as handle:
+                    for part_index in range(parts):
+                        remaining = size - part_index * item.chunk_bytes
+                        length = min(item.chunk_bytes, remaining)
+                        data = handle.read(length)
+                        if len(data) != length:
+                            raise HarnessError(
+                                "uploaded file changed size during chunked read: "
+                                f"{item.remote_name}"
+                            )
+                        digest.update(data)
+                        part_name = f"{item.remote_name}.part-{part_index:04d}"
+                        upload_one_part(data, part_name, item.subfolder, True)
+                        logger.info(
+                            "chunk uploaded: %s/%s bytes=%d (%d/%d)",
+                            item.subfolder, part_name, length, part_index + 1, parts,
+                        )
+                sha256_hex = digest.hexdigest()
+                manifest_bytes = json.dumps({
+                    "name": item.remote_name, "parts": parts, "size": size,
+                    "sha256": sha256_hex,
+                }, sort_keys=True).encode("utf-8")
+                manifest_name = f"{item.remote_name}{PARTS_MANIFEST_SUFFIX}"
+                upload_one_part(manifest_bytes, manifest_name, item.subfolder, True)
+                return {
+                    "name": item.remote_name,
+                    "subfolder": item.subfolder,
+                    "type": "input",
+                    "overwrite": item.overwrite,
+                    "bytes": size,
+                    "parts": parts,
+                    "sha256": sha256_hex,
+                }
+
+            pending_chunk_group: int | None = None
+            pending_chunk_subfolder: str | None = None
+
+            def flush_pending_chunk_group() -> None:
+                nonlocal pending_chunk_group, pending_chunk_subfolder
+                if pending_chunk_group is None:
+                    return
+                assert pending_chunk_subfolder is not None
+                upload_one_part(b"", PARTS_READY_MARKER_NAME, pending_chunk_subfolder, True)
+                logger.info(
+                    "chunked upload group ready: %s/%s",
+                    pending_chunk_subfolder, PARTS_READY_MARKER_NAME,
+                )
+                result["uploads"].append({
+                    "name": PARTS_READY_MARKER_NAME,
+                    "subfolder": pending_chunk_subfolder,
+                    "type": "input",
+                    "overwrite": True,
+                    "bytes": 0,
+                })
+                pending_chunk_group = None
+                pending_chunk_subfolder = None
+
             for item in upload_items:
                 watchdog.check()
+                if (pending_chunk_group is not None
+                        and item.group_index != pending_chunk_group):
+                    flush_pending_chunk_group()
                 if item.size_bytes is None:
                     if not dry_run:
                         raise HarnessError("live upload file disappeared after preflight")
@@ -3589,6 +3837,27 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         "subfolder": item.subfolder,
                         "type": "input",
                     }
+                    result["uploads"].append({
+                        "name": response["name"],
+                        "subfolder": response["subfolder"],
+                        "type": response["type"],
+                        "overwrite": item.overwrite,
+                        "bytes": byte_count,
+                    })
+                    logger.info(
+                        "upload complete: %s/%s bytes=%d",
+                        item.subfolder, item.remote_name, byte_count,
+                    )
+                elif item.chunk_bytes is not None:
+                    chunk_result = upload_chunked_file(item)
+                    result["uploads"].append(chunk_result)
+                    logger.info(
+                        "upload complete: %s/%s bytes=%d parts=%d",
+                        item.subfolder, item.remote_name,
+                        chunk_result["bytes"], chunk_result["parts"],
+                    )
+                    pending_chunk_group = item.group_index
+                    pending_chunk_subfolder = item.subfolder
                 else:
                     byte_count = local_file_size(
                         item.local_path, "uploaded file",
@@ -3600,17 +3869,18 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         ),
                         f"upload {item.remote_name}", watchdog, sleep, logger,
                     )
-                result["uploads"].append({
-                    "name": response["name"],
-                    "subfolder": response["subfolder"],
-                    "type": response["type"],
-                    "overwrite": item.overwrite,
-                    "bytes": byte_count,
-                })
-                logger.info(
-                    "upload complete: %s/%s bytes=%d",
-                    item.subfolder, item.remote_name, byte_count,
-                )
+                    result["uploads"].append({
+                        "name": response["name"],
+                        "subfolder": response["subfolder"],
+                        "type": response["type"],
+                        "overwrite": item.overwrite,
+                        "bytes": byte_count,
+                    })
+                    logger.info(
+                        "upload complete: %s/%s bytes=%d",
+                        item.subfolder, item.remote_name, byte_count,
+                    )
+            flush_pending_chunk_group()
 
             if artifacts:
                 # The shared job_timeout_seconds deadline pays for the training
@@ -3682,6 +3952,15 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 for job_number, job in enumerate(manifest["jobs"], start=1):
                     watchdog.check()
                     job_started = time.monotonic()
+                    wait_for = job.get("wait_for")
+                    if wait_for is not None:
+                        marker = _output_marker_name(wait_for, "job wait_for", absolute=False)
+                        failed_marker = sibling_failed_marker_name(marker)
+                        comfy.wait_for_marker(
+                            marker, failed_marker,
+                            manifest_job_wait_for_seconds(manifest), watchdog,
+                        )
+                        logger.info("job marker ready: %s", marker)
                     output_name = safe_output_name(job.get("output_name"))
                     workflow = apply_job(base_workflow, job, manifest_seed_fields(manifest))
                     prompt_id = comfy.submit(workflow)

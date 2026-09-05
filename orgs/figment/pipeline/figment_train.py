@@ -190,6 +190,10 @@ def _pod_base(pins: dict[str, Any], pod_class: str, stage: str) -> dict[str, Any
     })
     if "artifact_download_seconds" in stage_values:
         result["artifact_download_seconds"] = stage_values["artifact_download_seconds"]
+    if "upload_allowance_seconds" in stage_values:
+        result["upload_allowance_seconds"] = stage_values["upload_allowance_seconds"]
+    if "job_wait_for_seconds" in stage_values:
+        result["job_wait_for_seconds"] = stage_values["job_wait_for_seconds"]
     result["comfyui"] = deepcopy(stage_values["comfyui"])
     return result
 
@@ -510,6 +514,7 @@ def _tester_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any
             "subfolder": trigger,
             "type": "input",
             "overwrite": True,
+            "chunk_bytes": 16777216,
         }],
         "training": {
             "lora_source_dir": f"/workspace/ComfyUI/input/{trigger}",
@@ -520,12 +525,13 @@ def _tester_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any
             "seed": 1595,
             "output_name": f"{_creator_output_code(creator_id)}-tensor-tester-{label}",
             "expected_images": 1,
+            **({"wait_for": "_loras.assembled"} if index == 0 else {}),
             "substitutions": [{
                 "node_id": "4",
                 "field": "lora_name",
                 "value": _checkpoint_name(trigger, step),
             }],
-        } for step, label in checkpoints],
+        } for index, (step, label) in enumerate(checkpoints)],
     }
 
 

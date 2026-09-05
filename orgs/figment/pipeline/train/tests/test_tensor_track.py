@@ -5,6 +5,7 @@ longer carrying module 11's numbers, the start-script templates no longer render
 under the harness's placeholder rules, and the three run manifests no longer passing
 harness preflight (spend ceilings included).
 """
+import hashlib
 import importlib.util
 import json
 import os
@@ -12,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -349,6 +351,106 @@ def test_lorapath_script_replaces_an_existing_symlink(tmp_path):
     log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
     assert "already a symlink" in log_text
     assert "already a symlink" in result.stderr
+
+
+def _write_chunked_upload(lora_source, name, content, chunk_size):
+    """Lay out one file's <name>.part-NNNN parts and <name>.parts.json manifest
+    exactly as the chunked upload contract (pod/README.md) produces them."""
+    parts = [content[i:i + chunk_size] for i in range(0, len(content), chunk_size)] or [b""]
+    for index, part in enumerate(parts):
+        (lora_source / f"{name}.part-{index:04d}").write_bytes(part)
+    manifest = {
+        "name": name, "parts": len(parts), "size": len(content),
+        "sha256": hashlib.sha256(content).hexdigest(),
+    }
+    (lora_source / f"{name}.parts.json").write_text(json.dumps(manifest), encoding="utf-8")
+    return parts
+
+
+def _wait_for(path, timeout=10.0):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if path.exists():
+            return True
+        time.sleep(0.1)
+    return path.exists()
+
+
+def test_lorapath_script_assembles_chunked_parts_verifies_sha_and_writes_assembled_marker(
+        tmp_path):
+    """The background assembler (started before ComfyUI is exec'd) must wait for
+    _parts.ready, reassemble every *.parts.json file's parts in order, verify size
+    and sha256, delete the parts, and mark /workspace/output/_loras.assembled."""
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    (tmp_path / "ComfyUI" / "models").mkdir(parents=True, exist_ok=True)
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    lora_source.mkdir(parents=True, exist_ok=True)
+
+    content_a = b"A" * 25  # chunk_size=10 -> 3 parts (10, 10, 5): exact + remainder
+    content_b = b"B" * 20  # chunk_size=10 -> 2 exact parts
+    _write_chunked_upload(lora_source, "weights-a.safetensors", content_a, 10)
+    _write_chunked_upload(lora_source, "weights-b.safetensors", content_b, 10)
+    (lora_source / "_parts.ready").write_bytes(b"")
+
+    result = _run_lorapath_script(bash, script)
+    assert result.returncode == 0, result.stderr
+    assert "MAIN_RAN:" in result.stdout, result.stdout
+
+    assembled_marker = tmp_path / "output" / "_loras.assembled"
+    assert _wait_for(assembled_marker), result.stderr
+
+    assert (lora_source / "weights-a.safetensors").read_bytes() == content_a
+    assert (lora_source / "weights-b.safetensors").read_bytes() == content_b
+    # A successful assembly cleans up every part and its manifest.
+    assert not list(lora_source.glob("*.part-*"))
+    assert not list(lora_source.glob("*.parts.json"))
+    assert not (tmp_path / "output" / "_loras.failed").exists()
+    assert not (tmp_path / "output" / "_bootstrap.failed").exists()
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "assembled weights-a.safetensors (3 parts, 25 bytes, sha256 verified)" in log_text
+    assert "assembled weights-b.safetensors (2 parts, 20 bytes, sha256 verified)" in log_text
+
+
+def test_lorapath_script_writes_failed_marker_on_a_corrupted_part(tmp_path):
+    """A corrupted part must fail sha256 verification, never publish the final
+    checkpoint name, and write both the dedicated _loras.failed sibling marker
+    (which job-level wait_for polling honours) and a best-effort
+    _bootstrap.failed for the narrow pre-readiness window."""
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    (tmp_path / "ComfyUI" / "models").mkdir(parents=True, exist_ok=True)
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    lora_source.mkdir(parents=True, exist_ok=True)
+
+    content = b"C" * 20
+    good_parts = _write_chunked_upload(lora_source, "weights-c.safetensors", content, 10)
+    # Corrupt the second part in place: same length, different bytes, so the size
+    # check passes and only the sha256 check can catch it.
+    corrupted = b"X" * len(good_parts[1])
+    (lora_source / "weights-c.safetensors.part-0001").write_bytes(corrupted)
+    (lora_source / "_parts.ready").write_bytes(b"")
+
+    result = _run_lorapath_script(bash, script)
+    assert result.returncode == 0, result.stderr  # ComfyUI itself must still start
+
+    failed_marker = tmp_path / "output" / "_loras.failed"
+    assert _wait_for(failed_marker), result.stderr
+    assert "sha256 mismatch" in failed_marker.read_text(encoding="utf-8")
+    assert _wait_for(tmp_path / "output" / "_bootstrap.failed")
+
+    assert not (lora_source / "weights-c.safetensors").exists()
+    assert not (tmp_path / "output" / "_loras.assembled").exists()
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "sha256 mismatch for weights-c.safetensors" in log_text
 
 
 def test_training_start_script_rejects_a_shell_unsafe_trigger():

@@ -36,11 +36,13 @@
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "bash /workspace/start-training-aitoolkit.sh", "extra_args": ["--cpu", "--disable-all-custom-nodes"]}
         },
         "tester": {
-          "max_minutes": 105,
+          "max_minutes": 115,
           "container_disk_gb": 80,
           "volume_gb": 200,
           "readiness_timeout_seconds": 2400,
           "job_timeout_seconds": 300,
+          "upload_allowance_seconds": 900,
+          "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
         }
       }

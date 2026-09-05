@@ -78,8 +78,14 @@ that file. Required fields are:
 - a ComfyUI API-format `workflow` object or JSON path;
 - optional `seed_fields`, a non-empty list of workflow input names to receive every job's
   `seed` (defaults to `["seed", "noise_seed"]`);
-- `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1);
-- optional `uploads`, a non-empty list of input-file groups described below;
+- `jobs` with `seed`, safe `output_name`, substitutions, and `expected_images` (default 1),
+  plus an optional `wait_for` marker name (see "Chunked uploads" below) the harness polls,
+  alongside its `<stem>.failed` sibling, before submitting that job;
+- optional `uploads`, a non-empty list of input-file groups described below, each optionally
+  declaring `chunk_bytes` (1 MiB-64 MiB) to upload its files in parts — see "Chunked uploads";
+- optional `upload_allowance_seconds` (default 0) and `job_wait_for_seconds` (default 180),
+  wall-clock allowances `minimum_runtime_minutes` reserves for real chunked-upload transfer time
+  and for any job's `wait_for` marker poll, respectively;
 - optional `training`, which materializes a local wrapper script below the volume root; and
 - optional `artifacts`, which replaces compatibility-job submission with completion-marker
   polling and non-image output downloads.
@@ -159,6 +165,59 @@ After readiness and the READY-price checks, each file is sent as multipart field
 backoff. The response must be HTTP 2xx JSON whose `name`, `subfolder`, and `type` exactly match
 the request. The proxy client carries no RunPod authorization header and local upload files
 are only opened for reading.
+
+### The RunPod proxy's transport limits, and why large files must be chunked
+
+The RunPod HTTP proxy sits behind Cloudflare. Cloudflare's own documentation puts its request
+body cap at 100 MB on Free/Pro, 200 MB on Business, and up to 5 GB only on Enterprise, returning
+HTTP 413 above that
+([Cloudflare docs, error 413](https://developers.cloudflare.com/support/troubleshooting/http-status-codes/4xx-client-error/error-413/)).
+RunPod's own port-exposure guide and proxy guide both put its connection timeout at "a maximum
+connection time of 100 seconds" before a 524
+([expose-ports](https://docs.runpod.io/pods/configuration/expose-ports),
+[runpod.io/blog/runpod-proxy-guide](https://www.runpod.io/blog/runpod-proxy-guide)). A
+multi-hundred-MB LoRA checkpoint upload can exceed the body cap outright; even when it does not,
+this harness's own fixed 30-second `REQUEST_TIMEOUT` (used for every whole-file `upload_file`
+call, far tighter than either proxy limit) is what actually produced the observed
+`upload ... transient failure` x3 -> `ConnectionError` pattern against a live pod — every attempt
+died roughly 30 seconds in, well before RunPod's own 100-second ceiling, because the harness gave
+up on itself first.
+
+### Chunked uploads (`uploads[].chunk_bytes`)
+
+Any upload group may declare an integer `chunk_bytes` between 1 MiB (1,048,576) and 64 MiB
+(67,108,864). When set, every file the group matches is uploaded as a sequence of parts instead
+of one request: `<name>.part-0000`, `<name>.part-0001`, ... (each at most `chunk_bytes`, the
+last one shorter), sequentially, each part retried under the same existing three-attempt
+15/30-second transient-failure policy as any other upload. A part's request timeout is sized to
+the part instead of the fixed `REQUEST_TIMEOUT`: `max(60s, part_bytes / 200_000 bytes/s)` — a
+deliberately pessimistic floor so a genuinely slow (not hung) transfer is never mistaken for one
+that stalled, not a throughput assumption used for overall time budgeting. After a file's last
+part, a `<name>.parts.json` manifest is uploaded to the same subfolder:
+`{"name": ..., "parts": <count>, "size": <total bytes>, "sha256": <hex>}`. Once every file in the
+upload group has finished (all parts plus its manifest), one zero-byte `_parts.ready` marker is
+uploaded to the group's subfolder. `run.json` records `parts`, `bytes`, and `sha256` for each
+chunked file, plus a `_parts.ready` row. `--dry-run` preflight prints the plan for every chunked
+file before create: `upload chunk plan: <name> -> <N> parts (chunk_bytes=<b>, bytes=<size>)`.
+
+The paired `start-comfy-lorapath.sh.template` launcher starts a background assembler — before
+`exec`-ing ComfyUI, so ComfyUI itself starts immediately while assembly, which is pure local
+disk I/O, runs alongside it — that waits for `_parts.ready`, concatenates each `*.parts.json`
+file's parts in declared order, verifies the assembled file's size and `sha256sum` against the
+manifest, deletes the parts and the manifest on success, and writes
+`/workspace/output/_loras.assembled`. Because this all happens in the background, after ComfyUI
+is already healthy, it runs past the point where `wait_ready`'s `_bootstrap.failed` polling stops
+(that check runs only until `desiredStatus=RUNNING` and proxy health both succeed) and a jobs-mode
+manifest has no other marker-polling loop of its own (that previously existed only for
+artifacts/training mode) — so an assembly failure additionally writes a dedicated
+`/workspace/output/_loras.failed` sibling marker, best-effort alongside `_bootstrap.failed`. A
+`jobs[]` entry may now declare an optional `wait_for` marker name (mirroring `artifacts[].wait_for`
+shape exactly); when present, the harness polls it — and its `<stem>.failed` sibling, derived the
+same way `training.failed_marker` is checked ahead of `training.complete_marker` in
+`wait_for_marker` — before submitting that job, for up to the optional `job_wait_for_seconds`
+(default 180 seconds). `minimum_runtime_minutes` folds in `job_wait_for_seconds` for every job
+that declares `wait_for`, plus an optional `upload_allowance_seconds` (default 0) reserved ahead
+of the per-job budget for the real transfer time a chunked upload now spends.
 
 When `training` is present, `start_script_file` must be a file below the manifest directory
 and `start_script_path` must be an absolute child of `volume_mount_path`. The harness renders

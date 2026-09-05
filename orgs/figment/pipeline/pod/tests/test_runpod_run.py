@@ -3875,3 +3875,284 @@ def test_track1_readme_documents_the_hardened_live_contract():
     assert "every node requires a 40-hex `git_ref`" in readme
     assert "supports exactly one mapping: `HF_TOKEN -> <RunPod secret NAME>`" in readme
     assert "marker poll and download share exactly one `job_timeout_seconds`" in readme
+
+
+# --- chunked uploads (chunk_bytes) and job-level wait_for markers -------------
+
+def _chunked_upload_manifest(
+        tmp_path, *, chunk_bytes=1_048_576, content=b"0123456789ABCDEFGHIJ",
+        wait_for="_loras.assembled"):
+    configured = manifest()
+    upload_dir = tmp_path / "chunked"
+    upload_dir.mkdir()
+    (upload_dir / "weights.safetensors").write_bytes(content)
+    configured["uploads"] = [{
+        "files": ["chunked/weights.safetensors"],
+        "subfolder": "lora",
+        "type": "input",
+        "overwrite": True,
+        "chunk_bytes": chunk_bytes,
+    }]
+    if wait_for is not None:
+        configured["jobs"][0] = dict(configured["jobs"][0], wait_for=wait_for)
+        configured["job_wait_for_seconds"] = 30
+    return configured, tmp_path / "manifest.yaml"
+
+
+def test_upload_chunk_part_count_exact_and_remainder_boundaries():
+    assert rr.upload_chunk_part_count(30, 10) == 3
+    assert rr.upload_chunk_part_count(31, 10) == 4
+    assert rr.upload_chunk_part_count(1, 10) == 1
+    assert rr.upload_chunk_part_count(0, 10) == 1
+    with pytest.raises(rr.HarnessError):
+        rr.upload_chunk_part_count(10, 0)
+
+
+def test_upload_chunk_part_timeout_scales_with_part_size_and_has_a_floor():
+    assert rr.upload_chunk_part_timeout(1) == rr.UPLOAD_CHUNK_MIN_TIMEOUT_SECONDS
+    big = 32 * 1024 * 1024
+    assert rr.upload_chunk_part_timeout(big) == pytest.approx(
+        big / rr.UPLOAD_CHUNK_ASSUMED_MIN_BYTES_PER_SECOND
+    )
+
+
+def test_sibling_failed_marker_name_replaces_the_markers_own_suffix():
+    assert rr.sibling_failed_marker_name("_loras.assembled") == "_loras.failed"
+    assert rr.sibling_failed_marker_name("nested/_loras.assembled") == "nested/_loras.failed"
+
+
+@pytest.mark.parametrize(
+    "bad_value", [0, -1, "10", True, 1_048_575, 64 * 1024 * 1024 + 1, 1.5],
+)
+def test_upload_chunk_bytes_validation_rejects_out_of_range_or_non_int(tmp_path, bad_value):
+    configured, manifest_path = _chunked_upload_manifest(tmp_path, wait_for=None)
+    configured["uploads"][0]["chunk_bytes"] = bad_value
+    with pytest.raises(rr.HarnessError, match="chunk_bytes"):
+        rr.require_manifest(configured, manifest_path)
+
+
+@pytest.mark.parametrize("good_value", [1_048_576, 67_108_864])
+def test_upload_chunk_bytes_validation_accepts_the_boundary_values(tmp_path, good_value):
+    configured, manifest_path = _chunked_upload_manifest(
+        tmp_path, chunk_bytes=good_value, wait_for=None,
+    )
+    rr.require_manifest(configured, manifest_path)
+    items = rr.expand_manifest_uploads(configured, manifest_path)
+    assert items[0].chunk_bytes == good_value
+
+
+def test_expand_manifest_uploads_stamps_group_index_and_chunk_bytes(tmp_path):
+    configured = manifest()
+    (tmp_path / "a.png").write_bytes(b"a")
+    (tmp_path / "b.safetensors").write_bytes(b"bb")
+    configured["uploads"] = [
+        {"files": ["a.png"], "subfolder": "g0", "type": "input", "overwrite": True},
+        {"files": ["b.safetensors"], "subfolder": "g1", "type": "input", "overwrite": True,
+         "chunk_bytes": 1_048_576},
+    ]
+    items = rr.expand_manifest_uploads(configured, tmp_path / "manifest.yaml")
+    assert [item.group_index for item in items] == [0, 1]
+    assert items[0].chunk_bytes is None
+    assert items[1].chunk_bytes == 1_048_576
+
+
+def test_dry_run_prints_the_chunk_part_plan(tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "MIN_UPLOAD_CHUNK_BYTES", 1)
+    configured, manifest_path = _chunked_upload_manifest(
+        tmp_path, chunk_bytes=10, content=b"0123456789ABCDEFGHIJ", wait_for=None,
+    )
+    logger, stream = logger_and_stream()
+
+    rr.run_harness(
+        configured, manifest_path, tmp_path / "out", max_usd=None, max_minutes=1,
+        dry_run=True, logger=logger, sleep=lambda _seconds: None,
+    )
+
+    assert (
+        "upload chunk plan: weights.safetensors -> 2 parts (chunk_bytes=10, bytes=20)"
+        in stream.getvalue()
+    )
+
+
+def test_chunked_upload_full_flow_uploads_parts_manifest_ready_and_records_run_json(
+        tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "MIN_UPLOAD_CHUNK_BYTES", 1)
+    content = b"0123456789ABCDEFGHIJ"  # 20 bytes; chunk_bytes=10 -> 2 exact parts
+    configured, manifest_path = _chunked_upload_manifest(
+        tmp_path, chunk_bytes=10, content=content, wait_for="_loras.assembled",
+    )
+
+    class ChunkComfy(FakeComfy):
+        events = []
+
+        def upload_part(self, data, remote_name, subfolder, overwrite, timeout):
+            type(self).events.append(
+                ("part", remote_name, subfolder, overwrite, bytes(data), timeout)
+            )
+            return {"name": remote_name, "subfolder": subfolder, "type": "input"}
+
+        def wait_for_marker(self, marker, failed_marker, timeout, watchdog):
+            watchdog.check()
+            type(self).events.append(("wait", marker, failed_marker, timeout, b"", None))
+
+    api = FakeAPI()
+    result = rr.run_harness(
+        configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+        dry_run=False, api=api, logger=logger_and_stream()[0],
+        comfy_factory=ChunkComfy, sleep=lambda _seconds: None,
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
+    )
+
+    part_events = [event for event in ChunkComfy.events if event[0] == "part"]
+    names = [event[1] for event in part_events]
+    assert names == [
+        "weights.safetensors.part-0000",
+        "weights.safetensors.part-0001",
+        "weights.safetensors.parts.json",
+        "_parts.ready",
+    ]
+    assert [event[4] for event in part_events[:2]] == [content[:10], content[10:20]]
+    assert all(event[2] == "lora" and event[3] is True for event in part_events)
+
+    parts_manifest = json.loads(next(
+        event[4] for event in part_events if event[1].endswith(".parts.json")
+    ))
+    expected_sha = hashlib.sha256(content).hexdigest()
+    assert parts_manifest == {
+        "name": "weights.safetensors", "parts": 2, "size": 20, "sha256": expected_sha,
+    }
+    ready_event = next(event for event in part_events if event[1] == "_parts.ready")
+    assert ready_event[4] == b""
+
+    wait_events = [event for event in ChunkComfy.events if event[0] == "wait"]
+    part_indices = [index for index, event in enumerate(ChunkComfy.events) if event[0] == "part"]
+    wait_indices = [index for index, event in enumerate(ChunkComfy.events) if event[0] == "wait"]
+    assert max(part_indices) < min(wait_indices), "every upload must precede the job wait_for poll"
+    assert wait_events[0][1:4] == ("_loras.assembled", "_loras.failed", 30)
+
+    upload_result = next(u for u in result["uploads"] if u["name"] == "weights.safetensors")
+    assert upload_result == {
+        "name": "weights.safetensors", "subfolder": "lora", "type": "input",
+        "overwrite": True, "bytes": 20, "parts": 2, "sha256": expected_sha,
+    }
+    ready_result = next(u for u in result["uploads"] if u["name"] == "_parts.ready")
+    assert ready_result == {
+        "name": "_parts.ready", "subfolder": "lora", "type": "input",
+        "overwrite": True, "bytes": 0,
+    }
+    assert api.deletes == 1 and api.alive is False
+
+
+def test_chunk_part_upload_retries_then_succeeds(tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "MIN_UPLOAD_CHUNK_BYTES", 1)
+    configured, manifest_path = _chunked_upload_manifest(
+        tmp_path, chunk_bytes=10, content=b"0123456789ABCDEFGHIJ", wait_for=None,
+    )
+
+    class FlakyChunkComfy(FakeComfy):
+        attempts = 0
+
+        def upload_part(self, data, remote_name, subfolder, overwrite, timeout):
+            type(self).attempts += 1
+            if type(self).attempts == 1:
+                raise rr.TransientProxyError("upload returned HTTP 500")
+            return {"name": remote_name, "subfolder": subfolder, "type": "input"}
+
+    api = FakeAPI()
+    rr.run_harness(
+        configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+        dry_run=False, api=api, logger=logger_and_stream()[0],
+        comfy_factory=FlakyChunkComfy, sleep=lambda _seconds: None,
+        ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
+    )
+
+    # 2 parts + 1 parts.json + 1 _parts.ready = 4 required calls, plus one retried attempt.
+    assert FlakyChunkComfy.attempts == 5
+    assert api.deletes == 1 and api.alive is False
+
+
+@pytest.mark.parametrize("bad_value", ["", "../escape", "/abs/marker", 123])
+def test_job_wait_for_rejects_unsafe_or_malformed_markers(tmp_path, bad_value):
+    configured, manifest_path = _chunked_upload_manifest(tmp_path, wait_for=None)
+    configured["jobs"][0]["wait_for"] = bad_value
+    with pytest.raises(rr.HarnessError):
+        rr.require_manifest(configured, manifest_path)
+
+
+def test_job_wait_for_failed_marker_fails_closed_and_terminates(tmp_path, monkeypatch):
+    monkeypatch.setattr(rr, "MIN_UPLOAD_CHUNK_BYTES", 1)
+    configured, manifest_path = _chunked_upload_manifest(
+        tmp_path, chunk_bytes=10, content=b"0123456789", wait_for="_loras.assembled",
+    )
+
+    class FailingWaitComfy(FakeComfy):
+        def upload_part(self, data, remote_name, subfolder, overwrite, timeout):
+            return {"name": remote_name, "subfolder": subfolder, "type": "input"}
+
+        def wait_for_marker(self, marker, failed_marker, timeout, watchdog):
+            watchdog.check()
+            raise rr.HarnessError("training failed marker appeared")
+
+    api = FakeAPI()
+    with pytest.raises(rr.HarnessError, match="training failed marker appeared") as caught:
+        rr.run_harness(
+            configured, manifest_path, tmp_path / "out", max_usd=1, max_minutes=1,
+            dry_run=False, api=api, logger=logger_and_stream()[0],
+            comfy_factory=FailingWaitComfy, sleep=lambda _seconds: None,
+            ledger_dir=tmp_path / "ledger", allow_empty_ledger=True,
+        )
+    assert api.deletes == 1 and api.alive is False
+    assert getattr(caught.value, "termination_verified") is True
+
+
+def test_upload_allowance_seconds_defaults_to_zero_and_is_validated(tmp_path):
+    assert rr.manifest_upload_allowance_seconds(manifest()) == 0
+
+    configured = manifest()
+    configured["upload_allowance_seconds"] = 120
+    assert rr.manifest_upload_allowance_seconds(configured) == 120
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize("value", [-1, "10", True, float("nan"), float("inf")])
+def test_upload_allowance_seconds_rejects_negative_or_non_numeric(tmp_path, value):
+    configured = manifest()
+    configured["upload_allowance_seconds"] = value
+    with pytest.raises(rr.HarnessError, match="upload_allowance_seconds"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_job_wait_for_seconds_defaults_to_180_and_is_validated(tmp_path):
+    configured = manifest()
+    assert rr.manifest_job_wait_for_seconds(configured) == 180
+
+    configured["jobs"][0]["wait_for"] = "_loras.assembled"
+    configured["job_wait_for_seconds"] = 45
+    assert rr.manifest_job_wait_for_seconds(configured) == 45
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+@pytest.mark.parametrize("value", [0, -1, "180", True, float("nan"), float("inf")])
+def test_job_wait_for_seconds_rejects_non_positive_or_non_numeric(tmp_path, value):
+    configured = manifest()
+    configured["jobs"][0]["wait_for"] = "_loras.assembled"
+    configured["job_wait_for_seconds"] = value
+    with pytest.raises(rr.HarnessError, match="job_wait_for_seconds"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_minimum_runtime_minutes_includes_upload_allowance_and_job_wait_for(tmp_path):
+    configured = manifest()
+    configured["readiness_timeout_seconds"] = 600
+    configured["job_timeout_seconds"] = 300
+    configured["upload_allowance_seconds"] = 900
+    configured["job_wait_for_seconds"] = 180
+    configured["jobs"] = [
+        dict(configured["jobs"][0], wait_for="_loras.assembled"),
+        dict(configured["jobs"][0], output_name="job-two"),
+    ]
+
+    minimum = rr.minimum_runtime_minutes(configured)
+
+    expected = 600 / 60 + (900 + 300 * 2 + 180) / 60 + 5
+    assert minimum == pytest.approx(expected)

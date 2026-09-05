@@ -3,11 +3,25 @@
 # flag for an extra LoRA directory, and harness uploads can only land in
 # ComfyUI/input, so the LoRA folder is repointed before ComfyUI starts. The source
 # is either a network volume the training run wrote to, or the upload subfolder.
+#
+# Large checkpoints arrive chunked (pod/README.md's "Chunked uploads" contract):
+# <name>.part-NNNN parts, a <name>.parts.json manifest, then a zero-byte
+# _parts.ready marker once every file in the upload group has landed. This
+# script starts a background assembler that waits for _parts.ready, concatenates
+# each file's parts in order, verifies size and sha256, deletes the parts, and
+# writes /workspace/output/_loras.assembled — all BEFORE exec'ing ComfyUI, so
+# ComfyUI starts immediately while assembly (pure local disk I/O, no network)
+# runs alongside it. A manifest job's optional "wait_for": "_loras.assembled"
+# blocks that job's submission until assembly finishes.
 set -euo pipefail
 
 lora_source='{{lora_source_dir}}'
 lora_link='/workspace/ComfyUI/models/loras'
 lora_log='/workspace/output/_lorapath.log'
+assembled_marker='/workspace/output/_loras.assembled'
+assembler_failed_marker='/workspace/output/_loras.failed'
+bootstrap_failed_marker='/workspace/output/_bootstrap.failed'
+parts_ready_marker="$lora_source/_parts.ready"
 
 mkdir -p /workspace/output "$lora_source"
 
@@ -25,6 +39,87 @@ fail() {
   exit 1
 }
 
+# The assembler runs as a background job after ComfyUI has already started (see
+# the exec at the bottom of this script), so by the time it can fail the
+# harness's readiness poll has already stopped checking _bootstrap.failed (that
+# check only runs before desiredStatus=RUNNING + proxy health both succeed — see
+# wait_ready/_raise_if_bootstrap_failed in pod/runpod_run.py). A jobs-mode
+# manifest has no other marker polling loop either (that mechanism previously
+# existed only for artifacts/training mode). So an assembler failure writes BOTH
+# _bootstrap.failed (best effort, covers the narrow window before readiness) AND
+# a dedicated _loras.failed sibling marker, which the harness's job-level
+# wait_for polling now honours exactly the way artifact mode already honours
+# training.failed_marker ahead of training.complete_marker (wait_for_marker
+# checks the *_failed marker first, every poll cycle, before the success marker).
+assembler_fail() {
+  trap - ERR
+  log "lora-assembler: $1"
+  printf '%s\n' "$1" > "$assembler_failed_marker"
+  printf '%s\n' "$1" > "$bootstrap_failed_marker" 2>/dev/null || true
+}
+
+assemble_loras() {
+  # Belt-and-suspenders: any unexpected failure (not just the size/sha checks
+  # this function raises explicitly) still leaves a marker instead of the
+  # assembler silently vanishing under set -e in its background subshell.
+  trap 'assembler_fail "unexpected error during LoRA assembly (line $LINENO)"' ERR
+  log "lora-assembler: waiting for $parts_ready_marker"
+  while [[ ! -f "$parts_ready_marker" ]]; do
+    sleep 2
+  done
+  log "lora-assembler: $parts_ready_marker present, assembling parts"
+
+  shopt -s nullglob
+  local manifest_file name parts size expected_sha final_path tmp_path
+  local part_index part_file actual_size actual_sha
+  for manifest_file in "$lora_source"/*.parts.json; do
+    name=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['name'])" "$manifest_file")
+    parts=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['parts'])" "$manifest_file")
+    size=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['size'])" "$manifest_file")
+    expected_sha=$(python -c "import json,sys; print(json.load(open(sys.argv[1]))['sha256'])" "$manifest_file")
+    final_path="$lora_source/$name"
+    tmp_path="${final_path}.assembling"
+
+    : > "$tmp_path"
+    part_index=0
+    while [[ "$part_index" -lt "$parts" ]]; do
+      part_file=$(printf '%s/%s.part-%04d' "$lora_source" "$name" "$part_index")
+      if [[ ! -f "$part_file" ]]; then
+        assembler_fail "missing part $part_file for $name ($parts parts expected)"
+        return 1
+      fi
+      cat "$part_file" >> "$tmp_path"
+      part_index=$((part_index + 1))
+    done
+
+    actual_size=$(stat -c%s "$tmp_path" 2>/dev/null || stat -f%z "$tmp_path")
+    if [[ "$actual_size" != "$size" ]]; then
+      assembler_fail "size mismatch for $name: expected $size got $actual_size"
+      rm -f "$tmp_path"
+      return 1
+    fi
+    actual_sha=$(sha256sum "$tmp_path" | awk '{print $1}')
+    if [[ "$actual_sha" != "$expected_sha" ]]; then
+      assembler_fail "sha256 mismatch for $name: expected $expected_sha got $actual_sha"
+      rm -f "$tmp_path"
+      return 1
+    fi
+    mv "$tmp_path" "$final_path"
+    log "lora-assembler: assembled $name ($parts parts, $size bytes, sha256 verified)"
+
+    part_index=0
+    while [[ "$part_index" -lt "$parts" ]]; do
+      part_file=$(printf '%s/%s.part-%04d' "$lora_source" "$name" "$part_index")
+      rm -f "$part_file"
+      part_index=$((part_index + 1))
+    done
+    rm -f "$manifest_file"
+  done
+
+  : > "$assembled_marker"
+  log "lora-assembler: all LoRAs assembled, wrote $assembled_marker"
+}
+
 if [[ -L "$lora_link" ]]; then
   log "lorapath: $lora_link is already a symlink, removing it"
   rm -f "$lora_link" || fail "lorapath: could not remove existing symlink at $lora_link"
@@ -40,5 +135,15 @@ fi
 ln -s "$lora_source" "$lora_link" \
   || fail "lorapath: could not symlink $lora_source to $lora_link"
 log "lorapath: lora source $lora_source linked at $lora_link"
+
+# Detach the background job's own stdio from this script's inherited
+# stdout/stderr: on the real pod this script's whole stdout/stderr already
+# lands in _comfy.log via the outer `bash -lc '...' >>"$COMFY_RUNTIME_LOG"
+# 2>&1 &` bootstrap wraps every start_command in, so nothing is lost — but an
+# inherited *pipe* (as opposed to that real file) only reaches EOF once every
+# process holding its write end exits, so a long-lived background job sharing
+# it would otherwise hang any caller (harness or test) capturing this script's
+# output via a pipe, long after ComfyUI itself has already started.
+assemble_loras >>"$lora_log" 2>&1 &
 
 exec python /workspace/ComfyUI/main.py "$@"
