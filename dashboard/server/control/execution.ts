@@ -1385,7 +1385,11 @@ export class AutomaticExecutionEngine {
           if (!result) throw new AutomaticExecutionError(`iteration artifact '${artifactId}' lacks a canonical result`);
           lookedUp.set(operationKey, result);
         }
-        const output = result.artifacts.find((candidate) => candidate.path === artifact.path);
+        // `changed`, never `artifacts`. `artifacts` is the WORKER's self-report and both production
+        // adapters leave it empty by design (claudeWorkerAdapter.ts, attemptSessionAdapter.ts: "the
+        // engine derives artifacts from server-side worktree inspection, never from worker
+        // self-reporting"); `changed` is that server-side inspection, path AND sha256 per file.
+        const output = result.changed.find((candidate) => candidate.path === artifact.path);
         if (!output) throw new AutomaticExecutionError(`iteration artifact '${artifactId}' lacks its pinned hash`);
         artifactHashes[artifactId] = output.digest;
       }
@@ -1576,10 +1580,21 @@ export class AutomaticExecutionEngine {
           if (!artifact) throw new AutomaticExecutionError(`seed artifact '${artifactId}' is absent from its approved stage`);
           return artifact;
         });
-        if (!seed || seed.stageRef !== stage.stageId || !generation
-          || JSON.stringify(expectedArtifacts.map((artifact) => artifact.path).sort())
-            !== JSON.stringify(integrated.artifacts.map((artifact) => artifact.path).sort())) {
+        // Activation reads the SERVER's git inspection (`integrated.changed`), not the worker's
+        // self-reported `integrated.artifacts` - which both production worker adapters always leave
+        // empty, so this comparison could never hold outside the test fakes and every real loop
+        // stalled at awaiting-seed. And it is a SUBSET check, not equality: a producer legitimately
+        // touches other in-scope files in the same attempt, so requiring the changed set to equal the
+        // declared seed set would refuse correct work. Every declared seed path must be present.
+        const changedPaths = new Set(integrated.changed.map((artifact) => artifact.path));
+        const missingSeedPaths = expectedArtifacts.map((artifact) => artifact.path)
+          .filter((path) => !changedPaths.has(path)).sort();
+        if (!seed || seed.stageRef !== stage.stageId || !generation) {
           throw new AutomaticExecutionError('seed canonical result does not contain the exact activation artifact set');
+        }
+        if (missingSeedPaths.length > 0) {
+          throw new AutomaticExecutionError(
+            `seed canonical result does not contain the exact activation artifact set (missing: ${missingSeedPaths.join(', ')})`);
         }
         const activated = this.options.store.activateIterationLoop(input.subject, currentLoop.iterationLoopRef, {
           expectedLoopVersion: currentLoop.version,
@@ -2305,12 +2320,21 @@ export class AutomaticExecutionEngine {
       });
     } catch (error) {
       // A settlement the accounting adapter refuses (reported usage above this attempt's reserved
-      // ceiling — cache-read input tokens accumulate across a long multi-turn worker session) writes
-      // NOTHING: the reservation stays `active`, holding its full limit and, at maxConcurrency 1, the
-      // window's only concurrency slot — for the rest of the window. Every later reserve in that window
-      // would then be refused and every stage would park. Release the hold at the reserved ceiling (the
-      // most this attempt could ever have been charged; never under-charge), then rethrow the original
-      // error so the existing park/intervention path still fires with the overage message intact.
+      // ceiling - cache-read input tokens accumulate across a long multi-turn worker session) writes
+      // NOTHING: the reservation stays `active`, holding its full limit and one of the window's
+      // concurrency slots, for the rest of the window. Every later reserve in that window would then be
+      // refused and every stage would park. So the hold is released at the reserved ceiling.
+      //
+      // THIS UNDER-CHARGES THE WINDOW, and the ceiling is nonetheless the only value that can be
+      // written. `AccountingAdapter.settle` refuses any usage outside the reservation's own limits
+      // (adapters.ts `withinBudget`), so the real, larger usage cannot be recorded against this
+      // reservation at all - the reservation only ever admitted the ceiling, and charging more would
+      // mean the window admitted spend it never reserved. The residue is exactly
+      // (real usage - reserved ceiling), it is bounded by whatever overran, and the measured usage
+      // itself is not lost: the original error is rethrown below with the overage in its message and
+      // reaches the human through the park/intervention path. With the ledger-derived ceilings in
+      // activation.ts (1,500,000 input against a 1,223,899 measured maximum) this path is an
+      // exception, not the routine settlement route it had become under the old 400,000 ceiling.
       try {
         await this.options.accounting.settle({
           operationKey: `settle-ceiling:${attempt.attemptRef}`,

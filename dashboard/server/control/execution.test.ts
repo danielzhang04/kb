@@ -203,7 +203,12 @@ function fakes(overrides: { worker?: FakeWorker; accounting?: AccountingAdapter 
         state: 'succeeded',
         summary: `${input.action} passed`,
         usage: { inputTokens: 10, outputTokens: 5, costUsdMicros: 100 },
-        artifacts: [{ path: `${input.target}/${input.action.split(':')[1]}.txt`, digest: 'b'.repeat(64) }],
+        // PRODUCTION SHAPE (W67): a real worker adapter never self-reports artifacts - both
+        // claudeWorkerAdapter and attemptSessionAdapter return `artifacts: []` on every path, by
+        // design ("the engine derives artifacts from server-side worktree inspection, never from
+        // worker self-reporting"). The server's git inspection above (`worktrees.inspect`) is what
+        // reports the changed path, and everything downstream must read THAT.
+        artifacts: [],
         checkpoints: [`${input.action.split(':')[1]}-checked`],
       };
     },
@@ -695,7 +700,9 @@ function genericIterationFixture(input: {
         return {
           state: 'succeeded', summary: `${value.proposalStage?.id ?? 'stage'} seed committed`,
           usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-          artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+          // PRODUCTION SHAPE (W67): no worker adapter self-reports artifacts; `fake.worktrees.inspect`
+          // above is the server-side git inspection that reports them, and seed activation reads that.
+          artifacts: [],
           checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [],
         };
       }
@@ -707,9 +714,7 @@ function genericIterationFixture(input: {
         return {
           state: 'succeeded', summary: iterationOutcome.summary,
           usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-          artifacts: declaredVerdict === 'fulfilled'
-            ? value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? []
-            : [],
+          artifacts: [],
           checkpoints: declaredVerdict === 'fulfilled' && value.checkpoints.length > 0 ? [...value.checkpoints] : [],
           iterationOutcome,
         };
@@ -727,7 +732,7 @@ function genericIterationFixture(input: {
       const iterationOutcome = genericOutcome(value.iterationContract, 'fulfilled');
       return {
         state: 'succeeded', summary: iterationOutcome.summary, usage: { inputTokens: 1, outputTokens: 1, costUsdMicros: 1 },
-        artifacts: value.proposalStage?.artifacts.map((artifact) => ({ path: artifact.path, digest: 'b'.repeat(64) })) ?? [],
+        artifacts: [],
         checkpoints: value.checkpoints.length > 0 ? [...value.checkpoints] : [], iterationOutcome,
       };
     },
@@ -839,6 +844,55 @@ describe('AutomaticExecutionEngine', () => {
     await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
     expect(events[0]?.startsWith('committed:')).toBe(true);
     expect(events[1]).toBe(`activated:${events[0]?.slice('committed:'.length)}`);
+  });
+
+  /**
+   * W67 wall 2. Seed activation used to compare the declared seed artifact paths against
+   * `integrated.artifacts` - the WORKER's self-report - which `claudeWorkerAdapter` and
+   * `attemptSessionAdapter` both leave empty on every path by design. Every real loop therefore
+   * refused activation and stalled at `awaiting-seed`. Activation now reads `integrated.changed`, the
+   * server's own git inspection, and the fixtures above report artifacts only through `inspect`, so
+   * this whole suite is the regression: revert the fix and the loop tests refuse activation.
+   *
+   * The check is a SUBSET, not an equality: a producer may legitimately touch other in-scope files in
+   * the same attempt, so only the DECLARED seed paths have to be present.
+   */
+  it('activates the seed from the server inspection even when the worker reports no artifacts and touches extra files', async () => {
+    const item = genericIterationFixture();
+    const declared = item.plan.stages.find((candidate) => candidate.id === 'producer')?.artifacts ?? [];
+    expect(declared.map((artifact) => artifact.path)).toEqual(['dashboard/server/producer.txt']);
+    const inspect = item.fake.worktrees.inspect;
+    item.fake.worktrees.inspect = async (value) => {
+      const seen = await inspect(value);
+      // An extra in-scope file the producer also touched. Equality would have refused this. Added only
+      // where the stage actually writes: the judge's write scope is empty, and an out-of-scope changed
+      // file is rejected by `resultIsSafe` before activation is ever reached.
+      return seen.changed.length === 0
+        ? seen
+        : { changed: [...seen.changed, { path: 'dashboard/server/scratch.txt', digest: 'c'.repeat(64) }] };
+    };
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    expect(outcome.state).toBe('succeeded');
+    // Proof the worker never named an artifact: every worker result on this run reported none.
+    expect(item.workerInputs.length).toBeGreaterThan(0);
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.iterationLoops[0]?.state).not.toBe('awaiting-seed');
+  });
+
+  it('refuses activation when a declared seed path is absent from the server inspection', async () => {
+    const item = genericIterationFixture();
+    item.fake.worktrees.inspect = async () => ({
+      changed: [{ path: 'dashboard/server/scratch.txt', digest: 'c'.repeat(64) }],
+    });
+    const outcome = await item.engine.runToBoundary({ subject: 'operator', runRef: item.run.runRef, proposal: item.plan });
+    // The refusal is an AutomaticExecutionError; the engine turns one raised after a succeeded stage
+    // into an open intervention carrying its message, which is where the missing paths are named.
+    expect(outcome.state).toBe('waiting-human');
+    const detail = item.store.getRun('operator', item.run.runRef);
+    expect(detail.ok && detail.value.humanRequests.map((request) => [request.kind, request.prompt])).toEqual([
+      ['intervention', 'seed canonical result does not contain the exact activation artifact set (missing: dashboard/server/producer.txt)'],
+    ]);
+    expect(detail.ok && detail.value.iterationLoops[0]?.state).toBe('awaiting-seed');
   });
 
   it('never schedules one participant stage through the DAG and iteration loop at the same time', async () => {

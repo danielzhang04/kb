@@ -128,39 +128,74 @@ const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
  */
 export const DEFAULT_BUDGET: ExecutionBudget = {
   maxAttempts: 30,
-  maxInputTokens: 2_000_000,
+  maxInputTokens: 6_000_000,
   maxOutputTokens: 400_000,
   maxCostUsdMicros: 5_000_000,
 };
 
 /**
- * PER-ATTEMPT reservation limits. The accounting adapter projects `sum(settled usage or full held limit)
- * + this reservation's full limit` against the window ceiling, so reserving each attempt at the WINDOW
- * ceiling made a second attempt arithmetically impossible the moment the first one settled with any
- * usage at all (the live multi-stage defect: 180,177 settled input tokens + 2,000,000 held > 2,000,000).
- * Every field here is strictly below its {@link DEFAULT_BUDGET} counterpart, so a three-stage chain plus
- * a retry fits inside one window: 4 x 1,000,000 held would exceed 2,000,000 only if all four were held
- * at once, and concurrency is 1 — each settles (measured baseline: the acceptance draft stage settled at
- * ~180k in / ~1k out / ~$0.25) long before the next reserves. `maxAttempts: 1` because a reservation is
- * one attempt; the retry cap stays the window budget's `maxAttempts`.
+ * PER-ATTEMPT reservation limits, DERIVED FROM THE MEASURED LEDGER - not from a round number.
+ *
+ * The accounting adapter projects `sum(settled usage or full held limit) + this reservation's full
+ * limit` against the window ceiling, so a per-attempt limit that is too LOW refuses real work at
+ * settlement ('settlement exceeds its reserved limits') and one that is too HIGH exhausts the window
+ * after one wave. Both failure modes were live: reserving each attempt at the whole window ceiling made
+ * a second attempt impossible once the first settled, and the replacement (1,000,000 input against a
+ * 2,000,000 window at concurrency 2) sat exactly on the ceiling with no room for a settled row.
+ *
+ * SOURCE - every settled reservation in control/execution-accounting/*.json on the VM (16 rows). The
+ * maxima all belong to one attempt, attempt-ad7b42c6 on 2026-07-24:
+ *   input  1,223,899 tokens   (claudeWorkerAdapter.ts extractUsage sums input + cache_creation +
+ *                              cache_read, so a long multi-turn session accumulates cache-read input)
+ *   output    22,106 tokens
+ *   cost   1,214,264 micro-USD
+ * The earlier "180,177 input" sizing basis was one short stage, not the maximum; two later attempts
+ * (696,195 on 07-21 and 1,070,592 on 07-22) already exceeded the 400,000 ceiling it produced.
+ *
+ * CEILINGS - each is the ledger maximum plus headroom, and each satisfies
+ * {@link assertAttemptBudgetFitsWindow} (`attempt x (maxConcurrency + 1) <= window`) at the shipped
+ * `maxConcurrency` of 2:
+ *   input  1,500,000 = 1.23x the 1,223,899 max; window 6,000,000 (3 x 1.5M, raised from 2,000,000)
+ *   output    40,000 = 1.81x the 22,106 max;    window   400,000 (3 x 40k fits; unchanged)
+ *   cost   1,600,000 = 1.32x the 1,214,264 max; window 5,000,000 (3 x 1.6M = 4,800,000 <= cap)
+ *
+ * The COST headroom is bounded by the human daily cap, not by the ledger: governance/budget.yaml
+ * `daily_usd_limit: 5.00` is 5,000,000 micro-USD, and the window ceiling is held AT that number rather
+ * than derived from the maximum. 1.5x the largest settled cost would need a 5,460,000 window, so the
+ * attempt cost ceiling is 1.32x rather than 1.5x. That is the deliberate trade: the governance cap
+ * outranks the sizing rule, and it is the window that gets capped, never `maxConcurrency` - lowering
+ * the wave to 1 would re-create the very refusal this wave exists to remove.
+ *
+ * `maxAttempts: 1` because a reservation is one attempt; the retry cap stays the window's `maxAttempts`.
  */
 export const DEFAULT_ATTEMPT_BUDGET: ExecutionBudget = {
   maxAttempts: 1,
-  maxInputTokens: 1_000_000,
-  maxOutputTokens: 200_000,
-  maxCostUsdMicros: 2_500_000,
+  maxInputTokens: 1_500_000,
+  maxOutputTokens: 40_000,
+  maxCostUsdMicros: 1_600_000,
 };
 
 /**
- * Fails loud at construction when a per-attempt limit exceeds the window ceiling on any field. Such a
- * reservation could never be admitted (the adapter projects the full held limit against the window), so
- * the executor would be built already unable to run a single attempt.
+ * Fails loud at construction when the window could not hold ONE FULL CONCURRENT WAVE PLUS ONE ALREADY
+ * SETTLED ATTEMPT on some field - `attempt x (maxConcurrency + 1) <= window`.
+ *
+ * Comparing a single attempt against the window was not enough, and neither is comparing the concurrent
+ * wave alone. The adapter projects `sum(settled usage or full held limit) + this reservation's full
+ * limit`, so a per-attempt limit that exactly consumes the window when held at full concurrency admits
+ * the very first wave and nothing afterwards: the pairing that shipped (2 x 1,000,000 against a
+ * 2,000,000 window) is exactly the ceiling, and any settled row at all - a prior stage in the same
+ * chain - pushed the second worker of a two-worker stage over it with 'global token or cost budget
+ * exhausted'. That is the live Gate 4b refusal. The `+ 1` term is the smallest statement of the thing
+ * the window is FOR: attempts follow other attempts inside one day. Multiplying here rather than
+ * discovering it at reservation time is what lets the failure name the field.
  */
-function assertAttemptBudgetFitsWindow(attempt: ExecutionBudget, window: ExecutionBudget): void {
+function assertAttemptBudgetFitsWindow(attempt: ExecutionBudget, window: ExecutionBudget, maxConcurrency: number): void {
   const fields = ['maxAttempts', 'maxInputTokens', 'maxOutputTokens', 'maxCostUsdMicros'] as const;
+  const waves = maxConcurrency + 1;
   for (const field of fields) {
-    if (attempt[field] > window[field]) {
-      throw new ActivationError(`attempt budget ${field} (${attempt[field]}) exceeds the window budget (${window[field]})`);
+    const projected = attempt[field] * waves;
+    if (projected > window[field]) {
+      throw new ActivationError(`attempt budget ${field} (${attempt[field]} x ${maxConcurrency} concurrent + 1 settled = ${projected}) exceeds the window budget (${window[field]})`);
     }
   }
 }
@@ -417,10 +452,12 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const integrationRoot = options.integrationRoot ?? join(stateRoot, 'control', 'integration');
   const budget = options.budget ?? DEFAULT_BUDGET;
   const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
-  assertAttemptBudgetFitsWindow(attemptBudget, budget);
   // Keep legacy definitions at one worker per run while leaving enough server-owned headroom for a
   // definition that explicitly proves independent sibling work (the iteration-loop demo declares 2).
   const maxConcurrency = options.maxConcurrency ?? 2;
+  // AFTER the concurrency is resolved: the check is `attempt x concurrency <= window`, so it cannot run
+  // before the number it multiplies by is known.
+  assertAttemptBudgetFitsWindow(attemptBudget, budget, maxConcurrency);
   const defaultRunConcurrency = options.maxConcurrency ?? 1;
   const baseCommit = options.baseCommit ?? deps.resolveBaseCommit(repoRoot);
 
@@ -455,7 +492,12 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const skills = deps.createSkills(policy.curatedSkills);
   const accounting = deps.createAccounting({
     stateRoot,
-    windowId: new Date().toISOString().slice(0, 10),
+    // A RESOLVER, not a captured string. The daemon is long-lived: computing the UTC date once at
+    // activation pinned every reservation for the process's whole life to its boot date, so a daemon
+    // started on the 3rd was still charging the 3rd's window at 00:11 on the 4th (observed on the VM in
+    // control/execution-accounting/2026-09-03.json). The adapter now calls this per reservation and
+    // keys the accounting file by the answer, so the window rolls at UTC midnight without a restart.
+    windowId: (at: Date) => at.toISOString().slice(0, 10),
     maxConcurrency,
     globalBudget: budget,
   });
