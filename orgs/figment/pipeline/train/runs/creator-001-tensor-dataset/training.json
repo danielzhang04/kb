@@ -14,7 +14,7 @@
         },
         "save": {
           "dtype": "bf16",
-          "save_every": 50,
+          "save_every": 250,
           "max_step_saves_to_keep": 15
         },
         "datasets": [
@@ -33,7 +33,7 @@
         ],
         "train": {
           "batch_size": 1,
-          "steps": 50,
+          "steps": 2000,
           "gradient_accumulation": 1,
           "train_unet": true,
           "train_text_encoder": false,
@@ -63,7 +63,7 @@
         },
         "sample": {
           "sampler": "flowmatch",
-          "sample_every": 50,
+          "sample_every": 250,
           "width": 1024,
           "height": 1024,
           "prompts": [],
