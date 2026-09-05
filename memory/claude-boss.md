@@ -240,3 +240,18 @@
 - HAZARD (id typing across phases): P6 reserve-firm ingestion called P2's capture helper with its default `uuid4` id factory; P1's exec-request validator later rejected the untyped id and one `ValueError` at the profile stage discarded a whole fill pass as `operator_refused`. Every cross-phase helper call must pass the typed id factory, and a late-stage failure must never abort work already banked — skip, count, report.
 - HAZARD (allowlists built from one string): a homepage fetch policy allowlisting only the bare host blocks the near-universal `host → www.host` 301; the executor then reported `adapter_error` for every firm. Allowlist both forms; map exceptions to typed reasons; the generic reason hid an expired certificate too.
 - LAW (real-run cadence): tonight's sequence was probe → brief → codex fix (5–11 min) → manifest → gate (≈12 min, detached) → real pass, six times. Each real pass exposed exactly one more silent failure that fixtures could not. Budget for it: a "gate passed" P6 is not "works on the real store" until a converged pass reproduces as an exact no-op.
+
+## 2026-09-04 late — figment Track-1 first LoRA; three live-only defects in a row
+- What worked: replicating the package's pipeline exactly (edit-method dataset → ai-toolkit Krea-2 LoRA → tester) gave the
+  first identity-holding checkpoints (cos 0.89 vs floor 0.84) after two failed "our own" expansion rounds. Faithful port
+  first, invent later.
+- Every failure tonight was in a code path no smoke had exercised: a fixed health window, a `rmdir` on a never-empty dir,
+  a fixed request timeout against 228 MB files. Lesson: before a paid stage, list every step the smoke did NOT execute
+  (large uploads, launcher branches, host speed) and dry-exercise each in a bash-executed test; a dry-run proves manifest
+  shape, not behaviour.
+- Bootstrap failures caused by our own pins/timeouts must never blacklist a host; classify (machine/network/dependency)
+  before learning. Save FULL logs on failure — a 40-line tail under a background pip stream was useless.
+- Training on L40S is 1.3–2.5 s/step once latents+embeddings are cached (the smoke's 3.85 s/step was the uncached first
+  epoch): 2000 steps ≈ 45 min of stepping, not 2.1 h. Size job windows from the cached rate plus warmup.
+- PowerShell tool env lacks user-scope vars: load `RUNPOD_API_KEY` from `[Environment]::GetEnvironmentVariable(..,'User')`
+  into the Start-Process child only, clear it after, never print. Bind the keep-awake lease to the harness pid.
