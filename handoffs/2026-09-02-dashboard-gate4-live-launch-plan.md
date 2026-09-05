@@ -376,3 +376,26 @@ body; P16 replay pane cannot read an exited attempt (investigation running); Inb
 `deploy-pty-fix.ps1` (A2 unit umask, C2 validator refresh, G preflight), `drain-step1/2.ps1` (CHAINBASE 9d03cfcb,
 generic step H), `passkey-enrol.ps1` (phases 1/3), `decode-bisect.test.ts` + `wsl-bisect.sh` (run the real client
 decoder on live JSON under WSL).
+
+## 2026-09-04/05 — Gate 4a PASSED; Gate 4b three runs deep, iteration loops proven live (state 2026-09-05 01:40Z)
+
+**Gate 4a closed** (run dc0e001c succeeded 09-04 19:37Z; two passkey-signed T3 gates; evidence w7m). Method change
+after Daniel's step-back: PROBE before deploy (VM probes as kb-shell reproduce the broker's exact argv), batch
+fixes, one deploy per batch. Merged + deployed since: #166 replay retry, #167/#168 queue bridge (no untracked
+wake-me cards; loop gone), #169 model-routing mirror path (VM catalog now matches main via an unsigned ledger-only
+promotion; deploy script step C3 refreshes the resident reconciler), #170 codex launch (dead `--cd` dropped;
+new broker wire request `end-input`), #171 walls (ledger-derived budgets + rolling window; loop activation reads the
+server-inspected `changed`; per-launch git safe.directory). Live: release a982cadb, broker c2455d5f.
+
+**Gate 4b, run 3 (slug gate4b-20260905)** PROVED: two codex producers admitted concurrently; loop activation;
+checker legs on codex sol/checker-readonly; verdicts rework + fail with receipts; rework scheduling. Then two walls:
+broker unit has no UMask (worker dirs 2755 -> daemon cannot clean up) and the pair-checker returned `rework` with a
+populated `positions` array which the outcome validator rejects (prompt never states the rule) -> run failed.
+Fix PR in flight (claude/run3-fixes). Unproven: exec resume, accept/pass, both park shapes, readiness/source groups.
+
+**Key lessons (also in memory/claude-boss.md):** iteration loops had NEVER activated with a live worker (activation
+compared against a field the real adapters leave empty); the 400k budget ceiling proposed by a builder was refuted by
+the ledger's own maxima (review caught it); codex `exec -` needs a real EOF; `git worktree remove` follows a
+node_modules junction (delete the junction first). Next after Gate 4b: the post-deploy canary (one leg per
+runtime/role), drain automation (P7), wire guards everywhere, retire the 15 stale wf-* cards, P11 work-product
+route, the n8n comparative analysis (Daniel's ask, P18).

@@ -223,3 +223,11 @@
 - "Operator fill" shipped green on fixtures but did nothing on a fresh real store (evaluated people that discovery hadn't produced). Briefs for orchestration loops must state the precondition explicitly ("assume an EMPTY store") and the test must start from an empty migrated store, never from a pre-seeded one.
 - LAW (vendor filters): Snov v2 domain-search `positions[]` is an exact-string match — it returned 0 prospects for 25/42 real VC firms while the unfiltered search returned 20/page. Never delegate a semantic filter to a vendor; fetch broad, classify locally, bound pages. Probe the filtered vs unfiltered call side by side BEFORE building any vendor filter into a lane.
 - HAZARD (status enums): a fill loop that only recognises `met / no_confident_email / candidate_exhausted` when candidates exist labels a zero-candidate exhausted firm `discovery_pending` forever; the second pass then does 0 work and reports success. Every terminal state needs a test on the EMPTY case, and a converged store must re-run as an exact no-op.
+## 2026-09-04/05 — Gate 4b: probe-first, batch, one deploy per batch
+- LAW: before launching a never-run leg, reproduce the broker's exact argv on the VM as the worker uid (scratchpad probe-codex.sh pattern: pipe stdin + pty stdout, same env, same cwd shape). Probes found the dead `--cd` and the missing EOF in 10 minutes; each would have cost a deploy cycle.
+- LAW: a builder's numeric ceiling must be derived from the ledger (execution-accounting/*.json maxima), never from a remembered figure; the reviewer refuted 400k with 1.22M on disk.
+- LAW: any comparison against a worker-reported field is suspect; both real adapters leave `artifacts` empty by design and the engine must read its own git inspection (`changed`).
+- LAW: every unit that spawns workers needs UMask=0002 (dashboard AND broker); assert both in preflight and the deploy script.
+- LAW: prompt contracts must state validator rules verbatim (positions/recordedDissent only on consensus/continue); a checker that follows the advertised shape must not fail the run.
+- HAZARD: `git worktree remove --force` follows a node_modules junction and empties the shared install; delete the junction first (memory: worktree-junction-hazard).
+- WORKED: manager role launches no process (engine drives in-process): read the adapter before assuming a leg exists.
