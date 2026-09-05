@@ -55,6 +55,9 @@ Nothing remains creator-specific in code or manifests. A new creator supplies on
 persona, anchors, and training data; output names, trigger, prompts, ladder, uploads, and grading
 paths are derived.
 
+Architecture is currently fixed to `krea2`; `tensor-pins.yaml`'s pins are not yet keyed by
+`base_arch`, and any other value fails `training_config.py` validation before planning starts.
+
 ## Reproduction and migration
 
 Creator-001's six operational manifest documents match the committed shards, smoke, train, and

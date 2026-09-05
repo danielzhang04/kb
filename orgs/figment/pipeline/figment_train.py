@@ -50,6 +50,11 @@ IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 KEY_MISMATCH_RE = re.compile(
     r"missing_keys|unexpected_keys|missing key\(s\)|unexpected key\(s\)", re.I,
 )
+# Matches an "anchors/<filename>" token inside the dataset-prompts template's descriptive
+# note, in first-face-then-body order, so the note can be re-templated onto whichever two
+# reference filenames the current persona actually has -- never by string-matching
+# creator-001's old g01.jpg/g07.jpg literals.
+_ANCHOR_FILENAME_RE = re.compile(r"anchors/\S+?\.(?:png|jpe?g|webp)", re.I)
 
 REPLICATION_NOTE = (
     "orgs/figment/research/10sorlabs-package/10_dataset_generator_v2/"
@@ -101,6 +106,10 @@ def _build_set_module():
 
 def _qa_module():
     return _load_module("_figment_train_qa_stamp", QA_MODULE)
+
+
+def _pod_runner_module():
+    return _load_module("_figment_train_pod_runpod_run", POD_RUNNER)
 
 
 def _read_json(path: Path) -> Any:
@@ -223,8 +232,8 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     )
     prompts["persona"] = persona["id"]
     note = prompts["structure"]["prepend_is_the_hand_typed_description"]
-    note = note.replace("anchors/g01.jpg", references[0].as_posix())
-    note = note.replace("anchors/g07.jpg", body_ref.as_posix())
+    replacements = iter([references[0].as_posix(), body_ref.as_posix()])
+    note = _ANCHOR_FILENAME_RE.sub(lambda match: next(replacements, match.group(0)), note)
     prompts["structure"]["prepend_is_the_hand_typed_description"] = note
     return prompts
 
@@ -677,14 +686,6 @@ def build_plan(
     return plan
 
 
-def _ledger_model(gpu_type: Any) -> str:
-    short = re.sub(r"^(?:NVIDIA\s+)?(?:GeForce\s+)?", "", str(gpu_type), flags=re.I)
-    short = re.sub(r"[^A-Za-z0-9]+", "-", short).strip("-").lower()
-    if not short:
-        raise FigmentTrainError("run.json GPU type cannot form a ledger model")
-    return f"runpod:{short}"
-
-
 def _ledger_rows(path: Path) -> list[dict[str, str]]:
     if not path.is_file():
         raise FigmentTrainError(f"cost ledger is missing: {path}")
@@ -703,7 +704,11 @@ def _verify_ledger(data: dict[str, Any], manifest: dict[str, Any], ledger_dir: P
     if not isinstance(day, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", day):
         raise FigmentTrainError("run.json has no valid ledger_day")
     rows = _ledger_rows(Path(ledger_dir) / f"figment-{day}.tsv")
-    model = _ledger_model(manifest.get("gpu", {}).get("type"))
+    pod_module = _pod_runner_module()
+    try:
+        model = pod_module.gpu_model_label(manifest.get("gpu", {}).get("type"))
+    except pod_module.HarnessError as exc:
+        raise FigmentTrainError(f"run.json GPU type cannot form a ledger model: {exc}") from exc
     placements = data.get("placement_attempts") or []
     if not placements and data.get("pod_id"):
         placements = [{
@@ -873,6 +878,14 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             if prior and prior.get("status") == "failed":
                 raise FigmentTrainError(
                     f"planned run {key} already failed; create a reviewed new plan to retry"
+                )
+            if prior and prior.get("status") == "running":
+                raise FigmentTrainError(
+                    f"planned run {key} is still marked running; a prior invocation may have "
+                    "been interrupted before recording completion or failure. Confirm the true "
+                    "pod state with `runpod_run.py status`/`probe` (and terminate it if still "
+                    "live) before touching this plan again — never launch a second pod for the "
+                    "same manifest"
                 )
             manifest_path = root / key
             if _sha256(manifest_path) != run["sha256"]:

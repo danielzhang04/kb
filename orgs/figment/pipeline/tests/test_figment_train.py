@@ -90,12 +90,18 @@ def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_pa
             assert manifest["custom_nodes"] == pins["pins"][profile]["custom_nodes"]
 
 
-def _synthetic_persona(personas_root: Path) -> Path:
+def _synthetic_persona(
+    personas_root: Path,
+    *,
+    creator_id: str = "creator-002",
+    anchor_names: tuple = ("a01.jpg", "a02.jpg", "a03.jpg"),
+    exemplars: list = ("a02", "a03"),
+) -> Path:
     source = load_json(PERSONAS / "creator-001" / "persona.yaml")
-    target = personas_root / "creator-002"
+    target = personas_root / creator_id
     anchors = target / "anchors"
     anchors.mkdir(parents=True)
-    for name in ("a01.jpg", "a02.jpg", "a03.jpg"):
+    for name in anchor_names:
         (anchors / name).write_bytes(("image-" + name).encode())
 
     identity_spec = target / "identity.md"
@@ -103,15 +109,13 @@ def _synthetic_persona(personas_root: Path) -> Path:
     identity_spec.write_text("synthetic identity fixture\n", encoding="utf-8")
     register_spec.write_text("synthetic register fixture\n", encoding="utf-8")
 
-    source["id"] = "creator-002"
-    source["identity"]["references"] = [
-        "anchors/a01.jpg", "anchors/a02.jpg", "anchors/a03.jpg",
-    ]
+    source["id"] = creator_id
+    source["identity"]["references"] = [f"anchors/{name}" for name in anchor_names]
     source["identity"]["spec"] = {
         "path": "identity.md",
         "sha256": hashlib.sha256(identity_spec.read_bytes()).hexdigest(),
     }
-    source["body_target"]["exemplars"] = ["a02", "a03"]
+    source["body_target"]["exemplars"] = list(exemplars)
     source["register"]["spec"] = {
         "path": "register.md",
         "sha256": hashlib.sha256(register_spec.read_bytes()).hexdigest(),
@@ -129,6 +133,81 @@ def _synthetic_persona(personas_root: Path) -> Path:
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+def test_generalized_prompts_note_derives_from_actual_reference_names_not_g01_g07(
+    command, tmp_path, monkeypatch,
+):
+    """The dataset-prompts note must reflect the real anchor filenames it names.
+
+    Regression for the reviewer's fragility finding: the old code found and replaced the
+    literal template substrings "anchors/g01.jpg"/"anchors/g07.jpg" — a silent no-op for any
+    template text that does not happen to say exactly that. This uses a template that names
+    different (fictional) anchor files to prove the note is built from the persona's actual
+    reference filenames, not by string-matching creator-001's old anchor names.
+    """
+    custom_template = {
+        "persona": None,
+        "structure": {
+            "prepend_is_the_hand_typed_description": (
+                "The lesson's own rule: face.identity matches anchors/whatever-face.png; "
+                "body.identity matches anchors/whatever-body.png."
+            ),
+        },
+    }
+    prompts_path = tmp_path / "tensor-dataset-prompts.yaml"
+    prompts_path.write_text(json.dumps(custom_template), encoding="utf-8")
+    monkeypatch.setattr(command, "PROMPTS_PATH", prompts_path)
+
+    persona = {
+        "id": "creator-002",
+        "identity": {"references": ["anchors/a01.jpg", "anchors/a02.jpg", "anchors/a03.jpg"]},
+        "body_target": {"exemplars": ["a02", "a03"]},
+    }
+    prompts = command._generalized_prompts(persona)
+    note = prompts["structure"]["prepend_is_the_hand_typed_description"]
+    assert "anchors/a01.jpg" in note
+    assert "anchors/a03.jpg" in note
+    assert "whatever-face" not in note
+    assert "whatever-body" not in note
+
+
+def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
+    command, tmp_path,
+):
+    """Lock in the minimal-anchor-count behavior: exactly 2 references, 1 exemplar."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(
+        personas_root,
+        creator_id="creator-003",
+        anchor_names=("a01.jpg", "a02.jpg"),
+        exemplars=["a02"],
+    )
+    out = tmp_path / "creator003-plan"
+    plan = command.build_plan("creator-003", "all", out, personas_root=personas_root)
+
+    assert plan["training"]["trigger"] == "creator003krea2"
+    dataset_manifest = load_json(plan_path(out, plan["stages"]["dataset"]["runs"][0]))
+    assert len(dataset_manifest["uploads"][0]["files"]) == 2
+
+    tester = load_json(plan_path(out, plan["stages"]["tester"]["runs"][0]))
+    assert len(tester["jobs"]) == 3, "still one tester job (branch) per checkpoint"
+
+    all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
+    assert len(all_runs) == 6
+    for index, run in enumerate(all_runs):
+        result = subprocess.run(
+            [
+                sys.executable, str(POD_RUNNER), "run",
+                "--manifest", str(plan_path(out, run)),
+                "--out", str(tmp_path / "dry-runs" / str(index)),
+                "--dry-run",
+            ],
+            cwd=ROOT,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command, tmp_path):
@@ -150,6 +229,8 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
             payload = path.read_bytes().lower()
             assert b"creator-001" not in payload, path
             assert b"creator001" not in payload, path
+            assert b"g01" not in payload, path
+            assert b"g07" not in payload, path
 
     all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
     assert len(all_runs) == 6
@@ -233,6 +314,58 @@ def test_run_verifier_stops_on_each_recorded_defect(command, tmp_path, defect):
     (ledger / "figment-2026-09-04.tsv").write_text(ledger_text, encoding="utf-8")
     with pytest.raises(command.FigmentTrainError):
         command.verify_run_record("smoke", manifest, run_path.parent, ledger)
+
+
+def test_run_refuses_to_resume_a_stage_stuck_running(command, tmp_path, monkeypatch):
+    out = tmp_path / "resume-plan"
+    plan = command.build_plan("creator-001", "dataset", out, personas_root=PERSONAS)
+    plan_file = out / "plan.json"
+    key = plan["stages"]["dataset"]["runs"][0]["manifest"]
+    state_path = out / "stage.json"
+    state_path.write_text(json.dumps({
+        "schema": "figment/train-stage@1",
+        "creator": "creator-001",
+        "plan_sha256": hashlib.sha256(plan_file.read_bytes()).hexdigest(),
+        "status": "running:dataset",
+        "runs": {key: {"status": "running", "started_utc": "2026-09-04T00:00:00+00:00"}},
+        "completed_stages": [],
+    }), encoding="utf-8")
+
+    def _no_launch(*args, **kwargs):
+        raise AssertionError("must not launch a subprocess for a run stuck running")
+    monkeypatch.setattr(command.subprocess, "run", _no_launch)
+
+    with pytest.raises(command.FigmentTrainError) as excinfo:
+        command.run_planned_stage("creator-001", "dataset", plan_file)
+    message = str(excinfo.value)
+    assert "runpod_run.py" in message
+    assert "status" in message and "probe" in message
+
+
+def test_ledger_model_dispatches_through_the_pod_harness_function_not_a_copy(
+    command, tmp_path, monkeypatch,
+):
+    """_verify_ledger must call the harness's own gpu_model_label, not a hand copy.
+
+    Proof: monkeypatching the pod module's gpu_model_label changes figment_train's
+    ledger-agreement result. A private reimplementation would be unaffected by this.
+    """
+    assert not hasattr(command, "_ledger_model"), (
+        "local gpu-label reimplementation should be deleted in favor of importing "
+        "pod/runpod_run.py's gpu_model_label"
+    )
+    manifest, run_path = _fake_run(tmp_path / "ledger-dispatch")
+    ledger = tmp_path / "cost-ledger"
+    ledger.mkdir()
+    (ledger / "figment-2026-09-04.tsv").write_text(
+        "model\tstep\tusd\nrunpod:sentinel-model\tpod-create pod-fixture\t0.250000\n",
+        encoding="utf-8",
+    )
+    pod_module = command._pod_runner_module()
+    monkeypatch.setattr(pod_module, "gpu_model_label", lambda gpu_type: "runpod:sentinel-model")
+
+    verified = command.verify_run_record("smoke", manifest, run_path.parent, ledger)
+    assert verified["pod_id"] == "pod-fixture"
 
 
 PNG_1X1 = base64.b64decode(
