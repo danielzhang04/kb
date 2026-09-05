@@ -184,3 +184,25 @@ final values.
 - Operator rule (memory: figment-pipeline-not-influencer): the deliverable is the pipeline; after this loop closes,
   generalise the chain into `figment train --creator <id>` from persona.yaml, then re-run creator-001 as the
   acceptance test, then fixture persona 002 (task T1-G).
+
+## 2026-09-04 23:55 — Track-1 chain COMPLETE end to end; LoRA test grid ready for the operator
+
+- Full training (pod igvqxqcrmltsig, L40S): 2000 steps in 99 min, $1.80; 8 checkpoints (250…1750 + final) downloaded to
+  `pipeline/train/runs/out/creator-001-tensor-train/`. Speed 1.3–2.5 s/step once latents/text embeddings were cached.
+- Tester (pod iw12lyi84um2b9): 8 images (one per checkpoint), $0.33, 18 min; checkpoints reached the pod as 112 × 16 MiB
+  parts and were sha-verified on the pod. Outputs + board: `pipeline/train/runs/out/creator-001-tensor-tester/` (`grade/board.html`).
+- Identity (facenet cosine vs anchors g01/g02/g07; anchor pairwise floor 0.836): step 250 = 0.26 (not learned), 500 = 0.81,
+  750 = 0.82, 1000 = 0.85, 1250 = 0.76, 1500 = **0.89/0.87/0.83**, 1750 = 0.88/0.85/0.83, final = 0.88/0.85/0.79.
+  Scores: `personas/creator-001/batches/tensor-tester-01/scores.json`. Boss read: consistent real-skin woman, same
+  identity 1500→final; reads older than the anchors and the passport prompt is flat-lit; realism passes not yet applied.
+- Three live defects found and fixed tonight, all harness/launcher, none in the package port: (1) fixed 240 s ComfyUI health
+  window vs the trainer's install running inside it (dfe18b83); (2) tester launcher `rmdir` on ComfyUI's stock models/loras
+  (d602cfe5); (3) 228 MB checkpoint POSTs vs the harness's fixed 30 s request timeout → chunked uploads (483b97eb).
+  Dependency-class bootstrap failures no longer blacklist hosts; full bootstrap/comfy logs are saved on failure.
+- Generalisation: `pipeline/figment_train.py plan|run|grade|apply-rulings --creator <id>` reproduces every tonight manifest
+  byte-for-byte from persona.yaml + training.yaml (review folded c8c7d49e); `grade --stage tester` built tonight's board.
+- Spend today $6.32 of $10; arc ≈ $16.7 of $50. Failed-attempt dirs kept beside the outputs as `*.failed-*`.
+- OPERATOR GATE: grade `pipeline/train/runs/out/creator-001-tensor-tester/grade/board.html` (identity? age? realism?)
+  and rule the checkpoint (boss recommends 1500 or 1750). Then: module-09 generation pass with the winner
+  (`train/runs/creator-001-tensor-gen.yaml`, 12 jobs, ≈ $4.0 ceiling) → stage-5 realism passes → creator-002 fixture run
+  through `figment_train.py` as the pipeline acceptance test.
