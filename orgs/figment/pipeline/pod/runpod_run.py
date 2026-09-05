@@ -792,6 +792,33 @@ def record_bad_machine_host(
     )
 
 
+def forget_bad_host(path: Path, host: str) -> bool:
+    """Remove one mislearned entry from a bad-host cache file.
+
+    Returns True when an entry for `host` was present and removed, False when the
+    file was absent, malformed, or held no entry for that host (a no-op either
+    way — this never raises for a missing cache or a host that was never learned).
+    """
+    clean_host = str(host).strip()
+    if not path.is_file():
+        return False
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return False
+    raw_entries = data.get("hosts") if isinstance(data, dict) else None
+    if not isinstance(raw_entries, list):
+        return False
+    remaining = [
+        entry for entry in raw_entries
+        if not (isinstance(entry, dict) and entry.get("host") == clean_host)
+    ]
+    if len(remaining) == len(raw_entries):
+        return False
+    write_json(path, {"schema": "figment/bad-hosts@1", "hosts": remaining}, None)
+    return True
+
+
 def pod_machine_identity(pod: dict[str, Any]) -> tuple[str | None, str | None]:
     machine = pod.get("machine") if isinstance(pod.get("machine"), dict) else {}
     raw_host = (
@@ -824,10 +851,37 @@ def bootstrap_network_failure_reason(exc: BootstrapFailed) -> str | None:
 
 
 def bootstrap_host_class_failure_reason(exc: BootstrapFailed) -> str | None:
-    """Return a cacheable reason when bootstrap proves the placement is unusable."""
+    """Return a cacheable reason only for evidence that the *machine* is unusable.
+
+    Restricted to GPU/Torch preflight (missing/broken CUDA driver): `gpu-present`
+    (a non-empty `nvidia-smi -L`) and `torch-cuda` (`torch.cuda.is_available()`).
+    ComfyUI import-smoke and ComfyUI health are deliberately excluded — those steps
+    run our own pinned Python/package set, so a failure there is evidence about the
+    image/dependency pins, not about the machine. See
+    `bootstrap_dependency_failure_reason` for that class.
+    """
     text = "\n".join([str(exc), *exc.bootstrap_log_tail])
     match = re.search(
-        r"\b(gpu-present|torch-cuda|comfy-import-smoke|comfy-health) failed(?: with rc=\d+)?",
+        r"\b(gpu-present|torch-cuda) failed(?: with rc=\d+)?",
+        text,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return " ".join(str(exc).split())[:500]
+
+
+def bootstrap_dependency_failure_reason(exc: BootstrapFailed) -> str | None:
+    """Return a reason for a bootstrap failure that is an image/pin problem, not a
+    machine problem: ComfyUI import-smoke, ComfyUI health, the ComfyUI install step
+    (which includes `pip install -r requirements.txt`), or a custom node's
+    `pip install` of its own requirements. These must never be learned as a bad
+    machine host — the same machine, with a fixed image, would pass.
+    """
+    text = "\n".join([str(exc), *exc.bootstrap_log_tail])
+    match = re.search(
+        r"\b(comfy-import-smoke|comfy-health|comfy-install|node-deps-\d+) failed"
+        r"(?: after \d+ attempts)?(?: with rc=\d+)?",
         text,
         re.IGNORECASE,
     )
@@ -2101,11 +2155,56 @@ def _log_bootstrap_tail(proxy: Any, logger: logging.Logger) -> None:
     _bootstrap_log_tail(proxy, logger, lines=BOOTSTRAP_LOG_TAIL_LINES)
 
 
-def _raise_if_bootstrap_failed(proxy: Any, logger: logging.Logger) -> None:
+FULL_BOOTSTRAP_ARTIFACT_FILENAMES = ("_bootstrap.log", "_comfy.log")
+
+
+def dump_full_bootstrap_artifacts(
+        proxy: Any, harness_dir: Path | None, logger: logging.Logger) -> None:
+    """Best-effort: persist the full (proxy-capped) bootstrap and ComfyUI runtime
+    logs to `harness_dir` while the Pod and proxy are still alive, immediately
+    before the surrounding lease terminates it. A short tail alone can miss the
+    real error when a background process (for example a training wrapper's own
+    `pip install`s) buries it under thousands of unrelated lines. Never raises:
+    a fetch or write failure here must never mask the original bootstrap or
+    readiness failure that triggered the dump.
+    """
+    if harness_dir is None:
+        return
+    for filename in FULL_BOOTSTRAP_ARTIFACT_FILENAMES:
+        try:
+            status, text = proxy.fetch_artifact(filename)
+        except Exception as exc:
+            logger.warning(
+                "could not fetch full %s for postmortem: %s", filename, type(exc).__name__,
+            )
+            continue
+        if status != 200 or not text:
+            logger.warning(
+                "could not fetch full %s for postmortem: /view returned %s",
+                filename, status,
+            )
+            continue
+        redacted = "\n".join(redact_for_stderr(line) for line in text.splitlines()) + "\n"
+        try:
+            harness_dir.mkdir(parents=True, exist_ok=True)
+            target = harness_dir / filename
+            target.write_text(redacted, encoding="utf-8")
+            logger.warning(
+                "wrote full %s (%d bytes) to %s", filename, len(redacted), target,
+            )
+        except OSError as exc:
+            logger.warning(
+                "could not write full %s for postmortem: %s", filename, type(exc).__name__,
+            )
+
+
+def _raise_if_bootstrap_failed(
+        proxy: Any, logger: logging.Logger, *, harness_dir: Path | None = None) -> None:
     status, text = proxy.fetch_artifact("_bootstrap.failed")
     if status == 200:
         # Fetch diagnostics before raising: the surrounding lease will terminate the Pod.
         log_tail = _bootstrap_log_tail(proxy, logger, lines=40, failure_context=True)
+        dump_full_bootstrap_artifacts(proxy, harness_dir, logger)
         reason = redact_for_stderr(" ".join(text.strip().split()) or "unknown bootstrap failure")
         raise BootstrapFailed(reason, log_tail[-10:])
 
@@ -2115,7 +2214,8 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
                sleep: Callable[[float], None] = time.sleep,
                bootstrap_log_every_polls: int = BOOTSTRAP_LOG_EVERY_POLLS,
                initial_pod: dict[str, Any] | None = None,
-               on_observed: Callable[[dict[str, Any]], None] | None = None) -> dict[str, Any]:
+               on_observed: Callable[[dict[str, Any]], None] | None = None,
+               harness_dir: Path | None = None) -> dict[str, Any]:
     if bootstrap_log_every_polls <= 0:
         raise HarnessError("bootstrap_log_every_polls must be positive")
     started = time.monotonic()
@@ -2135,7 +2235,7 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
         last_proxy_status = proxy.health_status()
         watchdog.check()
         if pod.get("desiredStatus") == "RUNNING":
-            _raise_if_bootstrap_failed(proxy, logger)
+            _raise_if_bootstrap_failed(proxy, logger, harness_dir=harness_dir)
             watchdog.check()
             if poll_number % bootstrap_log_every_polls == 0:
                 _log_bootstrap_tail(proxy, logger)
@@ -2152,6 +2252,7 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
         "readiness timeout last pod state: %s",
         json.dumps(safe_last_pod, ensure_ascii=False, sort_keys=True, default=str),
     )
+    dump_full_bootstrap_artifacts(proxy, harness_dir, logger)
     raise ReadinessTimeout(
         f"pod readiness timed out after {timeout:.0f}s: {reason}", safe_last_pod,
     )
@@ -2193,7 +2294,7 @@ from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 OUTPUT = Path("/workspace/output")
-ALLOWED = {"_bootstrap.log", "_bootstrap.failed"}
+ALLOWED = {"_bootstrap.log", "_bootstrap.failed", "_comfy.log"}
 
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -2390,8 +2491,16 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
         f"start_comfy() {{ cd {shlex.quote(root)} || return 1; bash -lc {shlex.quote('exec ' + start)} >>\"$COMFY_RUNTIME_LOG\" 2>&1 & COMFY_PID=$!; sleep 1; kill -0 \"$COMFY_PID\"; }}",
         "run_required comfy-start start_comfy",
     ])
+    # Bound the in-pod health poll by the manifest's own readiness timeout (2s per
+    # iteration) rather than a fixed constant: a training wrapper that installs
+    # ai-toolkit, restores ComfyUI's requirements, and pre-warms HF repos before
+    # exec'ing ComfyUI (see pipeline/train/start-training-aitoolkit.sh) can take far
+    # longer than a bare ComfyUI start on a slow-network host, and the harness-side
+    # `wait_ready` already enforces the overall readiness/watchdog budget.
+    health_iterations = math.ceil(manifest_readiness_timeout_seconds(manifest) / 2.0)
     health_cmd = (
-        f"for n in $(seq 1 120); do curl --silent --fail http://127.0.0.1:{port}/system_stats >/dev/null && exit 0; sleep 2; done; "
+        f"for n in $(seq 1 {health_iterations}); do curl --silent --fail "
+        f"http://127.0.0.1:{port}/system_stats >/dev/null && exit 0; sleep 2; done; "
         f"tail -n 100 {shlex.quote(COMFY_OUTPUT_DIR + '/_comfy.log')} 2>/dev/null; exit 1"
     )
     lines.append(f"run_required comfy-health bash -lc {shlex.quote(health_cmd)}")
@@ -2449,7 +2558,7 @@ class ComfyClient:
             return f"error:{type(exc).__name__}"
 
     def fetch_artifact(self, filename: str) -> tuple[int | str, str]:
-        if filename not in {"_bootstrap.log", "_bootstrap.failed"}:
+        if filename not in {"_bootstrap.log", "_bootstrap.failed", "_comfy.log"}:
             raise HarnessError(f"unsupported bootstrap artifact: {filename!r}")
         try:
             response = self.session.get(
@@ -2463,7 +2572,10 @@ class ComfyClient:
         status = int(response.status_code)
         if status != 200:
             return status, ""
-        limit = 64 * 1024 if filename == "_bootstrap.log" else 4 * 1024
+        # _bootstrap.failed is a short reason line; _bootstrap.log and _comfy.log can be
+        # large (a training wrapper's own pip installs stream to _comfy.log), so both get
+        # a generous tail-truncated cap rather than the failure marker's small one.
+        limit = 64 * 1024 if filename in {"_bootstrap.log", "_comfy.log"} else 4 * 1024
         chunks = getattr(response, "iter_content", None)
         if callable(chunks):
             retained = bytearray()
@@ -3446,6 +3558,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 api, str(lease.pod_id), ready_timeout, watchdog, logger,
                 proxy_client, sleep, initial_pod=initial_pod,
                 on_observed=remember_machine,
+                harness_dir=out_dir / "_harness",
             )
             actual_hourly = ready_hourly_price(ready_pod)
             actual_ceiling = actual_hourly * max_minutes / 60.0
@@ -3604,9 +3717,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             result["last_pod_state"] = exc.last_pod_state
         if isinstance(exc, BootstrapFailed):
             result["bootstrap_log_tail"] = exc.bootstrap_log_tail
-            learned_reason = (
-                bootstrap_host_class_failure_reason(exc)
-                or bootstrap_network_failure_reason(exc)
+            host_class_reason = bootstrap_host_class_failure_reason(exc)
+            network_reason = bootstrap_network_failure_reason(exc)
+            learned_reason = host_class_reason or network_reason
+            reason_class = (
+                "machine" if host_class_reason
+                else "network" if network_reason
+                else "dependency" if bootstrap_dependency_failure_reason(exc)
+                else "unclassified"
             )
             if learned_reason and active_machine_host:
                 learned_at = utc_now()
@@ -3635,8 +3753,37 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                             bad_host_path, safe_error,
                         )
                 result["learned_bad_host"] = active_machine_host
+                result["host_learned"] = True
+                result["bootstrap_failure_class"] = reason_class
                 if learned_errors:
                     result["bad_host_record_errors"] = learned_errors
+            else:
+                # Image/dependency evidence (or an unclassified bootstrap failure, or
+                # machine/network evidence with no known host to blame) never learns a
+                # bad host: a fixed image on the same machine could still pass. Record
+                # the reason class for postmortem so it is visible without re-reading
+                # the full bootstrap log tail.
+                not_learned_reason = (
+                    learned_reason
+                    or bootstrap_dependency_failure_reason(exc)
+                    or " ".join(str(exc).split())[:500]
+                )
+                result["host_learned"] = False
+                result["bootstrap_failure_class"] = reason_class
+                try:
+                    write_json(
+                        out_dir / "_harness" / "bootstrap-failure.json",
+                        {
+                            "schema": "figment/bootstrap-failure@1",
+                            "host": active_machine_host,
+                            "host_learned": False,
+                            "reason_class": reason_class,
+                            "reason": redact_for_stderr(not_learned_reason),
+                        },
+                        redactor,
+                    )
+                except BaseException as secondary:
+                    retain_finalization_failure("bootstrap-failure.json write", secondary)
     finally:
         try:
             if proxy_client is not None:
@@ -3808,6 +3955,19 @@ def command_status(args: argparse.Namespace) -> int:
     set_active_redactor(redactor)
     logger = build_logger(redactor)
     try:
+        bad_hosts_path = session_bad_hosts_path()
+        if args.forget_bad_host:
+            if forget_bad_host(bad_hosts_path, args.forget_bad_host):
+                print(f"forgot bad host: {args.forget_bad_host}")
+            else:
+                print(f"no learned bad-host entry for: {args.forget_bad_host}")
+        learned_hosts = _recent_bad_host_entries(bad_hosts_path, logger=logger)
+        if learned_hosts:
+            print("learned bad hosts:")
+            for entry in learned_hosts:
+                print(f"  {entry['host']}  ({entry['timestamp']})  {entry['reason']}")
+        else:
+            print("learned bad hosts: (none)")
         arc_cap, arc_total = arc_budget_state(
             arc_cap_usd=args.arc_cap_usd,
             ledger_dir=args.ledger_dir,
@@ -3902,6 +4062,14 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument(
         "--arc-cap-usd", type=float,
         help="whole-arc spending cap (fallback: KB_ARC_CAP_USD, then 50.0)",
+    )
+    status.add_argument(
+        "--forget-bad-host", default=None,
+        help=(
+            "remove one mislearned host from the session bad-host cache "
+            "(%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json) before printing the "
+            "learned-host list"
+        ),
     )
     status.add_argument(
         "--arc-ledger-glob", default=DEFAULT_ARC_LEDGER_GLOB,

@@ -123,12 +123,25 @@ machine host or machine id is terminated and verified absent before recreation. 
 Pod retains its own provisional ledger row, settled to elapsed time at the manifest ceiling
 rate. A later definite create refusal does not rewrite that settled row or create a zero-cost
 row. If every placement attempt is rejected, the run fails closed with no Pod left running.
-Network-class bootstrap failures, plus GPU/Torch preflight, ComfyUI import-smoke, and
-ComfyUI health failures, learn the current machine host in both
+
+Only machine/network-class bootstrap evidence learns the current machine host, in both
 `<out>/_harness/bad_hosts.json` and `%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json`; session
-entries are merged into the next run's host denylist and expire after 24 hours.
-Learning signatures include Git rc 128, Git username challenges, DNS-resolution failures,
-curl rc 6/7/28/35, and Hugging Face HTTP 403/429 responses.
+entries are merged into the next run's host denylist and expire after 24 hours. Learning
+signatures are Git rc 128, Git username challenges, DNS-resolution failures, curl rc
+6/7/28/35, Hugging Face HTTP 403/429 responses, and GPU/Torch preflight (a non-empty
+`nvidia-smi -L` or `torch.cuda.is_available()`, which also covers a missing/broken CUDA
+driver). ComfyUI import-smoke, ComfyUI install (which runs `pip install -r requirements.txt`),
+a custom node's own `pip install`, and ComfyUI health never learn a host — those steps run our
+own pinned Python/package set, so a failure there is evidence about the image's dependency
+pins (for example one package downgrading another package's pinned dependency), not about the
+machine; the same image would fail identically on any host. That evidence is instead written to
+`<out>/_harness/bootstrap-failure.json` as `{"host_learned": false, "reason_class": ...,
+"reason": ...}` (`reason_class` is `"machine"`, `"network"`, `"dependency"`, or
+`"unclassified"`), and `run.json` carries the same `host_learned` and `bootstrap_failure_class`
+fields. Run `status` to print the current learned-host list (host, timestamp, reason) from the
+session cache; `status --forget-bad-host <host>` removes one mislearned entry from
+`%LOCALAPPDATA%/kb-figment-pod/bad_hosts.json` before printing, so a bad learn from a
+since-fixed image pin never needs hand-editing that file.
 
 An `uploads` entry has `files`, `subfolder`, `type: input`, and boolean `overwrite` fields.
 `files` is a non-empty list of local files or globs relative to the manifest directory.
@@ -162,6 +175,30 @@ and a 30-second heartbeat writer. Resource snapshots (cgroup memory ceiling, hos
 memory, workspace disk, and ulimits) are appended to `_training.log` at wrapper start and just
 before training. A trainer failure writes `_training.failed` with the last 40 log lines and
 keeps ComfyUI alive so the harness can retrieve that evidence before lease cleanup.
+
+Because `comfyui.start_command` for a training manifest is this wrapper — installing ai-toolkit,
+restoring ComfyUI's requirements, and pre-warming HF repos before it ever execs ComfyUI — the
+in-pod `comfy-health` poll (`for n in $(seq 1 N); do curl .../system_stats ...; sleep 2; done`)
+scales `N` from the manifest's own `readiness_timeout_seconds` (`ceil(readiness_timeout_seconds
+/ 2)`) rather than a fixed 240-second constant; the harness-side `wait_ready` call still enforces
+the overall readiness/watchdog budget independently. A slow-network host can otherwise blow a
+fixed poll window on package downloads alone while `readiness_timeout_seconds` still has most of
+its budget left, killing an otherwise-healthy placement. Because of this, a `comfy-health` failure
+on a training manifest usually means the host was simply too slow to finish the wrapper's installs
+within the manifest's own readiness budget, not that the image or the host is broken — see the
+dependency classification below, which is why `comfy-health` is neither learned as a bad host nor
+retried.
+
+On any bootstrap failure or readiness timeout, the harness also fetches the FULL (proxy-capped,
+not just the last 40 lines) `_bootstrap.log` and `_comfy.log` through the proxy — while the Pod
+and its diagnostics endpoint are still alive, before the lease terminates it — and writes both,
+redacted, to `<out>/_harness/_bootstrap.log` and `<out>/_harness/_comfy.log`. This exists because
+a background process writing heavily to `_comfy.log` (for example the ai-toolkit wrapper's own
+`pip install` output) can bury the real error under thousands of unrelated lines that a short tail
+never reaches. The periodic in-flight tail logging (every fifth poll, and the last 40 lines on
+failure, stored as `bootstrap_log_tail` in `run.json`) is unchanged; this is purely additional
+postmortem evidence, and a fetch or write failure here is logged as a warning and never replaces
+the original failure.
 
 When `artifacts` is present, the normal `jobs` remain compatibility and preflight data but
 are not submitted. Each artifact declares `remote`, `type: output`, `local`, and `wait_for`.
@@ -282,6 +319,7 @@ List Pods or force verified termination:
 
 ```powershell
 py -3 runpod_run.py status --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
+py -3 runpod_run.py status --forget-bad-host l03vqknv0x0c
 py -3 runpod_run.py probe
 py -3 runpod_run.py terminate --pod-id POD_ID
 ```

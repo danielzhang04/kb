@@ -3195,10 +3195,12 @@ def test_P1l_network_bootstrap_failure_learns_host_and_entries_expire(
 
 @pytest.mark.parametrize(
     "failed_step",
-    ["gpu-present failed with rc=1", "torch-cuda failed with rc=3",
-     "comfy-import-smoke failed with rc=1", "comfy-health failed with rc=1"],
+    ["gpu-present failed with rc=1", "torch-cuda failed with rc=3"],
 )
-def test_P1m_host_class_bootstrap_failure_learns_host(tmp_path, monkeypatch, failed_step):
+def test_P1m_machine_class_bootstrap_failure_learns_host(tmp_path, monkeypatch, failed_step):
+    """GPU/Torch preflight failures (missing/broken CUDA driver, no GPU visible) are
+    machine-class evidence: the same image would still fail on this host, so the host
+    is learned bad."""
     class FailedBootstrapProxy(FakeComfy):
         def health_status(self):
             return 503
@@ -3227,6 +3229,384 @@ def test_P1m_host_class_bootstrap_failure_learns_host(tmp_path, monkeypatch, fai
         entry = json.loads(path.read_text(encoding="utf-8"))["hosts"][0]
         assert entry["host"] == "host-class-failure"
         assert failed_step in entry["reason"]
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["host_learned"] is True
+    assert record["bootstrap_failure_class"] == "machine"
+    assert not (tmp_path / "out" / "_harness" / "bootstrap-failure.json").exists()
+
+
+@pytest.mark.parametrize(
+    ("failed_step", "reason_class"),
+    [
+        ("comfy-import-smoke failed with rc=1", "dependency"),
+        ("comfy-health failed with rc=1", "dependency"),
+        ("comfy-install failed after 3 attempts with rc=1", "dependency"),
+        ("node-deps-1 failed after 3 attempts with rc=1", "dependency"),
+    ],
+)
+def test_P1m_dependency_class_bootstrap_failure_never_learns_host(
+        tmp_path, monkeypatch, failed_step, reason_class):
+    """ComfyUI import-smoke, ComfyUI health, the ComfyUI install step (which runs
+    `pip install -r requirements.txt`), and a custom node's own `pip install` are
+    image/pin problems, not machine problems — e.g. one package pinning another
+    package's dependency backward. A fixed image on the very same host could still
+    pass, so these must never poison the host denylist. The evidence instead lands
+    in `_harness/bootstrap-failure.json` with `host_learned: false`."""
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, failed_step + "\n"
+            return 200, "STEP " + failed_step + "\n"
+
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    api = PlacementAPI(["dependency-failure-host"])
+
+    with pytest.raises(rr.BootstrapFailed, match=failed_step):
+        rr.run_harness(
+            manifest(), tmp_path / "m.yaml", tmp_path / "out",
+            max_usd=1, max_minutes=1, dry_run=False, api=api,
+            logger=logger_and_stream()[0], comfy_factory=FailedBootstrapProxy,
+            sleep=lambda _seconds: None, ledger_dir=tmp_path / "ledger",
+            allow_empty_ledger=True,
+        )
+
+    for path in (
+            tmp_path / "out" / "_harness" / "bad_hosts.json",
+            local_appdata / "kb-figment-pod" / "bad_hosts.json"):
+        assert not path.exists()
+
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["host_learned"] is False
+    assert record["bootstrap_failure_class"] == reason_class
+    assert "learned_bad_host" not in record
+
+    failure = json.loads(
+        (tmp_path / "out" / "_harness" / "bootstrap-failure.json").read_text(encoding="utf-8")
+    )
+    assert failure["host"] == "dependency-failure-host"
+    assert failure["host_learned"] is False
+    assert failure["reason_class"] == reason_class
+    assert failed_step in failure["reason"]
+
+
+def test_bootstrap_dependency_failure_reason_matches_pin_and_health_classes():
+    for text in (
+            "comfy-import-smoke failed with rc=1",
+            "comfy-health failed with rc=1",
+            "comfy-install failed after 3 attempts with rc=1",
+            "node-deps-2 failed after 3 attempts with rc=1"):
+        failure = rr.BootstrapFailed(text, [f"STEP {text}"])
+        assert rr.bootstrap_dependency_failure_reason(failure) is not None
+        assert rr.bootstrap_host_class_failure_reason(failure) is None
+
+
+def test_bootstrap_host_class_failure_reason_excludes_dependency_signatures():
+    for text in ("comfy-import-smoke failed with rc=1", "comfy-health failed with rc=1"):
+        failure = rr.BootstrapFailed(text, [f"STEP {text}"])
+        assert rr.bootstrap_host_class_failure_reason(failure) is None
+
+
+def test_forget_bad_host_removes_one_entry_without_touching_others(tmp_path):
+    path = tmp_path / "bad_hosts.json"
+    rr.record_bad_machine_host(path, "keep-me", "gpu-present failed with rc=1")
+    rr.record_bad_machine_host(path, "forget-me", "torch-cuda failed with rc=3")
+
+    assert rr.forget_bad_host(path, "forget-me") is True
+
+    remaining = json.loads(path.read_text(encoding="utf-8"))["hosts"]
+    assert [entry["host"] for entry in remaining] == ["keep-me"]
+
+
+def test_forget_bad_host_is_a_no_op_for_an_unknown_host_or_missing_file(tmp_path):
+    missing = tmp_path / "missing" / "bad_hosts.json"
+    assert rr.forget_bad_host(missing, "anything") is False
+
+    path = tmp_path / "bad_hosts.json"
+    rr.record_bad_machine_host(path, "keep-me", "gpu-present failed with rc=1")
+    assert rr.forget_bad_host(path, "never-learned") is False
+    remaining = json.loads(path.read_text(encoding="utf-8"))["hosts"]
+    assert [entry["host"] for entry in remaining] == ["keep-me"]
+
+
+def test_status_forget_bad_host_flag_removes_entry_and_prints_learned_list(
+        tmp_path, monkeypatch, capsys):
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    session_file = local_appdata / "kb-figment-pod" / "bad_hosts.json"
+    rr.record_bad_machine_host(session_file, "keep-me", "gpu-present failed with rc=1")
+    rr.record_bad_machine_host(session_file, "forget-me", "torch-cuda failed with rc=3")
+
+    session = StubSession([StubResponse(200, [])])
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    assert rr.main(["status", "--forget-bad-host", "forget-me"]) == 0
+
+    out = capsys.readouterr().out
+    assert "forgot bad host: forget-me" in out
+    assert "keep-me" in out
+    assert "forget-me" not in out.split("forgot bad host: forget-me", 1)[1]
+    remaining = json.loads(session_file.read_text(encoding="utf-8"))["hosts"]
+    assert [entry["host"] for entry in remaining] == ["keep-me"]
+
+
+def test_status_prints_none_when_no_hosts_are_learned(tmp_path, monkeypatch, capsys):
+    local_appdata = tmp_path / "local-appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(local_appdata))
+    session = StubSession([StubResponse(200, [])])
+    redactor = rr.ApiKeyRedactionFilter(session)
+    monkeypatch.setattr(rr, "build_authenticated_session", lambda: (session, redactor))
+
+    assert rr.main(["status"]) == 0
+
+    assert "learned bad hosts: (none)" in capsys.readouterr().out
+
+
+def test_health_poll_iterations_scale_with_readiness_timeout():
+    """A training manifest's `comfyui.start_command` wrapper (ai-toolkit install,
+    ComfyUI requirements restore, HF pre-warm) execs ComfyUI only as its last step,
+    so a slow-network host can take far longer than a bare ComfyUI start to answer
+    /system_stats. The in-pod health poll must scale with the manifest's own
+    readiness_timeout_seconds rather than a fixed 240s (120 x 2s) constant."""
+    configured = manifest()
+    configured["readiness_timeout_seconds"] = 3600
+    script = rr.bootstrap_script(configured)
+    assert "seq 1 1800" in script
+    assert "seq 1 120" not in script
+    # The tail-of-_comfy.log fallback on health failure stays in place.
+    assert "tail -n 100" in script
+    assert "_comfy.log" in script
+
+
+def test_health_poll_iterations_default_readiness_timeout():
+    script = rr.bootstrap_script(manifest())
+    expected = rr.math.ceil(rr.DEFAULT_READY_TIMEOUT / 2.0)
+    assert f"seq 1 {expected}" in script
+
+
+def test_dump_full_bootstrap_artifacts_writes_redacted_full_logs(tmp_path):
+    secret = "full-log-secret-key"
+
+    class SecretSession:
+        headers = {"Authorization": f"Bearer {secret}"}
+
+    class Proxy:
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.log":
+                return 200, f"line one\nSTEP x rc=0\nAuthorization: Bearer {secret}\n"
+            if filename == "_comfy.log":
+                return 200, f"pip download progress\nsecret={secret}\n"
+            return 404, ""
+
+    logger, _stream = logger_and_stream()
+    rr.set_active_redactor(rr.ApiKeyRedactionFilter(SecretSession()))
+    try:
+        rr.dump_full_bootstrap_artifacts(Proxy(), tmp_path / "_harness", logger)
+    finally:
+        rr.set_active_redactor(None)
+
+    bootstrap_text = (tmp_path / "_harness" / "_bootstrap.log").read_text(encoding="utf-8")
+    comfy_text = (tmp_path / "_harness" / "_comfy.log").read_text(encoding="utf-8")
+    assert secret not in bootstrap_text
+    assert secret not in comfy_text
+    assert "[REDACTED]" in bootstrap_text
+    assert "line one" in bootstrap_text
+    assert "pip download progress" in comfy_text
+
+
+def test_dump_full_bootstrap_artifacts_is_a_no_op_without_harness_dir():
+    class ExplodingProxy:
+        def fetch_artifact(self, _filename):
+            raise AssertionError("must not fetch when harness_dir is None")
+
+    rr.dump_full_bootstrap_artifacts(ExplodingProxy(), None, logger_and_stream()[0])
+
+
+def test_dump_full_bootstrap_artifacts_never_raises_on_fetch_failure(tmp_path):
+    class FailingProxy:
+        def fetch_artifact(self, _filename):
+            raise RuntimeError("proxy exploded")
+
+    logger, stream = logger_and_stream()
+    harness_dir = tmp_path / "_harness"
+    rr.dump_full_bootstrap_artifacts(FailingProxy(), harness_dir, logger)
+
+    assert not harness_dir.exists()
+    assert "could not fetch full _bootstrap.log" in stream.getvalue()
+    assert "could not fetch full _comfy.log" in stream.getvalue()
+
+
+def test_wait_ready_dumps_full_logs_before_raising_bootstrap_failed(tmp_path):
+    class OnePodAPI:
+        def get_pod(self, _pod_id):
+            return ready_pod()
+
+    class Proxy:
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-health failed with rc=1\n"
+            if filename == "_bootstrap.log":
+                return 200, "STEP comfy-health rc=1\n"
+            if filename == "_comfy.log":
+                return 200, "pip installing ai-toolkit\n" * 50
+            return 404, ""
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    logger, _stream = logger_and_stream()
+    harness_dir = tmp_path / "_harness"
+
+    with pytest.raises(rr.BootstrapFailed, match="comfy-health failed with rc=1"):
+        rr.wait_ready(
+            OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger, Proxy(),
+            sleep=lambda _seconds: None, harness_dir=harness_dir,
+        )
+
+    assert "STEP comfy-health rc=1" in (harness_dir / "_bootstrap.log").read_text(encoding="utf-8")
+    assert (harness_dir / "_comfy.log").read_text(encoding="utf-8").count(
+        "pip installing ai-toolkit"
+    ) == 50
+
+
+def test_wait_ready_bootstrap_failed_survives_full_log_fetch_failure(tmp_path):
+    """A fetch failure while dumping the full postmortem logs must never mask the
+    original BootstrapFailed the lease is about to terminate the Pod for."""
+    class OnePodAPI:
+        def get_pod(self, _pod_id):
+            return ready_pod()
+
+    class FlakyProxy:
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-health failed with rc=1\n"
+            if filename == "_bootstrap.log":
+                return 200, "STEP comfy-health rc=1\n"
+            if filename == "_comfy.log":
+                raise RuntimeError("proxy connection reset")
+            return 404, ""
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    logger, stream = logger_and_stream()
+    harness_dir = tmp_path / "_harness"
+
+    with pytest.raises(rr.BootstrapFailed, match="comfy-health failed with rc=1"):
+        rr.wait_ready(
+            OnePodAPI(), "pod-123", 1, QuietWatchdog(), logger, FlakyProxy(),
+            sleep=lambda _seconds: None, harness_dir=harness_dir,
+        )
+
+    assert "STEP comfy-health rc=1" in (harness_dir / "_bootstrap.log").read_text(encoding="utf-8")
+    assert not (harness_dir / "_comfy.log").exists()
+    assert "could not fetch full _comfy.log" in stream.getvalue()
+
+
+def test_wait_ready_dumps_full_logs_before_raising_readiness_timeout(monkeypatch, tmp_path):
+    stuck = {
+        "id": "pod-123",
+        "desiredStatus": "RUNNING",
+        "publicIp": "127.0.0.1",
+        "portMappings": {},
+        "lastStatusChange": "Rented by User",
+    }
+
+    class StuckAPI:
+        def get_pod(self, _pod_id):
+            return stuck
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    class SlowProxy:
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 404, ""
+            if filename == "_bootstrap.log":
+                return 200, "STEP comfy-start rc=0\n"
+            if filename == "_comfy.log":
+                return 200, "still installing ai-toolkit\n"
+            return 404, ""
+
+    ticks = iter([0.0, 0.0, 0.5, 2.0])
+    monkeypatch.setattr(rr.time, "monotonic", lambda: next(ticks))
+    logger, _stream = logger_and_stream()
+    harness_dir = tmp_path / "_harness"
+
+    with pytest.raises(rr.ReadinessTimeout):
+        rr.wait_ready(
+            StuckAPI(), "pod-123", 1, QuietWatchdog(), logger, SlowProxy(),
+            sleep=lambda _seconds: None, harness_dir=harness_dir,
+        )
+
+    assert "still installing ai-toolkit" in (harness_dir / "_comfy.log").read_text(encoding="utf-8")
+    assert "STEP comfy-start rc=0" in (harness_dir / "_bootstrap.log").read_text(encoding="utf-8")
+
+
+def test_full_bootstrap_and_comfy_logs_written_via_run_harness(tmp_path):
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-health failed with rc=1\n"
+            if filename == "_bootstrap.log":
+                return 200, "line one\n" * 200 + "STEP comfy-health rc=1\n"
+            if filename == "_comfy.log":
+                return 200, "pip installing ai-toolkit\n" * 200
+            return 404, ""
+
+    api = FakeAPI()
+    with pytest.raises(rr.BootstrapFailed, match="comfy-health failed with rc=1"):
+        run_with(api, tmp_path, comfy=FailedBootstrapProxy)
+
+    full_bootstrap = (tmp_path / "out" / "_harness" / "_bootstrap.log").read_text(encoding="utf-8")
+    full_comfy = (tmp_path / "out" / "_harness" / "_comfy.log").read_text(encoding="utf-8")
+    assert full_bootstrap.count("line one") == 200
+    assert full_comfy.count("pip installing ai-toolkit") == 200
+
+
+def test_comfy_health_bootstrap_failure_is_classified_dependency_not_learned(tmp_path):
+    """Confirms the earlier defect fix and this one compose correctly: a
+    comfy-health failure on a training manifest (the reported slow-host case)
+    still classifies as 'dependency' and never learns the host, exactly like any
+    other comfy-health failure — see the bad-host-learning fix above."""
+    class FailedBootstrapProxy(FakeComfy):
+        def health_status(self):
+            return 503
+
+        def fetch_artifact(self, filename):
+            if filename == "_bootstrap.failed":
+                return 200, "comfy-health failed with rc=1\n"
+            if filename == "_bootstrap.log":
+                return 200, "STEP comfy-health rc=1\n"
+            return 404, ""
+
+    api = FakeAPI()
+    with pytest.raises(rr.BootstrapFailed):
+        run_with(api, tmp_path, comfy=FailedBootstrapProxy)
+
+    record = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert record["host_learned"] is False
+    assert record["bootstrap_failure_class"] == "dependency"
 
 
 def test_P1l_recent_session_hosts_are_merged_into_manifest_avoidance(tmp_path, monkeypatch):
