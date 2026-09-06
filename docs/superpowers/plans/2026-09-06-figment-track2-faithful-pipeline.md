@@ -1,14 +1,27 @@
-# Figment Track-2: the faithful 10sorlabs pipeline (module 03 → 09) Implementation Plan
+# Figment Track-2: the faithful 10sorlabs pipeline (module 03 → 09) Implementation Plan — v2
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+### v2 changes (review of 2026-09-06 folded in — `…-track2-faithful-pipeline.REVIEW.md`, APPROVE WITH FIXES)
+
+- **H1** — every training cost figure recomputed from the *measured cached* throughput (2000 steps = 99 min wall / $1.80, 1.3–2.5 s/step once latents and text embeddings are cached), not smoke #4's 3.85 s/step uncached figure. Train expected `$4.92 → ~$2.90`; train ceiling `323 min/$7.00 → 233 min/$5.05`; tester expected `$0.80 → ~$0.55` (measured 8-checkpoint run). Expected arc `$12.50 → $9.30`. Risk #5 rewritten: the 2000-vs-3000 step tradeoff is worth ~$0.75 and is **not** raised with the operator.
+- **H2** — anchor can no longer be re-run live. `build_plan` refuses to plan it once the persona carries a promoted anchor, and `run --stage all` now has explicit resume semantics: completed or already-graded stages are skipped, never re-executed (Task A3, with a test).
+- **H3** — `"gen"` added to `build_grade`'s and `apply_rulings`'s internal stage tuples, with a test, so GATE 4 can actually run (Task D2).
+- **H4** — the unused, unaudited `ComfyUI-Impact-Subpack` pin is removed from `pins.dataset.custom_nodes`; no Subpack `class_type` appears in either dataset workflow (verified). Recorded as D23 (Task B1).
+- **M1** — `build_plan`'s dispatch chain restructured so every stage has an explicit branch and an unknown stage raises, instead of silently falling through to the tester builder (Task D2).
+- **M2** — a test pins the one real `artifacts_after_jobs` hazard: the artifact marker deadline must start after the last job (Task B2).
+- **M3** — `apply_rulings` now reads `training["caption_mode"]` instead of hardcoding it; the two caption vocabularies are reconciled (Task B2).
+- **L1** — the no-op node-`832` substitution dropped from the anchor edit arm (Task A2).
+- **r23** — Task D1's "grep a checkout and STOP" is replaced by the concrete pin from `research/r23-mediapipe-node-spike.md`: `LoadMediaPipeFaceLandmarker → MediaPipeFaceLandmarker → MediaPipeFaceMask` (MASK) in `comfy_extras/nodes_mediapipe.py`, shipping since ComfyUI **v0.23.0**, pure PyTorch, no pip install.
+- **New** — the train-smoke stage is now **conditional**: it runs only when the trainer template, launcher, or train pins have changed since the last proven run (a digest recorded in the persona's training state). The training path is live-proven, so its $0.90 leaves the expected-arc line.
+
 **Goal:** Rebuild creator-001's image pipeline the way 10sorlabs actually builds it — anchor (module 03) → dataset (module 10) → training (module 11) → generation (module 09) — driven end to end by `figment_train.py` from `persona.yaml`, with every licence-clean 2026 improvement folded in and every unclean package asset substituted.
 
-**Architecture:** Six stages hang off the existing immutable `plan → run → grade → apply-rulings` contract in `orgs/figment/pipeline/figment_train.py`. Planning and grading are local; `run` is the only path that touches a pod, always through `pod/runpod_run.py` with a hash-pinned argv and no retries. Each stage ends at an operator gate that STOPS the chain.
+**Architecture:** Six stages hang off the existing immutable `plan → run → grade → apply-rulings` contract in `orgs/figment/pipeline/figment_train.py`. Planning and grading are local; `run` is the only path that touches a pod, always through `pod/runpod_run.py` with a hash-pinned argv and no retries. Each stage ends at an operator gate that STOPS the chain, and no gated stage can ever be re-executed live.
 
 **Tech Stack:** Python 3.12 (stdlib + Pillow + numpy), pytest, ComfyUI API-format workflow JSON, RunPod L40S via `pod/runpod_run.py`, Ostris ai-toolkit (pinned), Z-Image Turbo / Qwen-Image-Edit-2511 / FLUX.2 klein 4B / Krea-2.
 
-**Spec:** the "Spec — approved design" section below (operator ruling, 2026-09-06), argued from `orgs/figment/research/`: `r20-fidelity-audit.md` (stage gap table), `r21-better-methods-2026.md` (adopt table), `r22-clean-assets.md` (licence-clean pins), `r15-10sorlabs-artefacts.md` §3a/§3e/§3f/§3g, `r15b-generation.md`:95–125, `r16-detail-passes.md` §1. Executors read this plan **and** those six files.
+**Spec:** the "Spec — approved design" section below (operator ruling, 2026-09-06), argued from `orgs/figment/research/`: `r20-fidelity-audit.md` (stage gap table), `r21-better-methods-2026.md` (adopt table), `r22-clean-assets.md` (licence-clean pins), `r23-mediapipe-node-spike.md` (the face-mask node chain), `r15-10sorlabs-artefacts.md` §3a/§3e/§3f/§3g, `r15b-generation.md`:95–125, `r16-detail-passes.md` §1. Executors read this plan **and** those seven files.
 
 ---
 
@@ -27,35 +40,39 @@
 - **Persona rule.** Judge every task by *"would this run unchanged for creator-002 from her `persona.yaml`?"* No creator-001 string in code, template, or generated manifest.
 - **`GUARDRAILS.md` binds:** no real-person likeness; unambiguously adult output; explicit-tier generation is the operator's; mandatory visual QA; credentials never handled as objects; rented compute terminated and *verified* on every exit path.
 - **No pickle weights.** Only `.safetensors` / `.onnx` in a manifest. `.pt`, `.pth`, `.pth.tar`, `.bin` refused.
-- **Licence before pin.** A model or node enters `tensor-pins.yaml` only with a stated licence recorded in `expand/TENSOR-REPLICATION.md`. Unstated licence = not clean = not pinned.
+- **Licence before pin.** A model or node enters `tensor-pins.yaml` only with a stated licence recorded in `expand/TENSOR-REPLICATION.md`. Unstated licence = not clean = not pinned. A node that no workflow's `class_type` list references is not pinned either.
 - **Pins are the only source** for models, node refs, GPU, price, disk, and every timeout: `pipeline/train/tensor-pins.yaml`. No generator inlines one.
-- **`max_placement_attempts: 1`** everywhere. A failed planned run is dead; only a reviewed *new* plan retries.
+- **`max_placement_attempts: 1`** everywhere. A failed planned run is dead; only a reviewed *new* plan retries. A stage that has already been graded is never re-executed live.
 - **Three proofs before any stage runs live:** `--dry-run` green through the planned argv; bash-executed launcher tests green (conventions at `train/tests/test_tensor_track.py:251-292`, `_lorapath_git_bash()` / `_run_lorapath_script()`); a `max_minutes` satisfying `runpod_run.minimum_runtime_minutes`.
 - **Spend:** `$10.00/day` (`governance/budget.yaml`) and a `$50.00` arc cap over `figment-*.tsv`, both enforced in-harness, fail closed.
 - **Branch** `claude/figment` in `C:\Users\danie\kb-worktrees\figment`. Never push to `main` or `ops`. Tests run from the repo root: `py -3 -m pytest <path> -q`. Paths below are relative to `orgs/figment/`.
 
 ### Spend table (L40S at `$1.30/h`)
 
+`Expected` is derived from measured runs, never from a ceiling's pessimistic rate. The training figures use the **cached** throughput the 2000-step run actually achieved (99 min wall / $1.80, 1.3–2.5 s/step once latents and text embeddings are cached — `STATE.md`:190–191), not smoke #4's 3.85 s/step uncached 50-step measurement.
+
 | Manifest | `max_minutes` | Ceiling | Expected |
 |---|---:|---:|---:|
 | `<id>-anchor-passport` (12 jobs) | 71 | $1.54 | ~$0.55 |
-| `<id>-anchor-edit` (6 jobs) | 95 | $2.06 | ~$0.60 |
+| `<id>-anchor-edit` (6 jobs) | 95 | $2.06 | ~$0.65 |
 | `<id>-tensor-dataset-shard-{01,02,03}` | 133 ea | $2.89 ea | ~$0.95 ea |
 | `<id>-tensor-dataset-fullbody` (5 jobs) | 108 | $2.34 | ~$0.70 |
-| `<id>-tensor-train-smoke` | 105 | $2.28 | ~$0.90 |
-| `<id>-tensor-train` (3000 steps) | 323 | $7.00 | ~$4.92 |
-| `<id>-tensor-tester` (12 checkpoints) | 123 | $2.67 | ~$0.80 |
+| `<id>-tensor-train-smoke` **(conditional — see C1)** | 105 | $2.28 | *skipped* |
+| `<id>-tensor-train` (3000 steps) | 233 | $5.05 | ~$2.90 |
+| `<id>-tensor-tester` (12 checkpoints) | 123 | $2.67 | ~$0.55 |
 | `<id>-tensor-gen` | 185 | $4.01 | ~$1.10 |
 
-Expected arc **≈ $12.50**, ceilings **≈ $27.55** — above the brief's "≈$6–7" (Risks #5). Split across three days: anchor+dataset, train+tester, gen.
+**Expected arc ≈ $9.30**; ceilings ≈ $26.34. Per-day split, none near the $10 guard: **day 1** anchor + dataset ≈ $4.75 · **day 2** train + tester ≈ $3.45 · **day 3** gen ≈ $1.10.
+
+Train arithmetic, so it can be re-checked: 2000 steps took 99 min wall of which ~25 min was bootstrap, so ~74 min of training ⇒ ~2.2 s/step cached. 3000 × 2.15 s ≈ 108 min + 25 min bootstrap ≈ **133 min ≈ $2.88**. The ceiling keeps real headroom: `readiness 2700 + job_timeout 9000 + 11 × artifact_download 180 + 300 = 13980 s = 233 min` ⇒ $5.05, i.e. 75% above the expected wall.
 
 ## File Structure
 
 **Created:** `expand/workflows/zimage_passport_api.json` (module 03, API format) · `expand/templates/anchor-prompts.yaml` · `expand/workflows/tensor_dataset_fullbody_api.json` · `expand/runs/start-comfy-captioner.sh.template` · `pipeline/score_cells.py` · `train/workflows/krea2_gen_api.json` · `expand/templates/gen-prompts.yaml` · tests `pipeline/tests/test_anchor_stage.py`, `test_score_cells.py`, `test_gen_stage.py`.
 
-**Modified:** `pipeline/figment_train.py` (`STAGES` gains `anchor`+`gen`; new builders; `grade`/`apply-rulings` gain `anchor`/`gen` and the checkpoint ruling) · `pipeline/training_config.py` · `train/tensor-pins.yaml` (`anchor`, `anchor_edit`, `dataset_fullbody`, `gen` stages) · `train/ai-toolkit-krea2.yaml.template` + `train/render_aitoolkit_config.py` · `expand/templates/tensor-dataset-prompts.yaml` · `pod/runpod_run.py` (`artifacts_after_jobs`) · `personas/creator-001/training.yaml` · `expand/TENSOR-REPLICATION.md` (D15–D24).
+**Modified:** `pipeline/figment_train.py` (`STAGES` gains `anchor`+`gen`; new builders; explicit dispatch; resume semantics; `grade`/`apply-rulings` gain `anchor`/`gen` and the checkpoint ruling) · `pipeline/training_config.py` · `train/tensor-pins.yaml` (`anchor`, `anchor_edit`, `dataset_fullbody`, `gen` stages; Subpack removed) · `train/ai-toolkit-krea2.yaml.template` + `train/render_aitoolkit_config.py` · `expand/templates/tensor-dataset-prompts.yaml` · `pod/runpod_run.py` (`artifacts_after_jobs`) · `personas/creator-001/training.yaml` · `expand/TENSOR-REPLICATION.md` (D15–D25).
 
-**Shared test helpers** (define once in `pipeline/tests/test_anchor_stage.py`, import elsewhere via `importlib` — there is no package `__init__.py`): the `command` fixture and `_synthetic_persona` come from `pipeline/tests/test_figment_train.py:32-43,93-137`; `_axes()` returns `{"identity": "pass", "realism": "pass", "hands": "pass", "lighting": "pass", "adult_read": "pass", "garment_integrity": "pass", "real_person_resemblance": "pass"}`; `_fake_stage_outputs(out, plan, stage)` writes one 8×8 PNG per job at `<out>/<run.out>/<output_name>.png`.
+**Shared test helpers** (define once in `pipeline/tests/test_anchor_stage.py`, import elsewhere via `importlib` — there is no package `__init__.py`): the `command` fixture and `_synthetic_persona` come from `pipeline/tests/test_figment_train.py:32-43,93-137`; `_axes()` returns `{"identity": "pass", "realism": "pass", "hands": "pass", "lighting": "pass", "adult_read": "pass", "garment_integrity": "pass", "real_person_resemblance": "pass"}`; `_fake_stage_outputs(out, plan, stage)` writes one 8×8 PNG per job at `<out>/<run.out>/<output_name>.png`; `_promoted_persona(...)` is `_synthetic_persona` plus `identity["history"] = ["anchors/old.png"]`; `_set_training(persona_dir, **fields)` merges fields into `training.yaml`.
 
 ---
 
@@ -167,7 +184,7 @@ git commit -m "feat(figment): port module 03 passport graph and its persona-deri
 
 **Files:** Modify `train/tensor-pins.yaml`, `figment_train.py` (`STAGES:48`, `build_plan:614-693`, new `_anchor_manifests`); Test `pipeline/tests/test_anchor_stage.py`
 
-**Interfaces:** Produces `pins["pod_classes"]["l40s"]["stages"]["anchor"|"anchor_edit"]`, `pins["pins"]["anchor"|"anchor_edit"]`, and `_anchor_manifests(persona, training, pins, prompts) -> list[dict]` (exactly two manifests, written to `expand/runs/<id>-anchor-{passport,edit}.yaml`). Consumes `_pod_base:169`, `_generalized_dataset_workflow:245`, `_generalized_prompts:229`. `STAGES` becomes `("anchor", "dataset", "smoke", "train", "tester")` so `--stage all` runs the anchor first and the dataset-gate STOP at `:940-949` still holds.
+**Interfaces:** Produces `pins["pod_classes"]["l40s"]["stages"]["anchor"|"anchor_edit"]`, `pins["pins"]["anchor"|"anchor_edit"]`, and `_anchor_manifests(persona, training, pins, prompts) -> list[dict]` (exactly two manifests, written to `expand/runs/<id>-anchor-{passport,edit}.yaml`). Consumes `_pod_base:169`, `_generalized_dataset_workflow:245`, `_generalized_prompts:229`. `STAGES` becomes `("anchor", "dataset", "smoke", "train", "tester")` — Task D2 appends `"gen"` — so `--stage all` runs the anchor first and the dataset-gate STOP at `:940-949` still holds.
 
 - [ ] **Step 1: Resolve real revisions, hashes and licences — never invent them**
 
@@ -226,7 +243,7 @@ def test_anchor_pins_and_manifests(command, tmp_path):
   "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}}
 ```
 
-`minimum_runtime_minutes`: anchor `1800 + 180×12 + 300 = 4260 s = 71 min` ✅; anchor_edit `2700 + 450×6 + 300 = 5700 s = 95 min` ✅. Add `pins.anchor` = the three Z-Image models (into `models/{diffusion_models,text_encoders,vae}`) plus the realism LoRA (into `models/loras`, downloaded under its repo filename, so the workflow's `lora_name` stays `pytorch_lora_weights.safetensors`), with Step 1's `revision`/`sha256`; `custom_nodes` = `[{"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}]`. Add `pins.anchor_edit` = a deep copy of `pins.dataset`.
+`minimum_runtime_minutes`: anchor `1800 + 180×12 + 300 = 4260 s = 71 min` ✅; anchor_edit `2700 + 450×6 + 300 = 5700 s = 95 min` ✅. Add `pins.anchor` = the three Z-Image models (into `models/{diffusion_models,text_encoders,vae}`) plus the realism LoRA (into `models/loras`, downloaded under its repo filename, so the workflow's `lora_name` stays `pytorch_lora_weights.safetensors`), with Step 1's `revision`/`sha256`; `custom_nodes` = `[{"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}]`. Add `pins.anchor_edit` = a deep copy of `pins.dataset` (after Task B1's Subpack removal, or re-copy it then).
 
 - [ ] **Step 5: Implement `_anchor_manifests`**
 
@@ -258,7 +275,6 @@ def _anchor_manifests(persona, training, pins, prompts):
         "jobs": [{"seed": 241731167782064,
                   "output_name": f"{short}-anchor-e{i + 1:02d}", "expected_images": 1,
                   "substitutions": [
-                      {"node_id": "832", "field": "images", "value": ["791", 0]},
                       {"node_id": "788", "field": "seed", "value": 1098688918602660 + i},
                       {"node_id": "174", "field": "prompt",
                        "value": prompts["edit"]["identity"] + " " + row}]}
@@ -266,6 +282,8 @@ def _anchor_manifests(persona, training, pins, prompts):
     }
     return [passport, edit]
 ```
+
+> Review L1: the earlier draft also substituted node `832`'s `images` to `["791", 0]`. That is already the node's default in `tensor_dataset_v2_api.json`, so the substitution was a no-op — it is dropped above. The `SaveImage` wiring is inherited from the workflow unchanged.
 
 In `build_plan`, before the `dataset` branch, add `if current == "anchor": manifests = _anchor_manifests(persona, training, pins, _generalized_anchor_prompts(persona)); paths = [out / "expand" / "runs" / f"{creator_id}-anchor-{arm}.yaml" for arm in ("passport", "edit")]`, make `run_root` use the `expand` tree for `current in ("anchor", "dataset")`, and store `plan["assets"]["persona_dir"] = str(Path(persona["_persona_path"]).parent)` (Task A3 needs it).
 
@@ -278,11 +296,13 @@ git commit -m "feat(figment): pin and plan the anchor stage (passport + edit arm
 
 ---
 
-### Task A3: Grade and promote the anchor
+### Task A3: Grade, promote, and lock the anchor against re-runs
 
-**Files:** Modify `figment_train.py` (`build_grade:1024`, `apply_rulings:1112`, parser choices `:1234-1244`), `persona.py`; Test `pipeline/tests/test_anchor_stage.py`
+**Files:** Modify `figment_train.py` (`build_grade:1024`, `apply_rulings:1112`, `build_plan:614`, `run_planned_stage:859`, parser choices `:1234-1244`), `persona.py`; Test `pipeline/tests/test_anchor_stage.py`
 
 **Interfaces:** `apply-rulings --stage anchor` requires exactly one `keep` across all 18 cells (all seven axes still required on every row), writes `grade/anchor/chosen-anchor.json` `{"schema": "figment/chosen-anchor@1", "creator", "image_id", "path", "sha256"}`, copies the picked PNG to `personas/<id>/anchors/<image_id>.png`, sets `identity.references = ["anchors/<image_id>.png"]`, and appends the previous list to a new optional `identity.history` array that `persona.py` tolerates but does not asset-check.
+
+**Review H2 — the re-run hole this task closes.** `run_planned_stage:871-875` skips a stage only when it is already in *this plan's* `completed_stages`; for `stage == "all"` an incomplete stage falls through and executes for real. GATE 1 runs the anchor under its own plan (`C:/tmp/c001-anchor`), but GATE 2 builds a **separate** `--stage all` plan (`C:/tmp/c001-t2`) whose `stage.json` never marks anchor complete — so Task C2's `run --stage all` would have re-launched all 18 anchor pod jobs live (~$3.60), unattended, past the gate. Two guards, both tested below: **(a)** once the persona carries a promoted anchor, the anchor stage cannot be planned at all; **(b)** `run --stage all` gains explicit resume semantics — a stage that is complete *or* already graded is skipped, never re-executed.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -306,14 +326,42 @@ def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path):
     assert (personas / "creator-002" / "anchors" / f"{chosen['image_id']}.png").is_file()
 
 def test_apply_anchor_rulings_refuses_two_keeps(command, tmp_path):
-    ...  # same setup, keep rows 3 and 4
+    ...  # identical setup; keep rows 3 AND 4 instead of just row 3
     with pytest.raises(command.FigmentTrainError, match="exactly one"):
         command.apply_rulings("creator-002", "anchor", out / "plan.json", filled)
+
+def test_a_promoted_anchor_can_never_be_replanned(command, tmp_path):
+    personas = _promoted_persona(tmp_path, creator_id="creator-002")
+    with pytest.raises(command.FigmentTrainError, match="already has a promoted anchor"):
+        command.build_plan("creator-002", "anchor", tmp_path / "a", personas_root=personas)
+    plan = command.build_plan("creator-002", "all", tmp_path / "b", personas_root=personas)
+    assert "anchor" not in plan["stages"]
+
+def test_run_stage_all_skips_completed_and_already_graded_stages(command, tmp_path, monkeypatch):
+    personas = _promoted_persona(tmp_path, creator_id="creator-002")
+    out = tmp_path / "b"
+    command.build_plan("creator-002", "all", out, personas_root=personas)
+    (out / "stage.json").write_text(json.dumps({
+        "schema": "figment/train-stage@1", "creator": "creator-002",
+        "plan_sha256": command._sha256(out / "plan.json"), "status": "complete:dataset",
+        "runs": {}, "completed_stages": ["dataset"]}), "utf-8")
+    (out / "grade" / "tester").mkdir(parents=True)
+    (out / "grade" / "tester" / "rulings.json").write_text("{}", "utf-8")
+    launched = []
+    monkeypatch.setattr(command.subprocess, "run",
+                        lambda argv, cwd=None: launched.append(argv) or _rc0())
+    with pytest.raises(command.FigmentTrainError):     # stops at the smoke/train config gate
+        command.run_planned_stage("creator-002", "all", out / "plan.json")
+    joined = [" ".join(a) for a in launched]
+    assert not any("dataset" in a for a in joined)
+    assert not any("tester" in a for a in joined)
 ```
 
-- [ ] **Step 2: Run and see them fail** — `FigmentTrainError: grade stage must be dataset or tester`.
+`_rc0()` returns a stub object with `returncode = 0`.
 
-- [ ] **Step 3: Implement.** Allow `"anchor"` in `build_grade`, `apply_rulings` and both parser `--stage` choice tuples (`("anchor", "dataset", "tester")`). `_grading_html` needs no change: the anchor strip shows the persona's current references, which is exactly what is being replaced. In `apply_rulings`, after `_normalize_rulings`:
+- [ ] **Step 2: Run and see them fail** — `FigmentTrainError: grade stage must be dataset or tester`; then the anchor stage is still planned and the dataset run still launches.
+
+- [ ] **Step 3: Implement grading and promotion.** Allow `"anchor"` in `build_grade`, `apply_rulings` and both parser `--stage` choice tuples (`("anchor", "dataset", "tester")` — Task D2 widens them again for `"gen"`). `_grading_html` needs no change: the anchor strip shows the persona's current references, which is exactly what is being replaced. In `apply_rulings`, after `_normalize_rulings`:
 
 ```python
 if stage == "anchor":
@@ -325,18 +373,45 @@ if stage == "anchor":
 
 and after `approved_rows` is built, for `stage == "anchor"`: copy the one approved image into `Path(plan["assets"]["persona_dir"]) / "anchors"`, write `chosen-anchor.json`, then `_read_json` the persona, set `identity["history"] = identity.get("history", []) + identity["references"]` and `identity["references"] = [f"anchors/{image_id}.png"]`, and `_write_json` it back.
 
-- [ ] **Step 4: Run everything** — `py -3 -m pytest orgs/figment/pipeline/tests orgs/figment/pipeline/train/tests -q` → PASS (including `test_persona.py`). **Commit:**
+- [ ] **Step 4: Implement the two re-run guards**
+
+```python
+# build_plan, right after the persona is loaded
+selected = list(STAGES if stage == "all" else (stage,))
+if persona["identity"].get("history") and "anchor" in selected:
+    if stage != "all":
+        raise FigmentTrainError(
+            f"{creator_id} already has a promoted anchor (identity.history is non-empty); "
+            "the anchor stage cannot be replanned without clearing it by hand")
+    selected.remove("anchor")
+
+# run_planned_stage, replacing the completed-stage check at :871-875
+def _already_settled(current: str) -> bool:
+    return (current in state["completed_stages"]
+            or (root / "grade" / current / "rulings.json").is_file())
+
+for current in requested:
+    if _already_settled(current):
+        if stage != "all":
+            raise FigmentTrainError(
+                f"stage {current!r} is already complete or graded; refusing a live retry")
+        continue
+```
+
+A stage whose rulings have been applied is settled by definition — its gate is behind us, so `--stage all` walks past it instead of launching pods. Combined with the `build_plan` guard, no second anchor plan can exist for a promoted persona in the first place.
+
+- [ ] **Step 5: Run everything** — `py -3 -m pytest orgs/figment/pipeline/tests orgs/figment/pipeline/train/tests -q` → PASS (including `test_persona.py`). **Commit:**
 
 ```bash
 git add orgs/figment/pipeline/figment_train.py orgs/figment/pipeline/persona.py orgs/figment/pipeline/tests
-git commit -m "feat(figment): anchor grading promotes one pick into persona identity.references"
+git commit -m "feat(figment): promote one anchor and lock gated stages against live re-runs"
 ```
 
 ---
 
 ### Task A4: GATE 1 — operator picks the anchor (STOP)
 
-**Files:** none changed. **Interfaces:** consumes A1–A3; produces `persona.yaml` with a single new reference.
+**Files:** none changed. **Interfaces:** consumes A1–A3; produces `persona.yaml` with a single new reference and a non-empty `identity.history`, which is what makes every later `--stage all` plan anchor-free.
 
 - [ ] **Step 1: Plan and dry-run both arms**
 
@@ -357,11 +432,14 @@ py -3 orgs/figment/pipeline/figment_train.py grade --creator creator-001 --stage
 
 - [ ] **Step 3: STOP — GATE 1.** Hand the operator `grade/anchor/board.html`. He views all 18 at full resolution and picks exactly one. Fill `rulings.template.json` → `filled.json` from his decisions on all seven axes. Never pick on his behalf; never keep a cell by a score.
 
-- [ ] **Step 4: Apply and commit**
+- [ ] **Step 4: Apply, verify the lock, and commit**
 
 ```powershell
 py -3 orgs/figment/pipeline/figment_train.py apply-rulings --creator creator-001 --stage anchor --plan C:/tmp/c001-anchor/plan.json --rulings C:/tmp/c001-anchor/grade/anchor/filled.json
+py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-001 --stage anchor --out C:/tmp/c001-anchor-relock
 ```
+
+The second command must exit 1 with `STOP: creator-001 already has a promoted anchor` — that is the A3 guard proving itself on real data before any later `--stage all` runs.
 
 ```bash
 git add orgs/figment/personas/creator-001
@@ -372,7 +450,7 @@ git commit -m "feat(figment): creator-001 anchor of record from the module-03 pa
 
 # Phase B — dataset stage (module 10)
 
-### Task B1: Half-body framing, the full-body second pass, and the skin clause
+### Task B1: Half-body framing, the full-body second pass, the skin clause, and the Subpack audit
 
 **Files:** Modify `expand/templates/tensor-dataset-prompts.yaml`, `figment_train.py` (`_dataset_jobs:261`, `_dataset_manifests:283`), `train/tensor-pins.yaml`, `training_config.py`; Create `expand/workflows/tensor_dataset_fullbody_api.json`; Test `expand/tests/test_tensor_dataset.py`
 
@@ -381,12 +459,14 @@ git commit -m "feat(figment): creator-001 anchor of record from the module-03 pa
 - [ ] **Step 1: Write the failing test**
 
 ```python
-def test_framing_policy_and_skin_clause(command, tmp_path):
+def test_framing_policy_skin_clause_and_no_unused_subpack(command, tmp_path):
     prompts = json.loads(
         (PIPELINE / "expand/templates/tensor-dataset-prompts.yaml").read_text("utf-8"))
     clause = ("skin with visible pores, fine vellus hair, and natural micro-texture, "
               "no retouching")
     assert clause in prompts["face"]["identity"] and clause in prompts["body"]["identity"]
+    pins = json.loads((PIPELINE / "train/tensor-pins.yaml").read_text("utf-8"))
+    assert "Impact-Subpack" not in json.dumps(pins)
     personas = _synthetic_persona(tmp_path, creator_id="creator-002")
     out = tmp_path / "p"
     runs = command.build_plan("creator-002", "dataset", out,
@@ -399,11 +479,22 @@ def test_framing_policy_and_skin_clause(command, tmp_path):
     assert not any("skin" in m["repo_id"].lower() for m in shards[0]["models"])
 ```
 
-- [ ] **Step 2: Run and see it fail** — three shards, not four; clause absent.
+- [ ] **Step 2: Run and see it fail** — three shards, not four; clause absent; Subpack still pinned.
 
-- [ ] **Step 3: Reframe the rows and add the clause.** Convert `body.rows` to objects: rows 1–4, 6, 8, 10–12, 15 take `"framing": "half"`; rows 5, 7, 9, 13, 14 (wide, low-angle, walking) take `"framing": "full"`. Rewrite every `half` row so the subject is framed no wider than mid-thigh and the face reads large — replace "medium shot", "framing the hips and thighs", and "walking away" phrasings, and reword row 15 (lying on her side) to frame from the waist up. Append the skin clause verbatim to `face.identity` and `body.identity`, replacing the weaker existing fragments ("fair skin with visible pores and texture" / "fair skin with visible texture") so the strings do not double up.
+- [ ] **Step 3: Audit and remove the unused Impact-Subpack pin (review H4).** `tensor-pins.yaml:66` bootstraps `ComfyUI-Impact-Subpack` for the `dataset` stage, but nothing uses it. Confirm on the live files before deleting:
 
-- [ ] **Step 4: Build the full-body workflow.** Copy `tensor_dataset_v2_api.json` and append a face-repair tail to the **body** branch only (its refine output is node `776` `VAEDecode`). New ids `950`+ so they never collide with the package's:
+```bash
+py -3 -c "
+import json,glob
+for p in glob.glob('orgs/figment/pipeline/expand/workflows/tensor_dataset*_api.json'):
+    print(p, sorted({v['class_type'] for v in json.load(open(p,encoding='utf-8')).values()}))"
+```
+
+The only Impact class in either graph is `ImpactImageBatchToImageList`, which lives in the **base** pack. Delete the `ComfyUI-Impact-Subpack` entry from `pins.dataset.custom_nodes` and record **D23**: *`ComfyUI-Impact-Subpack` was pinned and bootstrapped for the dataset stage but referenced by no node in any dataset workflow. It is the exact class of exposure Risk #1 and r22 §5 warn about — the bootstrap pip-installs each node's `requirements.txt`, and the Subpack is the component that pulls ultralytics and `.pt` YOLO weights. Removed; never re-add it.*
+
+- [ ] **Step 4: Reframe the rows and add the clause.** Convert `body.rows` to objects: rows 1–4, 6, 8, 10–12, 15 take `"framing": "half"`; rows 5, 7, 9, 13, 14 (wide, low-angle, walking) take `"framing": "full"`. Rewrite every `half` row so the subject is framed no wider than mid-thigh and the face reads large — replace "medium shot", "framing the hips and thighs", and "walking away" phrasings, and reword row 15 (lying on her side) to frame from the waist up. Append the skin clause verbatim to `face.identity` and `body.identity`, replacing the weaker existing fragments ("fair skin with visible pores and texture" / "fair skin with visible texture") so the strings do not double up.
+
+- [ ] **Step 5: Build the full-body workflow.** Copy `tensor_dataset_v2_api.json` and append a face-repair tail to the **body** branch only (its refine output is node `776` `VAEDecode`). New ids `950`+ so they never collide with the package's:
 
 | Node | class_type | Key inputs |
 |---|---|---|
@@ -419,7 +510,7 @@ def test_framing_policy_and_skin_clause(command, tmp_path):
 
 Point `832` `SaveImage.images` at `["958", 0]`. `0.23` is the package's own edit-pass denoise (r15 §3f) — do not raise it; higher redraws the identity instead of repairing it.
 
-- [ ] **Step 5: Split the manifests and add the optional skin pin.** `_dataset_jobs` tags each body job with its row's framing; `_dataset_manifests` partitions face + `half` jobs into three 10-job shards on the v2 workflow, and `full` jobs into one `fullbody` manifest on the new workflow using a new `dataset_fullbody` pin stage (`readiness 2700`, `job_timeout_seconds 600`, `max_minutes 108`; `2700 + 600×5 + 450 + 300 = 6450 s` ✅ — the extra 450 s is Task B2's caption artifact). Add `skin_lora` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`) and to `tensor-pins.yaml`:
+- [ ] **Step 6: Split the manifests and add the optional skin pin.** `_dataset_jobs` tags each body job with its row's framing; `_dataset_manifests` partitions face + `half` jobs into three 10-job shards on the v2 workflow, and `full` jobs into one `fullbody` manifest on the new workflow using a new `dataset_fullbody` pin stage (`readiness 2700`, `job_timeout_seconds 600`, `max_minutes 108`; `2700 + 600×5 + 450 + 300 = 6450 s` ✅ — the extra 450 s is Task B2's caption artifact). Add `skin_lora` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`) and to `tensor-pins.yaml`:
 
 ```json
 "skin_loras": {"qwen-edit-skin": {
@@ -433,13 +524,13 @@ Point `832` `SaveImage.images` at `["958", 0]`. `0.23` is the package's own edit
 
 Leave `training.yaml`'s `skin_lora: null` for creator-001.
 
-- [ ] **Step 6: Record D21 and D22** in `TENSOR-REPLICATION.md`. **D21:** *full-body cells get a module-04-style `do-not-alter` second pass in-graph, per `identity-spec.md`'s face-pixel-density finding; this is our mitigation, not a port — the package has no equivalent.* **D22:** *enabling `skin_lora` requires a single-cell live check first (face row 1, LoRA on vs off, same seed, compared at full resolution by the operator), because r22 could not confirm 2511 compatibility.*
+- [ ] **Step 7: Record D21 and D22** in `TENSOR-REPLICATION.md`. **D21:** *full-body cells get a module-04-style `do-not-alter` second pass in-graph, per `identity-spec.md`'s face-pixel-density finding; this is our mitigation, not a port — the package has no equivalent.* **D22:** *enabling `skin_lora` requires a single-cell live check first (face row 1, LoRA on vs off, same seed, compared at full resolution by the operator), because r22 could not confirm 2511 compatibility.*
 
-- [ ] **Step 7: Run tests and commit** — `py -3 -m pytest orgs/figment/pipeline/expand/tests orgs/figment/pipeline/tests -q` → PASS.
+- [ ] **Step 8: Run tests and commit** — `py -3 -m pytest orgs/figment/pipeline/expand/tests orgs/figment/pipeline/tests -q` → PASS.
 
 ```bash
 git add orgs/figment/pipeline/expand orgs/figment/pipeline/figment_train.py orgs/figment/pipeline/train/tensor-pins.yaml orgs/figment/pipeline/training_config.py
-git commit -m "feat(figment): half-body framing, full-body face repair, skin clause and LoRA slot"
+git commit -m "feat(figment): half-body framing, full-body face repair, skin clause; drop unused Subpack pin"
 ```
 
 ---
@@ -448,9 +539,9 @@ git commit -m "feat(figment): half-body framing, full-body face repair, skin cla
 
 **Files:** Modify `pod/runpod_run.py` (`minimum_runtime_minutes:1715`, the `if artifacts:` branch at `:3885`), `figment_train.py`, `train/tensor-pins.yaml`; Create `expand/runs/start-comfy-captioner.sh.template`; Test `pod/tests/test_runpod_run.py`, `expand/tests/test_tensor_dataset.py`
 
-**Interfaces:** New manifest key `artifacts_after_jobs: true` — jobs are submitted first, *then* the artifact loop runs (today they are mutually exclusive: `:3885` is `if artifacts: … else: <jobs>`). Each shard declares exactly **one** artifact, `_captions.json`, a `{output_name: caption}` object; ten `.txt` artifacts would add `9 × artifact_download_seconds` = 1620 s per shard. `apply_rulings` merges the bundles and calls `build_training_set(approved_cells=<generated JSON>, caption_mode="provided")` instead of today's `caption_mode="class"`.
+**Interfaces:** New manifest key `artifacts_after_jobs: true` — jobs are submitted first, *then* the artifact loop runs (today they are mutually exclusive: `:3885` is `if artifacts: … else: <jobs>`). Each shard declares exactly **one** artifact, `_captions.json`, a `{output_name: caption}` object; ten `.txt` artifacts would add `9 × artifact_download_seconds` = 1620 s per shard. `apply_rulings` merges the bundles and calls `build_training_set(approved_cells=<generated JSON>, caption_mode=<from the persona>)`.
 
-- [ ] **Step 1: Write the failing harness test**
+- [ ] **Step 1: Write the failing harness tests**
 
 ```python
 def test_artifacts_after_jobs_budgets_both_loops(harness):
@@ -466,11 +557,21 @@ def test_artifacts_after_jobs_budgets_both_loops(harness):
     expected = (manifest["readiness_timeout_seconds"]
                 + manifest["job_timeout_seconds"] * 3) / 60.0 + 5.0
     assert harness.minimum_runtime_minutes(manifest) == pytest.approx(expected)
+
+def test_artifact_deadline_starts_only_after_the_last_job(harness, monkeypatch):
+    """Review M2 / Risk #8: the marker clock must not start at function entry."""
+    order = []
+    monkeypatch.setattr(harness, "download_job_outputs",
+                        lambda *a, **k: order.append("job") or [])
+    monkeypatch.setattr(harness.ComfyClient, "wait_for_marker",
+                        lambda self, *a, **k: order.append("marker"))
+    harness.run_manifest(_captions_manifest(jobs=2), dry_run=True)
+    assert order == ["job", "job", "marker"]
 ```
 
-- [ ] **Step 2: Run and see it fail** — `py -3 -m pytest orgs/figment/pipeline/pod/tests/test_runpod_run.py -q -k artifacts_after_jobs` → artifact mode ignores `jobs` in the budget.
+- [ ] **Step 2: Run and see them fail** — `py -3 -m pytest orgs/figment/pipeline/pod/tests/test_runpod_run.py -q -k "artifacts_after_jobs or artifact_deadline"` → artifact mode ignores `jobs` in the budget, and the marker runs first.
 
-- [ ] **Step 3: Change the harness.** In `minimum_runtime_minutes`, when `artifacts_after_jobs` is truthy and `artifacts` is present, `work_seconds` = the existing jobs branch **plus** the existing artifacts branch; reject a non-boolean value and reject `artifacts_after_jobs: true` without `artifacts`. At `:3885`, change the guard to `if artifacts and not manifest.get("artifacts_after_jobs"):`, extract the jobs loop and the artifact loop into two local functions, and for the new path call jobs then artifacts. `artifact_marker_deadline = time.monotonic() + per_job_timeout` is unchanged code — it must simply be *reached* after the jobs finish.
+- [ ] **Step 3: Change the harness.** In `minimum_runtime_minutes`, when `artifacts_after_jobs` is truthy and `artifacts` is present, `work_seconds` = the existing jobs branch **plus** the existing artifacts branch; reject a non-boolean value and reject `artifacts_after_jobs: true` without `artifacts`. At `:3885`, change the guard to `if artifacts and not manifest.get("artifacts_after_jobs"):`, extract the jobs loop and the artifact loop into two local functions, and for the new path call jobs then artifacts. `artifact_marker_deadline = time.monotonic() + per_job_timeout` must stay **inside** the artifact function so it is evaluated after the jobs return — that is exactly what the M2 test pins.
 
 - [ ] **Step 4: Write the captioner launcher.** `start-comfy-captioner.sh.template`, same `set -euo pipefail` / `log()` / `fail()` shape as `train/runs/start-training-aitoolkit.sh.template`:
 
@@ -500,7 +601,15 @@ def test_captioner_writes_a_bundle_and_completion_marker(tmp_path, monkeypatch):
     assert (out / "_captions.complete").is_file()
 ```
 
-- [ ] **Step 6: Wire the manifests and `apply_rulings`.** Every dataset manifest (including `fullbody`) gains `artifacts_after_jobs: true`, the `training` block above with `{{expected_cells}}` = `len(jobs)`, `comfyui.start_command: "bash /workspace/start-comfy-captioner.sh"`, and the single `_captions.json` artifact; `stages.dataset.max_minutes` rises to `133` (`2700 + 450×10 + 450 + 300 = 7950 s`). `_copy_support_files:560` copies the captioner template alongside the two existing launchers with the same creator/trigger rebinding. In `apply_rulings` for `stage == "dataset"`, load each shard's `root / run["out"] / "_captions.json"`, merge, build `approved_cells.json` = `[{"image": <approved copy path>, "caption": bundle[image_id]}, …]`, and pass it to `build_training_set(approved_cells=…, caption_mode="provided", out_dir=temporary_dataset)`. Fail closed if any approved cell has no caption.
+- [ ] **Step 6: Wire the manifests and `apply_rulings`.** Every dataset manifest (including `fullbody`) gains `artifacts_after_jobs: true`, the `training` block above with `{{expected_cells}}` = `len(jobs)`, `comfyui.start_command: "bash /workspace/start-comfy-captioner.sh"`, and the single `_captions.json` artifact; `stages.dataset.max_minutes` rises to `133` (`2700 + 450×10 + 450 + 300 = 7950 s`). `_copy_support_files:560` copies the captioner template alongside the two existing launchers with the same creator/trigger rebinding. In `apply_rulings` for `stage == "dataset"`, load each shard's `root / run["out"] / "_captions.json"`, merge, build `approved_cells.json` = `[{"image": <approved copy path>, "caption": bundle[image_id]}, …]`, and pass it to `build_training_set`. Fail closed if any approved cell has no caption.
+
+  **Review M3 — the persona's `caption_mode` is currently dead.** `apply_rulings:1190` hardcodes `caption_mode="class"` even though `personas/creator-001/training.yaml` declares `"caption_mode": "provided"`, and the two modules use different vocabularies (`training_config.ALLOWED_CAPTION_MODES = {"provided","auto","single_word"}` vs `build_training_set.CAPTION_MODES = ("provided","class","qwen3vl")`). Wire it: pass `caption_mode=CAPTION_MODE_TO_BUILDER[plan["training"]["caption_mode"]]`, with one explicit map in `figment_train.py`:
+
+```python
+CAPTION_MODE_TO_BUILDER = {"provided": "provided", "single_word": "class", "auto": "provided"}
+```
+
+`auto` maps to `provided` because on-pod captioning now happens at the dataset stage, so by the time the builder runs the captions are real text on disk. Add a test asserting a persona with `caption_mode: "single_word"` produces one-word `.txt` sidecars and one with `"provided"` produces the bundle's captions.
 
 - [ ] **Step 7: Run everything and commit** — `py -3 -m pytest orgs/figment/pipeline -q` → PASS, all 152+ pod tests included.
 
@@ -600,7 +709,7 @@ git commit -m "feat(figment): advisory identity/age/quality annotations on gradi
 py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-001 --stage all --out C:/tmp/c001-t2
 ```
 
-Confirm `plan.json` `assets.anchors` names only the GATE-1 anchor and that four dataset manifests exist; run each planned `cli` line with `--dry-run --max-minutes 1` appended — all four exit 0.
+Confirm `plan.json` `assets.anchors` names only the GATE-1 anchor and — because of Task A3's guard — that **`plan["stages"]` has no `anchor` key at all**. Then run each planned `cli` line with `--dry-run --max-minutes 1` appended; all four dataset manifests exit 0.
 
 - [ ] **Step 2: STOP** — present the four ceilings and the day's ledger. Run live only after the go:
 
@@ -623,11 +732,15 @@ Confirm `train/runs/<id>-tensor-dataset/` holds one `NN.png` + `NN.txt` per keep
 
 # Phase C — training (module 11)
 
-### Task C1: 3000 steps, the 12-checkpoint ladder, and an optional DOP flag
+### Task C1: 3000 steps, the 12-checkpoint ladder, a conditional smoke, and an optional DOP flag
 
-**Files:** Modify `train/render_aitoolkit_config.py` (`MODULE_11:114`, `check_module_11:158`), `train/ai-toolkit-krea2.yaml.template`, `training_config.py`, `figment_train.py` (`_render_training_config:538`), `personas/creator-001/training.yaml`, `train/tensor-pins.yaml`; Test `train/tests/test_tensor_track.py`, `pipeline/tests/test_figment_train.py`
+**Files:** Modify `train/render_aitoolkit_config.py` (`MODULE_11:114`, `check_module_11:158`), `train/ai-toolkit-krea2.yaml.template`, `training_config.py`, `figment_train.py` (`_render_training_config:538`, `build_plan`, `run_planned_stage`), `personas/creator-001/training.yaml`, `train/tensor-pins.yaml`, `train/TENSOR-TRAINING.md`; Test `train/tests/test_tensor_track.py`, `pipeline/tests/test_figment_train.py`
 
-**Interfaces:** `_checkpoint_steps(3000, 250)` = `[250 … 2750]`, so the tester ladder becomes 12 branches — the package's own count (r15 §3g) — with **no code change**; it is derived from `training.steps`/`save_every`. Produces `training.diff_output_preservation` (bool, default `false`) and `training.diff_output_preservation_class` (str, default `"person"`), mapped by `_render_training_config` to template context `dop_enabled`/`dop_multiplier`/`dop_class`. r20 divergence #7 records 2000 as a budget deviation, not a quality decision; r21 adopt #3 puts the convergent range at 2500–3000 and adopt #1 is DOP (Ostris official). DOP stays **off**: ~3× train time (≈$15 on L40S, above the daily guard), needs a trigger word, incompatible with `train_text_encoder: true` (ours is `false`).
+**Interfaces:** `_checkpoint_steps(3000, 250)` = `[250 … 2750]`, so the tester ladder becomes 12 branches — the package's own count (r15 §3g) — with **no code change**; it is derived from `training.steps`/`save_every`. Produces `training.diff_output_preservation` (bool, default `false`), `training.diff_output_preservation_class` (str, default `"person"`), `training.proven_env_digest` (64-hex str or `null`), and `training_environment_digest(pins) -> str`.
+
+**Cost basis (review H1).** The earlier draft priced this run from smoke #4's `3.85 s/step`, a 50-step measurement taken **before** latent and text-embedding caching kicked in. The real 2000-step run took **99 min wall for $1.80** at **1.3–2.5 s/step cached** (`STATE.md`:190–191) — ~25 min of that was bootstrap, so ~74 min of training ⇒ ~2.2 s/step. 3000 steps therefore costs **~$2.90 (≈133 min)**, not $4.92, and the ceiling is recomputed from that basis plus real headroom rather than from the pessimistic rate.
+
+**Conditional smoke.** The training path is live-proven (five smokes, then a full 2000-step run and tester — `STATE.md` 2026-09-04 19:40 / 23:55). Re-paying $0.90 to re-prove an unchanged environment is waste, so the smoke now runs only when the trainer template, the launcher, the ai-toolkit/torch refs, or the train pins have changed since the last proven run.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -641,8 +754,21 @@ def test_module_11_recipe_is_3000_steps_and_the_ladder_is_twelve(command, tmp_pa
         plan["stages"]["tester"]["runs"][0]["manifest"])["jobs"]) == 12
     stages = json.loads((PIPELINE / "train/tensor-pins.yaml").read_text("utf-8")
                         )["pod_classes"]["l40s"]["stages"]
-    assert (stages["train"]["job_timeout_seconds"], stages["train"]["max_minutes"],
-            stages["tester"]["max_minutes"]) == (13500, 323, 123)
+    assert (stages["train"]["readiness_timeout_seconds"],
+            stages["train"]["job_timeout_seconds"],
+            stages["train"]["max_minutes"], stages["tester"]["max_minutes"]) == (
+        2700, 9000, 233, 123)
+
+def test_smoke_is_skipped_when_the_training_environment_digest_is_unchanged(command, tmp_path):
+    personas = _promoted_persona(tmp_path, creator_id="creator-002", steps=3000)
+    pins = json.loads((PIPELINE / "train/tensor-pins.yaml").read_text("utf-8"))
+    _set_training(personas / "creator-002",
+                  proven_env_digest=command.training_environment_digest(pins))
+    plan = command.build_plan("creator-002", "all", tmp_path / "a", personas_root=personas)
+    assert "smoke" not in plan["stages"] and "train" in plan["stages"]
+    _set_training(personas / "creator-002", proven_env_digest="0" * 64)
+    plan = command.build_plan("creator-002", "all", tmp_path / "b", personas_root=personas)
+    assert "smoke" in plan["stages"]
 
 @pytest.mark.parametrize("enabled", [False, True])
 def test_dop_is_off_by_default_and_renders_when_asked(enabled):
@@ -661,11 +787,39 @@ def test_dop_is_off_by_default_and_renders_when_asked(enabled):
         [] if not enabled else ["train.diff_output_preservation: True != False"])
 ```
 
-- [ ] **Step 2: Run and see them fail** — `MODULE_11["steps"] == 2000`; then `KeyError: 'diff_output_preservation'`.
+- [ ] **Step 2: Run and see them fail** — `MODULE_11["steps"] == 2000`; `AttributeError: training_environment_digest`; `KeyError: 'diff_output_preservation'`.
 
-- [ ] **Step 3: Implement the step change.** `MODULE_11["steps"] = 3000`; `check_module_11`'s `("train.steps", train["steps"], 2000)` becomes `3000`. Replace the stale comment above `MODULE_11` (it argues for 2000 on budget grounds) with the 2026-09-06 ruling and the measured cost: 3000 × 3.85 s/step ≈ 3.2 h ≈ $4.92 on L40S. `training.yaml`: `"steps": 3000`. Pins: `stages.train.job_timeout_seconds = 13500` and `max_minutes = 323` (`3600 + 13500 + 11×180 + 300 = 19380 s` ✅); `stages.tester.max_minutes = 123` (`2400 + 300×12 + 900 + 180 + 300 = 7380 s` ✅).
+- [ ] **Step 3: Implement the step change and the recomputed ceiling.** `MODULE_11["steps"] = 3000`; `check_module_11`'s `("train.steps", train["steps"], 2000)` becomes `3000`. Replace the stale comment above `MODULE_11` — and `train/TENSOR-TRAINING.md`'s "Step count: 2000, not 3000" section, which argues from the same superseded 3.85 s/step figure — with the 2026-09-06 ruling and the cached-rate arithmetic above. `training.yaml`: `"steps": 3000`. Pins:
 
-- [ ] **Step 4: Implement DOP.** In the template, inside `train:` after `disable_sampling`:
+```
+stages.train: readiness_timeout_seconds 2700, job_timeout_seconds 9000, max_minutes 233
+stages.tester: max_minutes 123
+```
+
+Checks: train `2700 + 9000 + 11×180 + 300 = 13980 s = 233 min` ✅ (expected wall ~133 min ⇒ 75% headroom); tester `2400 + 300×12 + 900 + 180 + 300 = 7380 s = 123 min` ✅. Readiness drops 3600 → 2700 because the measured bootstrap is ~25 min; job_timeout drops 10800 → 9000 because the job window carries ~111 min of training plus publish (~114 min), leaving 32% headroom.
+
+- [ ] **Step 4: Implement the conditional smoke**
+
+```python
+TRAINING_ENV_FILES = (AI_TEMPLATE_PATH, TRAIN_START_PATH)
+
+def training_environment_digest(pins: dict[str, Any]) -> str:
+    """Everything a train-smoke re-proves: trainer config, launcher, train pins, and the
+    ai-toolkit/torch refs baked into the runtime block."""
+    digest = hashlib.sha256()
+    for path in TRAINING_ENV_FILES:
+        digest.update(path.read_bytes())
+    runtime = _training_runtime("x", "provided", [250], 500)
+    for key in ("repository", "git_ref", "torch_spec", "torchvision_spec",
+                "torch_index_url", "caption_model"):
+        digest.update(str(runtime[key]).encode("utf-8"))
+    digest.update(json.dumps(pins["pins"]["train"], sort_keys=True).encode("utf-8"))
+    return digest.hexdigest()
+```
+
+In `build_plan`, drop `"smoke"` from `selected` when `training.get("proven_env_digest") == training_environment_digest(pins)`; an explicit `--stage smoke` always plans it, so an operator can force a re-prove. Add `proven_env_digest` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`, or a 64-hex string). After a smoke run completes, `run_planned_stage` writes the current digest into `personas/<id>/training.yaml`. Seed creator-001's `training.yaml` with the digest computed **after** this task's pin edits land, since the 2026-09-04 run proved exactly that environment — verify by hand that only `steps`/timeouts changed; if `pins.train` or either template changed for any other reason, leave it `null` so the smoke runs.
+
+- [ ] **Step 5: Implement DOP.** In the template, inside `train:` after `disable_sampling`:
 
 ```yaml
         # r21 adopt #1 (Ostris official). OFF by default: ~3x train time, and the
@@ -677,13 +831,13 @@ def test_dop_is_off_by_default_and_renders_when_asked(enabled):
 
 Add `"dop_enabled": "false"`, `"dop_multiplier": "1.0"`, `"dop_class": "person"` to `MODULE_11` so `build_context` resolves them and `--set` can override them; add `("train.diff_output_preservation", train["diff_output_preservation"], False)` to `check_module_11`; add both persona keys to `TRAINING_KEYS`/`DEFAULT_TRAINING` with type validation.
 
-- [ ] **Step 5: Regenerate the reproduction fixtures.** `test_creator001_plan_reproduces_current_manifest_documents_exactly` will now fail — correctly: the committed manifests are the 2000-step ones. Regenerate them from `build_plan` and commit them so the test keeps its meaning. Run `py -3 -m pytest orgs/figment/pipeline -q` → PASS.
+- [ ] **Step 6: Regenerate the reproduction fixtures.** `test_creator001_plan_reproduces_current_manifest_documents_exactly` will now fail — correctly: the committed manifests are the 2000-step ones. Regenerate them from `build_plan` and commit them so the test keeps its meaning. Run `py -3 -m pytest orgs/figment/pipeline -q` → PASS.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add orgs/figment/pipeline/train orgs/figment/pipeline/expand/runs orgs/figment/pipeline/training_config.py orgs/figment/pipeline/figment_train.py orgs/figment/personas/creator-001/training.yaml orgs/figment/pipeline/tests
-git commit -m "feat(figment): module-11 fidelity - 3000 steps, 12-checkpoint ladder, optional DOP"
+git commit -m "feat(figment): 3000 steps, 12-checkpoint ladder, conditional smoke, optional DOP"
 ```
 
 ---
@@ -698,7 +852,7 @@ git commit -m "feat(figment): module-11 fidelity - 3000 steps, 12-checkpoint lad
 
 ```python
 def test_tester_rulings_record_exactly_one_checkpoint_into_the_persona(command, tmp_path):
-    personas = _synthetic_persona(tmp_path, creator_id="creator-002", steps=3000)
+    personas = _promoted_persona(tmp_path, creator_id="creator-002", steps=3000)
     out = tmp_path / "p"
     plan = command.build_plan("creator-002", "tester", out, personas_root=personas)
     _fake_stage_outputs(out, plan, "tester")
@@ -721,14 +875,14 @@ def test_tester_rulings_record_exactly_one_checkpoint_into_the_persona(command, 
 
 - [ ] **Step 3: Implement.** Add `chosen_checkpoint_step` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`), validated as `None` or a positive `int` equal to `steps` or a multiple of `save_every` strictly below `steps`. In `apply_rulings` for `stage == "tester"`: require exactly one keep; derive the step from the kept `image_id` (tester job names end `-<step:09d>` or `-final`, per `_tester_manifest:499`); write `chosen-checkpoint.json` with `lora_name = _checkpoint_name(trigger, step)`; `_read_json` `personas/<creator>/training.yaml`, set `training.chosen_checkpoint_step`, `_write_json` it back. Give `apply_rulings` a `personas_root: Path = PERSONAS_ROOT` keyword so the test can redirect it. Run `py -3 -m pytest orgs/figment/pipeline -q` → PASS.
 
-- [ ] **Step 4: Run the stage.** `--stage all` resumes at smoke, then train, then tester:
+- [ ] **Step 4: Run the stage.** `--stage all` now walks past the settled dataset stage (Task A3's `_already_settled`), never plans the anchor (Task A3's `build_plan` guard), and skips the smoke when its digest matches (Task C1) — so this resumes straight at train, then tester:
 
 ```powershell
 py -3 orgs/figment/pipeline/figment_train.py run --creator creator-001 --stage all --plan C:/tmp/c001-t2/plan.json
 py -3 orgs/figment/pipeline/figment_train.py grade --creator creator-001 --stage tester --plan C:/tmp/c001-t2/plan.json
 ```
 
-Before the train pod, confirm the smoke pod's `_training.log` shows the Krea-2 state dict loading with no missing/unexpected keys — `run_planned_stage` already checks this and stops if it does not.
+Before invoking it, print `stage.json` and `plan.json` and confirm `completed_stages` contains `dataset` and that `plan["stages"]` has no `anchor` key — that is the H2 guard proving itself on real data. If the smoke *is* planned (digest changed), confirm its `_training.log` shows the Krea-2 state dict loading with no missing/unexpected keys before the train pod starts; `run_planned_stage` already checks this and stops if it does not.
 
 - [ ] **Step 5: STOP — GATE 3.** Hand the operator `grade/tester/board.html`: 12 checkpoints, one fixed seed/prompt/sampler/resolution, the checkpoint the only free variable. He picks one. Then apply and commit:
 
@@ -745,53 +899,60 @@ git commit -m "feat(figment): tester ruling records the chosen checkpoint in the
 
 # Phase D — generation (module 09)
 
-### Task D1: Verify and pin the licence-clean face-mask path
+### Task D1: Pin the licence-clean face-mask path
 
 **Files:** Modify `train/tensor-pins.yaml`, `expand/TENSOR-REPLICATION.md`; Test `pipeline/tests/test_gen_stage.py`
 
-**Interfaces:** Produces `pins["pins"]["gen"]` and `pins["pod_classes"]["l40s"]["stages"]["gen"]`, both verified against real refs before anything downstream uses them. r22 §4/§5: ComfyUI's **native** MediaPipe face detector (PR #14009, `mediapipe_face_fp32.safetensors`, Apache-2.0) needs no third-party node; base Impact-Pack registers `MaskToSEGS` and `DetailerForEach` and from v8.0 pulls no ultralytics and no `.pt`. **Never add Impact-Subpack.**
+**Interfaces:** Produces `pins["pins"]["gen"]` and `pins["pod_classes"]["l40s"]["stages"]["gen"]`. The spike is already done — `research/r23-mediapipe-node-spike.md` is committed, so this task pins from it rather than re-running a checkout grep.
 
-- [ ] **Step 1: Verify against real checkouts, then record what you actually find**
+**What r23 established** (read it before implementing):
 
-```bash
-git clone --depth 1 --branch v0.34.0 https://github.com/comfyanonymous/ComfyUI /tmp/comfy-verify
-grep -rn "mediapipe" /tmp/comfy-verify/comfy_extras/ /tmp/comfy-verify/nodes.py
-git clone https://github.com/ltdrdata/ComfyUI-Impact-Pack /tmp/impact
-git -C /tmp/impact checkout 429d0159ad429e64d2b3916e6e7be9c22d025c3c
-grep -in "ultralytics" /tmp/impact/requirements.txt /tmp/impact/install.py
-grep -n "MaskToSEGS\|DetailerForEach" /tmp/impact/node_list.json
-```
+- ComfyUI ships a **pure-PyTorch** MediaPipe Face Landmarker v2 port in `comfy_extras/nodes_mediapipe.py`, first present at tag **`v0.23.0`** and therefore already in our `v0.34.0` pin. It is *not* the `mediapipe` pip package: `requirements.txt` has no `mediapipe` entry and the port imports only `numpy`, `torch`, `scipy.special.expit`. **No extra pip install, no third-party node.**
+- Three nodes matter: `LoadMediaPipeFaceLandmarker` (`model_name` → `FACE_DETECTION_MODEL`), `MediaPipeFaceLandmarker` (`face_detection_model`, `image`, `detector_variant` ∈ `short|full|both`, `num_faces`, `min_confidence`, `missing_frame_fallback`) → `FACE_LANDMARKS`, and **`MediaPipeFaceMask`** (`face_landmarks`, `regions`) → `MASK`. `MediaPipeFaceLandmarker`'s second output is `BOUNDING_BOX`, *not* SEGS — the MASK from `MediaPipeFaceMask` is what feeds `MaskToSEGS`.
+- `regions` is a `DynamicCombo`; its API payload shape is `{"regions": "all"}` (or `{"regions": "custom", "<feature>": true, …}`).
+- Model: category `"detection"` (`folder_paths.py:67` → `models/detection/`), file `mediapipe_face_fp32.safetensors` from `Comfy-Org/mediapipe` at `detection/mediapipe_face_fp32.safetensors`. **No sha256 is published in the ComfyUI repo** — resolve `revision` and `sha256` with the Task A2 Step 1 HF-API command.
+- Base Impact-Pack at `429d0159` (`pyproject.toml` 8.28.3) registers `MaskToSEGS` (`modules/impact/segs_nodes.py:1334`) with inputs `mask, combined, crop_factor, bbox_fill, drop_size, contour_fill` → `SEGS`, and `DetailerForEach` (`modules/impact/impact_pack.py:215`). Its `requirements.txt` does **not** pull `ultralytics` (it appears only in an optional e2e test file). **Never add Impact-Subpack** — Task B1 already removed the one stale pin of it.
 
-Record as **D23**: the exact `class_type` the MediaPipe detector registers, its model `repo_id`/`filename`/`destination_dir`, and the Impact-Pack ref whose `requirements.txt` has no `ultralytics`. **STOP and report if the mediapipe grep is empty** — the options are (a) bump `comfyui.git_ref` to the first release containing PR #14009, or (b) the YuNet ONNX fallback (MIT, r22 §4). Never guess a node name. If the pinned Impact-Pack ref *does* list `ultralytics`, bump it to the first tag at or after v8.0 and re-record the pin: the bootstrap `pip install -r requirements.txt`s each custom node, so an `ultralytics` line would be pulled silently.
-
-- [ ] **Step 2: Write the failing test**
+- [ ] **Step 1: Write the failing test**
 
 ```python
 def test_gen_pins_have_no_subpack_and_no_pickle():
-    gen = json.loads((PIPELINE / "train/tensor-pins.yaml").read_text("utf-8"))["pins"]["gen"]
+    pins = json.loads((PIPELINE / "train/tensor-pins.yaml").read_text("utf-8"))
+    gen = pins["pins"]["gen"]
     blob = json.dumps(gen).lower()
     assert "impact-subpack" not in blob and "ultralytics" not in blob
     for m in gen["models"]:
         assert m["filename"].endswith((".safetensors", ".onnx")), m
-    assert any(m["filename"].endswith("mediapipe_face_fp32.safetensors") for m in gen["models"])
+        assert len(m["revision"]) == 40 and len(m["sha256"]) == 64, m
+    face = next(m for m in gen["models"]
+                if m["filename"].endswith("mediapipe_face_fp32.safetensors"))
+    assert face["repo_id"] == "Comfy-Org/mediapipe"
+    assert face["destination_dir"] == "/workspace/ComfyUI/models/detection"
+    assert pins["pod_classes"]["l40s"]["stages"]["gen"]["comfyui"]["git_ref"] == "v0.34.0"
 ```
 
-- [ ] **Step 3: Run and see it fail, then add the pins** — `KeyError: 'gen'`. `pins.gen` = the existing `pins.tester` models (Krea-2 turbo, `qwen3vl_4b` encoder, `qwen_image_vae`) + `Phips/4xNomosWebPhoto_RealPLKSR` + the MediaPipe face model from Step 1; `custom_nodes` = `[RES4LYF @ e716cd1…, ComfyUI-Impact-Pack @ <verified ref>]`. `pod_classes.l40s.stages.gen` mirrors the committed `train/runs/creator-001-tensor-gen.yaml`: readiness 2400, `job_timeout_seconds` 600, `upload_allowance_seconds` 300, `job_wait_for_seconds` 180, `max_minutes` 185, disk 80 / volume 120, comfyui `v0.34.0`.
+- [ ] **Step 2: Run and see it fail** — `KeyError: 'gen'`.
+
+- [ ] **Step 3: Add the pins.** `pins.gen` = the existing `pins.tester` models (Krea-2 turbo, `qwen3vl_4b` encoder, `qwen_image_vae`) + `Phips/4xNomosWebPhoto_RealPLKSR` + `{"repo_id": "Comfy-Org/mediapipe", "filename": "detection/mediapipe_face_fp32.safetensors", "revision": "<resolve>", "sha256": "<resolve>", "destination_dir": "/workspace/ComfyUI/models/detection"}`; `custom_nodes` = `[RES4LYF @ e716cd1cb2c5cff90131bf4914b75b75a0489d48, {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"}]`. `pod_classes.l40s.stages.gen` mirrors the committed `train/runs/creator-001-tensor-gen.yaml`: readiness 2400, `job_timeout_seconds` 600, `upload_allowance_seconds` 300, `job_wait_for_seconds` 180, `max_minutes` 185, disk 80 / volume 120, comfyui `v0.34.0` (which r23 confirms carries the MediaPipe nodes).
+
+Record **D24**: *FaceDetailer's `UltralyticsDetectorProvider`(`face_yolov8m.pt`) + `SAMLoader`(`sam_vit_b_01ec64.pth`) mask source — both pickles — replaced by ComfyUI-native `LoadMediaPipeFaceLandmarker → MediaPipeFaceLandmarker → MediaPipeFaceMask` (Apache-2.0 weights, safetensors, pure-torch port, no pip install, shipping since v0.23.0) feeding base Impact-Pack's `MaskToSEGS → DetailerForEach`. Evidence: r23. The detailer's own sampler numbers are unchanged from module 09.*
 
 - [ ] **Step 4: Run the test and commit** → PASS.
 
 ```bash
 git add orgs/figment/pipeline/train/tensor-pins.yaml orgs/figment/pipeline/expand/TENSOR-REPLICATION.md orgs/figment/pipeline/tests/test_gen_stage.py
-git commit -m "feat(figment): pin a pickle-free face-mask and Impact-Pack path for generation"
+git commit -m "feat(figment): pin the native MediaPipe + Impact-Pack face path for generation"
 ```
 
 ---
 
 ### Task D2: The generation workflow and the `gen` stage
 
-**Files:** Create `train/workflows/krea2_gen_api.json`, `expand/templates/gen-prompts.yaml`; Modify `train/tensor-pins.yaml`, `training_config.py`, `figment_train.py` (`STAGES`, `build_plan`, new `_gen_manifest`, `_find_job_image:950`, parser choices); Test `pipeline/tests/test_gen_stage.py`
+**Files:** Create `train/workflows/krea2_gen_api.json`, `expand/templates/gen-prompts.yaml`; Modify `train/tensor-pins.yaml`, `training_config.py`, `figment_train.py` (`STAGES`, `build_plan` dispatch, new `_gen_manifest`, `build_grade:1026`, `apply_rulings:1114`, `_find_job_image:950`, parser choices); Test `pipeline/tests/test_gen_stage.py`
 
-**Interfaces:** The workflow's base chain is node-identical to the committed `train/runs/creator-001-tensor-gen.yaml` (nodes `1`–`21`), extended with `40` (style LoRA) and `30`–`34` (detailer). Produces `training.style_lora` — `null`, `"inline-skin"` or `"gokay-realism"`, against `pins["pins"]["style_loras"]`. `build_plan(..., stage="gen")` raises `FigmentTrainError("gen requires a chosen checkpoint; run apply-rulings --stage tester first")` when `training["chosen_checkpoint_step"]` is `None`; it produces one manifest uploading only the chosen `.safetensors` with `chunk_bytes: 16777216`, first job carrying `wait_for: "_loras.assembled"`. `gen` is planned **separately** after GATE 3, not as part of `--stage all`. Package numbers to match exactly (r15 §3e): guide_size 512, steps 4, cfg 1.0, `euler`/`normal`, **denoise 0.15**, feather 5, bbox_threshold 0.40, bbox_dilation 10, bbox_crop_factor 3.0, noise_mask_feather 100, cycle 1. Their LoRA discipline is identity above 1.0 with style well below (1.5 / 0.65); with our identity LoRA at 1.0 the style slot starts at **0.65**.
+**Interfaces:** The workflow's base chain is node-identical to the committed `train/runs/creator-001-tensor-gen.yaml` (nodes `1`–`21`), extended with `40` (style LoRA) and `30`–`36` (mask + detailer). Produces `training.style_lora` — `null`, `"inline-skin"` or `"gokay-realism"`, against `pins["pins"]["style_loras"]`. `build_plan(..., stage="gen")` raises `FigmentTrainError("gen requires a chosen checkpoint; run apply-rulings --stage tester first")` when `training["chosen_checkpoint_step"]` is `None`; it produces one manifest uploading only the chosen `.safetensors` with `chunk_bytes: 16777216`, first job carrying `wait_for: "_loras.assembled"`. `gen` is planned **separately** after GATE 3, never as part of `--stage all`. Package numbers to match exactly (r15 §3e): guide_size 512, steps 4, cfg 1.0, `euler`/`normal`, **denoise 0.15**, feather 5, bbox_dilation 10 (as `GrowMask.expand`), crop_factor 3.0, noise_mask_feather 100, cycle 1. Their LoRA discipline is identity above 1.0 with style well below (1.5 / 0.65); with our identity LoRA at 1.0 the style slot starts at **0.65**.
+
+**Review H3 + M1 — two interface gaps this task must close.** `build_grade:1026` and `apply_rulings:1114` each carry their own internal `if stage not in (…)` tuple, which Task A3 widened only to `("anchor", "dataset", "tester")`; without widening them again, GATE 4's `grade --stage gen` raises even with the CLI parser updated. And `build_plan:649-664` ends in a bare `else: manifests = [_tester_manifest(...)]`, so a `"gen"` stage added to `STAGES` without restructuring would be **silently built by the tester builder** — a wrong, mislabeled manifest instead of a loud error.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -803,8 +964,15 @@ def test_gen_workflow_matches_module_09_and_has_a_pickle_free_detailer():
         4, 1.0, "res_2s", "beta", 1.0)
     assert g["15"]["inputs"]["denoise"] == 0.35 and g["13"]["inputs"]["scale_by"] == 0.25
     assert g["4"]["inputs"]["strength_model"] == 1.0
-    assert g["32"]["class_type"] == "MaskToSEGS" and g["33"]["class_type"] == "DetailerForEach"
+    assert g["30"]["class_type"] == "LoadMediaPipeFaceLandmarker"
+    assert g["35"]["class_type"] == "MediaPipeFaceLandmarker"
+    assert g["36"]["class_type"] == "MediaPipeFaceMask"
+    assert g["36"]["inputs"]["regions"] == {"regions": "all"}
+    assert g["32"]["class_type"] == "MaskToSEGS"
+    assert set(g["32"]["inputs"]) == {"mask", "combined", "crop_factor", "bbox_fill",
+                                      "drop_size", "contour_fill"}
     d = g["33"]["inputs"]
+    assert g["33"]["class_type"] == "DetailerForEach"
     assert (d["guide_size"], d["steps"], d["cfg"], d["sampler_name"], d["scheduler"],
             d["denoise"], d["feather"], d["cycle"]) == (512, 4, 1.0, "euler", "normal",
                                                         0.15, 5, 1)
@@ -813,7 +981,7 @@ def test_gen_workflow_matches_module_09_and_has_a_pickle_free_detailer():
         assert banned not in json.dumps(g), banned
 
 def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(command, tmp_path):
-    personas = _synthetic_persona(tmp_path, creator_id="creator-002", steps=3000)
+    personas = _promoted_persona(tmp_path, creator_id="creator-002", steps=3000)
     with pytest.raises(command.FigmentTrainError, match="chosen checkpoint"):
         command.build_plan("creator-002", "gen", tmp_path / "a", personas_root=personas)
     _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
@@ -821,6 +989,8 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
     run = command.build_plan("creator-002", "gen", out,
                              personas_root=personas)["stages"]["gen"]["runs"][0]
     m = load_json(out / run["manifest"])
+    assert Path(run["manifest"]).name == "creator-002-tensor-gen.yaml"   # M1: not tester's
+    assert m["workflow"] == "../workflows/krea2_gen_api.json"
     assert m["uploads"][0]["files"] == [
         "out/creator-002-tensor-train/creator002krea2_000001500.safetensors"]
     assert m["uploads"][0]["chunk_bytes"] == 16777216
@@ -830,35 +1000,72 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
         str(out / run["manifest"]), "--out", str(tmp_path / "dry"),
         "--dry-run", "--max-minutes", "1"], capture_output=True, text=True)
     assert r.returncode == 0, r.stderr
+
+def test_unknown_stage_raises_instead_of_falling_through(command, tmp_path):
+    personas = _promoted_persona(tmp_path, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="unknown stage"):
+        command.build_plan("creator-002", "nonsense", tmp_path / "c", personas_root=personas)
+
+def test_grade_and_apply_rulings_accept_gen(command, tmp_path):
+    personas = _promoted_persona(tmp_path, creator_id="creator-002", steps=3000)
+    _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
+    out = tmp_path / "g"
+    plan = command.build_plan("creator-002", "gen", out, personas_root=personas)
+    _fake_stage_outputs(out, plan, "gen")
+    grade = command.build_grade("creator-002", "gen", out / "plan.json")   # H3
+    assert Path(grade["page"]).is_file()
 ```
 
-- [ ] **Step 2: Run and see them fail** — file missing; then `unknown stage 'gen'`.
+- [ ] **Step 2: Run and see them fail** — workflow file missing; then `unknown stage 'gen'`; then `FigmentTrainError: grade stage must be …`.
 
 - [ ] **Step 3: Write the workflow.** Start from the committed workflow in `train/runs/creator-001-tensor-gen.yaml` (dump it with the one-liner in A1 Step 3) and change three things:
 
 1. Node `4` `LoraLoader` strengths become `1.0`/`1.0` — our committed `0.8` was an unrecorded deviation; the package's tester and generation both use 1.0. Its `lora_name` is substituted per job by the planner.
 2. New node `40` `LoraLoader` for the style slot after `4` (`model: ["4", 0]`, `clip: ["4", 1]`, strengths `0.65`). When `training.style_lora` is `null` the planner **removes** node `40` and rewires `5`/`8`/`15`/`33` back to `4` — no bypassed node ever ships in a manifest.
-3. The detail tail on the refined image (node `16`):
+3. The mask + detail tail on the refined image (node `16`), built from r23's API snippet:
 
 | Node | class_type | Key inputs |
 |---|---|---|
-| `30` | *(the MediaPipe class recorded as D23)* | model name from `pins.gen`; `image: ["16", 0]`; `threshold: 0.40` |
-| `31` | `GrowMask` | `mask: ["30", <mask slot>]`, `expand: 10` (the package's `bbox_dilation`) |
-| `32` | `MaskToSEGS` | `mask: ["31", 0]`, `combined: false`, `crop_factor: 3.0`, `bbox_fill: false`, `drop_size: 10`, `contiguous: false` |
-| `33` | `DetailerForEach` | `image: ["16", 0]`, `segs: ["32", 0]`, model/clip/vae from the loaders the base render uses, `positive: ["5", 0]`, `negative: ["6", 0]`, `guide_size: 512`, `guide_size_for: true`, `max_size: 1024`, `seed: 40`, `steps: 4`, `cfg: 1.0`, `euler`/`normal`, `denoise: 0.15`, `feather: 5`, `noise_mask: true`, `force_inpaint: true`, `cycle: 1`, `inpaint_model: false`, `noise_mask_feather: 100` |
+| `30` | `LoadMediaPipeFaceLandmarker` | `model_name: "mediapipe_face_fp32.safetensors"` |
+| `35` | `MediaPipeFaceLandmarker` | `face_detection_model: ["30", 0]`, `image: ["16", 0]`, `detector_variant: "short"`, `num_faces: 1`, `min_confidence: 0.4` (the package's `bbox_threshold 0.40`), `missing_frame_fallback: "empty"` |
+| `36` | `MediaPipeFaceMask` | `face_landmarks: ["35", 0]`, `regions: {"regions": "all"}` (DynamicCombo payload shape per r23) |
+| `31` | `GrowMask` | `mask: ["36", 0]`, `expand: 10` (the package's `bbox_dilation`), `tapered_corners: true` |
+| `32` | `MaskToSEGS` | `mask: ["31", 0]`, `combined: false`, `crop_factor: 3.0`, `bbox_fill: false`, `drop_size: 10`, `contour_fill: false` |
+| `33` | `DetailerForEach` | `image: ["16", 0]`, `segs: ["32", 0]`, model/clip/vae from the loaders the base render uses, `positive: ["5", 0]`, `negative: ["6", 0]`, `guide_size: 512`, `guide_size_for: true`, `max_size: 1024`, `seed: 40`, `steps: 4`, `cfg: 1.0`, `sampler_name: "euler"`, `scheduler: "normal"`, `denoise: 0.15`, `feather: 5`, `noise_mask: true`, `force_inpaint: true`, `wildcard: ""`, `cycle: 1`, `inpaint_model: false`, `noise_mask_feather: 100` |
 | `34` | `SaveImage` | `filename_prefix` set by the planner; `images: ["33", 0]` |
 
 Keep nodes `20`/`21` so each job saves base, refined **and** detailed — three outputs, the same count module 09 produces; jobs declare `expected_images: 3`.
 
-- [ ] **Step 4: Add the style-LoRA pins.** `pins.style_loras` with both r22 §2 CLEAN candidates — `inlineresearch/skin-lora-krea-2-raw` → `inline-skin-lora-krea-2-raw.safetensors` and `gokaygokay/Krea-2-Realism-LoRA` → `krea2_realism_lora.safetensors` — each with `revision`/`sha256` resolved by A2 Step 1's command and `"licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue)"`. Add `style_lora` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`). Record **D24**: *`pawg_krea2` has no licence-clean substitute and is dropped outright.*
+- [ ] **Step 4: Add the style-LoRA pins.** `pins.style_loras` with both r22 §2 CLEAN candidates — `inlineresearch/skin-lora-krea-2-raw` → `inline-skin-lora-krea-2-raw.safetensors` and `gokaygokay/Krea-2-Realism-LoRA` → `krea2_realism_lora.safetensors` — each with `revision`/`sha256` resolved by A2 Step 1's command and `"licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue)"`. Add `style_lora` to `TRAINING_KEYS`/`DEFAULT_TRAINING` (`None`). Record **D25**: *`pawg_krea2` has no licence-clean substitute and is dropped outright.*
 
-- [ ] **Step 5: Implement the stage.** Add `"gen"` to `STAGES` (last) and to both parser `--stage` choice tuples. `_gen_manifest` mirrors `_tester_manifest:499` — `_pod_base(pins, pod_class, "gen")`, `pins.gen` models/nodes, the `training` block for `start-comfy-lorapath.sh`, the chunked upload, `seed_fields: ["seed", "noise_seed"]` — and builds jobs from a new `expand/templates/gen-prompts.yaml` (`<distance> × <light>` rows derived from `persona["register"]["settings"]` and `persona["grammar"]["lights"]`, same shape as `anchor-prompts.yaml`), substituting node `5` `text` and, when a style LoRA is set, node `40` `lora_name`. `_grading_images` already generalises, but `_find_job_image` expects exactly one file per `output_name`: extend it to accept the `<output_name>_NN` suffixes `download_job_outputs` produces for multi-image jobs, and grade only the `_03` (detailed) output.
+- [ ] **Step 5: Implement the stage, the explicit dispatch, and the widened stage tuples**
+
+```python
+STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen")
+GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen")
+
+# build_plan — replace the trailing `else` (review M1); every stage explicit
+elif current == "tester":
+    manifests = [_tester_manifest(persona, training, pins)]
+    paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
+elif current == "gen":
+    manifests = [_gen_manifest(persona, training, pins)]
+    paths = [out / "train" / "runs" / f"{creator_id}-tensor-gen.yaml"]
+else:
+    raise FigmentTrainError(f"unknown stage {current!r}")
+```
+
+and in **both** `build_grade` and `apply_rulings`, replace the local tuple with `if stage not in GRADEABLE_STAGES: raise FigmentTrainError(f"{stage!r} is not a gradeable stage")` (review H3). Update both parser `--stage` choice tuples to `GRADEABLE_STAGES`.
+
+`_gen_manifest` mirrors `_tester_manifest:499` — `_pod_base(pins, pod_class, "gen")`, `pins.gen` models/nodes, the `training` block for `start-comfy-lorapath.sh`, the chunked upload, `seed_fields: ["seed", "noise_seed"]` — and builds jobs from a new `expand/templates/gen-prompts.yaml` (`<distance> × <light>` rows derived from `persona["register"]["settings"]` and `persona["grammar"]["lights"]`, same shape as `anchor-prompts.yaml`), substituting node `5` `text` and, when a style LoRA is set, node `40` `lora_name`. `_grading_images` already generalises, but `_find_job_image` expects exactly one file per `output_name`: extend it to accept the `<output_name>_NN` suffixes `download_job_outputs` produces for multi-image jobs, and grade only the `_03` (detailed) output.
+
+Because `gen` is now in `STAGES`, `build_plan` must also drop it from a `--stage all` selection — alongside `anchor` (promoted) and a matched-digest `smoke`. `gen` is only ever planned explicitly, after GATE 3.
 
 - [ ] **Step 6: Run everything and commit** — `py -3 -m pytest orgs/figment/pipeline -q` → PASS.
 
 ```bash
 git add orgs/figment/pipeline/train orgs/figment/pipeline/expand orgs/figment/pipeline/training_config.py orgs/figment/pipeline/figment_train.py orgs/figment/pipeline/tests/test_gen_stage.py
-git commit -m "feat(figment): module-09 generation graph and the gen stage"
+git commit -m "feat(figment): module-09 generation graph, gen stage, explicit stage dispatch"
 ```
 
 ---
@@ -883,7 +1090,7 @@ py -3 orgs/figment/pipeline/figment_train.py grade --creator creator-001 --stage
 
 - [ ] **Step 3: STOP — GATE 4.** The operator views every detailed output at full resolution beside the anchor. The verdict to beat is Track-1's: *"kind of close, glossy, reads a lot older, some inconsistent."* Record his verdict against r20's four ranked divergences so the next iteration knows which lever moved.
 
-- [ ] **Step 4: Optional style-LoRA A/B.** If wanted, re-plan `gen` twice into separate `--out` directories with `training.style_lora` set to `inline-skin` then `gokay-realism`, same seeds and prompts. Two extra pods, `$8.02` ceiling — present that cost before running.
+- [ ] **Step 4: Optional style-LoRA A/B.** If wanted, re-plan `gen` twice into separate `--out` directories with `training.style_lora` set to `inline-skin` then `gokay-realism`, same seeds and prompts. Two extra pods, `$8.02` ceiling, ~$2.20 expected — present that cost before running.
 
 ---
 
@@ -891,7 +1098,7 @@ py -3 orgs/figment/pipeline/figment_train.py grade --creator creator-001 --stage
 
 ### Task E1: Creator-002 residue proof, retirement, and docs
 
-**Files:** Create `personas/creator-002/` (`persona.yaml`, `training.yaml`, `identity-spec.md`, one 8×8 anchor PNG); Delete `train/runs/creator-001-tensor-{train,train-smoke,tester,gen}.yaml` and `expand/runs/creator-001-tensor-{dataset-shard-01,dataset-shard-02,dataset-shard-03,smoke}.yaml`; Modify `pipeline/tests/test_figment_train.py`, `train/FIGMENT-TRAIN.md`, `expand/TENSOR-REPLICATION.md`, `STATE.md`
+**Files:** Create `personas/creator-002/` (`persona.yaml`, `training.yaml`, `identity-spec.md`, one 8×8 anchor PNG); Delete `train/runs/creator-001-tensor-{train,train-smoke,tester,gen}.yaml` and `expand/runs/creator-001-tensor-{dataset-shard-01,dataset-shard-02,dataset-shard-03,smoke}.yaml`; Modify `pipeline/tests/test_figment_train.py`, `train/FIGMENT-TRAIN.md`, `train/TENSOR-TRAINING.md`, `expand/TENSOR-REPLICATION.md`, `STATE.md`
 
 **Interfaces:** `test_creator001_plan_reproduces_current_manifest_documents_exactly` (which pins the generator to hand-written manifests) is replaced by a six-stage residue + dry-run test.
 
@@ -915,11 +1122,13 @@ def test_creator002_plans_every_stage_token_clean_and_dry_runs(command, tmp_path
         assert r.returncode == 0, r.stderr
 ```
 
+The fixture persona must have an **empty** `identity.history` and a `null` `proven_env_digest` so `anchor` and `smoke` are still plannable here; A3 and C1 already test that setting either one removes its stage from a `--stage all` plan.
+
 - [ ] **Step 2: Run and see it fail** — no `creator-002` fixture.
 
 - [ ] **Step 3: Build the fixture and retire the old manifests.** Write `personas/creator-002/` as the minimum valid persona with `steps: 3000` and `chosen_checkpoint_step: 1500`, a generated 8×8 PNG anchor, and a two-line `identity-spec.md`. Compute the persona's `sha256` fields from the generated files — never copy creator-001's. Delete the eight hand-written manifests and the old reproduction test.
 
-- [ ] **Step 4: Update the docs.** `FIGMENT-TRAIN.md`: rewrite the PowerShell block to the six-stage sequence with all four gates in position; list the new persona fields (`skin_lora`, `style_lora`, `chosen_checkpoint_step`, `diff_output_preservation`, `diff_output_preservation_class`); replace "Defaults are tonight's module-11 port: 2000 steps" with the 3000-step ruling; replace "Reproduction and migration" with a statement that the hand-written manifests are retired and `figment_train.py` is the only producer. `TENSOR-REPLICATION.md`: confirm D15–D24 are present with reasons under three headings — "Module 03 → anchor", "Module 10 → dataset", "Module 09 → gen". `STATE.md`: replace "Now"/"Next" with the Track-2 state — gates passed, manifests that exist, arc ledger total, next gate.
+- [ ] **Step 4: Update the docs.** `FIGMENT-TRAIN.md`: rewrite the PowerShell block to the six-stage sequence with all four gates in position; list the new persona fields (`skin_lora`, `style_lora`, `chosen_checkpoint_step`, `proven_env_digest`, `diff_output_preservation`, `diff_output_preservation_class`); document the three stage-skipping rules (promoted anchor, matching training digest, `gen` planned only explicitly) and the "already complete or graded" resume semantics; replace "Defaults are tonight's module-11 port: 2000 steps" with the 3000-step ruling; replace "Reproduction and migration" with a statement that the hand-written manifests are retired and `figment_train.py` is the only producer. `TENSOR-TRAINING.md`: replace the "Step count: 2000, not 3000" section with the cached-throughput arithmetic (Task C1). `TENSOR-REPLICATION.md`: confirm D15–D25 are present with reasons under three headings — "Module 03 → anchor", "Module 10 → dataset", "Module 09 → gen". `STATE.md`: replace "Now"/"Next" with the Track-2 state — gates passed, manifests that exist, arc ledger total, next gate.
 
 - [ ] **Step 5: Run everything and commit** — `py -3 -m pytest orgs/figment/pipeline -q` → PASS, all six stages dry-running green.
 
@@ -932,12 +1141,13 @@ git commit -m "chore(figment): retire hand-written manifests; creator-002 proves
 
 ## Risks and unknowns
 
-1. **Impact Pack pulling pickles by default.** The base pack's `requirements.txt` lists no `ultralytics` and no `.pt`, and `MaskToSEGS`/`DetailerForEach` are in the base pack (r22 §5) — but our pin `429d0159…` predates that read and may sit *below* v8.0, where Subpack was still auto-installed. Task D1 greps a real checkout and refuses to proceed on a hit. The bootstrap `pip install`s each node's `requirements.txt` (`pod/README.md`), so that grep is the only guard.
-2. **The MediaPipe node's real class name and model path are unverified.** r22 cites PR #14009 and the weight filename; nothing in the repo names the ComfyUI `class_type` or `destination_dir`. Task D1 makes reading them off a real checkout a blocking step, with YuNet ONNX (MIT) as the fallback. **This is the most likely place Phase D stalls.**
+1. **Impact-Subpack was already pinned for the dataset stage, unused** (review H4) — the exact exposure this plan tries to prevent for `gen`, one stage over. Task B1 Step 3 removes it after verifying no Subpack `class_type` appears in either dataset workflow (`ImpactImageBatchToImageList` is base-pack). The bootstrap `pip install`s each node's `requirements.txt` (`pod/README.md`), so an unused node pin is not free — Subpack is precisely the component that pulls ultralytics and `.pt` YOLO weights. Base Impact-Pack at `429d0159` (v8.28.3) does not (r23).
+2. **The MediaPipe path is now spiked, not assumed** (r23): node names, input signatures, the `DynamicCombo` payload shape, the `models/detection/` category and the `v0.23.0` availability floor are all read off real checkouts. Two residuals: the `Comfy-Org/mediapipe` `revision`/`sha256` are not published in the ComfyUI repo and must be resolved at pin time; and no one has yet run `MediaPipeFaceMask → MaskToSEGS → DetailerForEach` end to end on a Krea-2 latent — the GATE-4 dry run then the live run are the first proofs. YuNet ONNX (MIT, r22 §4) remains the fallback if the landmark-polygon mask disagrees with `MaskToSEGS`.
 3. **Qwen3-VL-8B VRAM next to the edit stack.** ~19 GB bf16 against a 48 GB L40S already holding Qwen-Image-Edit-2511 fp8mixed (20.5 GB) plus the 9.4 GB VL encoder; r22 §7 flags this as unverified. Mitigation: the launcher's `POST /free {"unload_models":true,"free_memory":true}`, which unloads models but leaves the server (and the harness's `/view` transport) alive. If it still OOMs: the FP8 captioner variant, then the already-implemented `auto` path on the *training* pod (`start-training-aitoolkit.sh.template`), ~2 min inside the training job window.
 4. **Licences that must pass before a pin.** Every new model needs `revision`, `sha256`, and a stated licence resolved from the HF API (A2 Step 1). Three are conditional: `tlennon-ie/qwen-edit-skin` is Apache-2.0 but demonstrated only on Qwen-Image-Edit-**2509** (held behind D22's one-cell check); both Krea-2 style LoRAs carry the Krea 2 Community License, free commercially only **under $1M trailing-12-month revenue**; `suayptalha/Z-Image-Turbo-Realism-LoRA`'s Apache-2.0 is a card-header claim with no LICENSE file — re-read it at pin time.
-5. **Budget.** Expected arc ≈ $12.50 against the brief's ≈$6–7; the 3000-step run is ~$4.92 alone at the measured 3.85 s/step. Split across three days so no day nears the $10 guard; the $50 arc cap holds regardless. If the operator wants the arc inside $7, the only real lever is 2000 steps — exactly the deviation r20 divergence #7 flags. Present the tradeoff; do not choose it.
-6. **DOP triples training time** (~$15 on L40S, above the daily guard on its own). Task C1 ships it off; enabling it needs its own gate and probably a cheaper pod class.
+5. **Budget — corrected (review H1).** At the measured cached rate the expected arc is **≈$9.30**, not the $12.50 the first draft carried, and the day split (≈$4.75 / ≈$3.45 / ≈$1.10) leaves the $10 guard comfortable everywhere. The 3000-step run costs **~$2.90 against ~$2.15 for 2000 steps** — a ~$0.75 difference — so the step-count question is **not** worth raising with the operator and the faithful 3000 stands. The arc sits modestly above the brief's "≈$6–7" mainly because the anchor stage (two pods, ~$1.20) did not exist when that figure was set; the conditional smoke gives ~$0.90 of it back. Ceilings stay generous on purpose: under a no-retry policy they are one-shot safety bounds, not estimates.
+6. **DOP triples training time** (~$9 on L40S at the corrected rate — still most of a day's guard). Task C1 ships it off; enabling it needs its own gate.
 7. **The full-body second pass is our invention, not a port** (D21); its numbers come from module 04's edit pass. If the repaired faces read pasted-on, the fallback is to drop full-body cells entirely and let the LoRA generalise from half-body — which is what `identity-spec.md`'s own rule says on its own.
-8. **`artifacts_after_jobs` touches the harness's most safety-critical loop.** The change is small but sits next to the terminate-and-verify margin. Do not let the artifact deadline start before the jobs finish, and re-run the whole pod suite, not just the new case.
+8. **`artifacts_after_jobs` touches the harness's most safety-critical loop.** The change is small but sits next to the terminate-and-verify margin. Task B2's M2 test pins the one real hazard — the artifact marker deadline must be computed after the jobs return, not at function entry — and the whole pod suite must be re-run, not just the new cases.
 9. **NIQE / CLIP-IQA are not implemented.** pyiqa is PolyForm-Noncommercial (REJECT) and PerceptCLIP is pickle-with-no-licence (REJECT), per r22 §6. Task B3 ships the three raw metrics `identity_check.compute_raw_metrics` already computes locally — the same blur / plastic-skin / clipping signals r16 §2 lists — and leaves a standalone NIQE reimplementation as a follow-up.
+10. **The conditional smoke is a judgement call with a digest behind it.** `training_environment_digest` covers the trainer template, the launcher, the ai-toolkit/torch refs, and `pins.train`. It does **not** cover a silent upstream change inside a pinned Git ref or an image-tag drift. If a train pod fails at install after a skipped smoke, set `proven_env_digest` back to `null` and take the $0.90 smoke before re-planning.
