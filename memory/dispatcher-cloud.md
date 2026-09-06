@@ -722,3 +722,18 @@
 - Yesterday's real spend $6.32/$30 (all runpod:l40s figment pods); today $0. Well under budget.
 - 6a6bc3dd still `halted` in working/ (terminal, human walk-back only). figment d126c410 track1
   replicate long-running `working` — not a stranded candidate while its run is live.
+
+## 2026-09-06 (nightly cloud run)
+- HARD RULE HELD (2nd clean night): at step 2b I first WROTE a fresh
+  wake-daniel-2026-09-06-sync-daemon-dirs-drift card, THEN reading this shard reminded me the
+  umbrellas are already open — so I DELETED it before commit. Condition unchanged:
+  sync_daemon_dirs.py absent from ops, ran origin/main's copy in refs-fallback mode, drift =
+  same single ops-only orgs/kb-ops/workflows/acceptance-run.md. Umbrellas verified OPEN:
+  6a605ebb + 6a7c0ebf (owner human-operator) plus wake-daniel-08-15/08-30. Reported in
+  dashboards only. LESSON: read this shard BEFORE step 2b, not after, to skip the write-then-delete.
+- Dispatched 1 card this run: 6a9d02da-7de01dbe nightly-review (T1 acts-alone, sonnet-5).
+  Executed inline as owner: preamble OK, sync_skills --check clean (exit 0), regenerated both
+  dashboards, this memory line. figment GATE A approval 65d8f246 (T3) still parked in approvals/.
+- Ledgers: today $0 API-billed (subscription); budget $30/day untouched. Yesterday's rows:
+  2 dispatch + 4 cost (all $0). activity ledger still 0 rows for recent days (gap already carded).
+- 6a6bc3dd still halted in working/ (terminal); figment d126c410 track1 replicate still long-running working.
