@@ -255,3 +255,9 @@
   epoch): 2000 steps ≈ 45 min of stepping, not 2.1 h. Size job windows from the cached rate plus warmup.
 - PowerShell tool env lacks user-scope vars: load `RUNPOD_API_KEY` from `[Environment]::GetEnvironmentVariable(..,'User')`
   into the Start-Process child only, clear it after, never print. Bind the keep-awake lease to the harness pid.
+## 2026-09-06 — Gate 4b run 4 took the dashboard down; fix in PR #173, recovery scripted
+- LAW: whole-document validators must key joins by subject+runRef; the write path validates per run so a cross-run join bug is invisible until two runs of one workflow coexist (latent since 08-13, found by the first concurrent iteration runs). Reproduce by simulating the validator over the forensic snapshot before touching any state document; never hand-edit control-plane.json.
+- LAW: any failure-surfacing path that calls load() can convert a hydrate refusal into an unhandled rejection = process exit = systemd loop; wrap it (surfaceAutomaticExecutionFailure) and log refused ControlResults too. Process-level handler policy = P23 (Daniel).
+- LAW: when a release adds a pinned unit directive, pre-install its resident validator BEFORE activation (deploy A3) — the old validator refuses the activation that carries the fix. Hand-probing the validator: `systemd-run --wait --pipe -p User=<u> -E HOME=<h>`.
+- LAW: with the daemon down, `activate_release.py` refuses (needs /readyz) unless `current` is parked; `recover-deploy.ps1` does backup -> reset-failed -> park symlink -> validator -> activate.
+- STATE at handoff: PR #173 unmerged; VM daemon stopped; run 971d5ba4 stale-live (interrupt after recovery).
