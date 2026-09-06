@@ -5,18 +5,18 @@ is the terminal checklist's durable projection, not an executor or new authority
 All required capabilities remain in scope. Runtime selection and production actions
 retain their separate human gates.
 
-- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/working/01K2KBARCH06000000000000100.md)) - IN PROGRESS
-- [ ] Phase 1: Freeze contracts and prove the existing broker ([card](../queue/blocked/01K2KBARCH06000000000000101.md))
-- [ ] Phase 2: Compare and select durable runtime ([card](../queue/blocked/01K2KBARCH06000000000000102.md))
-- [ ] Phase 3: Implement transactional commands and leases ([card](../queue/blocked/01K2KBARCH06000000000000103.md))
-- [ ] Phase 4: Compose placement and supported workers ([card](../queue/blocked/01K2KBARCH06000000000000104.md))
-- [ ] Phase 5: Complete scheduler and bounded maintenance ([card](../queue/blocked/01K2KBARCH06000000000000105.md))
-- [ ] Phase 6: Verify executor terminal and real model ([card](../queue/blocked/01K2KBARCH06000000000000106.md))
-- [ ] Phase 7: Complete artifact and publication recovery ([card](../queue/blocked/01K2KBARCH06000000000000107.md))
-- [ ] Phase 8: Connect all System learning paths ([card](../queue/blocked/01K2KBARCH06000000000000108.md))
-- [ ] Phase 9: Complete truthful health and Brain freshness ([card](../queue/blocked/01K2KBARCH06000000000000109.md))
-- [ ] Phase 10: Rehearse and authorize production cutover ([card](../queue/blocked/01K2KBARCH06000000000000110.md))
-- [ ] Phase 11: Sustained verification and subtraction ([card](../queue/blocked/01K2KBARCH06000000000000111.md))
+- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/working/01K2KBARCH0600000000000100.md)) - IN PROGRESS
+- [ ] Phase 1: Freeze contracts and prove the existing broker ([card](../queue/blocked/01K2KBARCH0600000000000101.md))
+- [ ] Phase 2: Compare and select durable runtime ([card](../queue/blocked/01K2KBARCH0600000000000102.md))
+- [ ] Phase 3: Implement transactional commands and leases ([card](../queue/blocked/01K2KBARCH0600000000000103.md))
+- [ ] Phase 4: Compose placement and supported workers ([card](../queue/blocked/01K2KBARCH0600000000000104.md))
+- [ ] Phase 5: Complete scheduler and bounded maintenance ([card](../queue/blocked/01K2KBARCH0600000000000105.md))
+- [ ] Phase 6: Verify executor terminal and real model ([card](../queue/blocked/01K2KBARCH0600000000000106.md))
+- [ ] Phase 7: Complete artifact and publication recovery ([card](../queue/blocked/01K2KBARCH0600000000000107.md))
+- [ ] Phase 8: Connect all System learning paths ([card](../queue/blocked/01K2KBARCH0600000000000108.md))
+- [ ] Phase 9: Complete truthful health and Brain freshness ([card](../queue/blocked/01K2KBARCH0600000000000109.md))
+- [ ] Phase 10: Rehearse and authorize production cutover ([card](../queue/blocked/01K2KBARCH0600000000000110.md))
+- [ ] Phase 11: Sustained verification and subtraction ([card](../queue/blocked/01K2KBARCH0600000000000111.md))
 
 ## Current work
 
