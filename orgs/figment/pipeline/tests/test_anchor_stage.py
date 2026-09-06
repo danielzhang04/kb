@@ -6,7 +6,9 @@ test module:
 
 - ``command`` fixture and ``_synthetic_persona`` come from
   ``pipeline/tests/test_figment_train.py:32-43,93-137``.
-- ``_axes()`` returns the seven-axis "everything passes" ruling fragment.
+- ``_axes()`` returns the seven-axis "everything passes" ruling fragment, plus a
+  ``gate_override`` (these fixtures have no real face, so identity_gate.py's gate
+  always fails them; the override lets a "keep" ruling through anyway).
 - ``_fake_stage_outputs(out, plan, stage)`` writes one 8x8 PNG per job at
   ``<out>/<run.out>/<output_name>.png``.
 - ``_promoted_persona(...)`` is ``_synthetic_persona`` plus
@@ -134,6 +136,11 @@ def _axes() -> dict:
         "adult_read": "pass",
         "garment_integrity": "pass",
         "real_person_resemblance": "clear",
+        # This test file's fixture images (_fake_stage_outputs) are blank 8x8 PNGs with
+        # no real face, so identity_gate.py's fail-closed gate always fails them; the
+        # override lets a "keep" ruling through so these tests can exercise anchor
+        # PROMOTION, not the (separately, directly tested) gate refusal itself.
+        "gate_override": "fixture: no real face in this synthetic 8x8 image",
     }
 
 

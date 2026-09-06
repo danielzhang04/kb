@@ -1,0 +1,76 @@
+# identity_gate.py -- fail-closed per-cell gate thresholds.
+#
+# Generic across every persona: nothing here names a creator. `figment_train.py`'s
+# `build_grade`/`apply_rulings` wiring overlays `face_px_min` from the CURRENT persona's
+# own `identity.floor.min_face_px.value` at call time (persona.yaml is the only place a
+# creator-specific number lives); every other key below is a repo-wide default until an
+# `identity_gate.py calibrate` run for a given persona proposes a tighter value backed by
+# real evidence (see that persona's own `calibration.md` for the cited numbers).
+#
+# gate() reads exactly these five keys. A key missing at gate time fails closed exactly
+# like a missing per-cell metric does ("unavailable: <threshold name>") -- never a silent
+# pass.
+#
+#   identity_own ≥ identity_own_min
+#   |age_delta|  ≤ age_delta_max_years
+#   gloss        ≤ gloss_max
+#   niqe         ≤ niqe_max
+#   face_px      ≥ face_px_min
+#
+# --- creator-001 calibrate run, 2026-09-06 ----------------------------------------
+# `identity_gate.py calibrate --creator creator-001` scored 95 real images across six
+# evidence sets (anchors themselves, the 31-cell Track-1 dataset, 8 LoRA tester images,
+# 6 Qwen anchor-edits, 12 passport-candidate strangers, 35 expansion-03 klein edits) --
+# see orgs/figment/personas/creator-001/calibration/calibration.{json,md} for the full
+# per-set distributions this run cites. Full elapsed time: 453.6s (models cached under
+# %LOCALAPPDATA%/kb-figment-models after the first download).
+#
+#   * identity_own_min: 0.7907 -- EVIDENCE-BACKED, clean separation. The three anchors'
+#     pairwise cosine (min 0.8860) all clear this; every one of the 12 passport
+#     candidates (unrelated women, max identity_own 0.6955) fails it. Value is the
+#     midpoint between those two extremes. Every generated set's MEDIAN clears it too
+#     (track1-dataset 0.9233, lora-tester 0.8335, qwen-anchor-edits 0.9236,
+#     expansion-03 0.8419), so this floor mainly catches individual bad cells, not
+#     whole sets -- consistent with the operator's verdicts never being "wrong person."
+#
+#   * age_delta_max_years / gloss_max: calibration did NOT validate a number for
+#     either -- reported honestly, not hidden. Mechanically, `_propose_ceiling`
+#     (anchor self-consistency max x1.5) gives 0.53 years and 0.0117 respectively, but
+#     EVERY evidence set's median age_delta is NEGATIVE (predicted candidate age below
+#     the anchors' own predicted age) even for sets the operator called "older"
+#     (track1-dataset median age_delta -7.0, lora-tester -6.6) -- the age classifier's
+#     own anchor-photo predictions run ~30 years old against a persona described as
+#     "early twenties," which reads as a real calibration problem with this classifier
+#     on these specific real photos, not evidence the generated sets are younger than
+#     claimed. The mechanical age_delta ceiling would therefore separate nothing
+#     meaningful either way. Similarly, gloss reads ~0.0000-0.0005 on EVERY set
+#     including the anchors -- the operator's "glossy" cells (track1-dataset,
+#     lora-tester) do not register on this proxy at its current 235/255 near-saturation
+#     threshold at all. Kept at generic, conservative pre-calibration placeholders
+#     (r21 §Q4's age-estimator error band and this proxy's own untuned guess,
+#     respectively) until either a better age model / a reworked gloss heuristic (lower
+#     threshold, or a highlight-AREA rather than highlight-COUNT measure) produces a
+#     real signal, or an operator-judgment-informed number replaces this placeholder.
+#
+#   * niqe_max: calibration DOES cleanly separate the anchors (median 0.59, near-zero
+#     by construction -- the pristine model is fit FROM the anchors, see
+#     identity_gate.py's module docstring on this circularity) from every generated
+#     set (medians 1.52-5.01). But the mechanical 1.5x-anchor-buffer ceiling (0.9083)
+#     would fail-gate ALL 92 generated evidence images with zero exceptions, including
+#     the operator's own best-verdict set (lora-tester, "close, glossy, older" --
+#     median 5.01, max 5.95) -- a gate that never lets a single generated cell through
+#     is not a usable operating point, so 0.9083 is NOT shipped here. 6.5 is a
+#     practical ceiling instead: comfortably above lora-tester's own max (5.9499, the
+#     best real-world result on record) so today's best generated cells COULD pass,
+#     while still catching a genuinely pathological outlier. This is a judgment call,
+#     not a separating measurement -- flagged as such.
+#
+#   * face_px_min: 600 matches creator-001's own persona.yaml identity.floor.min_face_px
+#     ("uncalibrated" status there too) -- used only when a persona declares no
+#     min_face_px of its own; not re-derived from this calibration run (identity/age/
+#     realism evidence doesn't bear on what counts as a usably-sized face crop).
+identity_own_min: 0.7907
+age_delta_max_years: 5.0
+gloss_max: 0.08
+niqe_max: 6.5
+face_px_min: 600

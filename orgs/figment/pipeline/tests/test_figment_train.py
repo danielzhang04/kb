@@ -456,6 +456,10 @@ def test_dataset_grading_template_round_trip_builds_only_kept_training_images(co
             "garment_integrity": "pass",
             "real_person_resemblance": "clear",
             "why": "fixture ruling",
+            # This fixture's anchors/cells are fabricated bytes with no real face, so
+            # the fail-closed identity/age/realism gate always fails them -- this test
+            # is about the dataset-build round-trip, not the gate, hence the override.
+            "gate_override": "fixture: no real face in this synthetic image",
         })
     filled = Path(grade["rulings_template"]).with_name("filled.json")
     filled.write_text(json.dumps(template, indent=2) + "\n", encoding="utf-8")
@@ -491,9 +495,105 @@ def test_apply_rulings_fails_closed_when_a_kept_cell_fails_safety(command, tmp_p
             "decision": "keep", "identity": "pass", "realism": "pass",
             "hands": "pass", "lighting": "pass", "adult_read": "pass",
             "garment_integrity": "pass", "real_person_resemblance": "clear",
+            # Fabricated bytes, no real face -- always fails the identity/age/realism
+            # gate; this test is specifically about the SEPARATE safety-axis check.
+            "gate_override": "fixture: no real face in this synthetic image",
         })
     template["rulings"][0]["adult_read"] = "ambiguous"
     filled = Path(grade["rulings_template"]).with_name("unsafe.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
     with pytest.raises(command.FigmentTrainError, match="safety"):
         command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+
+# ---------------------------------------------------------------------------
+# identity_gate wiring: build_grade writes gate.json + a PASS/FAIL board, apply_rulings
+# refuses a bare keep on a failed-gate cell, `gate` CLI prints the table.
+# ---------------------------------------------------------------------------
+
+
+def _build_fake_dataset_grade(command, tmp_path, *, out_name: str):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / out_name
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+    grade = command.build_grade("creator-002", "dataset", plan_file)
+    return plan_file, grade
+
+
+def test_build_grade_writes_gate_json_and_a_pass_fail_board(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-json-plan")
+    assert "gate" in grade
+    gate_document = load_json(Path(grade["gate"]))
+    assert gate_document["schema"] == "figment/gate@1"
+    assert len(gate_document["rows"]) == 30
+    for field in ("identity_own", "age_delta", "gloss", "niqe", "pass"):
+        assert field in gate_document["rows"][0]
+    # This fixture's images/anchors are fabricated bytes with no real face -- every
+    # cell must fail the gate, never silently pass.
+    assert gate_document["summary"]["passed"] == 0
+    assert gate_document["summary"]["failed"] == 30
+
+    page_text = Path(grade["page"]).read_text(encoding="utf-8")
+    assert "failed gate (30)" in page_text
+    assert "Cells passing the gate (0)" in page_text
+
+
+def test_apply_rulings_refuses_a_keep_on_a_failed_gate_cell_without_override(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-refuse-plan")
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+        })
+    filled = Path(grade["rulings_template"]).with_name("no-override.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    with pytest.raises(command.FigmentTrainError, match="gate"):
+        command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+
+def test_apply_rulings_allows_a_keep_on_a_failed_gate_cell_with_override(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-override-plan")
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+            "gate_override": "operator manually confirmed identity from the full-res original",
+        })
+    filled = Path(grade["rulings_template"]).with_name("override.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
+    approved = load_json(Path(result["approved_list"]))
+    assert len(approved["images"]) == 30
+
+
+def test_gate_cli_prints_a_pass_fail_table(command, tmp_path, capsys):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-cli-plan")
+    exit_code = command.main(["gate", "--creator", "creator-002", "--stage", "dataset", "--plan", str(plan_file)])
+    assert exit_code == 0
+    out = capsys.readouterr().out
+    assert "image_id" in out
+    assert "FAIL" in out
+    assert "0/30 passed" in out
+
+
+def test_gate_cli_errors_when_grade_has_not_run(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / "no-grade-plan"
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
+    plan_file = out / "plan.json"
+    with pytest.raises(command.FigmentTrainError, match="run `figment_train.py grade`"):
+        command.command_gate("creator-002", "dataset", plan_file)

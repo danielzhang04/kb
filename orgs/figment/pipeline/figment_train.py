@@ -46,6 +46,7 @@ RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
 BUILD_SET_MODULE = TRAIN_DIR / "build_training_set.py"
 QA_MODULE = HERE / "qa_stamp.py"
 SCORE_CELLS_MODULE = HERE / "score_cells.py"
+IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
@@ -131,6 +132,10 @@ def _qa_module():
 
 def _score_cells_module():
     return _load_module("_figment_train_score_cells", SCORE_CELLS_MODULE)
+
+
+def _identity_gate_module():
+    return _load_module("_figment_train_identity_gate", IDENTITY_GATE_MODULE)
 
 
 def _pod_runner_module():
@@ -1298,34 +1303,61 @@ def _advisory_annotation(advisory_row: dict[str, Any] | None) -> str:
     return f"cos {cos} · Δage {age} · lap {lap} · clip {clip}"
 
 
+def _figure_html(
+    row: dict[str, Any], advisory_by_id: dict[str, Any], *, number: int | None = None,
+    reasons: list[str] | None = None,
+) -> str:
+    annotation = _advisory_annotation(advisory_by_id.get(row["image_id"]))
+    caption = f"{number}. {html.escape(row['image_id'])}" if number is not None else html.escape(row["image_id"])
+    extra = ""
+    if annotation:
+        extra += f'<br><span class="advisory">{html.escape(annotation)}</span>'
+    if reasons:
+        extra += f'<br><span class="gate-reasons">{html.escape("; ".join(reasons))}</span>'
+    return (
+        f'<figure><a href="{html.escape(Path(row["path"]).as_uri())}">'
+        f'<img loading="lazy" src="{html.escape(Path(row["path"]).as_uri())}" '
+        f'alt="{html.escape(row["image_id"])}"></a>'
+        f'<figcaption>{caption}{extra}</figcaption></figure>'
+    )
+
+
 def _grading_html(
     creator_id: str,
     stage: str,
     anchors: list[Path],
     images: list[dict[str, Any]],
     advisory: dict[str, Any] | None = None,
+    gate_document: dict[str, Any] | None = None,
 ) -> str:
     advisory_by_id = {
         row["image_id"]: row for row in (advisory or {}).get("rows", [])
     }
+    gate_by_id = {row["image_id"]: row for row in (gate_document or {}).get("rows", [])}
     anchor_cards = "\n".join(
         f'<figure><a href="{html.escape(path.as_uri())}"><img loading="eager" '
         f'src="{html.escape(path.as_uri())}" alt="anchor {html.escape(path.name)}"></a>'
         f'<figcaption>anchor · {html.escape(path.name)}</figcaption></figure>'
         for path in anchors
     )
-    cells = "\n".join(
-        f'<figure><a href="{html.escape(Path(row["path"]).as_uri())}">'
-        f'<img loading="lazy" src="{html.escape(Path(row["path"]).as_uri())}" '
-        f'alt="{html.escape(row["image_id"])}"></a>'
-        f'<figcaption>{html.escape(row["image_id"])}'
-        + (
-            f'<br><span class="advisory">{html.escape(annotation)}</span>'
-            if (annotation := _advisory_annotation(advisory_by_id.get(row["image_id"])))
-            else ""
-        )
-        + "</figcaption></figure>"
-        for row in images
+
+    passed_rows: list[dict[str, Any]] = []
+    failed_rows: list[tuple[dict[str, Any], list[str]]] = []
+    for row in images:
+        gate_row = gate_by_id.get(row["image_id"])
+        if gate_row is not None and gate_row.get("pass"):
+            passed_rows.append(row)
+        else:
+            reasons = list((gate_row or {}).get("reasons") or ["gate did not run for this cell"])
+            failed_rows.append((row, reasons))
+
+    passed_cells = "\n".join(
+        _figure_html(row, advisory_by_id, number=index)
+        for index, row in enumerate(passed_rows, start=1)
+    )
+    failed_cells = "\n".join(
+        _figure_html(row, advisory_by_id, reasons=reasons)
+        for row, reasons in failed_rows
     )
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
@@ -1338,14 +1370,76 @@ figure{{margin:0;background:#1b1b1b;padding:12px;border-radius:8px}}img{{display
 .anchors{{border:2px solid #8ab4f8;padding:16px;margin-bottom:28px}}
 .advisory{{color:#888;font-size:0.85em}}
 .advisory-note{{color:#bbb;font-style:italic}}
+.gate-reasons{{color:#e08080;font-size:0.85em}}
+summary{{cursor:pointer;font-size:1.2em;margin:16px 0}}
 </style></head><body>
 <h1>{html.escape(creator_id)} · {html.escape(stage)}</h1>
 <p>full-resolution source files: click any image to inspect its original pixels. Rule beside the anchors; never grade a thumbnail alone.</p>
-<p class="advisory-note">advisory only — never keeps or culls</p>
+<p class="advisory-note">advisory annotations (cos/Δage/lap/clip) are advisory only — never keep or cull. The gate below IS fail-closed: only PASS cells are numbered for the ruling sheet.</p>
 <section class="anchors"><h2>Identity anchors</h2><div class="grid">{anchor_cards}</div></section>
-<main><h2>Cells</h2><div class="grid">{cells}</div></main>
+<main><h2>Cells passing the gate ({len(passed_rows)})</h2><div class="grid">{passed_cells}</div></main>
+<details class="failed-gate"><summary>failed gate ({len(failed_rows)})</summary><div class="grid">{failed_cells}</div></details>
 </body></html>
 """
+
+
+_GATE_FALLBACK_METRICS = ("identity_own", "age_delta", "gloss", "niqe", "face_px")
+
+
+def _load_persona_document_for_gate(plan: dict[str, Any]) -> dict[str, Any]:
+    # plan["assets"]["persona_dir"] is ROOT-relative (see build_plan's own comment on
+    # that field), never `root`-relative (the plan's own output directory) -- the
+    # persona directory usually lives outside `root` entirely.
+    persona_path = (ROOT / plan["assets"]["persona_dir"] / "persona.yaml").resolve()
+    return _read_json(persona_path)
+
+
+def _run_identity_gate(
+    plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
+) -> dict[str, Any]:
+    """Fail-closed per-cell gate (operator ruling 2026-09-03: no board reaches the
+    operator until every shown cell holds identity, age and realism). Unlike
+    `score_cells.score`'s advisory annotations -- which degrade to `None` fields on a
+    scorer outage and never gate anything -- a TOTAL outage here still produces a
+    `gate.json`, but with every cell explicitly FAILED closed (never silently promoted
+    to pass, never silently omitted from the document)."""
+    anchors_by_stem = {path.stem: path for path in anchors}
+    own_anchor = anchors[0].stem if anchors else None
+    thresholds: dict[str, Any] = {}
+    rows: list[dict[str, Any]]
+    verdicts: list[dict[str, Any]]
+    outage: str | None = None
+    try:
+        gate_module = _identity_gate_module()
+        persona = _load_persona_document_for_gate(plan)
+        thresholds = gate_module.load_thresholds(persona)
+        rows = gate_module.score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
+        verdicts = [gate_module.gate(row, thresholds) for row in rows]
+    except Exception as exc:
+        outage = f"{type(exc).__name__}: {exc}"
+        reason = f"unavailable: gate could not run ({outage})"
+        rows = [{"image_id": row["image_id"]} for row in images]
+        verdicts = [{"pass": False, "reasons": [reason]} for _ in rows]
+
+    result_rows = []
+    for row, verdict in zip(rows, verdicts):
+        merged = dict(row)
+        merged["pass"] = verdict["pass"]
+        merged["reasons"] = verdict["reasons"]
+        result_rows.append(merged)
+
+    return {
+        "schema": "figment/gate@1",
+        "own_anchor": own_anchor,
+        "thresholds": thresholds,
+        "outage": outage,
+        "rows": result_rows,
+        "summary": {
+            "total": len(result_rows),
+            "passed": sum(1 for row in result_rows if row["pass"]),
+            "failed": sum(1 for row in result_rows if not row["pass"]),
+        },
+    }
 
 
 def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
@@ -1372,6 +1466,13 @@ def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
             grade_dir / "advisory-error.json",
             {"error": f"{type(exc).__name__}: {exc}"},
         )
+    # Operator ruling 2026-09-03: no board reaches the operator until this fail-closed
+    # gate has scored every cell -- see _run_identity_gate's own docstring for how a
+    # total scoring outage still fails every cell closed rather than skipping the gate.
+    gate_document = _run_identity_gate(plan, anchors, images)
+    gate_path = grade_dir / "gate.json"
+    _write_json(gate_path, gate_document)
+
     manifest_path = grade_dir / "grading-manifest.json"
     template_path = grade_dir / "rulings.template.json"
     page_path = grade_dir / "board.html"
@@ -1394,12 +1495,13 @@ def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
         } for row in images],
     })
     page_path.write_text(
-        _grading_html(creator_id, stage, anchors, images, advisory), encoding="utf-8",
+        _grading_html(creator_id, stage, anchors, images, advisory, gate_document), encoding="utf-8",
     )
     return {
         "page": str(page_path),
         "rulings_template": str(template_path),
         "grading_manifest": str(manifest_path),
+        "gate": str(gate_path),
     }
 
 
@@ -1475,6 +1577,16 @@ def apply_rulings(
             raise FigmentTrainError(
                 f"anchor rulings must keep exactly one candidate, got {len(keeps)}")
 
+    # Operator ruling 2026-09-03: a cell the fail-closed identity/age/realism gate
+    # marked FAIL can never be kept silently -- the ruling must carry an explicit,
+    # non-empty "gate_override" reason. Absent gate.json (a grade dir predating this
+    # wiring) is tolerated -- there is no gate verdict to enforce -- but an explicit
+    # `"pass": false` row always blocks a bare keep.
+    gate_path = grade_dir / "gate.json"
+    gate_by_id: dict[str, dict[str, Any]] = {}
+    if gate_path.is_file():
+        gate_by_id = {row["image_id"]: row for row in _read_json(gate_path).get("rows", [])}
+
     review = deepcopy(grading)
     try:
         _qa_module().stamp(review, normalized)
@@ -1485,6 +1597,15 @@ def apply_rulings(
     for row in review["images"]:
         ruling = ruling_by_id[row["image_id"]]
         if ruling["decision"] == "keep":
+            gate_row = gate_by_id.get(row["image_id"])
+            if gate_row is not None and not gate_row.get("pass", True):
+                override = ruling.get("gate_override")
+                if not isinstance(override, str) or not override.strip():
+                    raise FigmentTrainError(
+                        f"kept cell {row['image_id']!r} failed the identity/age/realism gate "
+                        f"({'; '.join(gate_row.get('reasons') or [])}) and its ruling carries "
+                        "no gate_override reason"
+                    )
             if row.get("safety_failed"):
                 raise FigmentTrainError(
                     f"kept cell {row['image_id']!r} failed a mandatory safety axis"
@@ -1592,6 +1713,55 @@ def apply_rulings(
     }
 
 
+def command_gate(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]:
+    """Read `grade/<stage>/gate.json` (written by `build_grade`) and return it --
+    never recomputes the gate, so this is fast and matches exactly what the board a
+    human is looking at was gated with. Raises if `grade` has not been run yet."""
+    if stage not in ("anchor", "dataset", "tester"):
+        raise FigmentTrainError("gate stage must be anchor, dataset, or tester")
+    plan, root = _load_plan(creator_id, plan_path)
+    gate_path = root / "grade" / stage / "gate.json"
+    if not gate_path.is_file():
+        raise FigmentTrainError(
+            f"no gate.json at {gate_path}; run `figment_train.py grade` for this stage first"
+        )
+    document = _read_json(gate_path)
+    if document.get("own_anchor") is None and not document.get("rows"):
+        raise FigmentTrainError(f"gate.json at {gate_path} is empty or malformed")
+    return document
+
+
+def _format_gate_table(document: dict[str, Any]) -> str:
+    header = ("image_id", "pass", "identity_own", "age_delta", "gloss", "niqe", "face_px", "reasons")
+    rows = [header]
+    for row in document.get("rows", []):
+        def _fmt(value: Any) -> str:
+            return f"{value:.3f}" if isinstance(value, (int, float)) else "n/a"
+        rows.append((
+            str(row.get("image_id")),
+            "PASS" if row.get("pass") else "FAIL",
+            _fmt(row.get("identity_own")),
+            _fmt(row.get("age_delta")),
+            _fmt(row.get("gloss")),
+            _fmt(row.get("niqe")),
+            _fmt(row.get("face_px")),
+            "; ".join(row.get("reasons") or []),
+        ))
+    widths = [max(len(str(cell)) for cell in column) for column in zip(*rows)]
+    lines = [
+        "  ".join(str(cell).ljust(width) for cell, width in zip(row, widths))
+        for row in rows
+    ]
+    summary = document.get("summary", {})
+    lines.append("")
+    lines.append(
+        f"{summary.get('passed', 0)}/{summary.get('total', len(document.get('rows', [])))} passed"
+    )
+    if document.get("outage"):
+        lines.append(f"GATE OUTAGE: {document['outage']}")
+    return "\n".join(lines)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -1619,6 +1789,11 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
     apply.add_argument("--plan", type=Path, default=Path("plan.json"))
     apply.add_argument("--rulings", required=True, type=Path)
+
+    gate = commands.add_parser("gate", help="print the fail-closed gate's pass/fail table")
+    gate.add_argument("--creator", required=True)
+    gate.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
+    gate.add_argument("--plan", type=Path, default=Path("plan.json"))
     return parser
 
 
@@ -1637,6 +1812,9 @@ def main(argv: list[str] | None = None) -> int:
             result = build_grade(args.creator, args.stage, args.plan)
             print(f"grading page: {result['page']}")
             print(f"rulings template: {result['rulings_template']}")
+        elif args.command == "gate":
+            document = command_gate(args.creator, args.stage, args.plan)
+            print(_format_gate_table(document))
         else:
             result = apply_rulings(args.creator, args.stage, args.plan, args.rulings)
             print(f"applied rulings: {result['rulings']}")
