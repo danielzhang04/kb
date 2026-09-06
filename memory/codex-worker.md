@@ -466,3 +466,15 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ### The Pattern (transferable)
 - Next time I see a race inferred from an unawaited promise, I will trace actual yield points and runtime ordering, then distinguish a reachable repro from a design risk requiring a different transport or failure condition.
 - Signal to recognize: the proof requires a fake delay that the real implementation does not have, or conflates microtasks with the next event-loop turn.
+
+## Failure state is not the truthiness of its payload (2026-09-06)
+
+### Context
+- A drain barrier's first draft retained a rejection value and tested it for truthiness to refuse replacement execution.
+
+### Root Cause / Core Insight
+- JavaScript permits throwing or rejecting with undefined, null, false, zero, or an empty string; a failed operation can therefore carry a falsey payload. The control state must be explicit and independent of diagnostic data.
+
+### The Pattern (transferable)
+- Next time a fail-closed guard retains an error, I will use a boolean or discriminated lifecycle state and test both synchronous throws and asynchronous rejections with falsey values.
+- Signal to recognize: admission or retry code branches on the truthiness of an unknown error object. Passing normal Error-based tests does not establish the safety invariant.

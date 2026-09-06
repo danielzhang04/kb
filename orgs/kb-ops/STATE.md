@@ -1,6 +1,6 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-06 (architecture audit; no live-state probe)_
+_Updated: 2026-09-06 (approved implementation in isolated worktree; no live-state probe)_
 
 ## Now
 - Architecture audit and overhaul proposal prepared on
@@ -10,7 +10,14 @@ _Updated: 2026-09-06 (architecture audit; no live-state probe)_
 - Daniel requested all capabilities and an architecture-flexible implementation
   with adversarial reviews/tests throughout, preceded by a pre-build summary.
   `implementation-sequence.md` adds bounded scopes and early dashboard/broker gates.
-  No implementation scaffold or build card has been issued before confirmation.
+  Daniel subsequently approved execution. The twelve-phase task checklist is
+  `dashboards/kb-platform-implementation.md`; Phase 0 is working, later phases gated.
+  Implementation branch: `codex/kb-platform-phase0-20260906`, based on pending
+  prerequisite `e8bf8d35`, not on a merged or deployed outage repair.
+  Local commit `25f87ff3` contains the independently reviewed drain barrier:
+  70 focused tests pass, including falsey drain failures and explicit retries.
+  Reporter containment and restricted diagnostics are in build/review; no phase
+  is complete. Browser connection is unavailable; Linux baseline setup is ongoing.
 - September 6 recovery handoff records a dashboard hydrate outage. Pending repair
   PR #173 (`e8bf8d35`) was inspected separately, not merged or deployed by this audit.
   Current VM availability, enabled schedules, and execution-gate state are unverified.
@@ -18,13 +25,15 @@ _Updated: 2026-09-06 (architecture audit; no live-state probe)_
   scheduler/worktree hazards, and missing production bindings for cross-host
   placement and seven System learning paths. Details distinguish latent gaps from
   defects on the existing single-VM path.
-- No runtime, governance, approvals, or deployment changes were made. Focused tests
-  support local findings only; they do not certify end-to-end production readiness.
+- Runtime source changes are local only. No governance, approvals, live-state or
+  deployment changes were made. Local tests do not certify production readiness.
+  Checklist commit `101e87e9` is local on the coordination proposal. A publication
+  approval check blocked pushing; explicit permission was requested, not bypassed.
 
 ## Next
-- Daniel confirms the revised pre-build plan; all capabilities remain required.
-  Confirm topology before desktop/placement-dependent work; begin only approved
-  Phase 0/1 child scopes and keep later architecture/cutover gates separate.
+- Complete Phase 0 containment/diagnostics reviews, generation-fence work and
+  actual browser/server evidence. All capabilities remain required. Confirm
+  topology before desktop/placement-dependent work and retain later decision gates.
 - Keep production outage recovery under its existing handoff/approval process.
 - Establish the real Linux broker/worker acceptance harness and compare bounded
   SQLite/Temporal recovery implementations before committing to state migration.
@@ -32,7 +41,7 @@ _Updated: 2026-09-06 (architecture audit; no live-state probe)_
 ## Blocked
 - Live operational status cannot be inferred from this read-only local audit.
 - Production cutover and authority changes require their own human decisions and
-  gates. The audit itself is complete; implementation is not started.
+  gates. The audit is complete; implementation has started but is not phase-complete.
 
 ## Historical evidence (not current operational status)
 - July 21 Wave A supervised `self-lint-report` succeeded (`run-7b0b8de8`, four

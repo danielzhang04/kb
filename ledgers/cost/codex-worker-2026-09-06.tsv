@@ -15,3 +15,8 @@ unverified	inherited	unavailable	kb-platform-prebuild:boss-source-synthesis-and-
 unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:implementation-sequence		unmetered-native-delegation
 unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:dashboard-journeys		unmetered-native-delegation
 unverified	gpt-5.6-sol	unavailable	kb-platform-prebuild:adversarial-review-and-recheck		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-phase0:boss-planning-review-test-environment		unmetered-native-session; incomplete cost total, not zero-cost
+unverified	gpt-5.6-terra	unavailable	kb-platform-phase0:drain-plan-build-falsey-revision		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:reporter-plan-build		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-phase0:diagnostics-plan-build		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:independent-code-security-review		unmetered-native-continuations-grouped
