@@ -260,6 +260,17 @@ def validate_persona(
         if require_assets and not resolved.is_file():
             _fail(f"persona.identity.references[] points at a missing file: {resolved}")
 
+    # Anchor-stage promotion (figment/train-plan@1 apply-rulings --stage anchor) appends
+    # the persona's pre-promotion reference list here before overwriting
+    # identity.references with the picked anchor. This is a historical record only —
+    # tolerated when present, but deliberately NOT asset-checked (an old anchor image is
+    # never re-verified against disk; only the live identity.references are).
+    history = identity.get("history")
+    if history is not None:
+        items = _require_list(history, "identity.history")
+        if any(not isinstance(item, str) or not item.strip() for item in items):
+            _fail("persona.identity.history entries must be non-empty strings")
+
     spec = _require_dict(identity.get("spec"), "identity.spec")
     spec_path = spec.get("path")
     resolved_spec = _resolve_reference(

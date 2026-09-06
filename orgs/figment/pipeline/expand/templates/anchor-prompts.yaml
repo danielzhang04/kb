@@ -1,0 +1,38 @@
+{
+  "id": "anchor-prompts",
+  "persona": null,
+  "replicates": "10sorlabs_image_generator.json (module 03/06, character passport) node 4's positive text, fanned out per job by the harness (no list-fanout node available); camera clause is the package's own node-4 phrasing with the r15b-generation:106-115 contradiction dropped (D20).",
+  "structure": {
+    "note": "The passport arm supplies 12 fresh full-scene rows built purely from the persona's text description (no input image). The edit arm supplies 6 close/half framing rows consumed by the Qwen-edit method (module 10's TextEncodeQwenImageEditPlus pattern) against the existing anchor image, so its identity clause also carries the 'do not alter' constraint r15 3b flags as directly reusable.",
+    "register_source": "pipeline/look-spec-v2.md section 0 (operator taste anchor, 2026-09-03) supplies the makeup/skin/hair register words. Section 4a banned phrases and section 4c age phrasing are binding: no banned literal appears anywhere in this file, and age is stated as a life stage with adult physical markers, never as a numeral."
+  },
+  "camera_clause": "Shot on iPhone 15 Pro, handheld portrait perspective, 24mm, f/1.8. Natural colour saturation.",
+  "passport": {
+    "identity": "a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, a thin brown line drawn close to the upper lash with one coat of mascara, her own full dark brows brushed up and not drawn in, lip balm over her natural lip colour, slim with an ordinary adult figure,",
+    "rows": [
+      "Sitting on a windowsill in a high-rise apartment at night, city lights glowing through the glass behind her.",
+      "Standing in a bright daylight kitchen, one hand resting on the counter, morning light through a nearby window.",
+      "A mirror selfie in a bedroom, phone held at chest height, soft ambient room light.",
+      "Sitting in the passenger seat of a car, seatbelt visible, daylight through the windshield.",
+      "Sitting at a small outdoor cafe table, a cup nearby, midday light.",
+      "Standing at a bathroom vanity, leaning slightly toward the mirror, warm vanity-bulb light.",
+      "Standing on an apartment balcony at dusk, leaning against the railing with the skyline behind her.",
+      "Sitting on the edge of a bed under a single bedroom lamp, warm low light.",
+      "Standing on an apartment stairwell landing under an overhead light.",
+      "Standing in a hallway lit by direct on-camera flash at night.",
+      "Sitting on a living-room sofa, natural window light from one side.",
+      "Standing inside an elevator under an overhead light, a mirrored wall behind her."
+    ]
+  },
+  "edit": {
+    "identity": "a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, her hands and neck reading the same age as her face, jet-black hair, dark brown eyes, fair skin with visible pores and texture. Do not alter facial features, skin tone, eye color, hair color, or hair texture.",
+    "rows": [
+      "Close frontal framing of her face and shoulders, looking directly at the camera.",
+      "Close three-quarter framing of her face, chin turned slightly toward one shoulder.",
+      "Half-body framing from the waist up, arms relaxed at her sides.",
+      "Close profile framing from one side, head turned to show the line of the jaw.",
+      "Half-body framing from a slight low angle, looking down toward the camera.",
+      "Close framing over one shoulder, head turned back toward the lens."
+    ]
+  }
+}

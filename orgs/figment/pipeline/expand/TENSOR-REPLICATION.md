@@ -133,6 +133,41 @@ apparent age, makeup weight and finish, skin finish and tone, lip naturalness, b
 similarity numbers may annotate a card, never keep or cull one. A face reading under twenty is culled
 outright, never relabelled (GUARDRAILS hard line 2). No adaptation is proposed before that verdict.
 
+## Module 03 → anchor stage
+
+Faithful port of `research/10sorlabs-package/03_generating_your_character/10sorlabs_image_generator.json`
+(20 nodes, UI format) to `expand/workflows/zimage_passport_api.json` (9 nodes, API format) plus
+`expand/templates/anchor-prompts.yaml`. Settings come from the JSON itself, cross-read against r15 §3a;
+node ids `1`/`2`/`3`/`4`/`5`/`7`/`11`/`47`/`94` are the package's own, `103` is new. Continuing the
+D-numbering above:
+
+- **D15** — `realistic_snapshot_lora.safetensors` (gravedigga, unlicensed) → `suayptalha/Z-Image-Turbo-Realism-LoRA`
+  `pytorch_lora_weights.safetensors`, Apache-2.0, same 0.66 strength (r22 §1).
+- **D16** — `Power Lora Loader (rgthree)` → core `LoraLoader`; rgthree supplies nothing else the graph needs.
+- **D17** — both `FaceDetailer` passes, `UltralyticsDetectorProvider` (`face_yolov8m.pt`), `SAMLoader`
+  (`sam_vit_b_01ec64.pth`) and `zit_upscaler.safetensors` dropped here: all pickles or unlicensed (r20
+  "could not replicate" table). The anchor is graded at native 1536×2048; the licence-clean detailer
+  arrives in Phase D (generation, module 09).
+- **D18** — `Image Comparer (rgthree)`, `Fast Groups Bypasser` and the two extra `SaveImage` nodes dropped
+  (UI-only; the grading board is our comparer).
+- **D19** — seed fan-out moved into the harness: `control_after_generate: increment` from 148 becomes 12
+  explicit job seeds `148…159`, reproducible from `plan.json`.
+- **D20** — camera clause keeps the phone/lens/aperture, drops "zero film grain" and "smooth skin".
+
+### Pins and licences (module 03 → anchor stage)
+
+| File | Source | Licence | Notes |
+|---|---|---|---|
+| `z_image_turbo_bf16.safetensors` | `Comfy-Org/z_image_turbo` | Apache-2.0 | diffusion model |
+| `qwen_3_4b.safetensors` | `Comfy-Org/z_image_turbo` | Apache-2.0 | text encoder |
+| `ae.safetensors` | `Comfy-Org/z_image_turbo` | Apache-2.0 | VAE |
+| `pytorch_lora_weights.safetensors` | `suayptalha/Z-Image-Turbo-Realism-LoRA` | Apache-2.0 (card-header claim, no LICENSE file in the repo — re-checked at pin time, r22 §4) | realism LoRA @ 0.66 |
+
+Revisions and sha256 were resolved live against the HF API/CDN at pin time (2026-09-06) and are recorded
+verbatim in `train/tensor-pins.yaml` under `pins.anchor`; `pins.anchor_edit` is `pins.dataset` reused
+unchanged (the anchor-edit arm runs the existing dataset graph's face-edit branch against the persona's
+current anchor).
+
 ## Open risks to check on the first pod, before committing the other two shards
 
 1. **`ComfyUI_FaceAnalysis` requirements.** Bootstrap pip-installs its `requirements.txt` and a failure

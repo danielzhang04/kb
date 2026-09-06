@@ -1,0 +1,66 @@
+{
+  "1": {
+    "class_type": "UNETLoader",
+    "inputs": {"unet_name": "z_image_turbo_bf16.safetensors", "weight_dtype": "default"}
+  },
+  "2": {
+    "class_type": "CLIPLoader",
+    "inputs": {"clip_name": "qwen_3_4b.safetensors", "type": "lumina2", "device": "default"}
+  },
+  "3": {
+    "class_type": "VAELoader",
+    "inputs": {"vae_name": "ae.safetensors"}
+  },
+  "103": {
+    "class_type": "LoraLoader",
+    "inputs": {
+      "lora_name": "pytorch_lora_weights.safetensors",
+      "strength_model": 0.66,
+      "strength_clip": 0.66,
+      "model": ["1", 0],
+      "clip": ["2", 0]
+    }
+  },
+  "4": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {"text": "REPLACED PER JOB", "clip": ["103", 1]}
+  },
+  "5": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "perfect symmetry, perfectly aligned face, flawless lighting, studio lighting, ideal exposure, balanced highlights, clean background, professional retouching, perfect skin texture, airbrushed look, cinematic look, polished beauty shot, editorial quality, glamour style, controlled shadows, controlled reflections, sharp precision focus, ultra-clean edges, perfect color balance, perfectly centered framing, textbook composition, photo-studio appearance, artificially smooth details, aesthetic perfection, commercial beauty standards, overly refined rendering",
+      "clip": ["103", 1]
+    }
+  },
+  "11": {
+    "class_type": "EmptyFlux2LatentImage",
+    "inputs": {"width": 1536, "height": 2048, "batch_size": 1}
+  },
+  "47": {
+    "class_type": "ClownsharKSampler_Beta",
+    "inputs": {
+      "eta": 0.45,
+      "sampler_name": "exponential/res_8s",
+      "scheduler": "simple",
+      "steps": 8,
+      "steps_to_run": -1,
+      "denoise": 0.95,
+      "cfg": 1.0,
+      "seed": 148,
+      "sampler_mode": "standard",
+      "bongmath": true,
+      "model": ["103", 0],
+      "positive": ["4", 0],
+      "negative": ["5", 0],
+      "latent_image": ["11", 0]
+    }
+  },
+  "7": {
+    "class_type": "VAEDecode",
+    "inputs": {"samples": ["47", 0], "vae": ["3", 0]}
+  },
+  "94": {
+    "class_type": "SaveImage",
+    "inputs": {"filename_prefix": "anchor-passport", "images": ["7", 0]}
+  }
+}

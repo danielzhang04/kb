@@ -194,7 +194,9 @@ def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
     assert len(tester["jobs"]) == 3, "still one tester job (branch) per checkpoint"
 
     all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
-    assert len(all_runs) == 6
+    # 2 anchor (passport + edit) + 3 dataset shards + smoke + train + tester (figment
+    # Track-2 A2: STAGES gained "anchor", so --stage all now plans it first).
+    assert len(all_runs) == 8
     for index, run in enumerate(all_runs):
         result = subprocess.run(
             [
@@ -233,7 +235,9 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
             assert b"g07" not in payload, path
 
     all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
-    assert len(all_runs) == 6
+    # 2 anchor (passport + edit) + 3 dataset shards + smoke + train + tester (figment
+    # Track-2 A2: STAGES gained "anchor", so --stage all now plans it first).
+    assert len(all_runs) == 8
     for index, run in enumerate(all_runs):
         result = subprocess.run(
             [

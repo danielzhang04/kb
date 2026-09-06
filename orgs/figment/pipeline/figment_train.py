@@ -35,6 +35,8 @@ EXPAND_DIR = HERE / "expand"
 PINS_PATH = TRAIN_DIR / "tensor-pins.yaml"
 PROMPTS_PATH = EXPAND_DIR / "templates" / "tensor-dataset-prompts.yaml"
 WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_v2_api.json"
+ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
+ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
 AI_TEMPLATE_PATH = TRAIN_DIR / "ai-toolkit-krea2.yaml.template"
 TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
@@ -45,7 +47,7 @@ QA_MODULE = HERE / "qa_stamp.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
-STAGES = ("dataset", "smoke", "train", "tester")
+STAGES = ("anchor", "dataset", "smoke", "train", "tester")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 KEY_MISMATCH_RE = re.compile(
     r"missing_keys|unexpected_keys|missing key\(s\)|unexpected key\(s\)", re.I,
@@ -242,6 +244,17 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     return prompts
 
 
+def _generalized_anchor_prompts(persona: dict) -> dict[str, Any]:
+    prompts = _read_json(ANCHOR_PROMPTS_PATH)
+    prompts["persona"] = persona["id"]
+    clause = prompts["camera_clause"]
+    for arm in ("passport", "edit"):
+        prompts[arm]["rows"] = [
+            row if clause in row else f"{row} {clause}" for row in prompts[arm]["rows"]
+        ]
+    return prompts
+
+
 def _generalized_dataset_workflow(persona: dict, prompts: dict[str, Any]) -> dict[str, Any]:
     workflow = _read_json(WORKFLOW_PATH)
     references = [Path(value) for value in persona["identity"]["references"]]
@@ -306,6 +319,43 @@ def _dataset_manifests(
         }
         manifests.append(manifest)
     return manifests
+
+
+def _anchor_manifests(
+    persona: dict, training: dict, pins: dict, prompts: dict[str, Any],
+) -> list[dict[str, Any]]:
+    short = _creator_output_code(persona["id"])
+    passport = {
+        **_pod_base(pins, training["pod_class"], "anchor"),
+        "models": deepcopy(pins["pins"]["anchor"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["anchor"]["custom_nodes"]),
+        "workflow": "../workflows/zimage_passport_api.json",
+        "seed_fields": ["seed"],
+        "jobs": [{"seed": 148 + i, "output_name": f"{short}-anchor-p{i + 1:02d}",
+                  "expected_images": 1,
+                  "substitutions": [{"node_id": "4", "field": "text",
+                      "value": prompts["passport"]["identity"] + " " + row}]}
+                 for i, row in enumerate(prompts["passport"]["rows"])],
+    }
+    names = [Path(v).name for v in persona["identity"]["references"]]
+    workflow = _generalized_dataset_workflow(persona, _generalized_prompts(persona))
+    workflow["832"]["inputs"]["filename_prefix"] = f"{persona['id']}-anchor-edit"
+    edit = {
+        **_pod_base(pins, training["pod_class"], "anchor_edit"),
+        "models": deepcopy(pins["pins"]["anchor_edit"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["anchor_edit"]["custom_nodes"]),
+        "workflow": workflow, "seed_fields": ["seed"],
+        "uploads": [{"files": [f"_uploads/{persona['id']}/{n}" for n in names],
+                     "subfolder": persona["id"], "type": "input", "overwrite": True}],
+        "jobs": [{"seed": 241731167782064,
+                  "output_name": f"{short}-anchor-e{i + 1:02d}", "expected_images": 1,
+                  "substitutions": [
+                      {"node_id": "788", "field": "seed", "value": 1098688918602660 + i},
+                      {"node_id": "174", "field": "prompt",
+                       "value": prompts["edit"]["identity"] + " " + row}]}
+                 for i, row in enumerate(prompts["edit"]["rows"])],
+    }
+    return [passport, edit]
 
 
 def _training_runtime(trigger: str, caption_mode: str, steps: list[int], final: int) -> dict:
@@ -559,9 +609,11 @@ def _render_training_config(trigger: str, steps: int, save_every: int) -> dict[s
 
 def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict) -> dict[str, Any]:
     expand_workflow = out / "expand" / "workflows" / WORKFLOW_PATH.name
+    anchor_workflow = out / "expand" / "workflows" / ANCHOR_WORKFLOW_PATH.name
     expand_prompts = out / "expand" / "templates" / PROMPTS_PATH.name
     train_runs = out / "train" / "runs"
     _write_json(expand_workflow, workflow)
+    _write_json(anchor_workflow, _read_json(ANCHOR_WORKFLOW_PATH))
     _write_json(expand_prompts, prompts)
     train_runs.mkdir(parents=True, exist_ok=True)
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
@@ -631,9 +683,20 @@ def build_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+
+    selected = list(STAGES if stage == "all" else (stage,))
+    if persona["identity"].get("history") and "anchor" in selected:
+        if stage != "all":
+            raise FigmentTrainError(
+                f"{creator_id} already has a promoted anchor (identity.history is non-empty); "
+                "the anchor stage cannot be replanned without clearing it by hand"
+            )
+        selected.remove("anchor")
+
     prompts = _generalized_prompts(persona)
     workflow = _generalized_dataset_workflow(persona, prompts)
     assets = _copy_support_files(out, persona, prompts, workflow)
+    assets["persona_dir"] = str(Path(persona["_persona_path"]).parent)
 
     configs_dir = out / "train" / "configs"
     smoke_config = configs_dir / "training-smoke.json"
@@ -644,10 +707,17 @@ def build_plan(
         _render_training_config(training["trigger"], training["steps"], training["save_every"]),
     )
 
-    selected = STAGES if stage == "all" else (stage,)
     plan_stages: dict[str, Any] = {}
     for current in selected:
-        if current == "dataset":
+        if current == "anchor":
+            manifests = _anchor_manifests(
+                persona, training, pins, _generalized_anchor_prompts(persona),
+            )
+            paths = [
+                out / "expand" / "runs" / f"{creator_id}-anchor-{arm}.yaml"
+                for arm in ("passport", "edit")
+            ]
+        elif current == "dataset":
             manifests = _dataset_manifests(persona, training, pins, prompts)
             paths = [
                 out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
@@ -659,12 +729,14 @@ def build_plan(
         elif current == "train":
             manifests = [_train_manifest(persona, training, pins, smoke=False)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train.yaml"]
-        else:
+        elif current == "tester":
             manifests = [_tester_manifest(persona, training, pins)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
+        else:
+            raise FigmentTrainError(f"unknown stage {current!r}")
         for path, manifest in zip(paths, manifests):
             _write_json(path, manifest)
-        run_root = out / ("expand" if current == "dataset" else "train") / "runs" / "out"
+        run_root = out / ("expand" if current in ("anchor", "dataset") else "train") / "runs" / "out"
         runs = [
             _planned_run(out, path, run_root / path.stem)
             for path in paths
@@ -861,17 +933,29 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
-    requested = STAGES if stage == "all" else (stage,)
+    if stage == "all":
+        # A promoted persona's plan never contains "anchor" (build_plan already refused
+        # to (re-)plan it) -- walk only the stages the plan actually carries, in STAGES
+        # order, rather than the full STAGES tuple.
+        requested = tuple(current for current in STAGES if current in plan.get("stages", {}))
+    else:
+        requested = (stage,)
     for current in requested:
         if current not in plan.get("stages", {}):
             raise FigmentTrainError(f"plan does not contain stage {current!r}")
     state_path = root / "stage.json"
     state = _stage_state(state_path, creator_id, Path(plan_path).resolve())
 
+    def _already_settled(current: str) -> bool:
+        return (current in state["completed_stages"]
+                or (root / "grade" / current / "rulings.json").is_file())
+
     for current in requested:
-        if current in state["completed_stages"]:
+        if _already_settled(current):
             if stage != "all":
-                raise FigmentTrainError(f"stage {current!r} already completed; refusing a live retry")
+                raise FigmentTrainError(
+                    f"stage {current!r} is already complete or graded; refusing a live retry"
+                )
             continue
         _install_stage_config(current, plan, root)
         state["status"] = f"running:{current}"
@@ -1023,8 +1107,8 @@ figure{{margin:0;background:#1b1b1b;padding:12px;border-radius:8px}}img{{display
 
 def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
     """Build a non-destructive, original-pixel grading surface and blank rulings."""
-    if stage not in ("dataset", "tester"):
-        raise FigmentTrainError("grade stage must be dataset or tester")
+    if stage not in ("anchor", "dataset", "tester"):
+        raise FigmentTrainError("grade stage must be anchor, dataset, or tester")
     plan, root = _load_plan(creator_id, plan_path)
     anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
     for anchor in anchors:
@@ -1113,8 +1197,8 @@ def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
-    if stage not in ("dataset", "tester"):
-        raise FigmentTrainError("apply-rulings stage must be dataset or tester")
+    if stage not in ("anchor", "dataset", "tester"):
+        raise FigmentTrainError("apply-rulings stage must be anchor, dataset, or tester")
     plan, root = _load_plan(creator_id, plan_path)
     grade_dir = root / "grade" / stage
     grading_path = grade_dir / "grading-manifest.json"
@@ -1130,6 +1214,11 @@ def apply_rulings(
     normalized = _normalize_rulings(
         creator_id, stage, _read_json(Path(rulings_path)), image_ids,
     )
+    if stage == "anchor":
+        keeps = [r for r in normalized["rulings"] if r["decision"] == "keep"]
+        if len(keeps) != 1:
+            raise FigmentTrainError(
+                f"anchor rulings must keep exactly one candidate, got {len(keeps)}")
 
     review = deepcopy(grading)
     try:
@@ -1200,6 +1289,34 @@ def apply_rulings(
             dataset_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(temporary_approved), str(approved_dir))
             shutil.move(str(temporary_dataset), str(dataset_dir))
+    elif stage == "anchor":
+        approved = approved_rows[0]
+        image_id = approved["image_id"]
+        source = Path(approved["path"])
+        if not source.is_file() or source.stat().st_size <= 0:
+            raise FigmentTrainError(f"approved anchor source image is missing or empty: {source}")
+        persona_dir = Path(plan["assets"]["persona_dir"])
+        anchors_dir = persona_dir / "anchors"
+        anchors_dir.mkdir(parents=True, exist_ok=True)
+        destination = anchors_dir / f"{image_id}.png"
+        if destination.exists():
+            raise FigmentTrainError(f"anchor destination already exists: {destination}")
+        shutil.copy2(source, destination)
+        chosen_document = {
+            "schema": "figment/chosen-anchor@1",
+            "creator": creator_id,
+            "image_id": image_id,
+            "path": str(destination),
+            "sha256": _sha256(destination),
+        }
+        _write_json(grade_dir / "chosen-anchor.json", chosen_document)
+
+        persona_path = persona_dir / "persona.yaml"
+        persona_document = _read_json(persona_path)
+        identity = persona_document.setdefault("identity", {})
+        identity["history"] = identity.get("history", []) + identity.get("references", [])
+        identity["references"] = [f"anchors/{image_id}.png"]
+        _write_json(persona_path, persona_document)
 
     approved_document = {
         "schema": "figment/approved-images@1",
@@ -1232,12 +1349,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     grade = commands.add_parser("grade", help="build a full-resolution grading board")
     grade.add_argument("--creator", required=True)
-    grade.add_argument("--stage", choices=("dataset", "tester"), required=True)
+    grade.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
     grade.add_argument("--plan", type=Path, default=Path("plan.json"))
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
-    apply.add_argument("--stage", choices=("dataset", "tester"), required=True)
+    apply.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
     apply.add_argument("--plan", type=Path, default=Path("plan.json"))
     apply.add_argument("--rulings", required=True, type=Path)
     return parser
