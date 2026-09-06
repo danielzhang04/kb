@@ -1692,7 +1692,13 @@ function validateIterationDurability(
         ? generationByRef.get(generation.predecessorGenerationRef) : undefined;
       const pendingPredecessor = attempt.baseGenerationRef === null
         ? undefined : generationByRef.get(attempt.baseGenerationRef);
+      // The join key below is a LOGICAL stage id ('build', 'no-progress-producer'), which repeats across
+      // runs. Without a subject/runRef guard this find binds an attempt to a still-open artifact-producing
+      // request belonging to a DIFFERENT run as soon as the validator sees more than one run at once --
+      // exactly the difference between the write path (single-run bundle via iterationBundleForRun) and
+      // hydrate (the whole document). Same guard the generation/request join above already carries.
       const pendingRequest = requests.find((request) => {
+        if (request.subject !== attempt.subject || request.runRef !== attempt.runRef) return false;
         if (receipts.some((receipt) => receipt.requestRef === request.requestRef)) return false;
         const loop = loopByRef.get(request.iterationLoopRef);
         const participant = loop?.participants.find((candidate) => candidate.participantId === request.recipientParticipantId);

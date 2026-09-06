@@ -234,7 +234,12 @@ export function createQueueBridge(options: QueueBridgeOptions): QueueBridge {
     tick,
     start(intervalMs) {
       if (timer !== null) return;
-      timer = setInterval(() => { void tick().catch(onError); }, intervalMs);
+      // A throwing reporter must not become an unhandledRejection: this process installs no
+      // `unhandledRejection` handler, so Node's default would terminate the daemon on a tick that
+      // fails while the control document is unloadable. Same guard as the per-card path above.
+      timer = setInterval(() => {
+        void tick().catch((error: unknown) => { try { onError(error); } catch { /* nowhere left to report */ } });
+      }, intervalMs);
       if (typeof timer.unref === 'function') timer.unref();
     },
     stop() {
