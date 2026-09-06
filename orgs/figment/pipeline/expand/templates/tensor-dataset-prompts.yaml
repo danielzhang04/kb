@@ -7,10 +7,13 @@
     "prepend_is_the_hand_typed_description": "The lesson's own rule (module 10 @3:59-4:21): the stock prepend ships mismatched to the input photo and MUST be rewritten to match it. face.identity matches anchors/g01.jpg; body.identity matches anchors/g07.jpg.",
     "identity_also_drives_the_refine_pass": "Their SetNode/GetNode pair routes the same prepend string to the FLUX.2 refine CLIPTextEncode (nodes 800 / 780). Ours bakes it into the graph at those same node ids; only the two Qwen-edit prompts vary per job.",
     "register_source": "pipeline/look-spec-v2.md section 0 (operator taste anchor, 2026-09-03) supplies the makeup/skin/hair/jewellery slot words. Section 4a banned phrases and section 4c age phrasing are binding: no banned literal appears anywhere in this file, and age is stated as a life stage with adult physical markers, never as a numeral.",
-    "quotation": "Only the short angle/pose/lighting phrases are carried over from the package. Their anatomical and wardrobe language is dropped; wardrobe lives in body.identity, drawn from persona.yaml grammar.wardrobe_families (corset-bustier)."
+    "quotation": "Only the short angle/pose/lighting phrases are carried over from the package. Their anatomical and wardrobe language is dropped; wardrobe lives in body.identity, drawn from persona.yaml grammar.wardrobe_families (corset-bustier).",
+    "framing_field": "Track-2 Task B1 (D24): identity-spec.md's 'Rule for expansion' finding -- a full-frame body swap comes out mask-like when the face is small in the rendered cell. body.rows entries are now {\"text\", \"framing\"}: \"half\" rows are reworded to frame no wider than mid-thigh so the face stays large; \"full\" rows keep the package's own wide/low-angle/walking framings and route to the fullbody manifest's face-repair second pass instead (tensor_dataset_fullbody_api.json). face.rows are always close framings already and stay plain strings.",
+    "fullbody_repair_prompt_note": "Track-2 Task B1 (D25): node 952's TextEncodeQwenImageEditPlus prompt on the fullbody workflow's face-repair tail (top-level fullbody_repair_prompt) is the same fixed instruction for every 'full'-framed job -- it is a detail-restoration touch-up on a tight face crop, not a scene description, so it does not vary by row the way face/body.identity + row do. Same style as anchor-prompts.yaml's edit.constraint_clause."
   },
+  "fullbody_repair_prompt": "Restore natural facial detail and sharp focus on the face only, closely matching the reference face. Do not alter facial features, skin tone, eye color, hair color, hair texture, expression, or pose.",
   "face": {
-    "identity": "jet-black hair, shoulder length and parted in the middle, dark brown eyes, a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, fair skin with visible pores and texture, a sharp black liner line drawn along the upper lash and flicked out past the corner, long defined lashes, straight dark brows brushed flat, soft blush high on the cheek, a soft pink lip with a wet shine, ",
+    "identity": "jet-black hair, shoulder length and parted in the middle, dark brown eyes, a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, fair skin with visible pores, fine vellus hair, and natural micro-texture, no retouching, a sharp black liner line drawn along the upper lash and flicked out past the corner, long defined lashes, straight dark brows brushed flat, soft blush high on the cheek, a soft pink lip with a wet shine, ",
     "rows": [
       "DSLR photograph capturing a straight-on frontal view of her face, eyes locked directly on the lens, against a plain white wall.",
       "DSLR photograph, three-quarter view of her face, looking towards the camera, against a plain white wall.",
@@ -30,23 +33,23 @@
     ]
   },
   "body": {
-    "identity": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible texture, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, ",
+    "identity": "a woman in her early twenties, about twenty-one, with an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, slim with an ordinary adult figure, jet-black hair to the shoulders, fair skin with visible pores, fine vellus hair, and natural micro-texture, no retouching, wearing a fitted black corset top and high-waisted black shorts, both fully opaque and intact, thin silver chains layered at the throat with a delicate cross pendant, ",
     "rows": [
-      "candid medium shot of her upper torso from the front, arms hanging loosely at her sides, natural skin texture with visible pores, against a plain white wall background.",
-      "candid three-quarter view from the right, soft side lighting creating subtle shadows on the left side of the body, looking directly at the camera, against a clean white wall.",
-      "Hyperrealistic three-quarter view from the left front, looking directly at the lens with a slight smirk, natural skin imperfections visible, against a clean white wall background.",
-      "DSLR photo capturing her upper body in profile facing right, arms crossed over the chest, soft side lighting creating shadows on the opposite side, against a plain white wall.",
-      "Photorealistic rear view of the upper body, standing straight with the head turned slightly to the right, against a plain white wall.",
-      "Photorealistic angled shot from behind and above, looking down at the back of the shoulders and upper spine, head turned to look over the left shoulder, hair falling slightly forward, against a plain white wall.",
-      "Ultra-realistic medium shot framing the torso from mid-thigh to neck, standing straight, hands tucked into the pockets, natural posture, skin texture detailed, against a stark white wall background.",
-      "Hyperrealistic three-quarter rear view from the right, looking back over the shoulder at the camera, against a clean white wall.",
-      "DSLR photograph capturing a low-angle shot framing the hips and thighs, standing with weight shifted to one leg to create natural asymmetry, against a plain white wall.",
-      "Photorealistic profile view from the left rear, the torso twisted slightly toward the camera, arms hanging naturally, against a plain white wall background.",
-      "Hyperrealistic shot from directly behind at waist height, soft overhead lighting to reduce harsh shadows, against a clean white wall.",
-      "Ultra-realistic rear view from a high angle looking down, standing straight with arms crossed behind the back, against a stark white wall.",
-      "DSLR photo capturing a low-angle shot from behind, looking up at the lower back, emphasising posture and vertical lines, against a plain white wall.",
-      "Photorealistic shot of her walking away from the camera, mid-stride, capturing natural movement, motion blur on the feet, sharp focus on the torso, against a plain white wall background.",
-      "Photorealistic shot of her lying on her side, top leg bent and resting on the bottom leg, soft natural light from the window direction, against a plain white wall background."
+      {"text": "Candid half-body shot from the waist up, face clearly visible, arms hanging loosely at her sides, natural skin texture with visible pores, against a plain white wall background.", "framing": "half"},
+      {"text": "Candid three-quarter half-body view from the right, framed from the waist up, soft side lighting creating subtle shadows on the left side of the body, looking directly at the camera, against a clean white wall.", "framing": "half"},
+      {"text": "Hyperrealistic three-quarter half-body view from the left front, framed from the waist up, looking directly at the lens with a slight smirk, natural skin imperfections visible, against a clean white wall background.", "framing": "half"},
+      {"text": "DSLR photo capturing her half-body from the waist up in profile facing right, arms crossed over the chest, soft side lighting creating shadows on the opposite side, against a plain white wall.", "framing": "half"},
+      {"text": "Photorealistic rear view of the upper body, standing straight with the head turned slightly to the right, against a plain white wall.", "framing": "full"},
+      {"text": "Photorealistic angled half-body shot from behind and above, framed from the waist up, looking down at the back of the shoulders and upper spine, head turned to look over the left shoulder, hair falling slightly forward, against a plain white wall.", "framing": "half"},
+      {"text": "Ultra-realistic medium shot framing the torso from mid-thigh to neck, standing straight, hands tucked into the pockets, natural posture, skin texture detailed, against a stark white wall background.", "framing": "full"},
+      {"text": "Hyperrealistic three-quarter rear half-body view from the right, framed from the waist up, looking back over the shoulder at the camera, against a clean white wall.", "framing": "half"},
+      {"text": "DSLR photograph capturing a low-angle shot framing the hips and thighs, standing with weight shifted to one leg to create natural asymmetry, against a plain white wall.", "framing": "full"},
+      {"text": "Photorealistic half-body profile view from the left rear, framed from the waist up, the torso twisted slightly toward the camera, arms hanging naturally, against a plain white wall background.", "framing": "half"},
+      {"text": "Hyperrealistic half-body shot from directly behind, framed from the waist up, soft overhead lighting to reduce harsh shadows, against a clean white wall.", "framing": "half"},
+      {"text": "Ultra-realistic half-body rear view from a high angle looking down, framed from the waist up, standing straight with arms crossed behind the back, against a stark white wall.", "framing": "half"},
+      {"text": "DSLR photo capturing a low-angle shot from behind, looking up at the lower back, emphasising posture and vertical lines, against a plain white wall.", "framing": "full"},
+      {"text": "Photorealistic shot of her walking away from the camera, mid-stride, capturing natural movement, motion blur on the feet, sharp focus on the torso, against a plain white wall background.", "framing": "full"},
+      {"text": "Photorealistic half-body shot of her lying on her side, framed from the waist up, top leg bent and resting on the bottom leg, soft natural light from the window direction, against a plain white wall background.", "framing": "half"}
     ]
   }
 }

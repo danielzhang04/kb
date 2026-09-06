@@ -17,7 +17,7 @@ HERE = Path(__file__).resolve().parent
 PERSONA_MODULE = HERE / "persona.py"
 TRAINING_KEYS = {
     "trigger", "base_arch", "steps", "save_every", "caption_mode",
-    "pod_class", "price_ceiling_usd_per_hour",
+    "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
 }
 DEFAULT_TRAINING = {
     "trigger": None,
@@ -27,6 +27,10 @@ DEFAULT_TRAINING = {
     "caption_mode": "provided",
     "pod_class": "l40s",
     "price_ceiling_usd_per_hour": 1.30,
+    # Track-2 Task B1 (D26): null by default -- enabling the Qwen-edit skin LoRA on the
+    # full-body second pass requires a single-cell live A/B check first (r22 §3's base-model
+    # caveat: the card demonstrates Qwen-Image-Edit-2509, not our 2511 pipeline).
+    "skin_lora": None,
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_CAPTION_MODES = {"provided", "auto", "single_word"}
@@ -96,6 +100,12 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
         )
     if not isinstance(config["pod_class"], str) or not config["pod_class"].strip():
         raise TrainingConfigError("persona.training.pod_class must be a non-empty string")
+    if config["skin_lora"] is not None and (
+        not isinstance(config["skin_lora"], str) or not config["skin_lora"].strip()
+    ):
+        raise TrainingConfigError(
+            "persona.training.skin_lora must be a non-empty string key or null"
+        )
     price = config["price_ceiling_usd_per_hour"]
     if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
         raise TrainingConfigError(

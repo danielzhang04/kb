@@ -121,6 +121,22 @@ def verify_model_pin(model: dict[str, Any]) -> list[str]:
     return []
 
 
+def _stage_models(entry: dict[str, Any]) -> list[dict[str, Any]]:
+    """A `pins.pins` entry is normally the flat `{"models": [...]}` shape every
+    pod-class stage uses. `skin_loras` (Track-2 Task B1, D26) is a *keyed variant group*
+    instead -- `{<key>: {"model": {...}, "licence": ..., ...}}`, one entry per optional
+    LoRA a persona can name -- since there is no single fixed "stage" of models to
+    bootstrap, only named options a persona opts into. Recognize that shape too, so a
+    keyed group is not silently skipped by `.get("models")` returning nothing."""
+    if isinstance(entry.get("models"), list):
+        return list(entry["models"])
+    models: list[dict[str, Any]] = []
+    for value in entry.values():
+        if isinstance(value, dict) and isinstance(value.get("model"), dict):
+            models.append(value["model"])
+    return models
+
+
 def verify_pins(
     pins: dict[str, Any], *, stages: list[str] | None = None,
 ) -> dict[str, list[str]]:
@@ -136,9 +152,8 @@ def verify_pins(
 
     results: dict[str, list[str]] = {}
     for stage in selected:
-        models = all_pins[stage].get("models") or []
         problems: list[str] = []
-        for model in models:
+        for model in _stage_models(all_pins[stage]):
             problems.extend(verify_model_pin(model))
         if problems:
             results[stage] = problems

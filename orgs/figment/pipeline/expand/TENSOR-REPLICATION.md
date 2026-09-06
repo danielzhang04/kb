@@ -61,6 +61,8 @@ with the short identity string only. 15 + 15 = ~30 images from 2 photos.
 - **D9 — custom-node set.** Kept: RES4LYF, Impact-Pack, Impact-Subpack, FaceAnalysis. Dropped: Comfyroll
   (D8), rgthree and SeedVR2 (no node of theirs appears in the graph). **Added: KJNodes** — the module-10
   installer omits it although the graph needs `ImageResizeKJv2`; pin from `krea2_model_installer.bat`.
+  *(Correction, D24: Impact-Subpack was kept here on the strength of the package's own installer, but no
+  node in either dataset workflow ever used a Subpack `class_type` — see D24 below, which removes it.)*
 - **D10 — one SaveImage, selected per job.** Both their output nodes take the harness-forced
   `filename_prefix`, so a two-image job's `_01`/`_02` would follow ComfyUI's execution order, not face-then-body.
 - **D11 — node commits recorded, not enforced.** The installer checks out pinned SHAs; `runpod_run.py`
@@ -193,6 +195,55 @@ verbatim in `train/tensor-pins.yaml` under `pins.anchor` (review HIGH-1: the fou
 committed were wrong — every model download would have failed at bootstrap; corrected against a live
 `x-linked-etag` HEAD, and `train/verify_pins.py` now checks this automatically as a `figment_train.py plan`
 preflight); `pins.anchor_edit` is `pins.dataset` reused with one deviation, D23.
+
+## Module 10 → dataset stage (Track-2 Task B1)
+
+Half-body framing for the raw dataset cells, a face-repair second pass for the full-body ones, a
+skin-texture clause, and the Impact-Subpack removal D23 deferred from Phase A. Continuing the
+D-numbering above:
+
+- **D24** — `ComfyUI-Impact-Subpack` removed from `pins.dataset.custom_nodes` (the deferred half of D23:
+  Phase A removed it from `pins.anchor_edit` only, since `pins.dataset` is where it actually originated).
+  Confirmed again directly on the live workflow files
+  (`py -3 -c "import json,glob; ..."` over `expand/workflows/tensor_dataset*_api.json`): the only Impact
+  class either graph uses is `ImpactImageBatchToImageList`, which lives in the base `ComfyUI-Impact-Pack`.
+  It is the exact exposure Risk #1 and r22 §5 warn about — the bootstrap `pip install`s each node's
+  `requirements.txt`, and the Subpack is the component that pulls `ultralytics` and `.pt` YOLO weights.
+  Removed; never re-add it.
+- **D25** — full-body cells (`body.rows[i].framing == "full"`, 5 of the 15 body rows: wide, low-angle, and
+  walking framings) get a module-04-style face-repair second pass in-graph
+  (`expand/workflows/tensor_dataset_fullbody_api.json`, new nodes `950`-`958`: `FaceBoundingBox` on the
+  just-generated cell → `ImageResizeKJv2` to 1024² → a second small Qwen-Image-Edit-Plus touch-up at
+  **denoise 0.23** on the same Lightning-LoRA model chain (node `66`) the graph's own first pass uses →
+  `ImageScale` back to the crop's native size → `ImageCompositeMasked` pasted back onto the full-frame
+  decode). This is our mitigation for `identity-spec.md`'s "Rule for expansion" finding (a full-frame swap
+  reads mask-like when the face is small at native scale) applied to the *dataset* stage, not a port — the
+  package has no equivalent. The other 10 body rows are reworded ("half" framing, no wider than mid-thigh,
+  face reading large) instead of repaired after the fact — repair-in-graph is reserved for the framings
+  that cannot be reworded away from being wide. No new model or custom-node pin: the repair tail reuses
+  `pins.dataset`'s own models (Qwen-Image-Edit-2511 stack) and custom nodes (`ComfyUI_FaceAnalysis` for
+  `FaceBoundingBox`, `ComfyUI-KJNodes` for `ImageResizeKJv2`; every other new node is core ComfyUI).
+- **D26** — `training.skin_lora` (persona.yaml, default `null`) may name a key of
+  `pins.skin_loras` (currently only `qwen-edit-skin`, `tlennon-ie/qwen-edit-skin`,
+  Apache-2.0, r22 §3) to add a `LoraLoader` at strength 0.6 between node `89` (the Lightning LoRA) and
+  node `66` (`ModelSamplingAuraFlow`) on the Qwen-Image-Edit pass. Left `null` for creator-001: the card
+  demonstrates Qwen-Image-Edit-**2509**, not our 2511 pipeline, and r22 could not confirm 2511
+  compatibility. Enabling it requires a single-cell live A/B check first (face row 1, LoRA on vs off, same
+  seed, compared at full resolution by the operator) before it is turned on for a real dataset run.
+
+### Skin-texture clause and framing policy (module 10 → dataset stage)
+
+Per r21 Q2 (2511 "plastic skin" is a chronic, named complaint), `face.identity` and `body.identity` in
+`expand/templates/tensor-dataset-prompts.yaml` both now carry, verbatim: *"skin with visible pores, fine
+vellus hair, and natural micro-texture, no retouching"* — replacing the weaker "fair skin with visible
+pores and texture" / "fair skin with visible texture" fragments so the strings do not double up. Every
+`body.rows` entry is now `{"text", "framing": "half"|"full"}` (`face.rows` stay plain strings — they are
+already close framings). `_dataset_manifests` (`figment_train.py`) partitions the 15 face rows + 10 half
+body rows (25 cells) across three as-equal-as-possible shards on the unmodified `tensor_dataset_v2_api.json`
+workflow, and the 5 full body rows into one `<id>-tensor-dataset-fullbody.yaml` manifest on
+`tensor_dataset_fullbody_api.json` (new `dataset_fullbody` pod-class stage: `readiness 2700`,
+`job_timeout_seconds 600`, `max_minutes 108`; `2700 + 600×5 + 300 = 6000 s` fits with headroom for a
+future on-pod captioning artifact). 30 cells total, same as before the split.
 
 ## Open risks to check on the first pod, before committing the other two shards
 

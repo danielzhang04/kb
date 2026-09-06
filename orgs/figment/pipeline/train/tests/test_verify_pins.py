@@ -148,6 +148,36 @@ def test_stage_filter_only_checks_the_selected_stage(vp, monkeypatch):
     assert vp.verify_pins(pins, stages=["anchor"]) == {}
 
 
+def test_keyed_variant_group_pin_is_verified_like_a_flat_stage(vp, monkeypatch):
+    """Track-2 Task B1 (D26): `pins.skin_loras` is a *keyed* group -- one named optional
+    LoRA per key, each `{"model": {...}}` -- not the flat `{"models": [...]}` shape every
+    other stage uses. A stage lookup that only checks `.get("models")` would silently skip
+    it (report zero problems without ever calling `head_etag`); it must instead be
+    checked exactly like any other pin."""
+    model = _model(repo_id="tlennon-ie/qwen-edit-skin", filename="qwen-edit-skin.safetensors")
+    pins = {
+        "schema": "figment/tensor-pins@1",
+        "pins": {"skin_loras": {"qwen-edit-skin": {"model": model, "licence": "apache-2.0"}}},
+    }
+    calls = []
+
+    def fake_head(url, *, timeout=30.0):
+        calls.append(url)
+        return 302, {"x-linked-etag": f'"{model["sha256"]}"', "x-repo-commit": model["revision"]}
+
+    monkeypatch.setattr(vp, "head_etag", fake_head)
+    assert vp.verify_pins(pins, stages=["skin_loras"]) == {}
+    assert calls == [vp._pin_url(model)]
+
+    # And a real mismatch on the keyed model must still be caught, not skipped.
+    def wrong_etag(url, *, timeout=30.0):
+        return 302, {"x-linked-etag": '"' + "0" * 64 + '"', "x-repo-commit": model["revision"]}
+
+    monkeypatch.setattr(vp, "head_etag", wrong_etag)
+    problems = vp.verify_pins(pins, stages=["skin_loras"])
+    assert "skin_loras" in problems and "sha256 mismatch" in problems["skin_loras"][0]
+
+
 def test_missing_pin_field_is_reported_without_a_network_call(vp, monkeypatch):
     def _unreachable(url, **kw):
         raise AssertionError("head_etag must not be called for a structurally invalid pin")

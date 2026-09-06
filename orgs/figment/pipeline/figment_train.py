@@ -35,6 +35,7 @@ EXPAND_DIR = HERE / "expand"
 PINS_PATH = TRAIN_DIR / "tensor-pins.yaml"
 PROMPTS_PATH = EXPAND_DIR / "templates" / "tensor-dataset-prompts.yaml"
 WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_v2_api.json"
+FULLBODY_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_fullbody_api.json"
 ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
 ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
 AI_TEMPLATE_PATH = TRAIN_DIR / "ai-toolkit-krea2.yaml.template"
@@ -44,6 +45,7 @@ TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
 BUILD_SET_MODULE = TRAIN_DIR / "build_training_set.py"
 QA_MODULE = HERE / "qa_stamp.py"
+SCORE_CELLS_MODULE = HERE / "score_cells.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
@@ -84,9 +86,14 @@ STAGE_PIN_PROFILES = {
     "tester": ("tester",),
 }
 SHARD_NOTES = (
-    "face angles, template rows 1-10 of 15",
-    "face angles, template rows 11-15 of 15, then body poses, template rows 1-5 of 15",
-    "body poses, template rows 6-15 of 15",
+    "face-row and half-body-row cells (framing: half), part 1 of 3",
+    "face-row and half-body-row cells (framing: half), part 2 of 3",
+    "face-row and half-body-row cells (framing: half), part 3 of 3",
+)
+FULLBODY_SHARD_NOTE = (
+    "full-body-row cells (framing: full) routed through the face-repair second pass "
+    "(D25) on tensor_dataset_fullbody_api.json -- wide/low-angle/walking framings where "
+    "the face would otherwise read too small at native scale"
 )
 
 
@@ -120,6 +127,10 @@ def _build_set_module():
 
 def _qa_module():
     return _load_module("_figment_train_qa_stamp", QA_MODULE)
+
+
+def _score_cells_module():
+    return _load_module("_figment_train_score_cells", SCORE_CELLS_MODULE)
 
 
 def _pod_runner_module():
@@ -361,7 +372,29 @@ def _generalized_dataset_workflow(persona: dict, prompts: dict[str, Any]) -> dic
     return workflow
 
 
+FULLBODY_OUTPUT_NODE = "958"
+
+
+def _chunks(items: list[Any], count: int) -> list[list[Any]]:
+    """Split `items` into `count` as-equal-as-possible contiguous chunks."""
+    size, extra = divmod(len(items), count)
+    chunks: list[list[Any]] = []
+    start = 0
+    for index in range(count):
+        take = size + (1 if index < extra else 0)
+        chunks.append(items[start:start + take])
+        start += take
+    return chunks
+
+
 def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]]:
+    """Build every face + body job, each tagged with its own `framing` ("half"|"full",
+    Track-2 Task B1/D24-D25). Face rows are always plain strings (already close framings,
+    never routed to the fullbody face-repair pass); body rows are now `{"text",
+    "framing"}` objects. A "full" body job's `832`/`images` substitution points at the
+    fullbody workflow's face-repair composite output instead of the raw refine decode, so
+    the same job dict works unchanged whichever manifest (`_dataset_manifests`) it lands in.
+    """
     short = _creator_output_code(persona["id"])
     jobs: list[dict[str, Any]] = []
     branches = (
@@ -370,15 +403,30 @@ def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]
     )
     for label, prompt_node, image_node, seed_node, outer_seed, block in branches:
         for index, row in enumerate(block["rows"], start=1):
+            if isinstance(row, dict):
+                text, framing = row["text"], row["framing"]
+            else:
+                text, framing = row, "half"
+            output_node = FULLBODY_OUTPUT_NODE if framing == "full" else image_node
+            substitutions = [
+                {"node_id": "832", "field": "images", "value": [output_node, 0]},
+                {"node_id": seed_node, "field": "seed", "value": 1098688918602660},
+                {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + text},
+            ]
+            if framing == "full":
+                # D25: the face-repair tail's own TextEncodeQwenImageEditPlus (node 952)
+                # needs its placeholder prompt substituted too -- a fixed instruction, not
+                # a per-row scene description (see fullbody_repair_prompt_note).
+                substitutions.append({
+                    "node_id": "952", "field": "prompt",
+                    "value": prompts["fullbody_repair_prompt"],
+                })
             jobs.append({
                 "seed": outer_seed,
                 "output_name": f"{short}-tds-{label}{index:02d}",
                 "expected_images": 1,
-                "substitutions": [
-                    {"node_id": "832", "field": "images", "value": [image_node, 0]},
-                    {"node_id": seed_node, "field": "seed", "value": 1098688918602660},
-                    {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + row},
-                ],
+                "framing": framing,
+                "substitutions": substitutions,
             })
     return jobs
 
@@ -386,11 +434,26 @@ def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]
 def _dataset_manifests(
     persona: dict, training: dict, pins: dict, prompts: dict[str, Any],
 ) -> list[dict[str, Any]]:
+    """Three shards of face + half-body-framed cells on the v2 workflow, plus one
+    `fullbody` manifest of full-body-framed cells on the face-repair workflow (Track-2
+    Task B1). `full` cells are never mixed into the v2 shards -- the repair tail only
+    exists in `tensor_dataset_fullbody_api.json`."""
     jobs = _dataset_jobs(persona, prompts)
+    half_jobs: list[dict[str, Any]] = []
+    full_jobs: list[dict[str, Any]] = []
+    for job in jobs:
+        framing = job.pop("framing")
+        (full_jobs if framing == "full" else half_jobs).append(job)
     references = [Path(value).name for value in persona["identity"]["references"]]
-    manifests = []
-    for index in range(3):
-        manifest = {
+    upload = {
+        "files": [f"_uploads/{persona['id']}/{name}" for name in references],
+        "subfolder": persona["id"],
+        "type": "input",
+        "overwrite": True,
+    }
+    manifests: list[dict[str, Any]] = []
+    for index, shard_jobs in enumerate(_chunks(half_jobs, 3)):
+        manifests.append({
             "_replicates": REPLICATION_NOTE,
             "_shard": SHARD_NOTES[index],
             "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
@@ -399,16 +462,41 @@ def _dataset_manifests(
             "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
             "workflow": "../workflows/tensor_dataset_v2_api.json",
             "seed_fields": ["seed"],
-            "uploads": [{
-                "files": [f"_uploads/{persona['id']}/{name}" for name in references],
-                "subfolder": persona["id"],
-                "type": "input",
-                "overwrite": True,
-            }],
-            "jobs": jobs[index * 10:(index + 1) * 10],
-        }
-        manifests.append(manifest)
+            "uploads": [dict(upload)],
+            "jobs": shard_jobs,
+        })
+    manifests.append({
+        "_replicates": REPLICATION_NOTE,
+        "_shard": FULLBODY_SHARD_NOTE,
+        "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
+        **_pod_base(pins, training["pod_class"], "dataset_fullbody"),
+        # Review-precedent D23 (anchor_edit): the fullbody manifest reuses the dataset
+        # profile's own models/custom_nodes verbatim -- the repair tail (FaceBoundingBox,
+        # ImageResizeKJv2, core KSampler/VAEEncode/VAEDecode/ImageScale/
+        # ImageCompositeMasked/ConditioningZeroOut) needs no model or node this profile
+        # doesn't already carry.
+        "models": deepcopy(pins["pins"]["dataset"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
+        "workflow": "../workflows/tensor_dataset_fullbody_api.json",
+        "seed_fields": ["seed"],
+        "uploads": [dict(upload)],
+        "jobs": full_jobs,
+    })
     return manifests
+
+
+def _fullbody_dataset_workflow(dataset_workflow: dict[str, Any]) -> dict[str, Any]:
+    """Graft the fullbody face-repair tail (nodes 950-958) onto an already
+    persona-generalized dataset workflow dict, so the copy `_copy_support_files` writes
+    into the plan is persona-specific (references, identity clauses) the same way the v2
+    workflow copy is -- never a second, independently-substituted read of the source
+    file."""
+    workflow = deepcopy(dataset_workflow)
+    tail = _read_json(FULLBODY_WORKFLOW_PATH)
+    for node_id in ("950", "951", "952", "953", "954", "955", "956", "957", "958"):
+        workflow[node_id] = deepcopy(tail[node_id])
+    workflow["832"]["inputs"]["images"] = ["958", 0]
+    return workflow
 
 
 def _anchor_manifests(
@@ -709,6 +797,7 @@ def _render_training_config(trigger: str, steps: int, save_every: int) -> dict[s
 
 def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict) -> dict[str, Any]:
     expand_workflow = out / "expand" / "workflows" / WORKFLOW_PATH.name
+    fullbody_workflow = out / "expand" / "workflows" / FULLBODY_WORKFLOW_PATH.name
     anchor_workflow = out / "expand" / "workflows" / ANCHOR_WORKFLOW_PATH.name
     expand_prompts = out / "expand" / "templates" / PROMPTS_PATH.name
     # Review LOW-10: the anchor prompts were the one thing `_copy_support_files` didn't
@@ -717,6 +806,7 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     expand_anchor_prompts = out / "expand" / "templates" / ANCHOR_PROMPTS_PATH.name
     train_runs = out / "train" / "runs"
     _write_json(expand_workflow, workflow)
+    _write_json(fullbody_workflow, _fullbody_dataset_workflow(workflow))
     _write_json(anchor_workflow, _read_json(ANCHOR_WORKFLOW_PATH))
     _write_json(expand_prompts, prompts)
     _write_json(expand_anchor_prompts, _generalized_anchor_prompts(persona))
@@ -739,6 +829,7 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     return {
         "anchors": anchor_paths,
         "dataset_workflow": _relative(expand_workflow, out),
+        "dataset_fullbody_workflow": _relative(fullbody_workflow, out),
         "dataset_prompts": _relative(expand_prompts, out),
         "anchor_prompts": _relative(expand_anchor_prompts, out),
     }
@@ -840,7 +931,7 @@ def build_plan(
             paths = [
                 out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
                 for n in range(1, 4)
-            ]
+            ] + [out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml"]
         elif current == "smoke":
             manifests = [_train_manifest(persona, training, pins, smoke=True)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train-smoke.yaml"]
@@ -1189,9 +1280,34 @@ def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[s
     return images
 
 
+def _advisory_annotation(advisory_row: dict[str, Any] | None) -> str:
+    """Track-2 Task B3: render one cell's advisory numbers as
+    `cos <x.xxx> · Δage <±y.y> · lap <n> · clip <p%>`, `n/a` for any field that is
+    `None` or the row is missing entirely (a scorer outage, or advisory scoring never ran).
+    Advisory-only -- this is annotation text, never a decision."""
+    if not advisory_row:
+        return ""
+
+    def _fmt(value: Any, template: str) -> str:
+        return template.format(value) if isinstance(value, (int, float)) else "n/a"
+
+    cos = _fmt(advisory_row.get("anchor_cosine"), "{:.3f}")
+    age = _fmt(advisory_row.get("age_delta_years"), "±{:.1f}")
+    lap = _fmt(advisory_row.get("laplacian_variance"), "{:.0f}")
+    clip = _fmt(advisory_row.get("clipped_highlight_fraction"), "{:.1%}")
+    return f"cos {cos} · Δage {age} · lap {lap} · clip {clip}"
+
+
 def _grading_html(
-    creator_id: str, stage: str, anchors: list[Path], images: list[dict[str, Any]],
+    creator_id: str,
+    stage: str,
+    anchors: list[Path],
+    images: list[dict[str, Any]],
+    advisory: dict[str, Any] | None = None,
 ) -> str:
+    advisory_by_id = {
+        row["image_id"]: row for row in (advisory or {}).get("rows", [])
+    }
     anchor_cards = "\n".join(
         f'<figure><a href="{html.escape(path.as_uri())}"><img loading="eager" '
         f'src="{html.escape(path.as_uri())}" alt="anchor {html.escape(path.name)}"></a>'
@@ -1202,7 +1318,13 @@ def _grading_html(
         f'<figure><a href="{html.escape(Path(row["path"]).as_uri())}">'
         f'<img loading="lazy" src="{html.escape(Path(row["path"]).as_uri())}" '
         f'alt="{html.escape(row["image_id"])}"></a>'
-        f'<figcaption>{html.escape(row["image_id"])}</figcaption></figure>'
+        f'<figcaption>{html.escape(row["image_id"])}'
+        + (
+            f'<br><span class="advisory">{html.escape(annotation)}</span>'
+            if (annotation := _advisory_annotation(advisory_by_id.get(row["image_id"])))
+            else ""
+        )
+        + "</figcaption></figure>"
         for row in images
     )
     return f"""<!doctype html>
@@ -1214,9 +1336,12 @@ body{{font:16px system-ui;background:#111;color:#eee;margin:24px}}
 h1,h2{{margin:0 0 16px}}p{{color:#bbb}}.grid{{display:grid;grid-template-columns:repeat(auto-fit,minmax(360px,1fr));gap:24px}}
 figure{{margin:0;background:#1b1b1b;padding:12px;border-radius:8px}}img{{display:block;width:100%;height:auto;background:#222}}figcaption{{padding-top:8px;font-family:ui-monospace,monospace}}
 .anchors{{border:2px solid #8ab4f8;padding:16px;margin-bottom:28px}}
+.advisory{{color:#888;font-size:0.85em}}
+.advisory-note{{color:#bbb;font-style:italic}}
 </style></head><body>
 <h1>{html.escape(creator_id)} · {html.escape(stage)}</h1>
 <p>full-resolution source files: click any image to inspect its original pixels. Rule beside the anchors; never grade a thumbnail alone.</p>
+<p class="advisory-note">advisory only — never keeps or culls</p>
 <section class="anchors"><h2>Identity anchors</h2><div class="grid">{anchor_cards}</div></section>
 <main><h2>Cells</h2><div class="grid">{cells}</div></main>
 </body></html>
@@ -1235,6 +1360,18 @@ def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
     images = _grading_images(plan, root, stage)
     grade_dir = root / "grade" / stage
     grade_dir.mkdir(parents=True, exist_ok=True)
+    # Track-2 Task B3: advisory identity/age/quality annotations, wrapped so a scorer
+    # outage (missing model weights, no network, a bad anchor file) never blocks the
+    # gate -- `score_cells.score` itself is advisory-only and must never keep or cull.
+    advisory: dict[str, Any] | None = None
+    try:
+        advisory = _score_cells_module().score(images, anchors, grade_dir)
+    except Exception as exc:
+        advisory = None
+        _write_json(
+            grade_dir / "advisory-error.json",
+            {"error": f"{type(exc).__name__}: {exc}"},
+        )
     manifest_path = grade_dir / "grading-manifest.json"
     template_path = grade_dir / "rulings.template.json"
     page_path = grade_dir / "board.html"
@@ -1257,7 +1394,7 @@ def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
         } for row in images],
     })
     page_path.write_text(
-        _grading_html(creator_id, stage, anchors, images), encoding="utf-8",
+        _grading_html(creator_id, stage, anchors, images, advisory), encoding="utf-8",
     )
     return {
         "page": str(page_path),

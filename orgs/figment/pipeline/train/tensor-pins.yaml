@@ -35,6 +35,15 @@
           "job_timeout_seconds": 450,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
         },
+        "dataset_fullbody": {
+          "max_minutes": 108,
+          "container_disk_gb": 100,
+          "volume_gb": 0,
+          "avoid_machine_hosts": ["qvf79yutw3t2"],
+          "readiness_timeout_seconds": 2700,
+          "job_timeout_seconds": 600,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "python main.py"}
+        },
         "smoke": {
           "max_minutes": 105,
           "container_disk_gb": 80,
@@ -110,10 +119,17 @@
       "custom_nodes": [
         {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
         {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"},
-        {"name": "ComfyUI-Impact-Subpack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Subpack.git", "installer_pin": "50c7b71a6a224734cc9b21963c6d1926816a97f1"},
         {"name": "ComfyUI_FaceAnalysis", "git_url": "https://github.com/cubiq/ComfyUI_FaceAnalysis.git", "installer_pin": "8846653446a6b13582da11793faf950325a398e0"},
         {"name": "ComfyUI-KJNodes", "git_url": "https://github.com/kijai/ComfyUI-KJNodes.git", "installer_pin": "8692bc8ef8beaaeee80fd52ba80477dc9e61547b"}
       ]
+    },
+    "skin_loras": {
+      "qwen-edit-skin": {
+        "model": {"repo_id": "tlennon-ie/qwen-edit-skin", "filename": "qwen-edit-skin.safetensors", "revision": "60fb653d46045074449f45068d91ce27f11eb1ca", "sha256": "e4efd5ee1e5555eb438c214aa0ee6009f0215f13dbe817128615909871eed4b1", "destination_dir": "/workspace/ComfyUI/models/loras"},
+        "licence": "apache-2.0 (model card header, r22 §3)",
+        "base_note": "card demonstrates Qwen-Image-Edit-2509 only; 2511 compat UNVERIFIED",
+        "strength": 0.6
+      }
     },
     "train": {
       "models": [

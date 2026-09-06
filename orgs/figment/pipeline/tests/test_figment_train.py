@@ -19,10 +19,14 @@ MODULE_PATH = PIPELINE / "figment_train.py"
 POD_RUNNER = PIPELINE / "pod" / "runpod_run.py"
 
 CURRENT_MANIFESTS = {
-    "dataset": [
-        PIPELINE / "expand" / "runs" / f"creator-001-tensor-dataset-shard-{n:02d}.yaml"
-        for n in range(1, 4)
-    ],
+    # Track-2 Task B1 removed "dataset" from this table: the framing split (D24/D25),
+    # the skin-texture clause, and the dropped Impact-Subpack pin all changed what the
+    # generator produces for the dataset stage, so it no longer byte-reproduces the
+    # hand-written shard-01/02/03 files below (which also predate the fourth "fullbody"
+    # manifest). Task E1 replaces this whole reproduction test with a six-stage
+    # residue+dry-run check once the hand-written manifests are retired; until then,
+    # dataset-stage coverage lives in expand/tests/test_tensor_dataset.py and this file's
+    # own creator-002/003 dry-run tests below.
     "smoke": [PIPELINE / "train" / "runs" / "creator-001-tensor-train-smoke.yaml"],
     "train": [PIPELINE / "train" / "runs" / "creator-001-tensor-train.yaml"],
     "tester": [PIPELINE / "train" / "runs" / "creator-001-tensor-tester.yaml"],
@@ -235,9 +239,10 @@ def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
     assert len(tester["jobs"]) == 3, "still one tester job (branch) per checkpoint"
 
     all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
-    # 2 anchor (passport + edit) + 3 dataset shards + smoke + train + tester (figment
-    # Track-2 A2: STAGES gained "anchor", so --stage all now plans it first).
-    assert len(all_runs) == 8
+    # 2 anchor (passport + edit) + 4 dataset manifests (3 shards + fullbody, Track-2 B1)
+    # + smoke + train + tester (figment Track-2 A2: STAGES gained "anchor", so
+    # --stage all now plans it first).
+    assert len(all_runs) == 9
     for index, run in enumerate(all_runs):
         result = subprocess.run(
             [
@@ -276,9 +281,10 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
             assert b"g07" not in payload, path
 
     all_runs = [run for stage in plan["stages"].values() for run in stage["runs"]]
-    # 2 anchor (passport + edit) + 3 dataset shards + smoke + train + tester (figment
-    # Track-2 A2: STAGES gained "anchor", so --stage all now plans it first).
-    assert len(all_runs) == 8
+    # 2 anchor (passport + edit) + 4 dataset manifests (3 shards + fullbody, Track-2 B1)
+    # + smoke + train + tester (figment Track-2 A2: STAGES gained "anchor", so
+    # --stage all now plans it first).
+    assert len(all_runs) == 9
     for index, run in enumerate(all_runs):
         result = subprocess.run(
             [
