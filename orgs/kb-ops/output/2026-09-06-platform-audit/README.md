@@ -29,8 +29,15 @@ no demonstrated need here for Kubernetes, Redis, or a new microservice estate.
 
 ## Read this packet
 
+September 6 follow-on: Daniel requested all capabilities and a pre-build summary.
+Read the [implementation sequence](implementation-sequence.md) for the current
+delivery proposal. It refines the original plan's early vertical/dashboard gates
+and removes silent capability retirement as a default. No implementation has begun.
+
 | Document | Purpose |
 | --- | --- |
+| [Implementation sequence](implementation-sequence.md) | Current pre-build proposal, bounded packages, dashboard journeys and initial scopes |
+| [Design synthesis](synthesis-reports/implementation-prebuild/report.md) | Source briefs, three review perspectives, and disposition of design objections |
 | [Overhaul plan](overhaul-plan.md) | Phases, affected code, acceptance gates, cutover/backout and capability preservation |
 | [Architecture brief](architecture-brief.md) | Desired behavior, design reasoning, assumptions and non-negotiable boundaries |
 | [Execution audit](execution-audit.md) | Store, execution, worker/session, iteration and error-path findings |

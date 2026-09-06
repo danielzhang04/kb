@@ -1,0 +1,6 @@
+KB	../../README.md; ../../overhaul-plan.md; ../../adversarial-review.md; ../../prior-art.md
+N8N	https://github.com/n8n-io/n8n/blob/master/packages/cli/src/commands/worker.ts
+TEMPORAL	https://docs.temporal.io/workflow-execution
+LANGGRAPH	https://docs.langchain.com/oss/python/langgraph/persistence
+PREFECT	https://docs.prefect.io/v3/concepts/work-pools
+ECC	https://github.com/affaan-m/ECC

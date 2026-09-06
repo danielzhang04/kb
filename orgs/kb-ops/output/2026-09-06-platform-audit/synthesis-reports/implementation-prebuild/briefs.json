@@ -1,0 +1,95 @@
+{
+  "goal": "Pre-build implementation design for all KB capabilities and coordinated dashboard",
+  "date": "2026-09-06",
+  "source_policy": "Reuse same-day audit evidence; refresh decision-relevant primary references; user requirements outrank examples; no superiority inferred from source descriptions.",
+  "briefs": [
+    {
+      "id": "KB",
+      "reference": "../../README.md; ../../overhaul-plan.md; ../../adversarial-review.md; ../../prior-art.md",
+      "type": "local audited code and design packet",
+      "accessibility": "accessible",
+      "confidence": "high for cited source behavior; unverified live state",
+      "goal": "Preserve all capabilities while turning the audit into bounded implementation work.",
+      "claims": [
+        "Production composition gaps exist despite passing component tests.",
+        "Existing governance, strict boundary decoders, broker confinement and provenance are useful foundations.",
+        "Whole-document hydration and distributed lifecycle ownership need simplification."
+      ],
+      "sequence": "Contain known failure paths; prove an early isolated vertical; compare runtimes; integrate remaining capabilities; cut over only after parity and restore evidence.",
+      "takeaway": "Use source-backed acceptance, not feature inventories, as the completion criterion.",
+      "writeup": "KB's audit supports simplifying mutable runtime authority while preserving reviewed definitions, content-bound human grants and artifact provenance. The 706 selected passing cases are historical audit evidence, not this design turn's tests or live readiness."
+    },
+    {
+      "id": "N8N",
+      "reference": "https://github.com/n8n-io/n8n/blob/master/packages/cli/src/commands/worker.ts",
+      "type": "primary source code",
+      "accessibility": "source accessible; refreshed queue-mode docs endpoint returned unsupported text/markdown",
+      "confidence": "high for inspected worker code; moving branch unpinned",
+      "goal": "Separate execution capacity and shutdown from dashboard presentation.",
+      "claims": [
+        "Worker code sets queue execution mode, has explicit concurrency and shuts down active executions."
+      ],
+      "sequence": "Configure worker capacity, run queue work, drain active executions on shutdown.",
+      "takeaway": "Borrow a small worker lifecycle contract; adopting n8n wholesale is not necessary.",
+      "writeup": "The inspected worker exposes a concrete capacity and shutdown boundary. KB should prove equivalent lifecycle behavior through its actual composition and broker, without importing n8n's entire infrastructure stack."
+    },
+    {
+      "id": "TEMPORAL",
+      "reference": "https://docs.temporal.io/workflow-execution",
+      "type": "official documentation",
+      "accessibility": "accessible and refreshed",
+      "confidence": "high for documented semantics; suitability unmeasured",
+      "goal": "Challenge the cost of custom recovery machinery.",
+      "claims": [
+        "Workflow event history supports replay and deterministic reconstruction."
+      ],
+      "sequence": "Record workflow progress; replay after interruption; separate deterministic orchestration from external activities.",
+      "takeaway": "Run an identical-workflow candidate comparison before choosing the runtime.",
+      "writeup": "Temporal is a genuine candidate, not just inspiration to recreate its features. Compare recovery correctness, retained custom code, processes, upgrade burden and operator effort. No performance or maintenance advantage is assumed in advance."
+    },
+    {
+      "id": "LANGGRAPH",
+      "reference": "https://docs.langchain.com/oss/python/langgraph/persistence",
+      "type": "official documentation",
+      "accessibility": "accessible and refreshed; durable-execution URL redirects here",
+      "confidence": "high for documented persistence distinction",
+      "goal": "Make agent continuation and memory scopes explicit.",
+      "claims": [
+        "Checkpointers hold thread-scoped state; stores hold cross-thread data.",
+        "In-memory checkpoints do not survive process restart."
+      ],
+      "sequence": "Persist thread checkpoints and separate longer-lived knowledge; define retention and restart behavior.",
+      "takeaway": "Borrow durable waits/checkpoint boundaries, not another platform authority.",
+      "writeup": "Graph checkpointing can help an individual agent workflow. It does not replace platform authorization, worker leases, signed deployment or canonical result publication."
+    },
+    {
+      "id": "PREFECT",
+      "reference": "https://docs.prefect.io/v3/concepts/work-pools",
+      "type": "official documentation",
+      "accessibility": "accessible and refreshed",
+      "confidence": "high for documented pool model",
+      "goal": "Clarify worker capability, capacity and availability in the dashboard.",
+      "claims": [
+        "Work pools separate orchestration from execution infrastructure and expose inherited configuration and limits.",
+        "Only some pool types require a separately run worker."
+      ],
+      "sequence": "Bind deployment to a pool; enforce its capacity and infrastructure contract; report worker/queue availability.",
+      "takeaway": "Use explicit capability and capacity states; do not equate authentication or a running daemon with worker readiness.",
+      "writeup": "KB can adapt the pool boundary into its worker adapters. The goal is an operator-visible and testable contract, not adoption of Prefect's entire deployment system."
+    },
+    {
+      "id": "ECC",
+      "reference": "https://github.com/affaan-m/ECC",
+      "type": "primary repository documentation; cached prior source comparison",
+      "accessibility": "repository accessible and refreshed",
+      "confidence": "high for kit category; integration advantage unmeasured",
+      "goal": "Keep agent roles, skills and handoffs portable and scoped.",
+      "claims": [
+        "ECC packages skills, memory, security and harness configuration across coding-agent runtimes."
+      ],
+      "sequence": "Load relevant instructions and roles; run bounded work; retain reviewed memory and handoff evidence.",
+      "takeaway": "Reuse scoped skills and review practices while keeping durable orchestration elsewhere.",
+      "writeup": "ECC is an agent harness/configuration kit, not a substitute for KB's scheduler or durable runtime. KB already imports related review and session practices; duplication or wholesale installation is unnecessary."
+    }
+  ]
+}

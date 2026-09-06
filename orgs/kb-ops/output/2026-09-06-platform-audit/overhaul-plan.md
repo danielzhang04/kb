@@ -2,6 +2,12 @@
 
 ## 0. Status, decision boundary, and intended outcome
 
+Follow-on direction: Daniel has requested all capabilities and a pre-build summary.
+The companion [implementation sequence](implementation-sequence.md) refines this
+proposal's delivery gates. Earlier default-retirement suggestions below are now
+options requiring a separate human decision, not permission to omit a capability.
+The numbered phases and safety requirements remain the common reference.
+
 This is an architecture and migration plan only.
 
 It authorizes no source change, governance change, deployment, live test, credential access, or production operation.
