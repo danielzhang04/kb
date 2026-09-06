@@ -79,6 +79,7 @@ import {
   listRuns as runReadServiceListRuns, getRunDetail, replayRunEvents, respondHumanRequestRoute,
   type RunReadPort, type ControlReadResult, type EventPage, type RespondPort,
 } from '../services/runReadService.ts';
+import { superviseDetachedAutomaticExecution } from './automaticFailureReporter.ts';
 
 /**
  * P6 W6.2 [P6-C55, design:410]: this route replays an already-approved PROPOSAL SNAPSHOT (never a live
@@ -1727,12 +1728,18 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!ctx.attemptPort || !ctx.runAutomatic) {
       return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, activationGated: true });
     }
-    void ctx.runAutomatic({ subject: owner, runRef, proposal: proposal.value }).catch((error: unknown) => {
-      ctx.controlStore.createHumanRequest(owner, runRef, {
-        kind: 'intervention', title: 'Manager successor needs intervention',
-        prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-      });
-    });
+    superviseDetachedAutomaticExecution(
+      ctx.runAutomatic({ subject: owner, runRef, proposal: proposal.value }),
+      {
+        surface: 'manager-successor', runRef,
+        onRejected: (error: unknown) => {
+          ctx.controlStore.createHumanRequest(owner, runRef, {
+            kind: 'intervention', title: 'Manager successor needs intervention',
+            prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
+          });
+        },
+      },
+    );
     return reply.code(202).send({ ok: true, value: successor.value, replayed: successor.replayed ?? false, starting: true });
     });
   });
@@ -2501,20 +2508,23 @@ async function activateRunUnderOwner(ctx: SurfaceContext, input: {
         },
       };
     }
-    void execution.catch((error: unknown) => {
-      const intervention = ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
-        kind: 'intervention', title: 'Automatic execution needs intervention',
-        prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-      });
-      const current = ctx.controlStore.getRun(ownerSubject, runRef);
-      if (current.ok && ['recovering', 'running'].includes(runLifecycleKind(current.value.run.lifecycle))) {
-        ctx.controlStore.transitionRun(
-          ownerSubject,
-          runRef,
-          current.value.run.version,
-          intervention.ok ? 'waiting-human' : 'interrupted',
-        );
-      }
+    superviseDetachedAutomaticExecution(execution, {
+      surface: 'post-ack-execution', runRef,
+      onRejected: (error: unknown) => {
+        const intervention = ctx.controlStore.createHumanRequest(ownerSubject, runRef, {
+          kind: 'intervention', title: 'Automatic execution needs intervention',
+          prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
+        });
+        const current = ctx.controlStore.getRun(ownerSubject, runRef);
+        if (current.ok && ['recovering', 'running'].includes(runLifecycleKind(current.value.run.lifecycle))) {
+          ctx.controlStore.transitionRun(
+            ownerSubject,
+            runRef,
+            current.value.run.version,
+            intervention.ok ? 'waiting-human' : 'interrupted',
+          );
+        }
+      },
     });
     return { status: 202, body: { ok: true, value: runDto(dispatched.run), starting: true } };
   });
@@ -2598,11 +2608,15 @@ function resumeRunAfterBoundaryAccepted(ctx: SurfaceContext, input: {
   };
   // Fire-and-forget, exactly like the activate route's own `void runAutomatic(...)` handlers: the
   // operator's answer is already durable and its HTTP response must not wait on Manager startup.
-  void activateRunUnderOwner(ctx, { actorSubject, ownerSubject, runRef, activation }).then(
-    (outcome) => {
-      if (outcome.status < 300) return;
-      park(string(outcome.body.error) || 'automatic resume was refused');
+  superviseDetachedAutomaticExecution(
+    activateRunUnderOwner(ctx, { actorSubject, ownerSubject, runRef, activation }),
+    {
+      surface: 'automatic-resume', runRef,
+      onFulfilled: (outcome) => {
+        if (outcome.status < 300) return;
+        park(string(outcome.body.error) || 'automatic resume was refused');
+      },
+      onRejected: (error: unknown) => park(error instanceof Error ? error.message : 'automatic execution adapter failed'),
     },
-    (error: unknown) => park(error instanceof Error ? error.message : 'automatic execution adapter failed'),
   );
 }

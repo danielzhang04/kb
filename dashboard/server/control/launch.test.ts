@@ -41,7 +41,7 @@ describe('automatic execution failure surfacing', () => {
       'operator', 'run-1', new Error('engine exploded'), (line) => lines.push(line),
     )).not.toThrow();
     expect(lines).toEqual([
-      '[launch] intervention write failed for run run-1: invalid control-plane creator attempt generation provenance',
+      '[automatic-execution:approved-launch] detached reporter failed for run run-1',
     ]);
   });
 
@@ -61,7 +61,7 @@ describe('automatic execution failure surfacing', () => {
       throwingStore('hydrate refused'), 'operator', 'run-2', new Error('secret prompt text'),
       (line) => lines.push(line),
     );
-    expect(lines).toEqual(['[launch] intervention write failed for run run-2: hydrate refused']);
+    expect(lines).toEqual(['[automatic-execution:approved-launch] detached reporter failed for run run-2']);
     expect(lines[0]).not.toContain('secret prompt text');
   });
 
@@ -76,7 +76,7 @@ describe('automatic execution failure surfacing', () => {
       refusing, 'operator', 'run-4', new Error('secret prompt text'), (line) => lines.push(line),
     )).not.toThrow();
     expect(lines).toEqual([
-      '[launch] intervention write refused for run run-4: limit: run has too many human requests',
+      '[automatic-execution:approved-launch] detached reporter failed for run run-4',
     ]);
     expect(lines[0]).not.toContain('secret prompt text');
   });
