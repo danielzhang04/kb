@@ -206,3 +206,27 @@ final values.
   and rule the checkpoint (boss recommends 1500 or 1750). Then: module-09 generation pass with the winner
   (`train/runs/creator-001-tensor-gen.yaml`, 12 jobs, ≈ $4.0 ceiling) → stage-5 realism passes → creator-002 fixture run
   through `figment_train.py` as the pipeline acceptance test.
+
+## 2026-09-06 — Track-2 approved, anchor stage ran, ruling: gate before eyes
+
+- Operator graded the Track-1 tester board "kind of close, glossy, reads a lot older, some inconsistent" and ruled: rebuild
+  the pipeline module-for-module as 10sorlabs does unless research shows better, then test on creator-001. Research r20
+  (fidelity audit), r21 (2026 methods), r22 (licence-clean assets), r23 (native MediaPipe nodes), r24 (identity-transfer
+  candidates) committed. Plan v2 `docs/superpowers/plans/2026-09-06-figment-track2-faithful-pipeline.md` (opus, review
+  folded). Phase A (module 03 passport anchor stage) built, reviewed (opus, 4H fixed: wrong sha256 pins → `verify_pins.py`
+  preflight; hardcoded look → `identity.look` in persona.yaml; clothing + framing clauses) and RUN LIVE through
+  `figment_train.py run --stage anchor` (first live use of `run`): 12 passport + 6 g01-edit candidates, $0.61.
+- OPERATOR RULING on that board: "absolutely not even close … our infrastructure isn't working how it's supposed to."
+  Read: creator-001 IS g01; offering fresh in-model faces was a category error; the unsolved core is the
+  reference-to-variation step (every method so far keeps the face loosely and drifts skin plastic / age up); no board may
+  reach the operator without automated gates. Passport-anchor path SHELVED (code kept; plan Phase A gate rewritten).
+- Phase B1+B3 built (half-body-first framing, full-body face-repair pass, skin clause, qwen-edit-skin pin, advisory
+  scorers). Identity gate v1 (`identity_gate.py`, `gate.yaml`) built and CALIBRATED on 95 local images: facenet own-anchor
+  floor 0.79 separates only gross misses (passport 0.23 vs anchors 0.89+); Track-1 cells and Qwen edits score 0.92 — the
+  embedding is blind to the drift the operator sees; ViT age, NIQE, gloss proxy do not separate either. A headless
+  Claude vision judge (`claude -p`, subscription) does: g01 vs tester-1500 → same_person 58, age 23→30, skin 55.
+  `vlm_judge.py` + judge calibration in flight; gate = facenet floor + judge thresholds.
+- Bake-off built (`expand/bakeoff/`): only Qwen-Image-Edit-2511 without Lightning + skin LoRA is licence-runnable (no
+  Z-Image-Edit exists; PuLID FaceNet path still pulls .pt). 18-cell ablation (A: 3 refs + LoRA, B: no LoRA, C: g01 only),
+  ceiling $2.65, WAITS for the judge-backed gate.
+- Spend 2026-09-06: $0.61. Branch `claude/figment` HEAD 595ef03d+.
