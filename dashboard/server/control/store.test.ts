@@ -937,7 +937,8 @@ function completeWorkerSession(store: ControlPlaneStore, sessionRef: string, ver
   return completed.value;
 }
 
-function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store), withCompletedWorkerSession = false) {
+function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerRun(store), withCompletedWorkerSession = false,
+  commits: { baseCommit: string; canonicalCommit: string } = { baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40) }) {
   let detail = store.getRun('alice', created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
   let subject = detail.value.stages.find((stage) => stage.stageId === 'build');
@@ -972,7 +973,7 @@ function commitCheckerSubject(store: ControlPlaneStore, created = createCheckerR
   const input = {
     expectedStageVersion: subject.version, expectedAttemptVersion: currentAttempt.version, expectedGeneration: 1,
     operationKey: `result:${created.run.runRef}:build`, resultHash: 'd'.repeat(64), resultCardRef: subject.canonicalCardRef,
-    baseCommit: 'b'.repeat(40), canonicalCommit: 'a'.repeat(40),
+    baseCommit: commits.baseCommit, canonicalCommit: commits.canonicalCommit,
   };
   const generation = store.recordStageGeneration('alice', subject.stageRef, input);
   if (!generation.ok) throw new Error(generation.detail);
@@ -1053,7 +1054,8 @@ function failCheckerIteration(store: ControlPlaneStore, committed: ReturnType<ty
   return receipt.value;
 }
 
-function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<typeof commitCheckerSubject>) {
+function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<typeof commitCheckerSubject>,
+  baseCommitOverride?: string) {
   const receipt = failCheckerIteration(store, committed);
   const detail = store.getRun('alice', committed.created.run.runRef);
   if (!detail.ok) throw new Error(detail.detail);
@@ -1074,7 +1076,7 @@ function queueCreatorRework(store: ControlPlaneStore, committed: ReturnType<type
     generation.generationRef === currentLoop.activeGenerationRefs[0])!;
   const request = store.recordIterationRequest('alice', currentLoop.iterationLoopRef, {
     expectedLoopVersion: currentLoop.version, routeId: route.routeId, kind: 'rework',
-    inputGenerationRefs: [...currentLoop.activeGenerationRefs], baseCommit: predecessor.canonicalCommit!,
+    inputGenerationRefs: [...currentLoop.activeGenerationRefs], baseCommit: baseCommitOverride ?? predecessor.canonicalCommit!,
     artifactHashes: Object.fromEntries(currentLoop.artifacts.map((artifactId) => [artifactId, predecessor.resultHash!])),
     unresolvedFindingRefs: receipt.findings.map((finding) => finding.findingId),
     preservedInvariants: [], nextAcceptanceCheck: 'Resolve the blocking findings.', instructions: 'Rework the subject.',
@@ -4106,6 +4108,75 @@ describe('durability, crash recovery, and retention', () => {
     reworkAttempt.baseCommit = 'c'.repeat(40);
     writeFileSync(path, `${JSON.stringify(document)}\n`, 'utf8');
     expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane creator attempt generation provenance');
+  });
+
+  // Regression: the hydrate-time durability check sees the WHOLE document, while every write-time check
+  // sees one run's bundle. A creator attempt's pending-request join keys on the LOGICAL stage id, which
+  // repeats across runs, so two concurrent runs each parked on an open rework request used to make the
+  // second run's queued rework attempt resolve its base commit from the FIRST run's request -- a document
+  // every writer accepted and no restart could ever load again (VM crash loop, 2026-09-06).
+  it('loads a restarted document where two runs each hold an open creator rework on the same logical stage', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const runA = commitCheckerSubject(first, createCheckerRun(first, 'alice', 1));
+    queueCreatorRework(first, runA);
+    const runB = commitCheckerSubject(first, createCheckerRun(first, 'alice', 2), false,
+      { baseCommit: 'f'.repeat(40), canonicalCommit: 'e'.repeat(40) });
+    queueCreatorRework(first, runB);
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as {
+      attempts: Array<Record<string, unknown>>; iterationRequests: Array<Record<string, unknown>>;
+    };
+    // Both runs really are in the shape that used to be unloadable: a queued generation-2 attempt each,
+    // and an open rework request each, with base commits that differ between the runs.
+    const reworkAttempts = persisted.attempts.filter((attempt) => attempt.logicalGeneration === 2);
+    expect(reworkAttempts).toHaveLength(2);
+    expect(new Set(reworkAttempts.map((attempt) => attempt.baseCommit)).size).toBe(2);
+    expect(persisted.iterationRequests.filter((request) => request.kind === 'rework')).toHaveLength(2);
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).not.toThrow();
+  });
+
+  // The run-scoping fix above must not blunt the check: a genuinely incoherent base commit in the SECOND
+  // run is still refused at hydrate, and the writer that produced it would have been refused too.
+  it('still fails closed on an incoherent rework base commit when several runs are present', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    queueCreatorRework(first, commitCheckerSubject(first, createCheckerRun(first, 'alice', 1)));
+    const runB = commitCheckerSubject(first, createCheckerRun(first, 'alice', 2), false,
+      { baseCommit: 'f'.repeat(40), canonicalCommit: 'e'.repeat(40) });
+    const requestB = queueCreatorRework(first, runB);
+    const path = join(root, 'control', 'control-plane.json');
+    const document = JSON.parse(readFileSync(path, 'utf8')) as { attempts: Array<Record<string, unknown>> };
+    const reworkAttempt = document.attempts.find((attempt) =>
+      attempt.logicalGeneration === 2 && attempt.runRef === runB.created.run.runRef);
+    if (!reworkAttempt) throw new Error('persisted rework attempt missing');
+    expect(reworkAttempt.baseCommit).toBe(requestB.baseCommit);
+    reworkAttempt.baseCommit = 'c'.repeat(40);
+    writeFileSync(path, `${JSON.stringify(document)}
+`, 'utf8');
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).toThrow('invalid control-plane creator attempt generation provenance');
+  });
+
+  // Writer/hydrate symmetry, stated as a test: the rework request writer re-stamps the queued successor
+  // attempt's base commit from its OWN run's request, so what it persists is exactly what the loader's
+  // (now run-scoped) provenance check reads back -- even when a second run is mid-rework beside it.
+  it('keeps the rework attempt base commit written per run loadable beside another run mid-rework', () => {
+    const root = mkdtempSync(join(tmpdir(), 'control-store-'));
+    roots.push(root);
+    const first = createFileControlPlaneStore(root, deterministicOptions());
+    const runA = commitCheckerSubject(first, createCheckerRun(first, 'alice', 1));
+    queueCreatorRework(first, runA);
+    const runB = commitCheckerSubject(first, createCheckerRun(first, 'alice', 2), false,
+      { baseCommit: 'f'.repeat(40), canonicalCommit: 'e'.repeat(40) });
+    const requestB = queueCreatorRework(first, runB, 'c'.repeat(40));
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = JSON.parse(readFileSync(path, 'utf8')) as { attempts: Array<Record<string, unknown>> };
+    const attemptB = persisted.attempts.find((attempt) =>
+      attempt.logicalGeneration === 2 && attempt.runRef === runB.created.run.runRef);
+    expect(attemptB?.baseCommit).toBe(requestB.baseCommit);
+    expect(() => createFileControlPlaneStore(root, deterministicOptions())).not.toThrow();
   });
 
   it('fails closed when a committed generation is missing its durable base commit', () => {
