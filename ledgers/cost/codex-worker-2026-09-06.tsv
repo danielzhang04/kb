@@ -11,3 +11,7 @@ unverified	gpt-5.6-terra	unavailable	kb-platform-audit:overhaul-plan		unmetered-
 unverified	gpt-5.6-sol	unavailable	kb-platform-audit:fresh-adversarial-review		unmetered-native-delegation
 unverified	gpt-5.6-terra	unavailable	kb-platform-audit:plan-adversarial-revisions		unmetered-native-continuations-grouped
 unverified	gpt-5.6-sol	unavailable	kb-platform-audit:adversarial-rechecks		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-prebuild:boss-source-synthesis-and-design		unmetered-native-session
+unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:implementation-sequence		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:dashboard-journeys		unmetered-native-delegation
+unverified	gpt-5.6-sol	unavailable	kb-platform-prebuild:adversarial-review-and-recheck		unmetered-native-continuations-grouped

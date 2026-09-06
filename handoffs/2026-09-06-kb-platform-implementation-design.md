@@ -1,17 +1,21 @@
-# KB platform overhaul audit handoff - 2026-09-06
+# KB platform implementation design handoff - 2026-09-06
 
-**Topic:** Completed architecture audit and overhaul proposal; design decisions and
-implementation remain active follow-on work. This does not replace or consume the
-separate dashboard outage recovery handoff.
+**Topic:** Pre-build implementation sequence following the completed audit. This
+supersedes the consumed overhaul-audit handoff; its evidence remains below and in
+Git history. The separate dashboard outage recovery handoff remains untouched.
 
 ## Scope and authority
 
-Daniel requested a boss-orchestrated, lower-model-assisted audit of the platform,
-public-platform comparison, adversarial review, and a large slim-code overhaul
-plan. No implementation, production access, approval, governance change, merge,
-or deployment was performed. Three clarification questions remain unanswered:
-priority real workflows, supported VM/desktop/multi-host topology, and whether the
-next task should implement the plan. Current assumption is one VM, audit/plan only.
+Daniel followed the audit by requesting all capabilities, an architecture-flexible
+step-by-step build with adversarial review/testing throughout, and a summary BEFORE
+implementation. This turn produced that design; no runtime implementation, build
+scaffolding, production access, governance change, merge or deployment occurred.
+The next gate is explicit confirmation of the revised plan before build cards.
+All required capabilities stay in scope; an unavailable label cannot satisfy a
+delivery gate. The async topology question remains: one VM coordinates VM/desktop
+workers, or desktop must schedule/execute while the VM is offline. Do not silently
+retire desktop capability. RPO/RTO, workload and offline publication limits remain
+choices for their respective phase gates, not reasons to repeat the whole audit.
 
 Audit base is main `39197cf5d9322f21d859d6f7a98d3a5b57cc42ea`.
 Historical outage evidence was read from ops `913011cc` at
@@ -21,6 +25,26 @@ VM status from the historical handoff.
 
 ## What WORKED (with evidence)
 
+- Design follow-on preamble passed; origin/main remained `39197cf5` on refresh.
+  Requested lower-model workers: two `gpt-5.6-terra` design lanes and one independent
+  `gpt-5.6-sol` adversarial lane. Runtime/cost telemetry remains unverified.
+- `implementation-sequence.md` now maps the existing phases 0-11 into bounded
+  packages, eight operator journeys, initial unissued scopes, and candidate-selection
+  gates. It requires early actual browser/composition and existing Linux broker
+  baselines; Phase 6 remains the later adapter replacement.
+- Adversarial review identified false-completion wording, late/narrow execution
+  evidence, missing explicit cutover crash transitions and oversized spike scope.
+  The parent tightened these requirements; the targeted recheck returned READY
+  FOR SUMMARY AND EXPLICIT INITIAL-SCOPE CONFIRMATION, with no blocking design
+  finding remaining. This is not approval to build, deploy, or promote a grade.
+- Design work committed/pushed as `2727dce7`; JSON source briefs parsed (six),
+  the named existing broker test exists, and actual staged whitespace plus skill
+  sync checks passed. These are document checks, not runtime acceptance.
+- Primary references were refreshed for n8n worker code, Temporal, LangGraph,
+  Prefect and ECC; goal-specific source briefs and synthesis are stored alongside
+  the packet. No dependency was adopted or benchmark result invented.
+- The following 706 passing selected cases belong to the prior AUDIT turn. No
+  product tests, browser run, broker run or benchmark were rerun in this design turn.
 - Repository preamble passed. Fresh worktrees isolated this task from the user's
   dirty `claude/boss-2026-09-02` checkout and other active worktrees.
 - Four native lower-model investigation/review lanes produced source-cited
@@ -56,6 +80,15 @@ VM status from the historical handoff.
 
 ## What Did NOT Work (and why)
 
+- The first fresh review spawn hit the native agent-thread limit while design
+  lanes were active. It succeeded after those lanes completed; no platform job or
+  substitute fabricated review was used.
+- n8n's refreshed docs endpoint returned unsupported `text/markdown`; the public
+  worker source was accessible. The source cache records this retrieval limit.
+- A review initially inferred mandatory human approval of every ordinary child
+  card. The standing memory instead requires explicit confirmation of the revised
+  plan before scaffolding; bounded approved child work still follows existing
+  human/risk gates rather than gaining a new blanket ceremony.
 - Default Vitest bundled config tried to write shared `.vite-temp` and got EPERM.
   Native config loading and disabled cache avoided the infrastructure failure.
 - Two run-detail tests wrote real user AppData through the default naming registry
@@ -102,13 +135,15 @@ VM status from the historical handoff.
 
 Work product branch: `codex/kb-platform-overhaul-20260906`.
 Published work commit: `e11cff29`.
+Published pre-build design commit: `2727dce7`.
 Remote packet: [audit README](https://github.com/danielzhang04/kb/blob/e11cff29/orgs/kb-ops/output/2026-09-06-platform-audit/README.md).
 Worktree: `C:/Users/danie/kb/_private/codex-worktrees/kb-platform-overhaul-20260906`.
 Coordination proposal: `codex/kb-platform-audit-ops-20260906`, based on `origin/ops`.
 Worktree: `C:/Users/danie/kb/_private/codex-worktrees/kb-platform-audit-ops-20260906`.
 Coordination reaches ops only through the worker PR flow; do not push directly.
-Find the coordination PR by its exact head branch; this handoff cannot embed its
-own final commit hash without creating a new commit. Both worktrees remain active.
+Coordination draft PR: https://github.com/danielzhang04/kb/pull/174. This handoff
+cannot embed its own final commit hash without creating a new commit. Both
+worktrees remain active and no branch was merged.
 
 | File | Status | Notes |
 | --- | --- | --- |
@@ -126,7 +161,10 @@ own final commit hash without creating a new commit. Both worktrees remain activ
 | `ledgers/cost/codex-worker-2026-09-06.tsv` | DONE evidence | Unmetered native work steps; unknown costs explicit |
 | `memory/codex-worker.md` | DONE | Production-composition and realistic race-evidence lessons |
 | `orgs/kb-ops/STATE.md` | DONE | Replaces stale July current-state claims with qualified September audit facts |
-| `handoffs/2026-09-06-kb-platform-overhaul-audit.md` | WIP continuation | Active design/implementation follow-on context |
+| `orgs/kb-ops/output/2026-09-06-platform-audit/implementation-sequence.md` | DONE proposal | Current pre-build delivery sequence; no issued build cards |
+| `orgs/kb-ops/output/2026-09-06-platform-audit/synthesis-reports/implementation-prebuild/` | DONE evidence | Briefs, source list, reconciled report and review disposition |
+| `queue/done/01K2KBARCH060000000000000002.md` | DONE design record | Records this human-directed pre-build design task only |
+| `handoffs/2026-09-06-kb-platform-implementation-design.md` | WIP continuation | Current active resume point; audit evidence retained |
 
 Audit `dashboard/node_modules` is a directory junction to the existing
 `C:/Users/danie/kb-worktrees/vm-movement-p1/dashboard/node_modules` installation.
@@ -136,12 +174,13 @@ their branches and handoff are active. Other working copies are untouched.
 
 ## Exact Next Step
 
-Read the executive audit, adversarial verdict, and numbered plan sequence with
-Daniel; choose three concrete workflows as acceptance fixtures and confirm the
-supported topology. Then authorize bounded Phase 0/1 child cards and the Phase 2
-comparison as appropriate. Do not jump from this completed audit card to a live
-cutover. If asked to recover the outage, load the separate recovery handoff and
-recheck its current branch/PR/live evidence under that task's authority.
+Present/read `implementation-sequence.md` with Daniel and obtain confirmation for
+the initial Phase 0/1 scopes. Then issue only those bounded child cards, with exact
+files, protected acceptance criteria and independent review. The whole platform
+remains required; start with a representative complete path, not all subsystems
+rewritten simultaneously. Runtime candidate selection follows the bounded Phase 2
+comparison; live cutover has separate authority/restore/approval gates. If asked to
+recover the outage, load that separate handoff and recheck its current evidence.
 
 ## Load list
 
@@ -150,6 +189,8 @@ recheck its current branch/PR/live evidence under that task's authority.
 - `orgs/kb-ops/STATE.md` and `memory/codex-worker.md` on the ops proposal/merged ops.
 - `handoffs/2026-09-06-dashboard-outage-recovery.md` (context only; not consumed).
 - `orgs/kb-ops/output/2026-09-06-platform-audit/README.md` on the work branch.
+- `orgs/kb-ops/output/2026-09-06-platform-audit/implementation-sequence.md`.
+- `orgs/kb-ops/output/2026-09-06-platform-audit/synthesis-reports/implementation-prebuild/report.md`.
 - `orgs/kb-ops/output/2026-09-06-platform-audit/adversarial-review.md`.
 - `orgs/kb-ops/output/2026-09-06-platform-audit/overhaul-plan.md`.
 - `orgs/kb-ops/output/2026-09-06-platform-audit/architecture-brief.md`.

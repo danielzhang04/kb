@@ -453,6 +453,7 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ### The Pattern (transferable)
 - Next time I see a feature described as complete because its unit suite passes, I will trace the deployed start point through producer, authority, effect, receipt, and visible result, and enumerate every durable store on that path.
 - Signal to recognize: registrations are conditional on test-only overrides, production registries start empty, or a migration map accounts only for the headline database.
+- Design follow-on: an honest `unavailable` UI state cannot satisfy a required feature's completion gate. Next time all capabilities are required, I will keep the unavailable state as intermediate evidence and require the real producer-to-receipt journey before closing its phase.
 
 ## Reproduce scheduling order before grading a race (2026-09-06)
 
