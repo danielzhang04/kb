@@ -261,3 +261,10 @@
 - LAW: when a release adds a pinned unit directive, pre-install its resident validator BEFORE activation (deploy A3) — the old validator refuses the activation that carries the fix. Hand-probing the validator: `systemd-run --wait --pipe -p User=<u> -E HOME=<h>`.
 - LAW: with the daemon down, `activate_release.py` refuses (needs /readyz) unless `current` is parked; `recover-deploy.ps1` does backup -> reset-failed -> park symlink -> validator -> activate.
 - STATE at handoff: PR #173 unmerged; VM daemon stopped; run 971d5ba4 stale-live (interrupt after recovery).
+
+## 2026-09-06 — P8 affinity brainstorm → spec → plan (boss lessons)
+- WORKED: brainstorming with Daniel in 4 short questions (anchor source, target path, fit-first vs after, customization scope) then a 5-section design; he answered "whichever works the best" — present a recommendation with the question and take it.
+- LAW (design synthesis): opus author + opus adversarial reviewer + confirm pass, three rounds, found 27+5 real defects incl. that the entire copy layer would have been decorative (P3/P4 hardcode bands/template dir) and that a re-registered adapter would wipe every firm blurb. Never accept a spec on the author's summary; the reviewer must READ THE CODE for every contract claim.
+- LAW (plan writers): the plan writer found 5 spec claims false against code (policy_hash is a fixed-key property; parse_profile has no education; credit_reservation lacks person_id). Route corrections back into the spec (r4) so spec and plan never disagree; the plan reviewer verifies both.
+- HAZARD: tests that write into `scripts/prospecting/` (drop a synthetic schema_p7.sql, append to schema_p8.sql) can brick the operator's real store via the immutable migration ledger; rule now in the plan's Global constraints.
+- Daniel's own outreach scripts lived in Downloads as a PDF, not Gmail/Drive; sent-mail search found only automated digests. Ask for the pointer early.

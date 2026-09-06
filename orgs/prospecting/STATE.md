@@ -13,3 +13,4 @@ Updated: 2026-09-04 evening by boss session.
 | P7-UI local desktop dashboard | plan v2.1 on claude/boss-2026-09-02 | pending — approve plan before scaffolding |
 
 Branches unpushed; worktrees under C:/Users/danie/kb-worktrees/prospecting-p{1..6}. Handoff: handoffs/2026-09-04-prospecting-p1-p6-built-p7ui-planned.md
+| P8 affinity (fit-first selection + copy doctrine) | spec r4 approved 2026-09-06, plan r2 reviewed (boss b6192c2e); build not started | Task 1 = P5 ask-grammar fold; gates P8-A fit table, P8-B NYC VC re-run |

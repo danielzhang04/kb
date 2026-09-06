@@ -1,4 +1,4 @@
-# Prospecting — P1–P6 recorded (P6 737), real Snov fill converged, P2 gate awaiting rulings (boss handoff 2026-09-05 night)
+# Prospecting — P1–P6 recorded (P6 737), P8 affinity spec r4 APPROVED + plan r2 reviewed, build not started (boss handoff 2026-09-06)
 
 Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
 
@@ -46,9 +46,26 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
   captures-nyc-vc.csv, company-domains.csv (name,domain), reserve-firms-nyc-vc.csv, sender-profile.json,
   operator-vendors.json (providers, per_firm, snov_account_credit_ceiling, title_function_exclusions).
 
+## P8 affinity (2026-09-06) — supersedes the P2 gate
+- Daniel judged the fill list "somewhat" right; wants person-level fit (commonalities, similar career path, same school),
+  research-driven personalization, and his own templates analysed. Sources gathered desktop-local under
+  %LOCALAPPDATA%\kb-prospecting\: sender-anchors.json (resume PDF in OneDrive/Documents/Personal, LinkedIn, Instagram bio),
+  networking-templates-original.pdf (from Downloads), template-analysis.md (9 families, scorecard, slot model, v2 drafts).
+- Committed on boss branch claude/boss-2026-09-02 (b6192c2e): docs/superpowers/specs/2026-09-06-prospecting-affinity-design.md
+  (r4; opus author, opus adversarial review x2 + confirm), …-prospecting-outreach-research.md (evidence doctrine),
+  docs/superpowers/plans/2026-09-06-prospecting-p8-affinity.md (r2, 14 tasks, real code) + -PLAN-REVIEW.md + …-SPEC-REVIEW.md.
+- Daniel APPROVED the spec with defaults: LCS-only path match (pairs at zero weight), min_fit 25/132, third touch off.
+- Rulings baked in: target paths are free text per campaign (`path:`/`must:`/`prefer:` in the ask → file-mediated model
+  compile → fit table → approve by hash; only fit_spec_hash + copy_profile enter policy_json, policy_hash unchanged);
+  fit gates selection BEFORE email credits; firm bio page first, capped LinkedIn lane (40/24h) second; deterministic scoring;
+  P8 owns rendering (`affinity draft` through P3 validators with its own QaPolicy 75–125) because P3/P4 hardcode bands;
+  the ask-grammar fold is P5 (`manager/compile_ask.py`), re-record P5 → merge P6 → cut claude/prospecting-p8.
+- NEXT: walk Daniel the plan one task per phase; Task 1 = P5 fold; gates P8-A (fit table) and P8-B (NYC VC fit-first re-run
+  in Datasette deliverable_v2, 7 measurable criteria, refire_noop_runs cumulative 4).
+
 ## Daniel's gates, in order (present one at a time)
 1. P1: PASSED 2026-09-04 (Datasette loopback read-only, hook rejected the planted email).
-2. P2: AWAITING RULINGS — list in browser 2026-09-05 (campaign camp_c57b52cc14d54104). Rulings asked: (a) title classes
+2. P2: SUPERSEDED by P8 Gate P8-B (see block above). Was: AWAITING RULINGS — list in browser 2026-09-05 (campaign camp_c57b52cc14d54104). Rulings asked: (a) title classes
    beyond associate/director (principal / vice president / partner?), (b) credit budget above 150. Then re-run
    scratchpad run-fill.ps1 → run-executor.ps1 → refresh the saved Datasette URL → ask "P2 pass".
    Original recipe: Per runbook "Operator gates": campaign new --ask-file → capture add / --pitchbook-csv → list → vendors attach
