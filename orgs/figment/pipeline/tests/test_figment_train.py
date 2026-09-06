@@ -60,7 +60,7 @@ def canonical_json(path: Path) -> bytes:
 
 def test_creator001_plan_reproduces_current_manifest_documents_exactly(command, tmp_path):
     out = tmp_path / "creator001-plan"
-    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS)
+    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS, skip_pin_verify=True)
 
     for stage, expected_paths in CURRENT_MANIFESTS.items():
         runs = plan["stages"][stage]["runs"]
@@ -80,7 +80,7 @@ def test_creator001_plan_reproduces_current_manifest_documents_exactly(command, 
 
 def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_path):
     out = tmp_path / "pins-plan"
-    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS)
+    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS, skip_pin_verify=True)
     pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
     for stage, profile in (("dataset", "dataset"), ("smoke", "train"),
                            ("train", "train"), ("tester", "tester")):
@@ -90,12 +90,38 @@ def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_pa
             assert manifest["custom_nodes"] == pins["pins"][profile]["custom_nodes"]
 
 
+def _synthetic_look(**overrides) -> dict:
+    """A persona look deliberately DIFFERENT from creator-001's own words (persona rule:
+    "would this run unchanged for creator-002 from her persona.yaml?" -- proven only if the
+    fixture's identity.look isn't creator-001's by coincidence)."""
+    look = {
+        "age_stage": (
+            "a woman in her early twenties, about twenty-two, an adult woman's face with a "
+            "set jawline, an adult woman's proportions and an adult woman's frame, her hands "
+            "and neck reading the same age as her face"
+        ),
+        "hair": "honey-blonde hair swept over one shoulder",
+        "eyes": "light hazel eyes",
+        "skin": "warm-tan skin with visible pores and texture",
+        "brows": "her own full dark brows brushed up and not drawn in",
+        "makeup": (
+            "a thin brown line drawn close to the upper lash with one coat of mascara, "
+            "lip balm over her natural lip colour"
+        ),
+        "build": "slim with an ordinary adult figure",
+        "clothing": "wearing a fitted grey crew-neck t-shirt and dark jeans, both fully opaque and intact",
+    }
+    look.update(overrides)
+    return look
+
+
 def _synthetic_persona(
     personas_root: Path,
     *,
     creator_id: str = "creator-002",
     anchor_names: tuple = ("a01.jpg", "a02.jpg", "a03.jpg"),
     exemplars: list = ("a02", "a03"),
+    look: dict | None = None,
 ) -> Path:
     source = load_json(PERSONAS / "creator-001" / "persona.yaml")
     target = personas_root / creator_id
@@ -111,6 +137,7 @@ def _synthetic_persona(
 
     source["id"] = creator_id
     source["identity"]["references"] = [f"anchors/{name}" for name in anchor_names]
+    source["identity"]["look"] = look or _synthetic_look()
     source["identity"]["spec"] = {
         "path": "identity.md",
         "sha256": hashlib.sha256(identity_spec.read_bytes()).hexdigest(),
@@ -172,6 +199,20 @@ def test_generalized_prompts_note_derives_from_actual_reference_names_not_g01_g0
     assert "whatever-body" not in note
 
 
+def test_generalized_prompts_raises_on_stale_post_promotion_exemplars(command):
+    """Review MED-9: post-anchor-promotion, identity.references collapses to the one
+    picked anchor while body_target.exemplars still names the retired g-set -- silently
+    falling through to references[-1] happened to work only by coincidence (there is only
+    one reference left). It must now fail closed instead of staying silent."""
+    persona = {
+        "id": "creator-002",
+        "identity": {"references": ["anchors/c002-anchor-p04.png"]},
+        "body_target": {"exemplars": ["g02", "g07"]},
+    }
+    with pytest.raises(command.FigmentTrainError, match="stale post-anchor-promotion"):
+        command._generalized_prompts(persona)
+
+
 def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
     command, tmp_path,
 ):
@@ -184,7 +225,7 @@ def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
         exemplars=["a02"],
     )
     out = tmp_path / "creator003-plan"
-    plan = command.build_plan("creator-003", "all", out, personas_root=personas_root)
+    plan = command.build_plan("creator-003", "all", out, personas_root=personas_root, skip_pin_verify=True)
 
     assert plan["training"]["trigger"] == "creator003krea2"
     dataset_manifest = load_json(plan_path(out, plan["stages"]["dataset"]["runs"][0]))
@@ -216,7 +257,7 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
     out = tmp_path / "creator002-plan"
-    plan = command.build_plan("creator-002", "all", out, personas_root=personas_root)
+    plan = command.build_plan("creator-002", "all", out, personas_root=personas_root, skip_pin_verify=True)
 
     assert plan["training"]["trigger"] == "creator002krea2"
     train_manifest = load_json(plan_path(out, plan["stages"]["train"]["runs"][0]))
@@ -322,7 +363,7 @@ def test_run_verifier_stops_on_each_recorded_defect(command, tmp_path, defect):
 
 def test_run_refuses_to_resume_a_stage_stuck_running(command, tmp_path, monkeypatch):
     out = tmp_path / "resume-plan"
-    plan = command.build_plan("creator-001", "dataset", out, personas_root=PERSONAS)
+    plan = command.build_plan("creator-001", "dataset", out, personas_root=PERSONAS, skip_pin_verify=True)
     plan_file = out / "plan.json"
     key = plan["stages"]["dataset"]["runs"][0]["manifest"]
     state_path = out / "stage.json"
@@ -381,7 +422,7 @@ def test_dataset_grading_template_round_trip_builds_only_kept_training_images(co
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
     out = tmp_path / "grade-plan"
-    command.build_plan("creator-002", "dataset", out, personas_root=personas_root)
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
     plan_file = out / "plan.json"
     plan = load_json(plan_file)
 
@@ -428,7 +469,7 @@ def test_apply_rulings_fails_closed_when_a_kept_cell_fails_safety(command, tmp_p
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
     out = tmp_path / "unsafe-plan"
-    command.build_plan("creator-002", "dataset", out, personas_root=personas_root)
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
     plan_file = out / "plan.json"
     plan = load_json(plan_file)
     for run in plan["stages"]["dataset"]["runs"]:

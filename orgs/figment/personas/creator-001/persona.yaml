@@ -7,6 +7,16 @@
   },
   "identity": {
     "references": ["anchors/g01.jpg", "anchors/g02.jpg", "anchors/g07.jpg"],
+    "look": {
+      "age_stage": "a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face",
+      "hair": "jet-black hair parted in the middle and falling past the shoulders",
+      "eyes": "dark brown eyes",
+      "skin": "fair skin with visible pores and texture",
+      "brows": "her own full dark brows brushed up and not drawn in",
+      "makeup": "a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour",
+      "build": "slim with an ordinary adult figure",
+      "clothing": "wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact"
+    },
     "spec": {
       "path": "identity-spec.md",
       "sha256": "1a969804da8930a856a99de998337b50293aa6f95531dab1bcfe43c9592eacc0"

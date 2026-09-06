@@ -124,6 +124,44 @@ ALLOWED_SEED_POLICIES = frozenset({"fixed-per-cell"})
 FLOOR_KEYS = ("status", "value", "calibration_set_sha", "locked_by_gate")
 ALLOWED_FLOOR_STATUSES = frozenset({"uncalibrated", "calibrated"})
 
+# `identity.look` (Track-2 review HIGH-2) is the ONLY place a persona-specific face/body
+# description may live — `expand/templates/anchor-prompts.yaml` carries only structure,
+# camera/framing clauses, and rows, never creator-001's own words (design §2.2's persona
+# rule: "would this run unchanged for creator-002 from her persona.yaml?").
+LOOK_KEYS = ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+
+# look-spec-v2.md §4a's banned vocabulary, lowercased, checked as substrings against each
+# `identity.look` field. Not exhaustive of every possible bad phrase — it is the literal
+# list §4a itself enumerates as pulling toward the rejected "soft glam" look.
+BANNED_LOOK_PHRASES = frozenset({
+    "soft glam", "glam", "glamorous", "beauty shot", "professional makeup",
+    "makeup artist", "full face of makeup", "beat", "snatched", "editorial",
+    "high fashion", "vogue", "striking", "sultry", "smouldering", "seductive",
+    "alluring",
+    "bronzer", "bronzed", "luminous bronzer", "sun-kissed", "gilded", "contour",
+    "contoured", "sculpted cheekbones", "chiselled", "defined jawline",
+    "highlighter", "strobing", "cut crease", "baked", "bake-and-brush",
+    "flawless skin", "poreless", "airbrushed", "porcelain skin", "glass skin",
+    "glowing", "radiant", "luminous", "dewy glow", "filtered", "retouched",
+    "perfect complexion",
+    "glossy nude lip", "full lips", "plump lips", "pouty lips", "plush lips",
+    "overlined", "lip filler",
+    "groomed full brow", "perfectly arched brows", "laminated brows",
+    "bold brows", "dramatic lashes", "lash extensions", "winged eyeliner",
+    "smoky eye",
+    "gold hoops", "gold hoop earrings", "statement jewelry", "layered gold",
+    "caramel balayage", "honey balayage", "money piece", "blowout", "salon hair",
+    "hourglass", "curvaceous", "voluptuous", "busty", "tiny waist",
+    "snatched waist",
+    "studio lighting", "beauty lighting", "softbox", "ring light",
+    "seamless backdrop", "golden hour glow", "cinematic lighting",
+    "professional photography",
+    "girl", "young girl", "teen", "teenage", "schoolgirl", "high school",
+    "barely legal", "youthful", "baby face", "babyface", "childlike",
+    "innocent", "doll-like", "petite little", "cute little", "tiny body",
+    "pigtails", "uniform", "18", "19",
+})
+
 
 def _fail(message: str) -> None:
     raise PersonaError(message)
@@ -194,6 +232,30 @@ def _validate_floor_entry(entry: Any, field: str) -> None:
         _fail(
             f"persona.{field} is uncalibrated but carries a calibration_set_sha or "
             f"locked_by_gate — an uncalibrated floor must not claim a lock"
+        )
+
+
+def _validate_identity_look(value: Any, field: str) -> None:
+    look = _require_dict(value, field)
+    unknown = sorted(set(look) - set(LOOK_KEYS))
+    if unknown:
+        _fail(f"persona.{field} has unknown key(s): {unknown}")
+    missing = [key for key in LOOK_KEYS if key not in look]
+    if missing:
+        _fail(f"persona.{field} is missing required key(s): {missing}")
+    for key in LOOK_KEYS:
+        text = _require_nonempty_str(look[key], f"{field}.{key}")
+        lowered = text.lower()
+        for banned in BANNED_LOOK_PHRASES:
+            if banned in lowered:
+                _fail(
+                    f"persona.{field}.{key} contains a look-spec-v2.md §4a banned "
+                    f"phrase {banned!r}: {text!r}"
+                )
+    if any(character.isdigit() for character in look["age_stage"]):
+        _fail(
+            f"persona.{field}.age_stage must state age as a life stage, never a numeral: "
+            f"{look['age_stage']!r}"
         )
 
 
@@ -287,6 +349,8 @@ def validate_persona(
         if key not in floor:
             _fail(f"persona.identity.floor is missing required key: {key!r}")
         _validate_floor_entry(floor[key], f"identity.floor.{key}")
+
+    _validate_identity_look(identity.get("look"), "identity.look")
 
     body_target = _require_dict(data["body_target"], "body_target")
     _require_nonempty_str(body_target.get("source"), "body_target.source")

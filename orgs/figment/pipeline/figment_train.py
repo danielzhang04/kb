@@ -44,6 +44,7 @@ TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
 BUILD_SET_MODULE = TRAIN_DIR / "build_training_set.py"
 QA_MODULE = HERE / "qa_stamp.py"
+VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
@@ -71,6 +72,17 @@ PIN_ENFORCEMENT_NOTE = (
     "ref, so these pins are RECORDED, NOT ENFORCED. Tightening this means changing "
     "runpod_run.py, not this file."
 )
+# Which `pins.pins` profile(s) each STAGES entry consumes -- the anchor stage alone spans
+# two profiles (passport + edit arms); "smoke" reuses the "train" profile exactly as
+# `_train_manifest` does. Drives the `plan` preflight's pin verification (HIGH-1 / LOW-15):
+# only the profiles an actual `--stage` selection will use are HEAD-checked.
+STAGE_PIN_PROFILES = {
+    "anchor": ("anchor", "anchor_edit"),
+    "dataset": ("dataset",),
+    "smoke": ("train",),
+    "train": ("train",),
+    "tester": ("tester",),
+}
 SHARD_NOTES = (
     "face angles, template rows 1-10 of 15",
     "face angles, template rows 11-15 of 15, then body poses, template rows 1-5 of 15",
@@ -112,6 +124,35 @@ def _qa_module():
 
 def _pod_runner_module():
     return _load_module("_figment_train_pod_runpod_run", POD_RUNNER)
+
+
+def _verify_pins_module():
+    return _load_module("_figment_train_verify_pins", VERIFY_PINS_MODULE)
+
+
+def _verify_pins_preflight(pins: dict[str, Any], selected_stages: list[str]) -> None:
+    """Run `verify_pins.verify_pins` for every pin profile `selected_stages` will actually
+    consume, before a single model is ever bootstrapped on a pod (review HIGH-1: all four
+    `pins.anchor` sha256 digests were wrong and only failed at pod readiness, burning the
+    full cost ceiling for zero images). Raises `FigmentTrainError` on any mismatch."""
+    profiles: list[str] = []
+    for stage in selected_stages:
+        for profile in STAGE_PIN_PROFILES.get(stage, ()):
+            if profile not in profiles:
+                profiles.append(profile)
+    if not profiles:
+        return
+    module = _verify_pins_module()
+    try:
+        results = module.verify_pins(pins, stages=profiles)
+    except module.VerifyPinsError as exc:
+        raise FigmentTrainError(f"pin verification could not run: {exc}") from exc
+    if results:
+        lines = [
+            f"[{stage}] {problem}"
+            for stage, problems in results.items() for problem in problems
+        ]
+        raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
 
 def _read_json(path: Path) -> Any:
@@ -228,14 +269,36 @@ def _load_inputs(creator_id: str, personas_root: Path) -> tuple[dict, dict, dict
     return persona, training, pins
 
 
+def _resolve_body_reference(persona: dict, references: list[Path]) -> Path:
+    """Pick the reference image `body.identity` should describe.
+
+    Review MED-9: after anchor-stage promotion, `identity.references` collapses to the one
+    picked anchor while `body_target.exemplars` still names the old g-set stems it can no
+    longer match -- the old code fell through to `references[-1]` in that case with no
+    warning, which happened to work only because a promoted persona has exactly one
+    reference. Fail closed instead: a non-empty `exemplars` that matches nothing is treated
+    as stale persona.yaml state, not a coincidence to paper over.
+    """
+    exemplar_stems = list(persona["body_target"].get("exemplars") or [])
+    for stem in reversed(exemplar_stems):
+        for ref in references:
+            if ref.stem == stem:
+                return ref
+    if exemplar_stems:
+        raise FigmentTrainError(
+            f"persona.body_target.exemplars {exemplar_stems!r} match none of "
+            f"persona.identity.references {[ref.stem for ref in references]!r} -- this "
+            "looks like stale post-anchor-promotion state (identity.references collapsed "
+            "to the picked anchor without body_target.exemplars being updated); correct or "
+            "clear body_target.exemplars by hand before planning the dataset stage"
+        )
+    return references[-1]
+
+
 def _generalized_prompts(persona: dict) -> dict[str, Any]:
     prompts = _read_json(PROMPTS_PATH)
     references = [Path(value) for value in persona["identity"]["references"]]
-    exemplar_stems = list(persona["body_target"].get("exemplars") or [])
-    body_ref = next(
-        (ref for stem in reversed(exemplar_stems) for ref in references if ref.stem == stem),
-        references[-1],
-    )
+    body_ref = _resolve_body_reference(persona, references)
     prompts["persona"] = persona["id"]
     note = prompts["structure"]["prepend_is_the_hand_typed_description"]
     replacements = iter([references[0].as_posix(), body_ref.as_posix()])
@@ -244,13 +307,44 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     return prompts
 
 
+def _compose_look_clause(look: dict[str, Any]) -> str:
+    """Join `identity.look`'s eight fields into one comma-separated descriptive clause,
+    with no trailing punctuation -- the caller decides how the clause continues."""
+    return ", ".join(
+        look[key] for key in
+        ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+    )
+
+
 def _generalized_anchor_prompts(persona: dict) -> dict[str, Any]:
+    """Build the anchor-stage prompts entirely from the template's structure/rows/camera
+    and framing clauses plus the persona's own `identity.look` (Track-2 review HIGH-2) --
+    never from a face/body description hardcoded in the shared template. `persona.py`
+    already fails closed on a missing or malformed `identity.look` before a persona
+    document is ever returned by `_load_inputs`; the check here is defense in depth for a
+    persona dict built by hand (e.g. in a test) that bypassed that validation.
+    """
     prompts = _read_json(ANCHOR_PROMPTS_PATH)
     prompts["persona"] = persona["id"]
-    clause = prompts["camera_clause"]
+    look = persona.get("identity", {}).get("look")
+    if not isinstance(look, dict):
+        raise FigmentTrainError(
+            "persona.identity.look is required to compose the anchor-stage prompts"
+        )
+    clause = _compose_look_clause(look)
+    prompts["passport"]["identity"] = clause + ","
+    prompts["edit"]["identity"] = clause + ". " + prompts["edit"].pop("constraint_clause")
+
+    framing_prefix = prompts["passport"].pop("framing_prefix")
+    prompts["passport"]["rows"] = [
+        row if row.startswith(framing_prefix) else f"{framing_prefix} {row}"
+        for row in prompts["passport"]["rows"]
+    ]
+    camera_clause = prompts["camera_clause"]
     for arm in ("passport", "edit"):
         prompts[arm]["rows"] = [
-            row if clause in row else f"{row} {clause}" for row in prompts[arm]["rows"]
+            row if camera_clause in row else f"{row} {camera_clause}"
+            for row in prompts[arm]["rows"]
         ]
     return prompts
 
@@ -258,11 +352,7 @@ def _generalized_anchor_prompts(persona: dict) -> dict[str, Any]:
 def _generalized_dataset_workflow(persona: dict, prompts: dict[str, Any]) -> dict[str, Any]:
     workflow = _read_json(WORKFLOW_PATH)
     references = [Path(value) for value in persona["identity"]["references"]]
-    exemplar_stems = list(persona["body_target"].get("exemplars") or [])
-    body_ref = next(
-        (ref for stem in reversed(exemplar_stems) for ref in references if ref.stem == stem),
-        references[-1],
-    )
+    body_ref = _resolve_body_reference(persona, references)
     workflow["836"]["inputs"]["image"] = f"{persona['id']}/{references[0].name}"
     workflow["837"]["inputs"]["image"] = f"{persona['id']}/{body_ref.name}"
     workflow["800"]["inputs"]["text"] = prompts["face"]["identity"]
@@ -338,8 +428,11 @@ def _anchor_manifests(
                  for i, row in enumerate(prompts["passport"]["rows"])],
     }
     names = [Path(v).name for v in persona["identity"]["references"]]
+    # Review LOW-11: no per-job filename_prefix override belongs here -- `apply_job`
+    # (pod/runpod_run.py) always overwrites any node's `filename_prefix` input with the
+    # job's own `output_name`, so setting it on this shared workflow template was a no-op
+    # that read as load-bearing.
     workflow = _generalized_dataset_workflow(persona, _generalized_prompts(persona))
-    workflow["832"]["inputs"]["filename_prefix"] = f"{persona['id']}-anchor-edit"
     edit = {
         **_pod_base(pins, training["pod_class"], "anchor_edit"),
         "models": deepcopy(pins["pins"]["anchor_edit"]["models"]),
@@ -352,7 +445,14 @@ def _anchor_manifests(
                   "substitutions": [
                       {"node_id": "788", "field": "seed", "value": 1098688918602660 + i},
                       {"node_id": "174", "field": "prompt",
-                       "value": prompts["edit"]["identity"] + " " + row}]}
+                       "value": prompts["edit"]["identity"] + " " + row},
+                      # Review MED-6: node 800 is a second CLIPTextEncode later in the
+                      # inherited dataset graph (a face-repair resample at denoise 0.23) that
+                      # otherwise keeps the DATASET template's makeup register, contradicting
+                      # node 174's anchor identity clause within the same job. Both nodes now
+                      # carry the identical persona-derived clause.
+                      {"node_id": "800", "field": "text",
+                       "value": prompts["edit"]["identity"]}]}
                  for i, row in enumerate(prompts["edit"]["rows"])],
     }
     return [passport, edit]
@@ -611,10 +711,15 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     expand_workflow = out / "expand" / "workflows" / WORKFLOW_PATH.name
     anchor_workflow = out / "expand" / "workflows" / ANCHOR_WORKFLOW_PATH.name
     expand_prompts = out / "expand" / "templates" / PROMPTS_PATH.name
+    # Review LOW-10: the anchor prompts were the one thing `_copy_support_files` didn't
+    # bundle -- `plan.json` copied the dataset template but not this one, so it was not a
+    # self-contained reproduction of what the anchor stage actually rendered.
+    expand_anchor_prompts = out / "expand" / "templates" / ANCHOR_PROMPTS_PATH.name
     train_runs = out / "train" / "runs"
     _write_json(expand_workflow, workflow)
     _write_json(anchor_workflow, _read_json(ANCHOR_WORKFLOW_PATH))
     _write_json(expand_prompts, prompts)
+    _write_json(expand_anchor_prompts, _generalized_anchor_prompts(persona))
     train_runs.mkdir(parents=True, exist_ok=True)
     for source in (TRAIN_START_PATH, TESTER_START_PATH):
         text = source.read_text(encoding="utf-8")
@@ -635,6 +740,7 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
         "anchors": anchor_paths,
         "dataset_workflow": _relative(expand_workflow, out),
         "dataset_prompts": _relative(expand_prompts, out),
+        "anchor_prompts": _relative(expand_anchor_prompts, out),
     }
 
 
@@ -669,6 +775,7 @@ def build_plan(
     out: Path,
     *,
     personas_root: Path = PERSONAS_ROOT,
+    skip_pin_verify: bool = False,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs."""
     if stage not in (*STAGES, "all"):
@@ -693,10 +800,21 @@ def build_plan(
             )
         selected.remove("anchor")
 
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, selected)
+
     prompts = _generalized_prompts(persona)
     workflow = _generalized_dataset_workflow(persona, prompts)
     assets = _copy_support_files(out, persona, prompts, workflow)
-    assets["persona_dir"] = str(Path(persona["_persona_path"]).parent)
+    # Review MED-8: store repo-relative (against ROOT), never an absolute machine path --
+    # every other asset is `out`-relative, but the persona directory usually lives OUTSIDE
+    # `out` entirely (a scratch/tmp plan dir vs. `orgs/figment/personas/<id>`), so it is
+    # made relative to ROOT instead: a plan moved to a different checkout of the same repo
+    # still resolves to the right tree. `walk_up=True` (3.12+) also covers the common test
+    # fixture where the persona lives under a tmp_path outside ROOT entirely.
+    assets["persona_dir"] = Path(persona["_persona_path"]).resolve().parent.relative_to(
+        ROOT.resolve(), walk_up=True,
+    ).as_posix()
 
     configs_dir = out / "train" / "configs"
     smoke_config = configs_dir / "training-smoke.json"
@@ -1295,10 +1413,13 @@ def apply_rulings(
         source = Path(approved["path"])
         if not source.is_file() or source.stat().st_size <= 0:
             raise FigmentTrainError(f"approved anchor source image is missing or empty: {source}")
-        persona_dir = Path(plan["assets"]["persona_dir"])
+        persona_dir = (ROOT / plan["assets"]["persona_dir"]).resolve()
         anchors_dir = persona_dir / "anchors"
         anchors_dir.mkdir(parents=True, exist_ok=True)
-        destination = anchors_dir / f"{image_id}.png"
+        # Review LOW-13: take the extension from the actual source file rather than
+        # hardcoding .png -- safe today only because SaveImage always emits PNG.
+        extension = source.suffix.lower() or ".png"
+        destination = anchors_dir / f"{image_id}{extension}"
         if destination.exists():
             raise FigmentTrainError(f"anchor destination already exists: {destination}")
         shutil.copy2(source, destination)
@@ -1315,7 +1436,7 @@ def apply_rulings(
         persona_document = _read_json(persona_path)
         identity = persona_document.setdefault("identity", {})
         identity["history"] = identity.get("history", []) + identity.get("references", [])
-        identity["references"] = [f"anchors/{image_id}.png"]
+        identity["references"] = [f"anchors/{image_id}{extension}"]
         _write_json(persona_path, persona_document)
 
     approved_document = {
@@ -1341,6 +1462,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--creator", required=True)
     plan.add_argument("--stage", choices=(*STAGES, "all"), default="all")
     plan.add_argument("--out", required=True, type=Path)
+    plan.add_argument(
+        "--skip-pin-verify", action="store_true",
+        help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -1364,7 +1489,9 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
         if args.command == "plan":
-            result = build_plan(args.creator, args.stage, args.out)
+            result = build_plan(
+                args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
+            )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
         elif args.command == "run":
             result = run_planned_stage(args.creator, args.stage, args.plan)

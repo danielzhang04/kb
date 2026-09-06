@@ -152,7 +152,32 @@ D-numbering above:
   (UI-only; the grading board is our comparer).
 - **D19** — seed fan-out moved into the harness: `control_after_generate: increment` from 148 becomes 12
   explicit job seeds `148…159`, reproducible from `plan.json`.
-- **D20** — camera clause keeps the phone/lens/aperture, drops "zero film grain" and "smooth skin".
+- **D20** — camera clause keeps the phone/lens/aperture, drops "zero film grain" and "smooth skin" *(review
+  LOW-14: also drops the CJK quality tokens (`细腻, 氛围感, 杰作, 光影`), "Sharp subject and background", and the
+  `8k / max details / makeup on face / detailed face` tail — defensible under §4a (soft-glam/plastic-skin
+  vocabulary), recorded here for the audit trail)*.
+- **D21** — passport rows carry an explicit framing prefix (review HIGH-4). Package node `4`'s own text
+  (quoted verbatim): *"A high-quality Instagram-style smartphone photo captures a stunning young woman
+  posing confidently by a large window in a high-rise apartment overlooking a vibrant nighttime
+  cityscape…"* — full-scene staging with no framing-distance instruction. At our own 1536×2048 canvas that
+  puts the face far under `persona.yaml`'s `identity.floor.min_face_px` (600px); `identity-spec.md`'s "Rule
+  for expansion" already ruled on exactly this case: *"generate the identity set at half-body/close framing
+  where the face is large (clean identity)… rather than a single full-frame swap."* Every one of the 12
+  passport rows is now prefixed with *"Close head-and-shoulders portrait framing, face centred and filling
+  the upper half of the frame,"* ahead of the scene description (`anchor-prompts.yaml`'s
+  `passport.framing_prefix`, applied in `_generalized_anchor_prompts`).
+- **D22** — the edit arm's second `CLIPTextEncode` (node `800`, inherited from the dataset graph's
+  face-repair resample at denoise 0.23) previously kept the *dataset* template's own makeup register while
+  node `174` carried the anchor's persona-derived clause — two contradictory look registers graded in one
+  job (review MED-6). Node `800`'s `text` is now substituted per job with the same
+  `prompts["edit"]["identity"]` value node `174` uses.
+- **D23** — `ComfyUI-Impact-Subpack` was pinned into `pins.anchor_edit.custom_nodes` (inherited from
+  `pins.dataset`) but referenced by no node in either dataset workflow — the only Impact class either graph
+  uses is `ImpactImageBatchToImageList`, base-pack. It is the exact class of exposure r22 §5 warns about
+  (bootstrap pip-installs each node's `requirements.txt`, and the Subpack is the component that pulls
+  `ultralytics` and `.pt` YOLO weights). Plan H4 says never re-add it; review MED-5 caught it reaching
+  `pins.anchor_edit` a phase early (Task B1 was meant to remove it from `pins.dataset` first). Removed from
+  `pins.anchor_edit.custom_nodes` now; `pins.dataset.custom_nodes` still carries it pending Task B1.
 
 ### Pins and licences (module 03 → anchor stage)
 
@@ -164,9 +189,10 @@ D-numbering above:
 | `pytorch_lora_weights.safetensors` | `suayptalha/Z-Image-Turbo-Realism-LoRA` | Apache-2.0 (card-header claim, no LICENSE file in the repo — re-checked at pin time, r22 §4) | realism LoRA @ 0.66 |
 
 Revisions and sha256 were resolved live against the HF API/CDN at pin time (2026-09-06) and are recorded
-verbatim in `train/tensor-pins.yaml` under `pins.anchor`; `pins.anchor_edit` is `pins.dataset` reused
-unchanged (the anchor-edit arm runs the existing dataset graph's face-edit branch against the persona's
-current anchor).
+verbatim in `train/tensor-pins.yaml` under `pins.anchor` (review HIGH-1: the four digests as first
+committed were wrong — every model download would have failed at bootstrap; corrected against a live
+`x-linked-etag` HEAD, and `train/verify_pins.py` now checks this automatically as a `figment_train.py plan`
+preflight); `pins.anchor_edit` is `pins.dataset` reused with one deviation, D23.
 
 ## Open risks to check on the first pod, before committing the other two shards
 
@@ -179,3 +205,11 @@ current anchor).
    `ImageScaleToTotalPixels` at 4.0 MP — same output geometry, one line each.
 4. **Second reference pair.** g02 is unused but already uploaded; a pair-B run repoints nodes 836/837 at
    g02 + g07 in a new shard set. Only after the g01 verdict.
+5. **`Comfy-Org/flux2-klein-4B` has been renamed on Hugging Face** (discovered 2026-09-06 running
+   `train/verify_pins.py --stage anchor_edit --stage dataset` for real, after this phase A fix wave —
+   **not** one of REVIEW-2026-09-06-phase-a.md's findings, and NOT fixed here to stay inside that review's
+   scope). All three `flux2-klein-4B` model pins in `pins.dataset`/`pins.anchor_edit` now HEAD a 307 to
+   `Comfy-Org/vae-text-encorder-for-flux-klein-4b` at the same revision, same filename, and the SAME
+   `x-linked-etag`/`X-Repo-Commit` the pin already records — a pure repo rename, not a content change.
+   `verify_pins.py` fails closed on the 307 (it never follows a redirect) until `repo_id` is updated to the
+   new name in both stages. `pins.anchor`/`train`/`tester` verify clean today.

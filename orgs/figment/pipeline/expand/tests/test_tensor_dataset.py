@@ -78,9 +78,9 @@ ALLOWED_MODELS = {
     ("Comfy-Org/Qwen-Image_ComfyUI", "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors"),
     ("Comfy-Org/Qwen-Image_ComfyUI", "split_files/vae/qwen_image_vae.safetensors"),
     ("lightx2v/Qwen-Image-Edit-2511-Lightning", "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors"),
-    ("Comfy-Org/flux2-klein-4B", "split_files/diffusion_models/flux-2-klein-4b.safetensors"),
-    ("Comfy-Org/flux2-klein-4B", "split_files/text_encoders/qwen_3_4b.safetensors"),
-    ("Comfy-Org/flux2-klein-4B", "split_files/vae/flux2-vae.safetensors"),
+    ("Comfy-Org/vae-text-encorder-for-flux-klein-4b", "split_files/diffusion_models/flux-2-klein-4b.safetensors"),
+    ("Comfy-Org/vae-text-encorder-for-flux-klein-4b", "split_files/text_encoders/qwen_3_4b.safetensors"),
+    ("Comfy-Org/vae-text-encorder-for-flux-klein-4b", "split_files/vae/flux2-vae.safetensors"),
     ("Phips/4xNomosWebPhoto_RealPLKSR", "4xNomosWebPhoto_RealPLKSR.safetensors"),
 }
 

@@ -233,3 +233,64 @@ def test_locked_persona_matches_the_committed_look_spec_and_identity_spec_hashes
     assert persona["register"]["spec"]["sha256"] == hashlib.sha256(
         look_spec.read_bytes()
     ).hexdigest()
+
+
+# ---------------------------------------------------------------------------
+# identity.look (Track-2 review HIGH-2 — the persona rule's only face/body source)
+# ---------------------------------------------------------------------------
+
+
+def test_identity_look_contract():
+    persona = load_persona(PERSONA)
+    look = persona["identity"]["look"]
+    assert set(look) == {
+        "age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing",
+    }
+    assert "fully opaque and intact" in look["clothing"]
+    assert not any(character.isdigit() for character in look["age_stage"])
+
+
+def test_identity_look_missing_key_rejected(tmp_path):
+    data = _base_persona_dict()
+    del data["identity"]["look"]["hair"]
+    path = _write_persona(tmp_path, data)
+    with pytest.raises(PersonaError, match="identity.look is missing required key"):
+        load_persona(path)
+
+
+def test_identity_look_unknown_key_rejected(tmp_path):
+    data = _base_persona_dict()
+    data["identity"]["look"]["nose"] = "an ordinary adult nose"
+    path = _write_persona(tmp_path, data)
+    with pytest.raises(PersonaError, match="identity.look has unknown key"):
+        load_persona(path)
+
+
+def test_identity_look_empty_field_rejected(tmp_path):
+    data = _base_persona_dict()
+    data["identity"]["look"]["eyes"] = "   "
+    path = _write_persona(tmp_path, data)
+    with pytest.raises(PersonaError, match="identity.look.eyes"):
+        load_persona(path)
+
+
+@pytest.mark.parametrize("field,phrase", [
+    ("hair", "a caramel balayage blowout"),
+    ("skin", "flawless glowing skin"),
+    ("makeup", "a full face of makeup"),
+    ("age_stage", "a young girl in her early twenties"),
+])
+def test_identity_look_banned_look_spec_phrase_rejected(tmp_path, field, phrase):
+    data = _base_persona_dict()
+    data["identity"]["look"][field] = phrase
+    path = _write_persona(tmp_path, data)
+    with pytest.raises(PersonaError, match="banned"):
+        load_persona(path)
+
+
+def test_identity_look_age_numeral_rejected(tmp_path):
+    data = _base_persona_dict()
+    data["identity"]["look"]["age_stage"] = "a woman of 21"
+    path = _write_persona(tmp_path, data)
+    with pytest.raises(PersonaError, match="never a numeral"):
+        load_persona(path)
