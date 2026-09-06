@@ -1,0 +1,751 @@
+{
+  "gpu": {
+    "type": "NVIDIA L40S",
+    "count": 1,
+    "cloud": "SECURE"
+  },
+  "price_usd_per_hour": 1.3,
+  "max_minutes": 122,
+  "max_placement_attempts": 1,
+  "container_disk_gb": 80,
+  "volume_gb": 0,
+  "volume_mount_path": "/workspace",
+  "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
+  "readiness_timeout_seconds": 2700,
+  "job_timeout_seconds": 240,
+  "comfyui": {
+    "root": "/workspace/ComfyUI",
+    "git_ref": "v0.20.1",
+    "port": 8188,
+    "start_command": "python main.py"
+  },
+  "models": [
+    {
+      "repo_id": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+      "filename": "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+      "revision": "4c7c4ea236326cbae56d403d22a03c6cd86ad9a0",
+      "sha256": "c9fdc158e46d3b61ef75f21ae866ca2fe808bf4a53643120d1c1e87c19280a4e",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models"
+    },
+    {
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "filename": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+      "revision": "25608066f9bf5cdc28020836ce9549587053f346",
+      "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+    },
+    {
+      "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+      "filename": "split_files/vae/qwen_image_vae.safetensors",
+      "revision": "dfe60a0d63f0b946628080f070978594983b8b6e",
+      "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+      "destination_dir": "/workspace/ComfyUI/models/vae"
+    },
+    {
+      "repo_id": "tlennon-ie/qwen-edit-skin",
+      "filename": "qwen-edit-skin.safetensors",
+      "revision": "60fb653d46045074449f45068d91ce27f11eb1ca",
+      "sha256": "e4efd5ee1e5555eb438c214aa0ee6009f0215f13dbe817128615909871eed4b1",
+      "destination_dir": "/workspace/ComfyUI/models/loras"
+    }
+  ],
+  "custom_nodes": [],
+  "seed_fields": [
+    "seed",
+    "noise_seed"
+  ],
+  "workflow": {
+    "1": {
+      "class_type": "UNETLoader",
+      "inputs": {
+        "unet_name": "qwen_image_edit_2511_fp8mixed.safetensors",
+        "weight_dtype": "default"
+      }
+    },
+    "2": {
+      "class_type": "CLIPLoader",
+      "inputs": {
+        "clip_name": "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+        "type": "qwen_image",
+        "device": "default"
+      }
+    },
+    "3": {
+      "class_type": "VAELoader",
+      "inputs": {
+        "vae_name": "qwen_image_vae.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "LoraLoaderModelOnly",
+      "inputs": {
+        "model": [
+          "1",
+          0
+        ],
+        "lora_name": "qwen-edit-skin.safetensors",
+        "strength_model": 1.0
+      }
+    },
+    "5": {
+      "class_type": "ModelSamplingAuraFlow",
+      "inputs": {
+        "model": [
+          "4",
+          0
+        ],
+        "shift": 3.1
+      }
+    },
+    "6": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g01.jpg"
+      }
+    },
+    "7": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g02.jpg"
+      }
+    },
+    "8": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "creator-001/g07.jpg"
+      }
+    },
+    "10": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ],
+        "image1": [
+          "6",
+          0
+        ],
+        "image2": [
+          "7",
+          0
+        ],
+        "image3": [
+          "8",
+          0
+        ],
+        "prompt": "placeholder identity + cell instruction, substituted per job"
+      }
+    },
+    "11": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "10",
+          0
+        ]
+      }
+    },
+    "12": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1448,
+        "height": 2176,
+        "batch_size": 1
+      }
+    },
+    "13": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "5",
+          0
+        ],
+        "positive": [
+          "10",
+          0
+        ],
+        "negative": [
+          "11",
+          0
+        ],
+        "latent_image": [
+          "12",
+          0
+        ],
+        "seed": 424101,
+        "steps": 26,
+        "cfg": 3.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0
+      }
+    },
+    "14": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "13",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "20": {
+      "class_type": "TextEncodeQwenImageEditPlus",
+      "inputs": {
+        "clip": [
+          "2",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ],
+        "image1": [
+          "6",
+          0
+        ],
+        "prompt": "placeholder identity + cell instruction, substituted per job"
+      }
+    },
+    "21": {
+      "class_type": "ConditioningZeroOut",
+      "inputs": {
+        "conditioning": [
+          "20",
+          0
+        ]
+      }
+    },
+    "22": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "width": 1448,
+        "height": 2176,
+        "batch_size": 1
+      }
+    },
+    "23": {
+      "class_type": "KSampler",
+      "inputs": {
+        "model": [
+          "5",
+          0
+        ],
+        "positive": [
+          "20",
+          0
+        ],
+        "negative": [
+          "21",
+          0
+        ],
+        "latent_image": [
+          "22",
+          0
+        ],
+        "seed": 424101,
+        "steps": 26,
+        "cfg": 3.0,
+        "sampler_name": "euler",
+        "scheduler": "simple",
+        "denoise": 1.0
+      }
+    },
+    "24": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "23",
+          0
+        ],
+        "vae": [
+          "3",
+          0
+        ]
+      }
+    },
+    "30": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "images": [
+          "14",
+          0
+        ],
+        "filename_prefix": "creator-001-bakeoff-m1"
+      }
+    }
+  },
+  "uploads": [
+    {
+      "files": [
+        "_uploads/creator-001/g01.jpg",
+        "_uploads/creator-001/g02.jpg",
+        "_uploads/creator-001/g07.jpg"
+      ],
+      "subfolder": "creator-001",
+      "type": "input",
+      "overwrite": true
+    }
+  ],
+  "jobs": [
+    {
+      "seed": 424101,
+      "output_name": "c001-bo-a-01-close-front-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424101,
+      "output_name": "c001-bo-b-01-close-front-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424101,
+      "output_name": "c001-bo-c-01-close-front-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424102,
+      "output_name": "c001-bo-a-02-close-front-lampnight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, warm lamp light at night, soft shadow falling across one side of the face, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424102,
+      "output_name": "c001-bo-b-02-close-front-lampnight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, warm lamp light at night, soft shadow falling across one side of the face, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424102,
+      "output_name": "c001-bo-c-02-close-front-lampnight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, facing the camera directly, warm lamp light at night, soft shadow falling across one side of the face, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424103,
+      "output_name": "c001-bo-a-03-threequarterl-half-windowday",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her left, soft natural window daylight from one side, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424103,
+      "output_name": "c001-bo-b-03-threequarterl-half-windowday",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her left, soft natural window daylight from one side, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424103,
+      "output_name": "c001-bo-c-03-threequarterl-half-windowday",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her left, soft natural window daylight from one side, plain interior background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424104,
+      "output_name": "c001-bo-a-04-threequarterr-half-flash",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her right, direct on-camera flash lighting with a flat frontal shadow, plain dark background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424104,
+      "output_name": "c001-bo-b-04-threequarterr-half-flash",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her right, direct on-camera flash lighting with a flat frontal shadow, plain dark background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424104,
+      "output_name": "c001-bo-c-04-threequarterr-half-flash",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, at a three-quarter angle turned slightly to her right, direct on-camera flash lighting with a flat frontal shadow, plain dark background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424105,
+      "output_name": "c001-bo-a-05-profilel-close-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, in left profile with her face turned fully to the side, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424105,
+      "output_name": "c001-bo-b-05-profilel-close-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, in left profile with her face turned fully to the side, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424105,
+      "output_name": "c001-bo-c-05-profilel-close-flatwhite",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Close head-and-shoulders portrait, in left profile with her face turned fully to the side, flat even white light with no directional shadow, plain neutral background. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424106,
+      "output_name": "c001-bo-a-06-front-half-windowlight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, facing the camera directly, standing beside a window with soft natural daylight falling across her. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424106,
+      "output_name": "c001-bo-b-06-front-half-windowlight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 0.0
+        },
+        {
+          "node_id": "10",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, facing the camera directly, standing beside a window with soft natural daylight falling across her. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "14",
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "seed": 424106,
+      "output_name": "c001-bo-c-06-front-half-windowlight",
+      "expected_images": 1,
+      "substitutions": [
+        {
+          "node_id": "4",
+          "field": "strength_model",
+          "value": 1.0
+        },
+        {
+          "node_id": "20",
+          "field": "prompt",
+          "value": "Half-body shot, waist up, facing the camera directly, standing beside a window with soft natural daylight falling across her. a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face, jet-black hair parted in the middle and falling past the shoulders, dark brown eyes, fair skin with visible pores and texture, her own full dark brows brushed up and not drawn in, a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour, slim with an ordinary adult figure, wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact. Do not alter facial features, do not change her identity: keep the exact same face, bone structure, and skin tone as the reference photos. visible pores, natural skin texture, no retouching, matte skin."
+        },
+        {
+          "node_id": "30",
+          "field": "images",
+          "value": [
+            "24",
+            0
+          ]
+        }
+      ]
+    }
+  ]
+}

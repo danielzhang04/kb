@@ -1,0 +1,99 @@
+{
+  "schema": "figment/bakeoff-pins@1",
+  "note": "Identity-transfer bake-off (R24). Only m1 (Qwen-Image-Edit-2511, no Lightning, + tlennon-ie/qwen-edit-skin) is runnable clean; see expand/bakeoff/README.md for why m2 (Z-Image-Edit) is NOT RUNNABLE and m3 (PuLID FaceNet on FLUX.1-schnell) is REJECT. Verified live against Hugging Face via train/verify_pins.py --pins <this file>.",
+  "pins": {
+    "m1": {
+      "models": [
+        {
+          "repo_id": "Comfy-Org/Qwen-Image-Edit_ComfyUI",
+          "filename": "split_files/diffusion_models/qwen_image_edit_2511_fp8mixed.safetensors",
+          "revision": "4c7c4ea236326cbae56d403d22a03c6cd86ad9a0",
+          "sha256": "c9fdc158e46d3b61ef75f21ae866ca2fe808bf4a53643120d1c1e87c19280a4e",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "note": "base edit checkpoint, Lightning LoRA deliberately NOT loaded (r24 candidate 1: Lightning is the documented plastic-skin cause)"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/text_encoders/qwen_2.5_vl_7b_fp8_scaled.safetensors",
+          "revision": "25608066f9bf5cdc28020836ce9549587053f346",
+          "sha256": "cb5636d852a0ea6a9075ab1bef496c0db7aef13c02350571e388aea959c5c0b4",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "Comfy-Org/Qwen-Image_ComfyUI",
+          "filename": "split_files/vae/qwen_image_vae.safetensors",
+          "revision": "dfe60a0d63f0b946628080f070978594983b8b6e",
+          "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/vae"
+        },
+        {
+          "repo_id": "tlennon-ie/qwen-edit-skin",
+          "filename": "qwen-edit-skin.safetensors",
+          "revision": "60fb653d46045074449f45068d91ce27f11eb1ca",
+          "sha256": "e4efd5ee1e5555eb438c214aa0ee6009f0215f13dbe817128615909871eed4b1",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/loras",
+          "note": "card demonstrates Qwen-Image-Edit-2509 only; 2511 compatibility is UNVERIFIED (r22 §3) -- format+licence verify live only, per the task brief; runtime compatibility can only be settled on-pod"
+        }
+      ],
+      "custom_nodes": []
+    }
+  },
+  "rejected_or_not_runnable": {
+    "m2_z_image_edit": {
+      "status": "NOT RUNNABLE",
+      "reason": "Tongyi-MAI publishes only Z-Image and Z-Image-Turbo (both apache-2.0, text-to-image, no reference-image input). No Z-Image-Edit or Z-Image-Omni repo exists under the Tongyi-MAI org as of the live check below; the org's own community discussions ask for an Edit/Omni release date with none given.",
+      "checked_org": "https://huggingface.co/Tongyi-MAI",
+      "checked_repos_found": ["Tongyi-MAI/Z-Image-Turbo", "Tongyi-MAI/Z-Image", "Tongyi-MAI/MAI-UI-8B", "Tongyi-MAI/MAI-UI-2B"],
+      "no_repo_found_for": ["Z-Image-Edit", "Z-Image-Omni"]
+    },
+    "m3_pulid_facenet_schnell": {
+      "status": "REJECT",
+      "reason": "Every documented configuration of lldacing/ComfyUI_PuLID_Flux_ll -- including the FaceNet-loader path r24 called the 'only fully commercial-clean PuLID variant' -- requires two mandatory pickle-format (.pt) weight downloads regardless of which face-recognition loader is chosen. Pickle format is rejected on our own established precedent (r20's face_yolov8m.pt/sam_vit_b_01ec64.pth rejection; r22 section 4's independent facenet-pytorch rejection) because loading a pickle executes arbitrary code, irrespective of the code or weight licence.",
+      "node_git_url": "https://github.com/lldacing/ComfyUI_PuLID_Flux_ll",
+      "node_head_commit_checked_live": "7c7362b806c2c0f4bde8742ada9e7cb05b44d249",
+      "models_it_downloads": [
+        {
+          "name": "PuLID-FLUX weights",
+          "repo_id": "guozinan/PuLID",
+          "filename": "pulid_flux_v0.9.1.safetensors",
+          "format": "safetensors",
+          "licence": "apache-2.0 (model card license field)",
+          "verdict": "CLEAN on its own"
+        },
+        {
+          "name": "EVA-CLIP (EVA02-CLIP-L-14-336)",
+          "repo_id": "QuanSun/EVA-CLIP",
+          "filename": "EVA02_CLIP_L_336_psz14_s6B.pt",
+          "format": "pickle (.pt, loaded via torch.load) -- no safetensors alternative offered by this node or its docs",
+          "licence": "not stated on the QuanSun/EVA-CLIP model card",
+          "verdict": "REJECT -- pickle, mandatory for every PuLID-Flux configuration regardless of face loader"
+        },
+        {
+          "name": "FaceNet (VGGFace2) via facenet-pytorch",
+          "repo_id": "facenet-pytorch package (GitHub timesler/facenet-pytorch), auto-downloaded",
+          "filename": "20180402-114759-vggface2.pt",
+          "format": "pickle (.pt, torch.load), auto-downloaded to ~/.cache/torch/checkpoints/ -- required, not optional, per the node's own docs",
+          "licence": "MIT (code); weight provenance not independently re-audited here since format alone is disqualifying",
+          "verdict": "REJECT -- pickle, matches r22 section 4's prior facenet-pytorch rejection"
+        },
+        {
+          "name": "InsightFace antelopev2 (only if the FaceNet loader is NOT used)",
+          "repo_id": "MonsterMMORPG/tools (community re-host) -- onnx",
+          "filename": "antelopev2/*.onnx plus parsing_bisenet.pth, parsing_parsenet.pth",
+          "format": "onnx + pickle (.pth) mix",
+          "licence": "InsightFace pretrained weights are non-commercial research-only",
+          "verdict": "REJECT (not used in the FaceNet-loader configuration, listed for completeness -- this is the path r24 already ruled out)"
+        }
+      ],
+      "base_model_note": "PuLID-Flux is documented against FLUX.1-dev (non-commercial); the node's own docs reference FLUX.1-schnell only for the VAE, not as a validated inference base -- schnell compatibility for the PuLID adapter itself remains unconfirmed and moot given the pickle rejection above."
+    },
+    "m4_train_first": {
+      "status": "OUT OF SCOPE",
+      "reason": "Per the task brief: a training stage already exists elsewhere in this pipeline; train-first is not part of this bake-off."
+    }
+  }
+}
