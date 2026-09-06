@@ -24,6 +24,7 @@ import type { CompiledStagePolicy } from './compiler.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
+import type { ControlPlaneStore } from './storeTypes.ts';
 import { OPERATOR_SUBJECT, type CreateHumanRequestInput } from './store.ts';
 import type { InternalServiceCaller } from '../auth/session.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
@@ -546,12 +547,8 @@ export async function executeApprovedLaunch(
         summary: 'approved run published; automatic executor owns Manager and Worker startup',
       });
       const runAutomatic = ctx.runAutomatic;
-      void runAutomatic({ subject: sub, runRef, proposal: parsed.value }).catch((error: unknown) => {
-        ctx.controlStore.createHumanRequest(sub, runRef, {
-          kind: 'intervention', title: 'Automatic execution needs intervention',
-          prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-        });
-      });
+      void runAutomatic({ subject: sub, runRef, proposal: parsed.value })
+        .catch((error: unknown) => { surfaceAutomaticExecutionFailure(ctx.controlStore, sub, runRef, error); });
       return { status: 201, body: { ok: true, runRef, cards: outcome.cards } };
     } catch (error) {
       const latest = ctx.controlStore.getRun(sub, runRef);
@@ -568,4 +565,45 @@ export async function executeApprovedLaunch(
       return { status: 500, body: { error: 'launch-reconciliation-required', detail: error instanceof Error ? error.message : String(error) } };
     }
   });
+}
+
+/**
+ * Surface an automatic-execution failure as an intervention WITHOUT ever taking the daemon down.
+ *
+ * This runs inside a bare `.catch()` on a floating promise, so anything it throws becomes an
+ * unhandledRejection -- and this process installs no `unhandledRejection` handler, which means Node's
+ * default terminates it. `createHumanRequest` re-`load()`s the whole control document, so ANY durability
+ * invariant the loader refuses turns one failed run into a process kill and then, because systemd
+ * restarts into the same refusal, into a boot loop (VM outage 2026-09-06).
+ *
+ * There is no store method that records this without a full re-hydrate -- every writer begins with
+ * `load()` -- so when the write itself throws the honest fallback is one log line and return. Refusal is
+ * the other half: `createHumanRequest` RETURNS `fail(...)` for `limit` (MAX_HUMAN_REQUESTS_PER_RUN),
+ * `not-found` and `invalid`, which is silence rather than a crash but is still an intervention that was
+ * never filed, so it gets its own line. Both lines carry the STORE's words only -- the reason and the
+ * store-authored detail -- never the engine error's message, which is operator prompt text.
+ */
+export function surfaceAutomaticExecutionFailure(
+  store: Pick<ControlPlaneStore, 'createHumanRequest'>,
+  subject: string,
+  runRef: string,
+  error: unknown,
+  log: (line: string) => void = (line) => { console.error(line); },
+): void {
+  try {
+    const result = store.createHumanRequest(subject, runRef, {
+      kind: 'intervention', title: 'Automatic execution needs intervention',
+      prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
+    });
+    if (!result.ok) {
+      log(`[launch] intervention write refused for run ${runRef}: ${result.reason}: ${result.detail}`);
+    }
+  } catch (surfacingError: unknown) {
+    try {
+      log(`[launch] intervention write failed for run ${runRef}: ${
+        surfacingError instanceof Error ? surfacingError.message : String(surfacingError)}`);
+    } catch {
+      // Swallowed: the reporter itself is what threw, and there is nowhere left to report to.
+    }
+  }
 }
