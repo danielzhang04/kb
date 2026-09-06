@@ -441,3 +441,28 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+## Prove production composition, not just component behavior (2026-09-06)
+
+### Context
+- A platform audit found tested placement and learning libraries whose production entry points never supplied the required dependencies or invoked the producers.
+
+### Root Cause / Core Insight
+- A passing test with injected dependencies proves the component contract, not the deployed composition. Migration review also missed sidecar stores until it traced persistence beyond the main document.
+
+### The Pattern (transferable)
+- Next time I see a feature described as complete because its unit suite passes, I will trace the deployed start point through producer, authority, effect, receipt, and visible result, and enumerate every durable store on that path.
+- Signal to recognize: registrations are conditional on test-only overrides, production registries start empty, or a migration map accounts only for the headline database.
+- Design follow-on: an honest `unavailable` UI state cannot satisfy a required feature's completion gate. Next time all capabilities are required, I will keep the unavailable state as intermediate evidence and require the real producer-to-receipt journey before closing its phase.
+
+## Reproduce scheduling order before grading a race (2026-09-06)
+
+### Context
+- A review initially called an asynchronous drain a high-severity Windows race; checking the real promise chain showed its snapshot normally completes before another HTTP turn can intervene.
+
+### Root Cause / Core Insight
+- An arbitrarily delayed fake can demonstrate missing fencing without proving that the claimed production trigger is reachable.
+
+### The Pattern (transferable)
+- Next time I see a race inferred from an unawaited promise, I will trace actual yield points and runtime ordering, then distinguish a reachable repro from a design risk requiring a different transport or failure condition.
+- Signal to recognize: the proof requires a fake delay that the real implementation does not have, or conflates microtasks with the next event-loop turn.
