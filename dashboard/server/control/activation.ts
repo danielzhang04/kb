@@ -712,7 +712,10 @@ export interface ExecutionLatch {
    * unlock while already unlocked returns the same wiring and does not rebuild it.
    */
   unlock(input: { subject: string }): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string };
-  /** Drain managed sessions, drop the wiring, and return to the boot posture. Idempotent. */
+  /**
+   * Drain managed sessions, drop the wiring, and return to the boot posture. Repeated calls while a
+   * drain is pending share it; a later explicit call retries a previously failed drain.
+   */
   lock(input: { subject: string }): ExecutionLatchState;
 }
 
@@ -734,6 +737,19 @@ export interface ExecutionLatchOptions {
 const LOCKED_STATE: ExecutionLatchState = { state: 'locked', source: null, unlockedAt: null, unlockedBy: null };
 
 /**
+ * Process-local ownership for a wiring which has been withdrawn but whose session-host drain has not
+ * conclusively succeeded. This deliberately is not a public latch state: routes continue to report the
+ * fail-closed `locked` posture while unlock returns a precise refusal.
+ */
+interface RetiredExecution {
+  execution: ActivatedExecution;
+  /** Settles successfully even when the underlying drain rejects, so its rejection is always observed. */
+  observedDrain: Promise<void> | null;
+  /** A status bit, never an error-value sentinel: JavaScript permits falsey rejection/throw values. */
+  drainFailed: boolean;
+}
+
+/**
  * The runtime unlock latch.
  *
  * Boot posture is LOCKED unless the headless/testing override is set, in which case the latch comes up
@@ -749,6 +765,7 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
   const now = options.now ?? Date.now;
   let execution: ActivatedExecution | null = null;
   let state: ExecutionLatchState = LOCKED_STATE;
+  let retired: RetiredExecution | null = null;
 
   const apply = (
     next: ActivatedExecution | null,
@@ -775,6 +792,35 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     return { ok: true, state };
   };
 
+  const observeDrain = (candidate: RetiredExecution): void => {
+    const port = candidate.execution.attemptPort;
+    if (!port) return;
+    try {
+      // Calling the async adapter directly (rather than deferring through `Promise.resolve().then`) is
+      // intentional: its first synchronous step marks the old adapter draining before another request
+      // can enter it. The observed continuation never rejects, so a failed fail-safe drain cannot become
+      // an unhandled rejection.
+      const drain = port.drain();
+      // `AttemptExecutionPort#drain` returns a native Promise<void>; its `then` callbacks are therefore
+      // microtasks, never synchronous re-entrant callbacks from this call frame.
+      candidate.observedDrain = drain.then(
+        () => {
+          if (retired === candidate) retired = null;
+        },
+        () => {
+          if (retired === candidate) {
+            candidate.observedDrain = null;
+            candidate.drainFailed = true;
+          }
+        },
+      );
+    } catch {
+      // A synchronously throwing implementation is also a failed drain. It remains fail-closed until an
+      // operator makes a new explicit Lock request, which is the only retry path.
+      candidate.drainFailed = true;
+    }
+  };
+
   // Boot posture. `tailnet` mode is ARMED AT BOOT by design: the deployment's whole point is that the
   // fleet keeps working across a restart without a human present, and the emergency brake is the STOP
   // file plus `systemctl stop` — both non-interactive. It is checked FIRST so it outranks the env
@@ -790,6 +836,8 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
     unlock(input) {
       if (execution) return { ok: true, state };
       if (!SAFE_PROJECT.test(input.subject)) return { ok: false, reason: 'unsafe-unlock-subject' };
+      if (retired?.observedDrain) return { ok: false, reason: 'execution-draining' };
+      if (retired?.drainFailed) return { ok: false, reason: 'execution-drain-failed' };
       try {
         return construct(input.subject, 'passkey');
       } catch (error) {
@@ -799,21 +847,32 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
       }
     },
     lock() {
-      if (!execution) return state;
+      const active = execution;
+      if (!active) {
+        // There is no automatic retry after a drain refusal. A second, explicitly authorized Lock request
+        // is the bounded retry mechanism, and it reuses the same retired wiring rather than constructing a
+        // new one.
+        if (retired?.drainFailed && !retired.observedDrain) {
+          retired.drainFailed = false;
+          observeDrain(retired);
+        }
+        return state;
+      }
+      // Retain a barrier only where there is an actual host drain to await. A headless execution with no
+      // attempt port has no host epoch to overlap and must not acquire a synthetic pending state.
+      if (active.attemptPort) {
+        const candidate: RetiredExecution = { execution: active, observedDrain: null, drainFailed: false };
+        retired = candidate;
+        observeDrain(candidate);
+      }
+      // The host drain was invoked and observed above before execution is withdrawn.
       try {
-        // Draining is fire-and-forget in a synchronous lock: the latch must drop the wiring now, and a
-        // child that outlives the drain is reconciled by epoch abandonment on the next boot. The
-        // `.catch` is not optional — a synchronous `try` never sees a rejected drain, and an unhandled
-        // rejection during a fail-safe lock would take the daemon down with it.
-        void execution.attemptPort?.drain().catch(() => { /* best-effort: locking is a fail-safe direction */ });
+        active.attemptIo.stop();
       } catch {
         /* best-effort: locking is a fail-safe direction */
       }
-      try {
-        execution.attemptIo.stop();
-      } catch {
-        /* best-effort: locking is a fail-safe direction */
-      }
+      // `apply` assigns the fail-closed state before invoking onChange. If that callback throws, keep
+      // propagating the composition failure, but do not restore the retired wiring or remove its barrier.
       apply(null, LOCKED_STATE, null);
       return state;
     },
