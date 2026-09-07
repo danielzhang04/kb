@@ -230,3 +230,21 @@ final values.
   Z-Image-Edit exists; PuLID FaceNet path still pulls .pt). 18-cell ablation (A: 3 refs + LoRA, B: no LoRA, C: g01 only),
   ceiling $2.65, WAITS for the judge-backed gate.
 - Spend 2026-09-06: $0.61. Branch `claude/figment` HEAD 595ef03d+.
+
+## 2026-09-07 00:40 — bake-off m1 scored; Path-B blocked; train-first building
+
+- Bake-off m1 (Qwen-Image-Edit-2511, Lightning removed, 26 steps, 18 cells, pod jm67txnsqfj662, $1.99 + $0.23 for a
+  240 s-timeout first attempt). Stage-1 facenet own-anchor: arm B (3 refs, no skin LoRA) 0.87–0.93 on 5/6 — best; arm A
+  (3 refs + `qwen-edit-skin`) 0.60–0.86 — the skin LoRA HURTS identity; arm C (g01 only) 0.50–0.77 — worst. Half-body
+  cells fail the persona `min_face_px` 600 floor (a dataset-framing floor, not an identity verdict). Judge on the two
+  cells it reached: same_person 55–62, skin_realism 20. Full 18-cell judge re-run in progress after a judge fix
+  (189780db: failures were cached; 4 concurrent full-size calls timed out).
+- Gate tooling landed: `identity_gate.py run` (plan-independent), judge downscaling/timeouts, harness pickle rejection
+  (`diagnostic_non_commercial` + `pickle_ack` escape hatch), gen stage D1/D2 + detail-only mode, lorapath launcher
+  copies bootstrapped LoRAs past the swap.
+- Operator ruling on licence posture: "whichever you believe is best, or both" → BOTH, Path A first. Path-B diagnostic
+  (`expand/bakeoff/m3diag_manifest.yaml`, PuLID-Flux on FLUX.1-dev, research-only, $3.70) built and dry-run green;
+  its launch was BLOCKED by the session permission classifier — operator can launch by hand (command in m3diag_README).
+- Building: train-first — `train/select_training_cells.py` (anchors + judge-passing cells), DOP flag in training.yaml /
+  render_aitoolkit_config, `train-first` plan stage.
+- Spend 2026-09-06: $2.83. Ops handoff `handoffs/2026-09-07-figment-track2-gate-bakeoff.md`.
