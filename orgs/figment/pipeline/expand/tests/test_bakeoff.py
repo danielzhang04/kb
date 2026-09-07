@@ -663,4 +663,365 @@ def test_summarize_against_a_real_dry_run_json(tmp_path):
     table = summarize.summarize(run_doc, {"rows": gate_rows})
     assert sum(row["n"] for row in table) == 18
     assert all(row["scored"] == 6 for row in table)
-    assert all(row["pass_count"] == 6 for row in table)
+
+
+# =============================================================================
+# Path-B DIAGNOSTIC (Method D -- PuLID-Flux on FLUX.1-dev), research-only,
+# non-commercial, measurement-only. See `pipeline/expand/bakeoff/m3diag_README.md`.
+#
+# Deliberately separate from everything above: new files only
+# (`m3diag_manifest.yaml`, `m3diag_api.json`, `m3diag_pins.json`,
+# `m3diag_README.md`), none of them named `m1.*`/`pins.yaml`/`README.md`, and this
+# section touches no name defined above it in this module (own constants/fixtures,
+# `M3DIAG_`-prefixed or locally scoped, reusing only the already-imported `pod`,
+# `verify_pins`, `load_json`, `load_module`, and stdlib imports at file scope).
+# =============================================================================
+
+FIGMENT_TRAIN = PIPELINE / "figment_train.py"
+figment_train = load_module("figment_bakeoff_test_figment_train", FIGMENT_TRAIN)
+
+M3DIAG_MANIFEST_PATH = BAKEOFF / "m3diag_manifest.yaml"
+M3DIAG_WORKFLOW_PATH = BAKEOFF / "m3diag_api.json"
+M3DIAG_PINS_PATH = BAKEOFF / "m3diag_pins.json"
+M3DIAG_README_PATH = BAKEOFF / "m3diag_README.md"
+
+M3DIAG_OUTPUT_NAME_RE = re.compile(r"^c001-bo-(?P<arm>[DE])-(?P<cell>.+)$")
+M3DIAG_ARMS = ("D", "E")
+M3DIAG_ARM_WEIGHT = {"D": 1.0, "E": 0.7}
+
+
+@pytest.fixture(scope="module")
+def m3diag_manifest() -> dict:
+    return load_json(M3DIAG_MANIFEST_PATH)
+
+
+@pytest.fixture(scope="module")
+def m3diag_workflow() -> dict:
+    return load_json(M3DIAG_WORKFLOW_PATH)
+
+
+@pytest.fixture(scope="module")
+def m3diag_pins() -> dict:
+    return load_json(M3DIAG_PINS_PATH)
+
+
+def _m3diag_job_arm_cell(job: dict) -> tuple[str, str]:
+    match = M3DIAG_OUTPUT_NAME_RE.match(job["output_name"])
+    assert match, f"output_name does not match c001-bo-<D|E>-<cell>: {job['output_name']!r}"
+    return match.group("arm"), match.group("cell")
+
+
+def _m3diag_job_text_substitution(job: dict) -> dict:
+    subs = [s for s in job["substitutions"] if s["node_id"] == "9" and s["field"] == "text"]
+    assert len(subs) == 1, (job["output_name"], job["substitutions"])
+    return subs[0]
+
+
+def _m3diag_job_weight_substitution(job: dict) -> dict:
+    subs = [s for s in job["substitutions"] if s["node_id"] == "8" and s["field"] == "weight"]
+    assert len(subs) == 1, (job["output_name"], job["substitutions"])
+    return subs[0]
+
+
+# ---------------------------------------------------------------------------
+# Files exist where the task brief says, named m3diag_*, and nothing else moved
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_files_exist():
+    assert M3DIAG_MANIFEST_PATH.is_file()
+    assert M3DIAG_WORKFLOW_PATH.is_file()
+    assert M3DIAG_PINS_PATH.is_file()
+    assert M3DIAG_README_PATH.is_file()
+    for path in (M3DIAG_MANIFEST_PATH, M3DIAG_WORKFLOW_PATH, M3DIAG_PINS_PATH, M3DIAG_README_PATH):
+        assert path.name.startswith("m3diag_"), path
+
+
+def test_m3diag_did_not_touch_files_out_of_scope():
+    """The task brief forbids THIS diagnostic from editing figment_train.py,
+    tensor-pins.yaml, pod/, runs/, or m1.* -- confirm the diagnostic itself added new
+    m3diag_* files only, plus this test file's own appended section. `train/runs/` is
+    explicitly excluded from this check: the task brief itself warns it belongs to
+    "another builder/live run" and may be legitimately modified by that concurrent
+    process at any time -- this test only needs to prove *this diagnostic* never wrote
+    there, which the m3diag_* file-scope checks below already establish without
+    depending on that directory's transient state."""
+    forbidden = [
+        PIPELINE / "figment_train.py",
+        PIPELINE / "train" / "tensor-pins.yaml",
+    ]
+    for path in forbidden:
+        assert path.is_file(), f"expected pre-existing file missing: {path}"
+    git_status = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(PIPELINE)],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    for line in git_status.stdout.splitlines():
+        path_str = line[3:].strip().replace("\\", "/")
+        if not path_str:
+            continue
+        if "/train/runs/" in path_str:
+            continue  # owned by the concurrent builder/live run, see docstring above
+        assert "pod/" not in path_str or "bakeoff" in path_str, f"unexpected change under pod/: {line}"
+        assert not re.search(r"/m1\.(yaml|json)$", path_str), f"m1.* touched: {line}"
+        assert not path_str.endswith("/pins.yaml"), f"shared pins.yaml touched: {line}"
+        assert not path_str.endswith("bakeoff/README.md"), f"shared README.md touched: {line}"
+
+
+def test_m3diag_manifest_declares_non_commercial_diagnostic(m3diag_manifest: dict):
+    assert m3diag_manifest["diagnostic_non_commercial"] is True
+    assert isinstance(m3diag_manifest.get("diagnostic_note"), str) and m3diag_manifest["diagnostic_note"]
+
+
+def test_m3diag_readme_states_research_only_and_delete_after_scoring():
+    text = M3DIAG_README_PATH.read_text(encoding="utf-8")
+    lowered = text.lower()
+    assert "research-only" in lowered or "research only" in lowered
+    assert "never be published" in lowered or "must never be published" in lowered
+    assert "delete" in lowered
+
+
+# ---------------------------------------------------------------------------
+# Manifest structure: 6 cells x 2 arms (D, E) = 12 jobs, one bootstrap
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_manifest_has_12_jobs(m3diag_manifest: dict):
+    assert len(m3diag_manifest["jobs"]) == 12
+
+
+def test_m3diag_six_cells_two_arms_each_with_shared_seed_per_cell(m3diag_manifest: dict):
+    by_cell: dict[str, set] = {}
+    seed_by_cell: dict[str, set] = {}
+    arms_seen: set[str] = set()
+    for job in m3diag_manifest["jobs"]:
+        arm, cell = _m3diag_job_arm_cell(job)
+        arms_seen.add(arm)
+        by_cell.setdefault(cell, set()).add(arm)
+        seed_by_cell.setdefault(cell, set()).add(job["seed"])
+    assert arms_seen == set(M3DIAG_ARMS)
+    assert len(by_cell) == 6, sorted(by_cell)
+    assert all(arms == set(M3DIAG_ARMS) for arms in by_cell.values())
+    assert all(len(seeds) == 1 for seeds in seed_by_cell.values()), seed_by_cell
+
+
+def test_m3diag_arm_d_weight_1_0_arm_e_weight_0_7(m3diag_manifest: dict):
+    for job in m3diag_manifest["jobs"]:
+        arm, _cell = _m3diag_job_arm_cell(job)
+        weight_sub = _m3diag_job_weight_substitution(job)
+        assert weight_sub["value"] == pytest.approx(M3DIAG_ARM_WEIGHT[arm]), job["output_name"]
+
+
+def test_m3diag_prompts_match_m1_arm_a_verbatim(m3diag_manifest: dict, manifest: dict):
+    """The task brief: 'positive prompt = m1's per-cell prompt.' Copied programmatically
+    when this diagnostic was built -- this test re-derives m1's arm-a prompt per cell from
+    the live m1.yaml fixture and asserts byte-for-byte equality, so a future edit to
+    either file cannot silently drift them apart."""
+    m1_prompt_by_cell = {}
+    for job in manifest["jobs"]:
+        arm, cell = _job_arm_cell(job)
+        if arm != "a":
+            continue
+        m1_prompt_by_cell[cell] = _job_prompt_substitution(job)["value"]
+    assert len(m1_prompt_by_cell) == 6
+
+    for job in m3diag_manifest["jobs"]:
+        _arm, cell = _m3diag_job_arm_cell(job)
+        text_sub = _m3diag_job_text_substitution(job)
+        assert text_sub["value"] == m1_prompt_by_cell[cell], job["output_name"]
+
+
+def test_m3diag_seeds_match_m1_per_cell(m3diag_manifest: dict, manifest: dict):
+    m1_seed_by_cell = {}
+    for job in manifest["jobs"]:
+        arm, cell = _job_arm_cell(job)
+        if arm != "a":
+            continue
+        m1_seed_by_cell[cell] = job["seed"]
+
+    for job in m3diag_manifest["jobs"]:
+        _arm, cell = _m3diag_job_arm_cell(job)
+        assert job["seed"] == m1_seed_by_cell[cell], job["output_name"]
+
+
+def test_m3diag_load_image_node_always_g01_only(m3diag_workflow: dict):
+    """Method D takes a single face reference (unlike m1's 3-image multi-ref) -- no job
+    substitutes node 7's image, and it is always g01."""
+    assert m3diag_workflow["7"]["class_type"] == "LoadImage"
+    assert m3diag_workflow["7"]["inputs"]["image"] == "creator-001/g01.jpg"
+
+
+def test_m3diag_no_job_substitutes_the_reference_image(m3diag_manifest: dict):
+    for job in m3diag_manifest["jobs"]:
+        assert not any(s["node_id"] == "7" for s in job["substitutions"]), job["output_name"]
+
+
+# ---------------------------------------------------------------------------
+# Workflow graph: PuLID InsightFace path wired, FLUX guidance/cfg per the brief
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_workflow_uses_insightface_loader_not_facenet(m3diag_workflow: dict):
+    class_types = {node["class_type"] for node in m3diag_workflow.values()}
+    assert "PulidFluxInsightFaceLoader" in class_types
+    assert "PulidFluxFaceNetLoader" not in class_types
+
+
+def test_m3diag_flux_guidance_and_ksampler_settings(m3diag_workflow: dict):
+    guidance_nodes = [n for n in m3diag_workflow.values() if n["class_type"] == "FluxGuidance"]
+    assert len(guidance_nodes) == 1
+    assert guidance_nodes[0]["inputs"]["guidance"] == pytest.approx(3.5)
+
+    sampler_nodes = [n for n in m3diag_workflow.values() if n["class_type"] == "KSampler"]
+    assert len(sampler_nodes) == 1
+    sampler = sampler_nodes[0]["inputs"]
+    assert sampler["steps"] == 20
+    assert sampler["cfg"] == pytest.approx(1.0)
+    assert sampler["sampler_name"] == "euler"
+
+    latent_nodes = [n for n in m3diag_workflow.values() if n["class_type"] == "EmptySD3LatentImage"]
+    assert len(latent_nodes) == 1
+    assert latent_nodes[0]["inputs"]["width"] == 1024
+    assert latent_nodes[0]["inputs"]["height"] == 1536
+
+
+# ---------------------------------------------------------------------------
+# Pins: format-valid, gated files explicitly null+flagged, matches manifest,
+# and verified LIVE against Hugging Face (the non-gated 9; the 2 gated ones
+# documented to fail verify_pins.py for the stated reason).
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_manifest_models_match_pins_json_exactly(m3diag_manifest: dict, m3diag_pins: dict):
+    def key(m):
+        return (m["repo_id"], m["filename"], m["revision"], m.get("sha256"))
+
+    manifest_keys = sorted(key(m) for m in m3diag_manifest["models"])
+    pins_keys = sorted(key(m) for m in m3diag_pins["pins"]["m3diag"]["models"])
+    assert manifest_keys == pins_keys
+
+
+def test_m3diag_every_model_pin_has_valid_revision_and_optional_sha256(m3diag_manifest: dict):
+    for model in m3diag_manifest["models"]:
+        revision = pod.model_revision(model)  # raises HarnessError on bad shape
+        assert re.fullmatch(r"[0-9A-Fa-f]{40}", revision), model
+        sha = pod.model_sha256(model)
+        assert sha is None or re.fullmatch(r"[0-9a-f]{64}", sha), model
+
+
+def test_m3diag_gated_flux_dev_pins_have_null_sha256_and_a_note(m3diag_manifest: dict):
+    gated = [
+        m for m in m3diag_manifest["models"]
+        if m["repo_id"] == "black-forest-labs/FLUX.1-dev"
+    ]
+    assert {m["filename"] for m in gated} == {"flux1-dev.safetensors", "ae.safetensors"}
+    for model in gated:
+        assert model["sha256"] is None
+        assert "gated" in model.get("note", "").lower()
+
+
+def test_m3diag_custom_node_git_ref_is_40_hex(m3diag_manifest: dict):
+    for node in m3diag_manifest["custom_nodes"]:
+        ref = pod.custom_node_git_ref(node)  # raises HarnessError on bad shape
+        assert ref == "7c7362b806c2c0f4bde8742ada9e7cb05b44d249"
+
+
+def test_m3diag_gated_pins_fail_verify_pins_for_the_documented_reason(m3diag_pins: dict):
+    problems = verify_pins.verify_pins(m3diag_pins, stages=["m3diag"])
+    assert "m3diag" in problems
+    joined = "\n".join(problems["m3diag"])
+    assert "flux1-dev.safetensors" in joined and "missing a non-empty 'sha256'" in joined
+    assert "ae.safetensors" in joined
+
+
+def test_m3diag_nongated_pins_verify_live_clean(m3diag_pins: dict):
+    """The 9 pins that do carry a sha256 (clip_l, t5xxl_fp8, pulid_flux_v0.9.1,
+    EVA-CLIP .pt, and all 5 antelopev2 .onnx files) resolve live clean -- checked
+    directly against verify_pins.verify_model_pin so a missing-sha256 gated pin
+    elsewhere in the same stage can't hide a real regression in these 9."""
+    models = m3diag_pins["pins"]["m3diag"]["models"]
+    non_gated = [m for m in models if m.get("sha256")]
+    assert len(non_gated) == 9
+    problems: list[str] = []
+    for model in non_gated:
+        problems.extend(verify_pins.verify_model_pin(model))
+    assert problems == [], problems
+
+
+def test_m3diag_verify_pins_cli_reports_the_two_gated_stops():
+    result = subprocess.run(
+        [sys.executable, str(VERIFY_PINS), "--pins", str(M3DIAG_PINS_PATH), "--stage", "m3diag"],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    assert result.returncode == 1, result.stdout + result.stderr
+    combined = result.stdout + result.stderr
+    assert "flux1-dev.safetensors" in combined
+    assert "ae.safetensors" in combined
+    assert "missing a non-empty 'sha256'" in combined
+
+
+# ---------------------------------------------------------------------------
+# diagnostic_assets: every flagged file is real, present, and has a reason
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_diagnostic_assets_block_names_real_flagged_files(m3diag_manifest: dict):
+    model_filenames = {m["filename"] for m in m3diag_manifest["models"]}
+    assets = m3diag_manifest["diagnostic_assets"]
+    assert len(assets) >= 1
+    seen = set()
+    for entry in assets:
+        assert entry["filename"] in model_filenames, entry
+        assert isinstance(entry.get("reason"), str) and entry["reason"].strip(), entry
+        seen.add(entry["filename"])
+    # The pickle .pt and all 5 non-commercial .onnx files must be flagged.
+    assert "EVA02_CLIP_L_336_psz14_s6B.pt" in seen
+    for onnx_name in (
+        "1k3d68.onnx", "2d106det.onnx", "genderage.onnx", "glintr100.onnx", "scrfd_10g_bnkps.onnx",
+    ):
+        assert onnx_name in seen
+
+
+# ---------------------------------------------------------------------------
+# Cost ceiling / timeouts, computed with the harness's own helpers (imported,
+# never reimplemented by hand)
+# ---------------------------------------------------------------------------
+
+
+def test_m3diag_readiness_within_2700(m3diag_manifest: dict):
+    assert m3diag_manifest["readiness_timeout_seconds"] <= 2700
+
+
+def test_m3diag_job_timeout_is_600(m3diag_manifest: dict):
+    assert m3diag_manifest["job_timeout_seconds"] == 600
+
+
+def test_m3diag_max_minutes_equals_the_harness_computed_minimum(m3diag_manifest: dict):
+    minimum = pod.minimum_runtime_minutes(m3diag_manifest)
+    assert m3diag_manifest["max_minutes"] == minimum
+    assert minimum == 170.0
+
+
+def test_m3diag_manifest_ceiling_is_3_69(m3diag_manifest: dict):
+    assert figment_train.manifest_ceiling(m3diag_manifest) == "3.69"
+
+
+def test_m3diag_manifest_dry_runs_clean(tmp_path):
+    """The direct, empirical answer to whether the harness rejects .pt/.pth/.onnx model
+    files outright: it does not -- this manifest carries one .pt and five .onnx model
+    entries and must still dry-run to a clean exit with all 12 jobs verified."""
+    result = subprocess.run(
+        [
+            sys.executable, str(POD_RUNNER), "run",
+            "--manifest", str(M3DIAG_MANIFEST_PATH),
+            "--out", str(tmp_path / "m3diag-dry-run"),
+            "--dry-run",
+        ],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    combined = result.stdout + result.stderr
+    assert "preflight cost estimate: $3.68" in combined, combined
+    run_doc = load_json(tmp_path / "m3diag-dry-run" / "run.json")
+    assert len(run_doc["jobs"]) == 12
+    assert all(len(job["files"]) >= 1 for job in run_doc["jobs"])

@@ -1,0 +1,113 @@
+{
+  "schema": "figment/bakeoff-pins@1",
+  "note": "Path-B DIAGNOSTIC pins (r25 'Two paths', Method D = PuLID-Flux on FLUX.1-dev). diagnostic_non_commercial: true -- measurement-only, nothing here ships. See m3diag_README.md for the full evidence trail. verify_pins.py requires all four of repo_id/revision/filename/sha256 to be non-empty on every pin to call it 'clean'; the two gated black-forest-labs/FLUX.1-dev files (flux1-dev.safetensors, ae.safetensors) have sha256=null (gated, unresolvable without HF_TOKEN) and will correctly FAIL that check -- see m3diag_README.md's verification section for the actual live output, not a workaround.",
+  "pins": {
+    "m3diag": {
+      "models": [
+        {
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "filename": "flux1-dev.safetensors",
+          "revision": "3de623fc3c33e44ffbe2bad470d0f45bccf2eb21",
+          "sha256": null,
+          "licence": "flux-1-dev-non-commercial-license",
+          "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+          "note": "gated: true -- HEAD without a token returned 401 GatedRepo (checked live 2026-09-06); revision resolved live via unauthenticated /api/models (repo metadata is not gated, file bytes are); sha256 unresolvable without HF_TOKEN, left null per the task brief's documented fallback"
+        },
+        {
+          "repo_id": "black-forest-labs/FLUX.1-dev",
+          "filename": "ae.safetensors",
+          "revision": "3de623fc3c33e44ffbe2bad470d0f45bccf2eb21",
+          "sha256": null,
+          "licence": "flux-1-dev-non-commercial-license",
+          "destination_dir": "/workspace/ComfyUI/models/vae",
+          "note": "same gated repo as flux1-dev.safetensors; sha256 unresolvable without HF_TOKEN, left null per the task brief's documented fallback"
+        },
+        {
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "clip_l.safetensors",
+          "revision": "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+          "sha256": "660c6f5b1abae9dc498ac2d21e1347d2abdb0cf6c0c0c8576cd796491d9a6cdd",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+          "note": "not literally the 'Comfy-Org' HF org named in the task brief -- comfyanonymous is ComfyUI's own maintainer's personal HF account and is the de facto standard source every FLUX ComfyUI doc (including the PuLID-Flux node's own README) points at; flagged here rather than silently substituted"
+        },
+        {
+          "repo_id": "comfyanonymous/flux_text_encoders",
+          "filename": "t5xxl_fp8_e4m3fn_scaled.safetensors",
+          "revision": "6af2a98e3f615bdfa612fbd85da93d1ed5f69ef5",
+          "sha256": "a498f0485dc9536735258018417c3fd7758dc3bccc0a645feaa472b34955557a",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/text_encoders"
+        },
+        {
+          "repo_id": "guozinan/PuLID",
+          "filename": "pulid_flux_v0.9.1.safetensors",
+          "revision": "492b1451255dc9d9bc3c857259690b5f8b998d4a",
+          "sha256": "92c41c3af322b02e58e1b32842e4601e08c8f16ec1fe80089dbe957df510f51d",
+          "licence": "apache-2.0",
+          "destination_dir": "/workspace/ComfyUI/models/pulid"
+        },
+        {
+          "repo_id": "QuanSun/EVA-CLIP",
+          "filename": "EVA02_CLIP_L_336_psz14_s6B.pt",
+          "revision": "11afd202f2ae80869d6cef18b1ec775e79bd8d12",
+          "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05",
+          "licence": "mit",
+          "destination_dir": "/workspace/ComfyUI/models/clip",
+          "diagnostic_flag": "pickle (.pt, loaded via torch.load) -- arbitrary-code-execution risk on load, per established project precedent (r20 face_yolov8m.pt/sam_vit_b_01ec64.pth rejection; r22 sec4 facenet-pytorch rejection; pins.yaml m3 rejection). Licence is MIT per a live check on 2026-09-06 (pins.yaml's older note called this 'not stated on the card' -- that has since changed or was itself stale; this file's live check wins)."
+        },
+        {
+          "repo_id": "MonsterMMORPG/tools",
+          "filename": "1k3d68.onnx",
+          "revision": "2cc250d767e22019bef3ae1aefaa1ad8a73ef64c",
+          "sha256": "df5c06b8a0c12e422b2ed8947b8869faa4105387f199c477af038aa01f9a45cc",
+          "licence": null,
+          "destination_dir": "/workspace/ComfyUI/models/insightface/models/antelopev2",
+          "diagnostic_flag": "InsightFace antelopev2 -- non-commercial research-only pretrained weights (r24 licence ground truth: 'InsightFace pretrained models ... are non-commercial research-only'); this re-host carries no HF licence tag at all. Individual .onnx files used instead of the repo's antelopev2.zip sibling to avoid an unzip step the harness does not perform."
+        },
+        {
+          "repo_id": "MonsterMMORPG/tools",
+          "filename": "2d106det.onnx",
+          "revision": "2cc250d767e22019bef3ae1aefaa1ad8a73ef64c",
+          "sha256": "f001b856447c413801ef5c42091ed0cd516fcd21f2d6b79635b1e733a7109dbf",
+          "licence": null,
+          "destination_dir": "/workspace/ComfyUI/models/insightface/models/antelopev2",
+          "diagnostic_flag": "InsightFace antelopev2 -- non-commercial research-only pretrained weights (r24 licence ground truth: 'InsightFace pretrained models ... are non-commercial research-only'); this re-host carries no HF licence tag at all. Individual .onnx files used instead of the repo's antelopev2.zip sibling to avoid an unzip step the harness does not perform."
+        },
+        {
+          "repo_id": "MonsterMMORPG/tools",
+          "filename": "genderage.onnx",
+          "revision": "2cc250d767e22019bef3ae1aefaa1ad8a73ef64c",
+          "sha256": "4fde69b1c810857b88c64a335084f1c3fe8f01246c9a191b48c7bb756d6652fb",
+          "licence": null,
+          "destination_dir": "/workspace/ComfyUI/models/insightface/models/antelopev2",
+          "diagnostic_flag": "InsightFace antelopev2 -- non-commercial research-only pretrained weights (r24 licence ground truth: 'InsightFace pretrained models ... are non-commercial research-only'); this re-host carries no HF licence tag at all. Individual .onnx files used instead of the repo's antelopev2.zip sibling to avoid an unzip step the harness does not perform."
+        },
+        {
+          "repo_id": "MonsterMMORPG/tools",
+          "filename": "glintr100.onnx",
+          "revision": "2cc250d767e22019bef3ae1aefaa1ad8a73ef64c",
+          "sha256": "4ab1d6435d639628a6f3e5008dd4f929edf4c4124b1a7169e1048f9fef534cdf",
+          "licence": null,
+          "destination_dir": "/workspace/ComfyUI/models/insightface/models/antelopev2",
+          "diagnostic_flag": "InsightFace antelopev2 -- non-commercial research-only pretrained weights (r24 licence ground truth: 'InsightFace pretrained models ... are non-commercial research-only'); this re-host carries no HF licence tag at all. Individual .onnx files used instead of the repo's antelopev2.zip sibling to avoid an unzip step the harness does not perform."
+        },
+        {
+          "repo_id": "MonsterMMORPG/tools",
+          "filename": "scrfd_10g_bnkps.onnx",
+          "revision": "2cc250d767e22019bef3ae1aefaa1ad8a73ef64c",
+          "sha256": "5838f7fe053675b1c7a08b633df49e7af5495cee0493c7dcf6697200b85b5b91",
+          "licence": null,
+          "destination_dir": "/workspace/ComfyUI/models/insightface/models/antelopev2",
+          "diagnostic_flag": "InsightFace antelopev2 -- non-commercial research-only pretrained weights (r24 licence ground truth: 'InsightFace pretrained models ... are non-commercial research-only'); this re-host carries no HF licence tag at all. Individual .onnx files used instead of the repo's antelopev2.zip sibling to avoid an unzip step the harness does not perform."
+        }
+      ],
+      "custom_nodes": [
+        {
+          "git_url": "https://github.com/lldacing/ComfyUI_PuLID_Flux_ll",
+          "git_ref": "7c7362b806c2c0f4bde8742ada9e7cb05b44d249"
+        }
+      ]
+    }
+  }
+}
