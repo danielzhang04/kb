@@ -60,7 +60,15 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
   fit gates selection BEFORE email credits; firm bio page first, capped LinkedIn lane (40/24h) second; deterministic scoring;
   P8 owns rendering (`affinity draft` through P3 validators with its own QaPolicy 75–125) because P3/P4 hardcode bands;
   the ask-grammar fold is P5 (`manager/compile_ask.py`), re-record P5 → merge P6 → cut claude/prospecting-p8.
-- NEXT: walk Daniel the plan one task per phase; Task 1 = P5 fold; gates P8-A (fit table) and P8-B (NYC VC fit-first re-run
+- BUILD STATE (2026-09-06 ~21:00): Daniel approved the plan walk ("Yeah"). Tasks 1–13 BUILT and committed on `claude/prospecting-p8`
+  (worktree C:/Users/danie/kb-worktrees/prospecting-p8; HEAD 35446fc1): P5 fold recorded 566, P6 re-recorded 741 twice (fold merge +
+  phase-agnostic completeness test), P8 = 113 affinity tests, manifest 854 nodes. Opus code review found 2 BLOCKERs (queue-destroying
+  drain; fill-fit never drained) + 6 HIGH, fix wave applied (d361ff52); confirm pass + P8 gate in flight. Open: H6 deliverable_v2 view
+  predicate (schema_p8.sql still amendable — NOT yet applied to the real store), subjects went generic (needs one evidence slot each),
+  copy-polish pass with Daniel before real drafts. Ask with fit lines ready: %LOCALAPPDATA%\kb-prospecting
+yc-vc-ask.txt.
+  Scratchpad briefs-p8/ (build-*.md, fix-*.md), run-gate-p8.ps1, fill_manifest_p8.py.
+- NEXT (was): walk Daniel the plan one task per phase; Task 1 = P5 fold; gates P8-A (fit table) and P8-B (NYC VC fit-first re-run
   in Datasette deliverable_v2, 7 measurable criteria, refire_noop_runs cumulative 4).
 
 ## Daniel's gates, in order (present one at a time)
