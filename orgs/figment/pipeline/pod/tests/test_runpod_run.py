@@ -8,6 +8,7 @@ import itertools
 import json
 import logging
 import os
+import shlex
 import signal
 import shutil
 import subprocess
@@ -1588,6 +1589,152 @@ def test_track1_model_revision_accepts_a_tag_and_pins_the_url(tmp_path):
     rr.require_manifest(configured, tmp_path / "manifest.yaml")
 
     assert "/resolve/weights-v1.2.3/model.safetensors" in rr.bootstrap_script(configured)
+
+
+# --- Pickle-format model extension ban (.pt/.pth/.ckpt/.bin/.pkl/.pickle) --------------
+#
+# models[] downloads are pulled onto the pod and loaded there; a pickle-format file
+# executes arbitrary code on load regardless of its own licence, so the harness rejects
+# it unless the manifest explicitly opts into a diagnostic-only, research-only run
+# (top-level diagnostic_non_commercial: true) AND the specific model carries its own
+# non-empty pickle_ack reason. See runpod_run.py's PICKLE_MODEL_EXTENSIONS,
+# _model_pickle_filename, and manifest_pickle_models.
+
+def _pickle_model_manifest(*, ext=".pt", ack=None, diagnostic=False):
+    configured = manifest()
+    model = {
+        "repo_id": "owner/repo",
+        "filename": f"weights{ext}",
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+    }
+    if ack is not None:
+        model["pickle_ack"] = ack
+    configured["models"] = [model]
+    if diagnostic:
+        configured["diagnostic_non_commercial"] = True
+    return configured
+
+
+@pytest.mark.parametrize("ext", [".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle", ".PT"])
+def test_pickle_model_extensions_rejected_by_default(tmp_path, ext):
+    configured = _pickle_model_manifest(ext=ext)
+
+    with pytest.raises(rr.HarnessError, match="disallowed pickle extension") as excinfo:
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+    assert f"weights{ext}" in str(excinfo.value)
+
+
+def test_pickle_model_allowed_with_both_diagnostic_flag_and_pickle_ack(tmp_path):
+    configured = _pickle_model_manifest(
+        ack="Path-B diagnostic, research-only, r25", diagnostic=True,
+    )
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")  # does not raise
+
+    assert rr.manifest_pickle_models(configured) == ["weights.pt"]
+
+
+def test_pickle_model_rejected_with_diagnostic_flag_but_no_pickle_ack(tmp_path):
+    configured = _pickle_model_manifest(diagnostic=True)
+
+    with pytest.raises(rr.HarnessError, match="disallowed pickle extension"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_pickle_model_rejected_with_pickle_ack_but_no_diagnostic_flag(tmp_path):
+    configured = _pickle_model_manifest(ack="reason", diagnostic=False)
+
+    with pytest.raises(rr.HarnessError, match="disallowed pickle extension"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_pickle_model_ack_must_be_a_non_empty_string(tmp_path):
+    configured = _pickle_model_manifest(ack="   ", diagnostic=True)
+
+    with pytest.raises(rr.HarnessError, match="disallowed pickle extension"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
+def test_onnx_model_extension_always_allowed_without_any_ack(tmp_path):
+    configured = _pickle_model_manifest(ext=".onnx")
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")  # does not raise
+
+    assert rr.manifest_pickle_models(configured) == []
+
+
+def test_bootstrap_script_logs_a_pickle_warning_before_the_diagnostic_model_download():
+    configured = _pickle_model_manifest(
+        ack="Path-B diagnostic, research-only, r25", diagnostic=True,
+    )
+
+    script = rr.bootstrap_script(configured)
+
+    assert (
+        "log_line " + shlex.quote("WARNING PICKLE MODEL LOADED (diagnostic): weights.pt")
+        in script
+    )
+    assert script.index("WARNING PICKLE MODEL LOADED") < script.index("retry_required model-1")
+
+
+def test_bootstrap_script_raises_for_a_disallowed_pickle_model():
+    configured = _pickle_model_manifest()
+
+    with pytest.raises(rr.HarnessError, match="disallowed pickle extension"):
+        rr.bootstrap_script(configured)
+
+
+def test_bootstrap_script_has_no_pickle_warning_for_safetensors_or_onnx_models():
+    assert "PICKLE MODEL LOADED" not in rr.bootstrap_script(_model_manifest())
+    assert "PICKLE MODEL LOADED" not in rr.bootstrap_script(_pickle_model_manifest(ext=".onnx"))
+
+
+def test_dry_run_warns_once_per_pickle_model_and_records_run_json_pickle_models(tmp_path):
+    configured = _pickle_model_manifest(
+        ack="Path-B diagnostic, research-only, r25", diagnostic=True,
+    )
+    logger, stream = logger_and_stream()
+
+    result = rr.run_harness(
+        configured, tmp_path / "manifest.yaml", tmp_path / "out",
+        max_usd=None, max_minutes=1, dry_run=True, logger=logger,
+        sleep=lambda _seconds: None,
+    )
+
+    assert stream.getvalue().count("PICKLE MODEL LOADED (diagnostic): weights.pt") == 1
+    assert result["pickle_models"] == ["weights.pt"]
+    run_doc = json.loads((tmp_path / "out" / "run.json").read_text(encoding="utf-8"))
+    assert run_doc["pickle_models"] == ["weights.pt"]
+
+
+def test_dry_run_logs_onnx_models_as_info_without_a_pickle_warning(tmp_path):
+    configured = _pickle_model_manifest(ext=".onnx")
+    logger, stream = logger_and_stream()
+
+    result = rr.run_harness(
+        configured, tmp_path / "manifest.yaml", tmp_path / "out",
+        max_usd=None, max_minutes=1, dry_run=True, logger=logger,
+        sleep=lambda _seconds: None,
+    )
+
+    assert "weights.onnx" in stream.getvalue()
+    assert "PICKLE MODEL LOADED" not in stream.getvalue()
+    assert result["pickle_models"] == []
+
+
+def test_dry_run_with_no_models_records_an_empty_pickle_models_list(tmp_path):
+    configured = manifest()
+    logger, stream = logger_and_stream()
+
+    result = rr.run_harness(
+        configured, tmp_path / "manifest.yaml", tmp_path / "out",
+        max_usd=None, max_minutes=1, dry_run=True, logger=logger,
+        sleep=lambda _seconds: None,
+    )
+
+    assert result["pickle_models"] == []
+    assert "PICKLE MODEL LOADED" not in stream.getvalue()
 
 
 def test_track1_model_digest_failure_is_not_learned_as_a_bad_host():

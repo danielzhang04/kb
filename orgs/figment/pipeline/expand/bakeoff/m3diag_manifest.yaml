@@ -75,7 +75,8 @@
       "sha256": "84c3a17a228c567a155259b2245b0b59072bf7da510260a0a02ec54de6d50b05",
       "licence": "mit",
       "destination_dir": "/workspace/ComfyUI/models/clip",
-      "diagnostic_flag": "pickle (.pt, loaded via torch.load) -- arbitrary-code-execution risk on load, per established project precedent (r20 face_yolov8m.pt/sam_vit_b_01ec64.pth rejection; r22 sec4 facenet-pytorch rejection; pins.yaml m3 rejection). Licence is MIT per a live check on 2026-09-06 (pins.yaml's older note called this 'not stated on the card' -- that has since changed or was itself stale; this file's live check wins)."
+      "diagnostic_flag": "pickle (.pt, loaded via torch.load) -- arbitrary-code-execution risk on load, per established project precedent (r20 face_yolov8m.pt/sam_vit_b_01ec64.pth rejection; r22 sec4 facenet-pytorch rejection; pins.yaml m3 rejection). Licence is MIT per a live check on 2026-09-06 (pins.yaml's older note called this 'not stated on the card' -- that has since changed or was itself stale; this file's live check wins).",
+      "pickle_ack": "Path-B diagnostic, research-only, r25"
     },
     {
       "repo_id": "MonsterMMORPG/tools",

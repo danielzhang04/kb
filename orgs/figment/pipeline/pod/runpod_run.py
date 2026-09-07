@@ -46,6 +46,12 @@ REQUEST_TIMEOUT = 30.0
 TERMINATE_ATTEMPTS = 5
 IMAGE_EXTENSIONS = {".png", ".jpg", ".jpeg", ".webp"}
 ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
+# models[] downloads are pulled onto the pod and loaded there. A pickle-format file
+# (torch.load/pickle.load under the hood) executes arbitrary code on load regardless of
+# the weights' own licence -- project policy (GUARDRAILS.md; r20/r22 precedent: the
+# FaceDetailer face_yolov8m.pt/sam_vit_b_01ec64.pth and facenet-pytorch rejections) is
+# safetensors/onnx/tflite/json only. See manifest_pickle_models / _model_pickle_filename.
+PICKLE_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"}
 UPLOAD_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".txt", ".toml", ".json",
     ".safetensors", ".ready",
@@ -1591,6 +1597,49 @@ def model_sha256(model: dict[str, Any]) -> str | None:
     return digest.lower()
 
 
+def _model_pickle_filename(model: dict[str, Any], manifest: dict[str, Any]) -> str | None:
+    """Enforce the pickle-load ban on one models[] entry.
+
+    Returns the model's filename when it uses a pickle-format extension AND the manifest
+    carries the diagnostic escape hatch (top-level ``diagnostic_non_commercial: true`` plus
+    this model's own non-empty ``pickle_ack`` reason string) -- the caller then knows to log
+    a WARNING for it. Returns None for anything else, including ``.onnx`` (always allowed,
+    no ack required). Raises HarnessError for a pickle-format model missing either half of
+    the escape hatch.
+    """
+    filename = str(model.get("filename", ""))
+    ext = PurePosixPath(filename).suffix.lower()
+    if ext not in PICKLE_MODEL_EXTENSIONS:
+        return None
+    pickle_ack = model.get("pickle_ack")
+    ack_ok = isinstance(pickle_ack, str) and pickle_ack.strip() != ""
+    diagnostic_ok = manifest.get("diagnostic_non_commercial") is True
+    if diagnostic_ok and ack_ok:
+        return filename
+    raise HarnessError(
+        f"model {filename!r} uses a disallowed pickle extension ({ext}); models[] "
+        "downloads are pulled onto the pod and loaded there, and only safetensors/onnx/"
+        "tflite/json are permitted (GUARDRAILS.md; r20/r22 precedent bans .pt/.pth/.ckpt/"
+        ".bin/.pkl/.pickle as arbitrary-code-execution risk regardless of licence); to "
+        "allow this file as a diagnostic-only exception, set the manifest's top-level "
+        "diagnostic_non_commercial: true AND this model's pickle_ack: \"<reason>\""
+    )
+
+
+def manifest_pickle_models(manifest: dict[str, Any]) -> list[str]:
+    """Validate every models[] entry's extension against the pickle-load ban (raising
+    HarnessError on a violation) and return the filenames let through as diagnostic-only
+    exceptions, in manifest order."""
+    allowed: list[str] = []
+    for model in manifest.get("models", []):
+        if not isinstance(model, dict):
+            continue
+        filename = _model_pickle_filename(model, manifest)
+        if filename is not None:
+            allowed.append(filename)
+    return allowed
+
+
 def custom_node_git_ref(node: dict[str, Any]) -> str:
     git_ref = node.get("git_ref")
     installer_pin = node.get("installer_pin")
@@ -1870,6 +1919,7 @@ def require_manifest(
             raise HarnessError("model destination_dir must be an absolute pod path")
         model_revision(model)
         model_sha256(model)
+        _model_pickle_filename(model, manifest)
     for node in manifest.get("custom_nodes", []):
         url = node.get("git_url") if isinstance(node, dict) else None
         if not isinstance(url, str) or not url.startswith("https://"):
@@ -2519,6 +2569,7 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
             f"{encoded_revision}/{encoded_filename}?download=true"
         )
         digest = model_sha256(model)
+        pickle_filename = _model_pickle_filename(model, manifest)
         # $HF_TOKEN, when the container env carries it (via env_secret_refs), is expanded
         # by the shell directly into curl's argv. It is never passed to log_line/echo/
         # printf, so it never reaches _bootstrap.log or the harness's own output.
@@ -2556,6 +2607,11 @@ ThreadingHTTPServer(("0.0.0.0", 8188), Handler).serve_forever()
                 f"if ! {checksum_partial}; then echo 'MODEL sha256 mismatch' >&2; "
                 "rm -f \"$tmp\"; exit 86; fi; "
                 f"mv \"$tmp\" {shlex.quote(destination)}; fi"
+            )
+        if pickle_filename is not None:
+            lines.append(
+                "log_line "
+                + shlex.quote(f"WARNING PICKLE MODEL LOADED (diagnostic): {pickle_filename}")
             )
         lines.append(f"retry_required model-{index} bash -lc {shlex.quote(command)}")
     # Drop the token from the container env once model downloads are done and well before
@@ -3449,9 +3505,21 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 arc_cap_usd: float | None = None,
                 arc_ledger_glob: str = DEFAULT_ARC_LEDGER_GLOB,
                 allow_empty_ledger: bool = False) -> dict[str, Any]:
+    logger = logger or build_logger(redactor)
+    if redactor:
+        set_active_redactor(redactor)
     require_manifest(
         manifest, manifest_path, allow_missing_uploads=dry_run,
     )
+    # manifest load: log the diagnostic pickle-model escape hatch (if any model used it)
+    # and the always-allowed .onnx models, once, right after the manifest is accepted.
+    pickle_models = manifest_pickle_models(manifest)
+    for pickle_filename in pickle_models:
+        logger.warning("PICKLE MODEL LOADED (diagnostic): %s", pickle_filename)
+    for model in manifest.get("models", []):
+        if (isinstance(model, dict)
+                and PurePosixPath(str(model.get("filename", ""))).suffix.lower() == ".onnx"):
+            logger.info("model uses .onnx (allowed): %s", model["filename"])
     upload_items = expand_manifest_uploads(
         manifest, manifest_path, allow_missing=dry_run,
     )
@@ -3462,9 +3530,6 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     if not dry_run and max_usd is None:
         raise HarnessError("--max-usd is required for a live run")
     estimate = estimate_cost(manifest, max_minutes, max_usd)
-    logger = logger or build_logger(redactor)
-    if redactor:
-        set_active_redactor(redactor)
     if upload_items:
         logger.info(
             "upload preflight: %d files, %d bytes",
@@ -3548,6 +3613,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
         "preflight_estimate_usd": round(estimate, 6),
         "arc_usd_before": round(arc_spent, 6),
         "arc_cap_usd": arc_cap,
+        "pickle_models": pickle_models,
         "uploads": [],
         "jobs": [],
         "artifacts": [],

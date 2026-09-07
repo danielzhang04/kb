@@ -19,29 +19,45 @@ question only.
 
 ## Does the harness reject `.pt`/`.pth` model files outright?
 
-**No — checked live, not assumed.** `pipeline/pod/runpod_run.py`'s model-manifest validator
-(`require_manifest`, the loop over `manifest.get("models", [])` at lines 1861-1872) checks
-only `repo_id`/`filename`/`destination_dir` presence, `repo_id` shape
+**Originally no — this diagnostic's own first pass found and documented the gap; that gap is
+now closed at the harness level.** When this file was first written, `pipeline/pod/runpod_run.py`'s
+model-manifest validator (`require_manifest`, the loop over `manifest.get("models", [])`)
+checked only `repo_id`/`filename`/`destination_dir` presence, `repo_id` shape
 (`[A-Za-z0-9._-]+/[A-Za-z0-9._-]+`), filename path-safety (no absolute path, no `..`),
-`destination_dir` being an absolute pod path, and `revision`/`sha256` format when present.
-**There is no extension allowlist anywhere in that path.** The two extension allowlists that
-do exist in this file — `ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}`
-(line 48, for `artifacts[]` downloads *from* the pod) and `UPLOAD_EXTENSIONS` (lines 49-52,
-for `uploads[]` sent *to* the pod) — govern two entirely different code paths and are never
-consulted for a Hugging-Face model download. Confirmed empirically, not just by reading: a
-real `--dry-run` of `m3diag_manifest.yaml` below (which carries one `.pt` pickle file and
-five `.onnx` files in its `models` list) passed clean, all 12 jobs verified, exit 0.
+`destination_dir` being an absolute pod path, and `revision`/`sha256` format when present —
+there was no extension rule for a Hugging-Face model download at all, confirmed empirically by
+a clean `--dry-run` of this same manifest's one `.pt` and five `.onnx` model entries.
 
-This is a **harness-level** answer only. It does not reverse the project's own established
-precedent that a pickle file executes arbitrary code on load regardless of its licence — the
-same precedent `pins.yaml`'s M3 verdict (in the Path-A bake-off next to this file) already
-applied to reject PuLID for a *shippable* build. That precedent is a **project policy
-decision** enforced by pins/README review, not a technical block in `runpod_run.py` itself —
-this diagnostic is only permitted to knowingly carry that pickle risk because the task brief
-explicitly scoped it as non-commercial, non-shipping, measurement-only tooling. Every
-pickle/non-commercial asset this manifest downloads is listed, with its reason, in
-`m3diag_manifest.yaml`'s own `diagnostic_assets` block (reproduced in the pins table below)
-so nobody mistakes "the harness will run it" for "this is licence-clean."
+That finding is now fixed in `runpod_run.py`: `PICKLE_MODEL_EXTENSIONS`
+(`.pt`/`.pth`/`.ckpt`/`.bin`/`.pkl`/`.pickle`, matched case-insensitively) is enforced by
+`_model_pickle_filename`/`manifest_pickle_models`, called from both `require_manifest`'s
+`models[]` loop and `bootstrap_script`'s download-command loop — a manifest with an
+unacknowledged pickle-format model is now rejected with a `HarnessError` naming the file and
+the rule, at manifest load *and* if `bootstrap_script` is ever called directly on it.
+`.onnx` stays unrestricted (logged at INFO for visibility, no ack needed). See
+`pipeline/pod/README.md`'s "Pickle-format models are rejected" section for the full rule.
+
+This manifest still knowingly carries the EVA-CLIP `.pt` file, but no longer as an
+unenforced gap — it now goes through the harness's own diagnostic escape hatch: this
+manifest's top-level `diagnostic_non_commercial: true` plus that one model's own
+`"pickle_ack": "Path-B diagnostic, research-only, r25"` (see the `models[]` entry below).
+Both are required together; either alone is rejected. With both set, the harness logs
+`WARNING PICKLE MODEL LOADED (diagnostic): EVA02_CLIP_L_336_psz14_s6B.pt` once when the
+manifest loads and again to `_bootstrap.log` right before that download on the pod, and
+`run.json` records it under `pickle_models` — including on the `--dry-run` re-verified below.
+
+This remains a **harness-level** mechanism only; it does not reverse the project's own
+established precedent that a pickle file executes arbitrary code on load regardless of its
+licence — the same precedent `pins.yaml`'s M3 verdict (in the Path-A bake-off next to this
+file) already applied to reject PuLID for a *shippable* build. Whether carrying that risk is
+*acceptable* for a given run remains a **project policy decision** made by whoever sets
+`diagnostic_non_commercial`/`pickle_ack` and reviews the manifest — the harness enforces that
+the exception was stated explicitly, not that it was a good idea. This diagnostic is only
+permitted to knowingly carry that pickle risk because the task brief explicitly scoped it as
+non-commercial, non-shipping, measurement-only tooling. Every pickle/non-commercial asset this
+manifest downloads is listed, with its reason, in `m3diag_manifest.yaml`'s own
+`diagnostic_assets` block (reproduced in the pins table below) so nobody mistakes "the harness
+will run it" for "this is licence-clean."
 
 ## Method D — PuLID-Flux on FLUX.1-dev
 

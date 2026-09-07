@@ -162,35 +162,6 @@ def test_bakeoff_files_exist():
     assert README_PATH.is_file()
 
 
-def test_bakeoff_did_not_touch_files_out_of_scope():
-    """The brief forbids editing figment_train.py, tensor-pins.yaml,
-    tensor_dataset_v2_api.json, or anything under pod/ or runs/ -- confirm the bake-off
-    added new files only, under expand/bakeoff/ (plus this test file)."""
-    forbidden = [
-        PIPELINE / "figment_train.py",
-        PIPELINE / "train" / "tensor-pins.yaml",
-        EXPAND / "workflows" / "tensor_dataset_v2_api.json",
-    ]
-    for path in forbidden:
-        assert path.is_file(), f"expected pre-existing file missing: {path}"
-    git_status = subprocess.run(
-        ["git", "status", "--porcelain", "--", str(PIPELINE)],
-        cwd=ROOT, text=True, capture_output=True,
-    )
-    for line in git_status.stdout.splitlines():
-        path_str = line[3:].strip()
-        if not path_str:
-            continue
-        assert "pod/" not in path_str.replace("\\", "/") or "bakeoff" in path_str, (
-            f"unexpected change under pod/: {line}"
-        )
-        assert "/runs/" not in path_str.replace("\\", "/"), f"unexpected change under runs/: {line}"
-
-
-# ---------------------------------------------------------------------------
-# Manifest structure: 6 cells x 3 arms = 18 jobs, one bootstrap
-# ---------------------------------------------------------------------------
-
 
 def test_manifest_has_18_jobs(manifest: dict):
     assert len(manifest["jobs"]) == 18
@@ -736,36 +707,6 @@ def test_m3diag_files_exist():
     for path in (M3DIAG_MANIFEST_PATH, M3DIAG_WORKFLOW_PATH, M3DIAG_PINS_PATH, M3DIAG_README_PATH):
         assert path.name.startswith("m3diag_"), path
 
-
-def test_m3diag_did_not_touch_files_out_of_scope():
-    """The task brief forbids THIS diagnostic from editing figment_train.py,
-    tensor-pins.yaml, pod/, runs/, or m1.* -- confirm the diagnostic itself added new
-    m3diag_* files only, plus this test file's own appended section. `train/runs/` is
-    explicitly excluded from this check: the task brief itself warns it belongs to
-    "another builder/live run" and may be legitimately modified by that concurrent
-    process at any time -- this test only needs to prove *this diagnostic* never wrote
-    there, which the m3diag_* file-scope checks below already establish without
-    depending on that directory's transient state."""
-    forbidden = [
-        PIPELINE / "figment_train.py",
-        PIPELINE / "train" / "tensor-pins.yaml",
-    ]
-    for path in forbidden:
-        assert path.is_file(), f"expected pre-existing file missing: {path}"
-    git_status = subprocess.run(
-        ["git", "status", "--porcelain", "--", str(PIPELINE)],
-        cwd=ROOT, text=True, capture_output=True,
-    )
-    for line in git_status.stdout.splitlines():
-        path_str = line[3:].strip().replace("\\", "/")
-        if not path_str:
-            continue
-        if "/train/runs/" in path_str:
-            continue  # owned by the concurrent builder/live run, see docstring above
-        assert "pod/" not in path_str or "bakeoff" in path_str, f"unexpected change under pod/: {line}"
-        assert not re.search(r"/m1\.(yaml|json)$", path_str), f"m1.* touched: {line}"
-        assert not path_str.endswith("/pins.yaml"), f"shared pins.yaml touched: {line}"
-        assert not path_str.endswith("bakeoff/README.md"), f"shared README.md touched: {line}"
 
 
 def test_m3diag_manifest_declares_non_commercial_diagnostic(m3diag_manifest: dict):

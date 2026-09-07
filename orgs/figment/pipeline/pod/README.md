@@ -69,7 +69,8 @@ that file. Required fields are:
   `comfyui.extra_args` appended to the ComfyUI launch command as either a shell-style string
   or, preferably, a list of argument strings;
 - public Hugging Face `models` with `repo_id`, `filename`, and absolute `destination_dir`, plus
-  optional `revision` (a 40-hex commit or safe tag) and optional 64-hex `sha256`;
+  optional `revision` (a 40-hex commit or safe tag), optional 64-hex `sha256`, and — only for
+  a pickle-format `filename` — the diagnostic-only `pickle_ack` reason string described below;
 - optional `env_secret_refs`, restricted to `HF_TOKEN -> <RunPod secret NAME>`, for gated
   Hugging Face downloads via a RunPod Secret the harness never sees — see the credential
   boundary above;
@@ -120,6 +121,29 @@ Model URLs use `/resolve/<revision>/` when `revision` is present and otherwise r
 legacy `/resolve/main/` path. When `sha256` is present, bootstrap checks both a reusable
 existing file and a newly downloaded `.partial` before the atomic move. A mismatch removes
 the bad file and is a fatal model-download failure; it is not learned as a bad machine host.
+
+**Pickle-format models are rejected.** Every `models[]` file is pulled onto the pod and then
+loaded there, so a pickle-format file (`.pt`, `.pth`, `.ckpt`, `.bin`, `.pkl`, or `.pickle`,
+matched case-insensitively) executes arbitrary code on load regardless of the weights' own
+licence. `require_manifest` and `bootstrap_script` both reject any such `filename` with a
+`HarnessError` naming the file and the extension, e.g. `model 'foo.pt' uses a disallowed
+pickle extension (.pt); ...`. Only `.safetensors`, `.onnx`, `.tflite`, and `.json` model files
+are otherwise unrestricted; `.onnx` is logged at INFO when the manifest loads, purely for
+visibility. This mirrors established project precedent (GUARDRAILS.md; r20's
+`face_yolov8m.pt`/`sam_vit_b_01ec64.pth` rejection, r22's `facenet-pytorch` rejection) —
+pickle load risk is independent of a model's licence terms.
+
+A diagnostic-only, research-only run may still load a pickle-format model by explicitly
+acknowledging the risk twice: the manifest's top-level `diagnostic_non_commercial: true`
+**and** that specific model's own non-empty `pickle_ack` reason string (for example
+`"Path-B diagnostic, research-only, r25"`). Either flag alone is rejected — both are
+required together. When both are set, the file is allowed through, and the harness prints a
+`WARNING PICKLE MODEL LOADED (diagnostic): <file>` line once when the manifest loads (via
+the run logger) and again to `_bootstrap.log` immediately before that model's download step
+on the pod, so the exception is visible in both places it can be read. `run.json` also
+records every such filename under `pickle_models` (an empty list when none were used), even
+on a `--dry-run`.
+
 Each custom node is cloned, its pinned commit is fetched when the depth-1 clone lacks the
 object, checked out detached, verified against `git rev-parse HEAD`, and the checked-out SHA
 is written to `_bootstrap.log` before requirements are installed.
