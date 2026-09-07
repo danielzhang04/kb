@@ -260,3 +260,19 @@ final values.
 - Train-first launched 05:15 (pod placed): 23 images (anchors + 20 judge-passing cells), DOP on (class "woman",
   ×1.0), 1250 steps, save 250, ceiling $5.85. Tester + judge follow; then gen/detail with the best checkpoint.
 - Building: train-first folded into the single plan schema (so `run` drives it); slim `pipeline/README.md`.
+
+## 2026-09-07 08:05 — train-first LoRA trained; tester exposed a trigger-word defect; infra slimmed
+
+- Train-first pod fn938tol6mgbtp: 23 images (3 anchors + 20 judge-passing cells), DOP on (class "woman"), 1250 steps,
+  141 min, $2.57, 5 checkpoints (250…1000 + final). Launched via the harness directly because `run` rejected the old
+  train-first plan schema — fixed the same hour (ea5eb424: train-first emits the single plan.json, `variant: train-first`).
+- Tester (pod idb1hskq79h4l3, $0.29) ran through `figment_train.py run --stage tester` (first live use on a train-first
+  plan) — every checkpoint scored facenet 0.17–0.23 (stranger): the tester prompt carried NO trigger word while the LoRA
+  was trained with `creator001krea2` in every caption (DOP requires it). Defect in prompt composition, not the LoRA;
+  fix in flight (trigger + class prefixed on every tester/gen/detail prompt); tester re-runs after.
+- Overnight infra: E1 retirement (hand manifests gone, plan is the sole producer; d6a97b13), slim `pipeline/README.md`
+  (fd207d53), DOP-aware train budgets (1f426a24), creator-002 acceptance fixture + suite (0a01936d) which found and led
+  to fixing two real defects (dataset prompts not persona-derived; harness float ceiling) (09faa490), opus review of
+  gate/judge/budgets/pickle folded (fb1f20ae), static workflows persona-free (cdd2f438). 889 tests green before the
+  last three commits; full rerun pending.
+- Spend 2026-09-07 so far: $2.86.
