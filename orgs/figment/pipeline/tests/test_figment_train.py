@@ -18,21 +18,6 @@ PERSONAS = ROOT / "orgs" / "figment" / "personas"
 MODULE_PATH = PIPELINE / "figment_train.py"
 POD_RUNNER = PIPELINE / "pod" / "runpod_run.py"
 
-CURRENT_MANIFESTS = {
-    # Track-2 Task B1 removed "dataset" from this table: the framing split (D24/D25),
-    # the skin-texture clause, and the dropped Impact-Subpack pin all changed what the
-    # generator produces for the dataset stage, so it no longer byte-reproduces the
-    # hand-written shard-01/02/03 files below (which also predate the fourth "fullbody"
-    # manifest). Task E1 replaces this whole reproduction test with a six-stage
-    # residue+dry-run check once the hand-written manifests are retired; until then,
-    # dataset-stage coverage lives in expand/tests/test_tensor_dataset.py and this file's
-    # own creator-002/003 dry-run tests below.
-    "smoke": [PIPELINE / "train" / "runs" / "creator-001-tensor-train-smoke.yaml"],
-    "train": [PIPELINE / "train" / "runs" / "creator-001-tensor-train.yaml"],
-    "tester": [PIPELINE / "train" / "runs" / "creator-001-tensor-tester.yaml"],
-}
-
-
 def load_module(name: str, path: Path):
     spec = importlib.util.spec_from_file_location(name, path)
     assert spec and spec.loader
@@ -62,20 +47,52 @@ def canonical_json(path: Path) -> bytes:
     ).encode()
 
 
-def test_creator001_plan_reproduces_current_manifest_documents_exactly(command, tmp_path):
-    out = tmp_path / "creator001-plan"
-    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS, skip_pin_verify=True)
+def test_creator001_every_planned_stage_dry_runs_clean_and_pins_verify(
+    command, tmp_path, monkeypatch,
+):
+    """Task E1: the hand-written manifests this test used to byte-compare `build_plan`'s
+    output against are retired -- figment_train.py is the only producer now. In their
+    place, this proves creator-001's REAL, checked-in persona.yaml/training.yaml plans
+    every reachable stage clean end to end: each manifest dry-runs green through the pod
+    harness, the plan's own bookkeeping (sha256/ceiling_usd/argv) is internally
+    consistent, and `verify_pins` (the exact preflight `plan` runs live, normally
+    skipped in tests via `skip_pin_verify`) accepts every pin against a monkeypatched
+    `head_etag` -- proving the preflight wiring is sound without a live network call.
+    """
+    verify_pins_module = command._verify_pins_module()
+    pins = command._read_json(command.PINS_PATH)
+    known_by_url = {}
+    for entry in pins["pins"].values():
+        for model in verify_pins_module._stage_models(entry):
+            known_by_url[verify_pins_module._pin_url(model)] = model
 
-    for stage, expected_paths in CURRENT_MANIFESTS.items():
-        runs = plan["stages"][stage]["runs"]
-        assert len(runs) == len(expected_paths)
-        for run, expected in zip(runs, expected_paths):
+    def _fake_head_etag(url, *, timeout=30.0):
+        model = known_by_url[url]
+        return 200, {"x-repo-commit": model["revision"], "x-linked-etag": model["sha256"]}
+
+    monkeypatch.setattr(verify_pins_module, "head_etag", _fake_head_etag)
+
+    out = tmp_path / "creator001-plan"
+    # skip_pin_verify defaults to False: this run genuinely exercises the preflight.
+    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS)
+
+    for stage, stage_data in plan["stages"].items():
+        for index, run in enumerate(stage_data["runs"]):
             generated = plan_path(out, run)
-            assert canonical_json(generated) == canonical_json(expected)
             assert run["sha256"] == hashlib.sha256(generated.read_bytes()).hexdigest()
             assert run["ceiling_usd"] == command.manifest_ceiling(load_json(generated))
             assert "--max-usd" in run["argv"]
             assert run["cli"] == subprocess.list2cmdline(run["argv"])
+            result = subprocess.run(
+                [
+                    sys.executable, str(POD_RUNNER), "run",
+                    "--manifest", str(generated),
+                    "--out", str(tmp_path / "dry-runs" / stage / str(index)),
+                    "--dry-run",
+                ],
+                cwd=ROOT, text=True, capture_output=True,
+            )
+            assert result.returncode == 0, result.stdout + result.stderr
 
     assert load_json(out / "expand" / "workflows" / "tensor_dataset_v2_api.json") == load_json(
         PIPELINE / "expand" / "workflows" / "tensor_dataset_v2_api.json"

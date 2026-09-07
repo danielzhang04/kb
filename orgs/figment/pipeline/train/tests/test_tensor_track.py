@@ -25,14 +25,9 @@ TRAIN = Path(__file__).resolve().parents[1]
 PIPELINE = TRAIN.parent
 POD = PIPELINE / "pod"
 RUNS = TRAIN / "runs"
+REAL_PERSONAS = PIPELINE.parent / "personas"
 
 TRIGGER = "creator001krea2"
-MANIFESTS = {
-    "train": RUNS / "creator-001-tensor-train.yaml",
-    "train_smoke": RUNS / "creator-001-tensor-train-smoke.yaml",
-    "tester": RUNS / "creator-001-tensor-tester.yaml",
-    "gen": RUNS / "creator-001-tensor-gen.yaml",
-}
 
 
 def load_module(name, path):
@@ -45,6 +40,52 @@ def load_module(name, path):
 
 runner = load_module("figment_pod_runpod_run_tensor", POD / "runpod_run.py")
 renderer = load_module("figment_render_aitoolkit", TRAIN / "render_aitoolkit_config.py")
+figment_train = load_module("figment_train_tensor_track", PIPELINE / "figment_train.py")
+
+# Task E1 (docs/superpowers/plans/2026-09-06-figment-track2-faithful-pipeline.md): the
+# hand-written train/train-smoke/tester/gen manifests figment_train.py plan now generates
+# from creator-001's own persona.yaml/training.yaml/tensor-pins.yaml are retired --
+# figment_train.py is the only producer. Build the same four manifests fresh, once per
+# test session, from the REAL checked-in creator-001 persona (never a synthetic one: this
+# file is specifically a replication check against the live config), and let `manifest()`
+# load those instead of a frozen file.
+_PLAN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-track-plan-"))
+_PLAN = figment_train.build_plan(
+    "creator-001", "all", _PLAN_DIR, personas_root=REAL_PERSONAS, skip_pin_verify=True,
+)
+
+# "gen" is never part of a `--stage all` plan (it is only ever planned explicitly, after
+# GATE 3) and creator-001's real training.yaml has no `chosen_checkpoint_step` recorded
+# yet (GATE 3 has not run live) -- so it cannot be planned through build_plan() at all
+# right now. Call the same private manifest-emission helper build_plan itself uses
+# (`_gen_manifest`) directly against the real persona/pins, with a training dict that
+# only adds the one missing key, instead of mutating the checked-in training.yaml or
+# copying the persona tree (whose register.spec.path resolves relative to its real
+# on-disk location and would break under a copy).
+_persona, _training, _pins = figment_train._load_inputs("creator-001", REAL_PERSONAS)
+_persona = dict(_persona)
+_persona["_persona_path"] = str(REAL_PERSONAS / "creator-001" / "persona.yaml")
+_gen_training = {**_training, "chosen_checkpoint_step": _training["steps"]}
+_GEN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-track-gen-"))
+_GEN_MANIFEST_PATH = _GEN_DIR / "creator-001-tensor-gen.yaml"
+figment_train._write_json(_GEN_MANIFEST_PATH, figment_train._gen_manifest(
+    _persona, _gen_training, _pins,
+))
+# `rendered_training_start_script` resolves `training.start_script_file` relative to
+# the manifest's OWN directory (same contract `_copy_support_files`/
+# `build_train_first_plan` honour for every other plan) -- copy the lorapath launcher
+# template alongside this hand-assembled manifest the same way those do.
+(_GEN_DIR / figment_train.TESTER_START_PATH.name).write_text(
+    figment_train.TESTER_START_PATH.read_text(encoding="utf-8"),
+    encoding="utf-8",
+)
+
+MANIFESTS = {
+    "train": _PLAN_DIR / _PLAN["stages"]["train"]["runs"][0]["manifest"],
+    "train_smoke": _PLAN_DIR / _PLAN["stages"]["smoke"]["runs"][0]["manifest"],
+    "tester": _PLAN_DIR / _PLAN["stages"]["tester"]["runs"][0]["manifest"],
+    "gen": _GEN_MANIFEST_PATH,
+}
 
 
 def manifest(name):
@@ -237,24 +278,25 @@ def test_training_start_script_streams_detached_training_evidence():
     assert failed_marker < transport_wait, "failure evidence must remain retrievable"
 
 
-def test_training_start_script_publishes_all_eight_checkpoints_by_exact_name():
+def test_training_start_script_publishes_all_checkpoints_by_exact_name():
     """Finding 10 (plus the smoke-#4 final-naming defect): the start script must
-    copy the 7 intermediate saves plus the final step-2000 checkpoint into
-    /workspace/output under the manifest's declared artifact names, fail closed
-    before the completion marker if any is missing, and never infer "final" from
-    mtime. ai-toolkit writes the final step's save ONLY under the bare trigger
-    name, never a step-suffixed one (evidence: smoke #4 wrote
+    copy every intermediate save plus the final checkpoint (creator-001's live
+    1250-step train-first run: 4 intermediates + final) into /workspace/output
+    under the manifest's declared artifact names, fail closed before the
+    completion marker if any is missing, and never infer "final" from mtime.
+    ai-toolkit writes the final step's save ONLY under the bare trigger name,
+    never a step-suffixed one (evidence: smoke #4 wrote
     creator001krea2.safetensors at the final step, no
     creator001krea2_<step>.safetensors alongside it) — the source path for the
     final checkpoint must reflect that, not "${trigger}_${final_step}.safetensors"."""
     _remote, rendered = runner.rendered_training_start_script(
         manifest("train"), MANIFESTS["train"],
     )
-    for step in range(250, 2000, 250):
+    for step in range(250, 1250, 250):
         assert f"{step:09d}" in rendered
     # final_step still renders (used to filter checkpoint_steps below it), but
     # never as part of a step-suffixed filename.
-    assert "final_step='000002000'" in rendered
+    assert "final_step='000001250'" in rendered
     assert "_${final_step}.safetensors" not in rendered
     assert 'final_ckpt="${checkpoint_dir}/${trigger}.safetensors"' in rendered
     assert f"cp \"$final_ckpt\" \"/workspace/output/${{trigger}}.safetensors\"" in rendered
@@ -624,19 +666,18 @@ def test_manifest_ceilings_fit_the_daily_budget(name):
     )
 
 
-def test_full_manifest_ceiling_matches_the_recomputed_2000_step_arithmetic():
-    """steps=2000 (not module 11's 3000 — L40S measured at 3.85 s/step makes 3000
-    steps ~3.2 h, over the marker window and the daily budget) drops the artifact
-    ladder from 12 to 8, which lowers the real preflight minimum; max_minutes is
-    set to 270 (a small buffer over the recomputed 266-minute floor), not the
-    stale 280 sized for 12 artifacts."""
+def test_full_manifest_ceiling_covers_creator_001s_live_train_first_arithmetic():
+    """creator-001's live training.yaml (Path-A train-first, r24 method 4): steps=1250,
+    save_every=250 -- a 5-checkpoint ladder (4 intermediates + final), well under the
+    280-minute-class ceiling `tensor-pins.yaml` still reserves (a generous, unchanged
+    fixed cap; not recomputed per persona -- see `_pod_base`)."""
     doc = manifest("train")
     assert doc["job_timeout_seconds"] == 10800
     assert doc["readiness_timeout_seconds"] == 3600
     assert doc["artifact_download_seconds"] == 180
-    assert len(runner.manifest_artifacts(doc)) == 8
+    assert len(runner.manifest_artifacts(doc)) == 5
     minimum = runner.minimum_runtime_minutes(doc)
-    assert minimum == pytest.approx(266.0)
+    assert minimum == pytest.approx(257.0)
     assert doc["max_minutes"] == 270
     assert doc["max_minutes"] >= minimum
 
@@ -657,21 +698,21 @@ def test_training_manifest_replicates_module_11_transport():
     assert {item.subfolder for item in uploads} == {TRIGGER}
     assert any(item.remote_name == "training.json" for item in uploads)
     artifacts = runner.manifest_artifacts(doc)
-    # The full 8-checkpoint ladder (steps=2000, save_every=250, module 11's
-    # save-every kept identical while steps was cut from 3000 — see
-    # TENSOR-TRAINING.md) comes back through /view like any other artifact — no
-    # network volume required. minimum_runtime_minutes no longer multiplies the
-    # job timeout by the artifact count (that was the defect); it reserves one
-    # shared job timeout for the completion marker plus one
+    # The live 5-checkpoint ladder (steps=1250, save_every=250 -- module 11's
+    # save-every kept identical while creator-001's own training.yaml now runs
+    # train-first at 1250 steps, see TENSOR-TRAINING.md) comes back through /view
+    # like any other artifact — no network volume required. minimum_runtime_minutes
+    # no longer multiplies the job timeout by the artifact count (that was the
+    # defect); it reserves one shared job timeout for the completion marker plus one
     # artifact_download_seconds allowance per further artifact. See
     # HARNESS-CHANGES.md addendum.
     step_checkpoints = [
-        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 2000, 250)
+        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 1250, 250)
     ]
     assert [artifact["remote"] for artifact in artifacts] == [
         *step_checkpoints, f"{TRIGGER}.safetensors",
     ]
-    assert len(artifacts) == 8
+    assert len(artifacts) == 5
     assert all(artifact["wait_for"] == "_training.complete" for artifact in artifacts)
     assert doc["job_timeout_seconds"] == 10800
     assert doc["artifact_download_seconds"] == 180
@@ -726,7 +767,7 @@ def test_training_manifests_run_comfyui_as_cpu_only_transport(name):
     ]
 
 
-def test_tester_takes_the_8_checkpoints_as_an_upload_no_network_volume():
+def test_tester_takes_the_checkpoints_as_an_upload_no_network_volume():
     """Finding 12: tester ranks the checkpoints the training run already downloaded
     locally, uploaded from train/runs/out/creator-001-tensor-train/ — no recurring
     network-volume charge, no REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID sentinel, no
@@ -754,7 +795,7 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
     assert lora["strength_model"] == 1.0 and lora["strength_clip"] == 1.0
 
     jobs = doc["jobs"]
-    assert len(jobs) == 8, "our 2000-step run ranks 7 step saves plus the final checkpoint"
+    assert len(jobs) == 5, "our live 1250-step run ranks 4 step saves plus the final checkpoint"
     assert {job["seed"] for job in jobs} == {1595}
     assert {job["expected_images"] for job in jobs} == {1}
     varied = set()
@@ -762,19 +803,25 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
         fields = {(sub["node_id"], sub["field"]) for sub in job["substitutions"]}
         assert fields == {("4", "lora_name")}
         varied.add(job["substitutions"][0]["value"])
-    assert len(varied) == 8
+    assert len(varied) == 5
     assert f"{TRIGGER}_000000250.safetensors" in varied
-    assert f"{TRIGGER}_000001750.safetensors" in varied
-    assert f"{TRIGGER}_000002000.safetensors" not in varied
+    assert f"{TRIGGER}_000001000.safetensors" in varied
+    assert f"{TRIGGER}_000001250.safetensors" not in varied, "final ships bare, never step-suffixed"
     assert f"{TRIGGER}.safetensors" in varied
 
 
 def test_generation_manifest_replicates_module_09_chain():
+    """Track-2 Task D2's module-09 generation graph plus its cheap re-detail tail
+    (MediaPipeFaceMask -> MaskToSEGS -> DetailerForEach). `training.style_lora` is
+    unset on creator-001's real training.yaml, so `_gen_workflow` has deleted node
+    `40` (the style LoraLoaderModelOnly slot) and rewired every consumer's `model`
+    input back to the identity LoRA (node `4`) — no bypassed node ships."""
     doc = manifest("gen")
     workflow = doc["workflow"]
     base = workflow["8"]["inputs"]
     assert (base["steps"], base["cfg"], base["sampler_name"], base["scheduler"],
             base["denoise"]) == (4, 1.0, "res_2s", "beta", 1.0)
+    assert base["model"] == ["4", 0], "no style lora set -- node 8 rewired past node 40"
     # The upscaler is a mid-chain resolution bump a second low-denoise sampler
     # re-renders into, not a final filter: x4 model, back down x0.25, re-encode.
     assert workflow["13"]["inputs"]["scale_by"] == 0.25
@@ -783,39 +830,53 @@ def test_generation_manifest_replicates_module_09_chain():
             refine["scheduler"], refine["denoise"]) == (
                 4, 1.0, "euler_ancestral", "simple", 0.35)
     assert refine["latent_image"] == ["14", 0]
-    assert workflow["4"]["inputs"]["strength_model"] == 0.8
+    assert refine["model"] == ["4", 0]
+    # Node 4 (the identity LoRA) now loads at 1.0/1.0 -- the committed 0.8 module-09
+    # carried was an unrecorded deviation (r23); the package's tester and generation
+    # both use 1.0.
+    assert workflow["4"]["inputs"]["strength_model"] == 1.0
+    assert workflow["4"]["inputs"]["strength_clip"] == 1.0
+    assert "40" not in workflow, "unused style-lora node must never ship in a manifest"
     # Finding 16: FaceDetailer/UltralyticsDetectorProvider are gone — no verifiable
     # Apache/MIT non-pickle face detector exists to replace face_yolov8s.pt, and the
-    # brief forbids any .pt/.pth pickle entering a pod. Two SaveImage nodes survive
-    # (base, refined) instead of the package's three (base, upscaled, FaceDetailer
-    # final); node 20 now reads the refine output directly.
+    # brief forbids any .pt/.pth pickle entering a pod. D2's own detail tail replaces
+    # it with MediaPipeFaceMask -> MaskToSEGS -> DetailerForEach instead.
     assert "18" not in workflow and "19" not in workflow
     savers = {nid: node["inputs"]["images"] for nid, node in workflow.items()
               if node["class_type"] == "SaveImage"}
-    assert savers == {"20": ["16", 0], "21": ["9", 0]}
+    assert savers == {"20": ["16", 0], "21": ["9", 0], "34": ["33", 0]}
 
-    # 6 prompts x 2 seeds, angles and scenes the dataset never contained.
+    detail = workflow["33"]["inputs"]
+    assert detail["image"] == ["16", 0]
+    assert detail["model"] == ["4", 0] and detail["clip"] == ["4", 1]
+    assert (detail["steps"], detail["cfg"], detail["sampler_name"],
+            detail["scheduler"], detail["denoise"]) == (4, 1.0, "euler", "normal", 0.15)
+    assert workflow["35"]["inputs"]["image"] == ["16", 0]
+    assert workflow["36"]["inputs"]["face_landmarks"] == ["35", 0]
+    assert workflow["32"]["inputs"]["mask"] == ["31", 0]
+
+    # One job per gen-prompts row (r22/D2: <distance> x <light> rows derived from the
+    # persona's own register/grammar), each producing base + refined + detailed.
     jobs = doc["jobs"]
     assert len(jobs) == 12
     prompts = {sub["value"] for job in jobs for sub in job["substitutions"]
                if sub["field"] == "text"}
-    assert len(prompts) == 6
-    assert len({job["seed"] for job in jobs}) == 2
-    assert {job["expected_images"] for job in jobs} == {2}
-    # The harness writes the job seed into every seed field, so the refine
-    # seed has to be substituted back or it stops being fixed. There is no
-    # detailer seed left to restore.
+    assert len(prompts) == 12
+    assert len({job["seed"] for job in jobs}) == 12, "the base render varies per job"
+    assert {job["expected_images"] for job in jobs} == {3}
+    # The harness writes the job seed into every seed field, so the refine and detail
+    # passes must be substituted back to the fixed seed 40 or they stop being fixed.
     for job in jobs:
         restored = {sub["node_id"]: sub["value"] for sub in job["substitutions"]
                     if sub["field"] == "seed"}
-        assert restored == {"15": 40}
+        assert restored == {"15": 40, "33": 40}
 
 
 @pytest.mark.parametrize("name", sorted(MANIFESTS))
 def test_every_model_entry_is_pinned_with_revision_and_sha256(name):
     """Finding 5: every train/tester/gen model must resolve an immutable commit,
     not mutable `main`, and its content must be verified — same field shapes as
-    the smoke/shard manifests (expand/runs/creator-001-tensor-smoke.yaml)."""
+    the dataset-stage shard manifests (expand/tests/test_tensor_dataset.py)."""
     models = manifest(name).get("models", [])
     assert models, f"{name} manifest declares no models"
     for model in models:
@@ -835,19 +896,28 @@ def test_no_manifest_downloads_a_pickle_model(name):
         assert not model["filename"].lower().endswith((".pt", ".pth")), model
 
 
-def test_generation_manifest_has_no_impact_pack_dependency():
-    """With the FaceDetailer branch gone, gen no longer needs Impact-Pack/Subpack
-    (they existed only to supply UltralyticsDetectorProvider/FaceDetailer)."""
+def test_generation_manifest_pulls_base_impact_pack_but_never_the_subpack():
+    """Track-2 Task D2's detail tail (MaskToSEGS/DetailerForEach) is base Impact-Pack,
+    which does not pull ultralytics/YOLO pickle weights (r23) -- Impact-Subpack, the
+    unused pin review finding H4 flags one stage over (dataset), must never appear
+    here either."""
     urls = [node["git_url"] for node in manifest("gen")["custom_nodes"]]
-    assert not any("Impact-Pack" in url or "Impact-Subpack" in url for url in urls)
+    assert any("ComfyUI-Impact-Pack" in url for url in urls)
+    assert not any("Impact-Subpack" in url for url in urls)
 
 
 def test_generation_manifests_declare_the_sampler_pack_they_depend_on():
     for name in ("tester", "gen"):
         urls = [node["git_url"] for node in manifest(name)["custom_nodes"]]
-        assert "https://github.com/ClownsharkBatwing/RES4LYF" in urls, (
-            "res_2s is a RES4LYF sampler, not a ComfyUI core one"
-        )
+        # tensor-pins.yaml records the tester profile's RES4LYF url without a ".git"
+        # suffix and the gen profile's with one -- both resolve to the same repo
+        # (runpod_run.py's git clone accepts either), so this checks the repo, not
+        # the exact suffix.
+        assert any(
+            url.rstrip("/").removesuffix(".git")
+            == "https://github.com/ClownsharkBatwing/RES4LYF"
+            for url in urls
+        ), "res_2s is a RES4LYF sampler, not a ComfyUI core one"
 
 
 def test_no_manifest_reaches_a_gated_repository():

@@ -415,10 +415,20 @@ def test_cli_requires_one_input_flag(capsys):
 # ---------------------------------------------------------------------------
 
 
-def test_train_manifest_uploads_glob_points_at_the_dataset_build_output_dir():
-    manifest = json.loads(
-        (TRAIN / "runs" / "creator-001-tensor-train.yaml").read_text(encoding="utf-8")
+def test_train_manifest_uploads_glob_points_at_the_dataset_build_output_dir(tmp_path):
+    """Task E1: the hand-written `creator-001-tensor-train.yaml` this test used to read
+    is retired -- figment_train.py plan is the only producer, so build the same manifest
+    fresh from creator-001's real persona/training.yaml instead."""
+    figment_train = load_module(
+        "figment_train_build_training_set_figment_train", PIPELINE / "figment_train.py",
     )
+    out = tmp_path / "train-plan"
+    plan = figment_train.build_plan(
+        "creator-001", "train", out,
+        personas_root=PIPELINE.parent / "personas", skip_pin_verify=True,
+    )
+    run = plan["stages"]["train"]["runs"][0]
+    manifest = json.loads((out / run["manifest"]).read_text(encoding="utf-8"))
     dataset_files = manifest["uploads"][0]["files"]
     assert all(f.startswith("creator-001-tensor-dataset/") for f in dataset_files)
     ready_files = manifest["uploads"][1]["files"]

@@ -87,11 +87,11 @@ no separate `train_first_plan.json` schema or `run --plan` split to remember.
 
 ## Reproduction and migration
 
-Creator-001's six operational manifest documents match the committed shards, smoke, train, and
-tester after canonical JSON serialization. Documented generalisation-only deltas are stable
-two-space JSON formatting, generated files living under `--out`, and copied launcher comments
-having creator tokens rebound. Models, nodes, workflow, jobs, settings, ceilings, and artifacts
-are unchanged.
-
-After tonight's live chain is quiet and this command passes review, retire the scratchpad driver
-and hand-written Track-1 manifests. Do not modify them while the current run is active.
+The scratchpad driver (`run_track1_night.py`) and every hand-written Track-1 manifest --
+`expand/runs/creator-001-tensor-{smoke,dataset-shard-01,02,03}.yaml`,
+`train/runs/creator-001-tensor-{train,train-smoke,tester,gen}.yaml` -- are retired (Track-2
+Task E1). `figment_train.py plan` is the only producer of these documents now, generated fresh
+from `persona.yaml`/`training.yaml`/`tensor-pins.yaml` on every call; nothing is checked into
+git any more. Coverage that used to compare `build_plan`'s output against those frozen files
+lives instead in `pipeline/tests/test_figment_train.py`, `expand/tests/test_tensor_dataset.py`,
+and `train/tests/test_tensor_track.py`, each of which builds its own fixtures the same way.
