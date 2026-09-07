@@ -58,6 +58,33 @@ paths are derived.
 Architecture is currently fixed to `krea2`; `tensor-pins.yaml`'s pins are not yet keyed by
 `base_arch`, and any other value fails `training_config.py` validation before planning starts.
 
+## Train-first (Path-A): training against an already-built dataset
+
+`train-first` is a thin, separately-named entry point (`build_train_first_plan`), not a
+`plan --stage` choice -- it never plans "anchor" or "dataset", it only trains + tests
+directly against a dataset directory `select_training_cells.py` +
+`build_training_set.py --mode provided` already built and captioned:
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py train-first --creator creator-001 --dataset-dir orgs/figment/pipeline/train/runs/creator-001-train-first-dataset --out C:/tmp/creator-001-train-first-plan
+py -3 orgs/figment/pipeline/figment_train.py run --creator creator-001 --stage all --plan C:/tmp/creator-001-train-first-plan/plan.json
+```
+
+`--dataset-dir` must already carry `_dataset.ready` and `dataset_manifest.json`; DOP rides
+whatever `training.dop_enabled`/`dop_multiplier`/`dop_class` the persona already declares.
+
+The `train-first` verb still writes a plain `plan.json` (`figment/train-plan@1`, the exact
+same schema `plan` writes), just with `stages` limited to `{train, tester}` and one extra
+top-level marker, `"variant": "train-first"`, plus one extra fact recorded in the
+`training` block, `"dataset_dir"` (the resolved path this plan trained from). That marker
+is the ONLY thing `run`/`grade`/`apply-rulings`/`gate` ever look at to tell the two lineages
+apart (`_install_stage_config` skips the module-10 "grade/dataset has been ruled on" gate
+for this variant, because the dataset copy and its `training.json` are already fully
+rendered by `train-first` itself) -- every other command works completely unchanged:
+`run --stage train|tester|all`, `grade --stage tester`, `apply-rulings --stage tester`, and
+`gate --stage tester` all take a train-first `plan.json` exactly like a normal one. There is
+no separate `train_first_plan.json` schema or `run --plan` split to remember.
+
 ## Reproduction and migration
 
 Creator-001's six operational manifest documents match the committed shards, smoke, train, and

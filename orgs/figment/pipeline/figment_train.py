@@ -1044,6 +1044,35 @@ def _render_training_config(
     return config
 
 
+def _copy_anchors(out: Path, persona: dict) -> list[str]:
+    """Copy this persona's identity reference images into `out`'s own upload tree and
+    return their `out`-relative paths, in `persona.yaml` order. Shared by `build_plan`
+    (via `_copy_support_files`) and `build_train_first_plan` -- both plan.json flavors
+    need `plan["assets"]["anchors"]` populated with real, `out`-relative files for
+    `build_grade`/`_run_identity_gate` to find, regardless of whether this plan also
+    stages a fresh anchor/dataset run."""
+    anchor_paths = []
+    persona_dir = Path(persona["_persona_path"]).parent
+    anchor_dir = out / "expand" / "runs" / "_uploads" / persona["id"]
+    anchor_dir.mkdir(parents=True, exist_ok=True)
+    for relative in persona["identity"]["references"]:
+        source = (persona_dir / relative).resolve()
+        target = anchor_dir / source.name
+        shutil.copy2(source, target)
+        anchor_paths.append(_relative(target, out))
+    return anchor_paths
+
+
+def _persona_dir_asset(persona: dict) -> str:
+    """ROOT-relative (never `out`-relative, review MED-8: the persona dir usually lives
+    outside `out` entirely) path for `plan["assets"]["persona_dir"]`. Shared by
+    `build_plan` and `build_train_first_plan` so both plan.json flavors resolve it the
+    same way (`_load_persona_document_for_gate`, apply_rulings' anchor promotion)."""
+    return Path(persona["_persona_path"]).resolve().parent.relative_to(
+        ROOT.resolve(), walk_up=True,
+    ).as_posix()
+
+
 def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict) -> dict[str, Any]:
     expand_workflow = out / "expand" / "workflows" / WORKFLOW_PATH.name
     fullbody_workflow = out / "expand" / "workflows" / FULLBODY_WORKFLOW_PATH.name
@@ -1066,17 +1095,8 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
         text = text.replace("creator001krea2", persona["training"]["trigger"])
         (train_runs / source.name).write_text(text, encoding="utf-8")
 
-    anchor_paths = []
-    persona_dir = Path(persona["_persona_path"]).parent
-    anchor_dir = out / "expand" / "runs" / "_uploads" / persona["id"]
-    anchor_dir.mkdir(parents=True, exist_ok=True)
-    for relative in persona["identity"]["references"]:
-        source = (persona_dir / relative).resolve()
-        target = anchor_dir / source.name
-        shutil.copy2(source, target)
-        anchor_paths.append(_relative(target, out))
     return {
-        "anchors": anchor_paths,
+        "anchors": _copy_anchors(out, persona),
         "dataset_workflow": _relative(expand_workflow, out),
         "dataset_fullbody_workflow": _relative(fullbody_workflow, out),
         "dataset_prompts": _relative(expand_prompts, out),
@@ -1180,9 +1200,7 @@ def build_plan(
     # made relative to ROOT instead: a plan moved to a different checkout of the same repo
     # still resolves to the right tree. `walk_up=True` (3.12+) also covers the common test
     # fixture where the persona lives under a tmp_path outside ROOT entirely.
-    assets["persona_dir"] = Path(persona["_persona_path"]).resolve().parent.relative_to(
-        ROOT.resolve(), walk_up=True,
-    ).as_posix()
+    assets["persona_dir"] = _persona_dir_asset(persona)
 
     configs_dir = out / "train" / "configs"
     smoke_config = configs_dir / "training-smoke.json"
@@ -1286,16 +1304,24 @@ def build_train_first_plan(
     -- `select_training_cells.py` + `build_training_set.py --mode provided`'s output --
     instead of the module-10 dataset stage's fresh generate-then-grade loop.
 
-    Deliberately NOT part of the STAGES/build_plan/run_planned_stage/apply_rulings
-    state machine: it never plans "anchor" or "dataset", never touches `grade/`, and
-    the manifests it emits (`<id>-tensor-train-first.yaml`,
-    `<id>-tensor-tester-first.yaml`) are named so their local upload/output
-    directories (`<id>-tensor-dataset-train-first`, `out/<id>-tensor-train-first/`)
-    can never collide with the module-10 lineage's own `<id>-tensor-dataset` /
-    `out/<id>-tensor-train/`. DOP rides whatever `training.dop_enabled` /
-    `dop_multiplier` / `dop_class` the persona already declares (default off,
-    training_config.py) -- this function never overrides them; the "train-first"
-    idea and DOP are independent choices that happen to ship together here.
+    Emits the SAME `plan.json` (`figment/train-plan@1`) `build_plan` does, just with
+    `stages` limited to `{train, tester}` and a top-level `variant: "train-first"`
+    marker (`_install_stage_config`'s only fork on it -- this plan's dataset copy and
+    training.json are already fully rendered below, so there is no module-10
+    "grade/dataset" ruling step to gate on). That one shared schema is what lets
+    `run --stage train|tester|all`, `grade --stage tester`, `apply-rulings`, and `gate`
+    all work unchanged against a train-first plan: only `build_plan` itself (never
+    `run`/`grade`/`gate`) needs to know how a plan.json was produced. `build_plan`
+    still never plans "anchor" or "dataset" for this lineage -- `train-first` is a
+    thin sibling entry point, not a `build_plan` stage choice -- and the manifests it
+    emits (`<id>-tensor-train-first.yaml`, `<id>-tensor-tester-first.yaml`) are named
+    so their local upload/output directories (`<id>-tensor-dataset-train-first`,
+    `out/<id>-tensor-train-first/`) can never collide with the module-10 lineage's own
+    `<id>-tensor-dataset` / `out/<id>-tensor-train/`. DOP rides whatever
+    `training.dop_enabled` / `dop_multiplier` / `dop_class` the persona already
+    declares (default off, training_config.py) -- this function never overrides them;
+    the "train-first" idea and DOP are independent choices that happen to ship
+    together here.
 
     `dataset_dir` must already carry `_dataset.ready` and `dataset_manifest.json` --
     this function only copies it into the plan (minus any `training.json` an operator
@@ -1309,9 +1335,10 @@ def build_train_first_plan(
             f"{dataset_dir}"
         )
     out = Path(out).resolve()
-    plan_marker = out / "train_first_plan.json"
-    if plan_marker.exists():
-        raise FigmentTrainError(f"refusing to overwrite an existing plan: {plan_marker}")
+    # Same guard build_plan uses, against the same filename -- a train-first plan is a
+    # `plan.json` like any other, not a separately-named artifact.
+    if (out / "plan.json").exists():
+        raise FigmentTrainError(f"refusing to overwrite an existing plan: {out / 'plan.json'}")
     if out.exists() and any(out.iterdir()):
         raise FigmentTrainError(f"plan output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
@@ -1319,9 +1346,20 @@ def build_train_first_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+    # The "training" block build_plan's plan.json already carries (dop_*, steps,
+    # save_every, trigger, ...) plus this variant's one extra fact: which already-built
+    # dataset directory it trained from. `_train_manifest`/`_tester_manifest`/
+    # `_render_training_config` only ever read the specific keys they know about, so
+    # this extra key rides along harmlessly wherever `training` is passed on below.
+    training = {**training, "dataset_dir": str(dataset_dir)}
 
     if not skip_pin_verify:
         _verify_pins_preflight(pins, ["train", "tester"])
+
+    # Same anchor files `build_plan` stages via `_copy_support_files` -- `grade --stage
+    # tester` (`build_grade`) needs `plan["assets"]["anchors"]` to resolve to real,
+    # `out`-relative files exactly the same way for either plan.json flavor.
+    assets = {"anchors": _copy_anchors(out, persona), "persona_dir": _persona_dir_asset(persona)}
 
     train_runs_dir = out / "train" / "runs"
     train_runs_dir.mkdir(parents=True, exist_ok=True)
@@ -1373,13 +1411,13 @@ def build_train_first_plan(
     tester_run = _planned_run(out, tester_path, run_root / tester_path.stem)
 
     plan = {
-        "schema": "figment/train-first-plan@1",
+        "schema": "figment/train-plan@1",
         "creator": creator_id,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
         "generator": _sha256(Path(__file__)),
         "persona_sha256": _sha256(Path(persona["_persona_path"])),
-        "source_dataset_dir": str(dataset_dir),
         "training": training,
+        "assets": assets,
         "configs": {"train": _relative(plan_dataset_dir / "training.json", out)},
         "ledger_dir": str(LEDGER_DIR),
         "arc_cap_usd": ARC_CAP_USD,
@@ -1388,8 +1426,11 @@ def build_train_first_plan(
             "train": {"runs": [train_run]},
             "tester": {"runs": [tester_run]},
         },
+        # The one thing that makes this plan.json different from a `build_plan` one --
+        # `_install_stage_config`'s only fork point (see this function's own docstring).
+        "variant": "train-first",
     }
-    _write_json(plan_marker, plan)
+    _write_json(out / "plan.json", plan)
     return plan
 
 
@@ -1544,6 +1585,12 @@ def _write_stage_state(path: Path, state: dict[str, Any]) -> None:
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     if stage not in ("smoke", "train"):
+        return
+    if plan.get("variant") == "train-first":
+        # build_train_first_plan already rendered training.json (with this plan's DOP
+        # settings) and wrote `_dataset.ready` directly into its own
+        # `<id>-tensor-dataset-train-first` copy -- there is no module-10
+        # "grade/dataset" operator-ruling step in this lineage to gate on.
         return
     dataset_dir = root / "train" / "runs" / f"{plan['creator']}-tensor-dataset"
     approved = root / "grade" / "dataset" / "approved-list.json"
@@ -2302,7 +2349,7 @@ def main(argv: list[str] | None = None) -> int:
             result = build_train_first_plan(
                 args.creator, args.dataset_dir, args.out, skip_pin_verify=args.skip_pin_verify,
             )
-            print(f"wrote {args.out.resolve() / 'train_first_plan.json'} "
+            print(f"wrote {args.out.resolve() / 'plan.json'} "
                   f"({len(result['stages'])} stage(s))")
         else:
             result = apply_rulings(args.creator, args.stage, args.plan, args.rulings)

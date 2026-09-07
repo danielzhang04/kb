@@ -809,7 +809,11 @@ def test_build_train_first_plan_emits_train_and_tester_manifests_that_dry_run(
         "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
     )
 
-    assert plan["schema"] == "figment/train-first-plan@1"
+    assert plan["schema"] == "figment/train-plan@1"
+    assert plan["variant"] == "train-first"
+    assert plan["assets"]["anchors"]
+    for relative in plan["assets"]["anchors"]:
+        assert (out / relative).is_file()
     train_path = out / "train" / "runs" / "creator-002-tensor-train-first.yaml"
     tester_path = out / "train" / "runs" / "creator-002-tensor-tester-first.yaml"
     assert train_path.is_file() and tester_path.is_file()
@@ -918,3 +922,155 @@ def test_build_train_first_plan_refuses_to_overwrite_an_existing_plan(command, t
         command.build_train_first_plan(
             "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Defect fix: train-first is now a first-class VARIANT of the one plan.json schema
+# (`figment/train-plan@1`, `variant: "train-first"`) instead of a separately-schemad
+# `train_first_plan.json` `run --plan` rejected -- the split the operator wanted gone
+# ("slim infra, one pipeline"). These three tests prove `run`/`grade` work UNCHANGED
+# against a train-first plan, and that its schema is the normal one plus documented
+# extras only.
+# ---------------------------------------------------------------------------
+
+
+def test_build_train_first_plan_shares_the_normal_plan_schema_plus_documented_extras(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+
+    normal_plan = command.build_plan(
+        "creator-002", "all", tmp_path / "normal-plan",
+        personas_root=personas_root, skip_pin_verify=True,
+    )
+    train_first_plan = command.build_train_first_plan(
+        "creator-002", dataset_dir, tmp_path / "train-first-plan",
+        personas_root=personas_root, skip_pin_verify=True,
+    )
+
+    assert train_first_plan["schema"] == normal_plan["schema"] == "figment/train-plan@1"
+    # "variant" is the ONLY top-level key a train-first plan carries that a normal one
+    # doesn't -- everything else (assets, configs, ledger_dir, ...) is the same shape.
+    assert set(train_first_plan) - set(normal_plan) == {"variant"}
+    assert train_first_plan["variant"] == "train-first"
+    assert set(normal_plan) - set(train_first_plan) == set()
+
+    assert set(train_first_plan["stages"]) == {"train", "tester"}
+    for stage in ("train", "tester"):
+        normal_run = normal_plan["stages"][stage]["runs"][0]
+        train_first_run = train_first_plan["stages"][stage]["runs"][0]
+        assert set(train_first_run) == set(normal_run), f"runs[] shape differs for {stage!r}"
+
+    # The training block: the persona's own dop_*/steps/save_every are unchanged, plus
+    # this variant's one extra fact, which already-built dataset directory it trained
+    # from.
+    for key in ("dop_enabled", "dop_multiplier", "dop_class", "steps", "save_every"):
+        assert train_first_plan["training"][key] == normal_plan["training"][key]
+    assert Path(train_first_plan["training"]["dataset_dir"]) == dataset_dir.resolve()
+    assert "dataset_dir" not in normal_plan["training"]
+
+    assert train_first_plan["assets"]["anchors"]
+    assert train_first_plan["assets"]["persona_dir"] == normal_plan["assets"]["persona_dir"]
+
+
+def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
+    command, tmp_path, monkeypatch,
+):
+    """`run --stage all --plan <train-first plan.json>` must work completely unchanged
+    from a normal plan -- same `run_planned_stage`, same `_install_stage_config` skip
+    for this variant, same `verify_run_record`/ledger-agreement contract. A fake
+    harness runner stands in for the real pod/runpod_run.py subprocess (never launched
+    here) and records the order the two stages actually ran in."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # steps=600, save_every=200 -> 2 checkpoints + final
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-run"
+
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    ledger_path = ledger_dir / "figment-2026-09-04.tsv"
+    ledger_path.write_text("model\tstep\tusd\n", encoding="utf-8")
+    monkeypatch.setattr(command, "LEDGER_DIR", ledger_dir)
+
+    plan = command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    assert plan["ledger_dir"] == str(ledger_dir)
+
+    pod_module = command._pod_runner_module()
+    order: list[str] = []
+
+    def _fake_harness_run(argv, cwd=None):
+        manifest_path = Path(argv[argv.index("--manifest") + 1])
+        run_out = Path(argv[argv.index("--out") + 1])
+        manifest = load_json(manifest_path)
+        order.append(manifest_path.stem)
+        run_out.mkdir(parents=True, exist_ok=True)
+        pod_id = f"pod-{manifest_path.stem}"
+        model = pod_module.gpu_model_label(manifest["gpu"]["type"])
+        run_doc = {
+            "error": None,
+            "pod_id": pod_id,
+            "gpu": manifest["gpu"],
+            "termination_verified": True,
+            "estimated_actual_usd": 0.25,
+            "ledger_day": "2026-09-04",
+            "placement_attempts": [{
+                "pod_id": pod_id, "estimated_actual_usd": 0.25, "termination_verified": True,
+            }],
+        }
+        expected_artifacts = manifest.get("artifacts") or []
+        if expected_artifacts:
+            run_doc["artifacts"] = [
+                {"remote": row["remote"], "bytes": 12} for row in expected_artifacts
+            ]
+        else:
+            run_doc["jobs"] = [
+                {
+                    "output_name": job["output_name"],
+                    "files": [{"bytes": 12} for _ in range(job.get("expected_images", 1))],
+                }
+                for job in manifest.get("jobs") or []
+            ]
+        (run_out / "run.json").write_text(json.dumps(run_doc), encoding="utf-8")
+        with ledger_path.open("a", encoding="utf-8") as handle:
+            handle.write(f"{model}\tpod-create {pod_id}\t0.250000\n")
+        return subprocess.CompletedProcess(argv, 0)
+
+    monkeypatch.setattr(command.subprocess, "run", _fake_harness_run)
+
+    state = command.run_planned_stage("creator-002", "all", out / "plan.json")
+
+    assert order == ["creator-002-tensor-train-first", "creator-002-tensor-tester-first"]
+    assert state["status"] == "complete"
+    assert state["completed_stages"] == ["train", "tester"]
+
+
+def test_train_first_plan_grade_stage_tester_works(command, tmp_path):
+    """`grade --stage tester` (`build_grade`) must also work unchanged against a
+    train-first plan -- proof that `plan["assets"]["anchors"]` is populated with real,
+    `out`-relative anchor files the same way a normal plan's is."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-grade"
+
+    plan = command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    tester_run = plan["stages"]["tester"]["runs"][0]
+    manifest = load_json(out / tester_run["manifest"])
+    run_out = out / tester_run["out"]
+    run_out.mkdir(parents=True)
+    for job in manifest["jobs"]:
+        (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    grade = command.build_grade("creator-002", "tester", out / "plan.json", skip_judge=True)
+
+    template = load_json(Path(grade["rulings_template"]))
+    assert len(template["rulings"]) == len(manifest["jobs"]) == 3
+    page_text = Path(grade["page"]).read_text(encoding="utf-8")
+    assert "<img" in page_text
+    assert "full-resolution" in page_text
