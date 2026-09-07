@@ -84,6 +84,7 @@ def _synthetic_persona(
     anchor_names: tuple = ("a01.jpg", "a02.jpg", "a03.jpg"),
     exemplars: list = ("a02", "a03"),
     look: dict | None = None,
+    steps: int = 600,
 ) -> Path:
     import hashlib
 
@@ -116,7 +117,7 @@ def _synthetic_persona(
     source["training"] = {
         "trigger": None,
         "base_arch": "krea2",
-        "steps": 600,
+        "steps": steps,
         "save_every": 200,
         "caption_mode": "provided",
         "pod_class": "l40s",

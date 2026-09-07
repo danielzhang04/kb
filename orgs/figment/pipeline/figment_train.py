@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import glob
 import hashlib
 import html
 import importlib.util
@@ -38,6 +39,9 @@ WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_v2_api.json"
 FULLBODY_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_fullbody_api.json"
 ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
 ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
+GEN_PROMPTS_PATH = EXPAND_DIR / "templates" / "gen-prompts.yaml"
+GEN_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_gen_api.json"
+DETAIL_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_detail_only_api.json"
 AI_TEMPLATE_PATH = TRAIN_DIR / "ai-toolkit-krea2.yaml.template"
 TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
@@ -51,7 +55,13 @@ VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
-STAGES = ("anchor", "dataset", "smoke", "train", "tester")
+STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen")
+# Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a
+# grading board" -- `build_grade`, `apply_rulings`, and `command_gate` each used to carry
+# their own local tuple, so widening one and not the others silently reopened the exact
+# gap H3 first closed for "anchor". "gen" is gradeable; "smoke"/"train" never are (no
+# per-cell operator ruling makes sense for either).
+GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 KEY_MISMATCH_RE = re.compile(
     r"missing_keys|unexpected_keys|missing key\(s\)|unexpected key\(s\)", re.I,
@@ -85,6 +95,7 @@ STAGE_PIN_PROFILES = {
     "smoke": ("train",),
     "train": ("train",),
     "tester": ("tester",),
+    "gen": ("gen",),
 }
 SHARD_NOTES = (
     "face-row and half-body-row cells (framing: half), part 1 of 3",
@@ -778,6 +789,218 @@ def _tester_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any
     }
 
 
+# ---------------------------------------------------------------------------
+# Generation (module 09, Track-2 Task D2) + the cheap re-detail mode (r25 cause #2)
+# ---------------------------------------------------------------------------
+
+GEN_ROW_SEED_BASE = 269789944143426
+DETAIL_SEED_BASE = 100200300
+
+
+def _generalized_gen_prompts(persona: dict) -> dict[str, Any]:
+    """Build the gen-stage's rows entirely from `gen-prompts.yaml`'s generic photography
+    vocabulary plus the persona's own `identity.look` (same discipline as
+    `_generalized_anchor_prompts` -- never a template-hardcoded face/body clause)."""
+    prompts = _read_json(GEN_PROMPTS_PATH)
+    prompts["persona"] = persona["id"]
+    look = persona.get("identity", {}).get("look")
+    if not isinstance(look, dict):
+        raise FigmentTrainError(
+            "persona.identity.look is required to compose the gen-stage prompts"
+        )
+    clause = _compose_look_clause(look)
+    prompts["rows"] = [
+        prompts["base_clause"].format(look=clause, scene=scene)
+        for scene in prompts["scenes"]
+    ]
+    return prompts
+
+
+def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
+    """Load `krea2_gen_api.json` and, when `training.style_lora` is unset, delete node
+    `40` (the style `LoraLoaderModelOnly`) and rewire nodes `8`/`15`/`33`'s `model` input
+    back to the identity LoRA (node `4`) -- no bypassed node ever ships in a manifest
+    (Track-2 Task D2)."""
+    workflow = _read_json(GEN_WORKFLOW_PATH)
+    style_key = training.get("style_lora")
+    if style_key is None:
+        del workflow["40"]
+        for node_id in ("8", "15", "33"):
+            if workflow[node_id]["inputs"].get("model") == ["40", 0]:
+                workflow[node_id]["inputs"]["model"] = ["4", 0]
+    else:
+        try:
+            pins["pins"]["style_loras"][style_key]
+        except KeyError as exc:
+            raise FigmentTrainError(
+                f"unknown training.style_lora key {style_key!r}"
+            ) from exc
+        workflow["40"]["inputs"]["strength_model"] = training["style_lora_strength"]
+    return workflow
+
+
+def _gen_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
+    """`_gen_manifest` mirrors `_tester_manifest` -- `_pod_base`, `pins.gen`
+    models/nodes, the lorapath launcher's `training` block, a chunked upload of ONLY the
+    chosen checkpoint, `seed_fields: ["seed", "noise_seed"]` -- but plans generation, not
+    testing: one job per gen-prompts row, each producing base + refined + detailed
+    (`expected_images: 3`). Raises until GATE 3 has recorded a checkpoint (Task A3/C2)."""
+    chosen_step = training.get("chosen_checkpoint_step")
+    if chosen_step is None:
+        raise FigmentTrainError(
+            "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
+        )
+    creator_id = persona["id"]
+    trigger = training["trigger"]
+    short = _creator_output_code(creator_id)
+    checkpoint_name = _checkpoint_name(trigger, chosen_step)
+    prompts = _generalized_gen_prompts(persona)
+    workflow = _gen_workflow(training, pins)
+
+    models = deepcopy(pins["pins"]["gen"]["models"])
+    style_key = training.get("style_lora")
+    if style_key is not None:
+        style_pin = pins["pins"]["style_loras"][style_key]
+        models.append(deepcopy(style_pin["model"]))
+
+    jobs = []
+    for index, row in enumerate(prompts["rows"]):
+        substitutions = [
+            {"node_id": "5", "field": "text", "value": row},
+            {"node_id": "4", "field": "lora_name", "value": checkpoint_name},
+            # seed_fields sweeps every "seed" input (including nodes 15/33) to the job's
+            # own seed for base-image diversity; pin the refine and detail passes back to
+            # a fixed seed the same way the hand-written manifest pinned node 15 (module
+            # 09's own convention -- only the base render varies per job).
+            {"node_id": "15", "field": "seed", "value": 40},
+            {"node_id": "33", "field": "seed", "value": 40},
+        ]
+        if style_key is not None:
+            substitutions.append({
+                "node_id": "40", "field": "lora_name",
+                "value": pins["pins"]["style_loras"][style_key]["model"]["filename"],
+            })
+        jobs.append({
+            "seed": GEN_ROW_SEED_BASE + index,
+            "output_name": f"{short}-tensor-gen-{index + 1:02d}",
+            "expected_images": 3,
+            **({"wait_for": "_loras.assembled"} if index == 0 else {}),
+            "substitutions": substitutions,
+        })
+
+    return {
+        **_pod_base(pins, training["pod_class"], "gen"),
+        "models": models,
+        "custom_nodes": deepcopy(pins["pins"]["gen"]["custom_nodes"]),
+        "workflow": workflow,
+        "seed_fields": ["seed", "noise_seed"],
+        "uploads": [{
+            "files": [f"out/{creator_id}-tensor-train/{checkpoint_name}"],
+            "subfolder": trigger,
+            "type": "input",
+            "overwrite": True,
+            "chunk_bytes": 16777216,
+        }],
+        "training": {
+            "lora_source_dir": f"/workspace/ComfyUI/input/{trigger}",
+            "start_script_path": "/workspace/start-comfy-lorapath.sh",
+            "start_script_file": "start-comfy-lorapath.sh.template",
+        },
+        "jobs": jobs,
+    }
+
+
+def _copy_detail_images(out: Path, persona: dict, image_paths: list[Path]) -> list[str]:
+    """Copy each `--detail-images` match into the plan's own upload tree
+    (`_uploads/<persona>/<name>`, the same convention `_copy_support_files` uses for
+    anchor references) -- `pod/runpod_run.py`'s upload expansion refuses any path outside
+    the manifest's own directory, so a source image living anywhere else on disk must be
+    staged inside `out` before a manifest can reference it."""
+    upload_dir = out / "train" / "runs" / "_uploads" / persona["id"]
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    names: list[str] = []
+    seen: set[str] = set()
+    for source in image_paths:
+        source = Path(source).resolve()
+        if not source.is_file():
+            raise FigmentTrainError(f"--detail-images match is not a file: {source}")
+        name = source.name
+        if name in seen:
+            raise FigmentTrainError(
+                f"--detail-images matched two files with the same name {name!r}"
+            )
+        seen.add(name)
+        shutil.copy2(source, upload_dir / name)
+        names.append(name)
+    return names
+
+
+def _detail_manifest(
+    persona: dict, training: dict, pins: dict, names: list[str],
+) -> dict[str, Any]:
+    """r25 ranked cause #2, made durable: re-detail already-rendered Track-1
+    tester/dataset cells (named by `names`, already staged under
+    `train/runs/_uploads/<persona>/` by `_copy_detail_images`) at the package's own
+    denoise band without spending a full regeneration. Two jobs per image -- `denoise
+    0.15` and `denoise 0.27` -- both loading the same chosen checkpoint `_gen_manifest`
+    uses, sharing one seed per source image so the pair is a controlled A/B."""
+    chosen_step = training.get("chosen_checkpoint_step")
+    if chosen_step is None:
+        raise FigmentTrainError(
+            "gen requires a chosen checkpoint; run apply-rulings --stage tester first"
+        )
+    creator_id = persona["id"]
+    trigger = training["trigger"]
+    short = _creator_output_code(creator_id)
+    checkpoint_name = _checkpoint_name(trigger, chosen_step)
+    workflow = _read_json(DETAIL_WORKFLOW_PATH)
+
+    jobs = []
+    for image_index, name in enumerate(names):
+        for variant_index, denoise in enumerate((0.15, 0.27)):
+            job_index = image_index * 2 + variant_index
+            jobs.append({
+                "seed": DETAIL_SEED_BASE + image_index,
+                "output_name": f"{short}-tensor-detail-{image_index + 1:02d}-d{str(denoise).replace('.', '')}",
+                "expected_images": 1,
+                **({"wait_for": "_loras.assembled"} if job_index == 0 else {}),
+                "substitutions": [
+                    {"node_id": "1", "field": "image", "value": f"{creator_id}/{name}"},
+                    {"node_id": "4", "field": "lora_name", "value": checkpoint_name},
+                    {"node_id": "15", "field": "denoise", "value": denoise},
+                ],
+            })
+
+    return {
+        **_pod_base(pins, training["pod_class"], "detail"),
+        "models": deepcopy(pins["pins"]["detail"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["detail"]["custom_nodes"]),
+        "workflow": workflow,
+        "seed_fields": ["seed", "noise_seed"],
+        "uploads": [
+            {
+                "files": [f"_uploads/{creator_id}/{name}" for name in names],
+                "subfolder": creator_id,
+                "type": "input",
+                "overwrite": True,
+            },
+            {
+                "files": [f"out/{creator_id}-tensor-train/{checkpoint_name}"],
+                "subfolder": trigger,
+                "type": "input",
+                "overwrite": True,
+                "chunk_bytes": 16777216,
+            },
+        ],
+        "training": {
+            "lora_source_dir": f"/workspace/ComfyUI/input/{trigger}",
+            "start_script_path": "/workspace/start-comfy-lorapath.sh",
+            "start_script_file": "start-comfy-lorapath.sh.template",
+        },
+        "jobs": jobs,
+    }
+
+
 def _render_training_config(trigger: str, steps: int, save_every: int) -> dict[str, Any]:
     renderer = _render_module()
     intermediate_count = len(_checkpoint_steps(steps, save_every))
@@ -872,10 +1095,19 @@ def build_plan(
     *,
     personas_root: Path = PERSONAS_ROOT,
     skip_pin_verify: bool = False,
+    detail_images: str | None = None,
 ) -> dict[str, Any]:
-    """Generate a complete, immutable plan without touching the hand-written runs."""
+    """Generate a complete, immutable plan without touching the hand-written runs.
+
+    `detail_images` (Track-2 Task D2, r25 cause #2) is a local glob pattern, meaningful
+    only when `"gen"` is being planned: each match is staged into the plan's own upload
+    tree and an extra `<id>-tensor-detail.yaml` manifest is emitted alongside
+    `<id>-tensor-gen.yaml`, re-detailing those existing cells instead of regenerating.
+    """
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
+    if detail_images is not None and stage not in ("gen", "all"):
+        raise FigmentTrainError("--detail-images is only meaningful for --stage gen")
     out = Path(out).resolve()
     if (out / "plan.json").exists():
         raise FigmentTrainError(f"refusing to overwrite an existing plan: {out / 'plan.json'}")
@@ -895,9 +1127,28 @@ def build_plan(
                 "the anchor stage cannot be replanned without clearing it by hand"
             )
         selected.remove("anchor")
+    # "gen" is only ever planned explicitly, after GATE 3 (Task D2 step5) -- never as
+    # part of a `--stage all` chain, alongside the promoted-anchor exclusion above.
+    if stage == "all" and "gen" in selected:
+        selected.remove("gen")
 
     if not skip_pin_verify:
         _verify_pins_preflight(pins, selected)
+        if detail_images and "gen" in selected:
+            # `detail` is not a top-level STAGES entry (it rides along with a "gen"
+            # plan when --detail-images is given), so STAGE_PIN_PROFILES's per-stage
+            # lookup never reaches it -- verify it directly, same fail-closed contract.
+            module = _verify_pins_module()
+            try:
+                results = module.verify_pins(pins, stages=["detail"])
+            except module.VerifyPinsError as exc:
+                raise FigmentTrainError(f"pin verification could not run: {exc}") from exc
+            if results:
+                lines = [
+                    f"[detail] {problem}"
+                    for problems in results.values() for problem in problems
+                ]
+                raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
     prompts = _generalized_prompts(persona)
     workflow = _generalized_dataset_workflow(persona, prompts)
@@ -946,6 +1197,26 @@ def build_plan(
         elif current == "tester":
             manifests = [_tester_manifest(persona, training, pins)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
+        elif current == "gen":
+            gen_manifest = _gen_manifest(persona, training, pins)
+            gen_workflow_path = out / "train" / "workflows" / "krea2_gen_api.json"
+            _write_json(gen_workflow_path, gen_manifest.pop("workflow"))
+            gen_manifest["workflow"] = "../workflows/krea2_gen_api.json"
+            manifests = [gen_manifest]
+            paths = [out / "train" / "runs" / f"{creator_id}-tensor-gen.yaml"]
+            if detail_images:
+                image_paths = sorted(Path(p) for p in glob.glob(detail_images))
+                if not image_paths:
+                    raise FigmentTrainError(
+                        f"--detail-images matched no files: {detail_images!r}"
+                    )
+                names = _copy_detail_images(out, persona, image_paths)
+                detail_manifest = _detail_manifest(persona, training, pins, names)
+                detail_workflow_path = out / "train" / "workflows" / "krea2_detail_only_api.json"
+                _write_json(detail_workflow_path, detail_manifest.pop("workflow"))
+                detail_manifest["workflow"] = "../workflows/krea2_detail_only_api.json"
+                manifests.append(detail_manifest)
+                paths.append(out / "train" / "runs" / f"{creator_id}-tensor-detail.yaml")
         else:
             raise FigmentTrainError(f"unknown stage {current!r}")
         for path, manifest in zip(paths, manifests):
@@ -1246,7 +1517,18 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
 
 
 def _find_job_image(run_out: Path, output_name: str) -> Path:
-    matches = [
+    """A single-image job (`expected_images` 1, every stage before Track-2 gen) writes
+    `<output_name><ext>`. A multi-image job (gen's `expected_images: 3`: base, refined,
+    detailed) writes `<output_name>_01<ext>`..`_NN<ext>` in ComfyUI history-completion
+    order (`download_job_outputs`, pod/runpod_run.py) -- base (from the earliest-ready
+    decode), refined, then detailed last (the mask/SEGS/detailer branch has the longest
+    dependency chain). Grade only the last one, `_03`: the detailed output is the one
+    result a gen-stage board should ever show (Track-2 Task D2)."""
+    detailed = [
+        run_out / f"{output_name}_03{suffix}" for suffix in IMAGE_EXTENSIONS
+        if (run_out / f"{output_name}_03{suffix}").is_file()
+    ]
+    matches = detailed or [
         run_out / f"{output_name}{suffix}" for suffix in IMAGE_EXTENSIONS
         if (run_out / f"{output_name}{suffix}").is_file()
     ]
@@ -1537,8 +1819,8 @@ def build_grade(
     every cell's overall pass/fail then rests on stage 1 alone failing closed, or on
     stage 2 being recorded as `unavailable: judge` for any cell whose stage 1 passed --
     see `_run_identity_gate`'s own docstring."""
-    if stage not in ("anchor", "dataset", "tester"):
-        raise FigmentTrainError("grade stage must be anchor, dataset, or tester")
+    if stage not in GRADEABLE_STAGES:
+        raise FigmentTrainError(f"grade stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
     anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
     for anchor in anchors:
@@ -1647,8 +1929,8 @@ def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
-    if stage not in ("anchor", "dataset", "tester"):
-        raise FigmentTrainError("apply-rulings stage must be anchor, dataset, or tester")
+    if stage not in GRADEABLE_STAGES:
+        raise FigmentTrainError(f"apply-rulings stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
     grade_dir = root / "grade" / stage
     grading_path = grade_dir / "grading-manifest.json"
@@ -1810,8 +2092,8 @@ def command_gate(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]
     """Read `grade/<stage>/gate.json` (written by `build_grade`) and return it --
     never recomputes the gate, so this is fast and matches exactly what the board a
     human is looking at was gated with. Raises if `grade` has not been run yet."""
-    if stage not in ("anchor", "dataset", "tester"):
-        raise FigmentTrainError("gate stage must be anchor, dataset, or tester")
+    if stage not in GRADEABLE_STAGES:
+        raise FigmentTrainError(f"gate stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
     gate_path = root / "grade" / stage / "gate.json"
     if not gate_path.is_file():
@@ -1866,6 +2148,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
     )
+    plan.add_argument(
+        "--detail-images", default=None,
+        help="glob of existing rendered cells to re-detail (only meaningful with "
+             "--stage gen); emits an extra <id>-tensor-detail.yaml manifest (r25 cause #2)",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -1874,7 +2161,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     grade = commands.add_parser("grade", help="build a full-resolution grading board")
     grade.add_argument("--creator", required=True)
-    grade.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
+    grade.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
     grade.add_argument("--plan", type=Path, default=Path("plan.json"))
     grade.add_argument(
         "--skip-judge", action="store_true",
@@ -1884,13 +2171,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
-    apply.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
+    apply.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
     apply.add_argument("--plan", type=Path, default=Path("plan.json"))
     apply.add_argument("--rulings", required=True, type=Path)
 
     gate = commands.add_parser("gate", help="print the fail-closed gate's pass/fail table")
     gate.add_argument("--creator", required=True)
-    gate.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
+    gate.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
     gate.add_argument("--plan", type=Path, default=Path("plan.json"))
     return parser
 
@@ -1901,6 +2188,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
+                detail_images=args.detail_images,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
         elif args.command == "run":

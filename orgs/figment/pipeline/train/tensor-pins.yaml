@@ -71,6 +71,26 @@
           "upload_allowance_seconds": 900,
           "job_wait_for_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
+        },
+        "gen": {
+          "max_minutes": 185,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 600,
+          "upload_allowance_seconds": 300,
+          "job_wait_for_seconds": 180,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
+        },
+        "detail": {
+          "max_minutes": 145,
+          "container_disk_gb": 80,
+          "volume_gb": 120,
+          "readiness_timeout_seconds": 2400,
+          "job_timeout_seconds": 300,
+          "upload_allowance_seconds": 300,
+          "job_wait_for_seconds": 180,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.34.0", "port": 8188, "start_command": "bash /workspace/start-comfy-lorapath.sh"}
         }
       }
     }
@@ -146,6 +166,41 @@
       "custom_nodes": [
         {"git_url": "https://github.com/ClownsharkBatwing/RES4LYF", "git_ref": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"}
       ]
+    },
+    "gen": {
+      "models": [
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors", "revision": "3da2809e72fa04ba266e3b51c2a366fd04500b5a", "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", "revision": "4aa0eed112bd2780ceea37583edbdcd2df6c2c09", "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094", "destination_dir": "/workspace/ComfyUI/models/text_encoders"},
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "vae/qwen_image_vae.safetensors", "revision": "a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e", "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f", "destination_dir": "/workspace/ComfyUI/models/vae"},
+        {"repo_id": "Phips/4xNomosWebPhoto_RealPLKSR", "filename": "4xNomosWebPhoto_RealPLKSR.safetensors", "revision": "ee1791235ab82e639bf6fde5581a2440771a14c0", "sha256": "9be0228f98156a100d6636d99b373ed2785b999723f9adc4cca504329ab157f2", "destination_dir": "/workspace/ComfyUI/models/upscale_models"},
+        {"repo_id": "Comfy-Org/mediapipe", "filename": "detection/mediapipe_face_fp32.safetensors", "revision": "cc971e00855d7bd5fd8d5418e7c4da9fd60d000d", "sha256": "a98c4806081d40eba35102a0f6dc0000c2e1388b72cf24e691703d0605bd888a", "destination_dir": "/workspace/ComfyUI/models/detection"}
+      ],
+      "custom_nodes": [
+        {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
+        {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"}
+      ]
+    },
+    "detail": {
+      "models": [
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "diffusion_models/krea2_turbo_fp8_scaled.safetensors", "revision": "3da2809e72fa04ba266e3b51c2a366fd04500b5a", "sha256": "eb4dd8c612cfd10f64f25b057e6e6bbcb5737c94a7372177e456dbf7579502f1", "destination_dir": "/workspace/ComfyUI/models/diffusion_models"},
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors", "revision": "4aa0eed112bd2780ceea37583edbdcd2df6c2c09", "sha256": "54bd5144df0bbc25dd6ccadfcb826b521445a1b06ae5a42570bdd2974ca87094", "destination_dir": "/workspace/ComfyUI/models/text_encoders"},
+        {"repo_id": "Comfy-Org/Krea-2", "filename": "vae/qwen_image_vae.safetensors", "revision": "a0a28f7e5b645c950ad56fc2e45bfd3e0044c06e", "sha256": "a70580f0213e67967ee9c95f05bb400e8fb08307e017a924bf3441223e023d1f", "destination_dir": "/workspace/ComfyUI/models/vae"},
+        {"repo_id": "Comfy-Org/mediapipe", "filename": "detection/mediapipe_face_fp32.safetensors", "revision": "cc971e00855d7bd5fd8d5418e7c4da9fd60d000d", "sha256": "a98c4806081d40eba35102a0f6dc0000c2e1388b72cf24e691703d0605bd888a", "destination_dir": "/workspace/ComfyUI/models/detection"}
+      ],
+      "custom_nodes": [
+        {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
+        {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"}
+      ]
+    },
+    "style_loras": {
+      "inline-skin": {
+        "model": {"repo_id": "inlineresearch/skin-lora-krea-2-raw", "filename": "inline-skin-lora-krea-2-raw.safetensors", "revision": "15fbc074697eed816159dbbc99f9c98170301b14", "sha256": "7ac516bc335953be4afffa53411e38a012e91eaff56afc16c79232438b7040ac", "destination_dir": "/workspace/ComfyUI/models/loras"},
+        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)"
+      },
+      "gokay-realism": {
+        "model": {"repo_id": "gokaygokay/Krea-2-Realism-LoRA", "filename": "krea2_realism_lora.safetensors", "revision": "32f0436ac10e985134364e7555898c9f121a46ce", "sha256": "6c38a7934c54a56e0f67753660a4500a094d6dce28a0ee4a0d1dc9f4975d32d2", "destination_dir": "/workspace/ComfyUI/models/loras"},
+        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)"
+      }
     }
   }
 }

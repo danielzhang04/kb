@@ -1,0 +1,16 @@
+{
+  "1": {"class_type": "LoadImage", "inputs": {"image": "REPLACED PER JOB"}},
+  "2": {"class_type": "UNETLoader", "inputs": {"unet_name": "krea2_turbo_fp8_scaled.safetensors", "weight_dtype": "default"}},
+  "3": {"class_type": "CLIPLoader", "inputs": {"clip_name": "qwen3vl_4b_fp8_scaled.safetensors", "type": "krea2", "device": "default"}},
+  "9": {"class_type": "VAELoader", "inputs": {"vae_name": "qwen_image_vae.safetensors"}},
+  "4": {"class_type": "LoraLoader", "inputs": {"lora_name": "REPLACED PER JOB", "strength_model": 1.0, "strength_clip": 1.0, "model": ["2", 0], "clip": ["3", 0]}},
+  "5": {"class_type": "CLIPTextEncode", "inputs": {"text": "Photograph of an adult woman, natural skin texture with visible pores, no retouching.", "clip": ["4", 1]}},
+  "6": {"class_type": "ConditioningZeroOut", "inputs": {"conditioning": ["5", 0]}},
+  "10": {"class_type": "LoadMediaPipeFaceLandmarker", "inputs": {"model_name": "mediapipe_face_fp32.safetensors"}},
+  "11": {"class_type": "MediaPipeFaceLandmarker", "inputs": {"face_detection_model": ["10", 0], "image": ["1", 0], "detector_variant": "short", "num_faces": 1, "min_confidence": 0.4, "missing_frame_fallback": "empty"}},
+  "12": {"class_type": "MediaPipeFaceMask", "inputs": {"face_landmarks": ["11", 0], "regions": {"regions": "all"}}},
+  "13": {"class_type": "GrowMask", "inputs": {"mask": ["12", 0], "expand": 10, "tapered_corners": true}},
+  "14": {"class_type": "MaskToSEGS", "inputs": {"mask": ["13", 0], "combined": false, "crop_factor": 3.0, "bbox_fill": false, "drop_size": 10, "contour_fill": false}},
+  "15": {"class_type": "DetailerForEach", "inputs": {"image": ["1", 0], "segs": ["14", 0], "model": ["4", 0], "clip": ["4", 1], "vae": ["9", 0], "positive": ["5", 0], "negative": ["6", 0], "guide_size": 512, "guide_size_for": true, "max_size": 1024, "seed": 40, "steps": 4, "cfg": 1.0, "sampler_name": "euler", "scheduler": "normal", "denoise": "REPLACED PER JOB", "feather": 5, "noise_mask": true, "force_inpaint": true, "wildcard": "", "cycle": 1, "inpaint_model": false, "noise_mask_feather": 100}},
+  "16": {"class_type": "SaveImage", "inputs": {"filename_prefix": "REPLACED PER JOB", "images": ["15", 0]}}
+}

@@ -1,0 +1,23 @@
+{
+  "id": "gen-prompts",
+  "persona": null,
+  "replicates": "module 09 (generation, tensor-gen stage). One job per scene row below, each substituted into node 5's positive CLIPTextEncode. No input image, no template-hardcoded face/body text -- the persona's own identity.look supplies every face/body/wardrobe word (Track-2 Task D2, same discipline anchor-prompts.yaml uses for module 03).",
+  "structure": {
+    "register_source": "Every face/body word lives only in the persona's identity.look (persona.yaml), sourced from pipeline/look-spec-v2.md section 0. Section 4a banned phrases and section 4c age phrasing are binding and enforced by persona.py's identity.look validation before a persona document is ever returned; the scene rows below are generic photography staging/lighting vocabulary only, never persona-specific."
+  },
+  "base_clause": "Photograph of {look}, {scene}",
+  "scenes": [
+    "front on, waist up, plain pale wall behind her, flat overcast daylight, relaxed neutral expression.",
+    "in left profile beside a bright window, head and shoulders, hard directional daylight, plain interior background.",
+    "at a three-quarter angle in a dim living room lit by one warm table lamp, chest up, warm low light with soft shadow.",
+    "full length, standing on a quiet residential pavement, flat late-afternoon daylight.",
+    "seated at a cafe table, elbows on the table, three-quarter view from slightly above, mixed window and ceiling light.",
+    "from a slightly low angle outdoors against an overcast sky, head and shoulders, cool diffuse daylight.",
+    "standing in a bright daylight kitchen, one hand resting on the counter, morning light through a nearby window.",
+    "a mirror selfie in a bedroom, phone held at chest height, soft ambient room light.",
+    "sitting on the edge of a bed under a single bedroom lamp, warm low light.",
+    "standing in a hallway lit by direct on-camera flash at night.",
+    "sitting on a living-room sofa, natural window light from one side, waist up.",
+    "standing on an apartment balcony at dusk, leaning against the railing, skyline behind her, chest up."
+  ]
+}

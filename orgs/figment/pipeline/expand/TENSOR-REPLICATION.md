@@ -264,3 +264,66 @@ future on-pod captioning artifact). 30 cells total, same as before the split.
    `x-linked-etag`/`X-Repo-Commit` the pin already records — a pure repo rename, not a content change.
    `verify_pins.py` fails closed on the 307 (it never follows a redirect) until `repo_id` is updated to the
    new name in both stages. `pins.anchor`/`train`/`tester` verify clean today.
+
+## Module 09 → gen stage (Track-2 Task D1+D2)
+
+The generation graph's base → 4x upscale → refine chain (nodes `1`-`21`) is node-identical to the
+committed `train/runs/creator-001-tensor-gen.yaml` (the hand-written manifest this task retires as the
+sole producer). Two additions: a face-repair tail replacing the package's pickled FaceDetailer, and an
+optional style-LoRA slot. Continuing the D-numbering above:
+
+- **D27** — module 09's `FaceDetailer` pass (`UltralyticsDetectorProvider` `face_yolov8m.pt` +
+  `SAMLoader` `sam_vit_b_01ec64.pth`, both pickles, already dropped once at the anchor stage as D17) is
+  replaced here — where a detail pass is actually needed — by ComfyUI's native, pure-PyTorch
+  `LoadMediaPipeFaceLandmarker` -> `MediaPipeFaceLandmarker` -> `MediaPipeFaceMask` (Apache-2.0
+  `mediapipe_face_fp32.safetensors`, `models/detection/`, shipping since ComfyUI v0.23.0, no pip
+  install) feeding `GrowMask` -> base Impact-Pack's `MaskToSEGS` -> `DetailerForEach` (`ltdrdata/ComfyUI-Impact-Pack`
+  @ `429d0159`, the same installer pin already used for `pins.anchor_edit`/`pins.dataset` — **never**
+  `Impact-Subpack`, per D23/D24/plan H4). Evidence: `research/r23-mediapipe-node-spike.md`, whose minimal
+  API snippet this pin/graph follows verbatim. Detailer numbers match the package's own module-09 values
+  (r23, r15 §3e): `guide_size 512`, `steps 4`, `cfg 1.0`, `euler`/`normal`, **`denoise 0.15`**,
+  `feather 5`, `GrowMask.expand 10` (the package's `bbox_dilation`), `crop_factor 3.0`, `cycle 1`,
+  `noise_mask_feather 100`. `mediapipe_face_fp32.safetensors`'s `revision`/`sha256` were not published in
+  ComfyUI's own repo (r23) and were resolved live against the HF CDN at pin time (`x-repo-commit` /
+  `x-linked-etag` on the un-followed 302, the same method `train/verify_pins.py` checks automatically).
+- **D28** — the style-LoRA slot is a `LoraLoaderModelOnly` (model output only — it must not touch the
+  CLIP the identity LoRA's text encoding already depends on) chained after the identity `LoraLoader`
+  (node `4`, now `1.0`/`1.0` — the committed manifest's `0.8` was an unrecorded deviation, corrected
+  here to match the package's own tester/generation strength). `training.style_lora` names a key of the
+  new `pins.style_loras` (`null` by default) and `training.style_lora_strength` sets
+  `LoraLoaderModelOnly.strength_model` (default `0.8`). Two CLEAN candidates pinned (r22 §2, revisions
+  and sha256 resolved live the same way): `inline-skin` -> `inlineresearch/skin-lora-krea-2-raw`
+  (`inline-skin-lora-krea-2-raw.safetensors`) and `gokay-realism` -> `gokaygokay/Krea-2-Realism-LoRA`
+  (`krea2_realism_lora.safetensors`), both Krea 2 Community License (free commercially under $1M
+  trailing-12-month revenue — the same ceiling `Comfy-Org/Krea-2` itself carries). `pawg_krea2` (the
+  package's own body/style LoRA) has no licence-clean substitute found in r22 and is dropped outright —
+  no pin, no placeholder. When `training.style_lora` is `null`, `figment_train.py` deletes node `40`
+  from the planned workflow and rewires nodes `8`/`15`/`33`'s `model` input back to `["4", 0]` before the
+  manifest is ever written — no bypassed node ever ships in a live manifest.
+- **D29** — a second, cheap workflow, `train/workflows/krea2_detail_only_api.json`, ports only the
+  MediaPipe-mask -> `MaskToSEGS` -> `DetailerForEach` tail (plus the identity `LoraLoader`, no style
+  slot, no upscale/refine chain) against an *uploaded existing* cell (`LoadImage`) instead of a fresh
+  generation. This is r25's ranked cause #2 experiment made durable: re-detail already-rendered Track-1
+  tester/dataset cells at the package's own denoise band without spending a full regeneration. The
+  `gen` stage's `--detail-images <glob>` plan-time option resolves local files, copies them into the
+  plan's own upload tree (same `_uploads/<persona>/<name>` convention the anchor/dataset stages use —
+  `pod/runpod_run.py`'s upload expansion refuses any path outside the manifest's own directory), and
+  emits `<id>-tensor-detail.yaml` with **two** jobs per image — `denoise 0.15` and `denoise 0.27`, the
+  full band r16 §1/r25 cause #2 name — both loading the same chosen checkpoint the `gen` manifest uses.
+
+### Pins and licences (module 09 → gen stage)
+
+| File | Source | Licence | Notes |
+|---|---|---|---|
+| `krea2_turbo_fp8_scaled.safetensors` / `qwen3vl_4b_fp8_scaled.safetensors` / `qwen_image_vae.safetensors` | `Comfy-Org/Krea-2` | krea-2-community-license | reused from `pins.tester` verbatim |
+| `4xNomosWebPhoto_RealPLKSR.safetensors` | `Phips/4xNomosWebPhoto_RealPLKSR` | reused from `pins.anchor_edit`/`pins.dataset` | 4x upscale pass |
+| `mediapipe_face_fp32.safetensors` | `Comfy-Org/mediapipe` | Apache-2.0 (r22 §4) | face mask source, `models/detection/` |
+| `inline-skin-lora-krea-2-raw.safetensors` | `inlineresearch/skin-lora-krea-2-raw` | krea-2-community-license | style slot, key `inline-skin` |
+| `krea2_realism_lora.safetensors` | `gokaygokay/Krea-2-Realism-LoRA` | krea-2-community-license | style slot, key `gokay-realism` |
+
+Every model above (including the reused ones, re-checked) was HEAD-verified live against the HF
+CDN at pin time (2026-09-06/09) the same way `train/verify_pins.py --stage gen` checks it automatically
+as a `figment_train.py plan --stage gen` preflight. `pins.detail` is `pins.gen` minus the upscaler (the
+detail-only workflow never upscales). No `Impact-Subpack`, no `.pt`/`.pth` weight, anywhere in either
+pin group or either workflow file — the same guarantee D23/D24/H4 established for the anchor and
+dataset stages, now proven for generation too.

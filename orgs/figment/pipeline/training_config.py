@@ -18,6 +18,7 @@ PERSONA_MODULE = HERE / "persona.py"
 TRAINING_KEYS = {
     "trigger", "base_arch", "steps", "save_every", "caption_mode",
     "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
+    "style_lora", "style_lora_strength", "chosen_checkpoint_step",
 }
 DEFAULT_TRAINING = {
     "trigger": None,
@@ -31,6 +32,15 @@ DEFAULT_TRAINING = {
     # full-body second pass requires a single-cell live A/B check first (r22 §3's base-model
     # caveat: the card demonstrates Qwen-Image-Edit-2509, not our 2511 pipeline).
     "skin_lora": None,
+    # Track-2 Task D2 (D28): null by default -- the gen stage's style-LoRA slot
+    # (LoraLoaderModelOnly after the identity LoRA) is opt-in per persona, keyed into
+    # pins.style_loras (train/tensor-pins.yaml).
+    "style_lora": None,
+    "style_lora_strength": 0.8,
+    # Track-2 Task A3/D2: set only by `apply-rulings --stage tester` (GATE 3) once the
+    # operator has picked a checkpoint. `build_plan(..., stage="gen")` refuses to plan
+    # until this names a real step.
+    "chosen_checkpoint_step": None,
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_CAPTION_MODES = {"provided", "auto", "single_word"}
@@ -105,6 +115,25 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     ):
         raise TrainingConfigError(
             "persona.training.skin_lora must be a non-empty string key or null"
+        )
+    if config["style_lora"] is not None and (
+        not isinstance(config["style_lora"], str) or not config["style_lora"].strip()
+    ):
+        raise TrainingConfigError(
+            "persona.training.style_lora must be a non-empty string key or null"
+        )
+    strength = config["style_lora_strength"]
+    if isinstance(strength, bool) or not isinstance(strength, (int, float)) or strength <= 0:
+        raise TrainingConfigError(
+            "persona.training.style_lora_strength must be a positive number"
+        )
+    config["style_lora_strength"] = float(strength)
+    chosen_step = config["chosen_checkpoint_step"]
+    if chosen_step is not None and (
+        isinstance(chosen_step, bool) or not isinstance(chosen_step, int) or chosen_step <= 0
+    ):
+        raise TrainingConfigError(
+            "persona.training.chosen_checkpoint_step must be a positive integer or null"
         )
     price = config["price_ceiling_usd_per_hour"]
     if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:
