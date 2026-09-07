@@ -276,3 +276,16 @@
 - LAW (code review before the real run): the opus review of the built P8 package found a queue-destroying drain (the research driver claimed every queued request with one adapter registered → every pending Snov request permanently rejected) and a fill-fit that queued discovery nothing drained; both invisible to 88 green tests because fixtures never had foreign queued work. Every executor-driving component needs a "foreign queued request untouched" test.
 - HAZARD (over-correcting a review): "subjects must not depend on firm-name length" was implemented as fully generic subjects, discarding the +30% personalization lever. Rulings must state the invariant AND the value to preserve.
 - Git on this machine intermittently fails `git add` with "unable to write file .git/objects/..: Permission denied" (transient lock from a concurrent worker); retry once before diagnosing.
+
+## 2026-09-06/07 — figment Track-2: gate before eyes
+- A board is not a test. Two rejected boards in a row were the operator being used as the test suite. Build the
+  automated judge first, calibrate it on every labelled set you already own, then spend on pods.
+- Embedding cosines (facenet) are blind to the drift humans reject (age, skin); a vision-LLM judge via headless
+  `claude -p` (subscription, ~30–60 s/call) separates strangers and drift; its noise floor is ~10 points, so
+  thresholds need anchor-pair calibration, not guesses. Never cache a failed judge call; downscale inputs.
+- "Faithful replication" of a vendor pipeline can be a category error when their pipeline never solves your problem
+  (in-model character vs external anchor). Audit what they actually demonstrate (r25) before porting.
+- Live pods find defects tests cannot: fixed timeouts vs cold loads; symlink swaps hiding bootstrapped files;
+  missing pickle rejection. Each fix went in with a bash-executed or harness test the same hour.
+- Session classifier can block a legitimate pod launch (diagnostic manifest); surface the exact command to the
+  operator instead of retrying.
