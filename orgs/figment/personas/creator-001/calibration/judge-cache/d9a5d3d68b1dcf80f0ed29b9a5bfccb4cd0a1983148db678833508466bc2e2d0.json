@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t11-mechA",
+  "same_person": 74,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 21,
+  "age_delta": -2,
+  "skin_realism": 22,
+  "gloss": 52,
+  "artifacts": 38,
+  "notes": "Close resemblance but skin is waxy/poreless with painted-on, oddly sharp-edged blush.",
+  "model": "sonnet",
+  "duration_s": 94.44864079996478,
+  "cost_usd": 0.1579978,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-e04",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 55,
+  "gloss": 30,
+  "artifacts": 25,
+  "notes": "Similar face but fuller lips, sharper wing liner, slightly different jaw; skin oddly smooth in patches.",
+  "model": "sonnet",
+  "duration_s": 76.78108680003788,
+  "cost_usd": 0.1622316,
+  "cache_hit": false,
+  "unavailable": {}
+}

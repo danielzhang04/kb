@@ -1,0 +1,16 @@
+{
+  "image_id": "31",
+  "same_person": 82,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 45,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Strong facial/jewelry match but skin overly smoothed and glossy; right hand fingers look slightly off.",
+  "model": "sonnet",
+  "duration_s": 90.3676778000081,
+  "cost_usd": 0.1763928,
+  "cache_hit": false,
+  "unavailable": {}
+}

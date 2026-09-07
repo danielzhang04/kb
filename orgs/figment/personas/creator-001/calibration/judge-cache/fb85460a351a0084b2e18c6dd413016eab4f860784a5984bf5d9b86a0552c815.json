@@ -1,0 +1,16 @@
+{
+  "image_id": "15",
+  "same_person": 82,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 40,
+  "gloss": 62,
+  "artifacts": 25,
+  "notes": "Similar face but waxy/shiny skin, odd blank shadow silhouette, slightly generic AI look.",
+  "model": "sonnet",
+  "duration_s": 78.11867800005712,
+  "cost_usd": 0.1606004,
+  "cache_hit": false,
+  "unavailable": {}
+}

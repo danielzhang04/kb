@@ -1,0 +1,16 @@
+{
+  "image_id": "14",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 35,
+  "gloss": 55,
+  "artifacts": 25,
+  "notes": "Similar face but fuller cheeks/softer jaw, waxy over-smoothed skin, glossy highlights, slightly off eyeliner symmetry.",
+  "model": "sonnet",
+  "duration_s": 82.31092620000709,
+  "cost_usd": 0.161032,
+  "cache_hit": false,
+  "unavailable": {}
+}

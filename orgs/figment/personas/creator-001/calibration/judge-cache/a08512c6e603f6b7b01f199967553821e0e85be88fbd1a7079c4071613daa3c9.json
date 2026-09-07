@@ -1,0 +1,16 @@
+{
+  "image_id": "22",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 55,
+  "gloss": 45,
+  "artifacts": 20,
+  "notes": "Similar face/hair but nose/lip shape slightly off; skin smoothed, shiny latex-look outfit reads glossy.",
+  "model": "sonnet",
+  "duration_s": 85.80217569996603,
+  "cost_usd": 0.1615634,
+  "cache_hit": false,
+  "unavailable": {}
+}

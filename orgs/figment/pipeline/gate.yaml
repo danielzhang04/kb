@@ -74,3 +74,78 @@ age_delta_max_years: 5.0
 gloss_max: 0.08
 niqe_max: 6.5
 face_px_min: 600
+
+# --- stage 2: vlm_judge.py (Claude vision judge) -----------------------------------
+# judge_gate() reads exactly these five keys, same fail-closed convention as gate()
+# above ("unavailable: <threshold name>" on a missing key, never a silent pass):
+#
+#   same_person   ≥ same_person_min
+#   |age_delta|   ≤ age_delta_max
+#   skin_realism  ≥ skin_realism_min
+#   gloss         ≤ gloss_max
+#   artifacts     ≤ artifacts_max
+#
+# --- creator-001 calibrate run, 2026-09-07 (`vlm_judge.py calibrate --creator
+# creator-001`, model sonnet, prompt v1) ----------------------------------------------
+# Scored the SAME 95 real images across the SAME six evidence sets as identity_gate.py's
+# own 2026-09-06 calibrate run above (anchors themselves via leave-one-out judging, the
+# 31-cell Track-1 dataset, 8 LoRA tester checkpoints, 6 Qwen anchor-edits, 12
+# passport-candidate strangers, 35 expansion-03 klein edits) -- see
+# orgs/figment/personas/creator-001/calibration/judge-calibration.{json,md} for the full
+# per-set distributions. Real wall-clock elapsed: 2391.3s (~40 min) at 4 workers; total
+# judge-call time summed across all 95 calls: 8707.9s; reported cost $15.49
+# (subscription-billed via the `claude` CLI, not an API spend -- see vlm_judge.py's own
+# module docstring). Zero calls failed closed (0/95 unavailable) -- every judgement
+# parsed cleanly, first try or the one retry.
+#
+#   * same_person_min: 70.2 -- EVIDENCE-BACKED, real separation on the two sets that
+#     most need rejecting. The anchors' own leave-one-out same_person (g0N judged
+#     against the other two references) has min 78; the floor sits at 0.9x that. It
+#     correctly separates passport-candidates (unrelated women; median 15, only
+#     evidence-set median below the floor by a wide margin) and lora-tester (median 45 --
+#     dragged down by early undertrained checkpoints the operator never called "close").
+#     It does NOT separate track1-dataset/qwen-anchor-edits/expansion-03 (medians
+#     77-78) -- and it should not: the operator's own verdicts on those three sets were
+#     never "wrong person," only glossy/older/inconsistent, so a real identity floor is
+#     SUPPOSED to let them through and let stage 2's other metrics judge the rest.
+#
+#   * age_delta_max: 1.5 -- EVIDENCE-BACKED. Anchor self-consistency max |age_delta| is
+#     1 year; the ceiling is 1.5x that. Separates lora-tester (median +5 years -- the
+#     operator's own "older" verdict on the LoRA output, now finally visible; facenet
+#     alone never saw this) and passport-candidates (median +1.5, at the edge but still
+#     separating on n=12's exact numbers). Does NOT separate track1-dataset/
+#     qwen-anchor-edits/expansion-03 (medians ~0-1 year) -- the "older" drift the
+#     operator saw appears concentrated in the trained LoRA's own generation, not in the
+#     Track-1 dataset-construction step itself.
+#
+#   * skin_realism_min (31.5) / gloss_max (67.5) / artifacts_max (45.0): calibration did
+#     NOT validate a working number for any of the three -- reported honestly, not
+#     hidden, same as identity_gate.py's own age_delta_max_years/gloss_max above. The
+#     anchors' own leave-one-out judgements came back harsher than expected on these
+#     three axes (skin_realism as low as 35, gloss as high as 45, artifacts up to 30 --
+#     on genuine, unedited real photos of her, likely real flash/lighting specularity
+#     the judge is not being lenient about), so the 0.9x/1.5x anchor-buffer formula that
+#     works well for same_person/age_delta lands ABOVE every generated evidence set's
+#     own median on these three -- mechanically inert at these values (0/6 separations
+#     across the five non-anchor sets on each of the three). Kept wired rather than
+#     dropped (they still fail-closed catch a genuinely pathological single cell, and a
+#     real operator eye-gate still sees the raw same_person/skin_realism/gloss/artifacts
+#     numbers + notes on every cell via the board -- see figment_train.py's
+#     `_judge_annotation`) but NOT treated as validated discriminators until either a
+#     tighter buffer factor is chosen by operator judgment (mirroring niqe_max's own
+#     precedent above) or a second calibration pass with a less skin/gloss-harsh anchor
+#     set produces real separation.
+#
+#   * Combined effect (`judge_gate` under these five thresholds): anchors 3/3 pass,
+#     track1-dataset 22/31 (71%), lora-tester 0/8 (0%), qwen-anchor-edits 4/6 (67%),
+#     passport-candidates 0/12 (0%), expansion-03 23/35 (66%) -- a real, usable
+#     operating point driven almost entirely by same_person_min + age_delta_max (the
+#     only two evidence-backed keys); it cleanly rejects every stranger and every
+#     undertrained/drifted LoRA checkpoint while letting roughly two-thirds of the
+#     "closer" sets' individual cells through for the operator's own eye-gate.
+judge:
+  same_person_min: 70.2
+  age_delta_max: 1.5
+  skin_realism_min: 31.5
+  gloss_max: 67.5
+  artifacts_max: 45.0

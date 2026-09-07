@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-e01",
+  "same_person": 72,
+  "apparent_age_reference": 24,
+  "apparent_age_candidate": 25,
+  "age_delta": 1,
+  "skin_realism": 30,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Similar face shape/features but waxy over-smoothed skin, glossy highlights look AI-rendered, not clearly same woman.",
+  "model": "sonnet",
+  "duration_s": 76.7112969000591,
+  "cost_usd": 0.1627308,
+  "cache_hit": false,
+  "unavailable": {}
+}

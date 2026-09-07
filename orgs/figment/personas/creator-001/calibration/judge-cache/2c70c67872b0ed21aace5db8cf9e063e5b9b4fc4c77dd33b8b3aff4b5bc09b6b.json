@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t10-mechA",
+  "same_person": 88,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 22,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 40,
+  "artifacts": 35,
+  "notes": "Close facial match to reference but skin is smoothed/waxy; raised hand fingers look malformed.",
+  "model": "sonnet",
+  "duration_s": 87.03772879997268,
+  "cost_usd": 0.16604580000000002,
+  "cache_hit": false,
+  "unavailable": {}
+}

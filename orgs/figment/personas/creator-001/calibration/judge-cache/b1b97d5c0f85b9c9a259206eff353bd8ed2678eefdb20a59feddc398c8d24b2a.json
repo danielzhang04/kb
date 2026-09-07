@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t07-mechA",
+  "same_person": 70,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 42,
+  "gloss": 35,
+  "artifacts": 15,
+  "notes": "Close resemblance but face reads slightly generic/smoothed, waxy cheeks and nose.",
+  "model": "sonnet",
+  "duration_s": 82.21533170004841,
+  "cost_usd": 0.15256579999999997,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t04-mechA",
+  "same_person": 82,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 45,
+  "gloss": 40,
+  "artifacts": 35,
+  "notes": "Same face/scene as g01 but overdone flush, waxy smoothed skin, odd closed-eye open-mouth expression.",
+  "model": "sonnet",
+  "duration_s": 96.14986989996396,
+  "cost_usd": 0.161469,
+  "cache_hit": false,
+  "unavailable": {}
+}

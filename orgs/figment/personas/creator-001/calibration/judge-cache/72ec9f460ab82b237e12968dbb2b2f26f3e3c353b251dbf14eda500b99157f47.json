@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p01",
+  "same_person": 68,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 62,
+  "gloss": 20,
+  "artifacts": 35,
+  "notes": "Plausible match to bare-faced g07 but face slightly narrower/elongated, brows and lash-line tint look off.",
+  "model": "sonnet",
+  "duration_s": 90.98939970007632,
+  "cost_usd": 0.156862,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "08",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 25,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Similar face shape/features but skin is waxy, over-smoothed, glossy lips; freckles/pores erased.",
+  "model": "sonnet",
+  "duration_s": 76.51696659997106,
+  "cost_usd": 0.160388,
+  "cache_hit": false,
+  "unavailable": {}
+}

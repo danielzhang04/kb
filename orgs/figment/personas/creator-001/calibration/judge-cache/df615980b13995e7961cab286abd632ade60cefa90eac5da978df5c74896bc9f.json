@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t08-mechA",
+  "same_person": 82,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 55,
+  "gloss": 35,
+  "artifacts": 20,
+  "notes": "Close facial match but slightly smoothed/waxy skin; wrist/hand geometry looks off, warm cast masks texture.",
+  "model": "sonnet",
+  "duration_s": 109.30537750001531,
+  "cost_usd": 0.1620962,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "27",
+  "same_person": 88,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 35,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Likely same woman but candidate skin is noticeably smoothed/plastic and eyes look artificially widened.",
+  "model": "sonnet",
+  "duration_s": 91.12524640001357,
+  "cost_usd": 0.1622802,
+  "cache_hit": false,
+  "unavailable": {}
+}

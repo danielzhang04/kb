@@ -1,0 +1,16 @@
+{
+  "image_id": "21",
+  "same_person": 82,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 40,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Similar face shape/features but airbrushed, plastic-smooth skin; lips/cheeks overly glossy and blurred pores.",
+  "model": "sonnet",
+  "duration_s": 85.84018279996235,
+  "cost_usd": 0.161761,
+  "cache_hit": false,
+  "unavailable": {}
+}

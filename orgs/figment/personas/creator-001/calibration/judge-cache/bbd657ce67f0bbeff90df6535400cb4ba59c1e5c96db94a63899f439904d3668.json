@@ -1,0 +1,16 @@
+{
+  "image_id": "10",
+  "same_person": 68,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 25,
+  "age_delta": 2,
+  "skin_realism": 35,
+  "gloss": 68,
+  "artifacts": 45,
+  "notes": "Similar eyes/lips/hair, but waxy blotchy forehead texture, painted-on blush, and graphic eyeliner look synthetic.",
+  "model": "sonnet",
+  "duration_s": 100.3872683000518,
+  "cost_usd": 0.1787124,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "18",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 25,
+  "gloss": 62,
+  "artifacts": 20,
+  "notes": "Similar face but softened/plastic skin, glossy lips, exaggerated eyeliner; freckles/moles lost.",
+  "model": "sonnet",
+  "duration_s": 74.67082819994539,
+  "cost_usd": 0.160324,
+  "cache_hit": false,
+  "unavailable": {}
+}

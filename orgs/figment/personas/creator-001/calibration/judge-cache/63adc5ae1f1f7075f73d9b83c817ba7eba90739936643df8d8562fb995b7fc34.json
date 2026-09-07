@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-tensor-tester-000000750",
+  "same_person": 30,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 33,
+  "age_delta": 10,
+  "skin_realism": 45,
+  "gloss": 25,
+  "artifacts": 40,
+  "notes": "Face shape, nose, lips differ; looks older with blotchy patches and odd neck wrinkling.",
+  "model": "sonnet",
+  "duration_s": 107.44523469998967,
+  "cost_usd": 0.1774598,
+  "cache_hit": false,
+  "unavailable": {}
+}

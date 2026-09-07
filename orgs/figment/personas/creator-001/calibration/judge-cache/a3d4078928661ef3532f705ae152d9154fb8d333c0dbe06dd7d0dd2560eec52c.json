@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-tensor-tester-000001750",
+  "same_person": 62,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 25,
+  "age_delta": 2,
+  "skin_realism": 58,
+  "gloss": 55,
+  "artifacts": 38,
+  "notes": "Similar face but hair now a blunt bob vs long hair; asymmetric eyeliner wings, oddly blotchy cheek redness.",
+  "model": "sonnet",
+  "duration_s": 93.64694450004026,
+  "cost_usd": 0.1742282,
+  "cache_hit": false,
+  "unavailable": {}
+}

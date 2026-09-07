@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t01-mechA",
+  "same_person": 88,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 55,
+  "gloss": 45,
+  "artifacts": 15,
+  "notes": "Close facial match to g07 but skin looks smoothed/airbrushed with slight plastic sheen on cheeks.",
+  "model": "sonnet",
+  "duration_s": 90.81973739992827,
+  "cost_usd": 0.1655432,
+  "cache_hit": false,
+  "unavailable": {}
+}

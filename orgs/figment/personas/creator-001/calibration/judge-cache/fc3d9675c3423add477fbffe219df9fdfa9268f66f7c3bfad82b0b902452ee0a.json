@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t01-mechA",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 32,
+  "gloss": 42,
+  "artifacts": 18,
+  "notes": "Similar face/outfit but skin overly smoothed, waxy cheeks with painted-on blush; slight facial proportion drift.",
+  "model": "sonnet",
+  "duration_s": 105.2770170000149,
+  "cost_usd": 0.1641878,
+  "cache_hit": false,
+  "unavailable": {}
+}

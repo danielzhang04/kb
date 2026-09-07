@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t07-mechA",
+  "same_person": 78,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 22,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 40,
+  "artifacts": 30,
+  "notes": "Similar face/style but slightly smoothed skin, tangled/doubled shoulder strap, waist seam odd.",
+  "model": "sonnet",
+  "duration_s": 98.74325840000529,
+  "cost_usd": 0.16317879999999998,
+  "cache_hit": false,
+  "unavailable": {}
+}

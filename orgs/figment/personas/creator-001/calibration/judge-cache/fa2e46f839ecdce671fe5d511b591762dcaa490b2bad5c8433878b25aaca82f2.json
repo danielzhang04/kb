@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t05-mechA",
+  "same_person": 88,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 45,
+  "gloss": 35,
+  "artifacts": 20,
+  "notes": "Similar face/outfit, but skin looks smoothed/plastic and eyeliner is exaggerated vs reference.",
+  "model": "sonnet",
+  "duration_s": 88.05169700004626,
+  "cost_usd": 0.1524738,
+  "cache_hit": false,
+  "unavailable": {}
+}

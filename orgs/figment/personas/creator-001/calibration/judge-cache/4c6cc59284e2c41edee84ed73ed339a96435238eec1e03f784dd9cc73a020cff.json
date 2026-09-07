@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-tensor-tester-000000250",
+  "same_person": 8,
+  "apparent_age_reference": 21,
+  "apparent_age_candidate": 38,
+  "age_delta": 17,
+  "skin_realism": 88,
+  "gloss": 15,
+  "artifacts": 10,
+  "notes": "Different woman: older, rounder face, no makeup, distinct nose/eyes; skin realism is good though.",
+  "model": "sonnet",
+  "duration_s": 103.3653978999937,
+  "cost_usd": 0.1746292,
+  "cache_hit": false,
+  "unavailable": {}
+}

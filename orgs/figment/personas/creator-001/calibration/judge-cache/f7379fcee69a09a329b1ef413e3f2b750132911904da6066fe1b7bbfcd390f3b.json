@@ -1,0 +1,16 @@
+{
+  "image_id": "25",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 35,
+  "artifacts": 45,
+  "notes": "Face/makeup match well but hair is shorter bob; thighs show odd mottled/noisy texture artifact.",
+  "model": "sonnet",
+  "duration_s": 113.46962099999655,
+  "cost_usd": 0.1792642,
+  "cache_hit": false,
+  "unavailable": {}
+}

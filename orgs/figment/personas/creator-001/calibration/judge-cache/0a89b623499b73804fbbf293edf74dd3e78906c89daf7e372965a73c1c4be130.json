@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t04-mechA",
+  "same_person": 68,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 22,
+  "age_delta": 0,
+  "skin_realism": 58,
+  "gloss": 32,
+  "artifacts": 62,
+  "notes": "Droopy half-closed eyes, odd open-mouth expression, weaker eyeliner wing; likeness plausible but uncanny.",
+  "model": "sonnet",
+  "duration_s": 112.97170400002506,
+  "cost_usd": 0.1680312,
+  "cache_hit": false,
+  "unavailable": {}
+}

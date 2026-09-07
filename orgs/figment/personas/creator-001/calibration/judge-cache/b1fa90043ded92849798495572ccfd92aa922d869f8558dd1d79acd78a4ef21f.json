@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t06-mechA",
+  "same_person": 62,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 38,
+  "gloss": 45,
+  "artifacts": 28,
+  "notes": "Profile face is softened/plasticky, nose/lip shape reads slightly off vs references.",
+  "model": "sonnet",
+  "duration_s": 101.60132460005116,
+  "cost_usd": 0.1601254,
+  "cache_hit": false,
+  "unavailable": {}
+}

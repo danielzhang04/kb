@@ -1,0 +1,16 @@
+{
+  "image_id": "11",
+  "same_person": 68,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 60,
+  "gloss": 55,
+  "artifacts": 30,
+  "notes": "Similar features but blush looks airbrushed-on; extreme close crop makes identity hard to confirm.",
+  "model": "sonnet",
+  "duration_s": 99.50769999995828,
+  "cost_usd": 0.1694384,
+  "cache_hit": false,
+  "unavailable": {}
+}

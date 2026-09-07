@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-e05",
+  "same_person": 82,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 40,
+  "gloss": 55,
+  "artifacts": 25,
+  "notes": "Similar features but skin looks smoothed/glossy, eyeliner oddly rendered, slightly plastic AI look.",
+  "model": "sonnet",
+  "duration_s": 45.5901078999741,
+  "cost_usd": 0.1622936,
+  "cache_hit": false,
+  "unavailable": {}
+}

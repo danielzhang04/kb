@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p08",
+  "same_person": 48,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 24,
+  "age_delta": 2,
+  "skin_realism": 74,
+  "gloss": 32,
+  "artifacts": 22,
+  "notes": "Bare-faced candidate has different brow shape/jaw fullness than references; identity uncertain despite good skin texture.",
+  "model": "sonnet",
+  "duration_s": 98.55196630000137,
+  "cost_usd": 0.15837220000000002,
+  "cache_hit": false,
+  "unavailable": {}
+}

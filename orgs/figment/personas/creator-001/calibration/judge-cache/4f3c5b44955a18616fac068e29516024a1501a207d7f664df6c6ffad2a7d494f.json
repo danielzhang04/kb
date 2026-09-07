@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p12",
+  "same_person": 5,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 82,
+  "gloss": 40,
+  "artifacts": 8,
+  "notes": "Different woman entirely vs g01/g02; matches mismatched g07 instead, not a resemblance issue.",
+  "model": "sonnet",
+  "duration_s": 109.69862720009405,
+  "cost_usd": 0.1911292,
+  "cache_hit": false,
+  "unavailable": {}
+}

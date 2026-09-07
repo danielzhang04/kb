@@ -1,0 +1,16 @@
+{
+  "image_id": "01",
+  "same_person": 72,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 23,
+  "age_delta": 1,
+  "skin_realism": 45,
+  "gloss": 55,
+  "artifacts": 30,
+  "notes": "Similar face shape/features but eyeliner, brows, lips differ; skin overly smooth/glossy, AI-retouched look.",
+  "model": "sonnet",
+  "duration_s": 92.57443060004152,
+  "cost_usd": 0.1605,
+  "cache_hit": false,
+  "unavailable": {}
+}

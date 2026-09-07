@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p11",
+  "same_person": 3,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 25,
+  "age_delta": 2,
+  "skin_realism": 82,
+  "gloss": 15,
+  "artifacts": 8,
+  "notes": "Clearly a different woman â€” different face shape, brows, eyes, no resemblance to reference.",
+  "model": "sonnet",
+  "duration_s": 81.76388000010047,
+  "cost_usd": 0.1538886,
+  "cache_hit": false,
+  "unavailable": {}
+}

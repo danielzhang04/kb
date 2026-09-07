@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-e03",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 40,
+  "gloss": 35,
+  "artifacts": 20,
+  "notes": "Similar features but fuller lips, sharper nose, smoother waxy skin suggest AI-altered, not exact same woman.",
+  "model": "sonnet",
+  "duration_s": 75.86136560002342,
+  "cost_usd": 0.16197319999999998,
+  "cache_hit": false,
+  "unavailable": {}
+}

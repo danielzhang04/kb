@@ -1,0 +1,16 @@
+{
+  "image_id": "17",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 78,
+  "gloss": 40,
+  "artifacts": 22,
+  "notes": "Good skin texture/pores, but eyeliner wing asymmetric and eye shape reads slightly different.",
+  "model": "sonnet",
+  "duration_s": 84.59594899998046,
+  "cost_usd": 0.16411360000000003,
+  "cache_hit": false,
+  "unavailable": {}
+}

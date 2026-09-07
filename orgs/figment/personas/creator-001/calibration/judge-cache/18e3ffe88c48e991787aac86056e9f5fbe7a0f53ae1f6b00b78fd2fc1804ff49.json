@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-tensor-tester-000000500",
+  "same_person": 35,
+  "apparent_age_reference": 21,
+  "apparent_age_candidate": 33,
+  "age_delta": 12,
+  "skin_realism": 55,
+  "gloss": 60,
+  "artifacts": 30,
+  "notes": "Face reads notably older/wider-jawed than reference; cheek pore texture looks stippled/synthetic, lips overly glossy.",
+  "model": "sonnet",
+  "duration_s": 89.42250340001192,
+  "cost_usd": 0.1754204,
+  "cache_hit": false,
+  "unavailable": {}
+}

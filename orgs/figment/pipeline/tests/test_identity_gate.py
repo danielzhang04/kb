@@ -129,6 +129,117 @@ def test_load_thresholds_falls_back_when_persona_declares_no_floor(gate_module):
     assert thresholds["face_px_min"] == gate_module.load_thresholds()["face_px_min"]
 
 
+def test_load_judge_thresholds_reads_gate_yaml_judge_block(gate_module):
+    thresholds = gate_module.load_judge_thresholds()
+    for key in gate_module._vlm_judge_module().JUDGE_THRESHOLD_KEYS:
+        assert key in thresholds
+
+
+def test_load_judge_thresholds_raises_when_gate_yaml_has_no_judge_block(gate_module, tmp_path):
+    bad_config = tmp_path / "gate.yaml"
+    bad_config.write_text("identity_own_min: 0.5\n", encoding="utf-8")
+    with pytest.raises(gate_module.IdentityGateError, match="judge"):
+        gate_module.load_judge_thresholds(bad_config)
+
+
+# ---------------------------------------------------------------------------
+# identity_floor_gate / two_stage_gate -- stage 1 + stage 2 (vlm_judge.py build)
+# ---------------------------------------------------------------------------
+
+STAGE1_THRESHOLDS = {"identity_own_min": 0.7, "face_px_min": 500}
+GOOD_STAGE1_SCORES = {"identity_own": 0.9, "face_px": 700}
+
+JUDGE_THRESHOLDS = {
+    "same_person_min": 80, "age_delta_max": 4, "skin_realism_min": 75,
+    "gloss_max": 20, "artifacts_max": 30,
+}
+GOOD_JUDGE_ROW = {
+    "same_person": 95, "age_delta": 1, "skin_realism": 90, "gloss": 5, "artifacts": 5,
+}
+
+
+def test_identity_floor_gate_passes_on_identity_and_face_px_alone(gate_module):
+    result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
+    assert result == {"pass": True, "reasons": []}
+
+
+def test_identity_floor_gate_ignores_age_gloss_niqe(gate_module):
+    # A cell whose age/gloss/niqe values would fail the OLD single-stage gate() must
+    # still pass stage 1 alone -- those three metrics no longer have hard-fail duty.
+    scores = dict(GOOD_STAGE1_SCORES, age_delta=99.0, gloss=1.0, niqe=999.0)
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS)
+    assert result == {"pass": True, "reasons": []}
+
+
+def test_identity_floor_gate_fails_closed_when_identity_own_missing(gate_module):
+    scores = dict(GOOD_STAGE1_SCORES, identity_own=None)
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS)
+    assert result["pass"] is False
+    assert "unavailable: identity_own" in result["reasons"]
+
+
+def test_identity_floor_gate_fails_closed_when_face_px_missing(gate_module):
+    scores = dict(GOOD_STAGE1_SCORES, face_px=None)
+    result = gate_module.identity_floor_gate(scores, STAGE1_THRESHOLDS)
+    assert result["pass"] is False
+    assert "unavailable: face_px" in result["reasons"]
+
+
+def test_identity_floor_gate_fails_identity_below_floor(gate_module):
+    result = gate_module.identity_floor_gate(dict(GOOD_STAGE1_SCORES, identity_own=0.1), STAGE1_THRESHOLDS)
+    assert result["pass"] is False
+
+
+def test_two_stage_gate_short_circuits_stage2_when_stage1_fails(gate_module, monkeypatch):
+    boom_calls = {"n": 0}
+
+    class BoomJudgeModule:
+        @staticmethod
+        def judge_gate(*args, **kwargs):
+            boom_calls["n"] += 1
+            raise AssertionError("stage 2 must never run when stage 1 fails")
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: BoomJudgeModule())
+    scores = dict(GOOD_STAGE1_SCORES, identity_own=0.1)
+    result = gate_module.two_stage_gate(scores, None, STAGE1_THRESHOLDS, JUDGE_THRESHOLDS)
+    assert result["pass"] is False
+    assert result["stage2"] is None
+    assert boom_calls["n"] == 0
+    assert any("identity_own" in reason for reason in result["reasons"])
+
+
+def test_two_stage_gate_passes_when_both_stages_pass(gate_module, monkeypatch):
+    vlm_judge = gate_module._vlm_judge_module()
+    result = gate_module.two_stage_gate(
+        GOOD_STAGE1_SCORES, GOOD_JUDGE_ROW, STAGE1_THRESHOLDS, JUDGE_THRESHOLDS,
+    )
+    assert result["pass"] is True
+    assert result["reasons"] == []
+    assert result["stage1"]["pass"] is True
+    assert result["stage2"] == vlm_judge.judge_gate(GOOD_JUDGE_ROW, JUDGE_THRESHOLDS)
+
+
+def test_two_stage_gate_fails_when_stage1_passes_but_judge_fails(gate_module):
+    bad_judge_row = dict(GOOD_JUDGE_ROW, same_person=10)
+    result = gate_module.two_stage_gate(
+        GOOD_STAGE1_SCORES, bad_judge_row, STAGE1_THRESHOLDS, JUDGE_THRESHOLDS,
+    )
+    assert result["pass"] is False
+    assert result["stage1"]["pass"] is True
+    assert result["stage2"]["pass"] is False
+    assert any("same_person" in reason for reason in result["reasons"])
+
+
+def test_two_stage_gate_fails_closed_when_judge_scores_is_none_but_stage1_passed(gate_module):
+    # stage1 passes but the judge was never run/produced nothing usable -- must still
+    # fail overall (unavailable: judge), never a silent pass.
+    result = gate_module.two_stage_gate(
+        GOOD_STAGE1_SCORES, None, STAGE1_THRESHOLDS, JUDGE_THRESHOLDS,
+    )
+    assert result["pass"] is False
+    assert result["reasons"] == ["unavailable: judge"]
+
+
 # ---------------------------------------------------------------------------
 # score_cell -- monkeypatched models, no heavy weights
 # ---------------------------------------------------------------------------

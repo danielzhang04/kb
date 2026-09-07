@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p09",
+  "same_person": 15,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 23,
+  "age_delta": 1,
+  "skin_realism": 55,
+  "gloss": 45,
+  "artifacts": 20,
+  "notes": "Different face shape/jaw/lips than reference; reads as a distinct, more generic AI-model face.",
+  "model": "sonnet",
+  "duration_s": 91.13979669997934,
+  "cost_usd": 0.1540086,
+  "cache_hit": false,
+  "unavailable": {}
+}

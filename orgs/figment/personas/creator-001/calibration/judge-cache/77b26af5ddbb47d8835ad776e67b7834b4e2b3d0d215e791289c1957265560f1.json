@@ -1,0 +1,16 @@
+{
+  "image_id": "09",
+  "same_person": 60,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 25,
+  "gloss": 55,
+  "artifacts": 45,
+  "notes": "Similar features but face shape/eyes differ; skin waxy-smooth, lips glossy AI sheen, garbled text artifact on lip.",
+  "model": "sonnet",
+  "duration_s": 78.22077459993307,
+  "cost_usd": 0.1603044,
+  "cache_hit": false,
+  "unavailable": {}
+}

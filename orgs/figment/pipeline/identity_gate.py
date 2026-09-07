@@ -80,6 +80,7 @@ import yaml
 HERE = Path(__file__).resolve().parent
 IDENTITY_MODULE_PATH = HERE / "train" / "identity_check.py"
 SCORE_CELLS_MODULE_PATH = HERE / "score_cells.py"
+VLM_JUDGE_MODULE_PATH = HERE / "vlm_judge.py"
 DEFAULT_GATE_CONFIG_PATH = HERE / "gate.yaml"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -87,6 +88,15 @@ GATE_METRICS = ("identity_own", "age_delta", "gloss", "niqe", "face_px")
 THRESHOLD_KEYS = (
     "identity_own_min", "age_delta_max_years", "gloss_max", "niqe_max", "face_px_min",
 )
+# Stage 1 of the two-stage gate (`two_stage_gate`, operator ruling 2026-09-06 folded
+# from the vlm_judge.py build): ONLY the facenet own-anchor floor and a usable-face-crop
+# floor -- "hard fail for gross identity misses," nothing more. `gate()` above (all five
+# GATE_METRICS) is kept exactly as it was and is still available to any caller that
+# wants the original single-stage check; it is simply no longer what `two_stage_gate`
+# calls stage 1. See `identity_floor_gate`'s own docstring for why age_delta/gloss/niqe
+# were dropped from hard-fail duty rather than folded in here too.
+STAGE1_METRICS = ("identity_own", "face_px")
+STAGE1_THRESHOLD_KEYS = ("identity_own_min", "face_px_min")
 
 # --- pinned, license-clean, safetensors-only age classifier ------------------------
 # dima806/facial_age_image_detection -- Apache-2.0, safetensors (r22 §6). Pinned to a
@@ -130,6 +140,14 @@ def _identity_module():
 
 def _score_cells_module():
     return _load_module("_figment_identity_gate_score_cells", SCORE_CELLS_MODULE_PATH)
+
+
+def _vlm_judge_module():
+    """The stage-2 perceptual judge (vlm_judge.py), loaded the same ad-hoc-by-path way
+    as every other sibling in this tree. Deliberately one-directional: vlm_judge.py
+    never imports this module back (see its own module docstring), so there is no
+    import-cycle risk from loading it here."""
+    return _load_module("_figment_identity_gate_vlm_judge", VLM_JUDGE_MODULE_PATH)
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +217,99 @@ def gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> dict[str, Any]:
     _floor("face_px", "face_px_min", scores.get("face_px"))
 
     return {"pass": not reasons, "reasons": reasons}
+
+
+def load_judge_thresholds(gate_config_path: Path = DEFAULT_GATE_CONFIG_PATH) -> dict[str, float]:
+    """Read `gate.yaml`'s `judge:` sub-mapping (`vlm_judge.JUDGE_THRESHOLD_KEYS`) --
+    stage 2's thresholds, evidence-backed by `vlm_judge.py calibrate`'s own run over the
+    same six evidence sets `identity_gate.py calibrate` used (see that persona's
+    `judge-calibration.md`). Raises `IdentityGateError` when `gate.yaml` carries no
+    `judge:` block at all -- a missing judge configuration is a setup error, not
+    something `two_stage_gate` should silently paper over."""
+    document = yaml.safe_load(Path(gate_config_path).read_text(encoding="utf-8"))
+    judge_block = document.get("judge") if isinstance(document, dict) else None
+    if not isinstance(judge_block, dict):
+        raise IdentityGateError(f"{gate_config_path} has no 'judge:' mapping")
+    return dict(judge_block)
+
+
+def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> dict[str, Any]:
+    """Stage 1 of the two-stage gate (`two_stage_gate`): hard fail for GROSS identity
+    misses ONLY -- the facenet own-anchor cosine floor and a usable-face-crop-size
+    floor (`STAGE1_METRICS`/`STAGE1_THRESHOLD_KEYS`). Fail-closed exactly like `gate()`:
+    a missing metric or threshold both read as `"unavailable: <name>"`, never a silent
+    pass.
+
+    Operator ruling 2026-09-06 (folded from the vlm_judge.py build) narrowed stage 1 to
+    just these two checks. `identity_gate.py`'s own 2026-09-06 calibration
+    (`calibration.md`) showed the other three GATE_METRICS should NOT keep hard-fail
+    duty going forward:
+      * `age_delta_max_years` (the ViT age classifier) is actively harmful, not merely
+        unvalidated -- EVERY evidence set's median age_delta is strongly negative
+        (track1-dataset -7.0, lora-tester -6.6, qwen-anchor-edits -6.8 years) because the
+        classifier itself misreads the persona's own real anchor photos as ~30 years old
+        against an "early twenties" persona. Left wired as a hard fail, this ceiling
+        would reject the operator's own BEST-verdict sets (the ones called "closer") for
+        a reason that has nothing to do with those images and everything to do with a
+        broken classifier -- exactly backwards from what stage 1 is for.
+      * `gloss_max` (the YCbCr specular-highlight proxy) reads ~0.0000-0.0107 on EVERY
+        evidence set including the anchors themselves, even the sets the operator called
+        "glossy" -- it is not merely unvalidated, it is inert at its current threshold.
+      * `niqe_max` is, per gate.yaml's own comment, "a judgment call, not a separating
+        measurement" -- kept in `gate()` for any caller still using the single-stage
+        check, but not promoted into stage 1's identity-miss-detection job either.
+    All three metrics are still computed onto every `score_cell` row (informational,
+    shown on the grading board) and `gate()` itself is untouched -- this function is
+    additive, not a replacement.
+    """
+    reasons: list[str] = []
+
+    def _floor(metric: str, threshold_key: str, value: Any) -> None:
+        if value is None:
+            reasons.append(f"unavailable: {metric}")
+            return
+        limit = thresholds.get(threshold_key)
+        if limit is None:
+            reasons.append(f"unavailable: {threshold_key}")
+            return
+        if value < limit:
+            reasons.append(f"{metric} {value:.4g} is below the required floor {limit:.4g}")
+
+    _floor("identity_own", "identity_own_min", scores.get("identity_own"))
+    _floor("face_px", "face_px_min", scores.get("face_px"))
+    return {"pass": not reasons, "reasons": reasons}
+
+
+def two_stage_gate(
+    scores: dict[str, Any],
+    judge_scores: dict[str, Any] | None,
+    thresholds: dict[str, Any],
+    judge_thresholds: dict[str, Any],
+) -> dict[str, Any]:
+    """The gate a real grading run uses: stage 1 (`identity_floor_gate`) short-circuits
+    stage 2 -- a cell that is already a gross identity miss (or has no usable face at
+    all) never spends a judge call, so `judge_scores` may legitimately be `None` when
+    `stage1["pass"]` is `False` (never scored) as well as when it genuinely could not be
+    read (`vlm_judge.judge_image`'s own fail-closed contract) -- both cases short-circuit
+    identically here; the caller (`figment_train.py`'s `_run_identity_gate`) is the one
+    place that distinguishes "never attempted" from "attempted and failed" for the
+    board's own display.
+
+    Overall `pass` requires BOTH stages; `reasons` concatenates stage 1's then stage 2's
+    (empty list when stage 2 never ran). The full stage breakdown is preserved under
+    `stage1`/`stage2` (`stage2` is `None` when short-circuited) so `gate.json` rows carry
+    both, per the build brief."""
+    stage1 = identity_floor_gate(scores, thresholds)
+    if not stage1["pass"]:
+        return {"pass": False, "reasons": list(stage1["reasons"]), "stage1": stage1, "stage2": None}
+    judge_module = _vlm_judge_module()
+    stage2 = judge_module.judge_gate(judge_scores, judge_thresholds)
+    return {
+        "pass": stage2["pass"],
+        "reasons": list(stage1["reasons"]) + list(stage2["reasons"]),
+        "stage1": stage1,
+        "stage2": stage2,
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t01-mechA",
+  "same_person": 55,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 45,
+  "gloss": 35,
+  "artifacts": 30,
+  "notes": "Close likeness but eyes/nose subtly off; smoothed waxy skin, odd hair wisp, soft blended fingers.",
+  "model": "sonnet",
+  "duration_s": 97.86034410004504,
+  "cost_usd": 0.16678520000000002,
+  "cache_hit": false,
+  "unavailable": {}
+}

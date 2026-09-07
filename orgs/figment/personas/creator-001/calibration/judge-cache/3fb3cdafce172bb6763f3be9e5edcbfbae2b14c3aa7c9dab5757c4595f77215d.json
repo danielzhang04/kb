@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t10-mechA",
+  "same_person": 62,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 45,
+  "gloss": 35,
+  "artifacts": 40,
+  "notes": "Blotchy unnatural pink cheek patches, waxy smoothed skin, face slightly off from reference.",
+  "model": "sonnet",
+  "duration_s": 97.56779550004285,
+  "cost_usd": 0.1692688,
+  "cache_hit": false,
+  "unavailable": {}
+}

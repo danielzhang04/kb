@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-e02",
+  "same_person": 85,
+  "apparent_age_reference": 24,
+  "apparent_age_candidate": 24,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 40,
+  "artifacts": 25,
+  "notes": "Same face/features but skin overly smoothed, plastic sheen, asymmetric cat-eye liner looks painted-on.",
+  "model": "sonnet",
+  "duration_s": 73.23275429999921,
+  "cost_usd": 0.1620432,
+  "cache_hit": false,
+  "unavailable": {}
+}

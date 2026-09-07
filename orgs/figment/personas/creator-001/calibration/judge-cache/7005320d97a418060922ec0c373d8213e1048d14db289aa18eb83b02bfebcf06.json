@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t08-mechA",
+  "same_person": 45,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 23,
+  "age_delta": 1,
+  "skin_realism": 35,
+  "gloss": 45,
+  "artifacts": 30,
+  "notes": "Similar styling/room but softer eyeliner, altered jaw/nose, waxy smoothed skin raise doubt.",
+  "model": "sonnet",
+  "duration_s": 101.93370249995496,
+  "cost_usd": 0.16619319999999999,
+  "cache_hit": false,
+  "unavailable": {}
+}

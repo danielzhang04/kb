@@ -1,0 +1,16 @@
+{
+  "image_id": "07",
+  "same_person": 62,
+  "apparent_age_reference": 21,
+  "apparent_age_candidate": 23,
+  "age_delta": 2,
+  "skin_realism": 55,
+  "gloss": 58,
+  "artifacts": 30,
+  "notes": "Similar features/eyeliner style but nose, lips, cheek blush look off-model and airbrushed.",
+  "model": "sonnet",
+  "duration_s": 90.74174470000435,
+  "cost_usd": 0.1715024,
+  "cache_hit": false,
+  "unavailable": {}
+}

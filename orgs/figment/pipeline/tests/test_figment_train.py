@@ -597,3 +597,146 @@ def test_gate_cli_errors_when_grade_has_not_run(command, tmp_path):
     plan_file = out / "plan.json"
     with pytest.raises(command.FigmentTrainError, match="run `figment_train.py grade`"):
         command.command_gate("creator-002", "dataset", plan_file)
+
+
+# ---------------------------------------------------------------------------
+# vlm_judge.py wiring: build_grade runs stage 2 ONLY for cells that clear stage 1,
+# --skip-judge omits it entirely, the board shows the judge's numbers + notes.
+# ---------------------------------------------------------------------------
+
+_FAKE_STAGE1_PASS_ROW = {
+    "identity_own": 0.95, "identity_max": 0.95, "identity_mean": 0.95,
+    "identity_per_anchor": {}, "face_px": 900,
+    "age_value": 22.0, "age_anchor": 22.0, "age_delta": 0.0,
+    "niqe": 1.0, "laplacian_variance": 300.0, "gloss": 0.001,
+    "unavailable": {},
+}
+
+
+def _fake_score_cells_for_stage(images, anchors, *, own_anchor, models=None):
+    """Every cell reads as a clean stage-1 pass (a real face, well within the identity
+    and face-size floors) -- used so tests can exercise stage 2 wiring without loading
+    real FaceNet/MTCNN weights."""
+    return [dict(_FAKE_STAGE1_PASS_ROW, image_id=item["image_id"]) for item in images]
+
+
+def _fake_judge_row(image_id: str, **overrides) -> dict:
+    row = {
+        "image_id": image_id, "same_person": 58, "apparent_age_reference": 23,
+        "apparent_age_candidate": 30, "age_delta": 7, "skin_realism": 55, "gloss": 40,
+        "artifacts": 5, "notes": "kind of close, older, glossy", "model": "sonnet",
+        "duration_s": 0.01, "cost_usd": 0.0012, "cache_hit": False, "unavailable": {},
+    }
+    row.update(overrides)
+    return row
+
+
+def test_build_grade_runs_the_judge_only_for_cells_that_pass_stage1(command, tmp_path, monkeypatch):
+    plan_file, grade, gate_module, judge_calls = _build_grade_with_fake_stage1_and_judge(
+        command, tmp_path, monkeypatch, out_name="judge-wiring-plan",
+        judge_row_factory=lambda image_id: _fake_judge_row(image_id),
+    )
+    gate_document = load_json(Path(grade["gate"]))
+    assert judge_calls["n"] == 1  # one BATCH call for every stage-1-passing cell
+    assert gate_document["judge_skipped"] is False
+    row = gate_document["rows"][0]
+    assert row["judge"]["same_person"] == 58
+    assert row["judge"]["notes"] == "kind of close, older, glossy"
+    assert row["stage1"]["pass"] is True
+    # gate.yaml's placeholder judge.same_person_min (80) is not cleared by 58 -- stage 2
+    # must fail this cell even though stage 1 passed.
+    assert row["stage2"]["pass"] is False
+    assert row["pass"] is False
+    assert any("same_person" in reason for reason in row["reasons"])
+
+    page_text = Path(grade["page"]).read_text(encoding="utf-8")
+    assert "same 58" in page_text
+    assert "kind of close, older, glossy" in page_text
+
+
+def test_build_grade_passes_a_cell_whose_judge_verdict_clears_every_threshold(
+    command, tmp_path, monkeypatch,
+):
+    plan_file, grade, gate_module, judge_calls = _build_grade_with_fake_stage1_and_judge(
+        command, tmp_path, monkeypatch, out_name="judge-pass-plan",
+        judge_row_factory=lambda image_id: _fake_judge_row(
+            image_id, same_person=97, age_delta=1, skin_realism=92, gloss=3, artifacts=2,
+            notes="clean match",
+        ),
+    )
+    gate_document = load_json(Path(grade["gate"]))
+    assert gate_document["summary"]["passed"] == gate_document["summary"]["total"]
+    row = gate_document["rows"][0]
+    assert row["pass"] is True
+    assert row["stage2"]["pass"] is True
+    assert "same 97" in Path(grade["page"]).read_text(encoding="utf-8")
+
+
+def test_build_grade_skip_judge_never_loads_the_judge_module(command, tmp_path, monkeypatch):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / "skip-judge-plan"
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    gate_module = command._identity_gate_module()
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+
+    def boom():
+        raise AssertionError("must never load the judge module under --skip-judge")
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", boom)
+
+    grade = command.build_grade("creator-002", "dataset", plan_file, skip_judge=True)
+    gate_document = load_json(Path(grade["gate"]))
+    assert gate_document["judge_skipped"] is True
+    # stage 1 passes (the fake score module says so) but stage 2 was never attempted --
+    # must still fail closed, never a silent pass.
+    assert gate_document["rows"][0]["judge"] is None
+    assert gate_document["rows"][0]["stage1"]["pass"] is True
+    assert gate_document["rows"][0]["pass"] is False
+    assert gate_document["rows"][0]["reasons"] == ["unavailable: judge"]
+    assert gate_document["summary"]["passed"] == 0
+
+
+def _build_grade_with_fake_stage1_and_judge(
+    command, tmp_path, monkeypatch, *, out_name: str, judge_row_factory,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / out_name
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    gate_module = command._identity_gate_module()
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+
+    real_vlm_judge = gate_module._vlm_judge_module()
+    judge_calls = {"n": 0}
+
+    class FakeJudgeModule:
+        judge_gate = staticmethod(real_vlm_judge.judge_gate)
+
+        @staticmethod
+        def judge_images_for_stage(images, references, *, cache_dir=None, **kwargs):
+            judge_calls["n"] += 1
+            return [judge_row_factory(item["image_id"]) for item in images]
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: FakeJudgeModule())
+
+    grade = command.build_grade("creator-002", "dataset", plan_file)
+    return plan_file, grade, gate_module, judge_calls

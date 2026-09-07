@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-tensor-tester-000001000",
+  "same_person": 62,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 27,
+  "age_delta": 4,
+  "skin_realism": 30,
+  "gloss": 20,
+  "artifacts": 25,
+  "notes": "Close-up smooths pores heavily, eyeliner/lash rendering slightly off, face shape reads a bit older/rounder than references.",
+  "model": "sonnet",
+  "duration_s": 85.11610420001671,
+  "cost_usd": 0.1610362,
+  "cache_hit": false,
+  "unavailable": {}
+}

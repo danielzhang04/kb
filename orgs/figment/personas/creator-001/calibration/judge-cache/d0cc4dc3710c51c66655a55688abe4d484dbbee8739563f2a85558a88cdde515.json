@@ -1,0 +1,16 @@
+{
+  "image_id": "29",
+  "same_person": 55,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 65,
+  "gloss": 40,
+  "artifacts": 25,
+  "notes": "Face not visible (back view); body/hair/outfit match but identity unconfirmable from this angle.",
+  "model": "sonnet",
+  "duration_s": 86.62238820001949,
+  "cost_usd": 0.1667282,
+  "cache_hit": false,
+  "unavailable": {}
+}

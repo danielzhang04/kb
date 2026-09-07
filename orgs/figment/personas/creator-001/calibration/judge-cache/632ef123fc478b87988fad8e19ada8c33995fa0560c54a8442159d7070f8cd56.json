@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p05",
+  "same_person": 3,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 26,
+  "age_delta": 4,
+  "skin_realism": 78,
+  "gloss": 25,
+  "artifacts": 10,
+  "notes": "Different woman entirely â€” different ethnicity, face shape, eyes, nose, makeup style; skin looks like a real photo.",
+  "model": "sonnet",
+  "duration_s": 127.9689808000112,
+  "cost_usd": 0.15154499999999999,
+  "cache_hit": false,
+  "unavailable": {}
+}

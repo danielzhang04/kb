@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t06-mechA",
+  "same_person": 88,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 40,
+  "artifacts": 25,
+  "notes": "Close resemblance but face slightly generic/smoothed; skin has AI-glow, eyeliner slightly off-shape.",
+  "model": "sonnet",
+  "duration_s": 81.14263650006615,
+  "cost_usd": 0.1528102,
+  "cache_hit": false,
+  "unavailable": {}
+}

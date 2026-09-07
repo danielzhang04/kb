@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t09-mechA",
+  "same_person": 72,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 45,
+  "gloss": 35,
+  "artifacts": 30,
+  "notes": "Similar face but proportions/jaw slightly off; skin smoothed, eyes/makeup slightly plastic in dim lighting.",
+  "model": "sonnet",
+  "duration_s": 80.31551909993868,
+  "cost_usd": 0.1525098,
+  "cache_hit": false,
+  "unavailable": {}
+}

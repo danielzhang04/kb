@@ -1,0 +1,16 @@
+{
+  "image_id": "02",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 55,
+  "gloss": 60,
+  "artifacts": 20,
+  "notes": "Similar features but waxy cheeks, glossy nose/lips, slightly generic AI-smoothed look.",
+  "model": "sonnet",
+  "duration_s": 97.45072600001004,
+  "cost_usd": 0.1653076,
+  "cache_hit": false,
+  "unavailable": {}
+}

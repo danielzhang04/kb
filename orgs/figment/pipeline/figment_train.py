@@ -1303,15 +1303,49 @@ def _advisory_annotation(advisory_row: dict[str, Any] | None) -> str:
     return f"cos {cos} · Δage {age} · lap {lap} · clip {clip}"
 
 
+def _judge_annotation(judge_row: dict[str, Any] | None) -> str:
+    """Stage 2's numbers + notes for one cell, rendered
+    `judge: same X · age Y→Z (Δd) · skin S · gloss G · artifacts A · "notes"`, or a
+    short explanatory string when the judge never ran for this cell (skipped, or
+    genuinely unavailable) -- ALWAYS informational text, the pass/fail decision itself
+    already lives in the gate reasons, never here."""
+    if judge_row is None:
+        return ""
+    if judge_row.get("unavailable"):
+        return f'judge: {judge_row["unavailable"].get("judge", "unavailable")}'
+
+    def _fmt(value: Any) -> str:
+        return str(value) if isinstance(value, (int, float)) else "n/a"
+
+    same = _fmt(judge_row.get("same_person"))
+    age_ref = _fmt(judge_row.get("apparent_age_reference"))
+    age_cand = _fmt(judge_row.get("apparent_age_candidate"))
+    delta = _fmt(judge_row.get("age_delta"))
+    skin = _fmt(judge_row.get("skin_realism"))
+    gloss = _fmt(judge_row.get("gloss"))
+    artifacts = _fmt(judge_row.get("artifacts"))
+    notes = judge_row.get("notes") or ""
+    return (
+        f"judge: same {same} · age {age_ref}→{age_cand} (Δ{delta}) · "
+        f"skin {skin} · gloss {gloss} · artifacts {artifacts}"
+        + (f' · "{notes}"' if notes else "")
+    )
+
+
 def _figure_html(
-    row: dict[str, Any], advisory_by_id: dict[str, Any], *, number: int | None = None,
+    row: dict[str, Any], advisory_by_id: dict[str, Any], *,
+    gate_by_id: dict[str, Any] | None = None, number: int | None = None,
     reasons: list[str] | None = None,
 ) -> str:
     annotation = _advisory_annotation(advisory_by_id.get(row["image_id"]))
+    gate_row = (gate_by_id or {}).get(row["image_id"])
+    judge_annotation = _judge_annotation((gate_row or {}).get("judge"))
     caption = f"{number}. {html.escape(row['image_id'])}" if number is not None else html.escape(row["image_id"])
     extra = ""
     if annotation:
         extra += f'<br><span class="advisory">{html.escape(annotation)}</span>'
+    if judge_annotation:
+        extra += f'<br><span class="judge">{html.escape(judge_annotation)}</span>'
     if reasons:
         extra += f'<br><span class="gate-reasons">{html.escape("; ".join(reasons))}</span>'
     return (
@@ -1352,11 +1386,11 @@ def _grading_html(
             failed_rows.append((row, reasons))
 
     passed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, number=index)
+        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, number=index)
         for index, row in enumerate(passed_rows, start=1)
     )
     failed_cells = "\n".join(
-        _figure_html(row, advisory_by_id, reasons=reasons)
+        _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
         for row, reasons in failed_rows
     )
     return f"""<!doctype html>
@@ -1369,6 +1403,7 @@ h1,h2{{margin:0 0 16px}}p{{color:#bbb}}.grid{{display:grid;grid-template-columns
 figure{{margin:0;background:#1b1b1b;padding:12px;border-radius:8px}}img{{display:block;width:100%;height:auto;background:#222}}figcaption{{padding-top:8px;font-family:ui-monospace,monospace}}
 .anchors{{border:2px solid #8ab4f8;padding:16px;margin-bottom:28px}}
 .advisory{{color:#888;font-size:0.85em}}
+.judge{{color:#8ab4f8;font-size:0.85em}}
 .advisory-note{{color:#bbb;font-style:italic}}
 .gate-reasons{{color:#e08080;font-size:0.85em}}
 summary{{cursor:pointer;font-size:1.2em;margin:16px 0}}
@@ -1396,16 +1431,29 @@ def _load_persona_document_for_gate(plan: dict[str, Any]) -> dict[str, Any]:
 
 def _run_identity_gate(
     plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
+    grade_dir: Path, *, skip_judge: bool = False,
 ) -> dict[str, Any]:
-    """Fail-closed per-cell gate (operator ruling 2026-09-03: no board reaches the
-    operator until every shown cell holds identity, age and realism). Unlike
-    `score_cells.score`'s advisory annotations -- which degrade to `None` fields on a
-    scorer outage and never gate anything -- a TOTAL outage here still produces a
+    """Fail-closed per-cell TWO-STAGE gate (operator ruling 2026-09-03: no board reaches
+    the operator until every shown cell holds identity, age and realism; ruling
+    2026-09-06 added stage 2, the vlm_judge.py Claude vision judge, after calibration
+    showed facenet/the age classifier/the gloss proxy/NIQE do not separate the
+    operator's own verdicts -- see identity_gate.py's `two_stage_gate` docstring).
+
+    Stage 2 is only ever invoked for a cell whose stage 1 (`identity_floor_gate`) has
+    already passed -- a gross identity miss or an unusable face crop never spends a
+    judge call, so `--skip-judge` (offline/test use only -- never used on a real grading
+    run) and "genuinely had no usable face" both leave a cell's `judge` field `None`,
+    but the top-level `judge_skipped` flag distinguishes the two for the board/operator.
+
+    Unlike `score_cells.score`'s advisory annotations -- which degrade to `None` fields
+    on a scorer outage and never gate anything -- a TOTAL outage here still produces a
     `gate.json`, but with every cell explicitly FAILED closed (never silently promoted
     to pass, never silently omitted from the document)."""
     anchors_by_stem = {path.stem: path for path in anchors}
     own_anchor = anchors[0].stem if anchors else None
     thresholds: dict[str, Any] = {}
+    judge_thresholds: dict[str, Any] = {}
+    judge_by_id: dict[str, dict[str, Any] | None] = {}
     rows: list[dict[str, Any]]
     verdicts: list[dict[str, Any]]
     outage: str | None = None
@@ -1413,25 +1461,62 @@ def _run_identity_gate(
         gate_module = _identity_gate_module()
         persona = _load_persona_document_for_gate(plan)
         thresholds = gate_module.load_thresholds(persona)
+        judge_thresholds = gate_module.load_judge_thresholds()
         rows = gate_module.score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
-        verdicts = [gate_module.gate(row, thresholds) for row in rows]
+        stage1_list = [gate_module.identity_floor_gate(row, thresholds) for row in rows]
+
+        if skip_judge:
+            # Never even LOAD the judge module under --skip-judge (offline/test use
+            # only) -- a stage-1-passing cell still fails overall, exactly the same
+            # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
+            # judge call genuinely produced nothing, just without spending one.
+            verdicts = [
+                {
+                    "pass": False,
+                    "reasons": list(stage1["reasons"]) + ([] if not stage1["pass"] else ["unavailable: judge"]),
+                    "stage1": stage1,
+                    "stage2": None,
+                }
+                for stage1 in stage1_list
+            ]
+        else:
+            to_judge = [image for image, verdict in zip(images, stage1_list) if verdict["pass"]]
+            if to_judge and anchors:
+                judge_module = gate_module._vlm_judge_module()
+                judge_rows = judge_module.judge_images_for_stage(
+                    to_judge, anchors, cache_dir=grade_dir / "judge-cache",
+                )
+                judge_by_id = {row["image_id"]: row for row in judge_rows}
+            verdicts = [
+                gate_module.two_stage_gate(
+                    row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds,
+                )
+                for row in rows
+            ]
     except Exception as exc:
         outage = f"{type(exc).__name__}: {exc}"
         reason = f"unavailable: gate could not run ({outage})"
         rows = [{"image_id": row["image_id"]} for row in images]
-        verdicts = [{"pass": False, "reasons": [reason]} for _ in rows]
+        verdicts = [
+            {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
+        ]
 
     result_rows = []
     for row, verdict in zip(rows, verdicts):
         merged = dict(row)
         merged["pass"] = verdict["pass"]
         merged["reasons"] = verdict["reasons"]
+        merged["stage1"] = verdict.get("stage1")
+        merged["stage2"] = verdict.get("stage2")
+        merged["judge"] = judge_by_id.get(row["image_id"])
         result_rows.append(merged)
 
     return {
         "schema": "figment/gate@1",
         "own_anchor": own_anchor,
         "thresholds": thresholds,
+        "judge_thresholds": judge_thresholds,
+        "judge_skipped": skip_judge,
         "outage": outage,
         "rows": result_rows,
         "summary": {
@@ -1442,8 +1527,16 @@ def _run_identity_gate(
     }
 
 
-def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
-    """Build a non-destructive, original-pixel grading surface and blank rulings."""
+def build_grade(
+    creator_id: str, stage: str, plan_path: Path, *, skip_judge: bool = False,
+) -> dict[str, str]:
+    """Build a non-destructive, original-pixel grading surface and blank rulings.
+
+    `skip_judge` (offline/test use only -- NEVER pass this on a real grading run)
+    entirely omits stage 2 (the vlm_judge.py Claude vision judge, subscription-billed):
+    every cell's overall pass/fail then rests on stage 1 alone failing closed, or on
+    stage 2 being recorded as `unavailable: judge` for any cell whose stage 1 passed --
+    see `_run_identity_gate`'s own docstring."""
     if stage not in ("anchor", "dataset", "tester"):
         raise FigmentTrainError("grade stage must be anchor, dataset, or tester")
     plan, root = _load_plan(creator_id, plan_path)
@@ -1469,7 +1562,7 @@ def build_grade(creator_id: str, stage: str, plan_path: Path) -> dict[str, str]:
     # Operator ruling 2026-09-03: no board reaches the operator until this fail-closed
     # gate has scored every cell -- see _run_identity_gate's own docstring for how a
     # total scoring outage still fails every cell closed rather than skipping the gate.
-    gate_document = _run_identity_gate(plan, anchors, images)
+    gate_document = _run_identity_gate(plan, anchors, images, grade_dir, skip_judge=skip_judge)
     gate_path = grade_dir / "gate.json"
     _write_json(gate_path, gate_document)
 
@@ -1783,6 +1876,11 @@ def build_parser() -> argparse.ArgumentParser:
     grade.add_argument("--creator", required=True)
     grade.add_argument("--stage", choices=("anchor", "dataset", "tester"), required=True)
     grade.add_argument("--plan", type=Path, default=Path("plan.json"))
+    grade.add_argument(
+        "--skip-judge", action="store_true",
+        help="omit stage 2 (the vlm_judge.py Claude vision judge) -- offline/test use "
+             "only, NEVER pass this on a real grading run",
+    )
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
@@ -1809,7 +1907,7 @@ def main(argv: list[str] | None = None) -> int:
             result = run_planned_stage(args.creator, args.stage, args.plan)
             print(f"stage state: {result['status']}")
         elif args.command == "grade":
-            result = build_grade(args.creator, args.stage, args.plan)
+            result = build_grade(args.creator, args.stage, args.plan, skip_judge=args.skip_judge)
             print(f"grading page: {result['page']}")
             print(f"rulings template: {result['rulings_template']}")
         elif args.command == "gate":

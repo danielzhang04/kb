@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g01-t10-mechA",
+  "same_person": 76,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 22,
+  "age_delta": 0,
+  "skin_realism": 52,
+  "gloss": 38,
+  "artifacts": 32,
+  "notes": "Close resemblance but smoothed/waxy skin, slightly off nose, odd thumb on phone hand.",
+  "model": "sonnet",
+  "duration_s": 94.97978870000225,
+  "cost_usd": 0.1668734,
+  "cache_hit": false,
+  "unavailable": {}
+}

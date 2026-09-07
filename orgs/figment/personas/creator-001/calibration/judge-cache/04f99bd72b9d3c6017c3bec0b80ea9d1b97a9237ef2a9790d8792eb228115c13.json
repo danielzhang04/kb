@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t12-mechA",
+  "same_person": 72,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 21,
+  "age_delta": -1,
+  "skin_realism": 40,
+  "gloss": 25,
+  "artifacts": 30,
+  "notes": "Similar face but smoothed/waxy skin, odd eye shape/asymmetry, overdone blush look AI-generated.",
+  "model": "sonnet",
+  "duration_s": 96.68618449999485,
+  "cost_usd": 0.181679,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "30",
+  "same_person": 80,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 35,
+  "gloss": 55,
+  "artifacts": 30,
+  "notes": "Similar face but smoothed/waxy skin, motion-blur hands/feet, slightly off proportions.",
+  "model": "sonnet",
+  "duration_s": 77.62878999998793,
+  "cost_usd": 0.1617942,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "12",
+  "same_person": 72,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 60,
+  "gloss": 25,
+  "artifacts": 22,
+  "notes": "Same outfit/styling but nose, jaw and eye shape read subtly different; skin slightly over-crisp.",
+  "model": "sonnet",
+  "duration_s": 98.52198830002453,
+  "cost_usd": 0.17852120000000002,
+  "cache_hit": false,
+  "unavailable": {}
+}

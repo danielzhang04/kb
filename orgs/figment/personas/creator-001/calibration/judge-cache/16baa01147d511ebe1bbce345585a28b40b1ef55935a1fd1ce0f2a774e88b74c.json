@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-anchor-p04",
+  "same_person": 35,
+  "apparent_age_reference": 22,
+  "apparent_age_candidate": 24,
+  "age_delta": 2,
+  "skin_realism": 35,
+  "gloss": 45,
+  "artifacts": 20,
+  "notes": "Narrower jaw, thinner lips, different brows/nose than references; skin looks smoothed/waxy.",
+  "model": "sonnet",
+  "duration_s": 138.31584759999532,
+  "cost_usd": 0.15364519999999998,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "20",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 62,
+  "gloss": 58,
+  "artifacts": 38,
+  "notes": "Facial features plausibly match, but blush is oddly sharp-edged/painted and lips overly glossy.",
+  "model": "sonnet",
+  "duration_s": 82.77548710000701,
+  "cost_usd": 0.1681454,
+  "cache_hit": false,
+  "unavailable": {}
+}

@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t09-mechA",
+  "same_person": 88,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 62,
+  "gloss": 35,
+  "artifacts": 20,
+  "notes": "Likely same woman but darker/flatter light, slightly smoothed skin, oddly wide-set eye rendering.",
+  "model": "sonnet",
+  "duration_s": 75.20296539994888,
+  "cost_usd": 0.149441,
+  "cache_hit": false,
+  "unavailable": {}
+}

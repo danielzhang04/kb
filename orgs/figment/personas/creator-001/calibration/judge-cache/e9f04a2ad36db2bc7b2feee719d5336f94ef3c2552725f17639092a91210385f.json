@@ -1,0 +1,16 @@
+{
+  "image_id": "03",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 62,
+  "gloss": 55,
+  "artifacts": 28,
+  "notes": "Good facial match but blush looks painted-on/graphic, lips overly glossy, slightly synthetic.",
+  "model": "sonnet",
+  "duration_s": 98.92670420010109,
+  "cost_usd": 0.1643588,
+  "cache_hit": false,
+  "unavailable": {}
+}

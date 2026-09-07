@@ -1,0 +1,16 @@
+{
+  "image_id": "19",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 35,
+  "gloss": 62,
+  "artifacts": 20,
+  "notes": "Close resemblance but face slightly narrower/off; skin waxy-smooth, lips artificially glossy, eyeliner overly graphic.",
+  "model": "sonnet",
+  "duration_s": 76.07208419998642,
+  "cost_usd": 0.1603996,
+  "cache_hit": false,
+  "unavailable": {}
+}

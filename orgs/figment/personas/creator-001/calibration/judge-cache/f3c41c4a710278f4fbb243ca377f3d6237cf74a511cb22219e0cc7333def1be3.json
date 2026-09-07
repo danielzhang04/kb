@@ -1,0 +1,16 @@
+{
+  "image_id": "05",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 35,
+  "gloss": 55,
+  "artifacts": 15,
+  "notes": "Similar face shape/features but plasticky, glossy, over-smoothed skin; freckles/pores gone.",
+  "model": "sonnet",
+  "duration_s": 85.73431410000194,
+  "cost_usd": 0.1602952,
+  "cache_hit": false,
+  "unavailable": {}
+}

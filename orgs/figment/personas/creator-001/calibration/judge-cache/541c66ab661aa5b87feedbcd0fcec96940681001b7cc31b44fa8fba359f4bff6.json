@@ -1,0 +1,16 @@
+{
+  "image_id": "04",
+  "same_person": 62,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 24,
+  "age_delta": 1,
+  "skin_realism": 30,
+  "gloss": 55,
+  "artifacts": 20,
+  "notes": "Similar features but face shape/nose differ; skin overly smooth, waxy, glossy lips/cheeks scream AI retouch.",
+  "model": "sonnet",
+  "duration_s": 92.62483759992756,
+  "cost_usd": 0.16017959999999998,
+  "cache_hit": false,
+  "unavailable": {}
+}

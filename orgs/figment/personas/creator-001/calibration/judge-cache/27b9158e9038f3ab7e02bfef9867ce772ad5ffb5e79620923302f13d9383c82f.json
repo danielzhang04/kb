@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g07-t06-mechA",
+  "same_person": 75,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 55,
+  "gloss": 35,
+  "artifacts": 20,
+  "notes": "Similar face/hair but skin overly smoothed, eyes/nose slightly off, waxy AI look.",
+  "model": "sonnet",
+  "duration_s": 89.78939619997982,
+  "cost_usd": 0.1659688,
+  "cache_hit": false,
+  "unavailable": {}
+}

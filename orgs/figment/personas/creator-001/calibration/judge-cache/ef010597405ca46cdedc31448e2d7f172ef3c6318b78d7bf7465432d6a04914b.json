@@ -1,0 +1,16 @@
+{
+  "image_id": "06",
+  "same_person": 78,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 23,
+  "age_delta": 0,
+  "skin_realism": 45,
+  "gloss": 68,
+  "artifacts": 22,
+  "notes": "Plausible match but nose/cheek have unnatural waxy sheen; eyeliner slightly exaggerated.",
+  "model": "sonnet",
+  "duration_s": 105.34005060000345,
+  "cost_usd": 0.1644456,
+  "cache_hit": false,
+  "unavailable": {}
+}

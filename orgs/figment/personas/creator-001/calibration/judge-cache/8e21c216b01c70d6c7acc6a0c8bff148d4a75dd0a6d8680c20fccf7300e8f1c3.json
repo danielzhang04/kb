@@ -1,0 +1,16 @@
+{
+  "image_id": "c001-exp03-g02-t12-mechA",
+  "same_person": 85,
+  "apparent_age_reference": 23,
+  "apparent_age_candidate": 22,
+  "age_delta": -1,
+  "skin_realism": 50,
+  "gloss": 45,
+  "artifacts": 15,
+  "notes": "Face matches well, but skin/cheeks look airbrushed with painted-on blush and slight waxiness.",
+  "model": "sonnet",
+  "duration_s": 82.4160424999427,
+  "cost_usd": 0.1530994,
+  "cache_hit": false,
+  "unavailable": {}
+}
