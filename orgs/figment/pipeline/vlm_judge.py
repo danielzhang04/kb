@@ -50,12 +50,14 @@ import argparse
 import glob as glob_module
 import hashlib
 import json
+import logging
 import os
 import re
 import statistics
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
@@ -67,9 +69,28 @@ DEFAULT_PERSONAS_ROOT = HERE.resolve().parents[2] / "orgs" / "figment" / "person
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 DEFAULT_MODEL = "sonnet"
-DEFAULT_WORKERS = 4
-DEFAULT_TIMEOUT = 180.0
+# 2026-09-07 fix: a live `run` over 18 1448x2176 PNGs at the old default of 4 workers
+# put 4 concurrent `claude` CLIs each Reading 4 multi-MB images at once, and 16/18 rows
+# timed out at the old 180s default -- see this module's own downscaling (below) and
+# the 600s default timeout, both landed the same session, plus this lower worker count
+# so the same host isn't asked to run more concurrent heavy CLI calls than it can.
+DEFAULT_WORKERS = 2
+DEFAULT_TIMEOUT = 600.0
 PROMPT_VERSION = "v1"
+
+# Every candidate/reference photo is downscaled to this longest side (JPEG, this
+# quality) before the judge CLI ever Reads it -- see `_downscale_for_judge`. The
+# original files stay untouched; only the copy handed to `claude -p` shrinks, which is
+# what actually fixed the 4-image-Read-per-call latency that caused the 2026-09-07
+# timeout incident (1448x2176, 3-4MB PNGs down to <=1024px JPEGs).
+DOWNSCALE_MAX_SIDE = 1024
+DOWNSCALE_JPEG_QUALITY = 92
+
+# Emits one INFO line per call attempt (start) and per attempt outcome (finish, with
+# duration) -- `main()` wires this to stderr via `logging.basicConfig` so a backgrounded
+# `vlm_judge.py run ...` redirected to a file gets a live per-call progress/timing log,
+# not just the final `judge.json` after the whole batch completes.
+LOGGER = logging.getLogger("figment.vlm_judge")
 
 JUDGE_THRESHOLD_KEYS = (
     "same_person_min", "age_delta_max", "skin_realism_min", "gloss_max", "artifacts_max",
@@ -144,6 +165,61 @@ def _clean_env() -> dict[str, str]:
     env = {name: os.environ[name] for name in _ENV_PASSTHROUGH if name in os.environ}
     env["PYTHONDONTWRITEBYTECODE"] = "1"
     return env
+
+
+# ---------------------------------------------------------------------------
+# downscaling -- shrink candidate + reference photos before the judge CLI Reads them
+# ---------------------------------------------------------------------------
+
+
+def _sha256_file(path: str | Path) -> str | None:
+    """The ORIGINAL (full-size) file's own sha256 hex digest -- `None` (never raises)
+    when the file can't be read, so a caller can fall back to a resolved-path-string
+    identity instead of crashing. Used both as the cache key's own ingredient (`_cache_
+    key` -- deliberately keyed on file CONTENT, not the downscaled copy or the path, so
+    the cache stays correct if a file is replaced at the same path, and stays
+    attributable to the real evidence regardless of which downscaled copy served the
+    call) and as the downscaled copy's own filename (`_downscale_for_judge`)."""
+    try:
+        hasher = hashlib.sha256()
+        with open(path, "rb") as handle:
+            for chunk in iter(lambda: handle.read(1 << 20), b""):
+                hasher.update(chunk)
+        return hasher.hexdigest()
+    except OSError:
+        return None
+
+
+def _downscale_for_judge(path: Path, dest_dir: Path, *, sha256: str | None = None) -> Path:
+    """A <=`DOWNSCALE_MAX_SIDE`px-longest-side JPEG (quality `DOWNSCALE_JPEG_QUALITY`)
+    copy of the image at `path`, written to `dest_dir/<sha8>.jpg` where `sha8` is the
+    first 8 hex chars of `path`'s OWN sha256 (`sha256`, when the caller already computed
+    it for the cache key -- avoids hashing the file twice). Content-addressed on purpose:
+    the same reference photo is downscaled once and reused verbatim by every candidate
+    in a batch, and repeat runs over the same evidence skip re-encoding entirely.
+
+    Never upscales -- `Image.thumbnail` only shrinks, so an already-small source is just
+    re-encoded as JPEG. Written atomically (a per-thread/per-process temp file, then
+    `os.replace`, which is atomic on both POSIX and Windows) so N worker threads
+    downscaling the SAME shared reference photo at once can never hand the judge CLI a
+    half-written file."""
+    from PIL import Image
+
+    digest = sha256 or _sha256_file(path)
+    if digest is None:
+        raise JudgeError(f"could not read {path} to downscale it for the judge")
+    dest_dir = Path(dest_dir)
+    dest = dest_dir / f"{digest[:8]}.jpg"
+    if dest.is_file():
+        return dest
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    tmp = dest_dir / f".{digest[:8]}.{os.getpid()}.{threading.get_ident()}.tmp.jpg"
+    with Image.open(path) as image:
+        image = image.convert("RGB")
+        image.thumbnail((DOWNSCALE_MAX_SIDE, DOWNSCALE_MAX_SIDE))
+        image.save(tmp, format="JPEG", quality=DOWNSCALE_JPEG_QUALITY)
+    os.replace(tmp, dest)
+    return dest
 
 
 # ---------------------------------------------------------------------------
@@ -323,12 +399,23 @@ def _default_runner(prompt: str, *, model: str, timeout: float = DEFAULT_TIMEOUT
 
 
 def _cache_key(
-    candidate: Path, references: Sequence[Path], *, model: str, prompt_version: str,
+    candidate_sha: str | None, reference_shas: Sequence[str | None], *,
+    candidate: Path, references: Sequence[Path], model: str, prompt_version: str,
 ) -> str:
+    """Keyed on the ORIGINAL candidate's own sha256 + the ORIGINAL references' own
+    sha256s + model + prompt_version -- content, not path, so results stay attributable
+    to the real evidence regardless of which downscaled copy actually served the CLI
+    call (`_downscale_for_judge`), and so replacing a file's content at the same path
+    correctly busts the cache. Falls back to the resolved path string per-image ONLY
+    when that one file's sha256 couldn't be computed (`_sha256_file` returned `None`,
+    e.g. an unreadable file) -- degraded but never crashes the cache lookup."""
     payload = json.dumps(
         {
-            "candidate": str(Path(candidate).resolve()),
-            "references": [str(Path(r).resolve()) for r in references],
+            "candidate": candidate_sha or str(Path(candidate).resolve()),
+            "references": [
+                sha or str(Path(reference).resolve())
+                for sha, reference in zip(reference_shas, references)
+            ],
             "model": model,
             "prompt_version": prompt_version,
         },
@@ -337,13 +424,17 @@ def _cache_key(
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
-def _fail_result(image_id: str, reason: str, *, model: str, duration_s: float) -> dict[str, Any]:
+def _fail_result(
+    image_id: str, reason: str, *, model: str, duration_s: float,
+    judged_from: str | None = None,
+) -> dict[str, Any]:
     return {
         "image_id": image_id,
         "same_person": None, "apparent_age_reference": None, "apparent_age_candidate": None,
         "age_delta": None, "skin_realism": None, "gloss": None, "artifacts": None,
         "notes": None,
         "model": model, "duration_s": duration_s, "cost_usd": None, "cache_hit": False,
+        "judged_from": judged_from,
         "unavailable": {"judge": reason},
     }
 
@@ -367,11 +458,23 @@ def judge_image(
     reason `"unavailable: judge"`, never a silent pass.
 
     `cache_dir`, when given, caches the full result keyed by a sha256 of
-    `(candidate, references, model, prompt_version)` under
-    `<cache_dir>/<hash>.json` -- a repeat `calibrate`/`run` invocation over the same
-    evidence never re-spends a subscription call. Cached results (success or fail
-    alike) are reused verbatim except `cache_hit` is set `True` on the copy returned;
-    delete the cache directory to force a fresh judgement.
+    `(candidate, references, model, prompt_version)` -- content-addressed on the
+    ORIGINAL files, see `_cache_key` -- under `<cache_dir>/<hash>.json`, so a repeat
+    `calibrate`/`run` invocation over the same evidence never re-spends a subscription
+    call. 2026-09-07 fix: ONLY a result with a parsed numeric `same_person` (i.e. a real
+    judgement, never `unavailable["judge"]`) is ever written to the cache -- a timed-out
+    or otherwise-failed call is retried for real on the next invocation, not served
+    forever as a false `cache_hit`. On load, a cache entry that predates this fix (no
+    parsed `same_person`) is treated as a MISS the same way, healing the existing bad
+    entries in place the first time each is looked up again. Delete the cache directory
+    to force a fresh judgement of everything regardless.
+
+    Before the CLI call, both `candidate` and every one of `references` are downscaled
+    (`_downscale_for_judge` -- longest side `DOWNSCALE_MAX_SIDE`px, JPEG quality
+    `DOWNSCALE_JPEG_QUALITY`) and those SMALLER copies are what the prompt actually
+    points the judge at; the cache key itself stays keyed on the ORIGINAL, full-size
+    files so results remain attributable to the real evidence. The downscaled candidate
+    path actually used is recorded on the row as `judged_from`.
     """
     # Resolved to ABSOLUTE paths up front: the prompt embeds these paths verbatim for
     # the judge to Read, and `_default_runner` deliberately runs from a scratch
@@ -383,45 +486,84 @@ def judge_image(
     image_id = candidate.stem
     runner = runner or _default_runner
 
+    candidate_sha = _sha256_file(candidate)
+    reference_shas = [_sha256_file(reference) for reference in references]
+
     cache_path: Path | None = None
     if cache_dir is not None:
-        key = _cache_key(candidate, references, model=model, prompt_version=prompt_version)
+        key = _cache_key(
+            candidate_sha, reference_shas, candidate=candidate, references=references,
+            model=model, prompt_version=prompt_version,
+        )
         cache_path = Path(cache_dir) / f"{key}.json"
         if cache_path.is_file():
             try:
                 cached = json.loads(cache_path.read_text(encoding="utf-8"))
             except (OSError, ValueError):
                 cached = None
-            if isinstance(cached, dict):
+            if isinstance(cached, dict) and cached.get("same_person") is not None:
                 cached = dict(cached)
                 cached["image_id"] = image_id
                 cached["cache_hit"] = True
                 return cached
+            # else: no cache entry, or a legacy/failed one with no parsed
+            # `same_person` -- treat as a miss and re-judge for real below.
 
     if not references:
         result = _fail_result(
             image_id, "no reference images given", model=model, duration_s=0.0,
         )
     else:
-        prompt = _build_prompt(candidate, references)
+        downscale_dir = (
+            Path(cache_dir).parent / "judge-inputs" if cache_dir is not None
+            else Path(tempfile.gettempdir()) / "kb-figment-judge-inputs"
+        )
+        try:
+            judged_candidate = _downscale_for_judge(candidate, downscale_dir, sha256=candidate_sha)
+            judged_references = [
+                _downscale_for_judge(reference, downscale_dir, sha256=sha)
+                for reference, sha in zip(references, reference_shas)
+            ]
+        except Exception as exc:  # noqa: BLE001 - never let a downscale failure block judging
+            LOGGER.warning("judge %s: downscaling failed (%s), judging originals", image_id, exc)
+            judged_candidate, judged_references = candidate, references
+        judged_from = str(judged_candidate)
+
+        prompt = _build_prompt(judged_candidate, judged_references)
         result = None
         last_reason = "unknown failure"
         duration = 0.0
-        for _attempt in range(2):
+        for attempt in range(2):
             start = time.perf_counter()
+            LOGGER.info(
+                "judge start id=%s attempt=%d/2 model=%s timeout=%.0fs",
+                image_id, attempt + 1, model, timeout,
+            )
             try:
                 raw = runner(prompt, model=model, timeout=timeout)
             except Exception as exc:  # noqa: BLE001 - fail-closed, never crash the caller
                 duration = time.perf_counter() - start
                 last_reason = f"{type(exc).__name__}: {exc}"
+                LOGGER.info(
+                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=error (%s)",
+                    image_id, attempt + 1, duration, last_reason,
+                )
                 continue
             duration = time.perf_counter() - start
             envelope = parse_cli_envelope(raw)
             if envelope is None:
                 last_reason = f"judge CLI did not return a parseable JSON envelope: {raw[:200]!r}"
+                LOGGER.info(
+                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=unparseable",
+                    image_id, attempt + 1, duration,
+                )
                 continue
             if envelope.get("is_error"):
                 last_reason = f"judge CLI reported an error: {str(envelope.get('result'))[:200]}"
+                LOGGER.info(
+                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=cli-error",
+                    image_id, attempt + 1, duration,
+                )
                 continue
             payload = _extract_json_object(str(envelope.get("result") or ""))
             coerced = _coerce_judge_payload(payload) if payload is not None else None
@@ -429,6 +571,10 @@ def judge_image(
                 last_reason = (
                     f"judge did not return parseable JSON in its result: "
                     f"{str(envelope.get('result'))[:200]!r}"
+                )
+                LOGGER.info(
+                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=bad-json",
+                    image_id, attempt + 1, duration,
                 )
                 continue
             cost = envelope.get("total_cost_usd")
@@ -442,13 +588,20 @@ def judge_image(
                 "duration_s": duration,
                 "cost_usd": cost,
                 "cache_hit": False,
+                "judged_from": judged_from,
                 "unavailable": {},
             }
+            LOGGER.info(
+                "judge finish id=%s attempt=%d/2 duration_s=%.1f result=ok same_person=%s",
+                image_id, attempt + 1, duration, coerced["same_person"],
+            )
             break
         if result is None:
-            result = _fail_result(image_id, last_reason, model=model, duration_s=duration)
+            result = _fail_result(
+                image_id, last_reason, model=model, duration_s=duration, judged_from=judged_from,
+            )
 
-    if cache_path is not None:
+    if cache_path is not None and result.get("same_person") is not None:
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
             cache_path.write_text(
@@ -648,6 +801,7 @@ def calibrate(
     runner: Callable[..., str] | None = None,
     cache_dir: str | Path | None = None,
     workers: int = DEFAULT_WORKERS,
+    timeout: float = DEFAULT_TIMEOUT,
 ) -> dict[str, Any]:
     """Judge every image in every one of `sets` (name -> directory) against
     `persona.identity.references` (the FIXED reference list, in persona order -- the
@@ -666,7 +820,7 @@ def calibrate(
         (persona_dir / reference).resolve() if persona_dir else Path(reference)
         for reference in references
     ]
-    judge_kwargs = dict(model=model, runner=runner, cache_dir=cache_dir)
+    judge_kwargs = dict(model=model, runner=runner, cache_dir=cache_dir, timeout=timeout)
 
     result_sets: dict[str, Any] = {}
     anchor_rows = _anchor_self_consistency_rows(reference_paths, **judge_kwargs)
@@ -820,6 +974,7 @@ def run_calibrate(
     personas_root: Path,
     model: str = DEFAULT_MODEL,
     workers: int = DEFAULT_WORKERS,
+    timeout: float = DEFAULT_TIMEOUT,
     runner: Callable[..., str] | None = None,
 ) -> dict[str, str]:
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
@@ -828,6 +983,7 @@ def run_calibrate(
     out = Path(out)
     calibration = calibrate(
         persona, sets, model=model, runner=runner, cache_dir=out / "judge-cache", workers=workers,
+        timeout=timeout,
     )
     out.mkdir(parents=True, exist_ok=True)
     json_path = out / "judge-calibration.json"
@@ -850,6 +1006,7 @@ def run_judge(
     personas_root: Path,
     model: str = DEFAULT_MODEL,
     workers: int = DEFAULT_WORKERS,
+    timeout: float = DEFAULT_TIMEOUT,
     runner: Callable[..., str] | None = None,
 ) -> dict[str, str]:
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
@@ -864,7 +1021,7 @@ def run_judge(
     start = time.time()
     rows = judge_images_for_stage(
         images, references, model=model, runner=runner, cache_dir=out / "judge-cache",
-        workers=workers,
+        workers=workers, timeout=timeout,
     )
     elapsed = time.time() - start
     document = {
@@ -920,6 +1077,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser.add_argument("--out", required=True, type=Path)
     run_parser.add_argument("--model", default=DEFAULT_MODEL)
     run_parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    run_parser.add_argument(
+        "--call-timeout", dest="timeout", type=float, default=DEFAULT_TIMEOUT,
+        help=f"per-`claude` CLI call timeout in seconds (default: {DEFAULT_TIMEOUT:.0f})",
+    )
     run_parser.add_argument("--personas-root", type=Path, default=DEFAULT_PERSONAS_ROOT)
 
     calibrate_parser = commands.add_parser(
@@ -929,6 +1090,10 @@ def build_parser() -> argparse.ArgumentParser:
     calibrate_parser.add_argument("--out", required=True, type=Path)
     calibrate_parser.add_argument("--model", default=DEFAULT_MODEL)
     calibrate_parser.add_argument("--workers", type=int, default=DEFAULT_WORKERS)
+    calibrate_parser.add_argument(
+        "--call-timeout", dest="timeout", type=float, default=DEFAULT_TIMEOUT,
+        help=f"per-`claude` CLI call timeout in seconds (default: {DEFAULT_TIMEOUT:.0f})",
+    )
     calibrate_parser.add_argument("--personas-root", type=Path, default=DEFAULT_PERSONAS_ROOT)
     calibrate_parser.add_argument(
         "--set", dest="sets", action="append", type=_parse_set_arg, default=[],
@@ -939,12 +1104,19 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # A per-call start/finish line (see `judge_image`'s own LOGGER.info calls) on
+    # stderr -- a backgrounded `vlm_judge.py run ...` redirected to a file gets a live
+    # progress/timing log while the batch is still running, not just the final
+    # `judge.json` once every image is done. No-ops if a caller already configured
+    # logging (e.g. a test importing this module) -- `basicConfig` only installs a
+    # handler when the root logger doesn't have one yet.
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
     args = build_parser().parse_args(list(sys.argv[1:] if argv is None else argv))
     try:
         if args.command == "run":
             result = run_judge(
                 args.creator, args.images, args.out, personas_root=args.personas_root,
-                model=args.model, workers=args.workers,
+                model=args.model, workers=args.workers, timeout=args.timeout,
             )
             print(f"judge written: {result['json']}")
             return 0
@@ -953,7 +1125,7 @@ def main(argv: list[str] | None = None) -> int:
             start = time.time()
             result = run_calibrate(
                 args.creator, sets, args.out, personas_root=args.personas_root,
-                model=args.model, workers=args.workers,
+                model=args.model, workers=args.workers, timeout=args.timeout,
             )
             elapsed = time.time() - start
             print(f"calibration written: {result['json']}")

@@ -7,8 +7,10 @@ subscription-billed calibration run this module's `calibrate()` was built to sup
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -32,11 +34,20 @@ def judge_module():
 
 
 def _png(directory: Path, name: str) -> Path:
+    """An 8x8 solid-color PNG fixture, colored deterministically FROM `name` so every
+    distinctly-named fixture image has distinct file bytes (and thus a distinct
+    sha256) -- `vlm_judge.py`'s cache key and its downscaled-copy filename are both
+    content-addressed (`_sha256_file` / `_downscale_for_judge`), same as real,
+    always-distinct photographs would be; a shared, name-independent color would make
+    every fixture image collide onto the same cache entry and the same downscaled
+    copy, which no real evidence set could ever do."""
     from PIL import Image
 
     directory.mkdir(parents=True, exist_ok=True)
     path = directory / f"{name}.png"
-    Image.new("RGB", (8, 8), color=(120, 90, 90)).save(path)
+    digest = hashlib.sha256(name.encode("utf-8")).digest()
+    color = (digest[0], digest[1], digest[2])
+    Image.new("RGB", (8, 8), color=color).save(path)
     return path
 
 
@@ -70,8 +81,18 @@ def test_judge_image_parses_envelope_and_result_json(judge_module, tmp_path):
     result = judge_module.judge_image(candidate, [reference], model="sonnet", runner=fake_runner)
 
     assert len(calls) == 1
-    assert str(reference) in calls[0][0]
-    assert str(candidate) in calls[0][0]
+    # The CLI is pointed at DOWNSCALED copies, never the original full-size files
+    # (see `_downscale_for_judge`) -- the prompt carries the downscaled candidate path
+    # (recorded on the row as `judged_from`) and a downscaled `.jpg` reference copy,
+    # not `reference`/`candidate`'s own original paths.
+    assert str(candidate) not in calls[0][0]
+    assert str(reference) not in calls[0][0]
+    assert result["judged_from"] is not None
+    assert result["judged_from"] in calls[0][0]
+    judged_from_path = Path(result["judged_from"])
+    assert judged_from_path.is_file()
+    assert judged_from_path.suffix == ".jpg"
+    assert calls[0][0].count(".jpg") == 2  # the downscaled candidate + the one reference
     assert result["image_id"] == "candidate"
     assert result["same_person"] == 58
     assert result["apparent_age_reference"] == 23
@@ -173,6 +194,47 @@ def test_judge_image_extracts_json_from_a_markdown_fence(judge_module, tmp_path)
     assert result["same_person"] == 58
 
 
+def test_judge_image_retries_once_on_a_timeout_with_the_same_downscaled_inputs(judge_module, tmp_path):
+    """The 2026-09-07 live incident: 16/18 rows failed with `JudgeError("judge CLI
+    failed to run: ... timed out")`. `judge_image`'s existing retry-once loop already
+    covers this exception (it catches ANY exception the runner raises, not just
+    non-JSON responses) -- this test pins that a timeout specifically retries, and that
+    the retry judges the exact SAME (already-downscaled) inputs, never re-downscaling
+    or picking a different candidate/reference on the second attempt."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    prompts = []
+
+    def fake_runner(prompt, *, model, timeout=None):
+        prompts.append(prompt)
+        if len(prompts) == 1:
+            raise judge_module.JudgeError("judge CLI failed to run: Command [...] timed out")
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    result = judge_module.judge_image(candidate, [reference], runner=fake_runner)
+    assert len(prompts) == 2
+    assert prompts[0] == prompts[1]
+    assert result["same_person"] == 58
+    assert result["unavailable"] == {}
+
+
+def test_judge_image_logs_start_and_finish_with_duration(judge_module, tmp_path, caplog):
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+
+    def fake_runner(prompt, *, model, timeout=None):
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    with caplog.at_level(logging.INFO, logger="figment.vlm_judge"):
+        judge_module.judge_image(candidate, [reference], runner=fake_runner)
+
+    messages = [record.message for record in caplog.records]
+    assert any(msg.startswith("judge start id=candidate") for msg in messages)
+    assert any(
+        msg.startswith("judge finish id=candidate") and "duration_s=" in msg for msg in messages
+    )
+
+
 # ---------------------------------------------------------------------------
 # cache
 # ---------------------------------------------------------------------------
@@ -212,6 +274,176 @@ def test_judge_image_cache_key_differs_by_model(judge_module, tmp_path):
     judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir, model="opus")
     assert calls["n"] == 2
     assert len(list(cache_dir.glob("*.json"))) == 2
+
+
+def test_judge_image_never_caches_a_failed_result_and_retries_for_real_on_the_next_run(
+    judge_module, tmp_path,
+):
+    """The live 2026-09-07 bug: 16/18 rows timed out, and the timeout was cached and
+    served back as `cache_hit: True` forever after. `judge_image` must NEVER write a
+    failed/unavailable result to the cache -- a fresh invocation over the same cache_dir
+    (e.g. the operator re-running `vlm_judge.py run` after the first run failed) has to
+    call the runner again, not silently keep replaying the old failure."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    cache_dir = tmp_path / "cache"
+    calls = {"n": 0}
+
+    def always_fails(prompt, *, model, timeout=None):
+        calls["n"] += 1
+        raise judge_module.JudgeError("judge CLI failed to run: Command [...] timed out")
+
+    # "run 1" -- every attempt (both of judge_image's own built-in retries) times out.
+    first_run = judge_module.judge_image(candidate, [reference], runner=always_fails, cache_dir=cache_dir)
+    assert calls["n"] == 2
+    assert first_run["same_person"] is None
+    assert "judge" in first_run["unavailable"]
+    assert not list(cache_dir.glob("*.json")), "a failed judgement must never be cached"
+
+    def succeeds(prompt, *, model, timeout=None):
+        calls["n"] += 1
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    # "run 2" -- a fresh invocation over the SAME cache_dir. A cached failure would
+    # have short-circuited this and kept returning `unavailable: judge` forever.
+    second_run = judge_module.judge_image(candidate, [reference], runner=succeeds, cache_dir=cache_dir)
+    assert calls["n"] == 3
+    assert second_run["cache_hit"] is False
+    assert second_run["same_person"] == 58
+    assert len(list(cache_dir.glob("*.json"))) == 1  # now it IS cached, correctly
+
+
+def test_judge_image_treats_a_legacy_failed_cache_row_as_a_miss(judge_module, tmp_path):
+    """Heals the existing bad cache entries this bug already wrote to disk: a cache
+    file shaped like the OLD (pre-fix) bug -- `unavailable["judge"]` set, no parsed
+    `same_person` -- must be treated as a miss on load, not replayed as a false
+    `cache_hit`, and gets overwritten with a real result once the runner succeeds."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+    key = judge_module._cache_key(
+        judge_module._sha256_file(candidate), [judge_module._sha256_file(reference)],
+        candidate=candidate, references=[reference],
+        model=judge_module.DEFAULT_MODEL, prompt_version=judge_module.PROMPT_VERSION,
+    )
+    legacy_bad_row = {
+        "image_id": "candidate", "same_person": None, "apparent_age_reference": None,
+        "apparent_age_candidate": None, "age_delta": None, "skin_realism": None,
+        "gloss": None, "artifacts": None, "notes": None, "model": judge_module.DEFAULT_MODEL,
+        "duration_s": 185.4, "cost_usd": None, "cache_hit": False,
+        "unavailable": {"judge": "judge CLI failed to run: Command [...] timed out"},
+    }
+    (cache_dir / f"{key}.json").write_text(json.dumps(legacy_bad_row), encoding="utf-8")
+
+    calls = {"n": 0}
+
+    def fake_runner(prompt, *, model, timeout=None):
+        calls["n"] += 1
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    result = judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir)
+    assert calls["n"] == 1, "a legacy failed cache row must be treated as a miss, not served"
+    assert result["cache_hit"] is False
+    assert result["same_person"] == 58
+
+    healed = judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir)
+    assert calls["n"] == 1, "the healed entry now serves a real cache hit"
+    assert healed["cache_hit"] is True
+    assert healed["same_person"] == 58
+
+
+# ---------------------------------------------------------------------------
+# downscaling -- candidate + reference photos are shrunk before the judge CLI Reads
+# them (the 2026-09-07 fix for slow/timing-out `claude` CLI Reads of full-size,
+# 3-4MB PNGs)
+# ---------------------------------------------------------------------------
+
+
+def test_downscale_for_judge_produces_at_most_1024px_jpeg(judge_module, tmp_path):
+    from PIL import Image
+
+    large = tmp_path / "large.png"
+    Image.new("RGB", (1448, 2176), color=(10, 20, 30)).save(large)
+    dest_dir = tmp_path / "judge-inputs"
+
+    out = judge_module._downscale_for_judge(large, dest_dir)
+
+    assert out.is_file()
+    assert out.parent == dest_dir
+    assert out.suffix == ".jpg"
+    with Image.open(out) as image:
+        assert max(image.size) <= judge_module.DOWNSCALE_MAX_SIDE
+        assert image.size[1] < 2176  # actually shrunk, not just re-encoded in place
+        assert image.size[0] == pytest.approx(1448 * image.size[1] / 2176, abs=1)  # aspect kept
+
+
+def test_downscale_for_judge_never_upscales_a_small_image(judge_module, tmp_path):
+    from PIL import Image
+
+    small = tmp_path / "small.png"
+    Image.new("RGB", (8, 8), color=(1, 2, 3)).save(small)
+    dest_dir = tmp_path / "judge-inputs"
+
+    out = judge_module._downscale_for_judge(small, dest_dir)
+    with Image.open(out) as image:
+        assert image.size == (8, 8)
+
+
+def test_downscale_for_judge_reuses_the_same_copy_for_identical_content(judge_module, tmp_path):
+    """A shared reference photo, downscaled once for the first candidate in a batch, is
+    reused verbatim (by its content sha) for every later candidate against the same
+    references -- not re-encoded per call."""
+    photo = _png(tmp_path, "g01")
+    dest_dir = tmp_path / "judge-inputs"
+
+    first = judge_module._downscale_for_judge(photo, dest_dir)
+    written_at = first.stat().st_mtime_ns
+    second = judge_module._downscale_for_judge(photo, dest_dir)
+
+    assert second == first
+    assert second.stat().st_mtime_ns == written_at  # never rewritten
+
+
+def test_judge_image_cache_key_is_unchanged_by_where_downscaled_copies_land(judge_module, tmp_path):
+    """The cache key stays keyed on the ORIGINAL candidate/reference sha256 + model +
+    prompt_version -- it must NOT depend on `cache_dir` (and therefore not on where
+    `_downscale_for_judge` happens to write the `judge-inputs/` copies either), so the
+    same evidence run through two different `--out` directories still lands on the
+    exact same cache filename."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    expected_key = judge_module._cache_key(
+        judge_module._sha256_file(candidate), [judge_module._sha256_file(reference)],
+        candidate=candidate, references=[reference],
+        model=judge_module.DEFAULT_MODEL, prompt_version=judge_module.PROMPT_VERSION,
+    )
+
+    def fake_runner(prompt, *, model, timeout=None):
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    cache_dir_a = tmp_path / "run-a" / "judge-cache"
+    cache_dir_b = tmp_path / "run-b" / "judge-cache"
+    judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir_a)
+    judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir_b)
+
+    assert (cache_dir_a / f"{expected_key}.json").is_file()
+    assert (cache_dir_b / f"{expected_key}.json").is_file()
+
+
+def test_judge_image_records_judged_from_as_the_downscaled_candidate_path(judge_module, tmp_path):
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    cache_dir = tmp_path / "cache"
+
+    def fake_runner(prompt, *, model, timeout=None):
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    result = judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir)
+
+    assert result["judged_from"] is not None
+    assert result["judged_from"] != str(candidate)
+    assert Path(result["judged_from"]).parent == cache_dir.parent / "judge-inputs"
 
 
 # ---------------------------------------------------------------------------
@@ -403,8 +635,14 @@ def test_calibrate_builds_anchor_leave_one_out_and_named_sets(judge_module, tmp_
 
     def fake_runner(prompt, *, model, timeout=None):
         calls.append(prompt)
-        # every "bad" candidate should read as a clear non-match with worse realism
-        if "bad-" in prompt:
+        # Every candidate now Reads from a content-addressed DOWNSCALED temp path
+        # (see `_downscale_for_judge`), never the original "bad-N.png"/"gNN.png" name,
+        # so a "bad-" filename substring check can't tell the two calls apart anymore.
+        # Reference COUNT still can: the anchors' own leave-one-out rows judge against
+        # only the 2 OTHER reference photos, while the "bad" set is judged against the
+        # persona's full 3-reference list -- one more "another real photo of the SAME
+        # woman" line in the prompt (see `_build_prompt`) is exactly the "bad" set.
+        if prompt.count("another real photo of the SAME woman") >= 2:
             payload = dict(GOOD_PAYLOAD, same_person=10, skin_realism=20, gloss=80, artifacts=70)
         else:
             payload = dict(GOOD_PAYLOAD, same_person=97, skin_realism=95, gloss=2, artifacts=2, apparent_age_candidate=23)
@@ -474,6 +712,28 @@ def test_run_judge_writes_judge_json(judge_module, tmp_path):
     assert document["summary"]["available"] == 2
 
 
+def test_run_judge_forwards_call_timeout_to_the_judge_runner(judge_module, tmp_path):
+    persona_dir = tmp_path / "creator-xyz"
+    _png(persona_dir / "anchors", "g01")
+    (persona_dir / "persona.yaml").write_text(
+        json.dumps({"id": "creator-xyz", "identity": {"references": ["anchors/g01.png"]}}),
+        encoding="utf-8",
+    )
+    images_dir = tmp_path / "candidates"
+    _png(images_dir, "c0")
+    captured = {}
+
+    def fake_runner(prompt, *, model, timeout=None):
+        captured["timeout"] = timeout
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    judge_module.run_judge(
+        "creator-xyz", [str(images_dir)], tmp_path / "out", personas_root=tmp_path,
+        runner=fake_runner, timeout=45.0,
+    )
+    assert captured["timeout"] == 45.0
+
+
 def test_run_judge_raises_when_no_images_match(judge_module, tmp_path):
     persona_dir = tmp_path / "creator-xyz"
     _png(persona_dir / "anchors", "g01")
@@ -509,3 +769,38 @@ def test_cli_run_parses_repeatable_images_flag(judge_module):
     assert args.images == ["a", "b"]
     assert args.workers == judge_module.DEFAULT_WORKERS
     assert args.model == judge_module.DEFAULT_MODEL
+
+
+def test_cli_defaults_are_two_workers_and_a_600s_call_timeout(judge_module):
+    """2026-09-07 fix: 4 concurrent workers Reading full-size images was what actually
+    produced the 185s timeouts in the live incident; the new defaults are 2 workers and
+    a 600s per-call timeout (both still overridable via --workers/--call-timeout)."""
+    assert judge_module.DEFAULT_WORKERS == 2
+    assert judge_module.DEFAULT_TIMEOUT == 600.0
+
+    run_args = judge_module.build_parser().parse_args([
+        "run", "--creator", "creator-001", "--images", "a", "--out", "out",
+    ])
+    assert run_args.workers == 2
+    assert run_args.timeout == 600.0
+
+    calibrate_args = judge_module.build_parser().parse_args([
+        "calibrate", "--creator", "creator-001", "--out", "out",
+    ])
+    assert calibrate_args.workers == 2
+    assert calibrate_args.timeout == 600.0
+
+
+def test_cli_run_parses_call_timeout_flag(judge_module):
+    args = judge_module.build_parser().parse_args([
+        "run", "--creator", "creator-001", "--images", "a", "--out", "out",
+        "--call-timeout", "45",
+    ])
+    assert args.timeout == 45.0
+
+
+def test_cli_calibrate_parses_call_timeout_flag(judge_module):
+    args = judge_module.build_parser().parse_args([
+        "calibrate", "--creator", "creator-001", "--out", "out", "--call-timeout", "90",
+    ])
+    assert args.timeout == 90.0
