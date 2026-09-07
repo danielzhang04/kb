@@ -249,6 +249,11 @@ def _synthetic_persona(
         "caption_mode": "provided",
         "pod_class": "l40s",
         "price_ceiling_usd_per_hour": 1.30,
+        # Matches both real personas' training.yaml (creator-001, creator-002): keeps
+        # this fixture's trigger-prompt noun ("<trigger> woman, ...") consistent with
+        # the live pipeline instead of falling back to DEFAULT_TRAINING's generic
+        # "person" (training_config.py).
+        "dop_class": "woman",
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
@@ -387,6 +392,57 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
             capture_output=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_tester_prompt_is_trigger_prefixed_for_every_persona_not_only_dop(command, tmp_path):
+    """r24/r25 evidence: the train-first LoRA's own tester prompt carried NO trigger word
+    while the LoRA loaded fine, so every checkpoint rendered as the base model's generic
+    woman (facenet 0.17-0.23 vs anchors -- a stranger). ai-toolkit only ever invokes a
+    LoRA identity by naming its trigger in the prompt text, never implicitly just from
+    being loaded -- so the tester's CLIPTextEncode node must open with "<trigger>
+    <dop_class>, " for every persona, DOP-enabled or not (`_synthetic_persona`'s fixture
+    here has `dop_enabled` at its default False)."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / "creator002-tester-plan"
+    plan = command.build_plan(
+        "creator-002", "tester", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    tester = load_json(plan_path(out, plan["stages"]["tester"]["runs"][0]))
+    text = tester["workflow"]["5"]["inputs"]["text"]
+    assert text.startswith("creator002krea2 woman, ")
+    assert "Close-up portrait photograph of an adult woman" in text
+    # the old, un-prefixed prompt text must never appear verbatim as the prompt itself.
+    assert not text.startswith("Close-up portrait photograph of an adult woman")
+
+
+def test_creator001_real_persona_tester_gen_and_detail_prompts_are_trigger_prefixed(
+    command, tmp_path,
+):
+    """Same fix, proven against creator-001's own real, checked-in persona.yaml/
+    training.yaml (dop_enabled: true, dop_class: "woman") -- the exact configuration the
+    r24/r25 evidence's stranger-scoring run used."""
+    out = tmp_path / "creator001-tester-plan"
+    plan = command.build_plan(
+        "creator-001", "tester", out, personas_root=PERSONAS, skip_pin_verify=True,
+    )
+    tester = load_json(plan_path(out, plan["stages"]["tester"]["runs"][0]))
+    tester_text = tester["workflow"]["5"]["inputs"]["text"]
+    assert tester_text.startswith("creator001krea2 woman, ")
+
+    persona, training, pins = command._load_inputs("creator-001", PERSONAS)
+    persona = dict(persona)
+    persona["_persona_path"] = str(PERSONAS / "creator-001" / "persona.yaml")
+    gen_training = {**training, "chosen_checkpoint_step": training["steps"]}
+
+    gen_manifest = command._gen_manifest(persona, gen_training, pins)
+    gen_text = gen_manifest["jobs"][0]["substitutions"][0]["value"]
+    assert gen_text.startswith("creator001krea2 woman, ")
+
+    detail_manifest = command._detail_manifest(persona, gen_training, pins, ["a01.jpg"])
+    detail_text = detail_manifest["workflow"]["5"]["inputs"]["text"]
+    assert detail_text.startswith("creator001krea2 woman, ")
+    assert not detail_text.startswith("Photograph of an adult woman,")
 
 
 def _fake_run(out: Path, *, usd: float = 0.25) -> tuple[dict, Path]:

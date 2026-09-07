@@ -162,6 +162,35 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
     assert r.returncode == 0, r.stderr
 
 
+def test_gen_prompt_is_trigger_prefixed_for_every_persona_not_only_dop(command, tmp_path):
+    """r24/r25 evidence: a LoRA identity is only ever invoked by naming its trigger word
+    in the prompt text -- the train-first tester prompt carried none and rendered the
+    base model's generic woman even though the LoRA loaded cleanly. Every gen-stage row
+    (node 5's positive CLIPTextEncode) must open with "<trigger> <dop_class>, " ahead of
+    the persona's own look/scene clause, for every persona (this fixture's `dop_enabled`
+    sits at its default False, and `dop_class` is explicitly forced to "woman" to match
+    both real personas' training.yaml)."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _set_training(
+        personas / "creator-002", chosen_checkpoint_step=1500, dop_class="woman",
+    )
+    out = tmp_path / "gen-trigger"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+    )
+    run = plan["stages"]["gen"]["runs"][0]
+    m = load_json(out / run["manifest"])
+    text_subs = [
+        sub for sub in m["jobs"][0]["substitutions"]
+        if sub["node_id"] == "5" and sub["field"] == "text"
+    ]
+    assert len(text_subs) == 1
+    text = text_subs[0]["value"]
+    assert text.startswith("creator002krea2 woman, ")
+    assert not text.startswith("Photograph of")
+
+
 def test_unknown_stage_raises_instead_of_falling_through(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
@@ -303,6 +332,31 @@ def test_detail_manifest_job_count_and_dry_run(command, tmp_path):
             capture_output=True, text=True,
         )
         assert r.returncode == 0, r.stderr
+
+
+def test_detail_only_prompt_is_trigger_prefixed(command, tmp_path):
+    """Same fix as the gen-stage rows: the detail-only workflow's node 5 CLIPTextEncode
+    (previously left at its static default with no trigger at all) must also open with
+    "<trigger> <dop_class>, " ahead of the workflow's own default descriptive text."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _set_training(
+        personas / "creator-002", chosen_checkpoint_step=1500, dop_class="woman",
+    )
+
+    source_dir = tmp_path / "existing-cells"
+    source_dir.mkdir()
+    (source_dir / "cell-01.png").write_bytes(b"not a real png, just a fixture file")
+
+    out = tmp_path / "detail-trigger"
+    command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        detail_images=str(source_dir / "*.png"),
+    )
+    detail_workflow = load_json(out / "train" / "workflows" / "krea2_detail_only_api.json")
+    text = detail_workflow["5"]["inputs"]["text"]
+    assert text.startswith("creator002krea2 woman, ")
+    assert not text.startswith("Photograph of an adult woman,")
 
 
 def test_detail_images_requires_gen_stage(command, tmp_path):

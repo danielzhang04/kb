@@ -892,6 +892,29 @@ def test_generation_manifest_replicates_module_09_chain():
         assert restored == {"15": 40, "33": 40}
 
 
+def test_tester_and_gen_prompts_open_with_the_persona_trigger():
+    """r24/r25 evidence: the train-first LoRA's own tester prompt carried NO trigger
+    word (this file's fixtures are the exact live creator-001 persona/training.yaml that
+    scoring run used -- dop_enabled: true, dop_class: "woman"), so every checkpoint
+    rendered as the base model's generic woman -- facenet 0.17-0.23 vs anchors, i.e. a
+    stranger -- because ai-toolkit only ever invokes a LoRA identity by naming its
+    trigger in the prompt text, never implicitly just from being loaded. Both the
+    tester's fixed portrait prompt and every gen-stage row must now open with
+    "<trigger> <dop_class>, "."""
+    tester_text = manifest("tester")["workflow"]["5"]["inputs"]["text"]
+    assert tester_text.startswith(f"{TRIGGER} woman, ")
+    assert not tester_text.startswith("Close-up portrait photograph of an adult woman")
+
+    gen_texts = {
+        sub["value"] for job in manifest("gen")["jobs"] for sub in job["substitutions"]
+        if sub["field"] == "text"
+    }
+    assert gen_texts, "gen manifest carries no node-5 text substitutions"
+    for text in gen_texts:
+        assert text.startswith(f"{TRIGGER} woman, ")
+        assert not text.startswith("Photograph of")
+
+
 @pytest.mark.parametrize("name", sorted(MANIFESTS))
 def test_every_model_entry_is_pinned_with_revision_and_sha256(name):
     """Finding 5: every train/tester/gen model must resolve an immutable commit,

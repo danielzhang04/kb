@@ -786,7 +786,31 @@ def _train_manifest(
     return manifest
 
 
-def _tester_workflow(creator_id: str, trigger: str) -> dict[str, Any]:
+def _persona_trigger_clause(training: dict) -> str:
+    """The `"<trigger> <noun>, "` prefix every tester/gen/detail-only prompt must open
+    with (r24/r25 evidence: the train-first LoRA's own tester prompt carried NO trigger
+    word, so every checkpoint rendered as the base model's generic woman -- facenet
+    0.17-0.23 vs anchors, i.e. a stranger -- because ai-toolkit's LoRA identity is only
+    ever invoked by naming the trigger in the prompt text, never implicitly just by being
+    loaded). `training["dop_class"]` is the class-DOP regularization target
+    (training_config.py DEFAULT_TRAINING) -- it is NOT required to echo the caption's own
+    descriptive noun and happens to read "woman" on every real persona today, so "woman"
+    is the explicit fallback. Applies to every persona, DOP-enabled or not."""
+    trigger = training["trigger"]
+    noun = training.get("dop_class") or "woman"
+    return f"{trigger} {noun}, "
+
+
+def _compose_triggered_prompt(training: dict, body: str) -> str:
+    """Prefix `body` (an already-composed scene/look/description clause) with the
+    persona's own trigger so the LoRA is always explicitly invoked -- the single helper
+    `_tester_manifest` (`_tester_workflow`), `_gen_manifest` (`_generalized_gen_prompts`),
+    and `_detail_manifest` all route through."""
+    return _persona_trigger_clause(training) + body
+
+
+def _tester_workflow(creator_id: str, training: dict) -> dict[str, Any]:
+    trigger = training["trigger"]
     return {
         "1": {"class_type": "UNETLoader", "inputs": {
             "unet_name": "krea2_turbo_fp8_scaled.safetensors", "weight_dtype": "default",
@@ -806,14 +830,14 @@ def _tester_workflow(creator_id: str, trigger: str) -> dict[str, Any]:
             "clip": ["2", 0],
         }},
         "5": {"class_type": "CLIPTextEncode", "inputs": {
-            "text": (
+            "text": _compose_triggered_prompt(training, (
                 "Close-up portrait photograph of an adult woman in her mid twenties, "
                 "shoulders up, facing the camera, neutral relaxed expression with a faint "
                 "smile. Natural skin texture with visible pores and fine flyaway hairs, "
                 "no retouching. She wears a plain fitted black crew-neck top. Soft even "
                 "daylight from a window camera-left, plain warm off-white wall behind her, "
                 "shallow depth of field, shot on a phone camera."
-            ),
+            )),
             "clip": ["4", 1],
         }},
         "6": {"class_type": "ConditioningZeroOut", "inputs": {
@@ -861,7 +885,7 @@ def _tester_manifest(
         **_pod_base(pins, training["pod_class"], "tester"),
         "models": deepcopy(pins["pins"]["tester"]["models"]),
         "custom_nodes": deepcopy(pins["pins"]["tester"]["custom_nodes"]),
-        "workflow": _tester_workflow(creator_id, trigger),
+        "workflow": _tester_workflow(creator_id, training),
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
             "files": [f"out/{train_out_dirname}/*.safetensors"],
@@ -897,10 +921,12 @@ GEN_ROW_SEED_BASE = 269789944143426
 DETAIL_SEED_BASE = 100200300
 
 
-def _generalized_gen_prompts(persona: dict) -> dict[str, Any]:
+def _generalized_gen_prompts(persona: dict, training: dict) -> dict[str, Any]:
     """Build the gen-stage's rows entirely from `gen-prompts.yaml`'s generic photography
     vocabulary plus the persona's own `identity.look` (same discipline as
-    `_generalized_anchor_prompts` -- never a template-hardcoded face/body clause)."""
+    `_generalized_anchor_prompts` -- never a template-hardcoded face/body clause), each
+    row opening with the persona's own trigger (`_compose_triggered_prompt`) so the LoRA
+    is always explicitly invoked."""
     prompts = _read_json(GEN_PROMPTS_PATH)
     prompts["persona"] = persona["id"]
     look = persona.get("identity", {}).get("look")
@@ -910,7 +936,9 @@ def _generalized_gen_prompts(persona: dict) -> dict[str, Any]:
         )
     clause = _compose_look_clause(look)
     prompts["rows"] = [
-        prompts["base_clause"].format(look=clause, scene=scene)
+        _compose_triggered_prompt(
+            training, prompts["base_clause"].format(look=clause, scene=scene),
+        )
         for scene in prompts["scenes"]
     ]
     return prompts
@@ -954,7 +982,7 @@ def _gen_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
     trigger = training["trigger"]
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
-    prompts = _generalized_gen_prompts(persona)
+    prompts = _generalized_gen_prompts(persona, training)
     workflow = _gen_workflow(training, pins)
 
     models = deepcopy(pins["pins"]["gen"]["models"])
@@ -1054,6 +1082,9 @@ def _detail_manifest(
     short = _creator_output_code(creator_id)
     checkpoint_name = _checkpoint_name(trigger, chosen_step)
     workflow = _read_json(DETAIL_WORKFLOW_PATH)
+    workflow["5"]["inputs"]["text"] = _compose_triggered_prompt(
+        training, workflow["5"]["inputs"]["text"],
+    )
 
     jobs = []
     for image_index, name in enumerate(names):
