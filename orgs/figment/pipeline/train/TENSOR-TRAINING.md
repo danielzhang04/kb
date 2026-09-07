@@ -175,7 +175,16 @@ py -3 build_training_set.py --mode class \
 5. `runs/creator-001-tensor-tester.yaml` — no network volume. It uploads the 8 checkpoints the
    training run downloaded locally (`uploads` glob on `out/creator-001-tensor-train/*.safetensors`,
    same shape as the dataset upload) into `ComfyUI/input/creator001krea2`, and the launcher
-   symlinks that directory to `models/loras` (finding 12). Renders the same
+   symlinks that directory to `models/loras` (finding 12). Before the swap, ComfyUI's real
+   `models/loras` (a shipped directory, never empty) is moved aside to `models/loras.stock`
+   rather than deleted, since a harness model pin whose `destination_dir` is `models/loras`
+   (e.g. `pins.style_loras`, `pins.gen`) downloads there before this launcher runs — the
+   `gen` manifest's style-LoRA slot is exactly such a pin. `start-comfy-lorapath.sh.template`
+   copies (never moves — `.stock` stays the record of what shipped/was pinned there) every
+   `*.safetensors` out of `.stock` into the LoRA source directory after the symlink is in
+   place, skipping any name already present there so an uploaded/assembled identity
+   checkpoint is never overwritten; the shipped `put_loras_here` placeholder is not a
+   `.safetensors` file and is left behind. Renders the same
    prompt/seed/sampler/resolution 8 times with only `lora_name` varying. Operator eye-picks
    the winner (theirs, on their 3000-step/12-checkpoint run, was step 1250).
 6. Copy the winner into `runs/creator-001-tensor-winner/`, then

@@ -13,6 +13,7 @@ import re
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -284,8 +285,24 @@ def _run_lorapath_script(bash, script, *args):
     # NT junction instead of a real symlink (no elevation needed either way on
     # this host), which `Path.is_symlink()` does not recognize as one.
     env = {**os.environ, "MSYS": "winsymlinks:nativestrict"}
+    # `bash -c <script>` puts the whole rendered script on the Windows process
+    # command line, which silently truncates past ~8188 characters (a real
+    # limit hit on this host once the copy-stock-loras block was added: past
+    # it, Git Bash either raises "unexpected EOF" if the cut lands mid-quote,
+    # or drops the tail with no error at all if it lands on a clean boundary
+    # -- ComfyUI's exec then just never runs). Writing the script to a file and
+    # running `bash <file>` puts only that short path on the command line, so
+    # the script body has no length ceiling.
+    # Left in place deliberately, not cleaned up here: the lorapath template
+    # backgrounds its assembler with `&`, and Git Bash's non-native fork
+    # emulation re-execs against this same script path for that subshell, so
+    # deleting it as soon as the foreground `bash` call returns races the
+    # still-running background job off its own script file.
+    fd, script_path = tempfile.mkstemp(suffix=".sh")
+    with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:
+        f.write(script)
     return subprocess.run(
-        [bash, "-c", script, "bash", *args],
+        [bash, Path(script_path).as_posix(), *args],
         capture_output=True, text=True, check=False, env=env,
     )
 
@@ -324,6 +341,70 @@ def test_lorapath_script_moves_a_real_loras_directory_aside_and_starts_comfy(tmp
     # every decision must also reach stderr, which the harness captures into _comfy.log
     assert "real directory" in result.stderr
     assert "linked at" in result.stderr
+
+
+def test_lorapath_script_copies_stock_loras_into_the_lora_source_without_the_placeholder(
+        tmp_path):
+    """A model pin with destination models/loras (e.g. pins.style_loras / pins.gen)
+    lands its *.safetensors inside models/loras BEFORE this script runs, so it ends
+    up in ${lora_link}.stock once the symlink swap moves the real directory aside.
+    The launcher must copy every such *.safetensors into $lora_source (never move —
+    .stock keeps the record) so ComfyUI can still see it through the symlink, while
+    leaving the shipped put_loras_here placeholder behind."""
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    loras = tmp_path / "ComfyUI" / "models" / "loras"
+    loras.mkdir(parents=True)
+    (loras / "put_loras_here").write_text("", encoding="utf-8")
+    (loras / "style.safetensors").write_bytes(b"STYLE-LORA-BYTES")
+
+    result = _run_lorapath_script(bash, script)
+
+    assert result.returncode == 0, result.stderr
+    assert "MAIN_RAN:" in result.stdout, result.stdout
+
+    stock = tmp_path / "ComfyUI" / "models" / "loras.stock"
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    assert (stock / "style.safetensors").read_bytes() == b"STYLE-LORA-BYTES", \
+        "the stock copy must survive: this is a copy, not a move"
+    assert (lora_source / "style.safetensors").read_bytes() == b"STYLE-LORA-BYTES"
+    assert not (lora_source / "put_loras_here").exists(), \
+        "the shipped placeholder is not a LoRA and must not be copied"
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "copied style.safetensors" in log_text
+    assert "copied style.safetensors" in result.stderr
+
+
+def test_lorapath_script_never_overwrites_an_existing_lora_of_the_same_name(tmp_path):
+    """An uploaded/assembled identity checkpoint already at $lora_source wins over a
+    same-named file that happened to ship in ${lora_link}.stock."""
+    bash = _lorapath_git_bash()
+    if bash is None:
+        pytest.skip("git bash not available")
+    script = _render_lorapath_script(tmp_path)
+
+    loras = tmp_path / "ComfyUI" / "models" / "loras"
+    loras.mkdir(parents=True)
+    (loras / "shared.safetensors").write_bytes(b"STOCK-VERSION")
+
+    lora_source = tmp_path / "ComfyUI" / "input" / TRIGGER
+    lora_source.mkdir(parents=True)
+    (lora_source / "shared.safetensors").write_bytes(b"UPLOADED-VERSION")
+
+    result = _run_lorapath_script(bash, script)
+
+    assert result.returncode == 0, result.stderr
+    assert "MAIN_RAN:" in result.stdout, result.stdout
+    assert (lora_source / "shared.safetensors").read_bytes() == b"UPLOADED-VERSION", \
+        "an uploaded/assembled checkpoint must never be overwritten by a stock copy"
+
+    log_text = (tmp_path / "output" / "_lorapath.log").read_text(encoding="utf-8")
+    assert "already present" in log_text
+    assert "not overwriting" in log_text
 
 
 def test_lorapath_script_replaces_an_existing_symlink(tmp_path):

@@ -136,6 +136,26 @@ ln -s "$lora_source" "$lora_link" \
   || fail "lorapath: could not symlink $lora_source to $lora_link"
 log "lorapath: lora source $lora_source linked at $lora_link"
 
+# Model pins (e.g. pins.style_loras / pins.gen) write to models/loras before this
+# runs, so any such LoRA is stuck in .stock after the swap. Copy (never move,
+# so .stock stays intact) each *.safetensors into $lora_source, skipping names
+# that already exist there so an uploaded checkpoint is never overwritten.
+if [[ -d "${lora_link}.stock" ]]; then
+  shopt -s nullglob
+  for stock_lora in "${lora_link}.stock"/*.safetensors; do
+    stock_lora_name=$(basename "$stock_lora")
+    dest_lora="$lora_source/$stock_lora_name"
+    if [[ -e "$dest_lora" ]]; then
+      log "lorapath: $stock_lora_name already present at $lora_source, not overwriting"
+      continue
+    fi
+    cp "$stock_lora" "$dest_lora" \
+      || fail "lorapath: could not copy $stock_lora_name into $lora_source"
+    log "lorapath: copied $stock_lora_name into $lora_source"
+  done
+  shopt -u nullglob
+fi
+
 # Detach the background job's own stdio from this script's inherited
 # stdout/stderr: on the real pod this script's whole stdout/stderr already
 # lands in _comfy.log via the outer `bash -lc '...' >>"$COMFY_RUNTIME_LOG"
