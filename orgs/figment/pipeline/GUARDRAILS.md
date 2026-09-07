@@ -35,6 +35,16 @@ restart.
    and termination is VERIFIED via API, not assumed. A forgotten pod silently drains the
    balance.
 
+7. **The pickle-load ban (`pod/runpod_run.py` `models[]`) is narrower than "no pickle
+   loads on the pod" reads.** It covers only `manifest["models"]` downloads
+   (safetensors/onnx/tflite/json/txt/yaml/gguf allow-listed, everything else refused
+   unless the diagnostic escape hatch applies — REVIEW-2026-09-07 finding #10). It does
+   NOT cover `custom_nodes`: those clone at a pinned commit, then run `pip install -r
+   requirements.txt` on the pod — arbitrary code and unpinned wheels, no pickle-format
+   check at all. It also does NOT cover `expand_manifest_uploads` — any local file can
+   land in ComfyUI's input dir with no extension allow-list. Treat both as open surface
+   the pickle ban does not close.
+
 ## Operating norms
 
 - Research browsing (operator ruling 2026-09-03): the operator's Chrome is signed in to

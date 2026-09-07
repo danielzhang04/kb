@@ -435,6 +435,35 @@ def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path):
     assert (personas / "creator-002" / "anchors" / f"{chosen['image_id']}.png").is_file()
 
 
+def test_apply_anchor_rulings_refuses_a_keep_when_gate_row_has_no_pass_key(command, tmp_path):
+    """Finding 1 (REVIEW-2026-09-07 #1, figment_train.py apply_rulings): a gate row
+    missing its `pass` key (hand-edited, truncated write, older schema) must not
+    default to a silent PASS -- the kept row still needs an explicit `gate_override`,
+    exactly as it would for an explicit `"pass": false` row."""
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas, creator_id="creator-002")
+    out = tmp_path / "plan"
+    plan = command.build_plan("creator-002", "anchor", out, personas_root=personas, skip_pin_verify=True)
+    _fake_stage_outputs(out, plan, "anchor")
+    grade = command.build_grade("creator-002", "anchor", out / "plan.json")
+
+    gate_path = Path(grade["gate"])
+    gate_document = load_json(gate_path)
+    del gate_document["rows"][3]["pass"]
+    gate_path.write_text(json.dumps(gate_document), "utf-8")
+
+    template = load_json(Path(grade["rulings_template"]))
+    for i, row in enumerate(template["rulings"]):
+        axes = _axes()
+        if i == 3:
+            del axes["gate_override"]  # the malformed row must still require one
+        row.update(axes, decision="keep" if i == 3 else "cull", why="fixture")
+    filled = out / "filled.json"
+    filled.write_text(json.dumps(template), "utf-8")
+    with pytest.raises(command.FigmentTrainError, match="gate"):
+        command.apply_rulings("creator-002", "anchor", out / "plan.json", filled)
+
+
 def test_apply_anchor_rulings_refuses_two_keeps(command, tmp_path):
     personas = tmp_path / "personas"
     _synthetic_persona(personas, creator_id="creator-002")

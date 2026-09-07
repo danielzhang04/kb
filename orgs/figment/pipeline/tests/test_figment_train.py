@@ -596,6 +596,50 @@ def test_apply_rulings_allows_a_keep_on_a_failed_gate_cell_with_override(command
     assert len(approved["images"]) == 30
 
 
+def test_apply_rulings_refuses_when_gate_json_is_missing(command, tmp_path):
+    """Finding 2 (REVIEW-2026-09-07 #2): a deleted gate.json must not turn the
+    fail-closed gate into an advisory one -- apply_rulings refuses outright rather than
+    treating every keep as ungated."""
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-missing-file-plan")
+    Path(grade["gate"]).unlink()
+
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+            "gate_override": "would-be override, should never be reached",
+        })
+    filled = Path(grade["rulings_template"]).with_name("missing-gate.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    with pytest.raises(command.FigmentTrainError, match="gate.json"):
+        command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+
+def test_apply_rulings_refuses_when_gate_json_does_not_cover_every_graded_cell(command, tmp_path):
+    """Finding 2 (REVIEW-2026-09-07 #2): a cell absent from gate.json (e.g. a partial
+    rewrite) must not be treated as an ungated, unguarded keep."""
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-partial-coverage-plan")
+    gate_path = Path(grade["gate"])
+    gate_document = load_json(gate_path)
+    del gate_document["rows"][0]
+    gate_path.write_text(json.dumps(gate_document), encoding="utf-8")
+
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+            "gate_override": "would-be override, should never be reached",
+        })
+    filled = Path(grade["rulings_template"]).with_name("partial-coverage.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    with pytest.raises(command.FigmentTrainError, match="does not cover"):
+        command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+
 def test_gate_cli_prints_a_pass_fail_table(command, tmp_path, capsys):
     plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="gate-cli-plan")
     exit_code = command.main(["gate", "--creator", "creator-002", "--stage", "dataset", "--plan", str(plan_file)])

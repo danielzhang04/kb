@@ -16,6 +16,9 @@ persona.yaml (+ training.yaml sidecar) + anchors/*.jpg
   anchor -> dataset -> smoke -> train -> tester -> gen
         |                                      |
         `---- grade / gate / apply-rulings (per gradeable stage) ----'
+        |
+        `---- --stage all plans/runs only through tester; gen is NEVER
+              included in "all" (build_plan) -- always run it by name ----'
 ```
 
 `anchor`, `dataset`, `tester`, `gen` are gradeable — an operator eye-gate board plus written
@@ -102,9 +105,14 @@ risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
 - Arc: `ARC_CAP_USD = "50.00"` in `figment_train.py`, checked against every `figment-*.tsv`
   ledger row before a live `run`.
 - Per-stage ceilings (`--max-usd`; `train/TENSOR-TRAINING.md`'s cost table): train-smoke
-  $2.28, train $5.85, tester $2.28, gen $3.58; dataset shard $2.71/pod, ~$8.13 for 3 shards,
-  dependency smoke $1.41 (`expand/TENSOR-REPLICATION.md`). Bake-off ablation $2.65, Path-B
-  diagnostic $3.70 (STATE.md 2026-09-06).
+  $2.28, tester $2.28, gen $3.58; dataset shard $2.71/pod, ~$8.13 for 3 shards, dependency
+  smoke $1.41 (`expand/TENSOR-REPLICATION.md`). Bake-off ablation $2.65, Path-B diagnostic
+  $3.70 (STATE.md 2026-09-06). **train is not a fixed number** — `_apply_train_budget`
+  derives the ceiling from steps x the per-step rate (plus `runpod_run.minimum_runtime_
+  minutes`'s floor), so it moves with the plan's own `steps`/DOP: a real `plan` run on
+  2026-09-07 printed `steps=1250 per_step_s=9.0 max_minutes=351 ceiling_usd=$7.61` — not the
+  $5.85 an earlier plan produced. Read the ceiling off your own `plan.json`, never quote a
+  fixed figure for train.
 - Every manifest carries its own `max_minutes`/`max_placement_attempts: 1` (no automatic
   retry on a live run) and is `--dry-run` green before it ever spends.
 

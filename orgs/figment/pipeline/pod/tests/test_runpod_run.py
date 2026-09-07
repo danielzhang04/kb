@@ -1683,6 +1683,73 @@ def test_onnx_model_extension_always_allowed_without_any_ack(tmp_path):
     assert rr.manifest_pickle_models(configured) == []
 
 
+# --- Finding 4 (REVIEW-2026-09-07 #4): the pickle ban is now an ALLOW-list on the ------
+# NORMALISED filename (query string / whitespace / trailing dots stripped before the
+# extension check), so decorating a pickle suffix can no longer slip it past unnoticed,
+# and any extension off the allow-list -- not just the six named pickle formats -- is
+# refused unless the diagnostic escape hatch applies. The audit trail always records
+# the RAW, undecorated filename.
+
+
+@pytest.mark.parametrize("filename", [
+    "weights.pt?download=true",
+    "weights.pt ",
+    "weights.pt.",
+])
+def test_pickle_evasion_suffix_decorations_still_rejected_by_default(tmp_path, filename):
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "owner/repo", "filename": filename,
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+    }]
+
+    with pytest.raises(rr.HarnessError) as excinfo:
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+    assert "pickle" in str(excinfo.value) or "unrecognised extension" in str(excinfo.value)
+
+
+@pytest.mark.parametrize("filename", [
+    "weights.pt?download=true",
+    "weights.pt ",
+    "weights.pt.",
+])
+def test_pickle_evasion_suffix_decorations_allowed_with_ack_and_audit_trail_keeps_raw_filename(
+    tmp_path, filename,
+):
+    configured = manifest()
+    configured["models"] = [{
+        "repo_id": "owner/repo", "filename": filename,
+        "destination_dir": "/workspace/ComfyUI/models/checkpoints",
+        "pickle_ack": "Path-B diagnostic, research-only, r25",
+    }]
+    configured["diagnostic_non_commercial"] = True
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")  # does not raise
+
+    # the audit trail (run.json's pickle_models, via manifest_pickle_models) must
+    # record the RAW filename exactly as given, never a normalised/stripped version.
+    assert rr.manifest_pickle_models(configured) == [filename]
+
+
+@pytest.mark.parametrize("ext", [".txt", ".yaml", ".gguf"])
+def test_newly_allow_listed_model_extensions_require_no_ack(tmp_path, ext):
+    configured = _pickle_model_manifest(ext=ext)
+
+    rr.require_manifest(configured, tmp_path / "manifest.yaml")  # does not raise
+
+    assert rr.manifest_pickle_models(configured) == []
+
+
+def test_an_unrecognised_extension_off_the_allow_list_is_rejected_by_default(tmp_path):
+    """The rule used to be a pure deny-list -- any extension that wasn't one of the six
+    named pickle formats was silently let through. It is now an allow-list: an
+    unrelated, unrecognised extension (e.g. an executable) is refused too."""
+    configured = _pickle_model_manifest(ext=".exe")
+
+    with pytest.raises(rr.HarnessError, match="unrecognised extension"):
+        rr.require_manifest(configured, tmp_path / "manifest.yaml")
+
+
 def test_bootstrap_script_logs_a_pickle_warning_before_the_diagnostic_model_download():
     configured = _pickle_model_manifest(
         ack="Path-B diagnostic, research-only, r25", diagnostic=True,

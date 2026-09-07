@@ -614,6 +614,64 @@ def test_run_calibrate_writes_json_and_md(gate_module, tmp_path, monkeypatch):
     assert "Proposed thresholds" in md_text
 
 
+def test_run_calibrate_accepts_a_real_yaml_persona_file_not_just_json(
+    gate_module, tmp_path, monkeypatch,
+):
+    """Finding 12 (REVIEW-2026-09-07 #12, nit): run_calibrate used json.loads on
+    persona.yaml -- works only because today's personas happen to be JSON-formatted.
+    `training_config.load_persona_with_training` accepts real YAML; prefer
+    yaml.safe_load here too."""
+    persona_dir = tmp_path / "creator-xyz"
+    _png(persona_dir / "anchors", "g01.png")
+    (persona_dir / "persona.yaml").write_text(
+        "# a real YAML comment json.loads cannot parse\n"
+        "id: creator-xyz\n"
+        "identity:\n"
+        "  references:\n"
+        "    - anchors/g01.png\n",
+        encoding="utf-8",
+    )
+
+    def fake_score_cells_for_stage(images, anchors, *, own_anchor, models=None):
+        return [{
+            "image_id": item["image_id"], "identity_own": 0.9, "identity_max": 0.9,
+            "age_value": 21.0, "age_anchor": 21.0, "age_delta": 0.1, "gloss": 0.01,
+            "niqe": 1.0, "laplacian_variance": 400.0, "face_px": 700, "unavailable": {},
+        } for item in images]
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", fake_score_cells_for_stage)
+    out = tmp_path / "out"
+    result = gate_module.run_calibrate(
+        "creator-xyz", {"anchors": persona_dir / "anchors"}, out, personas_root=tmp_path,
+    )
+    assert Path(result["json"]).is_file()
+
+
+def test_run_gate_accepts_a_real_yaml_persona_file_not_just_json(gate_module, tmp_path, monkeypatch):
+    """Finding 12 (REVIEW-2026-09-07 #12, nit): companion to the run_calibrate test
+    above, for run_gate's own persona load."""
+    persona_dir = tmp_path / "creator-xyz"
+    _png(persona_dir / "anchors", "g01.png")
+    (persona_dir / "persona.yaml").write_text(
+        "# a real YAML comment json.loads cannot parse\n"
+        "id: creator-xyz\n"
+        "identity:\n"
+        "  references:\n"
+        "    - anchors/g01.png\n",
+        encoding="utf-8",
+    )
+    batch_dir = tmp_path / "batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(gate_module)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    out = tmp_path / "gate-out"
+    result = gate_module.run_gate("creator-xyz", [str(batch_dir)], out, personas_root=tmp_path)
+    assert Path(result["gate"]).is_file()
+
+
 # ---------------------------------------------------------------------------
 # run_gate / `identity_gate.py run` -- the plan-independent CLI: gate ANY image set
 # (a bake-off run dir, a batch folder, a glob) against one persona, exactly the way
@@ -680,6 +738,37 @@ def test_resolve_images_accepts_a_directory_and_a_glob_deduplicated(gate_module,
     resolved = gate_module._resolve_images([str(directory), str(other / "*.png"), str(directory)])
     names = sorted(path.name for path in resolved)
     assert names == ["a.png", "b.jpg", "c.png"]
+
+
+def test_default_gate_workers_matches_vlm_judge_default_workers(gate_module):
+    """Finding 3 (REVIEW-2026-09-07 #3): the 2026-09-07 judge-concurrency-incident fix
+    lowered vlm_judge.DEFAULT_WORKERS to 2 after 4 concurrent CLIs timed out 16/18 rows;
+    identity_gate.py must not restore the old 4-worker condition on the path every
+    `grade` run and `identity_gate.py run` actually use -- one source, not a copy."""
+    vlm_judge = gate_module._vlm_judge_module()
+    assert gate_module.DEFAULT_GATE_WORKERS == vlm_judge.DEFAULT_WORKERS
+
+
+def test_run_two_stage_gate_raises_on_duplicate_image_ids(gate_module, tmp_path, monkeypatch):
+    """Finding 5 (REVIEW-2026-09-07 #5): two cells sharing the same image_id (a
+    duplicate stem across two shard dirs, or two different extensions of the same
+    stem) must never silently cross-assign one judge verdict to both cells --
+    run_two_stage_gate refuses the whole gate run instead of gating one cell on the
+    other's judgement."""
+    persona = _synthetic_persona(tmp_path)
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(gate_module)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    anchors = [Path(persona["_persona_path"]).parent / "anchors" / "g01.png"]
+    a_png = _png(tmp_path / "shard-a", "cell.png")
+    b_png = _png(tmp_path / "shard-b", "cell.png")
+    images = [
+        {"image_id": "cell", "path": str(a_png)},
+        {"image_id": "cell", "path": str(b_png)},
+    ]
+    with pytest.raises(gate_module.IdentityGateError, match="duplicate image_id"):
+        gate_module.run_two_stage_gate(lambda: persona, anchors, images, tmp_path / "out")
 
 
 def test_run_gate_writes_gate_json_matching_the_figment_gate_schema(gate_module, tmp_path, monkeypatch):

@@ -281,7 +281,12 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
     return {"pass": not reasons, "reasons": reasons}
 
 
-DEFAULT_GATE_WORKERS = 4
+# REVIEW-2026-09-07 finding #3: `vlm_judge.py`'s `DEFAULT_WORKERS` was lowered to 2
+# after the 2026-09-07 incident where 4 concurrent `claude` CLIs timed out 16/18 rows;
+# this used to hardcode its own `= 4`, silently restoring the pre-incident condition on
+# every `grade` run and the `identity_gate.py run` CLI (both pass this straight to
+# `judge_images_for_stage`). One source now, not a copy that can drift again.
+DEFAULT_GATE_WORKERS = _vlm_judge_module().DEFAULT_WORKERS
 
 
 def run_two_stage_gate(
@@ -316,6 +321,19 @@ def run_two_stage_gate(
     function's own default model is used unchanged -- `build_grade`'s callers never
     pass this, so their behaviour is identical to before this function existed."""
     anchors_by_stem = {path.stem: path for path in anchors}
+    # REVIEW-2026-09-07 finding #5: judge rows are keyed by image_id = path.stem, but
+    # `_resolve_images` de-duplicates by PATH, not stem -- a shared stem across two
+    # shard dirs (or two extensions of the same stem) would collapse in `judge_by_id`
+    # and silently gate the second cell on the FIRST cell's judgement.
+    # `apply_rulings` already rejects duplicate ids; this is the setup-error class the
+    # gate itself must refuse fast on too (see this function's own docstring, "setup
+    # errors the CLI should refuse fast on"), not paper over with a fail-closed doc.
+    ids = [image["image_id"] for image in images]
+    if len(set(ids)) != len(ids):
+        raise IdentityGateError(
+            f"duplicate image_id in the gate image set: "
+            f"{sorted(set(i for i in ids if ids.count(i) > 1))}"
+        )
     own_anchor = anchors[0].stem if anchors else None
     thresholds: dict[str, Any] = {}
     judge_thresholds: dict[str, Any] = {}
@@ -1351,7 +1369,11 @@ def run_calibrate(
     creator_id: str, sets: dict[str, Path], out: Path, *, personas_root: Path,
 ) -> dict[str, str]:
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
-    persona = json.loads(persona_path.read_text(encoding="utf-8"))
+    # yaml.safe_load, not json.loads (REVIEW-2026-09-07 finding #12, nit): persona.yaml
+    # is YAML -- json.loads only worked because today's personas happen to be
+    # JSON-formatted, same as training_config.load_persona_with_training already reads
+    # it. JSON is a YAML subset, so this is not a behaviour change for existing files.
+    persona = yaml.safe_load(persona_path.read_text(encoding="utf-8"))
     persona["_persona_path"] = str(persona_path)
     calibration = calibrate(persona, sets)
     out = Path(out)
@@ -1401,7 +1423,11 @@ def run_gate(
     persona_path = Path(personas_root) / creator_id / "persona.yaml"
     if not persona_path.is_file():
         raise IdentityGateError(f"persona not found: {persona_path}")
-    persona = json.loads(persona_path.read_text(encoding="utf-8"))
+    # yaml.safe_load, not json.loads (REVIEW-2026-09-07 finding #12, nit): persona.yaml
+    # is YAML -- json.loads only worked because today's personas happen to be
+    # JSON-formatted, same as training_config.load_persona_with_training already reads
+    # it. JSON is a YAML subset, so this is not a behaviour change for existing files.
+    persona = yaml.safe_load(persona_path.read_text(encoding="utf-8"))
     persona["_persona_path"] = str(persona_path)
     persona_dir = persona_path.parent
     references = persona["identity"]["references"]
@@ -1534,13 +1560,12 @@ def main(argv: list[str] | None = None) -> int:
         if not persona_path.is_file():
             print(f"identity-gate error: persona not found: {persona_path}", file=sys.stderr)
             return 2
-        persona = json.loads(persona_path.read_text(encoding="utf-8"))
-        persona["_persona_path"] = str(persona_path)
+        # REVIEW-2026-09-07 finding #12 (nit): this used to also `json.loads` the
+        # persona and compute an `anchor_sets` dict here -- dead code, never used
+        # (run_calibrate below re-resolves the persona itself and never receives
+        # anchor_sets as an argument). `persona_dir` needs only the path, not the
+        # persona's own content, so the load is gone, not converted to yaml.safe_load.
         persona_dir = persona_path.parent
-        anchor_sets = {
-            Path(reference).stem: (persona_dir / reference).resolve()
-            for reference in persona["identity"]["references"]
-        }
         sets: dict[str, Path] = {"anchors": persona_dir / "anchors"}
         sets.update({name: Path(path) for name, path in args.sets})
         start = time.time()

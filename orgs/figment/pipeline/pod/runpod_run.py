@@ -51,7 +51,12 @@ ARTIFACT_EXTENSIONS = {".safetensors", ".json", ".txt", ".log"}
 # (torch.load/pickle.load under the hood) executes arbitrary code on load regardless of
 # the weights' own licence -- project policy (GUARDRAILS.md; r20/r22 precedent: the
 # FaceDetailer face_yolov8m.pt/sam_vit_b_01ec64.pth and facenet-pytorch rejections) is
-# safetensors/onnx/tflite/json only. See manifest_pickle_models / _model_pickle_filename.
+# safetensors/onnx/tflite/json/txt/yaml/gguf only (ALLOWED_MODEL_EXTENSIONS). See
+# manifest_pickle_models / _model_pickle_filename. SCOPE LIMIT (REVIEW-2026-09-07
+# finding #10, see also GUARDRAILS.md hard line 7): this covers models[] ONLY --
+# custom_nodes clones + `pip install -r requirements.txt` on the pod (arbitrary code,
+# unpinned wheels, no pickle check) and expand_manifest_uploads (no extension
+# allow-list) are both outside this ban.
 PICKLE_MODEL_EXTENSIONS = {".pt", ".pth", ".ckpt", ".bin", ".pkl", ".pickle"}
 UPLOAD_EXTENSIONS = {
     ".png", ".jpg", ".jpeg", ".webp", ".txt", ".toml", ".json",
@@ -1598,31 +1603,57 @@ def model_sha256(model: dict[str, Any]) -> str | None:
     return digest.lower()
 
 
-def _model_pickle_filename(model: dict[str, Any], manifest: dict[str, Any]) -> str | None:
-    """Enforce the pickle-load ban on one models[] entry.
+# REVIEW-2026-09-07 finding #4: models[] permits these extensions with NO ack required
+# -- an ALLOW-list, checked against the NORMALISED filename (`_normalize_model_
+# filename`), so decorating a pickle suffix (a trailing query string, trailing
+# whitespace, a trailing dot) can no longer slip an actually-pickle file past a
+# raw-suffix check. Anything off this list -- a classic pickle extension or any other
+# unrecognised one alike -- needs the diagnostic escape hatch below.
+ALLOWED_MODEL_EXTENSIONS = {".safetensors", ".onnx", ".tflite", ".json", ".txt", ".yaml", ".gguf"}
 
-    Returns the model's filename when it uses a pickle-format extension AND the manifest
-    carries the diagnostic escape hatch (top-level ``diagnostic_non_commercial: true`` plus
-    this model's own non-empty ``pickle_ack`` reason string) -- the caller then knows to log
-    a WARNING for it. Returns None for anything else, including ``.onnx`` (always allowed,
-    no ack required). Raises HarnessError for a pickle-format model missing either half of
-    the escape hatch.
+
+def _normalize_model_filename(filename: str) -> str:
+    """`filename` with surrounding whitespace stripped, a trailing `?query=string` cut
+    off, and trailing dots stripped -- the exact three tricks that let a decorated
+    pickle suffix (`model.pt?download=true`, `model.pt ` with a trailing space, `x.pt.`
+    with a trailing dot) slip past a raw `PurePosixPath(...).suffix` check. Used ONLY to
+    determine the file's real extension for the allow-list test below; the filename
+    returned/audited downstream (`manifest_pickle_models`, `run.json`'s own
+    `pickle_models`) is always the untouched RAW string, never this normalised one."""
+    return filename.strip().split("?", 1)[0].rstrip(". ")
+
+
+def _model_pickle_filename(model: dict[str, Any], manifest: dict[str, Any]) -> str | None:
+    """Enforce the pickle-load ban on one models[] entry via an ALLOW-list on the
+    extension of the NORMALISED filename (`_normalize_model_filename`).
+
+    Returns None when the normalised extension is on `ALLOWED_MODEL_EXTENSIONS`
+    (safetensors/onnx/tflite/json/txt/yaml/gguf) -- no ack required. Returns the
+    model's RAW filename (never the normalised one -- the audit trail records exactly
+    what the manifest said) for anything else -- a classic pickle extension or an
+    unrecognised one alike -- when the manifest carries the diagnostic escape hatch
+    (top-level ``diagnostic_non_commercial: true`` plus this model's own non-empty
+    ``pickle_ack`` reason string) -- the caller then knows to log a WARNING for it.
+    Raises HarnessError for anything off the allow-list missing either half of the
+    escape hatch.
     """
     filename = str(model.get("filename", ""))
-    ext = PurePosixPath(filename).suffix.lower()
-    if ext not in PICKLE_MODEL_EXTENSIONS:
+    ext = PurePosixPath(_normalize_model_filename(filename)).suffix.lower()
+    if ext in ALLOWED_MODEL_EXTENSIONS:
         return None
     pickle_ack = model.get("pickle_ack")
     ack_ok = isinstance(pickle_ack, str) and pickle_ack.strip() != ""
     diagnostic_ok = manifest.get("diagnostic_non_commercial") is True
     if diagnostic_ok and ack_ok:
         return filename
+    known_pickle = "disallowed pickle extension" if ext in PICKLE_MODEL_EXTENSIONS else "unrecognised extension"
     raise HarnessError(
-        f"model {filename!r} uses a disallowed pickle extension ({ext}); models[] "
+        f"model {filename!r} uses a {known_pickle} ({ext or '<none>'}); models[] "
         "downloads are pulled onto the pod and loaded there, and only safetensors/onnx/"
-        "tflite/json are permitted (GUARDRAILS.md; r20/r22 precedent bans .pt/.pth/.ckpt/"
-        ".bin/.pkl/.pickle as arbitrary-code-execution risk regardless of licence); to "
-        "allow this file as a diagnostic-only exception, set the manifest's top-level "
+        "tflite/json/txt/yaml/gguf are permitted (GUARDRAILS.md; r20/r22 precedent bans "
+        ".pt/.pth/.ckpt/.bin/.pkl/.pickle as arbitrary-code-execution risk regardless of "
+        "licence, and any other off-list extension is treated the same way); to allow "
+        "this file as a diagnostic-only exception, set the manifest's top-level "
         "diagnostic_non_commercial: true AND this model's pickle_ack: \"<reason>\""
     )
 

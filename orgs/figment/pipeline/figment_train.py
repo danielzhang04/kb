@@ -2176,13 +2176,25 @@ def apply_rulings(
 
     # Operator ruling 2026-09-03: a cell the fail-closed identity/age/realism gate
     # marked FAIL can never be kept silently -- the ruling must carry an explicit,
-    # non-empty "gate_override" reason. Absent gate.json (a grade dir predating this
-    # wiring) is tolerated -- there is no gate verdict to enforce -- but an explicit
-    # `"pass": false` row always blocks a bare keep.
+    # non-empty "gate_override" reason. REVIEW-2026-09-07 findings #1/#2: this must be
+    # fail-CLOSED, not fail-open. `build_grade` always writes a gate.json beside
+    # board.html, so a missing file means the gate was bypassed (deleted, never run),
+    # not that this grade dir predates the wiring -- refuse rather than tolerate it.
+    # Every graded image id must be covered by gate.json (a partial rewrite must not
+    # silently ungate a cell), and a gate row missing its own "pass" key (hand-edited,
+    # truncated write, older schema) is treated exactly like an explicit
+    # `"pass": false` row -- never defaulted to a silent PASS.
     gate_path = grade_dir / "gate.json"
-    gate_by_id: dict[str, dict[str, Any]] = {}
-    if gate_path.is_file():
-        gate_by_id = {row["image_id"]: row for row in _read_json(gate_path).get("rows", [])}
+    if not gate_path.is_file():
+        raise FigmentTrainError(
+            f"no gate.json at {gate_path}; run `figment_train.py grade` before apply-rulings"
+        )
+    gate_by_id: dict[str, dict[str, Any]] = {
+        row["image_id"]: row for row in _read_json(gate_path).get("rows", [])
+    }
+    ungated = [image_id for image_id in image_ids if image_id not in gate_by_id]
+    if ungated:
+        raise FigmentTrainError(f"gate.json does not cover every graded cell: {ungated}")
 
     review = deepcopy(grading)
     try:
@@ -2195,7 +2207,7 @@ def apply_rulings(
         ruling = ruling_by_id[row["image_id"]]
         if ruling["decision"] == "keep":
             gate_row = gate_by_id.get(row["image_id"])
-            if gate_row is not None and not gate_row.get("pass", True):
+            if gate_row is None or gate_row.get("pass") is not True:
                 override = ruling.get("gate_override")
                 if not isinstance(override, str) or not override.strip():
                     raise FigmentTrainError(
