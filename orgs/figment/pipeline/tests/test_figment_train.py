@@ -94,9 +94,64 @@ def test_creator001_every_planned_stage_dry_runs_clean_and_pins_verify(
             )
             assert result.returncode == 0, result.stdout + result.stderr
 
-    assert load_json(out / "expand" / "workflows" / "tensor_dataset_v2_api.json") == load_json(
-        PIPELINE / "expand" / "workflows" / "tensor_dataset_v2_api.json"
-    )
+    # Since 09faa490 the copied dataset workflow is persona-GENERALIZED, not a byte
+    # copy of the static template -- `_generalized_dataset_workflow` composes nodes
+    # 800 (face identity) and 780 (body identity) from the persona's own
+    # `identity.look` (`_compose_look_clause` joins all eight look fields into one
+    # clause, used unchanged for both face and body). Byte equality is wrong by
+    # design now; instead prove the copy is (a) structurally the same graph as the
+    # static template, (b) unchanged on every field the composer isn't supposed to
+    # touch, and (c) actually carries creator-001's own words with no cross-persona
+    # leak -- while (d) confirming the two other prompt nodes on this same workflow
+    # (174/676, substituted per-job by `_dataset_jobs`/`_anchor_manifests`, never by
+    # `_generalized_dataset_workflow`) stay genuine structural placeholders, in both
+    # the static template and the generated copy, carrying no persona look words at
+    # all.
+    generated_workflow = load_json(out / "expand" / "workflows" / "tensor_dataset_v2_api.json")
+    static_workflow = load_json(PIPELINE / "expand" / "workflows" / "tensor_dataset_v2_api.json")
+
+    # (a) same node ids and class_types as the static template.
+    assert set(generated_workflow) == set(static_workflow)
+    for node_id, node in static_workflow.items():
+        assert generated_workflow[node_id]["class_type"] == node["class_type"], node_id
+
+    # (b) every non-persona input identical to the static template. The only fields
+    # `_generalized_dataset_workflow` is allowed to overwrite: the two reference-image
+    # uploads (836/837), the composed identity text (800/780), and the output
+    # filename_prefix (832).
+    persona_varying = {
+        ("836", "image"), ("837", "image"),
+        ("800", "text"), ("780", "text"),
+        ("832", "filename_prefix"),
+    }
+    for node_id, node in static_workflow.items():
+        generated_inputs = generated_workflow[node_id]["inputs"]
+        assert set(generated_inputs) == set(node["inputs"]), node_id
+        for field, value in node["inputs"].items():
+            if (node_id, field) in persona_varying:
+                continue
+            assert generated_inputs[field] == value, (node_id, field)
+
+    # (c) the two identity nodes the composer actually populates (800 face, 780 body)
+    # carry creator-001's own look words and never creator-002's -- proving
+    # `identity.look` drove the substitution and nothing cross-persona leaked in.
+    creator001_words = ("jet-black", "dark brown eyes")
+    creator002_words = ("chestnut-brown", "hazel")
+    for node_id in ("800", "780"):
+        text = generated_workflow[node_id]["inputs"]["text"]
+        for word in creator001_words:
+            assert word in text, (node_id, word)
+        for word in creator002_words:
+            assert word not in text, (node_id, word)
+
+    # (d) the two prompt nodes that stay per-job placeholders (174 face-angle, 676
+    # body-pose) are structural only -- no persona look words at all, in either the
+    # static template or the generated copy.
+    for node_id in ("174", "676"):
+        for source in (static_workflow, generated_workflow):
+            text = source[node_id]["inputs"]["prompt"]
+            for word in creator001_words + creator002_words:
+                assert word not in text, (node_id, word)
 
 
 def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_path):
