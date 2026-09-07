@@ -248,3 +248,15 @@ final values.
 - Building: train-first — `train/select_training_cells.py` (anchors + judge-passing cells), DOP flag in training.yaml /
   render_aitoolkit_config, `train-first` plan stage.
 - Spend 2026-09-06: $2.83. Ops handoff `handoffs/2026-09-07-figment-track2-gate-bakeoff.md`.
+
+## 2026-09-07 05:40 — bake-off m1 judged: edit-model path exhausted; train-first DOP LoRA running
+
+- Full judge table (after the judge path fix bc24f5b2): arm A same_person 61 / skin 34, arm B 59 / 45 (facenet 0.897),
+  arm C 58.5 / 41.5; age Δ 0 everywhere. "Waxy over-smoothed skin, painted-on blush" on nearly every cell. Worse than
+  the Track-1 Lightning dataset (78). Verdict in `pipeline/expand/bakeoff/m1-RESULTS.md`: Qwen/klein edit methods are
+  exhausted for identity (six runs); skin LoRA harms identity; multi-ref only moves facenet.
+- Host incident 03:00–04:00: judge CLI under bypassPermissions ran `find /` ×14 + 137 stale bash → 99% CPU; fixed
+  (default permission mode, Read-only tools, absolute paths); memory `headless-judge-host-overload`.
+- Train-first launched 05:15 (pod placed): 23 images (anchors + 20 judge-passing cells), DOP on (class "woman",
+  ×1.0), 1250 steps, save 250, ceiling $5.85. Tester + judge follow; then gen/detail with the best checkpoint.
+- Building: train-first folded into the single plan schema (so `run` drives it); slim `pipeline/README.md`.
