@@ -1,6 +1,13 @@
-# DRAFT — Phase 0 execution-generation fence
+# DRAFT — Phase 0 execution-generation fence (Slice 1A technical plan READY)
 
-Status: **planning only; not approved for implementation; Phase 0 is not complete**.
+Status: **Slice 1A technical plan READY under root's existing implementation authorization; Slice 1B and
+Packages 2-4 remain gated; the full plan is not approved and Phase 0 is not complete**.
+
+Review note (2026-09-06): Daniel's “Okay continue” resumed work after the prior bounded stop. The resumed
+cycle's initial review found one P2 acceptance omission: the held-worktree-add case covered sparse checkout
+but not the default full checkout branch. The plan now parameterizes both branches, and the final
+independent recheck returned READY with zero findings. No test result is claimed here beyond root's supplied
+Slice 1A baseline: `adapters.test.ts` plus `spendGrantProvision.test.ts`, 2 files / 40 tests passed.
 
 This draft describes the smallest coherent fence for execution wiring that has been withdrawn by Lock.
 It does not claim cancellation, rollback, or exactly-once effects. Its safety claim is narrower and
@@ -104,10 +111,10 @@ forward hop or control-store projection occurs unless it is still current.
 | Control-store mutations | Manager successor, transitions, requests, events, iteration requests, and finalization throughout `execution.ts`, including `execution.ts:1183-1246`, `execution.ts:1403-1409`, and `execution.ts:2398-2428` | Gate every mutation. Reads may continue only to select cleanup or return the withdrawn settlement. No human request or lifecycle projection is cleanup. |
 | `managers.ensure` | `execution.ts:1199-1224` | Check before invocation and after await. The production adapter is metadata-only today, but it remains an async port and must be fenced before a future implementation can add work. An already-issued completion cannot call `onManagerStarted` or transition state. |
 | `results.lookup`, `results.resolveBase`, `results.integrate` | `execution.ts:1322-1327`, `execution.ts:1380-1385`, `execution.ts:1462-1471`, `execution.ts:2164-2211`, `execution.ts:2412-2428` | Check before each call and after await. `lookup` is not assumed read-only because it can advance an incomplete canonical saga. Its internal mutating hops use the canonical rules below. |
-| `worktrees.ensure` | `execution.ts:2214-2217` | Check immediately before Git/FS provisioning and after await. It is a forward effect and may not start after revocation. |
+| `worktrees.ensure` | outer call at `execution.ts:2214-2217`; implementation at `adapters.ts:345-417` | The outer check is only the first check. Inside `createGitWorktreeAdapter`, check before hooks-directory creation, attempt-directory creation/chmod, every `runner.run` reached through `verify`, worktree add, each sparse init/set/checkout command, and the post-command chmod group. In particular, revocation while worktree-add is pending must make the commands at `adapters.ts:408-410` and verification at `adapters.ts:417` stay uninvoked. |
 | `skills.resolve` | `execution.ts:2218-2224` | Check before and after the port even though the current use is policy resolution; no boundary may be created from an old result. |
-| `accounting.reserve` | `execution.ts:2226-2241` | Check before reserve and after await. A reservation issued before revocation may be released exactly once through its existing `settle:<attemptRef>` key; no worker or grant may follow it. |
-| `provisionSpendGrant` | `execution.ts:2252-2268` | Check immediately before the grant-file/budget effect and after await. A grant must never be minted by a revoked generation. An issued grant is retained as an opaque receipt for explicit recovery; it does not authorize worker admission. |
+| `accounting.reserve` | `execution.ts:2226-2241`; implementation at `adapters.ts:815-909` | Check before reserve and after await. The already-issued, single atomic reserve transaction may finish after revocation; a committed reservation may then be released exactly once through its existing `settle:<attemptRef>` cleanup key. No worker or grant may follow it. |
+| `provisionSpendGrant` | outer call at `execution.ts:2252-2268`; mint/write workflow at `spendGrantProvision.ts:87-140` | Check before mint and immediately after mint resolves/before the distinct token-file write at `spendGrantProvision.ts:131-132`. The already-issued mint transaction may finish after revocation, but no capability file or worker may follow. Its raw token is discarded in memory and is never attached to an error, log, withdrawal result, or recovery metadata. |
 | `workers.begin` and attempt session start | `execution.ts:2270-2307`; `attemptSessionAdapter.ts:1021-1069` | Check before `workers.begin` and before `startRunSession`, then after start before any prompt reservation. Lock durably cancels active operation keys and closes/drains their sessions. |
 | `host.write` / `host.endInput` | `attemptSessionAdapter.ts:1073-1139` | Check before every invocation. An already-issued write may complete and be receipted, but no later prompt or EOF is issued. An ambiguous write remains claimed for reconciliation. |
 | `accounting.settle` | `execution.ts:2314-2354` | A settle already admitted before revocation may finish under its same operation key. After revocation, only the zero-usage release of a reservation that was itself issued before revocation is newly admissible cleanup; no second ceiling/retry call is automatic. |
@@ -122,9 +129,86 @@ lineage-committed -> canonical-intent -> canonical-committed`
 (`dashboard/server/control/canonicalResultIntegrator.ts:856-991`). No replacement saga or broad
 `runPhase` lease is proposed.
 
+### Analogous inner-helper audit
+
+The port table is an invocation map, not a claim that an outer guard covers an async implementation:
+
+- `createGitWorktreeAdapter.ensure` has multiple new Git invocations after the awaited worktree-add
+  (`dashboard/server/control/adapters.ts:405-417`), and `verify` itself has three serial awaited Git calls
+  (`adapters.ts:355-365`). Existing-path ensure and `inspect` also enter that helper before later Git work
+  (`adapters.ts:378-385`, `adapters.ts:420-431`). These need checks inside the adapter. `remove` is a
+  separate one-call cleanup authority at `adapters.ts:451-468`; it must not share a blanket revoked-
+  forward guard.
+- Spend-grant provision awaits durable mint and then performs a distinct synchronous capability-file write
+  (`dashboard/server/control/spendGrantProvision.ts:111-140`). Mint is one already-issued atomic transaction;
+  the necessary new inner boundary is immediately after that await and before `writeGrantFile`. No change
+  to `SpendGrantStore.mint` or the atomic-document primitive is proposed.
+- Accounting reserve is likewise one already-issued atomic port transaction. Its outer post-await check
+  prevents grant/worker continuation; accounting settle is the explicitly named same-key receipt/cleanup
+  operation. No accounting or `AtomicJsonDocument` redesign is proposed.
+- Canonical `lookup`/`integrate` serialize behind a process-local tail before executing the saga
+  (`canonicalResultIntegrator.ts:1114-1125`). The saga must check when the queued callback actually starts
+  and again at each Git/publisher hop, not rely on the earlier engine call.
+- Attempt startup already decomposes its real awaits into session start, cancellation checks, prompt
+  reservations, prompt writes, and EOF (`attemptSessionAdapter.ts:954-1139`). The proposed message claim
+  is one durable issued transaction: if it completes after revocation it leaves messages `claimed`, not
+  deleted, and no later session/prompt hop is admitted.
+- Current Manager ensure and curated skill resolution contain no inner await/effect chain
+  (`managedExecution.ts:68-78`, `adapters.ts:1067-1077`). They still retain the outer checks so later
+  implementations cannot silently widen the contract.
+- Worker cancellation's post-await registry call is part of the explicitly permitted cleanup sequence
+  (`managedExecution.ts:121-125`). Fleet ledger is the only deliberately admitted whole-unit lease; every
+  other multi-hop helper above is checked between its hops.
+
 ## Four bounded implementation packages
 
-### Package 1 — lifetime identity and engine state projection
+### Package 1 — deep admission seams, then lifetime identity
+
+#### Slice 1A — compatibility-preserving dormant seams (first implementation slice)
+
+Files:
+
+- `dashboard/server/control/adapters.ts` and `adapters.test.ts`;
+- `dashboard/server/control/spendGrantProvision.ts` and `spendGrantProvision.test.ts`.
+
+Add an optional, default-no-op forward-admission callback to the Git worktree adapter and spend-grant
+provision dependencies. `createGitWorktreeAdapter` invokes it at every inner forward FS/Git boundary named
+above; `remove` remains on its distinct cleanup path. Spend-grant provision checks it before mint, passes
+no callback into the grant store, and checks again after mint/before the token-file write. Existing
+constructors omit the callbacks, so production behavior and public types remain byte-for-byte compatible.
+This slice adds no lifetime object, does not bind the callbacks in activation, and does not expose
+`AutomaticExecutionSettlement` to routes.
+
+Slice 1A acceptance is exact:
+
+- With admission current, all existing adapter and spend-grant tests remain green and command/write order
+  is unchanged.
+- Parameterize the held-worktree-add case over `sparseReadScope: false` (the default full
+  `worktree add --detach` path at `adapters.ts:413-417`) and `sparseReadScope: true` (the path at
+  `adapters.ts:405-411`). Revoke before the issued add resolves. Both cases assert one add invocation and
+  zero post-add chmod or verification; the sparse case additionally asserts zero sparse-init, sparse-set,
+  or checkout invocations.
+- With the first `verify` runner held in existing-tree ensure and in inspect, revocation before resolution
+  leaves every later verification/status runner count zero.
+- With admission already revoked at adapter entry, hooks-dir creation, attempt-dir creation/chmod, Git
+  runner, grant mint, and token-file writer counts are all zero. `remove` remains independently callable
+  only through its cleanup test.
+- With the mint promise held, revocation before it resolves permits exactly one already-issued mint
+  completion but leaves the token-file writer count zero. Workers are outside Slice 1A, so this test makes
+  no worker-admission claim. The assertion also proves the raw token appears in no thrown error, log,
+  callback metadata, or withdrawal value.
+
+The production-reachable tests use delayed runner/minter promises matching the real subprocess and mint
+awaits. A helper-only boolean test is insufficient.
+
+Slice 1A limitation: it is dormant infrastructure, not a safety claim. It does not revoke anything in
+production. A mint that finishes after revocation leaves the existing live, tokenless grant until its
+bounded TTL expires. The current provisioner silently treats `already-live` as a no-op, so Package 3 must
+turn this tokenless case into a named refusal and prove no worker starts. Slice 1A does not invent a grant-
+revocation API or persist the raw token. It may be built and tested independently because omitting its
+optional callbacks preserves current behavior. It must not be described as completing F02 or Phase 0.
+
+#### Slice 1B — lifetime identity and engine projection (not independently activated)
 
 Files:
 
@@ -142,6 +226,11 @@ abstraction. Run cleanup in `finally` remains allowed, but it cannot write new c
 The wrapper races engine completion against revocation, observes the losing promise, and suppresses
 terminal ledger admission for a withdrawn lifetime. The retired lifetime, attempt-host drain, and any
 already-issued tracked effect jointly block construction of replacement wiring.
+
+Slice 1B is not a standalone production slice: it is reviewed and integrated atomically with Packages
+2-4 so revocation cannot reach unchanged callers, partially fenced ports, or the current destructive
+message drain. No PR may bind the dormant Slice 1A callbacks or return a withdrawn settlement until all
+three packages compile and their integration acceptance is green.
 
 ### Package 2 — activation acknowledgement and detached caller settlement
 
@@ -168,6 +257,9 @@ Files:
 - `dashboard/server/control/attemptSessionAdapter.ts` and its tests;
 - `dashboard/server/control/canonicalResultIntegrator.ts` and its tests;
 - `dashboard/server/control/queueBridge.ts` and its ledger tests;
+- `dashboard/server/control/adapters.ts` and `adapters.test.ts` to bind/test the Slice 1A worktree inner
+  checks and accounting post-await handling;
+- `dashboard/server/control/spendGrantProvision.ts` and its tests to bind the Slice 1A post-mint check;
 - only the minimal activation wiring needed to pass the lifetime admission callback.
 
 Add explicit admission callbacks at every port/hop in the table above. On drain,
@@ -215,19 +307,30 @@ the old call is in flight:
    `worktrees.ensure`, `accounting.reserve`, or `provisionSpendGrant`. Assert each old-generation port
    invocation count remains zero. Pause each port after a valid pre-Lock invocation, then revoke and
    release it; assert no next hop or control-store projection occurs.
-4. Pause `startRunSession`, Lock, then return a successful start. Assert the session is closed/cancelled,
+4. Parameterize worktree ensure over the default full path (`sparseReadScope: false`) and sparse path
+   (`sparseReadScope: true`), pause each path's `git worktree add`, Lock, then release. Both assert exactly
+   one issued add and zero post-add chmod or verification; sparse additionally asserts zero init/set/
+   checkout invocations. Repeat at the first inner `verify` command for existing-tree ensure and inspect;
+   no later runner may start. `remove` is tested separately as one allowed keyed cleanup, not under the
+   forward guard.
+5. Hold the spend-grant mint promise, Lock, then let the already-issued mint finish. Assert exactly one
+   mint completion, zero token-file writes, zero worker admissions, and no raw token in any error, log,
+   withdrawal value, or recovery metadata. Package 3 makes a later explicit Resume surface the tokenless
+   `already-live` state as a named refusal until the existing bounded TTL expires; no automatic remint or
+   token persistence is added.
+6. Pause `startRunSession`, Lock, then return a successful start. Assert the session is closed/cancelled,
    its operation receipt is retained, and `host.write`/`host.endInput` are never invoked.
-5. Pause the first `host.write` after invocation, Lock, then accept it. Assert that one issued write is
+7. Pause the first `host.write` after invocation, Lock, then accept it. Assert that one issued write is
    recorded as possibly delivered, no later prompt or `endInput` is invoked, and the attempt operation is
    recoverably cancelled.
-6. Pause one canonical publisher hop after invocation, Lock, then resolve it. Assert no next publisher
+8. Pause one canonical publisher hop after invocation, Lock, then resolve it. Assert no next publisher
    hop, canonical-final state, run success, or stage success is projected; the journal remains resumable.
-7. Pause `worktrees.remove` after revocation and assert exactly one cleanup invocation for the retired
+9. Pause `worktrees.remove` after revocation and assert exactly one cleanup invocation for the retired
    attempt, zero lifecycle-event projections, and an idempotent retryable cleanup receipt on failure.
-8. Pause immediately before fleet-settlement admission and revoke: zero rows and zero Git/publication
+10. Pause immediately before fleet-settlement admission and revoke: zero rows and zero Git/publication
    calls. Separately pause an already-admitted ledger commit, Lock, complete it, and assert unlock remains
    refused until the tracked transaction settles.
-9. Queue an operator message, claim it, revoke before worker admission, and retry with a new lifetime.
+11. Queue an operator message, claim it, revoke before worker admission, and retry with a new lifetime.
    Assert the message is either delivered by the retry or remains in a named claimed recovery state;
    it must not vanish. Add an ambiguous issued-write case that explicitly does not assert exactly once.
 
@@ -247,9 +350,10 @@ The work is acceptable only if all of these are machine-observed:
 - Each scenario separately asserts the exact allowed completion/cleanup count: one completion of the
   already-issued port call; one cancellation/close/drain sequence per active attempt; at most one
   `worktree-remove:<attemptRef>` cleanup; one zero-usage `settle:<attemptRef>` release for a pre-revocation
-  reservation; one receipt/journal advance for an already-issued canonical hop; and completion of one
-  already-admitted append+commit ledger unit. None may mint a human request or run/stage/session/attempt
-  lifecycle projection.
+  reservation; one already-issued atomic reserve or grant-mint completion; one receipt/journal advance for
+  an already-issued canonical hop; and completion of one already-admitted append+commit ledger unit. None
+  may mint a human request or run/stage/session/attempt lifecycle projection, and a completed mint may not
+  write or expose its raw token.
 - Every old engine promise, revocation race loser, reporter, logger, drain, and tracked effect rejection is
   observed; there is no production-global `unhandledRejection` listener.
 - Pre-ack and post-ack route tests create zero generic activation/automatic-execution interventions for a
@@ -302,11 +406,13 @@ There is no generic “retry failed effect” operation:
   rows. Unlock returns a precise `execution-ledger-reconciliation-required` refusal until that receipt is
   reconciled; it is not folded into generic drain failure.
 - **Worktree/grant cleanup:** `worktree-remove:<attemptRef>` is idempotent and retryable only for that
-  retired attempt. An already-minted grant is not replayed or treated as worker authority; its attempt
-  remains blocked on explicit accounting/grant reconciliation. Neither failure can create an old-
-  generation lifecycle event.
+  retired attempt. An already-minted grant is not replayed or treated as worker authority; without a
+  token file it remains unusable and the current store's bounded TTL is the unblock. Package 3 changes
+  only the provisioner behavior needed to surface that tokenless `already-live` state as a named refusal
+  before worker admission; it does not redesign the store. The raw token is discarded and never logged or
+  persisted. Neither condition can create an old-generation lifecycle event.
 
-## Preserved Lock mechanics and the unresolved human ruling
+## Compatibility-preserving Lock assumption
 
 This plan preserves three bounded mechanics rather than reopening them as implementation choices:
 
@@ -317,24 +423,22 @@ This plan preserves three bounded mechanics rather than reopening them as implem
 - An already-issued ambiguous host write leaves its operator-message claim parked for explicit
   reconciliation; it is never blindly replayed.
 
-One policy question remains genuinely unresolved: **what durable meaning does Lock have for a run that is
-`roots-activated`/`recovering` but has not acknowledged Manager startup?**
+For this bounded implementation plan, the announced compatibility assumption is wiring-brake semantics:
+revoke only the process generation, leave a pre-Manager-ack activation receipt `roots-activated` and the
+run `recovering`/retryable, return a stable withdrawn response without an intervention, and require
+explicit Resume after Unlock. Lock adds no durable run interruption, per-run cancellation, or new control
+button. Stop remains the per-run durable cancellation control.
 
-- Wiring-brake semantics: revoke only the process generation, leave the activation receipt
-  `roots-activated` and the run retryable/recovering, return a stable withdrawn response without an
-  intervention, and require explicit Resume after Unlock. This preserves the current distinction between
-  global Lock and per-run Stop and is the recommended bounded interpretation.
-- Durable interruption semantics: fail the activation receipt and durably interrupt/park the run, again
-  without the generic stale intervention. Resume must explicitly repair that state.
-
-Treating Lock as “finish the whole existing run” or “permanently cancel every run” would be a different
-control contract: the former conflicts with generation withdrawal, and the latter duplicates/expands
-per-run Stop. This draft does not assume the operator's answer or implement either expansion.
+This records the scope communicated to Daniel; it does not invent a separate policy vote. If the desired
+meaning is instead “finish the whole existing run,” “interrupt every run,” or “permanently cancel every
+run,” implementation must stop because each is a different control contract outside this plan.
 
 ## Next risk gate
 
-Before any implementation authorization, obtain the human ruling on the pre-Manager-ack run/receipt
-meaning above. Then have a fresh reviewer challenge this revision against the diagnostics findings, the
-per-port table, and the exact production callers. Only after that review should Package 1 be separately
-approved. Until the operator-message receipt package and the cross-generation integration acceptance pass,
-**Phase 0 remains incomplete**.
+Slice 1A's technical plan is READY under root's existing authorization. Source worker
+`p0_adapter_admission` owns exactly its four files (`adapters.ts`, `adapters.test.ts`,
+`spendGrantProvision.ts`, and `spendGrantProvision.test.ts`) with no plan-writer overlap. The next gate is
+focused Slice 1A implementation verification and independent code review. Binding a lifetime, changing
+`runAutomatic`'s internal settlement, or enabling any admission callback remains blocked until Packages
+2-4 are ready for one integration review. The full generation fence is not approved; until the operator-
+message receipt package and cross-generation integration acceptance pass, **Phase 0 remains incomplete**.
