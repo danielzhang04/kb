@@ -22,8 +22,12 @@ retain their separate human gates.
 
 Phase 0, isolated worktree `codex/kb-platform-phase0-20260906` at prerequisite
 `e8bf8d35`. Pending PR173 is included locally for integration tests, not merged or
-deployed. Detached-error containment and drain barrier have separate worker plans.
-No phase is complete yet; prior audit tests do not satisfy new build acceptance.
+deployed. Three local reviewed slices: drain barrier 25f87ff3, detached-error
+containment 02092581, restricted diagnostics 227e1bc9. Gates: 70 drain tests,
+245 reporter tests, 5+96+163 diagnostics/index/store tests, typecheck/build.
+Existing Linux broker baseline: 11 tests on e8bf8d35 only. These are bounded
+gates, not full-suite or platform acceptance. Generation fencing, Lock semantics
+and interactive browser evidence remain open. No phase is complete yet.
 
 ## Phase rule
 
