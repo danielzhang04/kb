@@ -1,5 +1,9 @@
 # Tensor track — 10sorLabs module 11 on our harness
 
+Detailed substitution/settings record for the `train`/`tester`/`gen` stages. Start at
+`pipeline/README.md` for the operator-facing pipeline overview, CLI, gate, and spend guards —
+this file is the setting-by-setting "why" behind the numbers that doc only lists.
+
 Faithful replication of the package's current training path (Ostris AI Toolkit + Krea-2 Raw),
 its checkpoint-ranking harness (module 11's dataset tester), and its generation pass
 (module 09), ported to `pipeline/pod/runpod_run.py`. Every number below is either read off
@@ -316,6 +320,32 @@ window or the daily budget has room, not something this pass decided against on 
    Hugging Face tree API and cross-checked against each file's own `lastCommit.id`/`lfs.oid` —
    the same field shapes and method the re-review used to pin the smoke/shard manifests. See
    "Model and node pins" below for the table.
+
+## Pod failure hardening (2026-09-04 diagnosis, folded from TRAIN-DIAG)
+
+Attempt 2 (pod `xzpb5t5a9afbar`, before smoke #3/#4) reached readiness and uploaded the
+dataset, then every `/view` poll returned 502 for the rest of the window — no training log was
+recovered, and the old wrapper's EXIT trap killed ComfyUI on any trainer failure, destroying
+its own evidence channel. Root cause was never proved directly (candidates ranked: trainer
+exception/OOM during Krea load > cgroup RAM OOM > container restart > Comfy/trainer VRAM
+contention), but is superseded — smoke #4 subsequently trained cleanly at 3.85 s/step with no
+`missing_keys`/`unexpected_keys` (see "What blocks a live run" items 3/4 above). What is still
+true and load-bearing, carried forward into the harness rather than left as a diagnosis:
+
+- **Process order**: bootstrap installs ComfyUI + downloads the checkpoint, starts the
+  training wrapper as `comfyui.start_command`, the wrapper installs pinned ai-toolkit,
+  restores ComfyUI's requirements, pre-warms, then starts ComfyUI (CPU-only transport) in the
+  background — no live-process package swap after that point.
+- **Hardening now in the wrapper**: cgroup/host/GPU/disk/ulimit snapshots at start and
+  pre-train; continuous trainer stdout/stderr streaming; a 30-second heartbeat; rc plus the
+  last 40 log lines recorded on failure; Comfy left alive after a failure for retrieval;
+  `expandable_segments:True` (mitigates CUDA allocator fragmentation, not weight residency or
+  host OOM).
+- **Marker-poll timeout**: five continuous minutes of marker HTTP 502 now fail early and
+  trigger verified teardown, instead of polling for the full window with no evidence.
+- **No RunPod container-log endpoint exists** (checked against the live REST OpenAPI) — the
+  harness cannot create a `pod.log` itself; RunPod's own console is the only log view outside
+  what the wrapper captures above.
 
 ## Model and node pins
 

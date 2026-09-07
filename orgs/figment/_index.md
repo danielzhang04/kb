@@ -6,6 +6,9 @@ Several creators from one dashboard, two content tiers from one identity.
 
 - [MANDATE](MANDATE.md) — the operator's standing end goal. Every spec, plan and brief derives from it.
   Human/boss-edited only.
+- [Pipeline README](pipeline/README.md) — the operator-facing entry point: what the pipeline is, the
+  one command (`figment_train.py plan|run|grade|gate|apply-rulings|train-first`), the gate, pins,
+  spend guards, live-proven runs, open defects, and how to iterate.
 - [GUARDRAILS](pipeline/GUARDRAILS.md) — hard lines that hold regardless of permission mode. Binds on
   top of the mandate.
 - [STATE](STATE.md) — current state (agents keep this current)
@@ -29,10 +32,11 @@ review rulings are tracked.
 ## Reading order for a fresh session
 
 1. `MANDATE.md`, then `pipeline/GUARDRAILS.md`.
-2. `STATE.md` (where the arc actually is), then `contract.md`.
-3. The design spec above for the stage you are working on.
-4. For creator-001 specifically: `personas/creator-001/identity-spec.md` and `pipeline/look-spec-v2.md` §0.
-5. For anything touching a pod: `pipeline/pod/README.md` and `pipeline/pod/REVIEW-e-2026-09-03.md`
+2. `pipeline/README.md` (the pipeline's own map: stages, the one command, the gate, spend guards).
+3. `STATE.md` (where the arc actually is), then `contract.md`.
+4. The design spec above for the stage you are working on.
+5. For creator-001 specifically: `personas/creator-001/identity-spec.md` and `pipeline/look-spec-v2.md` §0.
+6. For anything touching a pod: `pipeline/pod/README.md` and `pipeline/pod/REVIEW-e-2026-09-03.md`
    (the open defects and the two live-run verdicts).
 
 ## Standing rules that catch people out

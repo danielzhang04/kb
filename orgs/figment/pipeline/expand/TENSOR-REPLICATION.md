@@ -1,5 +1,9 @@
 # TENSOR-REPLICATION — 10sorLabs module 10 on our harness
 
+Detailed substitution/settings record for the `dataset` and `anchor`/`gen` stages. Start at
+`pipeline/README.md` for the operator-facing pipeline overview, CLI, gate, and spend guards —
+this file is the node-by-node "why" behind the numbers that doc only lists.
+
 Faithful port of `research/10sorlabs-package/10_dataset_generator_v2/10sorlabs_dataset_generator_v2.json`
 (70 nodes, UI format) to `expand/workflows/tensor_dataset_v2_api.json` (55 nodes, API format) plus three
 10-job shards in `expand/runs/creator-001-tensor-dataset-shard-{01,02,03}.yaml`. Settings come from the
