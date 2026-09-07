@@ -390,6 +390,30 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     replacements = iter([references[0].as_posix(), body_ref.as_posix()])
     note = _ANCHOR_FILENAME_RE.sub(lambda match: next(replacements, match.group(0)), note)
     prompts["structure"]["prepend_is_the_hand_typed_description"] = note
+
+    # Fix (dataset-stage face/body identity contamination): compose face/body identity
+    # the same way `_generalized_anchor_prompts` composes passport/edit identity below --
+    # entirely from the persona's own `identity.look` (never a face/body description
+    # hardcoded in the shared template). Guarded on "face"/"body" being present so a
+    # minimal/legacy template (e.g. test_figment_train.py's note-derivation fixture,
+    # which supplies neither section nor a persona `identity.look`) keeps working
+    # unchanged -- only the real tensor-dataset-prompts.yaml template (which has both)
+    # takes this path.
+    if "face" in prompts and "body" in prompts:
+        look = persona.get("identity", {}).get("look")
+        if not isinstance(look, dict):
+            raise FigmentTrainError(
+                "persona.identity.look is required to compose the dataset-stage "
+                "face/body identity"
+            )
+        clause = _compose_look_clause(look)
+        # Track-2 dataset-stage fix: the shared, non-persona skin-texture rendering
+        # instruction (a photorealism directive, not a look description) stays intact --
+        # popped from the template rather than left hardcoded on both "face" and "body".
+        skin_texture_clause = prompts.pop("skin_texture_clause")
+        identity = f"{clause}, {skin_texture_clause}, "
+        prompts["face"]["identity"] = identity
+        prompts["body"]["identity"] = identity
     return prompts
 
 

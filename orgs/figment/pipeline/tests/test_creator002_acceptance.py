@@ -296,22 +296,13 @@ def test_creator002_plan_all_dry_runs_clean_and_carries_only_her_own_identity(tm
         assert banned not in passport_text
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "pod/runpod_run.py's estimate_cost() recomputes price_usd_per_hour * "
-        "max_minutes / 60 with plain float64 arithmetic instead of the Decimal "
-        "arithmetic figment_train.py's manifest_ceiling() used to round the same "
-        "quantity UP to the ceiling_usd every plan records -- for the dataset stage's "
-        "fullbody manifest (price=1.3, max_minutes=108) that is exactly 2.34 in "
-        "decimal but 2.3400000000000003 in float64, so the preflight rejects a "
-        "manifest's own recorded, sufficient ceiling by float epsilon. Reproduces "
-        "identically for creator-001's own fullbody manifest -- a pre-existing, "
-        "persona-independent bug in pod/runpod_run.py, not figment_train.py. Not "
-        "fixed here per the acceptance brief."
-    ),
-)
 def test_known_defect_pod_runpod_run_float_vs_decimal_cost_ceiling_mismatch(tmp_path):
+    """Regression for the FIXED defect in pod/runpod_run.py. `estimate_cost()` now
+    recomputes `price_usd_per_hour * max_minutes / 60` with Decimal arithmetic,
+    quantized to the cent (ROUND_HALF_UP), instead of plain float64 -- for the dataset
+    stage's fullbody manifest (price=1.3, max_minutes=108) that is exactly 2.34 in
+    decimal (float64 alone produces 2.3400000000000003), so the preflight no longer
+    rejects the manifest's own recorded, sufficient ceiling by float epsilon."""
     out = tmp_path / "dataset-plan-ceiling"
     result = run_cli([
         "plan", "--creator", CREATOR, "--stage", "dataset", "--out", str(out),
@@ -330,47 +321,21 @@ def test_known_defect_pod_runpod_run_float_vs_decimal_cost_ceiling_mismatch(tmp_
     assert dry.returncode == 0, dry.stdout + dry.stderr
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "figment_train.py's _generalized_prompts() never rewrites "
-        "prompts['face']/['body']['identity'] (only 'persona' and the "
-        "prepend_is_the_hand_typed_description note) -- every dataset-stage job's "
-        "node 174/676 prompt substitution therefore still carries creator-001's own "
-        "hardcoded tensor-dataset-prompts.yaml template words for ANY persona. Not "
-        "fixed here: figment_train.py is owned by another builder (acceptance brief)."
-    ),
-)
 def test_known_defect_generalized_prompts_never_persona_derives_dataset_face_body_identity(
     tmp_path,
 ):
-    """KNOWN DEFECT in figment_train.py -- documented, not fixed (another builder owns
-    this file; see the acceptance brief). `_generalized_prompts()` (figment_train.py,
-    ~line 384) rewrites only `prompts["persona"]` and
-    `prompts["structure"]["prepend_is_the_hand_typed_description"]`; it never rewrites
-    `prompts["face"]["identity"]` / `prompts["body"]["identity"]`, unlike its sibling
-    `_generalized_anchor_prompts()` (~line 405), which correctly composes its identity
-    clause from `persona.identity.look` via `_compose_look_clause`. Those two untouched
-    fields are exactly what `_dataset_manifests` bakes into node 174 (face rows) / node
-    676 (body rows) for EVERY one of the dataset stage's 30 planned jobs, and what
-    `_generalized_dataset_workflow` bakes into node 800/780 of the anchor-edit arm's
-    embedded workflow graph.
+    """Regression for the FIXED defect in figment_train.py. `_generalized_prompts()`
+    (figment_train.py, ~line 384) now composes `prompts["face"]["identity"]` /
+    `prompts["body"]["identity"]` from the persona's own `identity.look` via the same
+    `_compose_look_clause` helper its sibling `_generalized_anchor_prompts()` (~line
+    405) already used, plus the template's shared, non-persona
+    `skin_texture_clause`. Those two fields are exactly what `_dataset_manifests` bakes
+    into node 174 (face rows) / node 676 (body rows) for EVERY one of the dataset
+    stage's 30 planned jobs, and what `_generalized_dataset_workflow` bakes into node
+    800/780 of the anchor-edit arm's embedded workflow graph.
 
-    Effect: planning the dataset stage for ANY persona other than creator-001 bakes
-    creator-001's own hardcoded template words into every dataset-stage job's prompt --
-    the opposite of `pipeline/persona.py`'s own stated rule ("would this run unchanged
-    for creator-002 from her persona.yaml?"). It is invisible for creator-001's own
-    real runs only because this legacy template (predating the identity.look/HIGH-2
-    persona-only-place-for-look-words refactor `_generalized_anchor_prompts` already
-    complies with) happens to describe a similar-themed woman, not because the
-    substitution is actually happening.
-
-    This test asserts the CORRECT/expected behavior (node 174's substituted value
-    should be creator-002's own words, not creator-001's) and is marked xfail(strict):
-    it currently fails for exactly the reason above, and will start unexpectedly
-    PASSING (XPASS, a failure under strict=True) the moment someone fixes
-    `_generalized_prompts` -- which is the intended way to notice and remove this
-    marker without silently losing the regression coverage.
+    This test asserts the CORRECT/expected behavior (node 174's substituted value is
+    creator-002's own words, not creator-001's).
     """
     out = tmp_path / "dataset-plan"
     result = run_cli([

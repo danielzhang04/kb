@@ -674,6 +674,25 @@ def test_preflight_refuses_over_max_usd():
         rr.estimate_cost(manifest(), max_minutes=60, max_usd=0.49)
 
 
+def test_preflight_accepts_decimal_exact_ceiling_float64_epsilon_would_reject():
+    """price=1.3, max_minutes=108 is exactly 2.34 in decimal but 2.3400000000000003 in
+    plain float64 (1.3 * 108 / 60) -- the manifest's own recorded ceiling_usd
+    (figment_train.py's `manifest_ceiling()`, Decimal arithmetic) must be accepted by
+    the preflight, not rejected by float epsilon."""
+    fullbody_manifest = manifest()
+    fullbody_manifest["price_usd_per_hour"] = 1.3
+    assert 1.3 * 108 / 60.0 != 2.34  # documents the float64 epsilon this guards against
+    estimate = rr.estimate_cost(fullbody_manifest, max_minutes=108, max_usd=2.34)
+    assert estimate == 2.34
+
+
+def test_preflight_refuses_one_cent_short_of_decimal_ceiling():
+    fullbody_manifest = manifest()
+    fullbody_manifest["price_usd_per_hour"] = 1.3
+    with pytest.raises(rr.HarnessError, match="preflight refused"):
+        rr.estimate_cost(fullbody_manifest, max_minutes=108, max_usd=2.33)
+
+
 def test_manifest_readiness_budget_requires_five_minute_teardown_margin(tmp_path):
     too_short = manifest()
     too_short["readiness_timeout_seconds"] = 1200

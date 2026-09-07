@@ -26,6 +26,7 @@ import uuid
 from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
+from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import quote
@@ -1955,16 +1956,50 @@ def manifest_seed_fields(manifest: dict[str, Any]) -> tuple[str, ...]:
     return tuple(fields)
 
 
+def _quantize_usd(value: Decimal) -> Decimal:
+    """Round a USD amount to the cent, half-up -- the same precision a caller's
+    `--max-usd` is stated at, so the preflight comparison never disagrees with a
+    plan's own `manifest_ceiling()` (figment_train.py) by float64 epsilon (e.g.
+    price=1.3, max_minutes=108 is exactly 2.34 in decimal but 2.3400000000000003 in
+    float64)."""
+    return value.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+
+def _cost_exceeds_max_usd(total: float, max_usd: float | None) -> bool:
+    """True if `total` (a running or estimated USD amount, however it was floated up to
+    this point) exceeds `max_usd`, compared at cent precision (ROUND_HALF_UP) -- every
+    site that gates a run against `--max-usd` goes through this, not a raw float `>`,
+    so a manifest's own recorded ceiling is never refused by float64 epsilon regardless
+    of which quantity (preflight estimate, avoided-cost-plus-next-estimate, or the
+    READY pod's actual hourly ceiling) produced `total`."""
+    if max_usd is None:
+        return False
+    return _quantize_usd(Decimal(str(total))) > _quantize_usd(Decimal(str(max_usd)))
+
+
 def estimate_cost(manifest: dict[str, Any], max_minutes: float, max_usd: float | None) -> float:
     if not math.isfinite(max_minutes) or max_minutes <= 0:
         raise HarnessError("--max-minutes must be greater than zero")
     if max_usd is not None and (not math.isfinite(max_usd) or max_usd <= 0):
         raise HarnessError("--max-usd must be finite and greater than zero")
-    estimate = float(manifest["price_usd_per_hour"]) * max_minutes / 60.0
-    if max_usd is not None and estimate > max_usd:
-        raise HarnessError(
-            f"preflight refused: estimated ${estimate:.4f} exceeds --max-usd ${max_usd:.4f}"
-        )
+    raw_estimate = (
+        Decimal(str(manifest["price_usd_per_hour"])) * Decimal(str(max_minutes)) / Decimal(60)
+    )
+    # The returned value keeps full (sub-cent) precision -- ledger booking (the
+    # provisional `pod-create` cost row) and budget accounting need the exact amount,
+    # not a cent-rounded one. Only the accept/reject decision against --max-usd (and
+    # its display) is quantized to the cent, matching the precision `--max-usd` and a
+    # plan's own recorded `ceiling_usd` (figment_train.py's `manifest_ceiling()`) are
+    # both stated at.
+    estimate = float(raw_estimate)
+    if max_usd is not None:
+        quantized_estimate = _quantize_usd(raw_estimate)
+        quantized_max_usd = _quantize_usd(Decimal(str(max_usd)))
+        if quantized_estimate > quantized_max_usd:
+            raise HarnessError(
+                f"preflight refused: estimated ${quantized_estimate:.4f} exceeds "
+                f"--max-usd ${quantized_max_usd:.4f}"
+            )
     return estimate
 
 
@@ -3660,7 +3695,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     try:
         for placement_attempt in range(1, max_placement_attempts + 1):
             if placement_attempt > 1:
-                if max_usd is not None and avoided_cost_total + estimate > max_usd:
+                if _cost_exceeds_max_usd(avoided_cost_total + estimate, max_usd):
                     raise HarnessError(
                         "placement recreation refused: avoided-pod cost plus the next "
                         "full-run estimate exceeds --max-usd"
@@ -3807,7 +3842,7 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             )
             actual_hourly = ready_hourly_price(ready_pod)
             actual_ceiling = actual_hourly * max_minutes / 60.0
-            if max_usd is not None and avoided_cost_total + actual_ceiling > max_usd:
+            if _cost_exceeds_max_usd(avoided_cost_total + actual_ceiling, max_usd):
                 raise HarnessError("READY pod hourly price exceeds the approved --max-usd budget")
             if (daily_limit is not None and daily_spent is not None
                     and daily_spent + avoided_cost_total + actual_ceiling > daily_limit):
