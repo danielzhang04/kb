@@ -103,6 +103,58 @@ def test_config_renderer_refuses_a_drifted_config():
     ]
 
 
+# --- DOP (Differential Output Preservation) -- Path-A train-first ------------
+# r24 method 4 + r21 DOP + r25 causes #4/#5. Keys verified against the pinned
+# ai-toolkit commit (training.git_ref b36bb3998ae596a566d85513299696a3a78f0dcb),
+# `toolkit/config_modules.py` `TrainConfig.__init__`: `diff_output_preservation`
+# (bool, default False), `diff_output_preservation_multiplier` (float, default 1.0),
+# `diff_output_preservation_class` (str, default ''). OFF by default -- these three
+# keys are purely additive over module 11's recipe.
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_dop_is_off_by_default_and_renders_when_asked(enabled):
+    config = render_config(dop_enabled=str(enabled).lower())
+    train = config["config"]["process"][0]["train"]
+    assert train["diff_output_preservation"] is enabled
+    assert train["diff_output_preservation_multiplier"] == pytest.approx(1.0)
+    assert train["diff_output_preservation_class"] == "person"
+    assert renderer.check_module_11(config) == (
+        [] if not enabled else ["train.diff_output_preservation: True != False"]
+    )
+
+
+def test_dop_multiplier_and_class_are_overridable_via_context():
+    config = render_config(dop_enabled="true", dop_multiplier="2.5", dop_class="woman")
+    train = config["config"]["process"][0]["train"]
+    assert train["diff_output_preservation_multiplier"] == pytest.approx(2.5)
+    assert train["diff_output_preservation_class"] == "woman"
+
+
+def test_dop_trigger_word_is_injected_only_when_dop_is_enabled():
+    """SDTrainer.py (same pinned commit) raises 'diff_output_preservation requires a
+    trigger_word to be set' unless the process-level (or a dataset's own) trigger_word
+    is set -- but BaseSDTrainProcess.py's get_caption() auto-inserts a missing
+    trigger_word into every caption whenever that key is merely PRESENT, DOP or not.
+    Setting it unconditionally in the static template would silently change caption
+    behavior for every already-proven non-DOP run, so this key is injected in Python,
+    only when diff_output_preservation actually ends up True."""
+    off = renderer.yaml.safe_load(renderer.render(
+        (TRAIN / "ai-toolkit-krea2.yaml.template").read_text(encoding="utf-8"),
+        {**renderer.MODULE_11, "trigger": TRIGGER,
+         "dataset_dir": f"/workspace/ComfyUI/input/{TRIGGER}",
+         "output_dir": "/workspace/train-output",
+         "base_model_path": "/workspace/models/krea2/krea2_raw_bf16.safetensors",
+         "dop_enabled": "false"},
+    ))
+    renderer.apply_dop_trigger_word(off, TRIGGER)
+    assert "trigger_word" not in off["config"]["process"][0]
+
+    on = render_config(dop_enabled="true")
+    renderer.apply_dop_trigger_word(on, TRIGGER)
+    assert on["config"]["process"][0]["trigger_word"] == TRIGGER
+
+
 @pytest.mark.parametrize(("section", "key", "wrong", "expected"), [
     ("network", "linear_alpha", 16, "network.linear_alpha: 16 != 32"),
     ("train", "train_text_encoder", True, "train.train_text_encoder: True != False"),

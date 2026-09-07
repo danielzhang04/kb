@@ -1,0 +1,213 @@
+{
+  "schema": "figment/training-selection@1",
+  "generated_utc": "2026-09-07T07:28:26.808745+00:00",
+  "thresholds": {
+    "same_person_min": 80.0,
+    "age_delta_max": 2.0,
+    "artifacts_max": 40.0,
+    "cap_per_set": 12
+  },
+  "excluded_sets": [
+    "passport-candidates"
+  ],
+  "skipped": [
+    {
+      "name": "qwen-anchor-edits",
+      "reason": "no image directory supplied"
+    }
+  ],
+  "anchors": [
+    {
+      "image_id": "g01",
+      "source_set": "anchors",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\anchors\\g01.jpg",
+      "same_person": null,
+      "age_delta": null,
+      "artifacts": null
+    },
+    {
+      "image_id": "g02",
+      "source_set": "anchors",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\anchors\\g02.jpg",
+      "same_person": null,
+      "age_delta": null,
+      "artifacts": null
+    },
+    {
+      "image_id": "g07",
+      "source_set": "anchors",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\anchors\\g07.jpg",
+      "same_person": null,
+      "age_delta": null,
+      "artifacts": null
+    }
+  ],
+  "cells": [
+    {
+      "image_id": "c001-exp03-g07-t01-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g07-t01-mechA.png",
+      "same_person": 88.0,
+      "age_delta": -1.0,
+      "artifacts": 15.0
+    },
+    {
+      "image_id": "c001-exp03-g07-t02-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g07-t02-mechA.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "c001-exp03-g07-t09-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g07-t09-mechA.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "c001-exp03-g02-t05-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g02-t05-mechA.png",
+      "same_person": 88.0,
+      "age_delta": -1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "c001-exp03-g02-t06-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g02-t06-mechA.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 25.0
+    },
+    {
+      "image_id": "c001-exp03-g01-t03-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g01-t03-mechA.png",
+      "same_person": 88.0,
+      "age_delta": -1.0,
+      "artifacts": 25.0
+    },
+    {
+      "image_id": "c001-exp03-g02-t10-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g02-t10-mechA.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 35.0
+    },
+    {
+      "image_id": "c001-exp03-g02-t12-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g02-t12-mechA.png",
+      "same_person": 85.0,
+      "age_delta": -1.0,
+      "artifacts": 15.0
+    },
+    {
+      "image_id": "c001-exp03-g02-t07-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g02-t07-mechA.png",
+      "same_person": 85.0,
+      "age_delta": -1.0,
+      "artifacts": 30.0
+    },
+    {
+      "image_id": "c001-exp03-g01-t08-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g01-t08-mechA.png",
+      "same_person": 82.0,
+      "age_delta": -1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "c001-exp03-g01-t12-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g01-t12-mechA.png",
+      "same_person": 82.0,
+      "age_delta": -1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "c001-exp03-g07-t03-mechA",
+      "source_set": "expansion-03",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\personas\\creator-001\\batches\\expansion-03\\images\\c001-exp03-g07-t03-mechA.png",
+      "same_person": 82.0,
+      "age_delta": -1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "23",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\23.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "27",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\27.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "13",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\13.png",
+      "same_person": 88.0,
+      "age_delta": 0.0,
+      "artifacts": 40.0
+    },
+    {
+      "image_id": "31",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\31.png",
+      "same_person": 82.0,
+      "age_delta": 0.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "21",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\21.png",
+      "same_person": 82.0,
+      "age_delta": 1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "24",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\24.png",
+      "same_person": 82.0,
+      "age_delta": -1.0,
+      "artifacts": 20.0
+    },
+    {
+      "image_id": "15",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\15.png",
+      "same_person": 82.0,
+      "age_delta": 0.0,
+      "artifacts": 25.0
+    },
+    {
+      "image_id": "30",
+      "source_set": "track1-dataset",
+      "path": "C:\\Users\\danie\\kb-worktrees\\figment\\orgs\\figment\\pipeline\\train\\runs\\creator-001-tensor-dataset\\30.png",
+      "same_person": 80.0,
+      "age_delta": 0.0,
+      "artifacts": 30.0
+    }
+  ],
+  "counts_by_set": {
+    "anchors": 3,
+    "expansion-03": 12,
+    "track1-dataset": 8
+  },
+  "total_images": 23
+}

@@ -617,7 +617,7 @@ def _smoke_note(creator_id: str, trigger: str) -> str:
 
 
 def _train_manifest(
-    persona: dict, training: dict, pins: dict, *, smoke: bool,
+    persona: dict, training: dict, pins: dict, *, smoke: bool, dataset_dirname: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
     trigger = training["trigger"]
@@ -632,10 +632,14 @@ def _train_manifest(
     manifest: dict[str, Any] = {}
     if smoke:
         manifest["_smoke"] = _smoke_note(creator_id, trigger)
-    upload_files = [f"{creator_id}-tensor-dataset/*.png"]
+    # Path-A train-first (r24 method 4) points uploads at its OWN copied dataset
+    # directory (never `<id>-tensor-dataset`, which is the module-10 dataset stage's
+    # operator-graded output) so the two lineages can never collide on disk.
+    dataset_dirname = dataset_dirname or f"{creator_id}-tensor-dataset"
+    upload_files = [f"{dataset_dirname}/*.png"]
     if training["caption_mode"] == "provided":
-        upload_files.append(f"{creator_id}-tensor-dataset/*.txt")
-    upload_files.append(f"{creator_id}-tensor-dataset/training.json")
+        upload_files.append(f"{dataset_dirname}/*.txt")
+    upload_files.append(f"{dataset_dirname}/training.json")
     manifest.update(_pod_base(pins, training["pod_class"], stage))
     manifest.update({
         "models": deepcopy(pins["pins"]["train"]["models"]),
@@ -650,7 +654,7 @@ def _train_manifest(
                 "overwrite": True,
             },
             {
-                "files": [f"{creator_id}-tensor-dataset/_dataset.ready"],
+                "files": [f"{dataset_dirname}/_dataset.ready"],
                 "subfolder": trigger,
                 "type": "input",
                 "overwrite": True,
@@ -750,9 +754,16 @@ def _tester_workflow(creator_id: str, trigger: str) -> dict[str, Any]:
     }
 
 
-def _tester_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
+def _tester_manifest(
+    persona: dict, training: dict, pins: dict, *, train_out_dirname: str | None = None,
+) -> dict[str, Any]:
     creator_id = persona["id"]
     trigger = training["trigger"]
+    # Path-A train-first (r24 method 4): the tester's checkpoint upload glob must point
+    # at the SAME `out/<dirname>/` the matching train manifest's harness run wrote its
+    # local output into (`_planned_run`'s `run_root / path.stem`), never the module-10
+    # dataset lineage's `<id>-tensor-train` unconditionally.
+    train_out_dirname = train_out_dirname or f"{creator_id}-tensor-train"
     intermediates = _checkpoint_steps(training["steps"], training["save_every"])
     checkpoints: list[tuple[int | None, str]] = [
         (step, f"{step:09d}") for step in intermediates
@@ -764,7 +775,7 @@ def _tester_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any
         "workflow": _tester_workflow(creator_id, trigger),
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
-            "files": [f"out/{creator_id}-tensor-train/*.safetensors"],
+            "files": [f"out/{train_out_dirname}/*.safetensors"],
             "subfolder": trigger,
             "type": "input",
             "overwrite": True,
@@ -1001,7 +1012,10 @@ def _detail_manifest(
     }
 
 
-def _render_training_config(trigger: str, steps: int, save_every: int) -> dict[str, Any]:
+def _render_training_config(
+    trigger: str, steps: int, save_every: int, *,
+    dop_enabled: bool = False, dop_multiplier: float = 1.0, dop_class: str = "person",
+) -> dict[str, Any]:
     renderer = _render_module()
     intermediate_count = len(_checkpoint_steps(steps, save_every))
     context = dict(renderer.MODULE_11)
@@ -1013,9 +1027,16 @@ def _render_training_config(trigger: str, steps: int, save_every: int) -> dict[s
         "steps": steps,
         "save_every": save_every,
         "max_step_saves_to_keep": max(15, intermediate_count),
+        # Path-A train-first (r24 method 4 + r21 DOP): off by default -- every existing
+        # `build_plan` caller below passes none of these, so it keeps rendering exactly
+        # the same config it always has.
+        "dop_enabled": str(dop_enabled).lower(),
+        "dop_multiplier": str(dop_multiplier),
+        "dop_class": dop_class,
     })
     rendered = renderer.render(AI_TEMPLATE_PATH.read_text(encoding="utf-8"), context)
     config = renderer.yaml.safe_load(rendered)
+    renderer.apply_dop_trigger_word(config, trigger)
     try:
         renderer.validate_rendered_pod_paths(config)
     except ValueError as exc:
@@ -1246,6 +1267,129 @@ def build_plan(
         "stages": plan_stages,
     }
     _write_json(out / "plan.json", plan)
+    return plan
+
+
+TRAIN_FIRST_DATASET_MARKERS = ("_dataset.ready", "dataset_manifest.json")
+
+
+def build_train_first_plan(
+    creator_id: str,
+    dataset_dir: Path,
+    out: Path,
+    *,
+    personas_root: Path = PERSONAS_ROOT,
+    skip_pin_verify: bool = False,
+) -> dict[str, Any]:
+    """Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): plan a train +
+    tester run directly against an ALREADY-BUILT, ALREADY-CAPTIONED dataset directory
+    -- `select_training_cells.py` + `build_training_set.py --mode provided`'s output --
+    instead of the module-10 dataset stage's fresh generate-then-grade loop.
+
+    Deliberately NOT part of the STAGES/build_plan/run_planned_stage/apply_rulings
+    state machine: it never plans "anchor" or "dataset", never touches `grade/`, and
+    the manifests it emits (`<id>-tensor-train-first.yaml`,
+    `<id>-tensor-tester-first.yaml`) are named so their local upload/output
+    directories (`<id>-tensor-dataset-train-first`, `out/<id>-tensor-train-first/`)
+    can never collide with the module-10 lineage's own `<id>-tensor-dataset` /
+    `out/<id>-tensor-train/`. DOP rides whatever `training.dop_enabled` /
+    `dop_multiplier` / `dop_class` the persona already declares (default off,
+    training_config.py) -- this function never overrides them; the "train-first"
+    idea and DOP are independent choices that happen to ship together here.
+
+    `dataset_dir` must already carry `_dataset.ready` and `dataset_manifest.json` --
+    this function only copies it into the plan (minus any `training.json` an operator
+    may have hand-placed) and renders training.json into the copy; it never selects,
+    captions, or re-verifies the underlying cells itself.
+    """
+    dataset_dir = Path(dataset_dir).resolve()
+    if not all((dataset_dir / marker).is_file() for marker in TRAIN_FIRST_DATASET_MARKERS):
+        raise FigmentTrainError(
+            f"dataset_dir is not ready (missing {' or '.join(TRAIN_FIRST_DATASET_MARKERS)}): "
+            f"{dataset_dir}"
+        )
+    out = Path(out).resolve()
+    plan_marker = out / "train_first_plan.json"
+    if plan_marker.exists():
+        raise FigmentTrainError(f"refusing to overwrite an existing plan: {plan_marker}")
+    if out.exists() and any(out.iterdir()):
+        raise FigmentTrainError(f"plan output directory must be empty: {out}")
+    out.mkdir(parents=True, exist_ok=True)
+
+    persona, training, pins = _load_inputs(creator_id, Path(personas_root))
+    persona = dict(persona)
+    persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+
+    if not skip_pin_verify:
+        _verify_pins_preflight(pins, ["train", "tester"])
+
+    train_runs_dir = out / "train" / "runs"
+    train_runs_dir.mkdir(parents=True, exist_ok=True)
+    # Same launcher templates every other stage's plan copies alongside its manifests
+    # (`_copy_support_files`) -- the harness resolves `training.start_script_file`
+    # relative to the manifest's own directory, so a train-first plan needs its own
+    # copy too, not a reference back into the module-10 lineage's plan tree.
+    for source in (TRAIN_START_PATH, TESTER_START_PATH):
+        text = source.read_text(encoding="utf-8")
+        text = text.replace("creator-001", creator_id)
+        text = text.replace("creator001krea2", training["trigger"])
+        (train_runs_dir / source.name).write_text(text, encoding="utf-8")
+
+    plan_dataset_dirname = f"{creator_id}-tensor-dataset-train-first"
+    plan_dataset_dir = train_runs_dir / plan_dataset_dirname
+    plan_dataset_dir.mkdir(parents=True, exist_ok=True)
+    for item in sorted(dataset_dir.iterdir()):
+        # training.json is rendered fresh below (so this plan's DOP settings always
+        # win over anything an operator hand-placed in the source dir), and
+        # _dataset.ready is written LAST, after it -- same "marker last" contract
+        # `build_training_set.py` itself follows.
+        if item.name in ("training.json", "_dataset.ready"):
+            continue
+        shutil.copy2(item, plan_dataset_dir / item.name)
+
+    config = _render_training_config(
+        training["trigger"], training["steps"], training["save_every"],
+        dop_enabled=training["dop_enabled"], dop_multiplier=training["dop_multiplier"],
+        dop_class=training["dop_class"],
+    )
+    _write_json(plan_dataset_dir / "training.json", config)
+    (plan_dataset_dir / "_dataset.ready").write_text("", encoding="utf-8")
+
+    train_manifest = _train_manifest(
+        persona, training, pins, smoke=False, dataset_dirname=plan_dataset_dirname,
+    )
+    train_path = train_runs_dir / f"{creator_id}-tensor-train-first.yaml"
+    _write_json(train_path, train_manifest)
+
+    train_out_dirname = f"{creator_id}-tensor-train-first"
+    tester_manifest = _tester_manifest(
+        persona, training, pins, train_out_dirname=train_out_dirname,
+    )
+    tester_path = train_runs_dir / f"{creator_id}-tensor-tester-first.yaml"
+    _write_json(tester_path, tester_manifest)
+
+    run_root = train_runs_dir / "out"
+    train_run = _planned_run(out, train_path, run_root / train_path.stem)
+    tester_run = _planned_run(out, tester_path, run_root / tester_path.stem)
+
+    plan = {
+        "schema": "figment/train-first-plan@1",
+        "creator": creator_id,
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "generator": _sha256(Path(__file__)),
+        "persona_sha256": _sha256(Path(persona["_persona_path"])),
+        "source_dataset_dir": str(dataset_dir),
+        "training": training,
+        "configs": {"train": _relative(plan_dataset_dir / "training.json", out)},
+        "ledger_dir": str(LEDGER_DIR),
+        "arc_cap_usd": ARC_CAP_USD,
+        "arc_ledger_glob": ARC_LEDGER_GLOB,
+        "stages": {
+            "train": {"runs": [train_run]},
+            "tester": {"runs": [tester_run]},
+        },
+    }
+    _write_json(plan_marker, plan)
     return plan
 
 
@@ -2118,6 +2262,20 @@ def build_parser() -> argparse.ArgumentParser:
     gate.add_argument("--creator", required=True)
     gate.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
     gate.add_argument("--plan", type=Path, default=Path("plan.json"))
+
+    train_first = commands.add_parser(
+        "train-first",
+        help="Path-A train-first (r24 method 4 + r21 DOP): plan train+tester against an "
+             "already-selected, already-captioned dataset dir, never the module-10 "
+             "dataset stage",
+    )
+    train_first.add_argument("--creator", required=True)
+    train_first.add_argument("--dataset-dir", required=True, type=Path)
+    train_first.add_argument("--out", required=True, type=Path)
+    train_first.add_argument(
+        "--skip-pin-verify", action="store_true",
+        help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
+    )
     return parser
 
 
@@ -2140,6 +2298,12 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "gate":
             document = command_gate(args.creator, args.stage, args.plan)
             print(_format_gate_table(document))
+        elif args.command == "train-first":
+            result = build_train_first_plan(
+                args.creator, args.dataset_dir, args.out, skip_pin_verify=args.skip_pin_verify,
+            )
+            print(f"wrote {args.out.resolve() / 'train_first_plan.json'} "
+                  f"({len(result['stages'])} stage(s))")
         else:
             result = apply_rulings(args.creator, args.stage, args.plan, args.rulings)
             print(f"applied rulings: {result['rulings']}")

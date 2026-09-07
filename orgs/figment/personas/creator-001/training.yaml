@@ -7,6 +7,9 @@
     "caption_mode": "provided",
     "pod_class": "l40s",
     "price_ceiling_usd_per_hour": 1.30,
-    "skin_lora": null
+    "skin_lora": null,
+    "dop_enabled": false,
+    "dop_multiplier": 1.0,
+    "dop_class": "person"
   }
 }

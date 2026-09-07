@@ -19,6 +19,7 @@ TRAINING_KEYS = {
     "trigger", "base_arch", "steps", "save_every", "caption_mode",
     "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
+    "dop_enabled", "dop_multiplier", "dop_class",
 }
 DEFAULT_TRAINING = {
     "trigger": None,
@@ -41,6 +42,25 @@ DEFAULT_TRAINING = {
     # operator has picked a checkpoint. `build_plan(..., stage="gen")` refuses to plan
     # until this names a real step.
     "chosen_checkpoint_step": None,
+    # Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): Ostris ai-toolkit's
+    # Differential Output Preservation, OFF by default. Confirmed at the pinned commit
+    # (train/runs/creator-001-tensor-train.yaml training.git_ref
+    # b36bb3998ae596a566d85513299696a3a78f0dcb), `toolkit/config_modules.py`
+    # `TrainConfig.__init__` (`diff_output_preservation`, `diff_output_preservation_multiplier`
+    # default 1.0, `diff_output_preservation_class` default ''): costs ~3x train time
+    # (re-runs every step once more with the trigger replaced by `dop_class` and uses
+    # that as an extra regularization target), REQUIRES a trigger word to be present in
+    # the config (`extensions_built_in/sd_trainer/SDTrainer.py`: "diff_output_preservation
+    # requires a trigger_word to be set"), and is REJECTED outright when
+    # `train_text_encoder: true` ("is not supported with train_text_encoder" -- moot here,
+    # the template always trains with it False). `dop_class` defaults to "person" per r21's
+    # own community citation (chengyansen-ai/krea2-lora-training) even though every caption
+    # this pipeline writes says "<trigger> woman" -- the class DOP substitutes the trigger
+    # with is a deliberately more generic identity-preservation target, not required to
+    # echo the caption's own descriptive noun.
+    "dop_enabled": False,
+    "dop_multiplier": 1.0,
+    "dop_class": "person",
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_CAPTION_MODES = {"provided", "auto", "single_word"}
@@ -140,6 +160,14 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
         raise TrainingConfigError(
             "persona.training.price_ceiling_usd_per_hour must be a positive number"
         )
+    if not isinstance(config["dop_enabled"], bool):
+        raise TrainingConfigError("persona.training.dop_enabled must be a boolean")
+    multiplier = config["dop_multiplier"]
+    if isinstance(multiplier, bool) or not isinstance(multiplier, (int, float)) or multiplier <= 0:
+        raise TrainingConfigError("persona.training.dop_multiplier must be a positive number")
+    config["dop_multiplier"] = float(multiplier)
+    if not isinstance(config["dop_class"], str) or not config["dop_class"].strip():
+        raise TrainingConfigError("persona.training.dop_class must be a non-empty string")
 
     expected = derived_trigger(creator_id, config["base_arch"])
     declared = config["trigger"]

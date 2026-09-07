@@ -765,3 +765,156 @@ def _build_grade_with_fake_stage1_and_judge(
 
     grade = command.build_grade("creator-002", "dataset", plan_file)
     return plan_file, grade, gate_module, judge_calls
+
+
+# ---------------------------------------------------------------------------
+# Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): a curated
+# selection of EXISTING evidence (select_training_cells.py + build_training_set.py
+# --mode provided) trains the LoRA directly, bypassing the module-10 dataset stage's
+# fresh generate-then-grade loop. `build_train_first_plan` is deliberately NOT part
+# of the STAGES/build_plan/run_planned_stage state machine -- it reuses the same
+# manifest-emission helpers (_train_manifest, _tester_manifest, _pod_base,
+# _planned_run) but never touches anchor/dataset/apply_rulings at all.
+# ---------------------------------------------------------------------------
+
+
+def _prebuilt_dataset_dir(path: Path, *, count: int = 2) -> Path:
+    """A dataset directory shaped exactly like build_training_set.py's output
+    contract -- NN.png/.txt pairs, dataset_manifest.json, _dataset.ready written
+    last -- WITHOUT training.json, since build_train_first_plan renders and writes
+    that itself (mirroring _install_stage_config's own division of labor)."""
+    path.mkdir(parents=True, exist_ok=True)
+    files = []
+    for index in range(1, count + 1):
+        stem = f"{index:02d}"
+        (path / f"{stem}.png").write_bytes(PNG_1X1)
+        (path / f"{stem}.txt").write_text("creator001krea2 woman\n", encoding="utf-8")
+        files.append({"image": f"{stem}.png", "caption_file": f"{stem}.txt", "sha256": "x"})
+    (path / "dataset_manifest.json").write_text(
+        json.dumps({"count": count, "caption_mode": "provided", "files": files}), encoding="utf-8",
+    )
+    (path / "_dataset.ready").write_text("", encoding="utf-8")
+    return path
+
+
+def test_build_train_first_plan_emits_train_and_tester_manifests_that_dry_run(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # steps=600, save_every=200 -> ladder [200, 400] + final
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-plan"
+
+    plan = command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+
+    assert plan["schema"] == "figment/train-first-plan@1"
+    train_path = out / "train" / "runs" / "creator-002-tensor-train-first.yaml"
+    tester_path = out / "train" / "runs" / "creator-002-tensor-tester-first.yaml"
+    assert train_path.is_file() and tester_path.is_file()
+
+    train_manifest = load_json(train_path)
+    dataset_dirname = "creator-002-tensor-dataset-train-first"
+    assert train_manifest["uploads"][0]["files"] == [
+        f"{dataset_dirname}/*.png", f"{dataset_dirname}/*.txt",
+        f"{dataset_dirname}/training.json",
+    ]
+    assert len(train_manifest["artifacts"]) == 3  # 2 intermediates + final, per steps/save_every
+
+    tester_manifest = load_json(tester_path)
+    assert tester_manifest["uploads"][0]["files"] == [
+        "out/creator-002-tensor-train-first/*.safetensors",
+    ]
+    assert len(tester_manifest["jobs"]) == 3
+
+    copied_dataset_dir = out / "train" / "runs" / dataset_dirname
+    assert (copied_dataset_dir / "01.png").is_file()
+    assert (copied_dataset_dir / "02.png").is_file()
+    assert (copied_dataset_dir / "_dataset.ready").is_file()
+    rendered = load_json(copied_dataset_dir / "training.json")
+    train_section = rendered["config"]["process"][0]["train"]
+    assert train_section["steps"] == 600
+    assert train_section["diff_output_preservation"] is False
+    assert "trigger_word" not in rendered["config"]["process"][0]
+
+    pod_module = command._pod_runner_module()
+    for run in (plan["stages"]["train"]["runs"][0], plan["stages"]["tester"]["runs"][0]):
+        manifest_path = out / run["manifest"]
+        result = subprocess.run(
+            run["argv"] + ["--dry-run"], cwd=ROOT, capture_output=True, text=True,
+        )
+        assert result.returncode == 0, result.stderr
+        pod_module.require_manifest(load_json(manifest_path), manifest_path, allow_missing_uploads=True)
+
+
+def test_build_train_first_plan_honors_dop_from_the_persona_training_config(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    persona_path = _synthetic_persona(personas_root)
+    persona_document = load_json(persona_path)
+    persona_document["training"]["dop_enabled"] = True
+    persona_document["training"]["dop_multiplier"] = 2.0
+    persona_document["training"]["dop_class"] = "woman"
+    persona_path.write_text(json.dumps(persona_document, indent=2), encoding="utf-8")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-dop"
+
+    command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+
+    rendered = load_json(
+        out / "train" / "runs" / "creator-002-tensor-dataset-train-first" / "training.json",
+    )
+    process = rendered["config"]["process"][0]
+    assert process["train"]["diff_output_preservation"] is True
+    assert process["train"]["diff_output_preservation_multiplier"] == pytest.approx(2.0)
+    assert process["train"]["diff_output_preservation_class"] == "woman"
+    assert process["trigger_word"] == "creator002krea2"
+
+
+def test_build_train_first_plan_requires_the_dataset_ready_marker(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    dataset_dir = tmp_path / "not-ready"
+    dataset_dir.mkdir()
+    (dataset_dir / "01.png").write_bytes(PNG_1X1)
+
+    with pytest.raises(command.FigmentTrainError, match="not ready"):
+        command.build_train_first_plan(
+            "creator-002", dataset_dir, tmp_path / "out",
+            personas_root=personas_root, skip_pin_verify=True,
+        )
+
+
+def test_train_first_cli_subcommand_is_registered_and_parses(command):
+    """`main()`'s CLI layer has no way to redirect PERSONAS_ROOT (same as every other
+    subcommand -- `plan`'s own CLI is untested against a synthetic persona for the
+    identical reason), so this only proves the subcommand exists and its argparse
+    wiring is correct; `build_train_first_plan` itself is covered directly above."""
+    parser = command.build_parser()
+    args = parser.parse_args([
+        "train-first", "--creator", "creator-002", "--dataset-dir", "d", "--out", "o",
+        "--skip-pin-verify",
+    ])
+    assert args.command == "train-first"
+    assert args.creator == "creator-002"
+    assert args.dataset_dir == Path("d")
+    assert args.out == Path("o")
+    assert args.skip_pin_verify is True
+
+
+def test_build_train_first_plan_refuses_to_overwrite_an_existing_plan(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-plan"
+    command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.build_train_first_plan(
+            "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+        )

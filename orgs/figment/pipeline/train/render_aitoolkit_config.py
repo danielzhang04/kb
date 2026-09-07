@@ -120,6 +120,13 @@ MODULE_11 = {
     "save_every": 250,
     "max_step_saves_to_keep": 15,
     "resolutions": "[512, 768, 1024]",
+    # Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5) additions. OFF by
+    # default -- purely additive over module 11's own recipe. See check_module_11 and
+    # apply_dop_trigger_word below, and training_config.py's DOP docstring for the
+    # pinned-commit citation (toolkit/config_modules.py TrainConfig.__init__).
+    "dop_enabled": "false",
+    "dop_multiplier": "1.0",
+    "dop_class": "person",
 }
 
 
@@ -184,6 +191,7 @@ def check_module_11(config: dict) -> list[str]:
         ("train.timestep_type", train["timestep_type"], "linear"),
         ("train.cache_text_embeddings", train["cache_text_embeddings"], True),
         ("train.disable_sampling", train["disable_sampling"], True),
+        ("train.diff_output_preservation", train["diff_output_preservation"], False),
         ("dataset.caption_ext", dataset["caption_ext"], "txt"),
         ("dataset.caption_dropout_rate", dataset["caption_dropout_rate"], 0.05),
         ("dataset.shuffle_tokens", dataset["shuffle_tokens"], False),
@@ -199,6 +207,25 @@ def check_module_11(config: dict) -> list[str]:
     ]
     return [f"{name}: {actual!r} != {expected!r}"
             for name, actual, expected in checks if actual != expected]
+
+
+def apply_dop_trigger_word(config: dict, trigger: str) -> dict:
+    """Set `config.process[0].trigger_word` -- but ONLY when DOP ended up enabled.
+
+    Ostris `ai-toolkit`'s `SDTrainer.py` (pinned commit
+    b36bb3998ae596a566d85513299696a3a78f0dcb) raises "diff_output_preservation requires
+    a trigger_word to be set" unless this key (or a dataset's own) is present, since DOP
+    substitutes it with `diff_output_preservation_class` to compute the preservation
+    target. But `BaseSDTrainProcess.py`'s `get_caption()` also auto-inserts a missing
+    trigger_word into EVERY caption whenever this key is merely present, DOP or not --
+    so it cannot be a static template placeholder (that would silently change caption
+    behavior for every already-proven non-DOP run using this same template). Mutates and
+    returns `config` for convenience; a no-op when DOP is off.
+    """
+    train = config["config"]["process"][0]["train"]
+    if train.get("diff_output_preservation"):
+        config["config"]["process"][0]["trigger_word"] = trigger
+    return config
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -229,6 +256,7 @@ def main(argv: list[str] | None = None) -> int:
 
     rendered = render(args.template.read_text(encoding="utf-8"), build_context(args))
     config = yaml.safe_load(rendered)
+    apply_dop_trigger_word(config, args.trigger)
     try:
         validate_rendered_pod_paths(config)
     except PodPathError as exc:
