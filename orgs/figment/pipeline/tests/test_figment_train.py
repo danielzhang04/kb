@@ -1091,3 +1091,176 @@ def test_train_first_plan_grade_stage_tester_works(command, tmp_path):
     page_text = Path(grade["page"]).read_text(encoding="utf-8")
     assert "<img" in page_text
     assert "full-resolution" in page_text
+
+
+# ---------------------------------------------------------------------------
+# Defect fix: the train stage's wall-clock budget (job_timeout_seconds/max_minutes/
+# ceiling_usd) used to be a static pod-class pin regardless of training.steps and
+# training.dop_enabled -- a DOP run's real ~9s/step cost could blow through a fixed 3h
+# job_timeout / 270min ceiling mid-training. It must now derive from steps + dop_enabled,
+# never dropping below the tensor-pins.yaml floor.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "steps, save_every, dop_enabled, expected_job_timeout_seconds, expected_max_minutes",
+    [
+        # 2000 steps, no DOP: candidate (2000*2.5+900)*1.35=7965 < the 10800s pin floor,
+        # so both job_timeout_seconds and max_minutes stay exactly at the pod-class pin.
+        (2000, 500, False, 10800, 270),
+        # 1250 steps, DOP (creator-001's real, live training.yaml config): candidate
+        # (1250*9.0+900)*1.35=16402.5 -> ceil 16403, above the floor; max_minutes follows
+        # from minimum_runtime_minutes on that raised job_timeout (5 artifacts: 4
+        # intermediates + final).
+        (1250, 250, True, 16403, 351),
+        # 1000 steps, DOP: (1000*9.0+900)*1.35=13365, above the floor; 4 artifacts.
+        (1000, 250, True, 13365, 297),
+        # 3000 steps, no DOP: (3000*2.5+900)*1.35=11340, ABOVE the 10800s job_timeout
+        # floor, but minimum_runtime_minutes for that job_timeout (6 artifacts) still
+        # comes out under the 270min max_minutes floor -- the two floors are independent
+        # per the spec formula, and max_minutes must never drop below its own pin.
+        (3000, 500, False, 11340, 270),
+    ],
+)
+def test_train_manifest_budget_derives_from_steps_and_dop(
+    command, steps, save_every, dop_enabled,
+    expected_job_timeout_seconds, expected_max_minutes,
+):
+    pins = command._read_json(command.PINS_PATH)
+    floor = pins["pod_classes"]["l40s"]["stages"]["train"]
+    persona = {"id": "creator-999"}
+    training = {
+        "trigger": "creator999krea2", "caption_mode": "provided", "pod_class": "l40s",
+        "steps": steps, "save_every": save_every, "dop_enabled": dop_enabled,
+    }
+
+    manifest = command._train_manifest(persona, training, pins, smoke=False)
+
+    assert manifest["job_timeout_seconds"] == expected_job_timeout_seconds
+    assert manifest["max_minutes"] == expected_max_minutes
+    # Floors: the pod-class pin is never exceeded downward.
+    assert manifest["job_timeout_seconds"] >= floor["job_timeout_seconds"]
+    assert manifest["max_minutes"] >= floor["max_minutes"]
+    # readiness and per-artifact download allowance are untouched by this defect fix.
+    assert manifest["readiness_timeout_seconds"] == floor["readiness_timeout_seconds"] == 3600
+    assert manifest["artifact_download_seconds"] == floor["artifact_download_seconds"] == 180
+
+    budget = manifest["_budget"]
+    assert budget["per_step_s"] == (9.0 if dop_enabled else 2.5)
+    assert budget["steps"] == steps
+    assert budget["job_timeout_seconds"] == expected_job_timeout_seconds
+    assert budget["max_minutes"] == expected_max_minutes
+    assert budget["ceiling_usd"] == command.manifest_ceiling(
+        {"price_usd_per_hour": manifest["price_usd_per_hour"], "max_minutes": expected_max_minutes},
+    )
+
+
+def test_train_manifest_budget_never_applies_to_the_smoke_stage(command):
+    """The smoke stage always trains steps=100/save_every=50 regardless of the
+    persona's real training.steps -- its job_timeout_seconds/max_minutes must stay the
+    static pod-class pin, untouched by this defect fix."""
+    pins = command._read_json(command.PINS_PATH)
+    floor = pins["pod_classes"]["l40s"]["stages"]["smoke"]
+    persona = {"id": "creator-999"}
+    training = {
+        "trigger": "creator999krea2", "caption_mode": "provided", "pod_class": "l40s",
+        "steps": 3000, "save_every": 250, "dop_enabled": True,
+    }
+
+    manifest = command._train_manifest(persona, training, pins, smoke=True)
+
+    assert manifest["job_timeout_seconds"] == floor["job_timeout_seconds"]
+    assert manifest["max_minutes"] == floor["max_minutes"]
+    assert "_budget" not in manifest
+
+
+def test_build_plan_train_run_entry_carries_budget_and_dry_runs_clean_under_dop(
+    command, tmp_path,
+):
+    """End to end through `build_plan`: a DOP persona's `train` run entry in plan.json
+    carries the derived `budget`, its manifest's job_timeout_seconds/max_minutes agree
+    with it, and the manifest dry-runs clean through the real pod harness (proving
+    `require_manifest`'s own max_minutes >= minimum_runtime_minutes check is satisfied,
+    not just that the numbers look right in isolation)."""
+    personas_root = tmp_path / "personas"
+    persona_path = _synthetic_persona(personas_root, creator_id="creator-002")
+    persona_document = load_json(persona_path)
+    persona_document["training"]["dop_enabled"] = True
+    persona_document["training"]["steps"] = 1250
+    persona_document["training"]["save_every"] = 250
+    persona_path.write_text(json.dumps(persona_document, indent=2), encoding="utf-8")
+    out = tmp_path / "dop-train-plan"
+
+    plan = command.build_plan(
+        "creator-002", "train", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+
+    run = plan["stages"]["train"]["runs"][0]
+    manifest = load_json(out / run["manifest"])
+    assert run["budget"] == {
+        "per_step_s": 9.0, "steps": 1250,
+        "job_timeout_seconds": 16403, "max_minutes": 351, "ceiling_usd": "7.61",
+    }
+    assert manifest["job_timeout_seconds"] == run["budget"]["job_timeout_seconds"]
+    assert manifest["max_minutes"] == run["budget"]["max_minutes"]
+    assert run["ceiling_usd"] == run["budget"]["ceiling_usd"]
+    assert "--max-minutes" in run["argv"]
+    assert run["argv"][run["argv"].index("--max-minutes") + 1] == "351"
+
+    result = subprocess.run(run["argv"] + ["--dry-run"], cwd=ROOT, capture_output=True, text=True)
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_build_train_first_plan_train_run_entry_carries_budget(command, tmp_path):
+    """The train-first entry point shares `_train_manifest`/`_planned_run` with the
+    normal plan, so its `train` run entry must carry the same derived `budget` shape."""
+    personas_root = tmp_path / "personas"
+    persona_path = _synthetic_persona(personas_root)
+    persona_document = load_json(persona_path)
+    persona_document["training"]["dop_enabled"] = True
+    persona_document["training"]["steps"] = 1000
+    persona_document["training"]["save_every"] = 250
+    persona_path.write_text(json.dumps(persona_document, indent=2), encoding="utf-8")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    out = tmp_path / "train-first-budget"
+
+    plan = command.build_train_first_plan(
+        "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+    )
+
+    run = plan["stages"]["train"]["runs"][0]
+    assert run["budget"] == {
+        "per_step_s": 9.0, "steps": 1000,
+        "job_timeout_seconds": 13365, "max_minutes": 297, "ceiling_usd": "6.44",
+    }
+    manifest = load_json(out / run["manifest"])
+    assert manifest["job_timeout_seconds"] == 13365
+    assert manifest["max_minutes"] == 297
+    # tester never carries a budget -- only the train stage's job_timeout_seconds scales
+    # with training.steps/dop_enabled.
+    assert "budget" not in plan["stages"]["tester"]["runs"][0]
+
+
+def test_print_train_budget_prints_the_derived_numbers(command, capsys):
+    result = {
+        "stages": {
+            "train": {"runs": [{"budget": {
+                "per_step_s": 9.0, "steps": 1250,
+                "job_timeout_seconds": 16403, "max_minutes": 351, "ceiling_usd": "7.61",
+            }}]},
+        },
+    }
+
+    command._print_train_budget(result)
+
+    out = capsys.readouterr().out
+    assert "steps=1250" in out
+    assert "per_step_s=9.0" in out
+    assert "job_timeout_seconds=16403" in out
+    assert "max_minutes=351" in out
+    assert "ceiling_usd=$7.61" in out
+
+
+def test_print_train_budget_is_silent_when_the_stage_was_not_planned(command, capsys):
+    command._print_train_budget({"stages": {"dataset": {"runs": []}}})
+    assert capsys.readouterr().out == ""

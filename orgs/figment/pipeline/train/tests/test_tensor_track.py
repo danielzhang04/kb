@@ -92,6 +92,20 @@ def manifest(name):
     return runner.load_manifest(MANIFESTS[name])
 
 
+def _expected_train_budget():
+    """Recompute the train stage's derived job_timeout_seconds/max_minutes/ceiling_usd
+    via the exact same production helper `_train_manifest` itself calls
+    (`figment_train._apply_train_budget`), starting from a fresh pod-class floor
+    manifest built the same way `_train_manifest` builds one (`_pod_base`) -- never a
+    hardcoded number. Defect fix: the train stage's budget used to be a static,
+    unrecomputed pod-class pin regardless of `training.steps`/`training.dop_enabled`;
+    it is now derived per persona, so this stays correct (rather than silently going
+    stale) if creator-001's live training.yaml or the pod-class pin ever changes."""
+    floor = figment_train._pod_base(_pins, _training["pod_class"], "train")
+    checkpoints = figment_train._checkpoint_steps(_training["steps"], _training["save_every"])
+    return figment_train._apply_train_budget(floor, _training, num_artifacts=len(checkpoints) + 1)
+
+
 # --- ai-toolkit config template ----------------------------------------------
 
 def render_config(**overrides):
@@ -668,17 +682,20 @@ def test_manifest_ceilings_fit_the_daily_budget(name):
 
 def test_full_manifest_ceiling_covers_creator_001s_live_train_first_arithmetic():
     """creator-001's live training.yaml (Path-A train-first, r24 method 4): steps=1250,
-    save_every=250 -- a 5-checkpoint ladder (4 intermediates + final), well under the
-    280-minute-class ceiling `tensor-pins.yaml` still reserves (a generous, unchanged
-    fixed cap; not recomputed per persona -- see `_pod_base`)."""
+    save_every=250, dop_enabled=true -- a 5-checkpoint ladder (4 intermediates + final).
+    job_timeout_seconds/max_minutes are now DERIVED per persona from
+    training.steps/training.dop_enabled (defect fix -- they used to be a static,
+    unrecomputed pod-class pin regardless of either, see `_apply_train_budget`), floored
+    at tensor-pins.yaml's pinned values. This checks the manifest carries exactly what
+    that derivation computes, not a hardcoded number."""
     doc = manifest("train")
-    assert doc["job_timeout_seconds"] == 10800
+    expected = _expected_train_budget()
+    assert doc["job_timeout_seconds"] == expected["job_timeout_seconds"]
     assert doc["readiness_timeout_seconds"] == 3600
     assert doc["artifact_download_seconds"] == 180
     assert len(runner.manifest_artifacts(doc)) == 5
     minimum = runner.minimum_runtime_minutes(doc)
-    assert minimum == pytest.approx(257.0)
-    assert doc["max_minutes"] == 270
+    assert doc["max_minutes"] == expected["max_minutes"]
     assert doc["max_minutes"] >= minimum
 
 
@@ -714,9 +731,12 @@ def test_training_manifest_replicates_module_11_transport():
     ]
     assert len(artifacts) == 5
     assert all(artifact["wait_for"] == "_training.complete" for artifact in artifacts)
-    assert doc["job_timeout_seconds"] == 10800
+    # job_timeout_seconds/max_minutes are derived from steps/dop_enabled (defect fix) --
+    # compare against the same production helper's own output, not a hardcoded number.
+    expected = _expected_train_budget()
+    assert doc["job_timeout_seconds"] == expected["job_timeout_seconds"]
     assert doc["artifact_download_seconds"] == 180
-    assert doc["max_minutes"] == 270
+    assert doc["max_minutes"] == expected["max_minutes"]
     assert "network_volume_id" not in doc
 
 

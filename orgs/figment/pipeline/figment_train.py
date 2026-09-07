@@ -236,6 +236,65 @@ def manifest_ceiling(manifest: dict[str, Any]) -> str:
     return f"{cents:.2f}"
 
 
+# Live defect: the train stage's wall-clock budget used to be a static pod-class pin
+# (tensor-pins.yaml train.job_timeout_seconds/max_minutes) regardless of
+# training.steps/training.dop_enabled. Measured rates: 1.3-2.5s/step cached without DOP,
+# a steady 8.6s/step with DOP's 3 forward passes/step (r21) -- a long DOP run can blow
+# through the fixed 3h job_timeout / 270min ceiling mid-training. TRAIN_STEP_RATE_DOP_S
+# carries a small margin over the measured 8.6s/step.
+TRAIN_STEP_RATE_NO_DOP_S = 2.5
+TRAIN_STEP_RATE_DOP_S = 9.0
+TRAIN_WARMUP_SECONDS = 900
+TRAIN_BUDGET_MARGIN = 1.35
+
+
+def _train_step_rate(dop_enabled: bool) -> float:
+    return TRAIN_STEP_RATE_DOP_S if dop_enabled else TRAIN_STEP_RATE_NO_DOP_S
+
+
+def _apply_train_budget(
+    manifest: dict[str, Any], training: dict[str, Any], *, num_artifacts: int,
+) -> dict[str, Any]:
+    """Derive the train stage's job_timeout_seconds/max_minutes from `training.steps`
+    and `training.dop_enabled`, mutating `manifest` in place, and return the numbers for
+    plan.json's run entry (`budget`). The pod-class pins in tensor-pins.yaml (already
+    populated into `manifest` by `_pod_base`) stay FLOORS -- this only ever raises
+    job_timeout_seconds/max_minutes above the pinned value, never below it.
+    readiness_timeout_seconds and artifact_download_seconds are left exactly as pinned.
+    max_minutes is computed with the SAME harness helper
+    (`pod/runpod_run.minimum_runtime_minutes`) every manifest's live preflight already
+    uses -- never a second, independently hand-rolled formula that could drift from it.
+    """
+    floor_job_timeout_seconds = manifest["job_timeout_seconds"]
+    floor_max_minutes = manifest["max_minutes"]
+    per_step_s = _train_step_rate(training["dop_enabled"])
+    steps = training["steps"]
+    job_timeout_seconds = max(
+        floor_job_timeout_seconds,
+        math.ceil((steps * per_step_s + TRAIN_WARMUP_SECONDS) * TRAIN_BUDGET_MARGIN),
+    )
+    probe_manifest = {
+        "readiness_timeout_seconds": manifest["readiness_timeout_seconds"],
+        "job_timeout_seconds": job_timeout_seconds,
+        "artifact_download_seconds": manifest["artifact_download_seconds"],
+        "artifacts": [{} for _ in range(num_artifacts)],
+    }
+    minimum_minutes = _pod_runner_module().minimum_runtime_minutes(probe_manifest)
+    max_minutes = max(floor_max_minutes, math.ceil(minimum_minutes))
+    manifest["job_timeout_seconds"] = job_timeout_seconds
+    manifest["max_minutes"] = max_minutes
+    ceiling_usd = manifest_ceiling({
+        "price_usd_per_hour": manifest["price_usd_per_hour"], "max_minutes": max_minutes,
+    })
+    return {
+        "per_step_s": per_step_s,
+        "steps": steps,
+        "job_timeout_seconds": job_timeout_seconds,
+        "max_minutes": max_minutes,
+        "ceiling_usd": ceiling_usd,
+    }
+
+
 def _pod_base(pins: dict[str, Any], pod_class: str, stage: str) -> dict[str, Any]:
     try:
         selected = pins["pod_classes"][pod_class]
@@ -641,6 +700,12 @@ def _train_manifest(
         upload_files.append(f"{dataset_dirname}/*.txt")
     upload_files.append(f"{dataset_dirname}/training.json")
     manifest.update(_pod_base(pins, training["pod_class"], stage))
+    if not smoke:
+        # Defect fix: derive job_timeout_seconds/max_minutes from steps + dop_enabled
+        # instead of leaving the static pod-class pin in place regardless of them.
+        manifest["_budget"] = _apply_train_budget(
+            manifest, training, num_artifacts=len(intermediates) + 1,
+        )
     manifest.update({
         "models": deepcopy(pins["pins"]["train"]["models"]),
         "custom_nodes": deepcopy(pins["pins"]["train"]["custom_nodes"]),
@@ -1119,7 +1184,7 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path) -> dict[str, Any
         "--arc-cap-usd", ARC_CAP_USD,
         "--arc-ledger-glob", ARC_LEDGER_GLOB,
     ]
-    return {
+    result = {
         "manifest": _relative(manifest_path, out),
         "sha256": _sha256(manifest_path),
         "ceiling_usd": ceiling,
@@ -1127,6 +1192,9 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path) -> dict[str, Any
         "argv": argv,
         "cli": subprocess.list2cmdline(argv),
     }
+    if "_budget" in manifest:
+        result["budget"] = manifest["_budget"]
+    return result
 
 
 def build_plan(
@@ -2326,6 +2394,20 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _print_train_budget(result: dict[str, Any]) -> None:
+    train_stage = result.get("stages", {}).get("train")
+    if not train_stage or not train_stage["runs"]:
+        return
+    budget = train_stage["runs"][0].get("budget")
+    if not budget:
+        return
+    print(
+        f"train budget: steps={budget['steps']} per_step_s={budget['per_step_s']} "
+        f"job_timeout_seconds={budget['job_timeout_seconds']} "
+        f"max_minutes={budget['max_minutes']} ceiling_usd=${budget['ceiling_usd']}"
+    )
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
@@ -2335,6 +2417,7 @@ def main(argv: list[str] | None = None) -> int:
                 detail_images=args.detail_images,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
+            _print_train_budget(result)
         elif args.command == "run":
             result = run_planned_stage(args.creator, args.stage, args.plan)
             print(f"stage state: {result['status']}")
@@ -2351,6 +2434,7 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} "
                   f"({len(result['stages'])} stage(s))")
+            _print_train_budget(result)
         else:
             result = apply_rulings(args.creator, args.stage, args.plan, args.rulings)
             print(f"applied rulings: {result['rulings']}")
