@@ -104,6 +104,15 @@ SOURCE_GRAPH = (
     / "10sorlabs_dataset_generator_v2.json"
 )
 
+# Persona rule (no creator-001 look words in shared code/templates): the static
+# WORKFLOW json's nodes 800 (face)/780 (body) now carry only a structural placeholder --
+# `_generalized_dataset_workflow` is the only producer of the real, persona-composed
+# identity text, always overwriting both at plan time. The identity strings live only in
+# the GENERATED copy `_DATASET_PLAN` above already built, never in the static template or
+# TEMPLATES yaml (which carries no "identity" key at all -- see `_generalized_prompts`).
+GENERATED_WORKFLOW_PATH = _DATASET_PLAN_DIR / "expand" / "workflows" / "tensor_dataset_v2_api.json"
+IDENTITY_NODE = {"face": "800", "body": "780"}
+
 # Every model file the port is allowed to pull. Comfy-Org repackages are the
 # ComfyUI org's own; lightx2v is the Lightning team's own repo; Phips is the
 # upscaler's own author. gravedigga / Phr00t / Kiro930 / zw2013 are the
@@ -146,6 +155,11 @@ def workflow():
 @pytest.fixture(scope="module")
 def templates():
     return json.loads(TEMPLATES.read_text(encoding="utf-8"))
+
+
+@pytest.fixture(scope="module")
+def generated_workflow():
+    return json.loads(GENERATED_WORKFLOW_PATH.read_text(encoding="utf-8"))
 
 
 @pytest.fixture(scope="module")
@@ -328,12 +342,13 @@ def _row_text(row):
     return row["text"] if isinstance(row, dict) else row
 
 
-def test_templates_hold_two_lists_of_fifteen_rows(templates):
+def test_templates_hold_two_lists_of_fifteen_rows(templates, generated_workflow):
     for side in ("face", "body"):
         rows = templates[side]["rows"]
         assert len(rows) == 15
         assert len({_row_text(row) for row in rows}) == 15
-        assert templates[side]["identity"].endswith(", ")
+        identity = generated_workflow[IDENTITY_NODE[side]]["inputs"]["text"]
+        assert identity.endswith(", ")
 
 
 def test_body_rows_carry_a_half_or_full_framing_tag(templates):
@@ -350,12 +365,18 @@ def test_body_rows_carry_a_half_or_full_framing_tag(templates):
     assert all(isinstance(row, str) for row in templates["face"]["rows"])
 
 
-def _all_prompt_texts(templates, workflow, manifests):
+def _all_prompt_texts(templates, workflow, manifests, generated_workflow):
     """Every identity/row/prompt string that reaches the API graph or a
-    rendered shard job — the full surface section 4 must be clean over."""
+    rendered shard job — the full surface section 4 must be clean over.
+
+    The identity strings come from the GENERATED workflow (nodes 800/780), not the
+    static template or TEMPLATES yaml -- `_generalized_dataset_workflow` always
+    overwrites both at plan time, so the static WORKFLOW file carries only a structural
+    placeholder there (persona rule: no creator-001 look words in shared code/templates).
+    """
     texts = []
     for side in ("face", "body"):
-        texts.append(templates[side]["identity"])
+        texts.append(generated_workflow[IDENTITY_NODE[side]]["inputs"]["text"])
         texts.extend(_row_text(row) for row in templates[side]["rows"])
     for node in workflow.values():
         for field in ("prompt", "text"):
@@ -368,42 +389,64 @@ def _all_prompt_texts(templates, workflow, manifests):
     return texts
 
 
-def test_templates_and_every_prompt_in_graph_and_shards_are_clean(templates, workflow, manifests):
-    for text in _all_prompt_texts(templates, workflow, manifests):
+def test_templates_and_every_prompt_in_graph_and_shards_are_clean(
+    templates, workflow, manifests, generated_workflow,
+):
+    for text in _all_prompt_texts(templates, workflow, manifests, generated_workflow):
         lowered = text.lower()
         hits = sorted(t for t in BANNED_PHRASES | UNSAFE_TERMS if t in lowered)
         assert not hits, f"{hits} in {text[:80]!r}"
 
 
-def test_no_section_4c_age_ambiguous_token_in_any_prompt(templates, workflow, manifests):
+def test_no_section_4c_age_ambiguous_token_in_any_prompt(
+    templates, workflow, manifests, generated_workflow,
+):
     """Finding 4: section 4a's mirror alone let 'small' through in the body
     identity. This is the full section-4c word list (4a ∪ 4c), whole-word
     matched, over the same API-graph-and-shard text surface as the 4a/4b
     check above."""
-    for text in _all_prompt_texts(templates, workflow, manifests):
+    for text in _all_prompt_texts(templates, workflow, manifests, generated_workflow):
         hits = sorted(set(AGE_4C_PATTERN.findall(text.lower())))
         assert not hits, f"{hits} in {text[:80]!r}"
 
 
-def test_prompts_state_adulthood_without_a_bare_numeral(templates):
-    for side in ("face", "body"):
-        identity = templates[side]["identity"].lower()
+def test_prompts_state_adulthood_without_a_bare_numeral(generated_workflow):
+    for side, node_id in IDENTITY_NODE.items():
+        identity = generated_workflow[node_id]["inputs"]["text"].lower()
         assert "a woman in her early twenties, about twenty-one" in identity
         assert not any(ch.isdigit() for ch in identity)
 
 
-def test_the_baked_refine_prompts_are_the_template_identity_strings(templates, workflow):
-    assert workflow["800"]["inputs"]["text"] == templates["face"]["identity"]
-    assert workflow["780"]["inputs"]["text"] == templates["body"]["identity"]
-    assert workflow["801"]["inputs"]["text"] == workflow["766"]["inputs"]["text"] == ""
+def test_the_baked_refine_prompts_are_the_persona_composed_identity_strings(
+    workflow, generated_workflow,
+):
+    """The static WORKFLOW template's nodes 800/780 now carry only a structural
+    placeholder (persona rule) -- `_generalized_dataset_workflow` is the only producer of
+    the real identity text, composed from creator-001's own persona.identity.look via
+    `_generalized_prompts`, and always overwrites both at plan time. This proves the
+    GENERATED copy actually carries that composed text and never the static placeholder."""
+    persona = load_json(REAL_PERSONAS / "creator-001" / "persona.yaml")
+    prompts = figment_train._generalized_prompts(persona)
+    assert generated_workflow["800"]["inputs"]["text"] == prompts["face"]["identity"]
+    assert generated_workflow["780"]["inputs"]["text"] == prompts["body"]["identity"]
+    assert generated_workflow["801"]["inputs"]["text"] == generated_workflow["766"]["inputs"]["text"] == ""
+    for node_id in ("800", "780"):
+        assert workflow[node_id]["inputs"]["text"] != generated_workflow[node_id]["inputs"]["text"]
 
 
-def test_every_template_row_is_used_exactly_once_across_the_shards(templates, manifests):
+def test_every_template_row_is_used_exactly_once_across_the_shards(
+    templates, manifests, generated_workflow,
+):
     """Task E1: SHARDS is now built fresh from the live template (figment_train.py is
     the only producer), so this compares against the live identity strings/rows
     directly instead of a frozen pre-Task-B1 snapshot. Only "half"-framed body rows
     land in these three shards -- the five "full"-framed rows are routed to the
-    separate fullbody manifest (Task B1/D24-D25), covered elsewhere."""
+    separate fullbody manifest (Task B1/D24-D25), covered elsewhere.
+
+    face_identity/body_identity come from the GENERATED workflow (nodes 800/780) --
+    the same `prompts` object `_dataset_jobs` and `_generalized_dataset_workflow` both
+    consume from a single `build_plan` call -- not from TEMPLATES, which carries no
+    "identity" key at all (persona rule)."""
     built = {"face": [], "body": []}
     for job in jobs(manifests):
         table = subs(job)
@@ -411,8 +454,8 @@ def test_every_template_row_is_used_exactly_once_across_the_shards(templates, ma
             built["face"].append(table[("174", "prompt")])
         else:
             built["body"].append(table[("676", "prompt")])
-    face_identity = templates["face"]["identity"]
-    body_identity = templates["body"]["identity"]
+    face_identity = generated_workflow[IDENTITY_NODE["face"]]["inputs"]["text"]
+    body_identity = generated_workflow[IDENTITY_NODE["body"]]["inputs"]["text"]
     half_body_rows = {
         _row_text(row) for row in templates["body"]["rows"] if row["framing"] == "half"
     }
@@ -499,15 +542,20 @@ def test_seeds_stay_fixed_at_the_package_values(manifests):
 
 
 def test_framing_policy_skin_clause_and_no_unused_subpack(command, tmp_path):
-    prompts = json.loads(
-        (PIPELINE / "expand" / "templates" / "tensor-dataset-prompts.yaml").read_text("utf-8"))
-    clause = ("skin with visible pores, fine vellus hair, and natural micro-texture, "
-              "no retouching")
-    assert clause in prompts["face"]["identity"] and clause in prompts["body"]["identity"]
+    # The shared, non-persona skin-texture rendering instruction (figment_train.py's
+    # `skin_texture_clause`, popped from the template and appended after the persona's own
+    # composed look clause) -- verbatim, regardless of what look words precede it.
+    skin_texture_clause = "fine vellus hair, and natural micro-texture, no retouching"
     pins = json.loads((PIPELINE / "train" / "tensor-pins.yaml").read_text("utf-8"))
     assert "Impact-Subpack" not in json.dumps(pins)
     personas = tmp_path / "personas"
-    _synthetic_persona(personas, creator_id="creator-002")
+    persona_path = _synthetic_persona(personas, creator_id="creator-002")
+    # TEMPLATES carries no "identity" key at all (persona rule) -- `_generalized_prompts`
+    # is the only producer, composing it from the persona's own identity.look, so the
+    # skin-texture clause is checked against that live composition instead.
+    prompts = command._generalized_prompts(load_json(persona_path))
+    assert skin_texture_clause in prompts["face"]["identity"]
+    assert skin_texture_clause in prompts["body"]["identity"]
     out = tmp_path / "p"
     runs = command.build_plan(
         "creator-002", "dataset", out, personas_root=personas, skip_pin_verify=True,

@@ -146,12 +146,29 @@ def test_creator001_every_planned_stage_dry_runs_clean_and_pins_verify(
 
     # (d) the two prompt nodes that stay per-job placeholders (174 face-angle, 676
     # body-pose) are structural only -- no persona look words at all, in either the
-    # static template or the generated copy.
+    # static template or the generated copy. The two identity nodes (800/780) are ALSO
+    # only a structural placeholder on the STATIC templates now (persona rule: no
+    # creator-001 look words in shared code/templates) -- `_generalized_dataset_workflow`
+    # is the sole producer of the real text, already proven to reach the generated copy by
+    # (c) above. The fullbody template carries its own full copy of nodes 800/780
+    # (`_fullbody_dataset_workflow` grafts the repair tail onto an ALREADY-generalized
+    # dataset workflow dict, never a second independent substitution) plus node 952's
+    # fixed face-repair instruction -- none of the three may ever bake a persona look word.
+    fullbody_static_workflow = load_json(
+        PIPELINE / "expand" / "workflows" / "tensor_dataset_fullbody_api.json")
     for node_id in ("174", "676"):
         for source in (static_workflow, generated_workflow):
             text = source[node_id]["inputs"]["prompt"]
             for word in creator001_words + creator002_words:
                 assert word not in text, (node_id, word)
+    for node_id in ("800", "780"):
+        for source in (static_workflow, fullbody_static_workflow):
+            text = source[node_id]["inputs"]["text"]
+            for word in creator001_words + creator002_words:
+                assert word not in text, (node_id, word)
+    repair_text = fullbody_static_workflow["952"]["inputs"]["prompt"]
+    for word in creator001_words + creator002_words:
+        assert word not in repair_text, ("952", word)
 
 
 def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_path):
