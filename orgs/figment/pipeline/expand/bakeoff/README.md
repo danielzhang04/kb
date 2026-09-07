@@ -149,6 +149,21 @@ run, which this bake-off's `--dry-run` cannot exercise.
 
 ### Cost ceiling and job count
 
+**Measured, not estimated: the first job exceeded 240s live.** A live run (pod
+`rmefpbe9v5rgou`, 2026-09-06) reached readiness in ~8 minutes, uploaded the three
+anchors, then submitted job 1 (arm A, cell 1 — a cold model load into VRAM, the
+3-reference-image VL encode, and 26 steps at 1448x2176, all at once, with nothing yet
+warmed up on this placement). The harness's own `job_timeout_seconds: 240` from the
+original single-arm-derived sizing killed that job at exactly the 240s wall (`ComfyUI job
+5a3b8a66-5935-4f5b-9a37-3f2556257476 timed out`, run terminated for $0.23). Because the
+harness enforces the deadline rather than waiting for ComfyUI's own answer, the true
+duration is unknown beyond "**> 240s**" — the 90-150s estimate this manifest originally
+shipped with covered the sampler pass alone and did not account for the cold first-job
+load or the 3-image VL encode, both of which are real, one-time-per-placement costs this
+manifest cannot avoid (uploads/model-download happen once per pod, but the *first job's*
+model-to-VRAM transfer and any lazy CUDA/kernel warmup are paid by whichever job runs
+first).
+
 Computed with the harness's own helpers (`pod.minimum_runtime_minutes`,
 `figment_train.manifest_ceiling`) rather than by hand:
 
@@ -156,21 +171,18 @@ Computed with the harness's own helpers (`pod.minimum_runtime_minutes`,
   `price_usd_per_hour` 1.30.
 - `readiness_timeout_seconds`: 2700 (task ceiling, matches the existing dataset/anchor_edit
   stages' proven readiness budget for this same model stack).
-- `job_timeout_seconds`: **240**. Reasoning: a 26-step Qwen-Image-Edit sampler pass at
-  1448x2176 on an L40S is estimated at roughly 90-150s (fp8 stack, single sampler branch
-  per job regardless of arm, per the backward-reachability point above). 900s per job
-  (this bake-off's original single-arm sizing) x 18 jobs would blow the whole point of
-  running an ablation cheaply, and is far more slack than the actual sampler work needs.
-  240s keeps a real margin above the 150s upper end of that estimate — covering the
-  multi-image VL encode + VAE encode of up to 3 references, the final VAE decode, and
-  ComfyUI history-poll/proxy round trips around the sampler — without reverting to a
-  90-150s-tight budget that a single slow placement could blow. This number was sized
-  from the stated per-step expectation, not measured against a live pod (none was run).
-- `minimum_runtime_minutes` = 2700/60 + 240\*18/60 + 5 = **122 minutes** exactly —
-  `max_minutes` is set to that computed minimum (no slack wasted on an arbitrary round
-  number).
-- `manifest_ceiling` at 122 minutes = **$2.65** (preflight estimate printed by a live run
-  is $2.6433, rounded up to the cent per the harness's own `ROUND_CEILING` convention).
+- `job_timeout_seconds`: **600**. Set from the measured failure above, not from the
+  original 90-150s sampler-only estimate: 600s gives real margin over an unknown-but->240s
+  first job, while every one of the other 17 jobs (warm model, no repeated VRAM load) is
+  expected to land well under it. There is no live confirmation yet that a warm job
+  actually fits in under 600s either — only that job 1 does not fit in 240s.
+- `minimum_runtime_minutes` = 2700/60 + 600\*18/60 + 5 = **230 minutes** exactly —
+  `max_minutes` is set to that computed minimum (the coordinator's hand-set 225 was
+  refused by preflight for being 5 minutes short of this same formula's answer; 230 is
+  the actual minimum, not a rounder-looking guess).
+- `manifest_ceiling` at 230 minutes = **$4.99** (preflight estimate printed by a live dry
+  run is $4.9833, rounded up to the cent per the harness's own `ROUND_CEILING`
+  convention).
 
 Dry-run confirms the shape end-to-end (18/18 jobs verified):
 
@@ -179,7 +191,7 @@ python pipeline/pod/runpod_run.py run --manifest pipeline/expand/bakeoff/m1.yaml
 ```
 
 ```
-preflight cost estimate: $2.6433 for 122.00 minute(s)
+preflight cost estimate: $4.9833 for 230.00 minute(s)
 job c001-bo-a-01-close-front-flatwhite complete: 1 verified file(s)
 job c001-bo-b-01-close-front-flatwhite complete: 1 verified file(s)
 job c001-bo-c-01-close-front-flatwhite complete: 1 verified file(s)
@@ -188,13 +200,17 @@ job c001-bo-c-06-front-half-windowlight complete: 1 verified file(s)
 exit path complete: terminate + absence verification succeeded
 ```
 
-A live run (never executed by this task — dry-run only, per the brief):
+A live run: pass **`--max-usd 5.00`** (clears the $4.9833 estimate; $4.99 is refused —
+the estimate must be `<=` `--max-usd`, not `<`) and **`--max-minutes 230`** (redundant
+with the manifest's own `max_minutes`, since `effective_max_minutes` takes the minimum of
+the two — set explicitly anyway so a stale CLI default can never silently undercut the
+manifest):
 
 ```powershell
 $env:RUNPOD_API_KEY = (Get-Content -Raw 'C:\secure\runpod-api-key.txt').Trim()
 try {
   python pipeline/pod/runpod_run.py run --manifest pipeline/expand/bakeoff/m1.yaml `
-    --out .\bakeoff-m1-run --max-usd 2.70 --ledger-dir <reconciled ledgers/cost dir>
+    --out .\bakeoff-m1-run --max-usd 5.00 --max-minutes 230 --ledger-dir <reconciled ledgers/cost dir>
 } finally {
   Remove-Item Env:RUNPOD_API_KEY -ErrorAction SilentlyContinue
 }

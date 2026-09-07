@@ -410,12 +410,16 @@ def test_readiness_within_2700(manifest: dict):
 
 
 def test_job_timeout_sized_from_26_step_1448x2176_qwen_edit_expectations(manifest: dict):
-    # Coordinator's own estimate for a 26-step Qwen-Image-Edit sampler pass at
-    # 1448x2176 on an L40S is ~90-150s. job_timeout_seconds must clear that upper bound
-    # with real margin for the multi-image VL/VAE encode + VAE decode + proxy round
-    # trips around the sampler, without reverting to the original single-arm build's
-    # deliberately generous 900s (18 jobs x 900s would blow the ablation's own budget).
-    assert 150 <= manifest["job_timeout_seconds"] <= 400
+    # MEASURED, not estimated: a live run (pod rmefpbe9v5rgou, 2026-09-06) put the
+    # original 240s budget in the ground on its very first job (arm A, cell 1 -- cold
+    # model load into VRAM plus the 3-image VL encode plus 26 steps at 1448x2176). The
+    # harness terminated it at exactly the 240s wall, so the true duration is unknown
+    # beyond ">240s" -- see README's "Measured: the first job exceeded 240s live"
+    # note. job_timeout_seconds is now 600s, which is what actually cleared preflight
+    # for a live run this session; there is no live confirmation yet that every one of
+    # the 17 warm (non-first) jobs also fits inside 600s, only that job 1 does not fit
+    # inside 240s.
+    assert manifest["job_timeout_seconds"] == 600
 
 
 def test_max_minutes_equals_the_harness_computed_minimum(manifest: dict):
@@ -435,7 +439,7 @@ def test_manifest_dry_run_reports_the_documented_ceiling(tmp_path):
     )
     assert result.returncode == 0, result.stdout + result.stderr
     combined = result.stdout + result.stderr
-    assert "preflight cost estimate: $2.6" in combined, combined
+    assert "preflight cost estimate: $4.98" in combined, combined
 
 
 # ---------------------------------------------------------------------------
