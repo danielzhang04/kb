@@ -612,4 +612,260 @@ def test_run_calibrate_writes_json_and_md(gate_module, tmp_path, monkeypatch):
     assert Path(result["md"]).is_file()
     md_text = Path(result["md"]).read_text(encoding="utf-8")
     assert "Proposed thresholds" in md_text
-    assert "anchors" in md_text
+
+
+# ---------------------------------------------------------------------------
+# run_gate / `identity_gate.py run` -- the plan-independent CLI: gate ANY image set
+# (a bake-off run dir, a batch folder, a glob) against one persona, exactly the way
+# figment_train.py build_grade gates a plan-driven stage (see run_two_stage_gate,
+# the shared composition both delegate to).
+# ---------------------------------------------------------------------------
+
+_FAKE_STAGE1_PASS_ROW = {
+    "identity_own": 0.95, "identity_max": 0.95, "identity_mean": 0.95,
+    "identity_per_anchor": {}, "face_px": 900,
+    "age_value": 22.0, "age_anchor": 22.0, "age_delta": 0.0,
+    "niqe": 1.0, "laplacian_variance": 300.0, "gloss": 0.001,
+    "unavailable": {},
+}
+
+
+def _fake_score_cells_for_stage(images, anchors, *, own_anchor, models=None):
+    """Every cell reads as a clean stage-1 pass -- lets `run_gate`/`run_two_stage_gate`
+    tests exercise stage-2 wiring and the `figment/gate@1` schema without loading real
+    FaceNet/MTCNN/age-classifier weights."""
+    return [dict(_FAKE_STAGE1_PASS_ROW, image_id=item["image_id"]) for item in images]
+
+
+def _fake_gate_judge_row(image_id: str, **overrides) -> dict:
+    row = {
+        "image_id": image_id, "same_person": 92, "apparent_age_reference": 23,
+        "apparent_age_candidate": 23, "age_delta": 0, "skin_realism": 80, "gloss": 5,
+        "artifacts": 2, "notes": "clean match", "model": "sonnet",
+        "duration_s": 0.01, "cost_usd": 0.001, "cache_hit": False, "unavailable": {},
+    }
+    row.update(overrides)
+    return row
+
+
+def _fake_judge_run_module(gate_module, row_factory=_fake_gate_judge_row):
+    """A fake judge runner standing in for `_vlm_judge_module()` -- never the real
+    subscription-billed `claude -p` call -- wired with the REAL `vlm_judge.judge_gate`
+    (there is nothing to fake there, it is pure threshold logic), matching
+    `test_figment_train.py`'s own `FakeJudgeModule` convention. `.calls` records how
+    many BATCH calls were made (one per `judge_images_for_stage` invocation, matching
+    build_grade's own judge-wiring tests) so a test can assert the judge ran exactly
+    once, not once per image."""
+    real_vlm_judge = gate_module._vlm_judge_module()
+
+    class _FakeJudgeRunModule:
+        judge_gate = staticmethod(real_vlm_judge.judge_gate)
+
+        def __init__(self):
+            self.calls = 0
+
+        def judge_images_for_stage(self, images, references, *, cache_dir=None, **kwargs):
+            self.calls += 1
+            return [row_factory(item["image_id"]) for item in images]
+
+    return _FakeJudgeRunModule()
+
+
+def test_resolve_images_accepts_a_directory_and_a_glob_deduplicated(gate_module, tmp_path):
+    directory = tmp_path / "dir1"
+    _png(directory, "a.png")
+    _png(directory, "b.jpg")
+    other = tmp_path / "dir2"
+    _png(other, "c.png")
+    resolved = gate_module._resolve_images([str(directory), str(other / "*.png"), str(directory)])
+    names = sorted(path.name for path in resolved)
+    assert names == ["a.png", "b.jpg", "c.png"]
+
+
+def test_run_gate_writes_gate_json_matching_the_figment_gate_schema(gate_module, tmp_path, monkeypatch):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "batch"
+    _png(batch_dir, "cell-01.png")
+    _png(batch_dir, "cell-02.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(gate_module)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    out = tmp_path / "gate-out"
+    result = gate_module.run_gate(
+        "creator-xyz", [str(batch_dir)], out, personas_root=personas_root,
+    )
+    assert Path(result["gate"]) == out / "gate.json"
+    on_disk = json.loads(Path(result["gate"]).read_text(encoding="utf-8"))
+    assert on_disk == result["document"]
+    assert on_disk["schema"] == "figment/gate@1"
+    assert len(on_disk["rows"]) == 2
+    for field in ("identity_own", "age_delta", "gloss", "niqe", "pass"):
+        assert field in on_disk["rows"][0]
+    assert on_disk["summary"]["passed"] == 2
+    assert fake_judge.calls == 1  # one BATCH call, not one per image
+
+
+def test_run_gate_raises_when_persona_not_found(gate_module, tmp_path):
+    with pytest.raises(gate_module.IdentityGateError, match="persona not found"):
+        gate_module.run_gate(
+            "no-such-creator", [str(tmp_path)], tmp_path / "out", personas_root=tmp_path,
+        )
+
+
+def test_run_gate_raises_when_no_images_matched(gate_module, tmp_path):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    empty_dir = tmp_path / "empty"
+    empty_dir.mkdir()
+    with pytest.raises(gate_module.IdentityGateError, match="no images matched"):
+        gate_module.run_gate(
+            "creator-xyz", [str(empty_dir)], tmp_path / "out2", personas_root=personas_root,
+        )
+
+
+def test_run_gate_skip_judge_never_loads_the_judge_module_and_fails_closed(
+    gate_module, tmp_path, monkeypatch,
+):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "skip-batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+
+    def boom():
+        raise AssertionError("must never load the judge module under --skip-judge")
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", boom)
+
+    out = tmp_path / "skip-judge-out"
+    result = gate_module.run_gate(
+        "creator-xyz", [str(batch_dir)], out, personas_root=personas_root, skip_judge=True,
+    )
+    document = result["document"]
+    assert document["judge_skipped"] is True
+    row = document["rows"][0]
+    # stage 1 passes (the fake score module says so) but stage 2 was never attempted --
+    # must still fail closed, never a silent pass, with exactly this reason.
+    assert row["judge"] is None
+    assert row["stage1"]["pass"] is True
+    assert row["pass"] is False
+    assert row["reasons"] == ["unavailable: judge"]
+    assert document["summary"]["passed"] == 0
+
+
+def test_format_gate_table_shows_identity_and_judge_columns_with_verdicts(gate_module):
+    document = {
+        "schema": "figment/gate@1",
+        "rows": [
+            {
+                "image_id": "cell-01", "identity_own": 0.95, "age_delta": 0.0,
+                "pass": True, "reasons": [],
+                "judge": {"same_person": 92, "age_delta": 1, "skin_realism": 80, "gloss": 5},
+            },
+            {
+                "image_id": "cell-02", "identity_own": 0.81, "age_delta": 0.0,
+                "pass": False, "reasons": ["same_person 40 is below the required floor 70.2"],
+                "judge": {"same_person": 40, "age_delta": 2, "skin_realism": 60, "gloss": 10},
+            },
+        ],
+        "summary": {"total": 2, "passed": 1, "failed": 1},
+        "outage": None,
+    }
+    table = gate_module.format_gate_table(document)
+    assert "image_id" in table
+    assert "judge_same_person" in table
+    assert "cell-01" in table and "PASS" in table
+    assert "cell-02" in table and "FAIL" in table
+    assert "1/2 passed" in table
+
+
+def test_run_cli_prints_pass_fail_table_and_writes_gate_json(gate_module, tmp_path, monkeypatch, capsys):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "cli-batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(
+        gate_module, row_factory=lambda image_id: _fake_gate_judge_row(image_id, same_person=92),
+    )
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    out = tmp_path / "cli-out"
+    exit_code = gate_module.main([
+        "run", "--creator", "creator-xyz", "--images", str(batch_dir), "--out", str(out),
+        "--personas-root", str(personas_root),
+    ])
+    assert exit_code == 0
+    printed = capsys.readouterr().out
+    assert "image_id" in printed
+    assert "judge_same_person" in printed
+    assert "PASS" in printed
+    assert "1/1 passed" in printed
+    assert (out / "gate.json").is_file()
+
+
+def test_run_gate_forwards_model_override_to_the_judge(gate_module, tmp_path, monkeypatch):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "model-batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    seen_kwargs = {}
+    real_vlm_judge = gate_module._vlm_judge_module()
+
+    class RecordingJudgeModule:
+        judge_gate = staticmethod(real_vlm_judge.judge_gate)
+
+        @staticmethod
+        def judge_images_for_stage(images, references, *, cache_dir=None, **kwargs):
+            seen_kwargs.update(kwargs)
+            return [_fake_gate_judge_row(item["image_id"]) for item in images]
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: RecordingJudgeModule())
+    out = tmp_path / "model-out"
+    gate_module.run_gate(
+        "creator-xyz", [str(batch_dir)], out, personas_root=personas_root, model="opus",
+    )
+    assert seen_kwargs["model"] == "opus"
+
+
+def test_summarize_can_consume_run_gates_output_on_a_fixture(gate_module, tmp_path, monkeypatch):
+    """expand/bakeoff/summarize.py's own docstring contract: a `gate.json` whose rows
+    carry `image_id`/`identity_own`/`age_delta`/`gloss`/`niqe`/`pass` is all it needs
+    -- exactly the schema `run_gate` writes. Proof: feed a small synthetic bake-off
+    `run.json` plus this module's own gate output straight into
+    `summarize.summarize()`/`summarize.missing_image_ids()` with no adaptation."""
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "bakeoff-cells"
+    image_ids = ["c001-bo-a-01-close-front-flatwhite", "c001-bo-b-01-close-front-flatwhite"]
+    for image_id in image_ids:
+        _png(batch_dir, f"{image_id}.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(gate_module)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    out = tmp_path / "bakeoff-gate-out"
+    result = gate_module.run_gate(
+        "creator-xyz", [str(batch_dir)], out, personas_root=personas_root,
+    )
+
+    summarize = load_module(
+        "figment_test_summarize_from_identity_gate", PIPELINE / "expand" / "bakeoff" / "summarize.py",
+    )
+    run_doc = {"jobs": [{"output_name": image_id, "files": []} for image_id in image_ids]}
+    table = summarize.summarize(run_doc, result["document"])
+    assert summarize.missing_image_ids(run_doc, result["document"]) == []
+    by_arm = {entry["arm"]: entry for entry in table}
+    assert by_arm["a"]["n"] == 1
+    assert by_arm["a"]["scored"] == 1
+    assert by_arm["a"]["pass_count"] == 1
+    assert by_arm["b"]["pass_count"] == 1
+    assert by_arm["c"]["n"] == 0

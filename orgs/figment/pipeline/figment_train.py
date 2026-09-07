@@ -1730,83 +1730,22 @@ def _run_identity_gate(
     Unlike `score_cells.score`'s advisory annotations -- which degrade to `None` fields
     on a scorer outage and never gate anything -- a TOTAL outage here still produces a
     `gate.json`, but with every cell explicitly FAILED closed (never silently promoted
-    to pass, never silently omitted from the document)."""
-    anchors_by_stem = {path.stem: path for path in anchors}
-    own_anchor = anchors[0].stem if anchors else None
-    thresholds: dict[str, Any] = {}
-    judge_thresholds: dict[str, Any] = {}
-    judge_by_id: dict[str, dict[str, Any] | None] = {}
-    rows: list[dict[str, Any]]
-    verdicts: list[dict[str, Any]]
-    outage: str | None = None
-    try:
-        gate_module = _identity_gate_module()
-        persona = _load_persona_document_for_gate(plan)
-        thresholds = gate_module.load_thresholds(persona)
-        judge_thresholds = gate_module.load_judge_thresholds()
-        rows = gate_module.score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
-        stage1_list = [gate_module.identity_floor_gate(row, thresholds) for row in rows]
+    to pass, never silently omitted from the document).
 
-        if skip_judge:
-            # Never even LOAD the judge module under --skip-judge (offline/test use
-            # only) -- a stage-1-passing cell still fails overall, exactly the same
-            # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
-            # judge call genuinely produced nothing, just without spending one.
-            verdicts = [
-                {
-                    "pass": False,
-                    "reasons": list(stage1["reasons"]) + ([] if not stage1["pass"] else ["unavailable: judge"]),
-                    "stage1": stage1,
-                    "stage2": None,
-                }
-                for stage1 in stage1_list
-            ]
-        else:
-            to_judge = [image for image, verdict in zip(images, stage1_list) if verdict["pass"]]
-            if to_judge and anchors:
-                judge_module = gate_module._vlm_judge_module()
-                judge_rows = judge_module.judge_images_for_stage(
-                    to_judge, anchors, cache_dir=grade_dir / "judge-cache",
-                )
-                judge_by_id = {row["image_id"]: row for row in judge_rows}
-            verdicts = [
-                gate_module.two_stage_gate(
-                    row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds,
-                )
-                for row in rows
-            ]
-    except Exception as exc:
-        outage = f"{type(exc).__name__}: {exc}"
-        reason = f"unavailable: gate could not run ({outage})"
-        rows = [{"image_id": row["image_id"]} for row in images]
-        verdicts = [
-            {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
-        ]
-
-    result_rows = []
-    for row, verdict in zip(rows, verdicts):
-        merged = dict(row)
-        merged["pass"] = verdict["pass"]
-        merged["reasons"] = verdict["reasons"]
-        merged["stage1"] = verdict.get("stage1")
-        merged["stage2"] = verdict.get("stage2")
-        merged["judge"] = judge_by_id.get(row["image_id"])
-        result_rows.append(merged)
-
-    return {
-        "schema": "figment/gate@1",
-        "own_anchor": own_anchor,
-        "thresholds": thresholds,
-        "judge_thresholds": judge_thresholds,
-        "judge_skipped": skip_judge,
-        "outage": outage,
-        "rows": result_rows,
-        "summary": {
-            "total": len(result_rows),
-            "passed": sum(1 for row in result_rows if row["pass"]),
-            "failed": sum(1 for row in result_rows if not row["pass"]),
-        },
-    }
+    This is now a thin plan-specific wrapper: the actual two-stage composition (score,
+    stage 1, stage 2 only for stage-1 passes, outage handling) lives in
+    `identity_gate.run_two_stage_gate` so a plan-driven grading stage and
+    `identity_gate.py run`'s own plan-independent CLI (for a bake-off run dir, a batch
+    folder, or any other ad hoc image set) gate identically and produce the exact same
+    `figment/gate@1` schema. `load_persona` is a thunk rather than an
+    already-resolved dict so a persona-resolution failure is caught by the SAME
+    outage handling as a scorer/judge failure, exactly as it was before this
+    extraction."""
+    gate_module = _identity_gate_module()
+    return gate_module.run_two_stage_gate(
+        lambda: _load_persona_document_for_gate(plan),
+        anchors, images, grade_dir, skip_judge=skip_judge,
+    )
 
 
 def build_grade(

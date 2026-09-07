@@ -59,6 +59,7 @@ trusting a cached copy, and refuses outright if the resolved weight file is not
 from __future__ import annotations
 
 import argparse
+import glob as glob_module
 import hashlib
 import importlib.util
 import json
@@ -278,6 +279,114 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
     _floor("identity_own", "identity_own_min", scores.get("identity_own"))
     _floor("face_px", "face_px_min", scores.get("face_px"))
     return {"pass": not reasons, "reasons": reasons}
+
+
+DEFAULT_GATE_WORKERS = 4
+
+
+def run_two_stage_gate(
+    load_persona: Callable[[], dict[str, Any]],
+    anchors: list[Path],
+    images: list[dict[str, Any]],
+    out_dir: Path,
+    *,
+    skip_judge: bool = False,
+    workers: int = DEFAULT_GATE_WORKERS,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """The one fail-closed two-stage gate composition EVERY caller of this module uses
+    to gate a set of images against a persona's identity references -- extracted so
+    `figment_train.py build_grade` (a plan-driven grading stage, via its own
+    `_run_identity_gate`, which now just resolves plan-specific persona/anchors/images
+    and delegates here) and this module's own plan-independent `run` CLI (`run_gate`,
+    for a bake-off run dir, a batch folder, or any other ad hoc image set) gate
+    identically and produce the exact same `figment/gate@1` schema that
+    `expand/bakeoff/summarize.py` already consumes. No behaviour change for
+    `build_grade`'s own tests -- this is the same body `_run_identity_gate` used to run
+    inline, moved here verbatim.
+
+    `load_persona` is a zero-arg thunk, not an already-resolved persona dict, so a
+    persona-resolution failure (a malformed plan, a missing persona.yaml) is caught by
+    the SAME outage handling below as a scorer/judge failure: the whole gate still
+    produces a document, every cell explicitly FAILED closed, never silently promoted
+    to pass or omitted (see the module docstring's "Unlike score_cells.score" note).
+
+    `model`, when given, is forwarded to the stage-2 judge call
+    (`vlm_judge.judge_images_for_stage`'s own `model=` kwarg); left unset, that
+    function's own default model is used unchanged -- `build_grade`'s callers never
+    pass this, so their behaviour is identical to before this function existed."""
+    anchors_by_stem = {path.stem: path for path in anchors}
+    own_anchor = anchors[0].stem if anchors else None
+    thresholds: dict[str, Any] = {}
+    judge_thresholds: dict[str, Any] = {}
+    judge_by_id: dict[str, dict[str, Any] | None] = {}
+    outage: str | None = None
+    try:
+        persona = load_persona()
+        thresholds = load_thresholds(persona)
+        judge_thresholds = load_judge_thresholds()
+        rows = score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
+        stage1_list = [identity_floor_gate(row, thresholds) for row in rows]
+
+        if skip_judge:
+            # Never even LOAD the judge module under --skip-judge (offline/test use
+            # only) -- a stage-1-passing cell still fails overall, exactly the same
+            # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
+            # judge call genuinely produced nothing, just without spending one.
+            verdicts = [
+                {
+                    "pass": False,
+                    "reasons": list(stage1["reasons"]) + ([] if not stage1["pass"] else ["unavailable: judge"]),
+                    "stage1": stage1,
+                    "stage2": None,
+                }
+                for stage1 in stage1_list
+            ]
+        else:
+            to_judge = [image for image, verdict in zip(images, stage1_list) if verdict["pass"]]
+            if to_judge and anchors:
+                judge_module = _vlm_judge_module()
+                judge_kwargs: dict[str, Any] = {"cache_dir": Path(out_dir) / "judge-cache", "workers": workers}
+                if model is not None:
+                    judge_kwargs["model"] = model
+                judge_rows = judge_module.judge_images_for_stage(to_judge, anchors, **judge_kwargs)
+                judge_by_id = {row["image_id"]: row for row in judge_rows}
+            verdicts = [
+                two_stage_gate(row, judge_by_id.get(row["image_id"]), thresholds, judge_thresholds)
+                for row in rows
+            ]
+    except Exception as exc:
+        outage = f"{type(exc).__name__}: {exc}"
+        reason = f"unavailable: gate could not run ({outage})"
+        rows = [{"image_id": row["image_id"]} for row in images]
+        verdicts = [
+            {"pass": False, "reasons": [reason], "stage1": None, "stage2": None} for _ in rows
+        ]
+
+    result_rows = []
+    for row, verdict in zip(rows, verdicts):
+        merged = dict(row)
+        merged["pass"] = verdict["pass"]
+        merged["reasons"] = verdict["reasons"]
+        merged["stage1"] = verdict.get("stage1")
+        merged["stage2"] = verdict.get("stage2")
+        merged["judge"] = judge_by_id.get(row["image_id"])
+        result_rows.append(merged)
+
+    return {
+        "schema": "figment/gate@1",
+        "own_anchor": own_anchor,
+        "thresholds": thresholds,
+        "judge_thresholds": judge_thresholds,
+        "judge_skipped": skip_judge,
+        "outage": outage,
+        "rows": result_rows,
+        "summary": {
+            "total": len(result_rows),
+            "passed": sum(1 for row in result_rows if row["pass"]),
+            "failed": sum(1 for row in result_rows if not row["pass"]),
+        },
+    }
 
 
 def two_stage_gate(
@@ -980,6 +1089,36 @@ def _images_in(directory: Path) -> list[Path]:
     )
 
 
+def _resolve_images(patterns: list[str]) -> list[Path]:
+    """Every image named by `patterns` -- each entry is either an existing directory
+    (every image file directly inside it, via `_images_in`) or a glob pattern (e.g.
+    `*.png`, `some/dir/**/*.jpg`) -- de-duplicated by resolved path while preserving
+    first-seen order across patterns. Mirrors `vlm_judge.py`'s own `_resolve_images`
+    (that module keeps its own copy local rather than importing this one, to avoid any
+    import-cycle risk now that this module imports vlm_judge.py for stage 2 -- see its
+    docstring); `identity_gate.py run` needs the exact same dir-or-glob resolution
+    without ever loading the judge module when `--skip-judge` is given, so it is kept
+    local here too rather than reaching into vlm_judge.py for it."""
+    resolved: list[Path] = []
+    for pattern in patterns:
+        path = Path(pattern)
+        if path.is_dir():
+            resolved.extend(_images_in(path))
+            continue
+        matches = sorted(Path(p) for p in glob_module.glob(pattern, recursive=True))
+        resolved.extend(
+            p for p in matches if p.is_file() and p.suffix.lower() in IMAGE_SUFFIXES
+        )
+    seen: set[Path] = set()
+    ordered: list[Path] = []
+    for path in resolved:
+        key = path.resolve()
+        if key not in seen:
+            seen.add(key)
+            ordered.append(path)
+    return ordered
+
+
 def _anchor_pairwise_from_persona(persona: dict[str, Any]) -> dict[str, float] | None:
     """Reuse `identity_check.calibrate_anchors`'s already-written
     `identity.calibration.anchor_pairwise` when a persona has one (every reference
@@ -1225,6 +1364,110 @@ def run_calibrate(
 
 
 # ---------------------------------------------------------------------------
+# run -- gate ANY image set (a bake-off run dir, a batch folder, an arbitrary glob)
+# against one persona, exactly the way `figment_train.py build_grade` gates one
+# plan-driven stage.
+# ---------------------------------------------------------------------------
+
+
+def run_gate(
+    creator_id: str,
+    image_patterns: list[str],
+    out: Path,
+    *,
+    personas_root: Path,
+    skip_judge: bool = False,
+    workers: int = DEFAULT_GATE_WORKERS,
+    model: str | None = None,
+) -> dict[str, Any]:
+    """Plan-independent front door onto `run_two_stage_gate` -- the SAME composition
+    `figment_train.py build_grade`'s own `_run_identity_gate` delegates to -- so a
+    bake-off run dir, a batch folder, or any other ad hoc image set gets gated exactly
+    the way a plan-driven grading stage does, and the `gate.json` written here is
+    byte-for-byte the same `figment/gate@1` schema `expand/bakeoff/summarize.py`
+    already consumes.
+
+    `--creator` resolves `<personas_root>/<creator_id>/persona.yaml` for its own
+    identity references (`identity.references`, in that file's own order -- the first
+    entry is the "own" anchor, same convention `calibrate`/`build_grade` both use),
+    exactly like every other CLI in this pipeline (`vlm_judge.py run`, this module's
+    own `calibrate`) -- never hardcoded to one creator. `image_patterns` is one or more
+    directories and/or glob patterns, resolved and de-duplicated by `_resolve_images`.
+
+    Raises `IdentityGateError` for a missing persona or an empty image resolution --
+    both are setup errors the CLI should refuse fast on, unlike a scorer/judge failure
+    AFTER a persona and an image set are in hand, which `run_two_stage_gate` itself
+    still turns into a fail-closed `gate.json` rather than raising."""
+    persona_path = Path(personas_root) / creator_id / "persona.yaml"
+    if not persona_path.is_file():
+        raise IdentityGateError(f"persona not found: {persona_path}")
+    persona = json.loads(persona_path.read_text(encoding="utf-8"))
+    persona["_persona_path"] = str(persona_path)
+    persona_dir = persona_path.parent
+    references = persona["identity"]["references"]
+    anchors = [(persona_dir / reference).resolve() for reference in references]
+
+    paths = _resolve_images(image_patterns)
+    if not paths:
+        raise IdentityGateError(f"no images matched {image_patterns!r}")
+    images = [{"image_id": path.stem, "path": str(path)} for path in paths]
+
+    out = Path(out)
+    out.mkdir(parents=True, exist_ok=True)
+    document = run_two_stage_gate(
+        lambda: persona, anchors, images, out,
+        skip_judge=skip_judge, workers=workers, model=model,
+    )
+    gate_path = out / "gate.json"
+    gate_path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    return {"gate": str(gate_path), "document": document}
+
+
+def format_gate_table(document: dict[str, Any]) -> str:
+    """Render `run_gate`'s own `figment/gate@1` document as a fixed-width pass/fail
+    table for this CLI's own audience: stage 1's `identity_own` next to stage 2's own
+    `same_person`/`age_delta`/`skin_realism`/`gloss` (the judge's fields -- distinct
+    from identity_gate.py's own `age_delta`/`gloss` stage-1 columns, which
+    `figment_train.py`'s own `_format_gate_table` already prints for a plan-driven
+    stage; this is the ad hoc `run` CLI's own per-image summary, not a duplicate of
+    that one)."""
+    header = (
+        "image_id", "identity_own", "judge_same_person", "age_delta", "skin_realism",
+        "gloss", "verdict", "reasons",
+    )
+    rows: list[tuple[str, ...]] = [header]
+
+    def _fmt(value: Any) -> str:
+        return f"{value:.3f}" if isinstance(value, (int, float)) else "n/a"
+
+    for row in document.get("rows", []):
+        judge = row.get("judge") or {}
+        rows.append((
+            str(row.get("image_id")),
+            _fmt(row.get("identity_own")),
+            _fmt(judge.get("same_person")),
+            _fmt(judge.get("age_delta")),
+            _fmt(judge.get("skin_realism")),
+            _fmt(judge.get("gloss")),
+            "PASS" if row.get("pass") else "FAIL",
+            "; ".join(row.get("reasons") or []),
+        ))
+    widths = [max(len(str(cell)) for cell in column) for column in zip(*rows)]
+    lines = [
+        "  ".join(str(cell).ljust(width) for cell, width in zip(row, widths))
+        for row in rows
+    ]
+    summary = document.get("summary", {})
+    lines.append("")
+    lines.append(
+        f"{summary.get('passed', 0)}/{summary.get('total', len(document.get('rows', [])))} passed"
+    )
+    if document.get("outage"):
+        lines.append(f"GATE OUTAGE: {document['outage']}")
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
 # CLI
 # ---------------------------------------------------------------------------
 
@@ -1254,6 +1497,32 @@ def build_parser() -> argparse.ArgumentParser:
         "--set", dest="sets", action="append", type=_parse_set_arg, default=[],
         help="NAME=PATH, repeatable; an 'anchors' set is always added automatically "
              "from the persona's own identity.references",
+    )
+
+    run_parser = commands.add_parser(
+        "run",
+        help="gate ANY image set (a bake-off run dir, a batch folder, a glob) against "
+             "one persona -- the same fail-closed two-stage gate build_grade uses",
+    )
+    run_parser.add_argument("--creator", required=True)
+    run_parser.add_argument(
+        "--images", dest="images", action="append", required=True,
+        help="a directory or glob pattern, repeatable",
+    )
+    run_parser.add_argument("--out", required=True, type=Path)
+    run_parser.add_argument("--workers", type=int, default=DEFAULT_GATE_WORKERS)
+    run_parser.add_argument(
+        "--skip-judge", action="store_true",
+        help="omit stage 2 (the vlm_judge.py Claude vision judge) -- offline/test use "
+             "only, NEVER pass this on a real grading run",
+    )
+    run_parser.add_argument(
+        "--model", default=None,
+        help="stage-2 judge model override (default: vlm_judge.py's own default model)",
+    )
+    run_parser.add_argument(
+        "--personas-root", type=Path,
+        default=Path(__file__).resolve().parents[3] / "orgs" / "figment" / "personas",
     )
     return parser
 
@@ -1285,6 +1554,21 @@ def main(argv: list[str] | None = None) -> int:
         elapsed = time.time() - start
         print(f"calibration written: {result['json']}")
         print(f"calibration written: {result['md']}")
+        print(f"elapsed: {elapsed:.1f}s")
+        return 0
+    if args.command == "run":
+        start = time.time()
+        try:
+            result = run_gate(
+                args.creator, args.images, args.out, personas_root=args.personas_root,
+                skip_judge=args.skip_judge, workers=args.workers, model=args.model,
+            )
+        except (IdentityGateError, OSError, ValueError) as exc:
+            print(f"identity-gate error: {exc}", file=sys.stderr)
+            return 2
+        elapsed = time.time() - start
+        print(format_gate_table(result["document"]))
+        print(f"gate written: {result['gate']}")
         print(f"elapsed: {elapsed:.1f}s")
         return 0
     print(f"identity-gate error: unknown command {args.command!r}", file=sys.stderr)  # pragma: no cover

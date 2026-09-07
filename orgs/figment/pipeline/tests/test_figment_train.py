@@ -706,6 +706,31 @@ def test_build_grade_skip_judge_never_loads_the_judge_module(command, tmp_path, 
     assert gate_document["summary"]["passed"] == 0
 
 
+def test_run_identity_gate_delegates_to_identity_gate_run_two_stage_gate(command, tmp_path, monkeypatch):
+    """The refactor's contract (identity_gate.py's plan-independent `run` CLI and this
+    module's own `build_grade` must share ONE gate composition, never duplicate it):
+    `_run_identity_gate` is now a thin wrapper around
+    `identity_gate.run_two_stage_gate`. Proof: calling that shared function directly
+    on the exact same plan-derived anchors/images/persona/grade_dir `build_grade` used
+    produces the byte-identical `figment/gate@1` document `build_grade` itself wrote."""
+    plan_file, grade, gate_module, judge_calls = _build_grade_with_fake_stage1_and_judge(
+        command, tmp_path, monkeypatch, out_name="delegates-plan",
+        judge_row_factory=lambda image_id: _fake_judge_row(image_id),
+    )
+    gate_document = load_json(Path(grade["gate"]))
+
+    plan, root = command._load_plan("creator-002", plan_file)
+    anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
+    images = command._grading_images(plan, root, "dataset")
+    grade_dir = root / "grade" / "dataset"
+    persona = command._load_persona_document_for_gate(plan)
+
+    direct_document = gate_module.run_two_stage_gate(
+        lambda: persona, anchors, images, grade_dir, skip_judge=False,
+    )
+    assert direct_document == gate_document
+
+
 def _build_grade_with_fake_stage1_and_judge(
     command, tmp_path, monkeypatch, *, out_name: str, judge_row_factory,
 ):
