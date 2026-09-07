@@ -11,8 +11,10 @@ _Updated: 2026-09-06 (approved implementation in isolated worktree; no live-stat
   with adversarial reviews/tests throughout, preceded by a pre-build summary.
   `implementation-sequence.md` adds bounded scopes and early dashboard/broker gates.
   Daniel subsequently approved execution. The twelve-phase task checklist is
-  `dashboards/kb-platform-implementation.md`; Phase 0 is partly built and paused
-  at its next review/decision gate; later phases remain gated.
+  `dashboards/kb-platform-implementation.md`; Phase 0 is partly built and resumed
+  on its same manager card for bounded plan correction and fresh review; later
+  phases remain gated. Compatibility-preserving Lock wiring is a bounded working
+  assumption, not an explicit policy vote or approved UI redesign.
   Implementation branch: `codex/kb-platform-phase0-20260906`, based on pending
   prerequisite `e8bf8d35`, not on a merged or deployed outage repair.
   Local commit `25f87ff3` contains the independently reviewed drain barrier:
@@ -35,19 +37,22 @@ _Updated: 2026-09-06 (approved implementation in isolated worktree; no live-stat
   approval check blocked pushing; explicit permission was requested, not bypassed.
 
 ## Next
-- Resolve the next Lock/stop semantic choice, then complete generation-fence work
-  and actual browser/server evidence. All capabilities remain required. Confirm
-  topology before desktop/placement-dependent work and retain later decision gates.
+- Complete the resumed bounded plan correction and fresh review. After technical
+  review, compatibility-preserving adapter work may proceed under Daniel's existing
+  approval; it does not resolve Lock/stop policy. Obtain further direction before
+  any new durable cancellation semantics or UI policy, and before claiming actual
+  browser/server evidence. All capabilities remain required. Confirm topology before
+  desktop/placement-dependent work and retain later decision gates.
 - Keep production outage recovery under its existing handoff/approval process.
 - Establish the real Linux broker/worker acceptance harness and compare bounded
   SQLite/Temporal recovery implementations before committing to state migration.
 
 ## Blocked
 - Live operational status cannot be inferred from these isolated source/test results.
-- Execution-generation implementation awaits its revised plan review and the
-  operator's intended Lock/stop semantics. No replacement UI/control was approved.
-- That plan failed review twice. Wake-me card 01K2KBARCH0600000000000112 names
-  the remaining nested post-await Git/file effect gap; no automatic third revision.
+- The earlier execution-generation plan failed review twice; Daniel resumed its
+  bounded plan-correction/fresh-review path. Wake-me card
+  01K2KBARCH0600000000000112 keeps the nested post-await Git/file effect gap and
+  unresolved Lock/stop policy visible. No replacement UI/control was approved.
 - Reporter and diagnostics diffs exceed 400 changed lines; human review remains
   required. Publication approval and an available interactive Browser are pending.
 - Production cutover and authority changes require their own human decisions and
