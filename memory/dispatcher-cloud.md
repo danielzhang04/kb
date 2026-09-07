@@ -737,3 +737,25 @@
 - Ledgers: today $0 API-billed (subscription); budget $30/day untouched. Yesterday's rows:
   2 dispatch + 4 cost (all $0). activity ledger still 0 rows for recent days (gap already carded).
 - 6a6bc3dd still halted in working/ (terminal); figment d126c410 track1 replicate still long-running working.
+
+## 2026-09-07 nightly-review (dispatcher-cloud, cloud self-exec)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean, dispatcher emitted 1 card
+  (6a9e5890-75ecfcb4 nightly-review, T1 acts-alone, sonnet-5); executed inline as owner
+  inbox->working->done; dashboards regenerated; cost step logged; DIRECT-PUSH to ops.
+- STEP-2B TRAP AVOIDED (again): I first wrote a wake-me card (6a9e588c) for "sync_daemon_dirs.py
+  absent on ops" before reading this shard -- then deleted it. The missing-tool gap AND the
+  ops-only acceptance-run.md drift are BOTH already carded (umbrella 6a605ebb, plus 6a7c0ebf and
+  wake-daniel-2026-08-30). Ran the check via the origin/main-copy workaround: exit 1, single
+  ops-only extra orgs/kb-ops/workflows/acceptance-run.md -- IDENTICAL to prior runs. Did NOT file
+  a duplicate. LESSON REINFORCED: read this shard + grep queue/inbox for an existing wake card
+  BEFORE writing one at step 2b; the recurring daemon-dir state is fully carded, desktop
+  --sync --prune + script-mirror owed at the desk.
+- Queue by state: inbox 52, working 3 (6a9e5890 this card done after; 6a6bc3dd halted terminal;
+  d126c410 figment long-running working), done 1576, approvals 1, archived 10.
+- 6a6bc3dd still state=halted in working/ (terminal, human walk-back only). d126c410 figment
+  track1 replicate still long-running working; its action frontmatter has an unquoted colon that
+  trips strict yaml.safe_load (use tolerant line-parse) -- cosmetic, noted for a desk fix.
+- Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
+  card, so no 4b verification needed this run.
+- Cost: 2026-09-06 $2.8226 (33 rows); 2026-09-07 $0.00 (subscription). Budget $30/day untouched.
+- Silent run appropriate (nothing new broke; all pending items already carry wake/decision cards).

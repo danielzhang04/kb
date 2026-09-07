@@ -1,28 +1,32 @@
 # System Handover
-_Generated: 2026-09-06 06:08 UTC_
+_Generated: 2026-09-07 06:25 UTC_
 
-**What happened overnight.** The nightly cloud dispatcher ran cleanly. Preamble passed,
-pyyaml is present, and the skills mirror check (`sync_skills --check`) is clean. The
-dispatcher emitted the nightly-review card and executed it: dashboards regenerated, no new
-work fanned out. No money was spent (subscription billing; $0 of the $30/day budget).
+**What happened overnight.** The nightly dispatcher ran cleanly: preamble passed, the skills
+mirror check (`sync_skills --check`) was in sync, and one `nightly-review` cadence card was
+dispatched and executed. Spending is comfortably under control — $2.82 yesterday against the
+$30/day ceiling, and $0.00 so far today. Dashboards were regenerated from live queue, ledger,
+and project state.
 
-**What is waiting on you.** A few human gates have stacked up:
-- **figment GATE A** — open the blind board for creator-001 expansion-03 and rule the seven
-  axes so curation to 40 can continue.
-- **faceless-youtube** — bricks-fresh is paused at the P1-P5 gate, and the Variant-D trial
-  (25/25 verified) needs your keep / keep-with-edits / iterate / revert call.
-- **atlas** — the omni-interface remediation diff is complete and re-reviewed locally but
-  exceeds 400 lines, so it needs your review before it can be committed and pushed.
-- **prospecting** — P2 Snov results are yours to judge; the P7-UI plan needs approval.
-- **Recurring infra nag (3rd night):** `scripts/sync_daemon_dirs.py` is missing on the
-  `ops` branch (it lives on `main`). The gate still runs via main's copy and finds one
-  ops-only file, `orgs/kb-ops/workflows/acceptance-run.md`. Fix from the desktop
-  dashboard-ops worktree: restore the script to ops, then run `--sync`. Until then this
-  card will reappear every night.
+**What is waiting on you.**
+1. **One approval (T3):** figment GATE A eye-gate (`65d8f246-8a461521`) — the blind seven-axis
+   board needs your rules before curation to 40 can proceed.
+2. **atlas** — the omni-interface remediation diff (>400 lines) is built and re-reviewed on
+   `codex/atlas-enhancements-20260820`; the project contract holds it for your review before commit.
+3. **faceless-youtube** — the `bricks-fresh` run is paused at the P6B gate (18/25 slots), and the
+   Variant D trial (25/25 verified) needs your keep / edit / iterate / revert decision.
+4. **prospecting** — the live Snov run on 30 NYC VC firms is awaiting your judgment; later phases
+   sit behind their own gates.
 
-**What the system will do next, unattended.** Nothing autonomous is scheduled beyond the
-nightly and weekly cadences on the cloud dispatcher; the `self-lint-report` cadence stays
-dormant (no scheduler). Blocked cards (engagement-fold drafts, acceptance-p0 reports) will
-not move until the gating decisions above are made. The dispatcher will run again next
-night, regenerate these dashboards, and re-file the daemon-dir drift card if it is still
-unresolved. No card is at risk of acting without approval.
+**Housekeeping (all already tracked — nothing new).** The daemon-dir mirror check ran via the
+documented workaround (the check tool lives on `main`, not `ops`) and found only one recurring
+ops-only extra, `orgs/kb-ops/workflows/acceptance-run.md`, already covered by card
+`6a605ebb-d86dff79`. A desktop `sync_daemon_dirs.py --sync --prune` from the dashboard-ops worktree
+is owed, along with a decision to mirror the check tool onto `ops`. Two carried working cards also
+sit for the desk: `6a6bc3dd-5494006b` is halted (terminal, needs a human walk-back), and
+`d126c410-9bc54280` is a long-running figment job whose frontmatter has a cosmetic unquoted-colon
+YAML issue. No new wake-me cards were filed this run.
+
+**What the system will do unattended.** Nothing new spins up on its own — the self-lint cadence is
+dormant and launches are manual. The next nightly dispatcher run will dispatch the following
+cadence card, refresh these dashboards, and re-file any of the above that remains open. No
+credentials are handled and no money is spent without your gates.
