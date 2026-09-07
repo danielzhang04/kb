@@ -26,7 +26,8 @@ and source-research artifacts remain on the audit work branch at 2727dce7.
   parsed all twelve with scripts.cards and checked unique 26-character IDs,
   canonical state directories, resolved dependencies and checklist links.
   Blocked cards belong in queue/inbox, per cards.STATE_DIR; do not recreate a
-  queue/blocked directory. Phase 0 remains working, later phases gated.
+  queue/blocked directory. Phase 0 is now blocked at its next review/decision gate,
+  later phases gated; the wake-me card below is separate from the twelve phases.
 - Implementation branch codex/kb-platform-phase0-20260906 began at e8bf8d35,
   the pending PR173 outage repair. Inclusion locally is not a merge/deployment.
 - 25f87ff3: private retired-drain barrier, 70/70 tests independently rerun;
@@ -93,6 +94,7 @@ and source-research artifacts remain on the audit work branch at 2727dce7.
 Implementation worktree:
 C:/Users/danie/kb/_private/codex-worktrees/kb-platform-phase0-20260906.
 Branch codex/kb-platform-phase0-20260906; reviewed code HEAD227e1bc9.
+Evidence and unapproved plan are committed as 0d38cfd7, the current branch HEAD.
 Reporter471 and diagnostics435 changed lines each retain the >400 human-review
 gate. Local commits are not human acceptance or promotion.
 
@@ -101,11 +103,12 @@ gate. Local commits are not human acceptance or promotion.
 | dashboard/server/control/activation.ts and test | Locally committed drain slice |
 | control/automaticFailureReporter*, test-fixtures/automaticFailureReporterChild.ts, routes*, launch* | Locally committed reporter slice |
 | control/store.ts, storeBootDiagnostics.test.ts, server/bootDiagnostics*, server/index* | Locally committed diagnostics slice |
-| orgs/kb-ops/output/2026-09-06-platform-phase0/implementation-evidence.md | DRAFT evidence, review before document commit |
-| Same output directory/execution-generation-plan.md | DRAFT, initial fresh review REQUEST CHANGES; recheck revised plan before build |
+| orgs/kb-ops/output/2026-09-06-platform-phase0/implementation-evidence.md | Committed DRAFT evidence at0d38cfd7 |
+| Same output directory/execution-generation-plan.md | Committed DRAFT; two failed plan reviews, one P1 remains; do not build |
 | dashboards/kb-platform-implementation.md | Local coordination checklist; no completed phases |
-| queue/working/01K2KBARCH0600000000000100.md | Current manager card, partial result |
+| queue/inbox/01K2KBARCH0600000000000100.md | Current manager card, blocked with partial result |
 | queue/inbox/01K2KBARCH0600000000000101.md through 0111.md | Gated future phase cards, not live dispatched jobs |
+| queue/inbox/01K2KBARCH0600000000000112.md | Wake-me: two failed plan reviews and Lock semantics |
 
 Coordination proposal worktree:
 C:/Users/danie/kb/_private/codex-worktrees/kb-platform-audit-ops-20260906,
@@ -123,7 +126,13 @@ was authorized/performed on unrelated worktrees.
 
 ## Exact Next Step
 
-Read the revised execution-generation plan and its fresh review. Resolve the
+Read wake-me card01K2KBARCH0600000000000112. The revised plan still misses nested
+post-await effects in adapters.ts:405,408-410,417 and spendGrantProvision.ts:113,
+131-132; outer-port guards do not fence those later Git/file invocations. The
+reviewer requires internal checks and inner-hop yield tests. The parent stopped
+after the SECOND failed review under the kb-ops contract; do not start a third
+automatic repair/review loop without new human direction. Other plan findings
+(acceptance wording and per-port failure/unblock rules) were resolved. Resolve the
 operator's intended Lock/stop semantics before changing durable activation/run
 receipts. Do not mistake local phase cards or helper tests for platform execution.
 Then authorize only the first coherent bounded fence package, with production-
@@ -140,3 +149,7 @@ Browser/publication blockers and later topology/runtime/cutover decisions visibl
   overhaul-plan.md, adversarial-review.md and synthesis-reports/implementation-prebuild/.
 - Separate handoffs/2026-09-06-dashboard-outage-recovery.md for historical context.
 - Apply code-review/security-review, loop-design-check and save-session/growth-log.
+
+Final parent verification on committed code: typecheck then native-config build
+both exited0 (128 modules,1.96s); preamble and git diff hygiene passed. These do
+not waive the remaining phase, human-review, browser, publication or runtime gates.

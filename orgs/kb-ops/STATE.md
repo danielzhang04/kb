@@ -11,7 +11,8 @@ _Updated: 2026-09-06 (approved implementation in isolated worktree; no live-stat
   with adversarial reviews/tests throughout, preceded by a pre-build summary.
   `implementation-sequence.md` adds bounded scopes and early dashboard/broker gates.
   Daniel subsequently approved execution. The twelve-phase task checklist is
-  `dashboards/kb-platform-implementation.md`; Phase 0 is working, later phases gated.
+  `dashboards/kb-platform-implementation.md`; Phase 0 is partly built and paused
+  at its next review/decision gate; later phases remain gated.
   Implementation branch: `codex/kb-platform-phase0-20260906`, based on pending
   prerequisite `e8bf8d35`, not on a merged or deployed outage repair.
   Local commit `25f87ff3` contains the independently reviewed drain barrier:
@@ -45,6 +46,8 @@ _Updated: 2026-09-06 (approved implementation in isolated worktree; no live-stat
 - Live operational status cannot be inferred from these isolated source/test results.
 - Execution-generation implementation awaits its revised plan review and the
   operator's intended Lock/stop semantics. No replacement UI/control was approved.
+- That plan failed review twice. Wake-me card 01K2KBARCH0600000000000112 names
+  the remaining nested post-await Git/file effect gap; no automatic third revision.
 - Reporter and diagnostics diffs exceed 400 changed lines; human review remains
   required. Publication approval and an available interactive Browser are pending.
 - Production cutover and authority changes require their own human decisions and

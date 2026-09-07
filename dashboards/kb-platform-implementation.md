@@ -5,7 +5,7 @@ is the terminal checklist's durable projection, not an executor or new authority
 All required capabilities remain in scope. Runtime selection and production actions
 retain their separate human gates.
 
-- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/working/01K2KBARCH0600000000000100.md)) - IN PROGRESS
+- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/inbox/01K2KBARCH0600000000000100.md)) - PARTLY BUILT; REVIEW/DECISION GATE
 - [ ] Phase 1: Freeze contracts and prove the existing broker ([card](../queue/inbox/01K2KBARCH0600000000000101.md))
 - [ ] Phase 2: Compare and select durable runtime ([card](../queue/inbox/01K2KBARCH0600000000000102.md))
 - [ ] Phase 3: Implement transactional commands and leases ([card](../queue/inbox/01K2KBARCH0600000000000103.md))
@@ -28,6 +28,9 @@ containment 02092581, restricted diagnostics 227e1bc9. Gates: 70 drain tests,
 Existing Linux broker baseline: 11 tests on e8bf8d35 only. These are bounded
 gates, not full-suite or platform acceptance. Generation fencing, Lock semantics
 and interactive browser evidence remain open. No phase is complete yet.
+
+Next-package plan failed review twice; [wake-me](../queue/inbox/01K2KBARCH0600000000000112.md)
+records the remaining nested-effect finding and the needed Lock/stop decision.
 
 ## Phase rule
 
