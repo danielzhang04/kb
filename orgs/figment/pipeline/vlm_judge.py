@@ -228,6 +228,14 @@ def _downscale_for_judge(path: Path, dest_dir: Path, *, sha256: str | None = Non
 
 
 def _build_prompt(candidate: Path, references: Sequence[Path]) -> str:
+    # Absolute, forward-slash paths -- `Path.as_posix()` -- regardless of what form the
+    # caller's `candidate`/`references` arrived in. This is the 2026-09-07 fix for the
+    # live incident: the judge CLI runs with its own cwd (see `_default_runner`'s own
+    # `cwd` handling) and never this repo's working tree, so a relative or
+    # backslash-mangled path here would not resolve from wherever the CLI actually
+    # runs -- exactly what made the headless judge fall back to a filesystem-wide
+    # `find` the first time this happened.
+    candidate_posix = Path(candidate).resolve().as_posix()
     reference_lines = []
     for index, reference in enumerate(references):
         role = (
@@ -235,7 +243,8 @@ def _build_prompt(candidate: Path, references: Sequence[Path]) -> str:
             if index == 0
             else "another real photo of the SAME woman, for context only"
         )
-        reference_lines.append(f"{index + 1}. {reference} -- {role}")
+        reference_posix = Path(reference).resolve().as_posix()
+        reference_lines.append(f"{index + 1}. {reference_posix} -- {role}")
     reference_block = "\n".join(reference_lines)
     return f"""You are a careful, honest visual grader for an AI image-generation identity/quality gate. You will Read some real reference photographs of one specific woman, then Read one AI-produced candidate photograph, and compare them.
 
@@ -243,9 +252,11 @@ First, Read these reference photo(s) of the real woman:
 {reference_block}
 
 Now Read this candidate photo, which an AI pipeline produced and which may or may not actually be the same woman, and may have realism problems:
-{candidate}
+{candidate_posix}
 
 Look closely and compare the candidate to the reference(s). Be skeptical, not polite -- a resemblance is not the same as being the same person, and smooth/plastic/glossy skin is a real defect even if the pose and lighting look nice.
+
+If any of the file paths listed above cannot be read, output ONLY {{"error": "missing <path>"}} (with that exact path) and stop -- never search the filesystem for it, never guess at a different path.
 
 Respond with ONLY a single JSON object, no markdown code fence, no other text, with exactly these keys:
 {{
@@ -356,36 +367,70 @@ def parse_cli_envelope(raw: str) -> dict[str, Any] | None:
 # ---------------------------------------------------------------------------
 
 
-def _default_runner(prompt: str, *, model: str, timeout: float = DEFAULT_TIMEOUT) -> str:
-    """Matches the operator-verified probe command exactly: the prompt goes on STDIN
-    (never argv -- these prompts embed absolute file paths and could be long),
-    `--output-format json` (a parseable envelope, not prose), `--permission-mode
-    bypassPermissions` + `--allowedTools "Read"` (the judge only ever needs to Read the
-    reference/candidate image files, nothing else -- never Write/Edit/Bash). Runs from a
-    fresh scratch directory, never this repo's own working tree, so the model never
-    loads this repo's own CLAUDE.md/AGENTS.md into a grading call and can never write
-    into the repo even by accident. Subscription-billed through the `claude` binary
-    already on PATH -- `_clean_env()` never forwards `ANTHROPIC_API_KEY` or any other
-    ambient credential (CLAUDE.md's preamble contract: fleet agents never hold one)."""
+def _default_runner(
+    prompt: str, *, model: str, timeout: float = DEFAULT_TIMEOUT, cwd: str | Path | None = None,
+) -> str:
+    """Matches the operator-verified probe command: the prompt goes on STDIN (never
+    argv -- these prompts embed absolute file paths and could be long),
+    `--output-format json` (a parseable envelope, not prose).
+
+    2026-09-07 fix (live incident): `--permission-mode bypassPermissions` is GONE.
+    With everything auto-approved, a judge call whose input path didn't resolve from
+    the CLI's own cwd fell back to Bash and ran a filesystem-wide `find.exe /
+    -iname <sha8>.jpg`, hanging 600s per call and filling the host with search
+    processes. Replaced with `--permission-mode default` + `--allowedTools Read` (the
+    judge only ever needs to Read the reference/candidate image files) +
+    `--disallowedTools Bash,Edit,Write,Glob,Grep,Agent` as defense in depth. Verified
+    live against the installed `claude` CLI (2026-09-07): `default` is accepted even
+    though it isn't one of `--permission-mode`'s enumerated `--help` choices
+    (acceptEdits/auto/bypassPermissions/manual/dontAsk/plan --- passing an actually
+    invalid mode string is rejected by argument parsing with a clear "Allowed choices"
+    error, so this isn't a silently-ignored typo), and in that mode a probe call that
+    tried to run `python scripts/preamble.py` via Bash was auto-denied
+    (`permission_denials` in the JSON envelope) rather than hanging on an unanswerable
+    interactive prompt or silently running.
+
+    `cwd`, when given, is used as the subprocess's own working directory verbatim
+    (created first if it doesn't exist yet) -- `judge_image` passes the judge-inputs
+    directory holding the exact (downscaled, absolute-path) files the prompt names, so
+    the CLI's own cwd always contains real, resolvable evidence instead of an unrelated
+    scratch directory or -- worse -- this repo's own working tree (which would load
+    this repo's own CLAUDE.md/AGENTS.md into a grading call and risk writes into the
+    repo). Falls back to a fresh, isolated scratch directory (the pre-2026-09-07
+    behavior) when no `cwd` is given, e.g. `calibrate`'s leave-one-out
+    self-consistency pass. Subscription-billed through the `claude` binary already on
+    PATH -- `_clean_env()` never forwards `ANTHROPIC_API_KEY` or any other ambient
+    credential (CLAUDE.md's preamble contract: fleet agents never hold one)."""
     cmd = [
         "claude", "-p", "--model", model, "--output-format", "json",
-        "--permission-mode", "bypassPermissions", "--allowedTools", "Read",
+        "--permission-mode", "default", "--allowedTools", "Read",
+        "--disallowedTools", "Bash,Edit,Write,Glob,Grep,Agent",
     ]
-    # `ignore_cleanup_errors=True` (Python 3.10+): on Windows, `claude` (a Node CLI)
-    # can leave the scratch directory momentarily locked by a just-exited child process
-    # even after `subprocess.run` itself has returned -- observed live during this
-    # module's own first real calibration run, where a bare `TemporaryDirectory()`
-    # raised `PermissionError` on `__exit__` and corrupted an otherwise-successful
-    # judgement into a spurious retry. A rmdir that fails here is not this function's
-    # problem to solve; the OS temp-cleaner reclaims it eventually.
-    with tempfile.TemporaryDirectory(prefix="kb-figment-judge-", ignore_cleanup_errors=True) as scratch:
+
+    def _run(run_dir: str) -> subprocess.CompletedProcess:
         try:
-            result = subprocess.run(
-                cmd, cwd=scratch, input=prompt, capture_output=True, text=True,
+            return subprocess.run(
+                cmd, cwd=run_dir, input=prompt, capture_output=True, text=True,
                 timeout=timeout, env=_clean_env(),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise JudgeError(f"judge CLI failed to run: {exc}") from exc
+
+    if cwd is not None:
+        run_dir = Path(cwd)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        result = _run(str(run_dir))
+    else:
+        # `ignore_cleanup_errors=True` (Python 3.10+): on Windows, `claude` (a Node
+        # CLI) can leave the scratch directory momentarily locked by a just-exited
+        # child process even after `subprocess.run` itself has returned -- observed
+        # live during this module's own first real calibration run, where a bare
+        # `TemporaryDirectory()` raised `PermissionError` on `__exit__` and corrupted
+        # an otherwise-successful judgement into a spurious retry. A rmdir that fails
+        # here is not this function's problem to solve; the OS temp-cleaner reclaims
+        # it eventually.
+        with tempfile.TemporaryDirectory(prefix="kb-figment-judge-", ignore_cleanup_errors=True) as scratch:
+            result = _run(scratch)
     if result.returncode != 0:
         raise JudgeError(
             f"judge CLI exited {result.returncode}: {(result.stderr or '').strip()[:400]}"
@@ -484,6 +529,12 @@ def judge_image(
     candidate = Path(candidate).resolve()
     references = [Path(reference).resolve() for reference in references]
     image_id = candidate.stem
+    # Tracked separately from the (possibly-defaulted) `runner` itself: only when the
+    # CALLER never injected one do we know it's really `_default_runner` underneath,
+    # which is the only runner that understands the `cwd` kwarg (see below) -- an
+    # injected test/fake runner keeps the pre-existing `(prompt, *, model, timeout)`
+    # call shape untouched.
+    runner_was_provided = runner is not None
     runner = runner or _default_runner
 
     candidate_sha = _sha256_file(candidate)
@@ -517,7 +568,7 @@ def judge_image(
         downscale_dir = (
             Path(cache_dir).parent / "judge-inputs" if cache_dir is not None
             else Path(tempfile.gettempdir()) / "kb-figment-judge-inputs"
-        )
+        ).resolve()
         try:
             judged_candidate = _downscale_for_judge(candidate, downscale_dir, sha256=candidate_sha)
             judged_references = [
@@ -529,77 +580,120 @@ def judge_image(
             judged_candidate, judged_references = candidate, references
         judged_from = str(judged_candidate)
 
-        prompt = _build_prompt(judged_candidate, judged_references)
-        result = None
-        last_reason = "unknown failure"
-        duration = 0.0
-        for attempt in range(2):
-            start = time.perf_counter()
-            LOGGER.info(
-                "judge start id=%s attempt=%d/2 model=%s timeout=%.0fs",
-                image_id, attempt + 1, model, timeout,
-            )
-            try:
-                raw = runner(prompt, model=model, timeout=timeout)
-            except Exception as exc:  # noqa: BLE001 - fail-closed, never crash the caller
-                duration = time.perf_counter() - start
-                last_reason = f"{type(exc).__name__}: {exc}"
-                LOGGER.info(
-                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=error (%s)",
-                    image_id, attempt + 1, duration, last_reason,
-                )
-                continue
-            duration = time.perf_counter() - start
-            envelope = parse_cli_envelope(raw)
-            if envelope is None:
-                last_reason = f"judge CLI did not return a parseable JSON envelope: {raw[:200]!r}"
-                LOGGER.info(
-                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=unparseable",
-                    image_id, attempt + 1, duration,
-                )
-                continue
-            if envelope.get("is_error"):
-                last_reason = f"judge CLI reported an error: {str(envelope.get('result'))[:200]}"
-                LOGGER.info(
-                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=cli-error",
-                    image_id, attempt + 1, duration,
-                )
-                continue
-            payload = _extract_json_object(str(envelope.get("result") or ""))
-            coerced = _coerce_judge_payload(payload) if payload is not None else None
-            if coerced is None:
-                last_reason = (
-                    f"judge did not return parseable JSON in its result: "
-                    f"{str(envelope.get('result'))[:200]!r}"
-                )
-                LOGGER.info(
-                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=bad-json",
-                    image_id, attempt + 1, duration,
-                )
-                continue
-            cost = envelope.get("total_cost_usd")
-            if not isinstance(cost, (int, float)):
-                raw_cost = envelope.get("cost_usd")
-                cost = raw_cost if isinstance(raw_cost, (int, float)) else None
-            result = {
-                "image_id": image_id,
-                **coerced,
-                "model": model,
-                "duration_s": duration,
-                "cost_usd": cost,
-                "cache_hit": False,
-                "judged_from": judged_from,
-                "unavailable": {},
-            }
-            LOGGER.info(
-                "judge finish id=%s attempt=%d/2 duration_s=%.1f result=ok same_person=%s",
-                image_id, attempt + 1, duration, coerced["same_person"],
-            )
-            break
-        if result is None:
+        # 2026-09-07 fix (live incident): verify every input the prompt is about to
+        # name -- as an ABSOLUTE, existing path -- BEFORE the judge CLI is ever
+        # spawned. The live bug was exactly a path that didn't resolve from wherever
+        # the CLI actually ran; catching that here, fail-closed, means the CLI is
+        # simply never invoked on bad inputs instead of falling back to a
+        # filesystem-wide search for the missing file.
+        judge_inputs = [judged_candidate, *judged_references]
+        missing_inputs = [str(path) for path in judge_inputs if not Path(path).is_file()]
+        relative_inputs = [str(path) for path in judge_inputs if not Path(path).is_absolute()]
+
+        if missing_inputs or relative_inputs:
+            problems = []
+            if missing_inputs:
+                problems.append(f"missing: {', '.join(missing_inputs)}")
+            if relative_inputs:
+                problems.append(f"not absolute: {', '.join(relative_inputs)}")
             result = _fail_result(
-                image_id, last_reason, model=model, duration_s=duration, judged_from=judged_from,
+                image_id,
+                "judge input file(s) failed pre-spawn validation -- " + "; ".join(problems),
+                model=model, duration_s=0.0, judged_from=judged_from,
             )
+        else:
+            prompt = _build_prompt(judged_candidate, judged_references)
+            result = None
+            last_reason = "unknown failure"
+            duration = 0.0
+            for attempt in range(2):
+                start = time.perf_counter()
+                LOGGER.info(
+                    "judge start id=%s attempt=%d/2 model=%s timeout=%.0fs",
+                    image_id, attempt + 1, model, timeout,
+                )
+                try:
+                    if runner_was_provided:
+                        raw = runner(prompt, model=model, timeout=timeout)
+                    else:
+                        # Only the real `_default_runner` understands `cwd` -- point
+                        # its subprocess at the judge-inputs directory holding the
+                        # exact files the prompt names (see `_default_runner`'s own
+                        # docstring for why).
+                        raw = runner(prompt, model=model, timeout=timeout, cwd=downscale_dir)
+                except Exception as exc:  # noqa: BLE001 - fail-closed, never crash the caller
+                    duration = time.perf_counter() - start
+                    last_reason = f"{type(exc).__name__}: {exc}"
+                    LOGGER.info(
+                        "judge finish id=%s attempt=%d/2 duration_s=%.1f result=error (%s)",
+                        image_id, attempt + 1, duration, last_reason,
+                    )
+                    continue
+                duration = time.perf_counter() - start
+                envelope = parse_cli_envelope(raw)
+                if envelope is None:
+                    last_reason = f"judge CLI did not return a parseable JSON envelope: {raw[:200]!r}"
+                    LOGGER.info(
+                        "judge finish id=%s attempt=%d/2 duration_s=%.1f result=unparseable",
+                        image_id, attempt + 1, duration,
+                    )
+                    continue
+                if envelope.get("is_error"):
+                    last_reason = f"judge CLI reported an error: {str(envelope.get('result'))[:200]}"
+                    LOGGER.info(
+                        "judge finish id=%s attempt=%d/2 duration_s=%.1f result=cli-error",
+                        image_id, attempt + 1, duration,
+                    )
+                    continue
+                payload = _extract_json_object(str(envelope.get("result") or ""))
+                if (
+                    isinstance(payload, dict) and "error" in payload
+                    and not any(field in payload for field in _REQUIRED_JUDGE_FIELDS)
+                ):
+                    # The model itself reported it couldn't Read a listed file (the
+                    # explicit `{"error": "missing <path>"}` contract added to the
+                    # prompt) -- deterministic, so a second identical attempt won't
+                    # help; fail closed without retrying.
+                    last_reason = f"judge reported: {payload.get('error')}"
+                    LOGGER.info(
+                        "judge finish id=%s attempt=%d/2 duration_s=%.1f result=reported-missing (%s)",
+                        image_id, attempt + 1, duration, last_reason,
+                    )
+                    break
+                coerced = _coerce_judge_payload(payload) if payload is not None else None
+                if coerced is None:
+                    last_reason = (
+                        f"judge did not return parseable JSON in its result: "
+                        f"{str(envelope.get('result'))[:200]!r}"
+                    )
+                    LOGGER.info(
+                        "judge finish id=%s attempt=%d/2 duration_s=%.1f result=bad-json",
+                        image_id, attempt + 1, duration,
+                    )
+                    continue
+                cost = envelope.get("total_cost_usd")
+                if not isinstance(cost, (int, float)):
+                    raw_cost = envelope.get("cost_usd")
+                    cost = raw_cost if isinstance(raw_cost, (int, float)) else None
+                result = {
+                    "image_id": image_id,
+                    **coerced,
+                    "model": model,
+                    "duration_s": duration,
+                    "cost_usd": cost,
+                    "cache_hit": False,
+                    "judged_from": judged_from,
+                    "unavailable": {},
+                }
+                LOGGER.info(
+                    "judge finish id=%s attempt=%d/2 duration_s=%.1f result=ok same_person=%s",
+                    image_id, attempt + 1, duration, coerced["same_person"],
+                )
+                break
+            if result is None:
+                result = _fail_result(
+                    image_id, last_reason, model=model, duration_s=duration, judged_from=judged_from,
+                )
 
     if cache_path is not None and result.get("same_person") is not None:
         try:

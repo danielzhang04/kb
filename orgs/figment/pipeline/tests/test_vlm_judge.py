@@ -11,6 +11,8 @@ import hashlib
 import importlib.util
 import json
 import logging
+import os
+import re
 import sys
 from pathlib import Path
 
@@ -88,7 +90,9 @@ def test_judge_image_parses_envelope_and_result_json(judge_module, tmp_path):
     assert str(candidate) not in calls[0][0]
     assert str(reference) not in calls[0][0]
     assert result["judged_from"] is not None
-    assert result["judged_from"] in calls[0][0]
+    # The prompt embeds absolute, forward-slash paths (2026-09-07 fix -- see
+    # `_build_prompt`) regardless of the OS-native form `judged_from` is recorded in.
+    assert Path(result["judged_from"]).as_posix() in calls[0][0]
     judged_from_path = Path(result["judged_from"])
     assert judged_from_path.is_file()
     assert judged_from_path.suffix == ".jpg"
@@ -233,6 +237,124 @@ def test_judge_image_logs_start_and_finish_with_duration(judge_module, tmp_path,
     assert any(
         msg.startswith("judge finish id=candidate") and "duration_s=" in msg for msg in messages
     )
+
+
+# ---------------------------------------------------------------------------
+# 2026-09-07 live incident: the judge inputs must be absolute, forward-slash,
+# existing paths, verified BEFORE the judge CLI is ever spawned, and the runner must
+# never be able to fall back to Bash/a filesystem search.
+# ---------------------------------------------------------------------------
+
+
+def test_judge_image_prompt_paths_are_absolute_posix_and_exist(judge_module, tmp_path):
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    captured = {}
+
+    def fake_runner(prompt, *, model, timeout=None):
+        captured["prompt"] = prompt
+        return _envelope(json.dumps(GOOD_PAYLOAD))
+
+    judge_module.judge_image(candidate, [reference], runner=fake_runner)
+
+    paths = re.findall(r"\S+\.jpg", captured["prompt"])
+    assert len(paths) == 2  # the downscaled candidate + the one downscaled reference
+    for path in paths:
+        assert "\\" not in path, f"path is not forward-slash: {path!r}"
+        assert os.path.isabs(path), f"path is not absolute: {path!r}"
+        assert os.path.exists(path), f"path does not exist on disk: {path!r}"
+
+
+def test_build_prompt_tells_the_model_never_to_search_for_a_missing_file(judge_module, tmp_path):
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    prompt = judge_module._build_prompt(candidate, [reference])
+    assert "never search the filesystem for it" in prompt
+    assert '{"error": "missing <path>"}' in prompt
+
+
+def test_judge_image_fails_closed_before_spawning_when_a_judge_input_path_does_not_exist(
+    judge_module, tmp_path, monkeypatch,
+):
+    """Pins the actual root cause of the 2026-09-07 incident: a downscaled input path
+    that doesn't resolve on disk must never reach the judge CLI at all."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+
+    def fake_downscale(path, dest_dir, *, sha256=None):
+        return Path(dest_dir) / "does-not-exist.jpg"
+
+    monkeypatch.setattr(judge_module, "_downscale_for_judge", fake_downscale)
+
+    def boom(prompt, *, model, timeout=None):
+        raise AssertionError("must never spawn the judge CLI when an input file is missing")
+
+    result = judge_module.judge_image(candidate, [reference], runner=boom)
+    assert result["same_person"] is None
+    assert "judge" in result["unavailable"]
+    assert "missing" in result["unavailable"]["judge"]
+
+
+def test_judge_image_missing_file_error_envelope_yields_unavailable_row_not_cached(
+    judge_module, tmp_path,
+):
+    """The prompt's own `{"error": "missing <path>"}` contract (see `_build_prompt`):
+    a runner that returns that shape must yield a fail-closed, uncached row -- and
+    must NOT be retried a second time, since a missing file is a deterministic
+    failure."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    cache_dir = tmp_path / "cache"
+    calls = {"n": 0}
+
+    def fake_runner(prompt, *, model, timeout=None):
+        calls["n"] += 1
+        return _envelope(json.dumps({"error": "missing /nonexistent/path/e2f5cca2.jpg"}))
+
+    result = judge_module.judge_image(candidate, [reference], runner=fake_runner, cache_dir=cache_dir)
+
+    assert calls["n"] == 1, "a reported-missing-file response is deterministic; must not retry"
+    assert result["same_person"] is None
+    assert "judge" in result["unavailable"]
+    assert "missing" in result["unavailable"]["judge"]
+    assert not list(cache_dir.glob("*.json")), "a failed judgement must never be cached"
+
+
+def test_judge_image_uses_default_runner_with_judge_inputs_dir_as_cwd(
+    judge_module, monkeypatch, tmp_path,
+):
+    """End-to-end (subprocess.run faked, never the real CLI): when no custom `runner`
+    is injected, `judge_image` must route through `_default_runner` with `cwd` set to
+    the judge-inputs directory holding the exact files the prompt names, and the argv
+    must carry the new permission flags -- never the old `bypassPermissions`."""
+    candidate = _png(tmp_path, "candidate")
+    reference = _png(tmp_path, "g01")
+    cache_dir = tmp_path / "out" / "judge-cache"
+    captured = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = _envelope(json.dumps(GOOD_PAYLOAD))
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, input, capture_output, text, timeout, env):
+        captured["cwd"] = cwd
+        captured["cmd"] = cmd
+        return FakeCompleted()
+
+    monkeypatch.setattr(judge_module.subprocess, "run", fake_run)
+
+    result = judge_module.judge_image(candidate, [reference], cache_dir=cache_dir)
+
+    expected_dir = (cache_dir.parent / "judge-inputs").resolve()
+    assert Path(captured["cwd"]) == expected_dir
+    assert captured["cmd"] == [
+        "claude", "-p", "--model", judge_module.DEFAULT_MODEL, "--output-format", "json",
+        "--permission-mode", "default", "--allowedTools", "Read",
+        "--disallowedTools", "Bash,Edit,Write,Glob,Grep,Agent",
+    ]
+    assert "bypassPermissions" not in captured["cmd"]
+    assert result["same_person"] == 58
 
 
 # ---------------------------------------------------------------------------
@@ -516,13 +638,40 @@ def test_default_runner_builds_the_expected_cli_command(judge_module, monkeypatc
 
     assert captured["cmd"] == [
         "claude", "-p", "--model", "sonnet", "--output-format", "json",
-        "--permission-mode", "bypassPermissions", "--allowedTools", "Read",
+        "--permission-mode", "default", "--allowedTools", "Read",
+        "--disallowedTools", "Bash,Edit,Write,Glob,Grep,Agent",
     ]
     assert captured["input"] == "THE PROMPT"
     assert captured["timeout"] == 42
     assert "ANTHROPIC_API_KEY" not in captured["env"]
     assert captured["env"]["PATH"] == "/fake/path"
     assert out == FakeCompleted.stdout
+
+
+def test_default_runner_uses_given_cwd_for_the_judge_inputs_directory(judge_module, monkeypatch, tmp_path):
+    """2026-09-07 fix: the judge CLI's own subprocess cwd must be the judge-inputs
+    directory holding the exact files the prompt names, not an unrelated scratch dir
+    -- passed straight through to `subprocess.run(cwd=...)`, creating it first if it
+    doesn't exist yet."""
+    captured = {}
+
+    class FakeCompleted:
+        returncode = 0
+        stdout = _envelope(json.dumps(GOOD_PAYLOAD))
+        stderr = ""
+
+    def fake_run(cmd, *, cwd, input, capture_output, text, timeout, env):
+        captured["cwd"] = cwd
+        return FakeCompleted()
+
+    monkeypatch.setattr(judge_module.subprocess, "run", fake_run)
+    judge_inputs_dir = tmp_path / "out" / "judge-inputs"
+    assert not judge_inputs_dir.exists()
+
+    judge_module._default_runner("THE PROMPT", model="sonnet", timeout=42, cwd=judge_inputs_dir)
+
+    assert captured["cwd"] == str(judge_inputs_dir)
+    assert judge_inputs_dir.is_dir()
 
 
 def test_default_runner_raises_judge_error_on_nonzero_exit(judge_module, monkeypatch):
