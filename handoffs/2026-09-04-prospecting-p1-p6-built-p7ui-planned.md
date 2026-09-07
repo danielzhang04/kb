@@ -68,6 +68,18 @@ Owner: boss session (Fable). Status: OVERNIGHT ASYNC done to human gates.
   copy-polish pass with Daniel before real drafts. Ask with fit lines ready: %LOCALAPPDATA%\kb-prospecting
 yc-vc-ask.txt.
   Scratchpad briefs-p8/ (build-*.md, fix-*.md), run-gate-p8.ps1, fill_manifest_p8.py.
+- LIVE STATE (2026-09-07 ~05:00): P8 gate last recorded 883 (e8216b90); later gates 911/933/943 passed unrecorded (builders mid-edit);
+  branch HEAD d10a9315 (949 nodes, gate running). Live campaign camp_3147b42db58c4c15: fit spec approved (hash 383fcaa3…), discovery
+  35 firms / 53 new people / 75 credits; bio pages thin (403s fixed with browser UA, still ~15 firms no team page); LinkedIn via
+  Daniel's OWN Chrome through chrome-devtools (he overrode the dedicated-profile rule): 10 profiles fetched to
+  %LOCALAPPDATA%\kb-prospecting\linkedin-pages\<person_id>.txt, consumed by `research run --linkedin-pages-dir`; 3 people above
+  fit (RRE associate 44 + two mediums-only 26), 2 delivered rows, 1 firm met. Batch 2 (10 investing-titled, 9 firms) pre-selected in
+  linkedin-batch-2.json awaiting Daniel. Codex CLI auth broken ("failed to decrypt secrets file") — `codex login` owed; Claude sonnet
+  builders used instead (all graded via transcript grep). Fixes today (each tested, committed): shared-hash lock, untyped ids,
+  browser UA, retryable rejects, pages pass, role-family exclusions, fit-only selection, education parser, grouped roles + kind
+  classifier, chronological kinds, level fallback, evidence at fill; in flight: evidence ids preserved on rescore, no-contact
+  substitution, path/role/level citations. Acceptance script: scratchpad p8b_acceptance.py; run wrappers run-p8-live.ps1 /
+  run-p8-score.ps1 (probe_p8.py wraps the CLI with a traceback spy).
 - NEXT (was): walk Daniel the plan one task per phase; Task 1 = P5 fold; gates P8-A (fit table) and P8-B (NYC VC fit-first re-run
   in Datasette deliverable_v2, 7 measurable criteria, refire_noop_runs cumulative 4).
 

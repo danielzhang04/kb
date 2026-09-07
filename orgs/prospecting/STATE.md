@@ -13,4 +13,4 @@ Updated: 2026-09-04 evening by boss session.
 | P7-UI local desktop dashboard | plan v2.1 on claude/boss-2026-09-02 | pending — approve plan before scaffolding |
 
 Branches unpushed; worktrees under C:/Users/danie/kb-worktrees/prospecting-p{1..6}. Handoff: handoffs/2026-09-04-prospecting-p1-p6-built-p7ui-planned.md
-| P8 affinity (fit-first selection + copy doctrine) | tasks 1–13 built on claude/prospecting-p8 (35446fc1), 113 affinity tests, code-review fix wave applied; P8 gate + confirm pass in flight | Task 1 = P5 ask-grammar fold; gates P8-A fit table, P8-B NYC VC re-run |
+| P8 affinity (fit-first selection + copy doctrine) | built + live-tested on the real store (d10a9315; 949-node gate; 16 real-run defects fixed); 3 above fit, 2 delivered; batch 2 pending Daniel | Task 1 = P5 ask-grammar fold; gates P8-A fit table, P8-B NYC VC re-run |
