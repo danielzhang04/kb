@@ -441,3 +441,10 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+
+## 2026-09-08 — Verify remote execution independently of dashboard health
+
+- WORKED: SSH proved VM capacity and a tool-disabled Opus CLI probe succeeded despite a failed dashboard. Separate transport, subscription/model response, broker health, and governed workflow execution in claims.
+- FAILED then recovered: transient OAuth refresh contention cleared on one bounded retry; Windows PowerShell CRLF required LF-normalized remote scripts. Never repair credentials as objects.
+- REMAINS: remote edits/build/test and Fable are untested. CLI modelUsage included an auxiliary Haiku call; Opus worker verification does not imply all internal calls used Opus. Read newer local coordination worktrees as well as origin/ops before describing the live handoff board.
