@@ -1,6 +1,13 @@
 # DRAFT - D1 implementation review notes, 2026-09-08
 
-Status: INTERIM feedback against active WIP; no final verdict or acceptance.
+Status: TECHNICALLY READY after the independent review and bounded correction
+recorded below. Historical findings are retained; this is not merge or Phase 0
+acceptance. Root independently passed the final receipt suite (18/18, 32.09 s)
+and Python ledger suite (11/11, 0.26 s) with a fresh workspace-local basetemp.
+The author passed all 177 D1 native tests and full dashboard typecheck; the
+independent reviewer confirmed both corrections in the closure below.
+
+Initial feedback against active WIP follows.
 Root sent the following concrete observations to the builder before freeze.
 The builder owns corrections/tests; final review must use its frozen bytes.
 
@@ -81,3 +88,26 @@ Verification completed:
 - `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/fleetLedgerReceipt.test.ts server/control/atomicJsonDocument.test.ts` — 2 files, 22 passed.
 - `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/queueBridge.test.ts server/planeA/ledgers.test.ts server/agents/roster.test.ts` — 3 files, 152 passed.
 - The two commands cover 174 passing TypeScript tests. `python -m pytest tests/test_ledger.py` could not start any product test: all 11 fixtures failed during setup on the protected global `C:\\Users\\danie\\AppData\\Local\\Temp\\pytest-of-danie` directory. An explicit basetemp retry had the same startup-only access failure; no further retry was made. An external isolated Vitest probe was also blocked by its configured in-repo include pattern, so the sidecar finding above is source-trace evidence rather than a landed product-test result.
+
+## Independent closure check — 2026-09-08
+
+Both findings in the independent addendum are closed in the frozen receipt pair.
+
+- `parseTsvLine` now enters an explicit closed-quote state and rejects any byte
+  other than a tab after a closing quote (`fleetLedgerReceipt.ts:261-286`).
+  `inspectShard` also requires a nonnegative decimal/scientific lexical form
+  before `Number` equality (`301-303`). The paired table test proves both the
+  malformed `"foo"bar` model cell and `0x0` zero cost return `required` before
+  append, commit, or publication (`fleetLedgerReceipt.test.ts:180-198`).
+- Intent now computes `postimage` locally and derives/checks the sidecar from a
+  copy; it changes the receipt's postimage and phase only after sidecar proof
+  (`fleetLedgerReceipt.ts:401-415`). The sidecar-conflict recovery test proves
+  readable `intent`/null postimage after refusal, repair, and same-key settlement
+  without another append (`test.ts:200-222`). This preserves the last valid
+  checkpoint instead of persisting an invalid intent document.
+
+Source-only closure review found no further issue in these two bounded fixes.
+The builder reports its correction gate at 18 passing tests and full D1 gate at
+177 plus typecheck; root is independently running the final receipt and Python
+checks. This is technical closure of the two findings only, not a formal grade,
+merge, signing, or Phase 0 acceptance.

@@ -151,6 +151,18 @@ describe('readLedgerWriters / readRoles / roleFor', () => {
     expect(writers.get('worker-desktop')).toEqual({ dispatches: 1, steps: 0, days: 1, lastActive: '2026-07-15' });
   });
 
+  it('attributes a receipt-qualified shard to the original writer without creating a fake agent', () => {
+    const root = tempRepo();
+    const key = 'b'.repeat(64);
+    writeFileSync(
+      join(root, 'ledgers', 'cost', `inspector-desktop--fleet-${key}-2026-09-17.tsv`),
+      'billing\tcard_id\tmodel\tusd\nsubscription\twf-a\tclaude-opus-4\t0\n',
+    );
+    const writers = readLedgerWriters(root);
+    expect(writers.get('inspector-desktop')).toEqual({ dispatches: 0, steps: 3, days: 2, lastActive: '2026-09-17' });
+    expect(writers.has(`inspector-desktop--fleet-${key}`)).toBe(false);
+  });
+
   it('reads the role catalog and matches ids to roles by hyphen-token then substring', () => {
     const roles = readRoles(tempRepo());
     expect(roles).toEqual(['inspector', 'worker']);

@@ -66,11 +66,14 @@ export interface LedgerSlices {
 /** Ledger filename convention: `<writer>-<YYYY-MM-DD>.tsv`. The `<writer>` segment may itself
  *  contain hyphens (e.g. `worker-desktop-2026-07-16.tsv`), so the date anchor is matched greedily-last. */
 const LEDGER_NAME_RE = /^(.+)-(\d{4}-\d{2}-\d{2})\.tsv$/;
+const FLEET_RECEIPT_SUFFIX_RE = /^(.+)--fleet-[a-f0-9]{64}$/;
 
 /** Parse a ledger filename into `{ writer, date }`, or null when it doesn't follow the convention. */
 export function parseLedgerName(name: string): { writer: string; date: string } | null {
   const m = LEDGER_NAME_RE.exec(name);
-  return m ? { writer: m[1], date: m[2] } : null;
+  if (!m) return null;
+  const fleet = FLEET_RECEIPT_SUFFIX_RE.exec(m[1]);
+  return { writer: fleet?.[1] ?? m[1], date: m[2] };
 }
 
 /** Parse a TSV file into an array of header-keyed row objects. Empty / header-only files → []. */

@@ -1848,6 +1848,20 @@ describe('emitFleetCostRow', () => {
     expect(path).toBe('ledgers/cost/x.tsv');
   });
 
+  it('passes a pinned receipt day through to ledger.append', () => {
+    let operation: Record<string, unknown> = {};
+    const runPy = (_r: string, _c: string, arg: string) => {
+      operation = JSON.parse(arg);
+      return { exitCode: 0, stdout: '{"path":"ledgers/cost/x.tsv"}', stderr: '' };
+    };
+    emitFleetCostRow(
+      { repoRoot: '/repo', runPy },
+      { subject: `dashboard-engine--fleet-${'a'.repeat(64)}`, model: 'model', cardId: 'wf-a', usd: 0, day: '2026-09-08' },
+    );
+    expect(operation.day).toBe('2026-09-08');
+    expect(QUEUE_BRIDGE_LEDGER_COST_SCRIPT).toContain('day=op.get("day")');
+  });
+
   it('normalizes backslash shard paths to forward slashes (Windows ledger.append output)', () => {
     const runPy = () => ({ exitCode: 0, stdout: '{"path":"ledgers\\\\cost\\\\dashboard-executor-2026-07-21.tsv"}', stderr: '' });
     const path = emitFleetCostRow({ repoRoot: '/repo', runPy }, { subject: 's', model: 'm', cardId: 'c', usd: 0 });
@@ -1878,89 +1892,6 @@ describe('emitFleetCostRow', () => {
 describe('settleFleetCostLedger — post-run seam, preamble-gated, commits its own rows', () => {
   const okPre = () => ({ exitCode: 0, stdout: 'OK', stderr: '' });
   const stopPre = () => ({ exitCode: 2, stdout: '', stderr: 'STOP file present' });
-  // A runPy that echoes a DISTINCT shard path per card, so the committed path set is observable.
-  function pyPerCard(): { runPy: (r: string, c: string, a: string) => PyRunResult; records: Array<Record<string, any>> } {
-    const records: Array<Record<string, any>> = [];
-    const runPy = (_r: string, _c: string, arg: string) => {
-      const op = JSON.parse(arg); records.push(op);
-      return { exitCode: 0, stdout: JSON.stringify({ path: `ledgers/cost/${op.record.card_id}.tsv` }), stderr: '' };
-    };
-    return { runPy, records };
-  }
-
-  it('emits one row per terminal stage, then commits+pushes the exact appended shards to ops', async () => {
-    const py = pyPerCard();
-    const git = fakeGit();
-    const res = await settleFleetCostLedger(
-      { repoRoot: '/repo', runPy: py.runPy, runPreamble: okPre, opsGit: git.runGit },
-      { subject: 'dashboard-engine', runRef: 'run-1', stages: [
-        { cardId: 'wf-a', model: 'claude-sonnet', costUsdMicros: 0 },
-        { cardId: 'wf-b', model: 'claude-opus', costUsdMicros: 2_340_000 },
-      ] },
-    );
-    expect(res).toEqual({ emitted: 2, blocked: false });
-    expect(py.records.map((r) => r.record.usd)).toEqual([0, 2.34]);
-    expect(py.records.map((r) => r.record.billing)).toEqual(['subscription', 'subscription']);
-    const add = git.calls.find((a) => a[0] === 'add');
-    expect(add).toEqual(['add', '--', 'ledgers/cost/wf-a.tsv', 'ledgers/cost/wf-b.tsv']);
-    const commit = git.calls.find((a) => a[0] === 'commit');
-    expect(commit).toEqual(['commit', '-m', 'chore(ledgers): settle fleet cost rows for run-1', '--only', '--', 'ledgers/cost/wf-a.tsv', 'ledgers/cost/wf-b.tsv']);
-    expect(git.calls.filter((a) => a[0] === 'push' && a[1] === 'origin' && a[2] === 'ops')).toHaveLength(1);
-  });
-
-  it('dedupes identical shards (same subject+day) into a single staged path', async () => {
-    const runPy = () => ({ exitCode: 0, stdout: '{"path":"ledgers/cost/dashboard-executor-2026-07-21.tsv"}', stderr: '' });
-    const git = fakeGit();
-    await settleFleetCostLedger(
-      { repoRoot: '/repo', runPy, runPreamble: okPre, opsGit: git.runGit },
-      { runRef: 'run-2', stages: [
-        { cardId: 'wf-a', model: 'm', costUsdMicros: 0 },
-        { cardId: 'wf-b', model: 'm', costUsdMicros: 0 },
-      ] },
-    );
-    expect(git.calls.find((a) => a[0] === 'add')).toEqual(['add', '--', 'ledgers/cost/dashboard-executor-2026-07-21.tsv']);
-    expect(git.calls.find((a) => a[0] === 'commit')?.slice(-1)).toEqual(['ledgers/cost/dashboard-executor-2026-07-21.tsv']);
-  });
-
-  it('reconciles a rejected push once via pull --rebase, then succeeds', async () => {
-    const py = pyPerCard();
-    const git = fakeGit({ pushFailures: 1 });
-    const res = await settleFleetCostLedger(
-      { repoRoot: '/repo', runPy: py.runPy, runPreamble: okPre, opsGit: git.runGit },
-      { runRef: 'run-3', stages: [{ cardId: 'wf-a', model: 'm', costUsdMicros: 0 }] },
-    );
-    expect(res.blocked).toBe(false);
-    expect(git.calls.filter((a) => a[0] === 'push')).toHaveLength(2);
-    const pullIdx = git.calls.findIndex((a) => a[0] === 'pull' && a.includes('--rebase'));
-    const pushIdxs = git.calls.map((a, i) => (a[0] === 'push' ? i : -1)).filter((i) => i >= 0);
-    expect(pullIdx).toBeGreaterThan(pushIdxs[0]);
-    expect(pullIdx).toBeLessThan(pushIdxs[1]);
-  });
-
-  it('leaves the local commit in place and throws when the push is rejected twice', async () => {
-    const py = pyPerCard();
-    const git = fakeGit({ pushFailures: 2 });
-    await expect(settleFleetCostLedger(
-      { repoRoot: '/repo', runPy: py.runPy, runPreamble: okPre, opsGit: git.runGit },
-      { runRef: 'run-4', stages: [{ cardId: 'wf-a', model: 'm', costUsdMicros: 0 }] },
-    )).rejects.toThrow();
-    const commitIdx = git.calls.findIndex((a) => a[0] === 'commit');
-    const firstPushIdx = git.calls.findIndex((a) => a[0] === 'push');
-    expect(commitIdx).toBeGreaterThanOrEqual(0);
-    expect(commitIdx).toBeLessThan(firstPushIdx); // the row is committed (poison cured) BEFORE the failing push
-    expect(git.calls.filter((a) => a[0] === 'push')).toHaveLength(2);
-  });
-
-  it('refuses before any add/commit/push when the checkout is not ops', async () => {
-    const py = pyPerCard();
-    const git = fakeGit({ branch: 'claude/x' });
-    await expect(settleFleetCostLedger(
-      { repoRoot: '/repo', runPy: py.runPy, runPreamble: okPre, opsGit: git.runGit },
-      { runRef: 'run-5', stages: [{ cardId: 'wf-a', model: 'm', costUsdMicros: 0 }] },
-    )).rejects.toThrow();
-    expect(git.calls.some((a) => a[0] === 'add' || a[0] === 'commit' || a[0] === 'push')).toBe(false);
-  });
-
   it('emits NOTHING and runs NO git when the preamble refuses (STOP present / budget blown)', async () => {
     const runPy = vi.fn(() => ({ exitCode: 0, stdout: '{"path":"ledgers/cost/x.tsv"}', stderr: '' }));
     const git = fakeGit();

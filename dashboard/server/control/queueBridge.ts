@@ -47,6 +47,12 @@ import type { CardTransitionIntent, CardTransitionWrite } from '../reconciliatio
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { selectPlacementHost } from '../placement/select.ts';
 import { computeCapabilityRequirement, type StageAgentCapabilityFields } from '../placement/requirements.ts';
+import {
+  beginFleetLedgerSettlement,
+  createFleetLedgerReceiptStore,
+  prepareFleetLedgerSettlement,
+  type FleetLedgerReceiptStore,
+} from './fleetLedgerReceipt.ts';
 
 export class QueueBridgeError extends Error {}
 
@@ -1079,7 +1085,7 @@ from pathlib import Path
 sys.path.insert(0, "scripts")
 import ledger
 op = json.loads(sys.argv[1])
-path = ledger.append(Path("."), "cost", op["agent"], op["record"])
+path = ledger.append(Path("."), "cost", op["agent"], op["record"], day=op.get("day"))
 print(json.dumps({"path": str(path)}))
 `.trim();
 
@@ -1089,20 +1095,22 @@ export interface FleetCostRow {
   model: string;
   cardId: string;
   usd: number;
+  day?: string;
 }
 
 /**
- * Emit one fleet `ledgers/cost/<subject>-<date>.tsv` row via scripts/ledger.py and RETURN the repo-relative
+ * Emit one fleet cost row via scripts/ledger.py and RETURN the repo-relative
  * shard path the script appended to (backslashes normalized to forward slashes). `billing` is always
  * `subscription` (the fleet never spends metered dollars); `usd` is derived, never invented. Fail-closed:
  * a non-zero exit throws (a missed cost row is loud), and unparseable/path-less stdout throws too — an
  * appended row whose path the caller cannot recover would stay UNCOMMITTED and poison the next run's
- * canonical-integrator guard.
+ * canonical-integrator guard. D supplies a pinned day and receipt-qualified subject; legacy callers may
+ * omit the day and retain the existing current-day shard behavior.
  */
 export function emitFleetCostRow(deps: { repoRoot: string; runPy?: PyRunner }, row: FleetCostRow): string {
   const runPy = deps.runPy ?? defaultPyRunner;
   const record = { usd: row.usd, billing: 'subscription', model: row.model, card_id: row.cardId };
-  const res = runPy(deps.repoRoot, QUEUE_BRIDGE_LEDGER_COST_SCRIPT, JSON.stringify({ agent: row.subject, record }));
+  const res = runPy(deps.repoRoot, QUEUE_BRIDGE_LEDGER_COST_SCRIPT, JSON.stringify({ agent: row.subject, record, day: row.day }));
   if (res.exitCode !== 0) {
     throw new QueueBridgeError(`fleet cost-ledger append failed: ${res.stderr.trim() || res.stdout.trim() || '(no output)'}`);
   }
@@ -1161,6 +1169,9 @@ export interface SettleFleetLedgerDeps {
   opsGit?: GitRunner;
   publication?: CoordinationPublication;
   outboxRoot?: string;
+  /** B supplies one generation-retained store; the fallback preserves pre-B direct callers. */
+  receipts?: FleetLedgerReceiptStore;
+  stateRoot?: string;
 }
 
 export interface SettleFleetLedgerInput {
@@ -1191,31 +1202,21 @@ export interface SettleFleetLedgerResult {
 export async function settleFleetCostLedger(deps: SettleFleetLedgerDeps, input: SettleFleetLedgerInput): Promise<SettleFleetLedgerResult> {
   const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble);
   if (!preamble.ok) return { emitted: 0, blocked: true };
+  if (input.stages.length === 0) return { emitted: 0, blocked: false };
   const subject = input.subject ?? DASHBOARD_EXECUTOR_SUBJECT;
-  const paths: string[] = []; // unique appended shards, first-seen order, committed atomically below
-  let emitted = 0;
-  for (const stage of input.stages) {
-    const path = emitFleetCostRow({ repoRoot: deps.repoRoot, runPy: deps.runPy }, {
-      subject,
-      model: stage.model,
-      cardId: stage.cardId,
-      usd: stage.costUsdMicros / 1_000_000,
-    });
-    if (!paths.includes(path)) paths.push(path);
-    emitted += 1;
-  }
-  if (paths.length > 0) {
-    const [first, ...rest] = paths;
-    await commitPreparedCoordination(deps.repoRoot, first, {
-      runGit: deps.opsGit,
-      alsoStage: rest,
-      message: `chore(ledgers): settle fleet cost rows for ${input.runRef}`,
-      maxRetryPushes: 1,
-      publication: deps.publication,
-      outboxRoot: deps.outboxRoot,
-    });
-  }
-  return { emitted, blocked: false };
+  const prepared = prepareFleetLedgerSettlement({ subject, runRef: input.runRef, rows: input.stages });
+  const receipts = deps.receipts ?? createFleetLedgerReceiptStore({ stateRoot: deps.stateRoot ?? deps.repoRoot });
+  const result = await beginFleetLedgerSettlement({
+    receipts,
+    repoRoot: deps.repoRoot,
+    runPreamble: deps.runPreamble,
+    runGit: deps.opsGit,
+    publication: deps.publication,
+    outboxRoot: deps.outboxRoot,
+    appendRow: (row) => emitFleetCostRow({ repoRoot: deps.repoRoot, runPy: deps.runPy }, row),
+  }, prepared);
+  if (result === 'required') throw new QueueBridgeError('fleet ledger reconciliation is required');
+  return { emitted: input.stages.length, blocked: false };
 }
 
 // ===================================================================================================
@@ -1244,6 +1245,8 @@ export interface SettleRunLedgerDeps {
   opsGit?: GitRunner;
   publication?: CoordinationPublication;
   outboxRoot?: string;
+  receipts?: FleetLedgerReceiptStore;
+  stateRoot?: string;
 }
 
 export interface SettleRunLedgerInput {
@@ -1291,6 +1294,8 @@ export async function settleFleetLedgerForRun(deps: SettleRunLedgerDeps, input: 
       opsGit: deps.opsGit,
       publication: deps.publication,
       outboxRoot: deps.outboxRoot,
+      receipts: deps.receipts,
+      stateRoot: deps.stateRoot,
     },
     { subject, runRef: input.runRef, stages },
   );

@@ -11,12 +11,23 @@ KINDS = ("dispatch", "cost", "activity", "grades", "approvals")
 def _shard(repo_root: Path, kind: str, agent: str, day: str | None = None) -> Path:
     if kind not in KINDS:
         raise ValueError(f"unknown ledger kind: {kind}")
-    day = day or datetime.date.today().isoformat()
+    if day is None:
+        day = datetime.date.today().isoformat()
+    else:
+        if not isinstance(day, str):
+            raise ValueError("ledger day must be exact ISO YYYY-MM-DD")
+        try:
+            parsed_day = datetime.date.fromisoformat(day)
+        except ValueError as error:
+            raise ValueError("ledger day must be exact ISO YYYY-MM-DD") from error
+        if parsed_day.isoformat() != day:
+            raise ValueError("ledger day must be exact ISO YYYY-MM-DD")
     return Path(repo_root) / "ledgers" / kind / f"{agent}-{day}.tsv"
 
 
-def append(repo_root: Path, kind: str, agent: str, record: dict) -> Path:
-    p = _shard(repo_root, kind, agent)
+def append(repo_root: Path, kind: str, agent: str, record: dict, day: str | None = None) -> Path:
+    pinned_day = day is not None
+    p = _shard(repo_root, kind, agent, day)
     p.parent.mkdir(parents=True, exist_ok=True)
     # A 0-byte shard (crash between create and header write) has no header to read;
     # treat it as new so we write the header instead of silently dropping the record.
@@ -28,7 +39,10 @@ def append(repo_root: Path, kind: str, agent: str, record: dict) -> Path:
             header = f.readline()
         fields = next(csv.reader([header], delimiter="\t"))
     with p.open("a", encoding="utf-8", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=fields, delimiter="\t", extrasaction="ignore")
+        w = csv.DictWriter(
+            f, fieldnames=fields, delimiter="\t", extrasaction="ignore",
+            lineterminator="\n" if pinned_day else "\r\n",
+        )
         if is_new:
             w.writeheader()
         w.writerow(record)
