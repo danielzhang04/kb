@@ -88,3 +88,7 @@ built-in-imagegen billing/model telemetry unavailable; not recorded as zero		not
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-curation-build-and-adversarial-review	not-exposed
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-e01-review-and-gemini-path-readiness	not-exposed
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-gemini-diagnostic-build-security-review-and-book-integration	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-generated-gallery-build-adversarial-review-and-real-preview	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-experimental-training-plan-build-review	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-comfy-capability-and-owned-launcher-build	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-canonical-seed-adequacy-audit	not-exposed

@@ -1,0 +1,32 @@
+{
+  "fixture_node_pid": 31728,
+  "fixture_port": 5419,
+  "generated_helper_sha256": "d27ed51c07e5caefbdd0013376cc2bc048b2bd7b83d2dc46bc8b0fac0bb44e92",
+  "generated_tests_sha256": "fb6a04606cee6e08cd7043d8b12d0d47b2a0ec0a9665354b994f89b5a9e919e3",
+  "horizontal_overflow": false,
+  "independent_review": "PASS, including independently authored instrumented requested-only file-open regression",
+  "independent_tests": "124 focused dashboard tests, typecheck, diff check PASS",
+  "loaded_images": {
+    "diagnostics": 10,
+    "generated": 4,
+    "references": 3
+  },
+  "parent_tests": "124 focused dashboard tests and typecheck PASS; final text-only creator/source clarification followed by13 UI tests PASS",
+  "quality_status": "Visibility only; four generated inputs remain unapproved and training-ineligible.",
+  "recorded_utc": "2026-09-08T13:14:12.813849+00:00",
+  "repairs": [
+    "physical directory cap with matching direct-read refusal",
+    "valid17th versus invalid17th truncation",
+    "Windows junction refusal",
+    "requested-image-only read instrumentation",
+    "optional legacy output.bytes with strict output hash",
+    "generation date distinguished from review timestamp"
+  ],
+  "schema": "figment/generated-gallery-audit@1",
+  "screenshot_path": "C:\\Users\\danie\\kb\\_private\\ignored_private\\figment-gallery-preview-20260908\\screenshots\\generated-gallery-fixture-v2.png",
+  "screenshot_sha256": "676f44a19c96cc1e2a0b208050b3a63cf881b302ddf020338b265361a65dae2c",
+  "state_sha256": "df08e089101130ad73ec0c1e41b58ec8d67970bcf50218cd0e7689b2c844dbe7",
+  "studio_commit": "7f158b08",
+  "studio_head_after_capability_note": "b138e9e7",
+  "visual_scope": "Root viewed actual v2 screenshot; explicit nonproduction/auth fixture. Screenshot precedes final creator-001/provisional-seed text-only clarification."
+}

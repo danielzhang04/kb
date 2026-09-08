@@ -320,3 +320,46 @@ repairs generatedinputprojection (junctions, invalidscanbounds, requestedimage-o
 Timestampindependentlyreviews hub. Protocolanalyzes explicitexperimentaltrainingadmission
 vs productionapproval without code/gatechanges or fakehumanrulings. Keepawake verified
 08:35Eastern; nextphase recheck.8AMreportalreadydelivered;continueasync.
+
+
+## 13:13 UTC: generated gallery accepted; local runtime work continues
+
+Studio7f158b08 acceptedgenerated-inputgallery andbookcorrections; b138e9e7 records
+verifiedlocalComfy capability. Bothpushed. Parent124+independent124dashboardchecks,
+typechecksPASS. RevieweraddedactualopenSyncinstrumentation provingbinaryGETdoesnot
+opensiblingPNG/provenance; corruptsibling-onlytestwasinsufficient. Actualfixturefirst
+showedonly2of4generatedinputs: olderprovenanceomitsoutput.bytes. Fixedoptionalabsence,
+strictdeclaredhashandprovidedbytesstillrequired. V2loads17images(3refs+4generated+10paired),
+nooverflow; parentviewedfullscreenshot. AcceptedfinalUItextalsonamesfixedcreator001 and
+g01provisionalseed/g02g07comparators;13UIchecksPASSaftertextchange. Screenshotv2predates
+thattextonlyclarification. Audit ledgers/audit/figment-generated-gallery-2026-09-08.json.
+Ownedfixture nowNode31728port5419, sameprivatepreviewserver/profile; olderNode35824/2912
+replacedbyownedrestarts. Screenshots main_private/ignored_private/figment-gallery-preview-
+20260908/screenshots/generated-gallery-fixture-v2.png andgenerated-gallery-state-v2.json.
+
+Current3workers: hubbuilds localComfyoneimage OFFLINElauncher/manifest/tests; timestamp
+freshreviews experimentaltrainingcompiler; protocolchecksseedadequacy whileawaiting
+compilerreview. Experimentalcompilernewtrain/experimental_train.py +tests +admissionplan,
+UNCOMMITTED. Rootrequestedandbuilderrepaired curationsnapshotdigestreadrace, exact
+creator001/currentg01/triggerbinding, explicitidentity/defect/captionobservations, frozen
+review/subject/curationsnapshots+datasetlocator, andactualrecipeprobe. Builder10testsPASS,
+codeb1ab1348253fec10c0975aca5d7b1d0c10a175203b6e9ba6884007f5de26b16b;
+tests e9ffe88be04c1461af04acfb9512024bc858a993bf55fd57a365cb907e3910fe.
+Waitindependentreviewandparenttestsbeforecommit. Noactualeligible20rowdataset.
+
+LocalComfy existing C:/Users/danie/tools/ComfyUI (read-onlyexistinginstall), CUDAvenv
+torch2.11.0+cu128,4070Laptop8188MiBidle; no8188listener whenchecked. Main313torchisCPU.
+ComfyHEAD95d755cd8107a72258d452b5d3657273d571f07d; IPAdapterpluscustomnode
+a0f451a5113cf9becb0847b92884cb10cbdec0ef cleanGPL3. SelectedRealVisXL V5 fp16
+6a35a7855770ae9820a3c931d4964c3817b6d9e3c6f9c4dabb5b3a94e5643b80,
+plusFACE677ad8860204f7d0bfba12d29e6c31ded9beefdf3e4bbd102518357d31a292c1,
+CLIPViTH6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030.
+ParentprimaryHFpagesmatchall3; RealVisOpenRAIL++, h94Apache2fixedrev018e402774aeeddd60609b4ecdb7e298259dc729.
+NoFaceID/InsightFace. Exactlocalcapabilitydoccommitted. Olddifferentpersona70%identity
+claimishistorical,notcurrentquality. Plannedlocalprocess8190loopback,newworkspaceinput/
+output/temp/userdirs,disableAPInodes/allcustomexceptIPAdapterPlus,offlineflags,noinstall
+orimageexport; oneprompt/fixedseed/jobdeadline,alwaysownPIDteardown. NOTSTARTED.
+
+Bothactualexportquestionsstillpending: oldLoRAtoRunPod andoriginalg01toGoogle. No retry,
+alternateexport,RunPod,pendingreservationornewprovidercharge. Arc37.800385/daily2.110134.
+Keepawakeverified08:52Easternowner16580/supervisor19564alive. Continueasyncpast8AM.

@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated 2026-09-08 12:52 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 13:13 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `56226790`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `b138e9e7`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
@@ -39,10 +39,13 @@ process start: exact g01-to-Google export permission is required. A second expli
 async approval question is pending. No image was sent or provider cost incurred; the
 $4.60 reservation was released after verifying no dispatch marker/output directory.
 The source request/admission and refusal audit remain preserved. No retry or alternate
-export while pending. In parallel, generated-input gallery implementation is undergoing
-repair/review, and an experimental-training admission design is being analyzed locally.
+export while pending. In parallel, the generated-input gallery is accepted in7f158b08 after independent/parent124 checks,
+TypeScript checks and a real17-image fixture review. Experimental-training compiler
+repairs are undergoing fresh independent review. An existing local ComfyUI CUDA
+installation and selected model hashes have been verified; a bounded loopback-only
+launcher is being built, without starting it. Canonical-seed adequacy is under review.
 
 The exact existing-LoRA upload still awaits the user's answer after automatic
 approval review rejected it. No retry or alternate export. Other work continues.
-Keep-awake owner 16580 and supervisor 19564 were alive at 08:35 Eastern, with the
+Keep-awake owner 16580 and supervisor 19564 were alive at 08:52 Eastern, with the
 lease armed. No Instagram/account work, production promotion, merge or deployment.
