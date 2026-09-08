@@ -17,6 +17,8 @@ export interface FigmentLocalTrainingEvidenceRoots {
   plan: string;
   tokenizerLoad: string;
 }
+export interface FigmentLocalTrainingResultRoots { tenStep: { run: string; plan: string; admissionParent: string }; currentQuality: { run: string; plan: string; admissionParent: string; cpu: string }; }
+export type LocalTrainingResultsProjection = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; items: Array<{ kind: 'availability-probe' | 'current-quality-fit'; completed: true; durationSeconds: number; steps: number; artifactCount: number; checkpoints: Array<{ step: number; sha256: string; bytes: number }>; quality: 'not-evaluated' }> };
 
 export type LocalTrainingProjection =
   | { status: 'not-configured' }
@@ -169,4 +171,62 @@ export function collectLocalTrainingReadiness(roots?: FigmentLocalTrainingEviden
   return plan === null || cpu === null || tokenizerLoads === null
     ? { status: 'unavailable', reason: 'evidence-unavailable' }
     : { status: 'recorded', historical: true, preparation: { source: 'anchors/g01.jpg', originalObservations: 1, repeatCount: 1, targetResolution: cpu.targetResolution, effectiveBucket: cpu.effectiveBucket, cpuCudaMasked: true, cpuVerifiedTeardown: true, tokenizerLoads } };
+}
+
+function resultRoot(value: string): SafeRoot | null { return openRoot(value); }
+function validRun(value: Record<string, unknown>, schema: string): boolean { const teardown = object(value.teardown) ? value.teardown : null; return value.schema === schema && value.status === 'complete' && value.exit_code === 0 && value.failure === null && value.log_truncated === false && value.not_promotable === true && teardown?.verified_stopped === true; }
+function duration(value: unknown, maximum: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value > 0 && value <= maximum; }
+function checkpoint(value: unknown, name: string, step: number): { step: number; sha256: string; bytes: number } | null {
+  return object(value) && value.path === name && value.ss_steps === step && typeof value.sha256 === 'string' && SHA256.test(value.sha256) && integer(value.bytes, 300_000_000) && value.bytes > 0
+    ? { step, sha256: value.sha256, bytes: value.bytes }
+    : null;
+}
+function hash(raw: Buffer): string { return createHash('sha256').update(raw).digest('hex'); }
+function validAdmission(value: Record<string, unknown>, schema: string, planHash: string, maxSteps: number, launcherHash: unknown, authorization: 'allow_gpu_fit_probe' | 'allow_gpu_quality'): boolean {
+  return frozen(value) !== null && value.schema === schema && typeof value.admission_id === 'string' && value.admission_id.length > 0
+    && value.plan_sha256 === planHash && value.max_train_steps === maxSteps && value.not_promotable === true
+    && typeof value.launcher_sha256 === 'string' && SHA256.test(value.launcher_sha256) && value.launcher_sha256 === launcherHash && value[authorization] === true;
+}
+function resultRoots(value: unknown): value is FigmentLocalTrainingResultRoots {
+  if (!object(value) || !object(value.tenStep) || !object(value.currentQuality)) return false;
+  const ten = value.tenStep; const current = value.currentQuality;
+  return typeof ten.run === 'string' && typeof ten.plan === 'string' && typeof ten.admissionParent === 'string'
+    && typeof current.run === 'string' && typeof current.plan === 'string' && typeof current.admissionParent === 'string' && typeof current.cpu === 'string';
+}
+function validateCurrentPlan(record: JsonRecord): PlanEvidence | null {
+  const value = record.value; const recipe = object(value.recipe) ? value.recipe : null; const observation = object(value.observation) ? value.observation : null;
+  const execution = object(value.execution) ? value.execution : null; const frozenHash = frozen(value);
+  const names = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((step) => `figmentlocalg01quality-current-100-step${String(step).padStart(8, '0')}.safetensors`).concat('figmentlocalg01quality-current-100.safetensors');
+  const steps = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 100];
+  if (frozenHash === null || value.schema !== 'figment/local-one-source-quality-plan@1' || value.creator !== 'creator-001' || value.branch !== 'current' || value.purpose !== 'one-source-local-quality-diagnostic' || value.not_promotable !== true || recipe === null || observation === null || execution === null) return null;
+  if (observation.count !== 1 || observation.independent_views !== 1 || observation.kind !== 'canonical-original-pixels' || execution.cpu_preflight_allowed !== true || execution.gpu_quality_allowed !== false || execution.checkpoint_acceptance_allowed !== false || execution.sample_export_allowed !== false) return null;
+  if (recipe.max_train_steps !== 100 || recipe.save_every_n_steps !== 10 || recipe.samples !== 0 || recipe.exports !== 0 || recipe.save_state !== false || !Array.isArray(recipe.checkpoint_names) || !Array.isArray(recipe.checkpoint_steps) || recipe.checkpoint_names.length !== names.length || recipe.checkpoint_steps.length !== steps.length) return null;
+  if (!recipe.checkpoint_names.every((name, index) => name === names[index]) || !recipe.checkpoint_steps.every((step, index) => step === steps[index])) return null;
+  return { rawHash: hash(record.raw), frozenHash };
+}
+
+/** Fixed-root historical run summaries; no checkpoint, log, or directory is read. */
+export function collectLocalTrainingResults(roots?: FigmentLocalTrainingResultRoots | null): LocalTrainingResultsProjection {
+  if (roots == null) return { status: 'not-configured' };
+  if (!resultRoots(roots)) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const tenRun = resultRoot(roots.tenStep.run), tenPlan = resultRoot(roots.tenStep.plan), tenAdmission = resultRoot(roots.tenStep.admissionParent), currentRun = resultRoot(roots.currentQuality.run), currentPlan = resultRoot(roots.currentQuality.plan), currentAdmission = resultRoot(roots.currentQuality.admissionParent), cpu = resultRoot(roots.currentQuality.cpu);
+  if (!tenRun || !tenPlan || !tenAdmission || !currentRun || !currentPlan || !currentAdmission || !cpu) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const ten = readJson(tenRun, 'receipt.json'), tenPlanRecord = readJson(tenPlan, 'local-single-observation-plan.json'), tenAdmissionRecord = readJson(tenAdmission, 'figment-local-lora-fit-admission-20260908-v2.json'), current = readJson(currentRun, 'receipt.json'), currentPlanRecord = readJson(currentPlan, 'local-quality-plan.json'), currentAdmissionRecord = readJson(currentAdmission, 'figment-local-quality-current-fit-admission-20260908-v1.json'), cpuRecord = readJson(cpu, 'receipt.json');
+  if (!ten || !tenPlanRecord || !tenAdmissionRecord || !current || !currentPlanRecord || !currentAdmissionRecord || !cpuRecord) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const tenPlanEvidence = validatePlan(tenPlanRecord); const currentPlanEvidence = validateCurrentPlan(currentPlanRecord); const tenFinal = object(ten.value.final_checkpoint) ? ten.value.final_checkpoint : null;
+  const tenOk = tenPlanEvidence !== null && validRun(ten.value, 'figment/local-single-observation-fit-probe@1') && duration(ten.value.duration_seconds, 1200) && ten.value.plan_sha256 === tenPlanEvidence.frozenHash && ten.value.admission_id === tenAdmissionRecord.value.admission_id && validAdmission(tenAdmissionRecord.value, 'figment/local-single-observation-fit-admission@1', tenPlanEvidence.frozenHash, 10, ten.value.launcher_sha256, 'allow_gpu_fit_probe') && tenFinal && tenFinal.path === 'figmentlocalg01probe.safetensors' && typeof tenFinal.sha256 === 'string' && SHA256.test(tenFinal.sha256) && integer(tenFinal.bytes, 300_000_000) && tenFinal.bytes > 0;
+  const inputs = object(current.value.inputs) ? current.value.inputs : null; const cpuInputs = object(cpuRecord.value.inputs) ? cpuRecord.value.inputs : null; const cpuResult = object(cpuRecord.value.result) ? cpuRecord.value.result : null;
+  const cpuTeardown = object(cpuRecord.value.teardown) ? cpuRecord.value.teardown : null; const cpuProcess = object(cpuRecord.value.process) ? cpuRecord.value.process : null;
+  const cpuOk = currentPlanEvidence !== null && cpuRecord.value.schema === 'figment/local-quality-cpu-preflight-launch@1' && cpuRecord.value.status === 'complete' && cpuRecord.value.branch === 'current' && cpuProcess?.exit_code === 0 && cpuTeardown?.verified_stopped === true && cpuInputs?.plan_canonical_sha256 === currentPlanEvidence.frozenHash && cpuInputs?.plan_file_sha256 === currentPlanEvidence.rawHash && cpuResult?.schema === 'figment/local-quality-cpu-preflight@1' && cpuResult.plan_sha256 === currentPlanEvidence.frozenHash && cpuResult.not_promotable === true && cpuResult.cuda_visible_devices === '-1' && cpuResult.cuda_available === false && cpuResult.cuda_device_count === 0 && cpuResult.cuda_initialized === false;
+  const records = Array.isArray(current.value.checkpoints) ? current.value.checkpoints : [];
+  const recipe = currentPlanEvidence && object(currentPlanRecord.value.recipe) ? currentPlanRecord.value.recipe : null;
+  const recipeNames = recipe !== null && Array.isArray(recipe.checkpoint_names) ? recipe.checkpoint_names : null;
+  const recipeSteps = recipe !== null && Array.isArray(recipe.checkpoint_steps) ? recipe.checkpoint_steps : null;
+  const exactRecords = recipeNames !== null && recipeSteps !== null && records.length === recipeNames.length
+    ? records.map((record, index) => checkpoint(record, recipeNames[index] as string, recipeSteps[index] as number))
+    : [];
+  const selected = exactRecords.length === 11 ? [exactRecords[1], exactRecords[4], exactRecords[10]] : [];
+  const currentOk = currentPlanEvidence !== null && validRun(current.value, 'figment/local-quality-fit@1') && duration(current.value.duration_seconds, 1200) && current.value.plan_sha256 === currentPlanEvidence.frozenHash && inputs?.plan_sha256 === currentPlanEvidence.frozenHash && inputs?.plan_file_sha256 === currentPlanEvidence.rawHash && inputs?.cpu_receipt_sha256 === hash(cpuRecord.raw) && current.value.admission_id === currentAdmissionRecord.value.admission_id && validAdmission(currentAdmissionRecord.value, 'figment/local-quality-fit-admission@1', currentPlanEvidence.frozenHash, 100, current.value.launcher_sha256, 'allow_gpu_quality') && currentAdmissionRecord.value.cpu_receipt_sha256 === hash(cpuRecord.raw) && cpuOk && exactRecords.length === 11 && exactRecords.every(Boolean);
+  if (!tenOk || !currentOk) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  return { status: 'recorded', historical: true, items: [{ kind: 'availability-probe', completed: true, durationSeconds: ten.value.duration_seconds as number, steps: 10, artifactCount: 1, checkpoints: [{ step: 10, sha256: tenFinal.sha256 as string, bytes: tenFinal.bytes as number }], quality: 'not-evaluated' }, { kind: 'current-quality-fit', completed: true, durationSeconds: current.value.duration_seconds as number, steps: 100, artifactCount: 11, checkpoints: selected as Array<{ step: number; sha256: string; bytes: number }>, quality: 'not-evaluated' }] };
 }

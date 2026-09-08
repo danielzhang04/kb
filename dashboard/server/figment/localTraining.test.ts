@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { collectLocalTrainingReadiness, type FigmentLocalTrainingEvidenceRoots } from './localTraining.ts';
+import { collectLocalTrainingReadiness, collectLocalTrainingResults, type FigmentLocalTrainingEvidenceRoots, type FigmentLocalTrainingResultRoots } from './localTraining.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { while (temporary.length) await rm(temporary.pop()!, { recursive: true, force: true }); });
@@ -51,6 +51,52 @@ async function fixture(): Promise<{ roots: FigmentLocalTrainingEvidenceRoots; cp
   return { roots: { cpuPreflight: cpu, tokenizerLaunch: launch, plan: planRoot, tokenizerLoad: tokens }, cpuReceipt, planReceipt, tokenizerLaunchReceipt, tokenizerReceipt };
 }
 
+async function resultFixture(): Promise<{ roots: FigmentLocalTrainingResultRoots; currentReceipt: string; currentCpuReceipt: string; currentAdmission: string }> {
+  const root = await mkdtemp(join(tmpdir(), 'figment-local-results-')); temporary.push(root);
+  const tenRun = join(root, 'ten-run'), tenPlanRoot = join(root, 'ten-plan'), currentRun = join(root, 'current-run'), currentPlanRoot = join(root, 'current-plan'), cpuRoot = join(root, 'current-cpu'), admissions = join(root, 'admissions');
+  await Promise.all([mkdir(tenRun), mkdir(tenPlanRoot), mkdir(currentRun), mkdir(currentPlanRoot), mkdir(cpuRoot), mkdir(admissions)]);
+  const tenPlan = frozen({
+    schema: 'figment/local-single-observation-lora-plan@1', creator: 'creator-001', not_promotable: true,
+    execution: { cpu_preflight_allowed: true, gpu_fit_probe_allowed: false, checkpoint_acceptance_allowed: false, sample_export_allowed: false },
+    observation: { count: 1, independent_views: 1, kind: 'canonical-original-pixels' }, fit_probe: { max_train_steps: 10, samples: 0, exports: 0 }, source: { logical_path: 'anchors/g01.jpg' },
+  });
+  await json(join(tenPlanRoot, 'local-single-observation-plan.json'), tenPlan);
+  const recipeNames = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((step) => `figmentlocalg01quality-current-100-step${String(step).padStart(8, '0')}.safetensors`).concat('figmentlocalg01quality-current-100.safetensors');
+  const recipeSteps = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100, 100];
+  const currentPlan = frozen({
+    schema: 'figment/local-one-source-quality-plan@1', creator: 'creator-001', branch: 'current', purpose: 'one-source-local-quality-diagnostic', not_promotable: true,
+    execution: { cpu_preflight_allowed: true, gpu_quality_allowed: false, checkpoint_acceptance_allowed: false, sample_export_allowed: false },
+    observation: { count: 1, independent_views: 1, kind: 'canonical-original-pixels' },
+    recipe: { max_train_steps: 100, save_every_n_steps: 10, samples: 0, exports: 0, save_state: false, checkpoint_names: recipeNames, checkpoint_steps: recipeSteps },
+  });
+  const currentPlanRaw = await json(join(currentPlanRoot, 'local-quality-plan.json'), currentPlan);
+  const tenLauncher = 'a'.repeat(64), currentLauncher = 'b'.repeat(64);
+  const tenAdmission = frozen({ schema: 'figment/local-single-observation-fit-admission@1', admission_id: 'ten-admission', plan_sha256: tenPlan.frozen_sha256, max_train_steps: 10, not_promotable: true, launcher_sha256: tenLauncher, allow_gpu_fit_probe: true });
+  const currentAdmission = { schema: 'figment/local-quality-fit-admission@1', admission_id: 'current-admission', plan_sha256: currentPlan.frozen_sha256, max_train_steps: 100, not_promotable: true, launcher_sha256: currentLauncher, allow_gpu_quality: true, cpu_receipt_sha256: '' };
+  const cpuReceipt = join(cpuRoot, 'receipt.json');
+  const cpuRaw = await json(cpuReceipt, {
+    schema: 'figment/local-quality-cpu-preflight-launch@1', status: 'complete', branch: 'current', inputs: { plan_canonical_sha256: currentPlan.frozen_sha256, plan_file_sha256: digest(currentPlanRaw) }, process: { exit_code: 0 }, teardown: { verified_stopped: true },
+    result: { schema: 'figment/local-quality-cpu-preflight@1', plan_sha256: currentPlan.frozen_sha256, not_promotable: true, cuda_visible_devices: '-1', cuda_available: false, cuda_device_count: 0, cuda_initialized: false },
+  });
+  currentAdmission.cpu_receipt_sha256 = digest(cpuRaw);
+  const currentAdmissionRecord = frozen(currentAdmission);
+  await json(join(admissions, 'figment-local-lora-fit-admission-20260908-v2.json'), tenAdmission);
+  await json(join(admissions, 'figment-local-quality-current-fit-admission-20260908-v1.json'), currentAdmissionRecord);
+  await json(join(tenRun, 'receipt.json'), {
+    schema: 'figment/local-single-observation-fit-probe@1', status: 'complete', exit_code: 0, failure: null, log_truncated: false, not_promotable: true, teardown: { verified_stopped: true }, duration_seconds: 10.5,
+    admission_id: 'ten-admission', plan_sha256: tenPlan.frozen_sha256, launcher_sha256: tenLauncher,
+    final_checkpoint: { path: 'figmentlocalg01probe.safetensors', sha256: 'c'.repeat(64), bytes: 100 },
+  });
+  const currentReceipt = join(currentRun, 'receipt.json');
+  await json(currentReceipt, {
+    schema: 'figment/local-quality-fit@1', status: 'complete', exit_code: 0, failure: null, log_truncated: false, not_promotable: true, teardown: { verified_stopped: true }, duration_seconds: 100.5,
+    admission_id: 'current-admission', plan_sha256: currentPlan.frozen_sha256, launcher_sha256: currentLauncher,
+    inputs: { plan_sha256: currentPlan.frozen_sha256, plan_file_sha256: digest(currentPlanRaw), cpu_receipt_sha256: digest(cpuRaw) },
+    checkpoints: recipeNames.map((path, index) => ({ path, ss_steps: recipeSteps[index], sha256: `${index}`.padStart(64, 'd'), bytes: 100 + index })),
+  });
+  return { roots: { tenStep: { run: tenRun, plan: tenPlanRoot, admissionParent: admissions }, currentQuality: { run: currentRun, plan: currentPlanRoot, admissionParent: admissions, cpu: cpuRoot } }, currentReceipt, currentCpuReceipt: cpuReceipt, currentAdmission: join(admissions, 'figment-local-quality-current-fit-admission-20260908-v1.json') };
+}
+
 describe('local training readiness projection', () => {
   it('projects only a historical local preparation snapshot', async () => {
     const evidence = await fixture(); const projection = collectLocalTrainingReadiness(evidence.roots);
@@ -88,5 +134,65 @@ describe('local training readiness projection', () => {
 
   it('reports no configured evidence separately from invalid evidence', () => {
     expect(collectLocalTrainingReadiness()).toEqual({ status: 'not-configured' });
+  });
+});
+
+describe('local training results projection', () => {
+  it('projects the closed ten-step and current historical receipts without paths or logs', async () => {
+    const evidence = await resultFixture();
+    expect(collectLocalTrainingResults(evidence.roots)).toEqual({ status: 'recorded', historical: true, items: [
+      { kind: 'availability-probe', completed: true, durationSeconds: 10.5, steps: 10, artifactCount: 1, checkpoints: [{ step: 10, sha256: 'c'.repeat(64), bytes: 100 }], quality: 'not-evaluated' },
+      { kind: 'current-quality-fit', completed: true, durationSeconds: 100.5, steps: 100, artifactCount: 11, checkpoints: [
+        { step: 20, sha256: 'd'.repeat(63) + '1', bytes: 101 }, { step: 50, sha256: 'd'.repeat(63) + '4', bytes: 104 }, { step: 100, sha256: 'd'.repeat(62) + '10', bytes: 110 },
+      ], quality: 'not-evaluated' },
+    ] });
+    const serialised = JSON.stringify(collectLocalTrainingResults(evidence.roots));
+    for (const forbidden of [evidence.currentReceipt, evidence.currentCpuReceipt, 'stderr', 'stdout', 'caption', 'pid']) expect(serialised).not.toContain(forbidden);
+  });
+
+  it('fails closed for a malformed checkpoint inventory or a masked-CPU violation', async () => {
+    const evidence = await resultFixture();
+    const current = JSON.parse(await readFile(evidence.currentReceipt, 'utf8')) as Record<string, unknown>;
+    ((current.checkpoints as Array<Record<string, unknown>>)[3]).path = 'duplicate-name.safetensors';
+    await json(evidence.currentReceipt, current);
+    expect(collectLocalTrainingResults(evidence.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+    const second = await resultFixture(); const cpu = JSON.parse(await readFile(second.currentCpuReceipt, 'utf8')) as Record<string, unknown>;
+    ((cpu.result as Record<string, unknown>).cuda_available) = true;
+    await json(second.currentCpuReceipt, cpu);
+    expect(collectLocalTrainingResults(second.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+
+  it('fails closed for mismatched admission identity or a changed frozen admission', async () => {
+    const evidence = await resultFixture();
+    const current = JSON.parse(await readFile(evidence.currentReceipt, 'utf8')) as Record<string, unknown>;
+    current.admission_id = 'other-admission'; await json(evidence.currentReceipt, current);
+    expect(collectLocalTrainingResults(evidence.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+    const second = await resultFixture(); const admission = JSON.parse(await readFile(second.currentAdmission, 'utf8')) as Record<string, unknown>;
+    admission.max_train_steps = 1; await json(second.currentAdmission, admission);
+    expect(collectLocalTrainingResults(second.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+
+  it('requires the current receipt to bind the exact CPU receipt and a positive bounded duration', async () => {
+    const evidence = await resultFixture();
+    const current = JSON.parse(await readFile(evidence.currentReceipt, 'utf8')) as Record<string, unknown>;
+    (current.inputs as Record<string, unknown>).cpu_receipt_sha256 = '0'.repeat(64);
+    await json(evidence.currentReceipt, current);
+    expect(collectLocalTrainingResults(evidence.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+    const second = await resultFixture(); const ten = JSON.parse(await readFile(join(second.roots.tenStep.run, 'receipt.json'), 'utf8')) as Record<string, unknown>;
+    ten.duration_seconds = 0; await json(join(second.roots.tenStep.run, 'receipt.json'), ten);
+    expect(collectLocalTrainingResults(second.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+
+  it('requires the frozen admission authorization flag and rejects malformed configured groups', async () => {
+    const evidence = await resultFixture();
+    const admission = JSON.parse(await readFile(evidence.currentAdmission, 'utf8')) as Record<string, unknown>;
+    delete admission.frozen_sha256; admission.allow_gpu_quality = false;
+    await json(evidence.currentAdmission, frozen(admission));
+    expect(collectLocalTrainingResults(evidence.roots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+    expect(collectLocalTrainingResults({} as FigmentLocalTrainingResultRoots)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+
+  it('reports an omitted results configuration as not configured', () => {
+    expect(collectLocalTrainingResults()).toEqual({ status: 'not-configured' });
   });
 });
