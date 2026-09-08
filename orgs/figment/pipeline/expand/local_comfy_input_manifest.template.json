@@ -1,0 +1,186 @@
+{
+  "execution_requires_parent_review": true,
+  "generation": {
+    "height": 1024,
+    "images": 1,
+    "sampler": "dpmpp_2m",
+    "scheduler": "karras",
+    "seed": 481516234,
+    "steps": 24,
+    "steps_rationale": "first availability smoke only; not an exhaustive quality setting",
+    "width": 1024
+  },
+  "launcher": {
+    "path": "local_comfy_input.py",
+    "sha256": "66463ca6f7eab86db06cbd8e95cf3979c79a9b8c563b50ffe1130d720718cb04"
+  },
+  "mode": "offline-plan-only",
+  "persona": {
+    "age_stage": "a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face",
+    "eyes": "dark brown eyes",
+    "hair": "jet-black hair parted in the middle and falling past the shoulders",
+    "repo_path": "orgs/figment/personas/creator-001/persona.yaml",
+    "sha256": "9fdbb536a2e4c9895e332f13e1a4f11a41f938045a8b770d639b663c32be7492",
+    "tester_age_helper_sha256": "c4df651bbd4e86563ba951e3013b1f4d96644430d2d3598708a69ff9cc709a38"
+  },
+  "pins": {
+    "comfyui_commit": "95d755cd8107a72258d452b5d3657273d571f07d",
+    "ipadapter_commit": "a0f451a5113cf9becb0847b92884cb10cbdec0ef",
+    "models": {
+      "checkpoint": {
+        "filename": "RealVisXL_V5.0_fp16.safetensors",
+        "sha256": "6a35a7855770ae9820a3c931d4964c3817b6d9e3c6f9c4dabb5b3a94e5643b80"
+      },
+      "clip_vision": {
+        "filename": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors",
+        "sha256": "6ca9667da1ca9e0b0f75e46bb030f7e011f44f86cbfb8d5a36590fcd7507b030"
+      },
+      "ipadapter": {
+        "filename": "ip-adapter-plus-face_sdxl_vit-h.safetensors",
+        "sha256": "677ad8860204f7d0bfba12d29e6c31ded9beefdf3e4bbd102518357d31a292c1"
+      }
+    }
+  },
+  "prompt": {
+    "negative": "child, minor, nude, lingerie, explicit, extra person, distorted face",
+    "positive": "Shoulders-up portrait photograph of a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face. jet-black hair parted in the middle and falling past the shoulders, dark brown eyes. Clothed in the original black opaque strapped top, in the same bedroom setting as the sole reference image. Natural skin texture with visible pores, photographic realism.",
+    "sha256": "2cdf076c646e150cd15665a65b72774187e237d1bf567a7f62b988c0544e96f9"
+  },
+  "reference": {
+    "repo_path": "orgs/figment/personas/creator-001/anchors/g01.jpg",
+    "sha256": "e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed",
+    "sole_pixel_reference": true
+  },
+  "schema": "figment/local-comfy-input@1",
+  "workflow": {
+    "1": {
+      "class_type": "CheckpointLoaderSimple",
+      "inputs": {
+        "ckpt_name": "RealVisXL_V5.0_fp16.safetensors"
+      }
+    },
+    "10": {
+      "class_type": "VAEDecode",
+      "inputs": {
+        "samples": [
+          "9",
+          0
+        ],
+        "vae": [
+          "1",
+          2
+        ]
+      }
+    },
+    "11": {
+      "class_type": "SaveImage",
+      "inputs": {
+        "filename_prefix": "figment-local-comfy-input",
+        "images": [
+          "10",
+          0
+        ]
+      }
+    },
+    "2": {
+      "class_type": "LoadImage",
+      "inputs": {
+        "image": "g01.jpg"
+      }
+    },
+    "3": {
+      "class_type": "CLIPVisionLoader",
+      "inputs": {
+        "clip_name": "CLIP-ViT-H-14-laion2B-s32B-b79K.safetensors"
+      }
+    },
+    "4": {
+      "class_type": "IPAdapterModelLoader",
+      "inputs": {
+        "ipadapter_file": "ip-adapter-plus-face_sdxl_vit-h.safetensors"
+      }
+    },
+    "5": {
+      "class_type": "IPAdapterAdvanced",
+      "inputs": {
+        "clip_vision": [
+          "3",
+          0
+        ],
+        "combine_embeds": "average",
+        "embeds_scaling": "V only",
+        "end_at": 1.0,
+        "image": [
+          "2",
+          0
+        ],
+        "ipadapter": [
+          "4",
+          0
+        ],
+        "model": [
+          "1",
+          0
+        ],
+        "start_at": 0.0,
+        "weight": 0.65,
+        "weight_type": "linear"
+      }
+    },
+    "6": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "1",
+          1
+        ],
+        "text": "Shoulders-up portrait photograph of a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face. jet-black hair parted in the middle and falling past the shoulders, dark brown eyes. Clothed in the original black opaque strapped top, in the same bedroom setting as the sole reference image. Natural skin texture with visible pores, photographic realism."
+      }
+    },
+    "7": {
+      "class_type": "CLIPTextEncode",
+      "inputs": {
+        "clip": [
+          "1",
+          1
+        ],
+        "text": "child, minor, nude, lingerie, explicit, extra person, distorted face"
+      }
+    },
+    "8": {
+      "class_type": "EmptyLatentImage",
+      "inputs": {
+        "batch_size": 1,
+        "height": 1024,
+        "width": 1024
+      }
+    },
+    "9": {
+      "class_type": "KSampler",
+      "inputs": {
+        "cfg": 6.0,
+        "denoise": 1.0,
+        "latent_image": [
+          "8",
+          0
+        ],
+        "model": [
+          "5",
+          0
+        ],
+        "negative": [
+          "7",
+          0
+        ],
+        "positive": [
+          "6",
+          0
+        ],
+        "sampler_name": "dpmpp_2m",
+        "scheduler": "karras",
+        "seed": 481516234,
+        "steps": 24
+      }
+    }
+  }
+}
