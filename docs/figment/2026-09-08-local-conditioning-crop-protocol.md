@@ -8,6 +8,10 @@ an identity, quality, approval, or promotion claim. The baseline must first
 finish and receive its ordinary original-resolution visual review. Only then
 may a separately admitted execution decide whether the comparison is warranted.
 
+`pipeline/expand/local_conditioning_crop.py` now validates this frozen plan by
+default. Its explicit materialization helper remains unused: no canonical g01
+crop exists and no crop-condition ComfyUI run has started.
+
 The question is narrow: does replacing the full g01 pixel input with one
 deterministic crop of the **same original g01** change the local IP-Adapter
 conditioning result under otherwise identical settings? It is not a fair Krea
@@ -108,8 +112,10 @@ diagnostic, never an identity proof or a causal conclusion about Krea.
    derivation fields and node-2 `LoadImage` filename may differ. Assert every
    pinned model/code hash, prompt, seed, sampler, IP-Adapter input, graph node
    inventory, runtime flag, and single-output contract is equal.
-4. Refuse crop execution unless the baseline has a completed teardown-backed
-   receipt and a fresh independent visual review. Once the crop condition is
-   complete, require fresh independent reviews of both conditions before
-   drawing a comparison conclusion. No test may substitute a generated image
-   or a numeric observer value for either review.
+4. Before a parent admits crop execution, confirm the baseline has a completed
+   teardown-backed receipt and a fresh independent visual review. The local
+   CLI enforces its existing explicit parent-review boundary; it does not
+   authenticate that review record. Once the crop condition is complete,
+   require fresh independent reviews of both conditions before drawing a
+   comparison conclusion. No test may substitute a generated image or a
+   numeric observer value for either review.

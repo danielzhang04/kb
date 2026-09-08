@@ -7,6 +7,7 @@ kept behind an explicit flag for a separately admitted, local-only run.
 from __future__ import annotations
 
 import argparse
+import copy
 import ctypes
 from ctypes import wintypes
 import hashlib
@@ -46,6 +47,8 @@ CANONICAL_SHA256 = "e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f763972275
 PERSONA = "orgs/figment/personas/creator-001/persona.yaml"
 MAX_PERSONA_BYTES = 128 * 1024
 NEGATIVE = "child, minor, nude, lingerie, explicit, extra person, distorted face"
+FULL_CONDITIONING = "full"
+FACE_CROP_CONDITIONING = "face-crop384"
 MODELS = {
     "checkpoint": {
         "filename": "RealVisXL_V5.0_fp16.safetensors",
@@ -181,6 +184,16 @@ def _persona_prompt(repo_root: Path) -> tuple[str, dict[str, str]]:
     return prompt, {"repo_path": PERSONA, "sha256": hashlib.sha256(raw).hexdigest(), "age_stage": age_stage,
                     "hair": hair.strip(), "eyes": eyes.strip(), "tester_age_helper_sha256": sha256_file(helper_path)}
 
+
+def _crop_helper() -> Any:
+    path = Path(__file__).with_name("local_conditioning_crop.py")
+    spec = importlib.util.spec_from_file_location("figment_local_conditioning_crop", path)
+    if spec is None or spec.loader is None:
+        raise LocalComfyError("local conditioning crop helper is unavailable")
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+    return helper
+
 def _workflow(input_name: str, positive: str) -> dict[str, dict[str, Any]]:
     return {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": MODELS["checkpoint"]["filename"]}},
@@ -211,10 +224,27 @@ def validate_static_install(repo_root: Path) -> dict[str, Any]:
             raise LocalComfyError(f"installed custom node mapping missing {node_name}")
     return {"source": source_info, "models": pins}
 
-def build_manifest(repo_root: Path) -> dict[str, Any]:
+def build_manifest(repo_root: Path, conditioning: str = FULL_CONDITIONING) -> dict[str, Any]:
+    if conditioning not in (FULL_CONDITIONING, FACE_CROP_CONDITIONING):
+        raise LocalComfyError("unsupported conditioning mode")
     verified = validate_static_install(repo_root)
     positive, persona = _persona_prompt(repo_root)
-    workflow = _workflow("g01.jpg", positive)
+    input_name = "g01.jpg"
+    conditioning_record: dict[str, Any] = {"name": FULL_CONDITIONING, "source_filename": input_name,
+                                            "materialized": False}
+    if conditioning == FACE_CROP_CONDITIONING:
+        helper_path = Path(__file__).with_name("local_conditioning_crop.py")
+        helper = _crop_helper()
+        input_name = helper.CROP_NAME
+        conditioning_record = {
+            "name": FACE_CROP_CONDITIONING, "source_filename": "g01.jpg", "materialized": False,
+            "helper": {"path": helper_path.name, "sha256": sha256_file(helper_path), "schema": helper.SCHEMA},
+            "derivation": {"method": helper.SCHEMA, "box": list(helper.CROP_BOX),
+                           "dimensions": list(helper.CROP_SIZE), "resize": False,
+                           "output_filename": helper.CROP_NAME},
+            "derivative": None,
+        }
+    workflow = _workflow(input_name, positive)
     workflow_bytes = json.dumps(workflow, sort_keys=True, separators=(",", ":")).encode()
     return {
         "schema": SCHEMA,
@@ -226,6 +256,7 @@ def build_manifest(repo_root: Path) -> dict[str, Any]:
         "comfyui": {"root": str(COMFY_ROOT), "git_commit": COMFY_COMMIT, "loopback_port": PORT},
         "custom_node": {"directory": "ComfyUI_IPAdapter_plus", "git_commit": NODE_COMMIT, "license": "GPL-3.0"},
         "reference": {"repo_path": CANONICAL, **verified["source"], "sole_pixel_reference": True},
+        "conditioning": conditioning_record,
         "persona": persona,
         "models": verified["models"],
         "prompt": {"positive": positive, "negative": NEGATIVE, "sha256": hashlib.sha256((positive + "\n" + NEGATIVE).encode()).hexdigest()},
@@ -561,9 +592,7 @@ def _terminate_identity(identity: ProcessIdentity) -> dict[str, Any]:
             raise LocalComfyError("owned process did not terminate within bound")
     finally:
         kernel32.CloseHandle(handle)
-    if _process_identity(identity.pid, identity.parent_pid) is not None:
-        raise LocalComfyError("owned process remained live after teardown")
-    return {**identity.record(), "state": "terminated"}
+    return _wait_terminated_record(identity)
 
 def _held_wrapper_identity(process: Any, wrapper: ProcessIdentity) -> ProcessIdentity:
     """Use Popen's retained handle to prevent a PID-reuse tree termination."""
@@ -587,7 +616,18 @@ def _terminate_held_wrapper(process: Any, wrapper: ProcessIdentity) -> dict[str,
         raise LocalComfyError("cannot terminate held ComfyUI wrapper")
     if kernel32.WaitForSingleObject(handle, 15_000) != WAIT_OBJECT_0:
         raise LocalComfyError("held ComfyUI wrapper did not terminate within bound")
-    return _verified_absent_record(wrapper)
+    return _wait_terminated_record(wrapper)
+
+
+def _wait_terminated_record(identity: ProcessIdentity) -> dict[str, Any]:
+    """A waited exact handle proves exit even if a later metadata reopen races cleanup."""
+    try:
+        current = _process_identity(identity.pid, identity.parent_pid)
+    except LocalComfyError:
+        return {**identity.record(), "state": "terminated-wait-verified"}
+    if current is not None:
+        raise LocalComfyError("owned process remained live after teardown")
+    return {**identity.record(), "state": "terminated"}
 
 
 def _verified_absent_record(identity: ProcessIdentity) -> dict[str, Any]:
@@ -666,18 +706,53 @@ def _database_url(root: Path) -> str:
     return "sqlite:///" + database.as_posix()
 
 
-def execute(repo_root: Path, run_root: Path) -> dict[str, Any]:
+def execute(repo_root: Path, run_root: Path, conditioning: str = FULL_CONDITIONING) -> dict[str, Any]:
     """Explicit local-only execution; intentionally never called by the default CLI."""
-    manifest = build_manifest(repo_root)
+    manifest = build_manifest(repo_root, conditioning)
     _port_available()
     root = _fresh_run_root(run_root, _workspace_private_root(repo_root))
-    root.mkdir()
+    crop_record: dict[str, Any] | None = None
+    if conditioning == FACE_CROP_CONDITIONING:
+        helper = _crop_helper()
+        helper_path = Path(__file__).with_name("local_conditioning_crop.py")
+        helper_hash = manifest["conditioning"]["helper"]["sha256"]
+        if sha256_file(helper_path) != helper_hash:
+            raise LocalComfyError("local conditioning crop helper changed before materialization")
+        crop_record = helper.materialize_crop(repo_root / CANONICAL, CANONICAL_SHA256, helper.SOURCE_SIZE,
+                                              _workspace_private_root(repo_root), root, output_kind="local-comfy-run")
+        if sha256_file(helper_path) != helper_hash:
+            raise LocalComfyError("local conditioning crop helper changed after materialization")
+    else:
+        root.mkdir()
     for name in ("input", "output", "temp", "user", "home"):
         (root / name).mkdir()
-    copied = root / "input" / "g01.jpg"
-    shutil.copyfile(repo_root / CANONICAL, copied)
-    if sha256_file(copied) != CANONICAL_SHA256:
-        raise LocalComfyError("copied source hash mismatch")
+    if conditioning == FACE_CROP_CONDITIONING:
+        if crop_record is None:
+            raise LocalComfyError("crop materialization record is missing")
+        crop_name = manifest["conditioning"]["derivation"]["output_filename"]
+        if not isinstance(crop_name, str) or Path(crop_name).name != crop_name or crop_name != helper.CROP_NAME:
+            raise LocalComfyError("verified crop filename is invalid")
+        materialized = root / crop_name
+        copied = root / "input" / crop_name
+        if not materialized.is_file() or copied.exists() or _is_reparse(materialized):
+            raise LocalComfyError("materialized crop path is unsafe")
+        os.replace(materialized, copied)
+        if _is_reparse(copied) or sha256_file(copied) != crop_record["output"]["sha256"]:
+            raise LocalComfyError("materialized crop hash mismatch")
+        manifest["conditioning"]["materialized"] = True
+        manifest["conditioning"]["derivative"] = {"filename": helper.CROP_NAME,
+                                                       "sha256": crop_record["output"]["sha256"],
+                                                       "bytes": crop_record["output"]["bytes"],
+                                                       "dimensions": crop_record["output"]["dimensions"]}
+        manifest["conditioning"]["source"] = crop_record["source"]
+        provenance = copy.deepcopy(crop_record)
+        provenance["output"]["path"] = str(copied)
+        manifest["conditioning"]["crop_provenance"] = provenance
+    else:
+        copied = root / "input" / "g01.jpg"
+        shutil.copyfile(repo_root / CANONICAL, copied)
+        if sha256_file(copied) != CANONICAL_SHA256:
+            raise LocalComfyError("copied source hash mismatch")
     manifest_bytes = json.dumps(manifest, indent=2, sort_keys=True).encode() + b"\n"
     manifest_sha = hashlib.sha256(manifest_bytes).hexdigest()
     (root / "manifest.json").write_bytes(manifest_bytes)
@@ -769,13 +844,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[4])
     parser.add_argument("--execute", action="store_true", help="requires separate parent review; starts only owned local ComfyUI")
     parser.add_argument("--run-root", type=Path)
+    parser.add_argument("--conditioning", choices=(FULL_CONDITIONING, FACE_CROP_CONDITIONING), default=FULL_CONDITIONING)
     args = parser.parse_args(argv)
     if args.execute:
         if args.run_root is None:
             parser.error("--execute requires --run-root")
-        print(json.dumps(execute(args.repo_root.resolve(), args.run_root), sort_keys=True))
+        print(json.dumps(execute(args.repo_root.resolve(), args.run_root, args.conditioning), sort_keys=True))
     else:
-        print(json.dumps(build_manifest(args.repo_root.resolve()), indent=2, sort_keys=True))
+        print(json.dumps(build_manifest(args.repo_root.resolve(), args.conditioning), indent=2, sort_keys=True))
     return 0
 
 if __name__ == "__main__":

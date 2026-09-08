@@ -108,6 +108,20 @@ def test_offline_manifest_binds_source_pins_prompt_and_one_image(local):
     assert "FaceID" not in json.dumps(graph)
 
 
+def test_face_crop_plan_only_binds_helper_and_changes_only_loadimage(local):
+    module, repo = local
+    full = module.build_manifest(repo)
+    crop = module.build_manifest(repo, module.FACE_CROP_CONDITIONING)
+    assert crop["conditioning"]["name"] == module.FACE_CROP_CONDITIONING
+    assert crop["conditioning"]["materialized"] is False
+    assert crop["conditioning"]["derivative"] is None
+    assert crop["conditioning"]["helper"]["sha256"] == module.sha256_file(
+        MODULE_PATH.with_name("local_conditioning_crop.py"))
+    normalized = json.loads(json.dumps(crop["workflow"]["api_prompt"]))
+    normalized["2"]["inputs"]["image"] = "g01.jpg"
+    assert normalized == full["workflow"]["api_prompt"]
+
+
 def test_pin_or_source_mismatch_refuses_before_manifest(local):
     module, repo = local
     (repo / module.CANONICAL).write_bytes(b"mutated")
@@ -453,6 +467,55 @@ def test_completed_receipt_is_written_after_owned_teardown(local, tmp_path, monk
     assert saved["teardown"]["verified_stopped"] is True and process.returncode == 0
     assert saved["teardown"]["wrapper"] == {"pid": 1234, "creation_filetime": 100, "parent_pid": None}
     assert (run / "manifest.json").is_file()
+
+
+def test_crop_execute_materializes_only_owned_input_and_binds_derivative(local, tmp_path, monkeypatch):
+    module, repo = local
+    from PIL import Image
+    source = repo / module.CANONICAL
+    Image.new("RGB", (1408, 768), "navy").save(source, format="JPEG")
+    monkeypatch.setattr(module, "CANONICAL_SHA256", module.sha256_file(source))
+    run = tmp_path / "_private" / "figment-local-comfy-crop"; run.parent.mkdir()
+    class Process:
+        pid = 1234
+        returncode = None
+        def poll(self): return self.returncode
+    process = Process()
+    test_python = module.COMFY_ROOT / "venv" / "Scripts" / "python.exe"
+    test_python.parent.mkdir(parents=True); test_python.write_bytes(b"python")
+    monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
+    monkeypatch.setattr(module, "_port_available", lambda: None)
+    monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    stub_owned_execution(module, monkeypatch, process)
+    verified_helper = module._crop_helper()
+    changed_helper = type("ChangedHelper", (), {"CROP_NAME": "changed-after-check.png"})()
+    helpers = iter((verified_helper, verified_helper, changed_helper))
+    monkeypatch.setattr(module, "_crop_helper", lambda: next(helpers))
+    def response(_opener, method, _endpoint, _payload=None):
+        if method == "POST": return {"prompt_id": "p"}
+        Image.new("RGB", (1024, 1024), "black").save(run / "output" / "done.png")
+        return {"p": {"outputs": {"11": {"images": [{"filename": "done.png", "type": "output", "subfolder": ""}]}}}}
+    monkeypatch.setattr(module, "_local_json", response)
+    receipt = module.execute(repo, run, module.FACE_CROP_CONDITIONING)
+    manifest = json.loads((run / "manifest.json").read_text())
+    derivative = manifest["conditioning"]["derivative"]
+    assert receipt["status"] == "completed"
+    assert manifest["conditioning"]["materialized"] is True
+    assert manifest["workflow"]["api_prompt"]["2"]["inputs"]["image"] == "g01-face384-crop-v1.png"
+    assert derivative["sha256"] == module.sha256_file(run / "input" / derivative["filename"])
+    assert manifest["conditioning"]["crop_provenance"]["derivation"]["pillow_version"]
+    assert manifest["conditioning"]["crop_provenance"]["derivation"]["png_encoder"] == {
+        "format": "PNG", "optimize": False, "compress_level": 9}
+    assert not (run / "g01-face384-crop-v1.png").exists()
+
+
+def test_wait_terminated_handle_tolerates_transient_metadata_reopen_error(local, monkeypatch):
+    module, _repo = local
+    identity = module.ProcessIdentity(1234, 100, None)
+    monkeypatch.setattr(module, "_process_identity", lambda *_:
+                        (_ for _ in ()).throw(module.LocalComfyError("metadata reopen denied")))
+    assert module._wait_terminated_record(identity)["state"] == "terminated-wait-verified"
 
 
 def test_listener_rebind_after_readiness_refuses_before_post(local, tmp_path, monkeypatch):

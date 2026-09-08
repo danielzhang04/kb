@@ -17,13 +17,15 @@ The later paired final-LoRA versus no-LoRA diagnostic completed five fixed seed 
 
 ## Current implementation status — 2026-09-08
 
-The accepted experimental compiler at commit `f6b5096d` can freeze a private,
-non-promotable plan only after it receives a current, single-`g01` curation and
-an agent-observed review of at least 20 exact training rows. It neither starts
-training nor writes an operator acceptance, checkpoint selection, QA stamp, or
-production plan; production loaders reject its separate schema. The four
-currently recorded generated inputs remain unavailable, so there is no
-20-row accepted first-generation dataset and no experimental plan to execute.
+The accepted experimental compiler at `f6b5096d` and executor at `af7b07bc`
+can prepare a private, non-promotable diagnostic only after a current,
+single-`g01` curation and evidence for at least 20 exact training rows. The
+executor defaults to local preparation or a harness dry-run; live execution
+also needs a fixed parent admission and current revalidation. Neither component
+writes an operator acceptance, checkpoint selection, QA stamp, or production
+plan; production loaders reject the separate schema. The four currently
+recorded generated inputs remain unavailable, so there is no 20-row accepted
+first-generation dataset, admission, or live experimental training.
 
 The [canonical-seed audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md), accepted at
 `83c00054`, leaves `g01` provisional. It found that `g07` has more detected
@@ -32,14 +34,15 @@ not select a replacement seed. A source-selection comparison would need a
 separately frozen, controlled protocol.
 
 An existing local ComfyUI installation and selected pins are inventoried in the
-[local capability record](../../../../docs/figment/2026-09-08-local-comfy-capability.md). The reviewed local
-executor at `f03bae3a` passed its parent and independent suites and an offline
-validator. Its first one-image smoke attempted startup but failed before a
-listener or POST because Torch's default Inductor cache lookup required a
-username; no local image or export exists. A corrected smoke with an isolated
-`TORCHINDUCTOR_CACHE_DIR` is pending. Exact Google/g01 export and LoRA export
-remain blocked, production acceptance remains an operator decision, and
-Instagram work remains deferred.
+[local capability record](../../../../docs/figment/2026-09-08-local-comfy-capability.md). The repaired local
+executor at `41449404` completed one bounded V3 loopback diagnostic after the
+earlier startup failures: it wrote one hash-bound 1024-square PNG and verified
+all owned processes stopped. The result was visually rejected as a same-person
+candidate, so runtime completion did not create a training input, approval, or
+export. The next local crop-conditioning experiment is under final review; see
+the [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audit.md).
+Exact Google/g01 export and LoRA export remain blocked, production acceptance
+remains an operator decision, and Instagram work remains deferred.
 
 ## Governing rules
 

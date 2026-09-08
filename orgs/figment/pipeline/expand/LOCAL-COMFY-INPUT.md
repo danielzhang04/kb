@@ -26,6 +26,13 @@ before its 224px encoding. Given g01’s dimensions, that may leave roughly a
 separately frozen one-factor test could use a deterministic face crop from the
 original g01. It does not alter this graph or establish identity quality.
 
+`--conditioning face-crop384` is an explicit later condition. Its plan-only
+form binds the crop helper, original g01 hash, and fixed crop method without
+writing a crop. Only an admitted `--execute` materializes the retained PNG in
+that fresh run’s owned input directory, binds its resulting hash in the
+execution manifest, and changes node 2's `LoadImage` filename. Full-frame
+conditioning remains the default.
+
 `--execute` exists only for a separately reviewed local admission. It requires a
 fresh direct child of the workspace private root, binds 127.0.0.1:8190, uses
 isolated input/output/temp/user/home/cache directories, permits only the
@@ -44,6 +51,8 @@ under `_private/figment-local-comfy-importprobe-20260908-v2/`.
 
 A later admitted startup reached ComfyUI's `Starting server` message and was
 stopped before any graph POST. It exposed the venv redirector child and a shared
-installation SQLite database path; the next launcher revision records the exact
-owned process tree and passes an owned private `--database-url`. It is pending
-fresh review and has not produced a diagnostic image.
+installation SQLite database path. The accepted ownership/database revision then
+completed the V3 baseline with verified owned teardown and one local image. Its
+independent visual review rejected that image as a training input for reference
+drift, extra portrait faces in the background, and wardrobe/composition drift;
+the completion does not establish identity quality.
