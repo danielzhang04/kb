@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 15:17 UTC / 11:17 Eastern. See the latest dated section below. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 15:34 UTC / 11:34 Eastern. See the latest dated section below. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -590,3 +590,40 @@ viewed v5 desktop and independently passed12 planner tests0.62s. Keepawake verif
 11:12:56Eastern owner16580/supervisor19564 alive. No pods/holds, arc37.800385,
 daily2.110134, native billing unknown. Exact export questions still unanswered;
 no retry/alternate export. Continue async.
+
+## 15:34 UTC: CPU import failures preserved; tokenizer preparation complete
+
+Studio d1becf08 pushed. CPU cause-report repair f5e50f14 passed13 parent checks;
+new parser3c958e1f5b0e17973c08ab7581c6f18a531443def4ad082eb93769f8e45dbe46.
+One-observation originalplan remains same rawfilecba60c9b1157ee90f322f5bdd13382fb27a99de7e2d0245a8ce033baf198fa9d,
+canonicale9de0980ae27f8fb1e98398a685f81a18bdb6dd27e70d07ec4dff38d2aac75ea.
+
+Actual CPU V1 MAIN_private/figment-local-cpu-preflight-20260908-v1: parserexit2,
+9.984s, failuree518f48031fd0f3d4aa49f2bc317e74b4b9bbfb4cb183c41fa81e851b2bf2380.
+Helper35fd73e9160786c160af739907fb159727e658db4323f8aee37970e7056cd10a.
+Generic rejection concealedcause; stdoutempty. Wrapper35712/child38548 stopped,
+rootalsoverified15060absent. No completedreceipt or datasetparseclaim.
+Actual V2 sameprefix-v2: parserexit2,7.215s, failurebed41207e6d3b2047e3bee4f87cf38cded56d7ecd5e31843299328c1b1e5415b.
+Helperbb0d452fb9819e0b1cc70b20d653c78f9d34a02afcfb15e82df32ed2f409e19e;
+addedownedAPPDATA/LOCALAPPDATA andnewdiagnosticparserhash. Teardowntrue, wrapper29844
+listed; rootverified29844/9148absent. Error now diffusers.AutoencoderKL import
+RuntimeError Invalid device id <-AssertionError. No GPUtraining/model loaded.
+Hub inspects optional xformers CUDAhardwareprobe path. Empty CUDAsetting appears
+inconsistent acrossavailability/devicecount; rootauthorized tinyTorchprobe with
+supported CUDA_VISIBLE_DEVICES=-1 and PYTORCH_NVML_BASED_CUDA_CHECK1. Do NOT replace
+actual sd-scripts parsing with self-implemented static bucket check yet. No V3parser.
+
+Tokenizer d1becf08 accepted10parent+10independent. Code6695f27803c7674abbadbc05866639d6d315a143e5b1a799a53e878448c3834f;
+tests5216cf4e99d6f0143ad39b44d6c6c918ca308e0afd1a1bf78ae636f88dc87183.
+Exact10sourceHFsymlink entries resolvedtofixedregularblobs and hashed, exclusive
+ownedcopies, loadlocal-files-only, secondpad0, postloadcopies/prep revalidation,
+notpromotable. Rootactualprepare completed STUDIO/_private/local-lora-tokenizers-20260908-v1,
+7,323,340bytes/10files. Preparedcanonical7708c8187943c8e210371c12294398787115fa788d307e26dab9ef085b45f9d1;
+rawreceiptc0c2208edafd7c57dbc2df5361176125c2465e1bf41ee691e9ba8ac593179518.
+No tokenizerloadyet; protocolbuilds privateboundedloadhelperreusing CPUV2ownership.
+Timestamp resumes train/local_single_observation_fit.py tests/design, WIP notrunnable.
+Requires actualcompletedCPU+tokenizerreceipts beforeGPUadmission; initial10stepsonly.
+
+No generation/trainingsessioncurrentlyrunning. Keepawake11:20alive; no pods/holds,
+37.800385arc/2.110134day unchanged. Nativebillingunknown. Pendingexactexportquestions
+unanswered, no retries. Continueasync; no new20rowacceptance or productionpromotion.
