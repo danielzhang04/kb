@@ -44,6 +44,11 @@ function cancellationInput(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const closedExit = {
+  sessionId: 'pty-1', sequence: 1, exitCode: null, signal: null, reason: 'closed' as const,
+  observedAt: '2026-09-08T00:00:00.000Z',
+};
+
 describe('createWorkerCancellationRegistry', () => {
   it('invokes a registered cancel exactly once and treats double-cancel as a no-op', () => {
     const registry = createWorkerCancellationRegistry();
@@ -123,7 +128,7 @@ describe('createBrokerManagerAdapter (D3 realization b — no subprocess)', () =
 });
 
 describe('createBrokerCancellationController', () => {
-  it('cancelWorker maps attemptRef to the automatic-attempt operationKey on BOTH the port and the registry', async () => {
+  it('treats structured not-found as the confirmed unknown-session no-op and still cancels the registry worker', async () => {
     const cancelled: string[] = [];
     const portKeys: string[] = [];
     const registry = { cancel(operationKey: string) { cancelled.push(operationKey); } };
@@ -141,7 +146,7 @@ describe('createBrokerCancellationController', () => {
     expect(portKeys).toEqual(['automatic-attempt:attempt-42']);
   });
 
-  it('cancelWorker uses the exact iteration-turn operationKey used to launch the worker', async () => {
+  it('accepts a validated close and uses the exact iteration-turn operationKey used to launch the worker', async () => {
     const cancelled: string[] = [];
     const portKeys: string[] = [];
     const controller = createBrokerCancellationController({
@@ -149,7 +154,7 @@ describe('createBrokerCancellationController', () => {
       attemptPort: {
         async cancel(input: { operationKey: string; reason: string }) {
           portKeys.push(input.operationKey);
-          return { ok: true as const, value: {} as never };
+          return { ok: true as const, value: closedExit };
         },
       },
     });
@@ -178,7 +183,8 @@ describe('createBrokerCancellationController', () => {
   });
 
   it('cancelWorker on an unknown attempt, and with no attempt port at all, is a no-op', async () => {
-    const registry = createWorkerCancellationRegistry();
+    const cancelled: string[] = [];
+    const registry = { cancel(operationKey: string) { cancelled.push(operationKey); } };
     const attemptPort = {
       async cancel() { return { ok: false as const, refusal: 'not-found' as const, detail: null }; },
     };
@@ -186,5 +192,46 @@ describe('createBrokerCancellationController', () => {
       .cancelWorker(cancellationInput({ attemptRef: 'ghost' }) as never)).resolves.toBeUndefined();
     await expect(createBrokerCancellationController({ attemptPort: null, registry })
       .cancelWorker(cancellationInput({ attemptRef: 'ghost' }) as never)).resolves.toBeUndefined();
+    expect(cancelled).toEqual(['automatic-attempt:attempt-1', 'automatic-attempt:attempt-1']);
+  });
+
+  it('rejects an internal C reconciliation refusal but still invokes the registered worker cancellation once', async () => {
+    const cancelled: string[] = [];
+    const controller = createBrokerCancellationController({
+      attemptPort: {
+        async cancel() {
+          return { ok: false as const, refusal: 'internal' as const, detail: 'message-claim-reconciliation-required' };
+        },
+      },
+      registry: { cancel(operationKey: string) { cancelled.push(operationKey); } },
+    });
+
+    await expect(controller.cancelWorker(cancellationInput() as never)).rejects.toThrow('worker cancellation was not confirmed');
+    expect(cancelled).toEqual(['automatic-attempt:attempt-1']);
+  });
+
+  it('preserves a falsey attempt-port rejection when registry cleanup also throws', async () => {
+    const cancelled: string[] = [];
+    const controller = createBrokerCancellationController({
+      attemptPort: { async cancel() { throw 0; } },
+      registry: { cancel(operationKey: string) { cancelled.push(operationKey); throw new Error('registry failed'); } },
+    });
+
+    await expect(controller.cancelWorker(cancellationInput() as never)).rejects.toBe(0);
+    expect(cancelled).toEqual(['automatic-attempt:attempt-1']);
+  });
+
+  it('rejects malformed fulfilled cancellation results and a registry cleanup throw', async () => {
+    const malformed = createBrokerCancellationController({
+      attemptPort: { async cancel() { return undefined as never; } },
+      registry: { cancel() {} },
+    });
+    await expect(malformed.cancelWorker(cancellationInput() as never)).rejects.toThrow('worker cancellation returned an invalid result');
+
+    const registryFailure = createBrokerCancellationController({
+      attemptPort: { async cancel() { return { ok: true as const, value: closedExit }; } },
+      registry: { cancel() { throw new Error('registry failed'); } },
+    });
+    await expect(registryFailure.cancelWorker(cancellationInput() as never)).rejects.toThrow('registry failed');
   });
 });

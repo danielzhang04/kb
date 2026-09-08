@@ -14,7 +14,7 @@
  * Nothing in this module is constructed unless the activation gate is on (see `activation.ts`); with the
  * gate off it is never imported into a live code path.
  */
-import type { AttemptExecutionPort } from '../pty/contracts.ts';
+import type { AttemptExecutionPort, ObservedExit, PortResult } from '../pty/contracts.ts';
 import type { ExecutionCancellationController, ManagerAdapter } from './execution.ts';
 
 /**
@@ -104,12 +104,43 @@ export interface BrokerCancellationControllerOptions {
   registry: Pick<WorkerCancellationRegistry, 'cancel'>;
 }
 
+const HOST_REFUSALS = new Set([
+  'unavailable', 'capacity', 'invalid-request', 'unsafe-root', 'unsafe-cwd', 'launcher-unavailable',
+  'input-too-large', 'size-out-of-range', 'not-found', 'binding-conflict', 'epoch-lost', 'cancelled', 'internal',
+]);
+
+function isObservedExit(value: unknown): value is ObservedExit {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  const keys = Object.keys(candidate).sort();
+  if (keys.length !== 6 || keys.join(',') !== 'exitCode,observedAt,reason,sequence,sessionId,signal') return false;
+  return typeof candidate.sessionId === 'string' && candidate.sessionId.length > 0
+    && typeof candidate.sequence === 'number' && Number.isSafeInteger(candidate.sequence) && candidate.sequence >= 0
+    && (candidate.exitCode === null || Number.isSafeInteger(candidate.exitCode))
+    && (candidate.signal === null || Number.isSafeInteger(candidate.signal))
+    && (candidate.reason === 'exited' || candidate.reason === 'closed' || candidate.reason === 'abandoned')
+    && typeof candidate.observedAt === 'string' && candidate.observedAt.length > 0;
+}
+
+function isCancellationResult(value: unknown): value is PortResult<ObservedExit> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.ok === true) {
+    return Object.keys(candidate).length === 2 && Object.hasOwn(candidate, 'value') && isObservedExit(candidate.value);
+  }
+  return candidate.ok === false
+    && Object.keys(candidate).length === 3
+    && typeof candidate.refusal === 'string' && HOST_REFUSALS.has(candidate.refusal)
+    && (candidate.detail === null || typeof candidate.detail === 'string');
+}
+
 /**
  * The injected, idempotent stop authority. `cancelManager` is a no-op: the metadata-only manager owns
  * no child, so there is no process to signal. `cancelWorker` receives the exact operation key used at
- * launch, cancels the attempt session through the attempt port
- * (an unknown key is a refusal, never a throw) and invokes the worker adapter's registered idempotent
- * cancel; an unknown reference is a no-op on both.
+ * launch, cancels the attempt session through the attempt port, then invokes the worker adapter's
+ * registered idempotent cancel. Only a validated close result or the structured `not-found` absence
+ * proves this cleanup complete; a C reconciliation refusal, malformed port fulfillment, or throw rejects.
+ * The registry is still invoked once in all cases. An unknown reference remains a no-op.
  */
 export function createBrokerCancellationController(
   options: BrokerCancellationControllerOptions,
@@ -120,8 +151,35 @@ export function createBrokerCancellationController(
     },
     async cancelWorker(input) {
       const operationKey = input.attemptOperationKey;
-      await options.attemptPort?.cancel({ operationKey, reason: 'operator cancelled the run' });
-      options.registry.cancel(operationKey);
+      let failed = false;
+      let failure: unknown;
+      const captureFirstFailure = (error: unknown): void => {
+        if (failed) return;
+        failed = true;
+        failure = error;
+      };
+      try {
+        if (options.attemptPort) {
+          const result: unknown = await options.attemptPort.cancel({
+            operationKey,
+            reason: 'operator cancelled the run',
+          });
+          if (!isCancellationResult(result)) {
+            captureFirstFailure(new Error('worker cancellation returned an invalid result'));
+          } else if (!result.ok && result.refusal !== 'not-found') {
+            captureFirstFailure(new Error('worker cancellation was not confirmed'));
+          }
+        }
+      } catch (error) {
+        captureFirstFailure(error);
+      } finally {
+        try {
+          options.registry.cancel(operationKey);
+        } catch (error) {
+          captureFirstFailure(error);
+        }
+      }
+      if (failed) throw failure;
     },
   };
 }
