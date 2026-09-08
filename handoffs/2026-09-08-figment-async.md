@@ -5,6 +5,26 @@ is a report, not a stop. Continue work and keep-awake afterward.
 
 ## Authorization and goal
 
+**LIVE OVERRIDE (09:33:59 UTC onward): pod `cicx4at1447lp0` is active, parent exec
+session58386, combined10cell manifest7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f.
+Bounds$2.50/115min/oneplacement, deadline approximately11:29UTC. Journal is
+`C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1/recovery-figment-bakeoff-20260908-093357-6d4795.json`.
+Poll this session/log; do not duplicate or treat as orphan. Harness provisional
+$2.491667 row is now in figment-2026-09-08.tsv and will be replaced with measured
+estimate on completion. Do not double-book the reservation. Inspect run.json and
+independently verify API absence after completion. Ops audit/card record details.**
+
+Current studio head71f636f4 pushed, draftPR179 https://github.com/danielzhang04/kb/pull/179,
+stacked on foundationPR178. Committed protocol55tests, hub126tests/typecheck/build,
+initial7chapterbook. First generatedinput independentlyrejected forfacialdrift;
+secondwardrobeonlyfromoriginalg01 awaitingreview. Neithertrainingapproved.
+PrivateinputPNGs/exactprovenance in `_private/figment-single-seed-20260908`.
+Workers now: timestamp_fix isolatedhubpreview+inputreview; protocol_review real
+FFmpegframeextractor (ffmpeginstalled), itsrepairedvideo_planfrozen; hub_final_review
+smallWan5Bsafeformatadoptionaudit+independentreviewrepairedvideo_plan. No video
+generation or productionquality claimed. Browserruntimehas noavailablebrowser.
+Read these current updates before historical status paragraphs below.
+
 User authorizes autonomous research, plans, builds, adversarial reviews, tests and
 RunPod experiments within the EXISTING $50 total arc cap. Instagram integration is
 deferred. Do not stop all work at a perceived human gate: isolate blocked items and
