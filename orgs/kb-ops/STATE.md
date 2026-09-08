@@ -1,14 +1,14 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-08 (A0/C0/D0/C1 schema ready; C1 delivery building; D1 paused)_
+_Updated: 2026-09-08 (A0/C0/D0/C1 schema ready; C1 delivery and D1 design paused; A1 preflight active)_
 
 ## Now
 
 - The complete twelve-phase overhaul remains active. Phase 0 is incomplete and
   Phases 1–11 remain gated. A0, C0, D0, and C1 schema are independently ready; C1
-  delivery work is active. None of this authorizes production.
+  delivery work is paused for a specific user decision. None of this authorizes production.
 - PR176 targets main at current source head
-  `5a480e5cd4b147a283ea0e9abe29202a7fe3fe29`, which includes the ready C0
+  `36f76379c422aa1133f5421fe6258dd254e9d35e`, which includes the ready C0
   claim-store port, D0 canonical-admission correction, and C1 schema after A0. The frozen
   Slice 1A adapter/grant files remain unchanged. D0's corrective source commit
   is `57aebea0`; the earlier plan review head is
@@ -28,7 +28,7 @@ _Updated: 2026-09-08 (A0/C0/D0/C1 schema ready; C1 delivery building; D1 paused)
   red/green held scheduler proof for post-await forward mutations.
 - **C1 schema: READY / COMMITTED.** Published as `5a480e5c`; final independent
   review passed all 230 tests in seven scoped files, full dashboard typecheck,
-  and diff checking. **C1 delivery: BUILDING.** Terra owns adapter delivery;
+  and diff checking. **C1 delivery: PAUSED pending user approval.** Terra owns adapter delivery;
   Sol independently prepares adversarial probes. An absent claim port refuses
   before any effect. The deprecated drain option is never called; B wires the
   active chain store and lifetime only at the final integration stage. **D1 —
@@ -40,9 +40,18 @@ _Updated: 2026-09-08 (A0/C0/D0/C1 schema ready; C1 delivery building; D1 paused)
   failed-systemd/HTTP-502 evidence; PR173 was last checked OPEN. The signed
   production gate persists.
 
+C1 delivery is frozen after the same malformed write-intent fulfillment test
+failed twice: cleanup first threw on an undefined result, then one prompt write
+was observed after the partial correction. This test returns undefined; it does
+not test a thrown undefined rejection. Root requested one bounded correction:
+validate transition results before effects, preserve the malformed-return case,
+and add actual durable-transition-then-throw probes. No C repair before approval.
+Independent A1 engine/grant preflight is active, with no production edits.
+The strict outcome type and a resumable tokenless boundary are being reviewed.
+
 ## Next
 
-- Complete and independently review the C1 delivery adapter. Await the
+- Review the independent A1 engine/grant preflight. Await C correction approval and the
   user's D1-cycle decision before touching its design. Do not create a runnable
   controller, deploy, merge, or mark Phase 0 complete.
 

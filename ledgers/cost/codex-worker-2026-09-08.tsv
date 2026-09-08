@@ -25,3 +25,7 @@ unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-final-verdict	indepe
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-builder-dispatch	creator-only adapter delivery and focused tests; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-review-preflight	independent adversarial delivery probes; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-coordination-readonly	stale-state synthesis discarded by root; no file edits; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-correction-paused	same malformed-fulfillment scenario failed twice; no further C repair before user approval; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-interim-review	confirmed malformed fulfillment is not a falsey rejection; separate probes required; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-engine-grant-preflight	read-only independent next-stage plan; C and D1 pauses retained; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:A1-resume-seam-preflight	read-only independent boundary and cleanup inspection; responding model and cost unavailable	unknown

@@ -25,7 +25,7 @@ retain their separate human gates.
 2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47, and the
    full/sparse mutation proof are prior evidence, not tests rerun in this wave.
 3. **C0 claim store — DONE / READY.** Source head
-   `5a480e5cd4b147a283ea0e9abe29202a7fe3fe29` includes C0. Root independently
+   `36f76379c422aa1133f5421fe6258dd254e9d35e` includes C0. Root independently
    verified typecheck and 18/18 focused claim-store tests in 1.18 s.
 4. **D0 canonical admission — DONE / READY.** The bounded correction is at
    `57aebea0`; its focused suite passed 45/45 in 2.64 s and includes the held
@@ -33,17 +33,26 @@ retain their separate human gates.
 5. **C1 schema/migration: DONE / READY.** Committed and pushed as `5a480e5c`.
    Final independent review passed all 230 tests in seven scoped files,
    dashboard typecheck, and diff checking. Both minor diagnostic findings closed.
-   **C1 delivery: BUILDING.** Terra owns the adapter and focused tests; Sol
+   **C1 delivery: PAUSED pending user approval.** Terra owns the adapter and focused tests; Sol
    independently prepares adversarial probes. B wiring remains the final stage.
 6. **D1 ledger design — PAUSED.** The same rebase-recovery finding failed two
    correction/review attempts. Root has asked the user for one further bounded
    cycle; no D1 draft edit or implementation dispatch may occur until answered.
 
+C1 delivery is frozen after the same malformed write-intent fulfillment test
+failed twice: cleanup first threw on an undefined result, then one prompt write
+was observed after the partial correction. This test returns undefined; it does
+not test a thrown undefined rejection. Root requested one bounded correction:
+validate transition results before effects, preserve the malformed-return case,
+and add actual durable-transition-then-throw probes. No C repair before approval.
+Independent A1 engine/grant preflight is active, with no production edits.
+The strict outcome type and a resumable tokenless boundary are being reviewed.
+
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-`5a480e5cd4b147a283ea0e9abe29202a7fe3fe29`; it records accepted A0, C0, D0, and C1 schema.
-Only C1 delivery source is actively owned and uncommitted. The frozen Slice 1A
+`36f76379c422aa1133f5421fe6258dd254e9d35e`; it records accepted A0, C0, D0, and C1 schema.
+C1 delivery source is frozen and uncommitted. The frozen Slice 1A
 adapter/grant files remain unchanged. Coordination is based on
 `9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
 

@@ -596,3 +596,10 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - An empty registry result may be a swallowed read failure. A real legacy boot
   regression must also reject its warning channel, then prove the migrated
   bytes and preserved backup. Schema acceptance is separate from delivery.
+
+## Distinguish malformed fulfillment from falsey rejection (2026-09-08)
+
+- A wrapper that mutates and returns undefined tests a malformed success value.
+  It does not test an ambiguous rejection after a landed write. Use an actual
+  throw undefined after the real transition for the latter, and name each fault
+  precisely. Validate a transition result before accepting further authority.
