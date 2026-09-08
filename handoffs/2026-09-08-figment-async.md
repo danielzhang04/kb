@@ -31,6 +31,17 @@ not call them held-out proof for the old checkpoint.
 - New worktree/branch created from37d580d9; plan committed/pushed1871fcc5. Privateg01/g02/g07
   assets copied byte-identically into ignored anchor paths for local real-persona tests.
 - Native workers run in this active parent session. No new detached scheduler claimed.
+- Protocol accepted and committed/pushed `03e52227`: persona-derived adult age,
+  explicit single canonical anchor, frozen candidate/no-LoRA ten-cell slate. Separate
+  reviewer PASS after fixing age criteria and exclusive-file publication. Parent full
+  driver suite: 55 passed using a fresh workspace-local pytest basetemp.
+- Locked dashboard dependencies installed in the isolated worktree using
+  `npm ci --ignore-scripts`; no new dependencies or package-lock changes. Builder's
+  six API/component tests and typecheck pass; broader navigation review found fixes.
+- Loaded imagegen generated one g01-conditioned clothed frontal portrait. Private
+  `C:/Users/danie/kb/_private/figment-single-seed-20260908/` holds PNG and exact prompt/
+  input-output hash provenance. Parent visually checked adult/clothed; independent
+  identity review pending. It is NOT training-approved or a new canonical reference.
 
 ## What Did NOT Work (and why)
 
@@ -45,43 +56,52 @@ not call them held-out proof for the old checkpoint.
 - Fresh studio worktree commit hook rejected missing kit/.rendered/{all,claude,codex}.md.
   Generated only those ignored artifacts via scripts.kit.assemble; sync_skills --check
   passed and commit succeeded. Do not bypass hooks or edit curated skill mirrors.
-- Initial book draft invented unavailable-source caveats despite existingr15b video
-  analyses/downloaded workflow evidence. Worker is correcting this and strengthening
-  exact code/evidence links. Book is not accepted yet.
+- Initial book draft invented unavailable-source caveats despite existing r15b video
+  analyses/downloaded workflows and r15 section5 growth SOP evidence. Worker and parent
+  corrected these; 20 local links resolve, four primary URLs opened. Initial edition
+  still pending final acceptance/commit; source-corrected chapters remain WIP.
+- API first review found unbounded JSON/traversal/diagnostic work. Builder added caps
+  and warnings; independent re-review pending. Frontend first review found three stale
+  navigation-test assertions and shallow nested response validation that could crash;
+  builder is fixing those while API is frozen.
+- Parent's first pytest run hit default temporary-directory setup errors (13 pass,
+  42 setup errors). Fresh explicit workspace-local --basetemp fixed environment; full
+  driver 55 passed. Do not treat initial setup errors as 42 product regressions.
 
 ## What Has NOT Been Tried Yet
 
-- A paid run under the new protocol, retraining, new imagegen inputs, video proof,
-  operator-accepted production identity, new hub UI, live Instagram integration.
-- Independent protocol review and hub API tests/review are still in progress.
+- A paid run under the new protocol, retraining, video proof, operator-accepted
+  production identity, deployed hub UI, live Instagram integration.
+- New hub UI exists but review fixes/tests remain. No new RunPod cost this async phase.
 
 ## Current State of Files
 
 | Surface | State | Owner/next |
 | --- | --- | --- |
 | docs/figment/2026-09-08-async-build-plan.md | DONE | Parent plan1871fcc5 |
-| pipeline/figment_train.py and tests/test_figment_train.py | WIP review | Builderfigment_recovery_recheck, reviewerfigment_protocol_review; freeze edits during review |
-| research/book/ seven chapters | WIP revision | figment_live_preflight; root found historical-source errors |
-| dashboard/server/figment, index.ts/index.test.ts | WIP build | figment_timestamp_fix; read-only real-record API |
+| pipeline/figment_train.py and tests/test_figment_train.py | DONE | Reviewed PASS, 55 tests, commit03e52227 |
+| research/book/ seven chapters | WIP acceptance | Source corrections done; final review/commit next |
+| dashboard/server/figment, index.ts/index.test.ts | WIP re-review | Hardened bounded API frozen; reviewerfigment_protocol_review |
+| dashboard/src/figment and App/nav files/tests | WIP fixes | figment_timestamp_fix owns navigation assertions and nested response decoder |
+| docs/figment/2026-09-08-single-seed-experiment.md | WIP build | figment_recovery_recheck audits actual training data and prepares private dry-run artifacts |
 | queue/working/01K9FIGMENT0800000000000004.md | WORKING | Overnight manager; prior02/03 remain done |
 | Current handoff | WORKING | Consumes evaluation handoff; old version52c10f66 |
 
 The three worker scopes share the studio worktree. Do not stage or overwrite another
-worker's WIP. Protocol needs a canonical-anchor selection when multiple references
-exist; stores one chosen hash separately from the full reference set, no promotion.
-Builder initially reported5newfocused+36anchor/gen/creator002passes; full driver suite
-had4missing-private-anchor failures before parent materialized the unchanged assets.
-Independent reviewer should retest with those assets available; this is not acceptance.
+worker's WIP. Protocol stores one chosen anchor hash separately from the full reference
+set and cannot approve a checkpoint. It is a planning record, not yet an executing
+candidate/control pod adapter; experiment worker is resolving that integration gap.
 Hub API must distinguish machine-gate pass from operator approval and refuse arbitrary
 paths/symlinks; incomplete freshness stays unknown. Both legacy and current run roots
 must be considered; no provider calls or subprocess launch from read APIs.
 
 ## Exact Next Step
 
-Harvest the independent protocol review, fix concrete findings without weakening
-criteria, and run its accepted tests. In parallel, review the revised book and hub API.
-Then build the frontend on the actual API, prepare a bounded candidate/control image
-experiment fromg01, and develop video contracts/tests while image quality work proceeds.
+Harvest the API re-review and frontend fixes/re-review; accept only verified units.
+Commit source-corrected initial book, independently inspect the imagegen variation,
+and evaluate the worker's candidate/control manifest and actual dataset audit. Then
+admit a bounded paid experiment only after cost/manifest/teardown checks; develop video
+contracts/tests while image quality work proceeds.
 No need to wait for final production quality before building truthful pending-state UI.
 Read the build plan for the remaining units and per-item fallback/review limits.
 
@@ -96,7 +116,7 @@ arc headroom$12.984939 is further limited by the CLI daily$10 guard and current 
 ## Paths and load list
 
 - Studio: C:/Users/danie/kb/_private/codex-worktrees/figment-studio-20260908,
-  branchcodex/figment-studio-20260908, committedplan1871fcc5; no studio PR yet.
+  branchcodex/figment-studio-20260908, committed/pushed03e52227; no studio PR yet.
 - Prior foundation: C:/Users/danie/kb/_private/codex-worktrees/figment-foundation-20260908,
   branchcodex/figment-foundation-20260908 head37d580d9, draftPR178.
 - Ops: C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07,

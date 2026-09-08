@@ -48,3 +48,8 @@ native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed
 native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-protocol-independent-review	not-exposed
 native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-anchor-consistency-audit	not-exposed
 native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-research-book-claim-correction	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-protocol-fix-and-independent-rereview	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-api-independent-review-and-limits-fix	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-frontend-build-and-independent-review	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-dataset-audit-and-experiment-plan	not-exposed
+built-in imagegen billing telemetry unavailable; distinct from RunPod cost		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-frontal-study	not-exposed
