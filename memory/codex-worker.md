@@ -441,3 +441,28 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+## 2026-09-08 — A reproducible test needs portable assets and stable bytes
+
+Figment's second-persona acceptance claimed a checked-in fixture, but its anchors
+and generator were ignored; restoring the three original dummy images exposed a
+second failure because Windows checkout converted a hash-bound spec from LF to CRLF.
+The original LF digest exactly matched the declared hash, distinguishing transport
+mutation from a changed identity specification. Next time a pipeline relies on
+content hashes and local fixtures, I will test from a fresh checkout with an explicit
+asset bootstrap and verify the byte policy before accepting a local green suite.
+Signal to recognize: a test requires untracked files or passes only in the author's
+worktree while semantic Git diffs remain empty. Keep missing-input failures separate
+from product-behavior failures; never refresh a hash merely to silence the guard.
+
+## 2026-09-08 — Research conclusions need current code and calibrated evidence
+
+An older Figment test header described creator contamination that current code had
+already fixed, and an experiment's prose said no result entered the anchor band even
+though its own numbers included two inside that band. Next time I inherit research
+or review findings, I will verify the executing function and arithmetic before
+promoting the conclusion into a plan. Signal to recognize: a comment describes a
+known defect while later regression tests say fixed, or a universal method-rejection
+claim rests on a small trial and a proxy score. Separate historical causes, current
+defects and untested causal hypotheses in the handoff so repeated summaries do not
+turn tentative explanations into architectural facts.

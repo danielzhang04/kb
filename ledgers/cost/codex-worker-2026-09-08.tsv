@@ -1,0 +1,6 @@
+accounting_status	input_tokens	model	output_tokens	requested_model	responding_model	step	usd
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		runtime-default	not-exposed	figment-architecture-orchestrator	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-code-audit	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-reference-audit	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-loop-audit	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-synthesis-review	
