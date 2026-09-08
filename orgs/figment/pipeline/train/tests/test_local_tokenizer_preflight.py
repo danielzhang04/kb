@@ -166,10 +166,22 @@ def test_explicit_load_uses_fixed_venv_local_only_and_records_second_pad_zero(tm
     fake = ModuleType("transformers")
     fake.CLIPTokenizer = FakeTokenizer
     monkeypatch.setitem(sys.modules, "transformers", fake)
+    class FakeCuda:
+        @staticmethod
+        def is_initialized(): return False
+        @staticmethod
+        def is_available(): return False
+        @staticmethod
+        def device_count(): return 0
+    fake_torch = ModuleType("torch")
+    fake_torch.cuda = FakeCuda()
+    monkeypatch.setitem(sys.modules, "torch", fake_torch)
     result = tokenizer.load("cache")
     assert [item[1] for item in calls] == [True, True]
     assert [item["effective_pad_token_id"] for item in result["tokenizers"]] == [49407, 0]
     assert [item["caption_token_count"] for item in result["tokenizers"]] == [3, 3]
+    assert result["cuda_visible_devices"] == "-1" and result["pytorch_nvml_based_cuda_check"] == "1"
+    assert result["torch_imported"] is True and result["cuda_available"] is False and result["cuda_device_count"] == 0
     assert (private / "cache" / tokenizer.LOAD_NAME).is_file()
 
 

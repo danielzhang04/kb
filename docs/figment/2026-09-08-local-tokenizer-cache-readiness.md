@@ -63,8 +63,13 @@ The trainer sets the second tokenizer's `pad_token_id` to `0` after loading it.
 An explicit local load probe must apply and record that effective setting.
 
 The smallest later runtime check is a separate fixed-venv, CPU-only command
-that sets `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`, and an isolated
+that sets `HF_HUB_OFFLINE=1`, `TRANSFORMERS_OFFLINE=1`,
+`CUDA_VISIBLE_DEVICES=-1`, `PYTORCH_NVML_BASED_CUDA_CHECK=1`, and an isolated
 `HF_HOME`, then calls `CLIPTokenizer.from_pretrained` only on the two owned
-directories. It must record the exact cache manifest and prove neither CUDA
-nor model weights were initialized. This note does not perform that check and
-does not establish training readiness.
+directories. PyTorch documents that `-1` makes no GPUs available to the CUDA
+runtime and that the NVML setting checks driver functionality without the CUDA
+runtime before import ([CUDA environment variables](https://docs.pytorch.org/docs/stable/cuda_environment_variables.html)).
+The probe must record the exact cache manifest and, if Torch was imported,
+actual CUDA availability and device count while requiring both to be false and
+zero. It does not initialize model weights. This note does not perform that
+check and does not establish training readiness.

@@ -280,13 +280,30 @@ def prepare(out: str) -> dict[str, Any]:
         raise
 
 
-def _cuda_initialized() -> bool:
+def _cuda_observation() -> dict[str, Any]:
     torch = sys.modules.get("torch")
     if torch is None:
-        return False
+        return {"torch_imported": False, "cuda_initialized": False, "cuda_available": None, "cuda_device_count": None}
     cuda = getattr(torch, "cuda", None)
-    state = getattr(cuda, "is_initialized", None)
-    return bool(state()) if callable(state) else False
+    initialized = getattr(cuda, "is_initialized", None)
+    available = getattr(cuda, "is_available", None)
+    count = getattr(cuda, "device_count", None)
+    try:
+        return {
+            "torch_imported": True,
+            "cuda_initialized": bool(initialized()) if callable(initialized) else False,
+            "cuda_available": bool(available()) if callable(available) else False,
+            "cuda_device_count": int(count()) if callable(count) else 0,
+        }
+    except Exception as exc:
+        raise TokenizerPreflightError("CUDA observation failed without initializing a tokenizer model") from exc
+
+
+def _require_no_cuda(stage: str) -> dict[str, Any]:
+    state = _cuda_observation()
+    if state["cuda_initialized"] or (state["torch_imported"] and (state["cuda_available"] is not False or state["cuda_device_count"] != 0)):
+        raise TokenizerPreflightError(f"{stage} exposed or initialized CUDA")
+    return state
 
 
 def _load_tokenizers(root: Path) -> list[dict[str, Any]]:
@@ -299,18 +316,18 @@ def _load_tokenizers(root: Path) -> list[dict[str, Any]]:
             raise TokenizerPreflightError("fixed local trainer Python is unsafe")
     except OSError as exc:
         raise TokenizerPreflightError("fixed local trainer Python is unavailable") from exc
-    if _cuda_initialized():
+    if _cuda_observation()["cuda_initialized"]:
         raise TokenizerPreflightError("CUDA was already initialized before tokenizer loading")
     os.environ.update({
-        "CUDA_VISIBLE_DEVICES": "", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
+        "CUDA_VISIBLE_DEVICES": "-1", "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
+        "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1",
         "HF_HOME": str(root / HF_HOME_NAME), "NO_PROXY": "*", "HTTP_PROXY": "", "HTTPS_PROXY": "",
     })
     try:
         from transformers import CLIPTokenizer
     except Exception as exc:
         raise TokenizerPreflightError("fixed venv cannot import CLIPTokenizer") from exc
-    if _cuda_initialized():
-        raise TokenizerPreflightError("CLIPTokenizer import initialized CUDA")
+    _require_no_cuda("CLIPTokenizer import")
     results: list[dict[str, Any]] = []
     for index, spec in enumerate(PINNED_INVENTORY):
         try:
@@ -324,8 +341,7 @@ def _load_tokenizers(root: Path) -> list[dict[str, Any]]:
             raise TokenizerPreflightError("local tokenizer produced no caption token IDs")
         results.append({"id": spec["id"], "class": type(tokenizer).__name__, "effective_pad_token_id": tokenizer.pad_token_id,
                         "caption_token_count": len(input_ids), "local_files_only": True})
-    if _cuda_initialized():
-        raise TokenizerPreflightError("tokenizer loading initialized CUDA")
+    _require_no_cuda("tokenizer loading")
     return results
 
 
@@ -352,6 +368,7 @@ def load(out: str) -> dict[str, Any]:
     if prepared_content != expected_prepared:
         raise TokenizerPreflightError("prepared tokenizer receipt disagrees with current copied files")
     tokenizers = _load_tokenizers(root)
+    cuda = _require_no_cuda("tokenizer receipt publication")
     # The tokenizer library has just opened these files.  Re-read the exact
     # prepared receipt and every copy before publishing a load receipt, so a
     # concurrent change cannot be attributed to the earlier hashes.
@@ -372,7 +389,9 @@ def load(out: str) -> dict[str, Any]:
         "copies": copies_after,
         "caption_sha256": hashlib.sha256(CAPTION_PROBE.encode("utf-8")).hexdigest(),
         "tokenizers": tokenizers,
-        "cuda_initialized": False,
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
+        "pytorch_nvml_based_cuda_check": os.environ.get("PYTORCH_NVML_BASED_CUDA_CHECK"),
+        **cuda,
     }
     record["frozen_sha256"] = hashlib.sha256(_canonical(record)).hexdigest()
     _write_exclusive(root / LOAD_NAME, json.dumps(record, sort_keys=True, indent=2).encode("utf-8") + b"\n")
