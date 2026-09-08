@@ -1,19 +1,20 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-08 (fixture retained; plan-only ownership correction technically ready)_
+_Updated: 2026-09-08 (A0 ready; C0 active; D0 bounded correction active)_
 
 ## Now
 
 - The complete twelve-phase overhaul remains active. Phase 0 is incomplete and
-  Phases 1–11 remain gated. The prior fixture cycle remains recorded, and the
-  renewed plan-only ownership correction/review cycle is TECHNICALLY READY. It
-  does not complete Phase 0 or authorize production work.
+  Phases 1–11 remain gated. The ownership plan is TECHNICALLY READY, A0 neutral
+  interfaces are complete and independently READY. C0 and the D0 review-driven
+  correction are active. None of this completes Phase 0 or
+  authorizes production.
 - PR176 targets main at current source head
-  ccb2ec9565f92a867c85f693a10f64a2e93032e0. It records the technically ready
-  plan review; stable fixture commit 42125cb2 remains unchanged from source head
-  8237febde3db147e161172cc87d2ab76c7bb1814. PR176's remote body is updated.
-  This coordination proposal remains on codex/kb-vm-overhaul-ops-20260907 for
-  PR177; c7792546648b28cc87e72262b2951942a1362065 is its historical baseline.
+  df100897837d9ba6916bf810552127ca0f4029bf. It adds only A0's neutral
+  `executionLifetime` interface/test and `SpendGrantProvisionOutcome`; the
+  engine and frozen adapter/grant files remain untouched. The reviewed plan is
+  at ccb2ec9565f92a867c85f693a10f64a2e93032e0. This coordination proposal is at
+  b5b0233b143b921693e517e29e0c6c4dec17f8e8 for PR177.
 - Linux run Y5mujQ passed all 399 selected tests, including 11 isolated
   realBroker tests, typecheck, and native Vite build (128 modules), from archive
   6d09d54ab5356a8425f9c5b1b0fb6291fcb153159ad709136dc12f32bc5aa073. Root's
@@ -34,6 +35,13 @@ _Updated: 2026-09-08 (fixture retained; plan-only ownership correction technical
   an immutable active-generation receipt snapshot before effects, reusing its
   pure key across Lock. This remains planning only; no source binding or Phase 0
   acceptance is authorized.
+- **A0 — READY.** Independent Sol review found the dormant lifetime interface
+  and outcome type ready. Its six focused behavioral cases passed in 196 ms and
+  dashboard typecheck passed; no engine, activation, or lifetime binding changed.
+- **C0 — ACTIVE.** Sol owns only `agentSessionChains.ts` and its test for the
+  claim-store protocol. **D0 — CORRECTION ACTIVE.** Terra's focused gate reported
+  41/41 passed, but independent review found a no-card post-await withdrawal
+  path that can promote canonical success. No broad suite or parallel typecheck.
 - Requested native work was Terra-high and Sol-high; responding-model, cost, and
   inspection-grade telemetry are unknown and remain unrecorded. The last VM
   probe remains failed systemd/HTTP 502 evidence; PR173 was last checked OPEN and
@@ -41,9 +49,9 @@ _Updated: 2026-09-08 (fixture retained; plan-only ownership correction technical
 
 ## Next
 
-- The next authorized bounded stage is the reviewed plan's A0 neutral-interface
-  work. It is distinct from Phase 0 acceptance; do not create a runnable
-  controller, deploy, merge, or mark Phase 0 complete.
+- Resolve D0's admission review and complete C0, then review each final diff
+  before the next integration gate. Do not create a runnable controller, deploy,
+  merge, or mark Phase 0 complete.
 
 ## Blocked
 

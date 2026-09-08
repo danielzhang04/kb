@@ -20,25 +20,30 @@ retain their separate human gates.
 
 ## Current terminal task list
 
-1. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47,
+1. **A0 neutral interfaces — DONE / READY.** PR176 source head
+   `df100897837d9ba6916bf810552127ca0f4029bf` adds dormant lifetime interfaces
+   and the grant outcome type only. Independent Sol found it ready; six focused
+   behavioral tests passed in 196 ms and typecheck passed.
+2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47,
    full-plus-sparse mutation proof, and the independent Sol artifact recheck are
    recorded. They are prior evidence, not a new run.
-2. **Plan correction — DONE / TECHNICALLY READY.** Fresh Terra review and root
+3. **Plan correction — DONE / TECHNICALLY READY.** Fresh Terra review and root
    cross-check found no concrete blockers. C owns persistence migration and
    constructors; creator-only CAS ownership and active-generation receipt
    registration are explicit; ambiguous landed writes require reconciliation.
-3. **Next authorized stage — A0 INTERFACES.** Start the reviewed plan's bounded
-   A0 neutral-interface stage separately from Phase 0 acceptance. Do not create
-   a runnable controller, deploy, merge, or mark any phase complete.
+4. **C0/D0 ports — C0 ACTIVE; D0 CORRECTION ACTIVE.** Sol owns only
+   `agentSessionChains.ts`/test claim protocol work. D0's 41/41 focused gate is
+   reported, but review found a post-await no-card canonical-success path after
+   withdrawal. Its bounded correction and re-review are active.
 
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-ccb2ec9565f92a867c85f693a10f64a2e93032e0, which records the technically ready
-plan review. Fixture commit 42125cb2 remains unchanged from source head
-8237febde3db147e161172cc87d2ab76c7bb1814; PR176's remote body is updated.
-This coordination proposal is on codex/kb-vm-overhaul-ops-20260907 for PR177;
-c7792546648b28cc87e72262b2951942a1362065 is historical baseline only.
+df100897837d9ba6916bf810552127ca0f4029bf. It adds only A0's dormant
+`executionLifetime` interface/test and `SpendGrantProvisionOutcome`; the engine
+and frozen adapter/grant files remain unchanged. The reviewed plan is at
+ccb2ec9565f92a867c85f693a10f64a2e93032e0. This coordination proposal is at
+b5b0233b143b921693e517e29e0c6c4dec17f8e8 for PR177.
 
 Linux run Y5mujQ passed all 399 selected tests, including 11 isolated realBroker
 tests, typecheck, and native Vite build (128 modules), from source archive

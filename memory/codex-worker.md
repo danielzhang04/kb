@@ -560,3 +560,20 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   the original owner's release or replay authority. Preserve the receipt for
   reconciliation and prove a same-chain creator handle before any release or
   write-intent action.
+
+## Prepare a disjoint-port review from the pre-builder baseline (2026-09-08)
+
+- Record each builder's exact file/test ownership before its diff arrives. For a
+  durable claim store, review input validation, atomic mutation, drain/release
+  semantics, and cross-store behavior; for canonical admission, review every
+  forward-effect assertion and journal-state transition.
+- Do not run a competing test or call a port ready while its assigned worktree
+  is still changing. Capture the baseline, then review the final diff and the
+  builder's focused evidence as separate facts.
+
+## Treat successful return projections as lifecycle effects (2026-09-08)
+
+- A pre-call admission assertion permits an issued asynchronous effect, but it
+  does not authorize code after that await. Check post-await journal promotion,
+  returned bases, and public success values separately; a no-card path can skip
+  the publisher guard entirely.
