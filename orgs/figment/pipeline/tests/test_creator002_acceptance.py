@@ -65,6 +65,7 @@ figment_train.py.
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import subprocess
 import sys
@@ -364,12 +365,17 @@ def _tiny_train_first_dataset(tmp_path: Path) -> Path:
     dataset_dir = tmp_path / "tf-dataset"
     dataset_dir.mkdir()
     files = []
-    for index, name in enumerate(ANCHOR_NAMES, start=1):
+    for index in range(1, 21):
+        name = ANCHOR_NAMES[(index - 1) % len(ANCHOR_NAMES)]
         stem = f"{index:02d}"
         image = Image.open(PERSONAS / CREATOR / "anchors" / name).convert("RGB")
-        image.save(dataset_dir / f"{stem}.png")
+        image_path = dataset_dir / f"{stem}.png"
+        image.save(image_path)
         (dataset_dir / f"{stem}.txt").write_text(f"{TRIGGER} woman\n", encoding="utf-8")
-        files.append({"image": f"{stem}.png", "caption_file": f"{stem}.txt", "sha256": "x"})
+        files.append({
+            "image": f"{stem}.png", "caption_file": f"{stem}.txt",
+            "sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        })
     (dataset_dir / "dataset_manifest.json").write_text(
         json.dumps({"count": len(files), "caption_mode": "provided", "files": files}),
         encoding="utf-8",
@@ -380,6 +386,11 @@ def _tiny_train_first_dataset(tmp_path: Path) -> Path:
 
 def test_creator002_train_first_plan_dry_runs_clean(tmp_path):
     dataset_dir = _tiny_train_first_dataset(tmp_path)
+    accepted = run_cli([
+        "accept-dataset", "--creator", CREATOR, "--dataset-dir", str(dataset_dir),
+        "--decided-by", "operator-fixture", "--decided-at", "2026-09-08T00:00:00Z",
+    ])
+    assert accepted.returncode == 0, accepted.stdout + accepted.stderr
     out = tmp_path / "train-first-plan"
     result = run_cli([
         "train-first", "--creator", CREATOR, "--dataset-dir", str(dataset_dir),
@@ -430,6 +441,7 @@ def test_creator002_dataset_grade_and_apply_rulings_with_gate_override(tmp_path)
         row.update(_axes(), decision="keep", why="fixture ruling",
                     gate_override="fixture: no real face in this synthetic 8x8 image")
     rulings_path = out / "filled-dataset-rulings.json"
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     rulings_path.write_text(json.dumps(template), encoding="utf-8")
 
     apply_result = run_cli([
@@ -444,6 +456,11 @@ def test_creator002_dataset_grade_and_apply_rulings_with_gate_override(tmp_path)
         out / "train" / "runs" / f"{CREATOR}-tensor-dataset" / "dataset_manifest.json"
     )
     assert dataset_manifest["count"] == 30
+    dataset_approval = load_json(
+        out / "train" / "runs" / f"{CREATOR}-tensor-dataset" / "dataset-approval.json"
+    )
+    assert dataset_approval["decision"] == "verified"
+    assert dataset_approval["decided_by"] == "operator-fixture"
 
     # KNOWN DEFECT (module docstring + dedicated xfail test): the dataset stage's own
     # run manifests and copied prompt/workflow assets are excluded here -- see
@@ -485,6 +502,7 @@ def test_creator002_tester_apply_rulings_keeps_two_cells_with_gate_override(tmp_
         if kept:
             row["gate_override"] = "fixture: no real face in this synthetic 8x8 image"
     rulings_path = out / "filled-tester-rulings.json"
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     rulings_path.write_text(json.dumps(template), encoding="utf-8")
 
     apply_result = run_cli([

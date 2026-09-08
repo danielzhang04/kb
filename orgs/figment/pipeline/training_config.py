@@ -19,6 +19,7 @@ TRAINING_KEYS = {
     "trigger", "base_arch", "steps", "save_every", "caption_mode",
     "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
+    "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class",
 }
 DEFAULT_TRAINING = {
@@ -42,6 +43,8 @@ DEFAULT_TRAINING = {
     # operator has picked a checkpoint. `build_plan(..., stage="gen")` refuses to plan
     # until this names a real step.
     "chosen_checkpoint_step": None,
+    "chosen_checkpoint_sha256": None,
+    "chosen_checkpoint_approval": None,
     # Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): Ostris ai-toolkit's
     # Differential Output Preservation, OFF by default. Confirmed at the pinned commit
     # (train/runs/creator-001-tensor-train.yaml training.git_ref
@@ -154,6 +157,20 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     ):
         raise TrainingConfigError(
             "persona.training.chosen_checkpoint_step must be a positive integer or null"
+        )
+    chosen_sha = config["chosen_checkpoint_sha256"]
+    if chosen_sha is not None and (
+        not isinstance(chosen_sha, str) or re.fullmatch(r"[0-9a-f]{64}", chosen_sha) is None
+    ):
+        raise TrainingConfigError(
+            "persona.training.chosen_checkpoint_sha256 must be a lowercase sha256 or null"
+        )
+    chosen_approval = config["chosen_checkpoint_approval"]
+    if chosen_approval is not None and (
+        not isinstance(chosen_approval, str) or not chosen_approval.strip()
+    ):
+        raise TrainingConfigError(
+            "persona.training.chosen_checkpoint_approval must be a non-empty path or null"
         )
     price = config["price_ceiling_usd_per_hour"]
     if isinstance(price, bool) or not isinstance(price, (int, float)) or price <= 0:

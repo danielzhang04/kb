@@ -24,6 +24,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[4]
 PIPELINE = ROOT / "orgs" / "figment" / "pipeline"
@@ -93,7 +94,7 @@ def _synthetic_persona(
     anchors = target / "anchors"
     anchors.mkdir(parents=True)
     for name in anchor_names:
-        (anchors / name).write_bytes(("image-" + name).encode())
+        Image.new("RGB", (8, 8), color=(128, 96, 64)).save(anchors / name)
 
     identity_spec = target / "identity.md"
     register_spec = target / "register.md"
@@ -424,6 +425,7 @@ def test_apply_anchor_rulings_promotes_exactly_one_pick(command, tmp_path):
     template = load_json(Path(grade["rulings_template"]))
     for i, row in enumerate(template["rulings"]):
         row.update(_axes(), decision="keep" if i == 3 else "cull", why="fixture")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
     command.apply_rulings("creator-002", "anchor", out / "plan.json", filled)
@@ -458,9 +460,10 @@ def test_apply_anchor_rulings_refuses_a_keep_when_gate_row_has_no_pass_key(comma
         if i == 3:
             del axes["gate_override"]  # the malformed row must still require one
         row.update(axes, decision="keep" if i == 3 else "cull", why="fixture")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
-    with pytest.raises(command.FigmentTrainError, match="gate"):
+    with pytest.raises(command.FigmentTrainError, match="stale|gate"):
         command.apply_rulings("creator-002", "anchor", out / "plan.json", filled)
 
 
@@ -474,6 +477,7 @@ def test_apply_anchor_rulings_refuses_two_keeps(command, tmp_path):
     template = load_json(Path(grade["rulings_template"]))
     for i, row in enumerate(template["rulings"]):
         row.update(_axes(), decision="keep" if i in (3, 4) else "cull", why="fixture")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
     with pytest.raises(command.FigmentTrainError, match="exactly one"):

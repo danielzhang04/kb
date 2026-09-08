@@ -372,8 +372,8 @@ At Pod acquisition, the cost ledger receives a provisional row with model
 teardown replaces that same row with elapsed cost at the READY rate. If the run exits before a
 READY price is available, the final ledger value is elapsed seconds times the manifest hourly
 ceiling rate; `run.json` labels this a `ceiling-rate estimate`. An unverified teardown after a
-READY price keeps at least the provisional estimate. Dry-run rows remain under
-`<out>/dry-run-ledger/` at zero USD unless `--ledger-dir` is explicitly supplied. Ledger
+READY price keeps at least the provisional estimate. Dry-run rows always remain under
+`<out>/dry-run-ledger/` at zero USD, including when `--ledger-dir` is supplied. Ledger
 upserts use an exclusive bounded lock and a unique atomic-replace temporary file. The ledger
 day is the America/New_York local date captured once for the create transaction; settlement
 reuses that captured day even when teardown crosses UTC or New York midnight.
@@ -406,6 +406,47 @@ py -3 runpod_run.py status --forget-bad-host l03vqknv0x0c
 py -3 runpod_run.py probe
 py -3 runpod_run.py terminate --pod-id POD_ID
 ```
+
+## Durable recovery after a host outage
+
+Immediately before every create request, `run` atomically creates a separate
+`<out>/recovery-<generated-pod-name>.json` journal. It never reuses or overwrites an
+earlier attempt's journal, including a terminal one. Before any create it takes an
+exclusive run-directory lock and refuses an existing `run.json`, legacy
+`recovery.json`, malformed journal, or any `recovery-*.json`; use a new `--out`
+directory for every invocation.
+It records one generated Pod name, the manifest SHA-256, the approved `--max-minutes`
+and `--max-usd` bounds, creation time, and the adjacent intended receipt path
+(`<out>/run.json`). When the create response supplies an ID, the lease persists that ID
+before it does any proxy, bootstrap, upload, or job work. A normal verified teardown
+atomically records the terminal absence result in that same journal.
+
+If the desktop running the harness is lost, start a **one-shot** recovery from a
+surviving independent host which has the original manifest and run directory:
+
+```powershell
+py -3 runpod_run.py recover --journal C:\runs\figment-001\recovery-figment-bakeoff-YYYYMMDD-HHMMSS-abcdef.json
+```
+
+Recovery never creates or retries a Pod, never lists or kills an account broadly, and
+never changes `run.json` or cost-ledger charges. RunPod's documented Pod shape supplies
+`lastStartedAt`, not a creation timestamp, so recovery never calls it a creation time.
+It permits a DELETE only after matching the recorded provider ID, generated name, and a
+timezone-bearing `lastStartedAt` within the original bounded attempt. A later restart
+outside `max_minutes`, or a missing timestamp, refuses recovery. For a timed-out create
+with no recorded ID, it scans only that exact generated name and time window but records
+uncertainty instead of deleting: name discovery cannot establish the missing ID. Malformed,
+modified, missing-manifest, ambiguous, foreign-ID, and timestamp-mismatched journals
+fail closed without a DELETE; uncertainty remains in that attempt's journal for human
+billing reconciliation.
+
+The journal is durable evidence, not an external watchdog. It cannot run after the
+desktop exits, loses power, or loses its network. The independent host invocation above
+is the required operational recovery step. The journal uses atomic replacement and flushes
+the containing directory where the OS supports it. Windows sharing violations (32/33)
+get at most three short replacement attempts; every other error, a persistent lock, or
+an outage during the initial exclusive-create step fails closed instead of allowing a
+replacement journal.
 
 `probe` is read-only: it makes only `GET /pods?includeMachine=true` and prints response keys,
 type placeholders, and status values. It suppresses IDs, IPs, ports, prices, names, and other

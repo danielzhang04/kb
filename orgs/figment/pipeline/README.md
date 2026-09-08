@@ -35,14 +35,17 @@ Full chain for creator-001 (matches `figment_train.py`'s own `build_parser`, and
 py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-001 --stage all --out C:/tmp/creator-001-plan
 py -3 orgs/figment/pipeline/figment_train.py run --creator creator-001 --stage dataset --plan C:/tmp/creator-001-plan/plan.json
 py -3 orgs/figment/pipeline/figment_train.py grade --creator creator-001 --stage dataset --plan C:/tmp/creator-001-plan/plan.json
-# fill grade/dataset/rulings.template.json (keep/cull + all seven axes)
+# fill grade/dataset/rulings.template.json (decided_by/decided_at + keep/cull + all seven axes)
 py -3 orgs/figment/pipeline/figment_train.py apply-rulings --creator creator-001 --stage dataset --plan C:/tmp/creator-001-plan/plan.json --rulings C:/tmp/creator-001-plan/grade/dataset/filled.json
 py -3 orgs/figment/pipeline/figment_train.py gate --creator creator-001 --stage dataset --plan C:/tmp/creator-001-plan/plan.json
 py -3 orgs/figment/pipeline/figment_train.py run --creator creator-001 --stage all --plan C:/tmp/creator-001-plan/plan.json
 ```
 
-`run --stage all` stops after `dataset` for the mandatory operator gate; after `apply-rulings`
-the same command resumes at `smoke`. `--skip-pin-verify` skips the live HF pin preflight
+`run --stage all` stops after `anchor` (when present) and after `dataset` for mandatory
+operator review. Anchor promotion changes the persona references, so its old all-stage plan
+cannot plan the next dataset honestly: apply the ruling, then create a fresh `--stage all`
+plan. Repeating the old plan refuses without launching another pod. After a dataset ruling,
+the same plan resumes at `smoke`. `--skip-pin-verify` skips the live HF pin preflight
 (offline/test only, never on a real run). The current live path is Path-A **train-first**
 (r24 method 4 + r21 DOP: trains directly off an already-graded, already-captioned dataset
 dir, skipping the `dataset` stage):
@@ -50,6 +53,19 @@ dir, skipping the `dataset` stage):
 ```powershell
 py -3 orgs/figment/pipeline/figment_train.py train-first --creator creator-001 --dataset-dir <graded-cells-dir> --out C:/tmp/creator-001-train-first
 ```
+
+A train-first directory needs more than `_dataset.ready`. Its `dataset_manifest.json` must
+exactly describe every image, image hash, caption sidecar and count, and
+`dataset-approval.json` must bind those current bytes to an operator identity and time. To
+migrate an existing historical directory, inspect the images and captions at full resolution,
+then record that decision explicitly:
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py accept-dataset --creator creator-001 --dataset-dir <graded-cells-dir> --decided-by <operator> --decided-at <ISO-8601>
+```
+
+This validates and records the supplied decision. It does not infer or fabricate an approval
+for the historical 23-image train-first candidate.
 
 **creator-002 differs by nothing but data.** `figment_train.py` names no creator in code
 (`train/FIGMENT-TRAIN.md` — "nothing remains creator-specific in code or manifests"); a new
@@ -66,6 +82,33 @@ never passes silently):
    gloss proxy, min face px.
 2. `vlm_judge.py` — a headless Claude vision judge (`claude -p`, subscription-billed, not an
    API spend) scoring same_person / age_delta / skin_realism / gloss / artifacts.
+
+`grade` writes two different records. `grade/<stage>/gate.json` is the cached per-cell
+numeric `figment/gate@1` score table. `apply-rulings` writes the human
+`figment/approval-lineage@1` record after requiring `decided_by`, `decided_at`, keep/cull,
+and all seven axes. The human record binds the ordered image bytes, anchors,
+persona/training inputs, stage manifests, plan, numeric score document, and `gate.yaml`.
+Changing any of them makes the review stale. `gate` only displays the cached score table
+after checking those inputs and says that no recalculation occurred. Run `grade` to
+recalculate scores.
+
+Tester rulings may be applied as ordinary QA without selecting a model. To promote one
+operator-chosen candidate, pass its produced step explicitly:
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py apply-rulings --creator creator-001 --stage tester --plan <plan.json> --rulings <filled.json> --checkpoint-step 750
+```
+
+The selected tester cell must be kept. Immediately before tester launch, the driver records
+the path, size, and SHA-256 of every candidate and checks that inventory again after the
+successful tester receipt. Promotion requires that completed tester evidence, rejects dry-run
+train/tester receipts, verifies that the step was produced by the same completed train run,
+and requires the selected bytes to still match the tester inventory. It stores that provenance
+with `chosen_checkpoint_step`. Generation revalidates the source plan, current tester
+approval, training inputs, receipt and checkpoint bytes, then copies only that accepted
+checkpoint into the new generation plan. Provider receipts carry byte counts rather than a
+signed digest, so this proves continuity from the local source hashed at upload time; it does
+not cryptographically attest the bytes consumed inside the provider pod.
 
 `identity_gate.py` alone does **not** separate the operator's actual verdicts — Track-1 cells
 the operator called "glossy, older" score facenet ~0.92, indistinguishable from the anchors'
@@ -166,8 +209,9 @@ defects below for where these two sources disagree past 09-04.
 - **Add a persona.** New `orgs/figment/personas/<id>/{persona.yaml, training.yaml, anchors/}`;
   run the same CLI with `--creator <id>`. No code change.
 - **Change a threshold.** Edit `pipeline/gate.yaml` (top-level keys for `identity_gate.py`, the
-  `judge:` block for `vlm_judge.py`); re-run `figment_train.py gate --creator <id> --stage
-  <gradeable-stage> --plan <plan.json>` to see the new pass/fail table. No code change.
+  `judge:` block for `vlm_judge.py`); re-run `figment_train.py grade --creator <id> --stage
+  <gradeable-stage> --plan <plan.json>` to recalculate, then obtain and apply fresh rulings.
+  The `gate` command only displays the cached table after verifying its inputs. No code change.
 - **Add a stage.** Widen `STAGES`/`GRADEABLE_STAGES` in `figment_train.py` and wire a manifest
   builder for it — a code change; `GRADEABLE_STAGES`'s own comment names the three functions
   (`build_grade`, `apply_rulings`, `command_gate`) that must all agree.

@@ -58,6 +58,101 @@ def _banned_free(blob: str) -> None:
         assert banned not in blob, banned
 
 
+def _prepare_accepted_checkpoint(
+    command, personas: Path, out_root: Path, *, before_apply=None,
+    dry_run_stage=None, **training_fields,
+):
+    """Build a real tester approval chain for gen planning.
+
+    The gen stage consumes a promoted checkpoint, so tests create the same local
+    evidence an operator would: a completed train receipt, tester grade, human ruling,
+    and accepted-checkpoint record.  The pod itself remains a fixture and is never run.
+    """
+    persona_dir = personas / "creator-002"
+    _set_training(
+        persona_dir, chosen_checkpoint_step=None, chosen_checkpoint_sha256=None,
+        chosen_checkpoint_approval=None, save_every=250, **training_fields,
+    )
+    source = out_root / "source-lineage"
+    plan = command.build_plan(
+        "creator-002", "all", source, personas_root=personas, skip_pin_verify=True,
+    )
+    train_run = plan["stages"]["train"]["runs"][0]
+    train_manifest = load_json(source / train_run["manifest"])
+    step = 1500
+    filename = f"creator002krea2_{step:09d}.safetensors"
+    assert filename in [item["local"] for item in train_manifest["artifacts"]]
+    train_out = source / train_run["out"]
+    train_out.mkdir(parents=True, exist_ok=True)
+    checkpoint = train_out / filename
+    receipt_artifacts = []
+    for index, artifact in enumerate(train_manifest["artifacts"]):
+        artifact_path = train_out / artifact["local"]
+        artifact_path.write_bytes(f"fixture checkpoint bytes {index:02d}".encode("utf-8"))
+        receipt_artifacts.append({
+            "remote": artifact["remote"], "bytes": artifact_path.stat().st_size,
+        })
+    (train_out / "run.json").write_text(json.dumps({
+        "error": None,
+        "dry_run": dry_run_stage == "train",
+        "termination_verified": True,
+        "artifacts": receipt_artifacts,
+    }), encoding="utf-8")
+
+    tester_run = plan["stages"]["tester"]["runs"][0]
+    tester_manifest = load_json(source / tester_run["manifest"])
+    candidate_job = next(
+        job for job in tester_manifest["jobs"]
+        if any(item.get("field") == "lora_name" and item.get("value") == filename
+               for item in job.get("substitutions", []))
+    )
+    anchor_stage_test._fake_stage_outputs(source, plan, "tester")
+    tester_out = source / tester_run["out"]
+    (tester_out / "run.json").write_text(json.dumps({
+        "error": None,
+        "dry_run": dry_run_stage == "tester",
+        "termination_verified": True,
+        "jobs": [{
+            "output_name": job["output_name"],
+            "files": [{"bytes": 10} for _ in range(job.get("expected_images", 1))],
+        } for job in tester_manifest["jobs"]],
+    }), encoding="utf-8")
+    checkpoint_inputs = command._tester_checkpoint_inputs(plan, source, tester_run)
+    (source / "stage.json").write_text(json.dumps({
+        "schema": "figment/train-stage@1",
+        "creator": "creator-002",
+        "plan_sha256": command._sha256(source / "plan.json"),
+        "status": "complete:tester",
+        "runs": {
+            train_run["manifest"]: {"status": "complete"},
+            tester_run["manifest"]: {
+                "status": "complete", "checkpoint_inputs": checkpoint_inputs,
+            },
+        },
+        "completed_stages": ["train", "tester"],
+    }), encoding="utf-8")
+    grade = command.build_grade(
+        "creator-002", "tester", source / "plan.json", skip_judge=True,
+    )
+    template = load_json(Path(grade["rulings_template"]))
+    for job in template["rulings"]:
+        keep = job["image_id"] == candidate_job["output_name"]
+        job.update(anchor_stage_test._axes(), decision="keep" if keep else "cull")
+        if keep:
+            job["gate_override"] = "fixture: no real face in this synthetic 8x8 image"
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
+    rulings = source / "tester-rulings.json"
+    rulings.write_text(json.dumps(template), encoding="utf-8")
+    if before_apply is not None:
+        before_apply(checkpoint)
+    command.apply_rulings(
+        "creator-002", "tester", source / "plan.json", rulings,
+        checkpoint_step=step,
+    )
+    assert (source / "grade" / "tester" / "accepted-checkpoint.json").is_file()
+    return step
+
+
 # ---------------------------------------------------------------------------
 # Task D1: pin the licence-clean face-mask path
 # ---------------------------------------------------------------------------
@@ -139,6 +234,12 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
             skip_pin_verify=True,
         )
     _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
+    with pytest.raises(command.FigmentTrainError, match="provenance"):
+        command.build_plan(
+            "creator-002", "gen", tmp_path / "manual", personas_root=personas,
+            skip_pin_verify=True,
+        )
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
     out = tmp_path / "b"
     plan = command.build_plan(
         "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
@@ -148,7 +249,7 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
     assert Path(run["manifest"]).name == "creator-002-tensor-gen.yaml"
     assert m["workflow"] == "../workflows/krea2_gen_api.json"
     assert m["uploads"][0]["files"] == [
-        "out/creator-002-tensor-train/creator002krea2_000001500.safetensors"
+        "accepted-checkpoint/creator002krea2_000001500.safetensors"
     ]
     assert m["uploads"][0]["chunk_bytes"] == 16777216
     assert m["jobs"][0]["wait_for"] == "_loras.assembled"
@@ -172,9 +273,7 @@ def test_gen_prompt_is_trigger_prefixed_for_every_persona_not_only_dop(command, 
     both real personas' training.yaml)."""
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(
-        personas / "creator-002", chosen_checkpoint_step=1500, dop_class="woman",
-    )
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
     out = tmp_path / "gen-trigger"
     plan = command.build_plan(
         "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
@@ -204,7 +303,6 @@ def test_unknown_stage_raises_instead_of_falling_through(command, tmp_path):
 def test_build_plan_excludes_gen_from_stage_all(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
     out = tmp_path / "all"
     plan = command.build_plan(
         "creator-002", "all", out, personas_root=personas, skip_pin_verify=True,
@@ -215,7 +313,7 @@ def test_build_plan_excludes_gen_from_stage_all(command, tmp_path):
 def test_grade_apply_rulings_and_gate_accept_gen(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
     out = tmp_path / "g"
     plan = command.build_plan(
         "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
@@ -228,6 +326,7 @@ def test_grade_apply_rulings_and_gate_accept_gen(command, tmp_path):
     template = load_json(Path(grade["rulings_template"]))
     for row in template["rulings"]:
         row.update(anchor_stage_test._axes(), decision="keep")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = out / "filled.json"
     filled.write_text(json.dumps(template), "utf-8")
     applied = command.apply_rulings("creator-002", "gen", out / "plan.json", filled)
@@ -271,8 +370,8 @@ def test_style_lora_null_drops_node_40_and_set_wires_it_in_with_configured_stren
 def test_gen_manifest_bakes_style_lora_filename_and_pins_its_model(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(
-        personas / "creator-002", chosen_checkpoint_step=1500,
+    _prepare_accepted_checkpoint(
+        command, personas, tmp_path,
         style_lora="gokay-realism", style_lora_strength=0.7,
     )
     out = tmp_path / "s"
@@ -300,7 +399,7 @@ def test_gen_manifest_bakes_style_lora_filename_and_pins_its_model(command, tmp_
 def test_detail_manifest_job_count_and_dry_run(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
 
     source_dir = tmp_path / "existing-cells"
     source_dir.mkdir()
@@ -340,9 +439,7 @@ def test_detail_only_prompt_is_trigger_prefixed(command, tmp_path):
     "<trigger> <dop_class>, " ahead of the workflow's own default descriptive text."""
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(
-        personas / "creator-002", chosen_checkpoint_step=1500, dop_class="woman",
-    )
+    _prepare_accepted_checkpoint(command, personas, tmp_path, dop_class="woman")
 
     source_dir = tmp_path / "existing-cells"
     source_dir.mkdir()
@@ -372,7 +469,7 @@ def test_detail_images_requires_gen_stage(command, tmp_path):
 def test_detail_images_glob_matching_nothing_raises(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
-    _set_training(personas / "creator-002", chosen_checkpoint_step=1500)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
     with pytest.raises(command.FigmentTrainError, match="matched no files"):
         command.build_plan(
             "creator-002", "gen", tmp_path / "y", personas_root=personas,
