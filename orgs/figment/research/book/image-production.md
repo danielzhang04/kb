@@ -1,0 +1,16 @@
+# Image production
+
+Image production is a chain of bounded transformations: choose the frozen identity condition, render a scene, optionally repair localized defects, then review the output at original resolution. The package describes a passport prompt with pose, face inventory, skin texture, wardrobe, camera, and lighting clauses. Its later prompt guide adds pores and imperfections but also beauty-smoothing language. Figment should retain concrete texture and wardrobe descriptions while treating gloss reduction as an experiment rather than a cosmetic default.
+
+The proposed path is anchor → base render → identity/detail pass → provenance and safety checks. Any repair must preserve the original beside the derivative and record which region changed. Current code already contains a MediaPipe/FaceDetailer path, so the live result cannot be attributed to a missing repair pass: the five tester images were raw outputs before downstream generation passes. The inspected dataset graph used a low-denoise edit pass at `0.23` and retained DetailBoost; the generation graph used the trained identity LoRA at strength `1.0`. These settings describe the current graph lineage, not a quality guarantee. A face detector or landmark pass can locate review regions; [Google's MediaPipe Face Detector API](https://ai.google.dev/edge/api/mediapipe/python/mp/tasks/vision/FaceDetector) documents detection as a task, not an identity verifier. It can support routing and crop checks, while the identity decision remains human and comparison-based.
+
+ComfyUI workflows should be treated as versioned data. The [official ComfyUI OpenAPI schema](https://github.com/Comfy-Org/ComfyUI/blob/master/openapi.yaml) shows workflow JSON as an explicit request object, which supports storing node graph, inputs, and output metadata together. The schema does not prove that a graph produces a good face.
+
+| Evidence/status | What it establishes | Limitation |
+|---|---|---|
+| Package evidence | Prompt structure, edit pass, and face-repair concepts recovered from the package analysis and inspected graphs. | No package quality proof; licensing remains asset-specific. |
+| Current code | Trigger, LoRA strength, checkpoint steps, receipts, and hashes are inspectable. | Wiring correctness is not visual quality. |
+| Live proof | Five original-resolution outputs are adult and clothed. | Semi-real, inconsistent, and older by operator review. |
+| Hypothesis | A localized repair or skin-texture intervention could improve realism. | This remains a historical hypothesis from r20/r25, not a current causal finding; test it on the same cells with a control. |
+
+Decisions: keep raw outputs immutable, preserve derivatives, and require full-resolution review. The immediate paired diagnostic compares the existing LoRA with no LoRA and evaluates both against canonical `g01`. A repair or texture intervention is a later experiment using matched prompts and seeds, with identity, realism, apparent age, and artifacts logged separately. The prior five-cell diagnostic was a checkpoint ladder, not held-out evidence. Do not treat a polished single image as a promotion case.

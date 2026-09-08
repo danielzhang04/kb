@@ -1,0 +1,16 @@
+# Training and evaluation
+
+Train only after the data contract is frozen. The package's useful governing idea is a checkpoint ladder: train, render a fixed tester set at multiple steps, and select from evidence. The recovered module-11 graph uses 12 checkpoint branches, fixed seed `1595`, 1448x2176 output, 4 steps, CFG 1, `res_2s`/`beta`, and denoise 1. These are KREA2 turbo tester settings, not universal defaults. [Hugging Face's current Diffusers LoRA guide](https://huggingface.co/docs/diffusers/en/training/lora) describes LoRA as adding small trainable matrices while keeping base weights frozen; its examples also show that rank, learning rate, steps, and scheduler remain experiment variables.
+
+The current evidence exposes a raw-to-turbo lineage boundary. The live run compared existing checkpoints at 250, 500, 750, 1000 and final 1250 steps with the corrected trigger. All five jobs succeeded, but the parent and operator found weak identity resemblance and the operator reported mid-30s apparent age. The result establishes bounded execution and distinguishable outputs, not that 1,250 steps is the best checkpoint or that every learned adapter component worked as intended. The package's own checkpoint tester is a useful process pattern; its numeric choices are not portable facts.
+
+Evaluation needs three slates: training views, a held-out identity slate, and a driver-bound production slate. Keep seeds, prompts, dimensions, base model, adapter, and post-processing frozen within a comparison. Review source, output, and metadata together. A human can judge realism and identity, while automated checks can flag missing faces, dimensions, or provenance; neither replaces the other.
+
+| Evidence/status | What it establishes | Limitation |
+|---|---|---|
+| Package evidence | Checkpoint comparison is a formal stage in the reference workflow; the recovered graph and r15b analysis provide concrete settings. | Settings are specific to KREA2 and the inspected graph, not portable defaults. |
+| Primary documentation | LoRA is lightweight and its parameters need experimentation. | Diffusers examples target other model families and tasks. |
+| Live proof | Five jobs succeeded under the frozen manifest and budget; operator feedback rejected sufficient identity/age quality. | No held-out control and no checkpoint selection or formal driver approval. |
+| Hypothesis | Checkpoint selection and cross-model transfer may explain drift. | Causal effect is untested. |
+
+Decisions: preserve every checkpoint receipt, compare on new held-out data, and record a rejection as a useful result. Next test: compare the existing final LoRA with the same pinned base without LoRA, using the accepted persona-derived diagnostic protocol. g01 is the visual comparison reference; this text-to-image test does not condition generation directly on its pixels. One seed repeats the prior ladder and four are new to that record; references may overlap prior training. No new model should be adopted solely because a citation mentions it; licensing, reproducibility, and measured benefit must all be established. Current implementation entry points include [`load_manifest`](../../pipeline/pod/runpod_run.py#L1112), [`expand_manifest_uploads`](../../pipeline/pod/runpod_run.py#L1217), and [`manifest_job_timeout_seconds`](../../pipeline/pod/runpod_run.py#L1694).
