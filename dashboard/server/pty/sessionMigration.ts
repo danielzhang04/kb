@@ -18,6 +18,7 @@ import {
   assertPtySessionsDocumentV2,
   assertPtySessionsDocumentV3,
   createEmptyPtySessionsDocument,
+  decodeLegacyPtySessionsDocumentV3,
   MAX_PTY_DOCUMENT_BYTES,
 } from './sessionPersistence.ts';
 import type { SessionRunRecord } from './sessionRuns.ts';
@@ -166,10 +167,15 @@ export function mapPtySessionV1ToV3(source: SessionRunDocumentV1, migrationTime:
 }
 
 export function mapPtySessionV2ToV3(source: PtySessionsDocumentV2): PtySessionsDocumentV3 {
+  assertPtySessionsDocumentV2(source);
   const document: PtySessionsDocumentV3 = {
-    ...structuredClone(source),
-    schema: 'kb.pty-sessions/v3',
-    epochId: null,
+    schema: 'kb.pty-sessions/v3', revision: source.revision, epochId: null,
+    sessions: structuredClone(source.sessions), attemptBindings: structuredClone(source.attemptBindings),
+    operationReceipts: structuredClone(source.operationReceipts),
+    attemptOperations: Object.fromEntries(Object.entries(source.attemptOperations).map(([key, operation]) => [key, {
+      ...structuredClone(operation), messageClaim: null,
+    }])),
+    legacyRuns: structuredClone(source.legacyRuns), legacyArchiveKeys: structuredClone(source.legacyArchiveKeys),
   };
   assertPtySessionsDocumentV3(document);
   return document;
@@ -258,13 +264,20 @@ export async function migratePtySessionDocument(
       const parsed = parseJson(original);
       const maybeDocument = object(parsed);
       if (maybeDocument?.schema === 'kb.pty-sessions/v3') {
+        let legacyCandidate: PtySessionsDocumentV3 | null = null;
         try { assertPtySessionsDocumentV3(parsed); } catch {
-          throw migrationError('PTY session migration found an invalid v3 document', ['source: v3 validation failed']);
+          try { legacyCandidate = decodeLegacyPtySessionsDocumentV3(parsed); } catch {
+            throw migrationError('PTY session migration found an invalid v3 document', ['source: v3 validation failed']);
+          }
         }
+        const v3Backup = `${canonicalPath}.v3.bak`;
         const v2Backup = `${canonicalPath}.v2.bak`;
         const v1Backup = `${canonicalPath}.v1.bak`;
-        return { migrated: false, replayed: true,
-          backupPath: fs.exists(v2Backup) ? v2Backup : fs.exists(v1Backup) ? v1Backup : null };
+        if (legacyCandidate === null) {
+          return { migrated: false, replayed: true,
+            backupPath: fs.exists(v3Backup) ? v3Backup : fs.exists(v2Backup) ? v2Backup : fs.exists(v1Backup) ? v1Backup : null };
+        }
+        return publishMigration(legacyCandidate, v3Backup);
       }
 
       let candidate: PtySessionsDocumentV3;
@@ -287,6 +300,9 @@ export async function migratePtySessionDocument(
         backupPath = `${canonicalPath}.v1.bak`;
       }
 
+      return publishMigration(candidate, backupPath);
+
+      function publishMigration(candidate: PtySessionsDocumentV3, backupPath: string): PtySessionMigrationResult {
       const tempPath = `${canonicalPath}.${process.pid}.${randomUUID()}.tmp`;
       let sourceReplaced = false;
       let stage: PtySessionMigrationStage = 'backup';
@@ -295,7 +311,8 @@ export async function migratePtySessionDocument(
         if (fs.exists(backupPath)) {
           if (!fs.readFile(backupPath).equals(original)) {
             throw migrationError('PTY session migration cannot choose between existing source and backup',
-              [`backup: pre-existing ${backupPath.endsWith('.v2.bak') ? '.v2.bak' : '.v1.bak'} differs from source`]);
+              [`backup: pre-existing ${backupPath.endsWith('.v3.bak') ? '.v3.bak'
+                : backupPath.endsWith('.v2.bak') ? '.v2.bak' : '.v1.bak'} differs from source`]);
           }
         } else {
           fs.writeFile(backupPath, original, { flag: 'wx', mode: 0o600 });
@@ -342,6 +359,7 @@ export async function migratePtySessionDocument(
           report.push('cleanup: failed');
         }
         throw migrationError('PTY session migration failed atomically', report);
+      }
       }
     });
   } catch (error) {

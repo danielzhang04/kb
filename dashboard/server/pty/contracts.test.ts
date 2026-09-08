@@ -167,7 +167,7 @@ const badPrincipalExtraKey: SessionHostRequest = { ...hostRequest, principal: { 
 // Durable attempt-operation negatives (2026-08-23 ruling).
 const operationRecord: AttemptOperationRecord = {
   operationKey: 'op-x', requestHash: 'a'.repeat(64), status: 'pending', promptsDelivered: 0,
-  sessionId: null, attemptRef: null, receipt: null, revision: 0,
+  sessionId: null, attemptRef: null, messageClaim: null, receipt: null, revision: 0,
   updatedAt: '2026-08-23T00:00:00.000Z',
 };
 // @ts-expect-error the operation status union is closed
@@ -175,8 +175,13 @@ const badOperationStatus: AttemptOperationRecord = { ...operationRecord, status:
 // @ts-expect-error the CAS revision is required on every record
 const badOperationMissingRevision: AttemptOperationRecord = {
   operationKey: 'op-x', requestHash: 'a'.repeat(64), status: 'pending', promptsDelivered: 0,
-  sessionId: null, attemptRef: null, receipt: null, updatedAt: '2026-08-23T00:00:00.000Z',
+  sessionId: null, attemptRef: null, messageClaim: null, receipt: null, updatedAt: '2026-08-23T00:00:00.000Z',
 };
+// @ts-expect-error every current attempt operation explicitly carries its message claim binding
+const badOperationMissingMessageClaim: AttemptOperationRecord = (() => {
+  const { messageClaim: _messageClaim, ...legacy } = operationRecord;
+  return legacy;
+})();
 // @ts-expect-error writeOperation is async-only, never a synchronous CAS
 const badSyncWriteOperation: AttemptBindingPort['writeOperation'] = () => ({ ok: true, value: operationRecord });
 // @ts-expect-error expectedRevision is a number or null, never a string

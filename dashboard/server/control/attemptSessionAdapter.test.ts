@@ -581,7 +581,7 @@ function seededRecord(
   const operationKey = `op-${sha256Hex(input.operationKey)}`;
   return {
     operationKey, requestHash, status: 'pending', promptsDelivered: 0,
-    sessionId: null, attemptRef: input.attemptRef,
+    sessionId: null, attemptRef: input.attemptRef, messageClaim: null,
     receipt: {
       operationKey, requestHash, status: 'pending', sessionId: null,
       attemptRef: input.attemptRef, refusal: null, createdAt: '2026-08-23T00:00:00.000Z', settledAt: null,

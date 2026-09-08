@@ -885,6 +885,24 @@ describe('write surface — PTY document migration runs before any reader (boot)
     return { path, original };
   }
 
+  function writeLegacyV3Document(stateRoot: string): { path: string; original: Buffer; operationKey: string } {
+    const operationKey = `op-${'a'.repeat(64)}`;
+    const document = {
+      schema: 'kb.pty-sessions/v3', revision: 3, epochId: null, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: { [operationKey]: {
+        operationKey, requestHash: 'b'.repeat(64), status: 'pending', promptsDelivered: 0,
+        sessionId: null, attemptRef: null, receipt: null, revision: 1,
+        updatedAt: '2026-09-03T12:00:00.000Z',
+      } }, legacyRuns: [], legacyArchiveKeys: [],
+    };
+    const dir = join(stateRoot, 'pty');
+    mkdirSync(dir, { recursive: true });
+    const path = join(dir, 'session-runs.json');
+    const original = Buffer.from(`${JSON.stringify(document)}\n`, 'utf8');
+    writeFileSync(path, original);
+    return { path, original, operationKey };
+  }
+
   it('migrates a v2 document on disk at boot, before the registry ever reads it', async () => {
     const { path, original } = writeV2Document(testStateRoot!);
     const injected = recordingSessionHost();
@@ -913,6 +931,25 @@ describe('write surface — PTY document migration runs before any reader (boot)
     // succeeds clean.
     const sessions = await ctx.ptySessionRegistry?.list({ operator: 'operator', browserSessionRef: 'bsr-1' });
     expect(sessions).toEqual([]);
+    expect(warnings.some((args) => String(args[0]).includes('[pty-registry]'))).toBe(false);
+  });
+
+  it('migrates an old v3 attempt row before the real registry reads it at boot', async () => {
+    const { path, original, operationKey } = writeLegacyV3Document(testStateRoot!);
+    const warnings: unknown[][] = [];
+    vi.spyOn(console, 'warn').mockImplementation((...args: unknown[]) => { warnings.push(args); });
+    const ctx = makeSurfaceContext({
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: recordingSessionHost().host,
+    });
+    app = Fastify({ logger: false });
+    registerWriteSurface(app, ctx);
+    await app.ready();
+
+    expect(readFileSync(`${path}.v3.bak`)).toEqual(original);
+    const migrated = JSON.parse(readFileSync(path, 'utf8'));
+    expect(migrated.attemptOperations[operationKey]).toMatchObject({ messageClaim: null });
+    expect(await ctx.ptySessionRegistry?.list({ operator: 'operator', browserSessionRef: 'bsr-1' })).toEqual([]);
     expect(warnings.some((args) => String(args[0]).includes('[pty-registry]'))).toBe(false);
   });
 

@@ -556,6 +556,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: input.attemptRef,
+      messageClaim: null,
       receipt: {
         operationKey: input.operationKey, requestHash: fingerprint, status: 'pending',
         sessionId: null, attemptRef: input.attemptRef, refusal: null, createdAt, settledAt: null,
@@ -668,6 +669,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
         const attemptRef = attempt?.input.attemptRef ?? null;
         const tombstone: AttemptOperationRecord = {
           operationKey, requestHash, status: 'cancelled', promptsDelivered: 0, sessionId: null, attemptRef,
+          messageClaim: null,
           receipt: {
             operationKey, requestHash, status: 'cancelled', sessionId: null, attemptRef,
             refusal: 'cancelled', createdAt: settledAt, settledAt,

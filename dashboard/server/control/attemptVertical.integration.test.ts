@@ -678,6 +678,7 @@ describe('attempt-start real document vertical', () => {
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: declaration.attemptRef,
+      messageClaim: null,
       receipt: {
         operationKey: hostOperationKey,
         requestHash,
@@ -804,6 +805,7 @@ describe('attempt-start real document vertical', () => {
       promptsDelivered: 1,
       sessionId: missingSessionId,
       attemptRef: 'attempt-missing-session',
+      messageClaim: null,
       receipt: {
         operationKey,
         requestHash: '1'.repeat(64),
