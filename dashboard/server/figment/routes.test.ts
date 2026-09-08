@@ -28,7 +28,13 @@ async function fixture(): Promise<{ repo: string; diagnostic: string; subject: s
     gate_id: 'gate-a', subject_path: 'personas/creator-a/subject.txt', subject_sha256: digest('current review subject'), decision: 'verified', decided_by: 'operator', decided_at: '2026-09-08T00:00:00Z',
   });
   await json(join(figment, 'personas', 'creator-a', 'batches', 'one', 'run.json'), { schema: 'figment/runpod-run@1', dry_run: true });
-  await json(join(figment, 'runs', 'current', 'driver-plan.json'), { schema: 'figment/train-plan@1' });
+  await json(join(figment, 'runs', 'current', 'driver-plan.json'), {
+    schema: 'figment/train-plan@1', creator: 'creator-a', variant: 'studio-preview',
+    stages: {
+      train: { runs: [{ ceiling_usd: 1.25, argv: ['must-not-project'], prompt: 'must-not-project' }] },
+      tester: { runs: [{ ceiling_usd: 0.5 }] },
+    },
+  });
   await json(join(figment, 'personas', 'creator-a', 'batches', 'one', 'rulings.json'), { decision: 'keep' });
   const plan = join(figment, 'personas', 'creator-a', 'batches', 'one', 'plan.json');
   const approval = join(figment, 'personas', 'creator-a', 'batches', 'one', 'approval-lineage.json');
@@ -88,6 +94,33 @@ describe('Figment read projection', () => {
     await json(paths.accepted, accepted);
     projection = buildFigmentProjection(paths.repo);
     expect(projection.records.find((record) => record.type === 'accepted-checkpoint')?.reviewState).toBe('stale');
+  });
+
+  it('projects only bounded summaries for schema-identified frozen plans', async () => {
+    const paths = await fixture();
+    const figment = join(paths.repo, 'orgs', 'figment');
+    await json(join(figment, 'runs', 'generic', 'plan.json'), { schema: 'figment/runpod-run@1', jobs: [{ prompt: 'not a plan' }] });
+    await symlink(join(figment, 'runs', 'current'), join(figment, 'runs', 'linked'), 'junction');
+    await json(join(figment, 'runs', 'over-bound', 'plan.json'), {
+      schema: 'figment/train-plan@1', creator: 'creator-a', stages: { train: { runs: Array.from({ length: 33 }, () => ({ ceiling_usd: 1 })) } },
+    });
+    await json(join(figment, 'runs', 'missing-stages', 'plan.json'), { schema: 'figment/train-plan@1', creator: 'creator-a' });
+    await json(join(figment, 'runs', 'nonobject-stages', 'plan.json'), { schema: 'figment/train-plan@1', creator: 'creator-a', stages: [] });
+    await json(join(figment, 'runs', 'overflow', 'plan.json'), {
+      schema: 'figment/train-plan@1', creator: 'creator-a', stages: { train: { runs: [{ ceiling_usd: 1e308 }, { ceiling_usd: 1e308 }] } },
+    });
+    const projection = buildFigmentProjection(paths.repo);
+    expect(projection.plans).toEqual({
+      truncated: false,
+      items: [{
+        path: 'runs/current/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', declaredCeilingUsd: 1.75,
+        stages: [
+          { name: 'train', runCount: 1, declaredCeilingUsd: 1.25 },
+          { name: 'tester', runCount: 1, declaredCeilingUsd: 0.5 },
+        ],
+      }],
+    });
+    expect(JSON.stringify(projection.plans)).not.toContain('must-not-project');
   });
 
   it('rejects diagnostic artifact traversal and serves the read-only route', async () => {

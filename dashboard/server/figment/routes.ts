@@ -20,6 +20,8 @@ const MAX_DIRECTORIES = 512;
 const MAX_DIAGNOSTIC_JOBS = 128;
 const MAX_FILES_PER_JOB = 32;
 const MAX_DIAGNOSTIC_ARTIFACTS = 512;
+const MAX_PLAN_STAGES = 8;
+const MAX_PLAN_RUNS_PER_STAGE = 32;
 const SHA256 = /^[a-f0-9]{64}$/;
 
 export type ReviewState = 'unreviewed' | 'stale' | 'approved' | 'unknown';
@@ -43,6 +45,7 @@ export interface FigmentProjection {
   creatorsTruncated: boolean;
   records: FigmentRecord[];
   recordsTruncated: boolean;
+  plans: { items: Array<{ path: string; creator: string; variant: string | null; stages: Array<{ name: string; runCount: number; declaredCeilingUsd: number | null }>; declaredCeilingUsd: number }>; truncated: boolean };
   research: { available: boolean; artifacts: Array<{ area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string }>; truncated: boolean };
   diagnostic: DiagnosticProjection;
   warnings: string[];
@@ -257,6 +260,39 @@ function collectCreators(root: SafeRoot): { creators: FigmentProjection['creator
   } catch { return { creators: [], truncated: false }; }
 }
 
+/** A display-only summary of existing, schema-identified plans. It never exposes argv, prompts, or raw manifest data; malformed, unbounded, and non-finite budgets are omitted. */
+function collectPlans(root: SafeRoot, records: FigmentProjection['records'], truncated: boolean): FigmentProjection['plans'] {
+  const items: FigmentProjection['plans']['items'] = [];
+  for (const record of records) {
+    if (record.type !== 'plan' || record.schema !== 'figment/train-plan@1') continue;
+    const plan = readJson(root, record.path);
+    const creator = text(plan?.creator);
+    if (!isObject(plan?.stages)) continue;
+    const stages = Object.entries(plan.stages);
+    if (!creator || !/^[a-z0-9-]{1,80}$/i.test(creator) || stages.length === 0 || stages.length > MAX_PLAN_STAGES) continue;
+    const summary: FigmentProjection['plans']['items'][number]['stages'] = [];
+    let total = 0; let complete = true;
+    for (const [name, stage] of stages) {
+      const runs = isObject(stage) && Array.isArray(stage.runs) ? stage.runs : null;
+      if (!/^[a-z][a-z0-9-]{0,31}$/i.test(name) || runs === null || runs.length > MAX_PLAN_RUNS_PER_STAGE) { complete = false; break; }
+      let stageTotal = 0; let stageComplete = true;
+      for (const run of runs) {
+        const ceiling = isObject(run) ? run.ceiling_usd : null;
+        if (typeof ceiling !== 'number' || !Number.isFinite(ceiling) || ceiling < 0) { stageComplete = false; continue; }
+        if (!Number.isFinite(stageTotal + ceiling)) { stageComplete = false; break; }
+        stageTotal += ceiling;
+      }
+      if (!stageComplete || !Number.isFinite(total + stageTotal)) { complete = false; break; }
+      summary.push({ name, runCount: runs.length, declaredCeilingUsd: stageTotal });
+      total += stageTotal;
+    }
+    if (!complete) continue;
+    const variant = text(plan?.variant);
+    items.push({ path: record.path, creator, variant: variant && variant.length <= 80 ? variant : null, stages: summary, declaredCeilingUsd: total });
+  }
+  return { items, truncated };
+}
+
 function collectResearch(root: SafeRoot): FigmentProjection['research'] {
   const artifacts: FigmentProjection['research']['artifacts'] = [];
   let available = false;
@@ -311,10 +347,10 @@ function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticPr
 export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null): FigmentProjection {
   const warnings: string[] = [];
   const root = openRoot(join(repoRoot, 'orgs', 'figment'));
-  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, research: { available: false, artifacts: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
   const collected = collectRecords(root, warnings);
   const creators = collectCreators(root);
-  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, research: collectResearch(root), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), diagnostic: readDiagnostic(diagnosticRoot), warnings };
 }
 
 export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null }): void {

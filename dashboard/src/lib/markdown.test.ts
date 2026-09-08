@@ -41,4 +41,31 @@ describe('renderMarkdown (safe render)', () => {
     // the unsafe href is dropped; the link text is still shown.
     expect(evil).toContain('x');
   });
+
+  it('keeps tables opt-in so established markdown surfaces retain their current subset', () => {
+    const source = '| A | B |\n| --- | --- |\n| one | two |';
+    expect(renderMarkdown(source)).not.toContain('<table>');
+    const html = renderMarkdown(source, { tables: true });
+    expect(html).toContain('<table><thead><tr><th>A</th><th>B</th></tr></thead><tbody>');
+    expect(html).toContain('<tr><td>one</td><td>two</td></tr>');
+  });
+
+  it('renders only well-formed table separators and preserves inline safety inside cells', () => {
+    const source = [
+      '| Evidence | Link |',
+      '| :--- | ---: |',
+      '| <img src=x onerror=alert(1)> | [safe](https://example.com) |',
+      '| plain | [unsafe](javascript:alert(1)) |',
+      '',
+      '| not | a table |',
+      '| - | --- |',
+    ].join('\n');
+    const html = renderMarkdown(source, { tables: true });
+    expect(html).toContain('<thead>');
+    expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;');
+    expect(html).not.toContain('<img');
+    expect(html).toContain('href="https://example.com"');
+    expect(html).not.toContain('javascript:');
+    expect(html).not.toContain('<table><thead><tr><th>not</th>');
+  });
 });

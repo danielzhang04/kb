@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FigmentWorkspace } from './FigmentWorkspace';
 
-const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [] } };
+const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [] } };
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
 
 afterEach(cleanup);
@@ -33,6 +33,18 @@ describe('FigmentWorkspace', () => {
     const fetchImpl = vi.fn(() => response({ ...projection, creatorsTruncated: true })) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={fetchImpl} />);
     await screen.findByText('The creator list reached its safe display limit.');
+  });
+
+  it('shows bounded frozen-plan stages as declared, offline budgets', async () => {
+    const fetchImpl = vi.fn(() => response(projection)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    expect(screen.getByText('Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.')).toBeTruthy();
+    expect(screen.getByText('runs/a/driver-plan.json')).toBeTruthy();
+    expect(screen.getByText(/train/)).toBeTruthy();
+    expect(screen.getByText(/tester/)).toBeTruthy();
+    expect(screen.getByText('Declared ceiling: $1.25')).toBeTruthy();
   });
 
   it('shows a distinguishable record path and reads only listed research artifacts through the KB reader', async () => {
@@ -104,5 +116,12 @@ describe('FigmentWorkspace', () => {
     render(<FigmentWorkspace fetchImpl={fetchImpl} />);
     await screen.findByText('Figment records are unavailable.');
     expect(screen.getAllByRole('button', { name: 'Retry' }).length).toBeGreaterThan(0);
+  });
+
+  it('fails closed when a frozen-plan total is not a finite number', async () => {
+    const malformed = { ...projection, plans: { ...projection.plans, items: [{ ...projection.plans.items[0], declaredCeilingUsd: null }] } };
+    const fetchImpl = vi.fn(() => response(malformed)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('Figment records are unavailable.');
   });
 });
