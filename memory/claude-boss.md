@@ -300,3 +300,12 @@
 - LAW (real-run cadence, day 2): four more silent defects surfaced only on the real store — shared policy_hash lock, untyped reserve-firm ids, default-UA 403s, content-addressed requests never retried. Each was a "fixtures don't have two of anything" bug. Fixture stores need ≥2 campaigns, ≥1 untyped legacy row, ≥1 rejected request, ≥1 foreign queued request.
 - HAZARD (parsers built from synthetic fixtures): the LinkedIn background parser passed every fixture and failed on 3 of 4 real profiles (education only kept anchor-matching schools; grouped experience assigned "Full-time · 3 yrs" as a title; org-name-only kind classifier put 45/53 employers in "other"). Fixtures must be transcribed from REAL page text (masked) before the parser is considered done; a parser test that never sees a description line, a grouped header, or a "Nothing to see for now" section proves nothing.
 - LAW (signal chain): one parse defect (current role title) cascaded into three missing signals (path_match, level_match, shared_prior_employer) and a 20-point score for the one true investing candidate. When a real row scores unexpectedly, inspect the persisted facts row-by-row before touching weights.
+
+## 2026-09-07 night — orphan pod on a local network outage
+- A pod harness must NEVER give up terminating: DNS/connection errors are not attempts. Back off for ≥15 min, write a
+  sentinel with the manual command, book a ledger row, and pause the readiness clock while OUR network is down. The
+  30-s give-up left a pod billing for up to 15 h.
+- When the session itself loses the API, nothing runs: keep-awake does not help; a watchdog outside the session
+  (`runpod_run.py sweep` on a cron) is the only safety net for orphans.
+- Test the exact prompt path with the LoRA loaded before a paid tester: the trigger word must be in every prompt.
+- Background bash tasks are reaped on this host; use Start-Process for anything longer than a couple of minutes.
