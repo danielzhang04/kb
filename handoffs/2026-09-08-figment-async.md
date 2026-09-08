@@ -1,169 +1,140 @@
 # Figment async handoff - 2026-09-08
 
-**Topic:** Active research-book, evaluation, image/video and hub build.8 AM Eastern
-is a report, not a stop. Continue work and keep-awake afterward.
+Active async build. **8 AM Eastern is a progress checkpoint, not a stop.** Continue
+work and keep-awake afterward; do not end the active parent merely at a perceived
+human gate. Instagram integration is deferred.
 
-## Authorization and goal
+## Authority and target
 
-**LIVE OVERRIDE (09:33:59 UTC onward): pod `cicx4at1447lp0` is active, parent exec
-session58386, combined10cell manifest7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f.
-Bounds$2.50/115min/oneplacement, deadline approximately11:29UTC. Journal is
-`C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1/recovery-figment-bakeoff-20260908-093357-6d4795.json`.
-Poll this session/log; do not duplicate or treat as orphan. Harness provisional
-$2.491667 row is now in figment-2026-09-08.tsv and will be replaced with measured
-estimate on completion. Do not double-book the reservation. Inspect run.json and
-independently verify API absence after completion. Ops audit/card record details.**
+Build a source-backed research book and 10sorlabs-inspired infrastructure for
+fictional adult creator identity, curated LoRA training, consistent images/video,
+content research, and a usable management hub. User authorizes lower-model workers,
+independent reviews, online/GitHub resources, generated inputs, and RunPod within
+the EXISTING $50 total arc cap. Parent owns all compute admission/accounting.
+Production approval, external publication/account actions, merges, and deployments
+are not inferred from experimental success. Never handle credential stores; existing
+ambient clients are usable. Keep evaluation clothed and clearly adult.
 
-Current studio head71f636f4 pushed, draftPR179 https://github.com/danielzhang04/kb/pull/179,
-stacked on foundationPR178. Committed protocol55tests, hub126tests/typecheck/build,
-initial7chapterbook. First generatedinput independentlyrejected forfacialdrift;
-secondwardrobeonlyfromoriginalg01 awaitingreview. Neithertrainingapproved.
-PrivateinputPNGs/exactprovenance in `_private/figment-single-seed-20260908`.
-Workers now: timestamp_fix isolatedhubpreview+inputreview; protocol_review real
-FFmpegframeextractor (ffmpeginstalled), itsrepairedvideo_planfrozen; hub_final_review
-smallWan5Bsafeformatadoptionaudit+independentreviewrepairedvideo_plan. No video
-generation or productionquality claimed. Browserruntimehas noavailablebrowser.
-Read these current updates before historical status paragraphs below.
+User permits one reference if the supplied set disagrees. Parent chose established
+frontal g01 as experimental canonical seed; g02/g07 remain comparators and may
+already be represented in old training. Do not claim unseen reference evidence or
+silently change the original persona. Target remains apparent adult age about21,
+reference resemblance, within-batch identity, and realism as separate dimensions.
 
-User authorizes autonomous research, plans, builds, adversarial reviews, tests and
-RunPod experiments within the EXISTING $50 total arc cap. Instagram integration is
-deferred. Do not stop all work at a perceived human gate: isolate blocked items and
-continue independent authorized work. No fabricated human approvals or lowered bars.
-User allows one canonical reference if the set is not consistent, or creative new
-fictional adult inputs via loaded imagegen/other permitted models. Use ambient service
-configuration; never open credential stores. Root choseg01 as the next experimental
-seed;g02/g07 remain comparators and may have appeared in the old training data, so do
-not call them held-out proof for the old checkpoint.
+## What worked
 
-## What WORKED (with evidence)
+- Studio branch head **c7ca1d0f**, pushed; draft **PR179**
+  https://github.com/danielzhang04/kb/pull/179, stacked on foundation PR178.
+- Protocol commit03e52227: persona-derived age, explicit canonical anchor, immutable
+  candidate/no-LoRA paired slate. Independent review PASS after fixes; parent55tests.
+- Hub commitaf01a818: authenticated bounded read API and three-tab workspace. Review
+  fixes cover JSON/hash limits, symlink/path safety, nested decoding, exact257 creator
+  truncation. Parent126focusedtests, typecheck and Vite production build passed.
+- Initial seven-chapter book71f636f4: source-checked against r15/r15b/r25 and current
+  code/live evidence;20local links resolve, four primary URLs checked. No invented
+  unavailable-SOP claims: r15 section5 read both growth SOP PDFs.
+- Diagnostic-only video planner c7ca1d0f: independent PASS, parent8tests. All plans
+  non-promotable; production rejects. Supplied frame inventory explicitly unverified.
+- Local preview at127.0.0.1:5417, NodePID34616; isolated fresh-profile headless Chrome
+  PID37892, CDP127.0.0.1:9229. Allthree real-projection screenshots viewed by parent.
+  State/stop targets in C:/Users/danie/kb/_private/ignored_private/figment-preview-20260908/process.json.
+  Never touch operator daemon/profiles. Preview is being improved, not deployed.
 
-- Prior foundation: portable synthetic fixtures,111 lineage checks,319 recovery/pod
-  checks independently passed. Broad integration700pass13unchanged baseline failures.
-- Prior corrected diagnostic: five checkpoint portraits250/500/750/1000/1250; completed
-  07:19:23UTC, both experiment pods independently absent07:20:47UTC. Estimated total
-  $1.324810 for two attempts; recorded arc $37.015061 / $50. No new paid run since.
-- Operator reviewed that board: semi-real, inconsistent with each other/references,
-  reading mid30s instead of21. No checkpoint selected or promoted. Feedback is bound
-  to exact image hashes in ledgers/audit/figment-tester-2026-09-08.json.
-- Keep-awake repaired/reacquired: label codex-figment-async-20260908, parentcodexPID16580,
-  supervisorPID19564 alive, AC power armed04:45:45Eastern. Existing script logs confirmed
-  successful execution-state hold. Battery power is unchanged. Recheck status at phases.
-- New worktree/branch created from37d580d9; plan committed/pushed1871fcc5. Privateg01/g02/g07
-  assets copied byte-identically into ignored anchor paths for local real-persona tests.
-- Native workers run in this active parent session. No new detached scheduler claimed.
-- Protocol accepted and committed/pushed `03e52227`: persona-derived adult age,
-  explicit single canonical anchor, frozen candidate/no-LoRA ten-cell slate. Separate
-  reviewer PASS after fixing age criteria and exclusive-file publication. Parent full
-  driver suite: 55 passed using a fresh workspace-local pytest basetemp.
-- Locked dashboard dependencies installed in the isolated worktree using
-  `npm ci --ignore-scripts`; no new dependencies or package-lock changes. Builder's
-  six API/component tests and typecheck pass; broader navigation review found fixes.
-- Loaded imagegen generated one g01-conditioned clothed frontal portrait. Private
-  `C:/Users/danie/kb/_private/figment-single-seed-20260908/` holds PNG and exact prompt/
-  input-output hash provenance. Parent visually checked adult/clothed; independent
-  identity review pending. It is NOT training-approved or a new canonical reference.
+## Completed paid diagnostic - NO ACTIVE POD
 
-## What Did NOT Work (and why)
+Pod **cicx4at1447lp0** completed09:47:08UTC; parent independently verified absent,
+provider list zero. Exec58386 finished exit0. Ten PNGs1448x2176; parent verified
+image decode/dimensions/receipt bytecounts and froze new output hashes in
+ledgers/audit/figment-paired-diagnostic-2026-09-08.json. Allten visually adult/clothed.
 
-- The previous diagnostic prompt said midtwenties despite persona/spec about21; current
-  builder fixes the executing tester function, not the immutable historical manifest.
-- Input references share a look, butg07 eye/face proportions differ visibly enough to
-  avoid treating perfect consistency as established. Exact apparent age cannot be proved
-  from images; the creative target remains clearly adult about21.
-- External codex.cmd login status reported Not logged in. Existing CLI dispatchers
-  refuse, and agent_runner lacks bounded single-card sequencing. Do not block native
-  work, open auth stores or claim a detached background runner is active.
-- Fresh studio worktree commit hook rejected missing kit/.rendered/{all,claude,codex}.md.
-  Generated only those ignored artifacts via scripts.kit.assemble; sync_skills --check
-  passed and commit succeeded. Do not bypass hooks or edit curated skill mirrors.
-- Initial book draft invented unavailable-source caveats despite existing r15b video
-  analyses/downloaded workflows and r15 section5 growth SOP evidence. Worker and parent
-  corrected these; 20 local links resolve, four primary URLs opened. Initial edition
-  still pending final acceptance/commit; source-corrected chapters remain WIP.
-- API first review found unbounded JSON/traversal/diagnostic work. Builder added caps
-  and warnings; independent re-review pending. Frontend first review found three stale
-  navigation-test assertions and shallow nested response validation that could crash;
-  builder is fixing those while API is frozen.
-- Parent's first pytest run hit default temporary-directory setup errors (13 pass,
-  42 setup errors). Fresh explicit workspace-local --basetemp fixed environment; full
-  driver 55 passed. Do not treat initial setup errors as 42 product regressions.
+- Private root: C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908.
+- Live receipt: live-combined-v1/run.json, SHA
+  2ad823ca8db9a377013be75572ee3baf3129900da2f6e665392ff0eb49f86638.
+- Combined manifest SHA7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f.
+- One final228587800-byte checkpoint,14chunks;5candidate +5no-LoRA control images.
+  Same prompt/five seeds; control graph bypasses LoRA node4. g01 is a visual
+  comparator, not pixel conditioning in this text-to-image experiment.
+- Readiness459s; upload about77s; total790.572s. Observed1.09/hour; estimated cost
+  **$0.239368** replaced provisional2.491667 in the existing pod ledger row.
+- Current conservative arc **$37.254429 / $50**; Figment daily **$1.564178 / $10**.
+  Refresh all numeric shards/provider before another run; no reservation remains.
+- Parent sees both arms visually consistent within arm. LoRA changes the identity,
+  but still insufficiently resembles g01; intended about21 appearance unestablished.
+  Independent full-output and23-training-image visual audit is running. No approval.
+- Earlier five-checkpoint experiment and failed timestamp attempt remain immutable
+  under C:/Users/danie/kb/_private/figment-live-tester-20260908; estimated1.324810 total,
+  both pods absent. User rejected identity/age quality of those images.
 
-## What Has NOT Been Tried Yet
+## Generated-input experiments
 
-- A paid run under the new protocol, retraining, video proof, operator-accepted
-  production identity, deployed hub UI, live Instagram integration.
-- New hub UI exists but review fixes/tests remain. No new RunPod cost this async phase.
+C:/Users/danie/kb/_private/figment-single-seed-20260908 contains two loaded-imagegen
+outputs and exact prompt/source/output SHA provenance. Both derive directly fromg01.
+First frontal black-tee portrait was independently rejected for eye/nose/jaw drift
+and excluded from training. Second wardrobe-only black-tee edit got stronger visual
+resemblance, adult/intact clothing observations; it is still experimental, not an
+operator approval or training promotion. Do not replace the original reference.
+Imagegen/native model billing is unknown in the metadata shard, not zero RunPod cost.
 
-## Current State of Files
+## Current worker scopes and files
 
-| Surface | State | Owner/next |
-| --- | --- | --- |
-| docs/figment/2026-09-08-async-build-plan.md | DONE | Parent plan1871fcc5 |
-| pipeline/figment_train.py and tests/test_figment_train.py | DONE | Reviewed PASS, 55 tests, commit03e52227 |
-| research/book/ seven chapters | WIP acceptance | Source corrections done; final review/commit next |
-| dashboard/server/figment, index.ts/index.test.ts | WIP re-review | Hardened bounded API frozen; reviewerfigment_protocol_review |
-| dashboard/src/figment and App/nav files/tests | WIP fixes | figment_timestamp_fix owns navigation assertions and nested response decoder |
-| docs/figment/2026-09-08-single-seed-experiment.md | WIP build | figment_recovery_recheck audits actual training data and prepares private dry-run artifacts |
-| queue/working/01K9FIGMENT0800000000000004.md | WORKING | Overnight manager; prior02/03 remain done |
-| Current handoff | WORKING | Consumes evaluation handoff; old version52c10f66 |
+- figment_protocol_review: independent visual audit of allten paired outputs plus
+  actual23 training images; writes docs/figment/2026-09-08-paired-diagnostic-review.md.
+  Its frame_extract.py, video/tests/test_frame_extract.py and extraction doc are
+  frozen awaiting a DIFFERENT reviewer; actual synthetic color-video tests reported
+  13combinedvideo passes. Real ffmpeg/ffprobe already installed in Python313/Scripts.
+- figment_timestamp_fix: hub usability follow-up in dashboard/src/figment: distinguish
+  run rows, readable book panel through EXISTING authenticated /api/kb/file and safe
+  markdown renderer; no new file-serving API. Update local preview/screenshots/tests.
+  Owns docs/figment/2026-09-08-input-and-book-review.md, currently uncommitted.
+- figment_hub_final_review: builds offline runnable Wan2.2 TI2V-5B manifest/compiler
+  under pipeline/video, native core nodes and audited safetensors pins. Idea: emit81
+  ordered PNGframes via SaveImage/expected_images81 through existing harness, assemble
+  locally later; no unsupported MP4 allowance or duplicate runner. No live admission.
+- Manager queue/working/01K9FIGMENT0800000000000004.md stays WORKING. Native steps have
+  unknown responding model/tokens/cost where runtime does not expose them. No forged
+  inspector grade or human ruling. Independent builders/reviewers must remain separate.
 
-The three worker scopes share the studio worktree. Do not stage or overwrite another
-worker's WIP. Protocol stores one chosen anchor hash separately from the full reference
-set and cannot approve a checkpoint. It is a planning record, not yet an executing
-candidate/control pod adapter; experiment worker is resolving that integration gap.
-Hub API must distinguish machine-gate pass from operator approval and refuse arbitrary
-paths/symlinks; incomplete freshness stays unknown. Both legacy and current run roots
-must be considered; no provider calls or subprocess launch from read APIs.
+## What failed and how to resume correctly
 
-## Exact Next Step
+- External codex.cmd reports Not logged in. Native workers in active parent work;
+  no detached restart after root-process death is promised. Do not open auth stores.
+- Stale keep-awake armed state had dead owners/supervisor. Reacquired existing lease;
+  current parent16580, supervisor19564, label codex-figment-async-20260908. Last phase
+  checks alive, AC hold armed;16h safety cap. Recheck with existing script -Status.
+- Default pytest temp root caused42 setup errors; fresh workspace-local --basetemp
+  gave55driver passes. Do not confuse environment failures with product regressions.
+- First hub reviews missed hash-read caps and exact257 truncation; explicit final
+  fields/tests corrected them. First video draft falsely accepted self-authored
+  approvals and unrelated sample files; diagnostic-only repair independently passed.
+- A worker claimed apply_job could not rewire nodes. Parent empirical probe proved
+  list-valued substitutions work; combined one-pod manifest was then reviewed/live.
+- Automatic permission review once timed out before an action. Smaller read-only
+  refresh retry succeeded; no remaining rejection or new user permission needed.
+- The in-app browser runtime has no browser. Skill/troubleshooting read; local visual
+  QA uses a new isolated headless test profile, not a signed-in operator session.
 
-UPDATE: Hub committed `af01a818`; parent final126focusedtests, typecheck and production
-build passed. Final creator-truncation field was implemented by a different reviewer
-and inspected/tested by parent. No deployment/browser visual QA yet; browser runtime
-reports no browser available. Initial video planner is WIP with independent high
-findings (self-declared acceptance and unrelated frame files); builder fixes it after
-manifest review. Do not accept its initial production/sample claims.
+## Exact next steps
 
-NEXT LIVE ACTION: combined candidate/control manifest independently PASS, SHA
-`7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f`; one pod,
-10cells, one final228587800-byte checkpoint, 14chunks. Parent reserved $2.50 /115min,
-oneplacement in `ledgers/audit/figment-paired-diagnostic-2026-09-08.json`; current ledger
-arc37.015061/daily1.324810 of10, provider0pods. Harness minimum113minutes fits115.
-Output must be fresh `C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1`.
-No pod created yet at this reservation. Launch with current studio harness, explicit
-ops-proposal cost ledger, --max-usd2.50 --max-minutes115, then preserve recovery journal,
-monitor, terminate/verify and independently read absence. Do not duplicate this run
-if a resumed session finds its journal/output; recover/inspect first.
+1. Commit completed paired-run cost/audit/handoff and finish independent visual audit.
+2. Independently review real frame extractor, accept only tested provenance claims.
+3. Review hub usability changes and regenerate actual preview evidence.
+4. Review native5B workflow, immutable node/model pins and licences; dry-run81frames.
+   Only then admit a concrete bounded video diagnostic with fresh budget and cleanup.
+5. Use paired/data findings to choose controlled data/conditioning/training changes;
+   do not promote the current wrong-identity result or retrain blindly.
+6. Update PR179 and ops PR175 at accepted units;8AM Eastern report then continue.
 
-Harvest the API re-review and frontend fixes/re-review; accept only verified units.
-Commit source-corrected initial book, independently inspect the imagegen variation,
-and evaluate the worker's candidate/control manifest and actual dataset audit. Then
-admit a bounded paid experiment only after cost/manifest/teardown checks; develop video
-contracts/tests while image quality work proceeds.
-No need to wait for final production quality before building truthful pending-state UI.
-Read the build plan for the remaining units and per-item fallback/review limits.
+## Load list and worktrees
 
-Keep the active parent turn working; native workers are the current execution lane.
-Do not end merely because8 AM arrives. There is no guaranteed unattended restart if
-this root process dies: save state at every accepted unit and resume from this handoff.
-To check keep-awake: powershell.exe -NoProfile -ExecutionPolicy Bypass -File
-C:/Users/danie/kb/scripts/keep_awake.ps1 -Status. Hold the current lease while working.
-No pod is currently owned by this async phase. Reconcile before any creation; remaining
-arc headroom$12.984939 is further limited by the CLI daily$10 guard and current ledgers.
+Read CLAUDE.md,BOSS.md,governance/agent-rules.md,project contract/MANDATE/GUARDRAILS,
+thishandoff, manager04, docs/figment/2026-09-08-async-build-plan.md, experiment/video
+reports, current diffs and worker messages. Apply code/security review, loop-design,
+save-session/growth-log skills as appropriate.
 
-## Paths and load list
-
-- Studio: C:/Users/danie/kb/_private/codex-worktrees/figment-studio-20260908,
-  branchcodex/figment-studio-20260908, committed/pushed03e52227; no studio PR yet.
-- Prior foundation: C:/Users/danie/kb/_private/codex-worktrees/figment-foundation-20260908,
-  branchcodex/figment-foundation-20260908 head37d580d9, draftPR178.
-- Ops: C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07,
-  branchcodex/figment-analysis-ops-2026-09-07, draftPR175, origin/ops46266f37.
-- Diagnostic board and immutable outputs: C:/Users/danie/kb/_private/figment-live-tester-20260908.
-- Never touch dirtyrootkb or originalFigment C:/Users/danie/kb-worktrees/figment.
-
-Load CLAUDE.md,BOSS.md,governance/agent-rules.md,projectcontract/GUARDRAILS/MANDATE,
-thishandoff, manager04, asyncbuildplan, live-testerreport, architectureanalysis,
-research/book draft, then current gitdiff and worker messages. Apply loop-design,
-code/securityreview, save-session/growth-log skills as relevant. No OpenAI CLI login
-repair is necessary for continuing the active native-worker lane.
+Studio: C:/Users/danie/kb/_private/codex-worktrees/figment-studio-20260908,
+branch codex/figment-studio-20260908, c7ca1d0f. Ops proposal:
+C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07,
+branch codex/figment-analysis-ops-2026-09-07, draftPR175; origin/ops46266f37 lastfetch.
+Foundation branch37d580d9/draftPR178 remains intact. Main kb checkout and original
+C:/Users/danie/kb-worktrees/figment are unrelated/readonly: do not switch or clean them.
+Coordination reaches ops only through our proposal PR; never push directly to ops/main.
