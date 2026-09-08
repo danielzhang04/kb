@@ -1,6 +1,6 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-08 (async continuation; C delivery, A1, D1 active)_
+_Updated: 2026-09-08 (async continuation; cancellation accepted, A1 testing, D1 review)_
 
 ## Now
 
@@ -12,9 +12,9 @@ _Updated: 2026-09-08 (async continuation; C delivery, A1, D1 active)_
   Independent schema gate: 230 tests / seven files, full typecheck, diffcheck.
 - C delivery is accepted and pushed at `1f0084ef`. Root independently passed
   103/103 focused tests, full typecheck, diffcheck, and two early-exit red/green
-  probes. B integration preflight is now active; B production waits for A1/D1.
-- D1 design passed independent review. Sol now owns receipt/checkpoint, pinned
-  ledger day and writer parsing implementation in the reviewed bounded scope.
+  probes. B integration plan is accepted; B production waits for A1/D1.
+- D1 design passed independent review. Its implementation is frozen with builder 174 native tests,
+  11 Python tests and typecheck passing. Terra independently reviews it now.
 - A1 engine/grant corrected preflight is accepted. Sol owns the atomic four-file
   implementation. Root pre-edit baseline passed 104/104 and full typecheck.
 - Windows scoped keep-awake helper PID 31648 is active, heartbeat verified;
@@ -24,7 +24,12 @@ _Updated: 2026-09-08 (async continuation; C delivery, A1, D1 active)_
 - Retained Linux399/Windows47/mutation evidence is prior-only. Last VM observation
   remains failed systemd / HTTP502; PR173 remains open. No production deploy occurred.
 
-The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery has resumed. D1 design is independently TECHNICALLY READY and its implementation is released. A1 engine/grant preflight is accepted and its four-file implementation is released. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is frozen for independent review. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+
+- Managed cancellation correction accepted/pushed `fc5e7100`; independent
+  17/17 and full typecheck PASS. A1 expanded tests include real C/controller
+  composition and an additional operator-cancel settlement tracking correction.
+- Isolated pinned Linux toolchain preparation is active; Windows pins match.
 
 ## Next
 

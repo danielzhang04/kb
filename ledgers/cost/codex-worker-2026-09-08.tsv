@@ -35,3 +35,6 @@ unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-four-file-build	corrected p
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-implementation-dispatch	reviewed checkpoint receipt parser pinned-day scope; no real ledger publication; responding model and cost unavailable	unknown
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-final	root review found two early-exit bugs, corrected; independent103 typecheck diffcheck PASS; commit1f0084ef; responding model and cost unavailable	unknown
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:B-integration-preflight	plan-only next wiring and blackbox tests; build waits for accepted A1/D1; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:managed-cancellation-acceptance	root17 and typecheck PASS, fc5e7100; now independent D1 review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-frozen-and-linux-toolchain	builder174 native11 Python typecheck PASS; isolated pinned toolchain preparation; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-expanded-matrix	lastfull121 PASS; real composition and operator cancel tracking regression active; responding model and cost unavailable	unknown

@@ -620,3 +620,5 @@ record after awaiting both receipt and result. Required EOF must be proven
 complete before acknowledgement even if the process exits after its last write.
 Two fresh early-exit probes caught these gaps after a 101-test builder pass;
 correction and root103/typecheck passed at source1f0084ef.
+
+2026-09-08 async review: A fulfilled PortResult promise can still refuse cleanup. The cancellation controller must validate the result before the engine can treat close as proof and remove an owned worktree; preserve falsey first failures while always attempting registered cleanup. Managed pair independently17/typecheck PASS at fc5e7100. A1/D1/B and final Linux gates remain pending.

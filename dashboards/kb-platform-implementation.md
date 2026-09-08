@@ -36,27 +36,34 @@ retain their separate human gates.
    **C1 delivery: DONE / READY.** Committed/pushed as `1f0084ef`. Root
    independently passed 103/103 focused tests, full typecheck and diffcheck.
    Two early-exit review probes first failed, then passed after correction.
-6. **D1 ledger design: READY; implementation ACTIVE.** Sol's corrected design
-   passed a separate fresh review. The exact candidate proof and checkpoint
-   before publication close the historical recovery finding.
+6. **D1 ledger design: READY; implementation FROZEN / REVIEW ACTIVE.** Sol's corrected design
+   passed a separate fresh review. The builder passed 174/174 native tests, 11/11 Python tests and full typecheck.
+   Independent adversarial review is active; acceptance is pending.
 7. **A1 engine/grant: PLAN READY; implementation ACTIVE.** Root independently
    verified the pre-edit baseline: 104/104 tests across two files, full typecheck.
    The four-file window includes the strict grant outcome and resumable tokenless
    interruption; it is independent of C/D1. Production acceptance is still pending.
-8. **B generation integration: PREFLIGHT ACTIVE; build waits for accepted A1/D1.** Then run full
+8. **B generation integration: PLAN READY; build waits for accepted A1/D1.** Then run full
    integration/fault gates, independent review, and required production gates.
 
-The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery has resumed. D1 design is independently TECHNICALLY READY and its implementation is released. A1 engine/grant preflight is accepted and its four-file implementation is released. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is frozen for independent review. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
 
 Keep-awake is active through a hidden Windows native system-required request,
 PID 31648, with a fresh heartbeat and 12-hour expiry at approximately
 2026-09-08 19:19 UTC. Status/stop files are under root `_private/overnight-awake-20260908.*`.
 This is a scoped helper, not a changed global power plan or verified app setting.
 
+## Latest accepted checkpoint
+
+- Managed cancellation now rejects an unconfirmed PTY close and always attempts the local registry cancellation. Root independently passed 17/17 tests and full typecheck; pushed as `fc5e7100`.
+- A1 last full focused run passed 121/121; expanded withdrawal and real C/controller composition tests remain in progress. Root identified one further operator-cancellation settlement tracking seam for correction.
+- B integration preflight passed root review and is committed.
+- Windows matches Node24.18.0/npm11.16.0. An isolated exact Linux toolchain is being prepared; no pin waiver or fresh Linux integration pass is claimed.
+
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-`1f0084ef`; it records accepted A0, C0, D0, and C1 schema.
+`fc5e7100`; it records accepted A0, C0, D0, and C1 schema.
 C1 delivery is accepted; the released A1/D1 implementation is uncommitted WIP.
 The older Slice 1A checkout remains untouched. Coordination is based on
 `9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
