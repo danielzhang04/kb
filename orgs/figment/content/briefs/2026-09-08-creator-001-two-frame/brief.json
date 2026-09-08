@@ -1,0 +1,45 @@
+{
+  "brief_date": "2026-09-08",
+  "content": {
+    "required_asset_slots": [
+      {
+        "index": 1,
+        "kind": "persona",
+        "role": "hook",
+        "taxonomy_type": "A"
+      },
+      {
+        "index": 2,
+        "kind": "persona",
+        "role": "punchline",
+        "taxonomy_type": "A"
+      }
+    ],
+    "surface": "carousel",
+    "taxonomy_sha256": "6a5bc719f91de74b5f1e9352a96e023894dcd0ce2c5279098f684f4d16360072",
+    "template_id": "CT-2",
+    "template_sha256": "586996f85e87d28e34b4fa88e317f32e7c825e2d1864f1423eac41bfb7314838"
+  },
+  "creator": {
+    "canonical_reference": {
+      "declared_path": "anchors/g01.jpg",
+      "path": "personas/creator-001/anchors/g01.jpg",
+      "sha256": "e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed"
+    },
+    "id": "creator-001",
+    "persona": {
+      "path": "personas/creator-001/persona.yaml",
+      "sha256": "9fdbb536a2e4c9895e332f13e1a4f11a41f938045a8b770d639b663c32be7492"
+    }
+  },
+  "hypothesis": "A two-frame setup and payoff using the same fictional adult persona may earn more saves per reached viewer than a standalone still. This is a hypothesis derived from the recorded template research, not an observed audience result. Both required images remain to be generated and reviewed.",
+  "intended_metric": "saves per reached viewer, only after later authorized audience testing",
+  "observed_metrics": null,
+  "schema": "figment/content-brief@1",
+  "sources": [
+    {
+      "citation": "https://github.com/danielzhang04/kb/blob/37d580d9/orgs/figment/research/r18-instagram-content-playbook.md",
+      "observed_date": "2026-09-03"
+    }
+  ]
+}

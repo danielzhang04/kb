@@ -39,6 +39,7 @@ export type DestinationId =
   | 'agents'
   | 'workflows'
   | 'projects'
+  | 'figment'
   | 'files'
   | 'health';
 
@@ -83,6 +84,7 @@ export const NAV_SECTIONS: NavSection[] = [
       { id: 'agents', label: 'Agents', icon: '◉', status: 'live' },
       { id: 'workflows', label: 'Workflows', icon: '⧉', status: 'live' },
       { id: 'projects', label: 'Projects', icon: '▤', status: 'live' },
+      { id: 'figment', label: 'Figment', icon: '✦', status: 'live' },
       { id: 'files', label: 'Files', icon: '🗀', status: 'live' },
     ],
   },

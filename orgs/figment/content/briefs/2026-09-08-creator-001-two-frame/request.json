@@ -1,0 +1,30 @@
+{
+  "schema": "figment/content-brief-request@1",
+  "brief_date": "2026-09-08",
+  "creator": {
+    "id": "creator-001",
+    "persona_path": "personas/creator-001/persona.yaml",
+    "canonical_reference": "anchors/g01.jpg"
+  },
+  "surface": "carousel",
+  "template_id": "CT-2",
+  "asset_slots": [
+    {
+      "taxonomy_type": "A",
+      "kind": "persona"
+    },
+    {
+      "taxonomy_type": "A",
+      "kind": "persona"
+    }
+  ],
+  "sources": [
+    {
+      "citation": "https://github.com/danielzhang04/kb/blob/37d580d9/orgs/figment/research/r18-instagram-content-playbook.md",
+      "observed_date": "2026-09-03"
+    }
+  ],
+  "hypothesis": "A two-frame setup and payoff using the same fictional adult persona may earn more saves per reached viewer than a standalone still. This is a hypothesis derived from the recorded template research, not an observed audience result. Both required images remain to be generated and reviewed.",
+  "intended_metric": "saves per reached viewer, only after later authorized audience testing",
+  "observed_metrics": null
+}

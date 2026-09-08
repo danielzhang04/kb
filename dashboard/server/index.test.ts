@@ -433,7 +433,9 @@ describe('server', () => {
 
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
-    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing',
+    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing', '/api/figment',
+    '/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000',
+    '/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
@@ -473,11 +475,29 @@ describe('server', () => {
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
   it.each([
     '/api/schedules', '/api/schedules/example/arm', '/api/control/human-requests/example/respond/challenge',
+    '/api/figment/plan-preview/tester',
   ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
     expect(response.statusCode, `${url} should be gated, not missing`).not.toBe(404);
     expect(response.statusCode).toBe(401);
+  });
+
+  it('rejects the offline Figment preview at the origin guard before its planner can run', async () => {
+    app = matrixApp();
+    const response = await app.inject({ method: 'POST', url: '/api/figment/plan-preview/tester', headers: { ...sessionHeaders(), origin: 'https://wrong.example' } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: 'forbidden', reason: 'origin-not-allowed' });
+  });
+
+  it('threads fixed local-training receipt roots through the guarded Figment read route', async () => {
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      figmentLocalTrainingEvidence: { cpuPreflight: 'missing-cpu', tokenizerLaunch: 'missing-launch', plan: 'missing-plan', tokenizerLoad: 'missing-tokenizer' },
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/figment', headers: sessionHeaders() });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' } });
   });
 
   it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
@@ -488,6 +508,8 @@ describe('server', () => {
 
   it.each([
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
+    ['/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000', 404],
+    ['/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
     ['/api/control/runs/example/events/stream', 404], ['/api/attention', 200], ['/api/schedules', 200],
@@ -687,7 +709,7 @@ describe('P1 route matrix', () => {
     ]) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(404);
     }
-    for (const url of ['/api/index', '/api/schedules']) {
+    for (const url of ['/api/index', '/api/schedules', '/api/figment']) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
     }
   });

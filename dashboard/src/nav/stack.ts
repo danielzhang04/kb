@@ -104,7 +104,7 @@ export function parentEntry(stack: NavEntry[]): NavEntry | undefined {
 }
 
 const DESTINATIONS = new Set<DestinationId>([
-  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'projects', 'files', 'health',
+  'home', 'inbox', 'schedules', 'terminal', 'agents', 'workflows', 'projects', 'figment', 'files', 'health',
 ]);
 const URL_ENTITY_VIEW: Partial<Record<Focus['kind'], DestinationId>> = {
   agent: 'agents',

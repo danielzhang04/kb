@@ -1,0 +1,49 @@
+{
+  "schema": "figment/video-model-pins@1",
+  "status": "candidate-review-required",
+  "license": {
+    "spdx": "Apache-2.0",
+    "evidence": [
+      "https://huggingface.co/Wan-AI/Wan2.2-TI2V-5B",
+      "https://huggingface.co/Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "https://huggingface.co/Comfy-Org/Wan_2.1_ComfyUI_repackaged"
+    ]
+  },
+  "native_comfyui": {
+    "repo_id": "Comfy-Org/ComfyUI",
+    "revision": "12d5279438bfefc058a269eae805ceab6047777f",
+    "release_tag": "v0.34.0",
+    "license_spdx": "GPL-3.0-only",
+    "node_source": "https://github.com/Comfy-Org/ComfyUI/blob/12d5279438bfefc058a269eae805ceab6047777f/comfy_extras/nodes_wan.py",
+    "template_source": "https://github.com/Comfy-Org/workflow_templates/blob/8f712b99e950a22cd60a04a73683c4fd370a6996/templates/video_wan2_2_5B_ti2v.json"
+  },
+  "models": [
+    {
+      "role": "diffusion_model",
+      "repo_id": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "revision": "5ca2dfecf59320b1d4605b5802e64f77a8676afe",
+      "filename": "split_files/diffusion_models/wan2.2_ti2v_5B_fp16.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/diffusion_models",
+      "bytes": 9999658848,
+      "sha256": "456f901338bd9eadbded3828b819109a9b68e8a525ca5cf8d0049a69fcfeca1e"
+    },
+    {
+      "role": "vae",
+      "repo_id": "Comfy-Org/Wan_2.2_ComfyUI_Repackaged",
+      "revision": "5ca2dfecf59320b1d4605b5802e64f77a8676afe",
+      "filename": "split_files/vae/wan2.2_vae.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/vae",
+      "bytes": 1409400960,
+      "sha256": "e40321bd36b9709991dae2530eb4ac303dd168276980d3e9bc4b6e2b75fed156"
+    },
+    {
+      "role": "text_encoder",
+      "repo_id": "Comfy-Org/Wan_2.1_ComfyUI_repackaged",
+      "revision": "617a7633e636506f850e043bc4605f290a466a8e",
+      "filename": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+      "destination_dir": "/workspace/ComfyUI/models/text_encoders",
+      "bytes": 6735906897,
+      "sha256": "c3355d30191f1f066b26d93fba017ae9809dce6c627dda5f6a66eaa651204f68"
+    }
+  ]
+}

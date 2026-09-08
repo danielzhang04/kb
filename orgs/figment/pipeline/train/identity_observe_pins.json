@@ -1,0 +1,49 @@
+{
+  "schema": "figment/identity-observer-pins@1",
+  "admission": "admitted",
+  "purpose": "Admitted for local raw observations under the operator-authorized Figment build after independent code, pin, license and local installation verification; no identity gate or quality approval.",
+  "runtime": {
+    "package": "opencv-python-headless",
+    "version": "4.12.0.88",
+    "wheel": "opencv_python_headless-4.12.0.88-cp37-abi3-win_amd64.whl",
+    "python_abi": "cp37-abi3",
+    "platform": "win_amd64",
+    "sha256": "86b413bdd6c6bf497832e346cd5371995de148e579b9774f8eba686dee3f5528",
+    "license": "Apache-2.0",
+    "source": "https://pypi.org/project/opencv-python-headless/4.12.0.88/"
+  },
+  "models": [
+    {
+      "id": "yunet-2023mar",
+      "role": "face_detector",
+      "filename": "face_detection_yunet_2023mar.onnx",
+      "format": "onnx",
+      "bytes": 232589,
+      "sha256": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+      "source_repository": "https://huggingface.co/opencv/face_detection_yunet",
+      "source_revision": "b373a5f059a29efc0007211ca22892ce229ec241",
+      "source_path": "face_detection_yunet_2023mar.onnx",
+      "github_lfs_pointer_repository": "https://github.com/opencv/opencv_zoo",
+      "github_lfs_pointer_revision": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "github_lfs_pointer_path": "models/face_detection_yunet/face_detection_yunet_2023mar.onnx",
+      "license": "MIT",
+      "license_source": "https://github.com/opencv/opencv_zoo/blob/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/LICENSE"
+    },
+    {
+      "id": "sface-2021dec",
+      "role": "face_recognizer",
+      "filename": "face_recognition_sface_2021dec.onnx",
+      "format": "onnx",
+      "bytes": 38696353,
+      "sha256": "0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79",
+      "source_repository": "https://huggingface.co/opencv/face_recognition_sface",
+      "source_revision": "3d7082438a6e4551e840c9b2bb60b71e8da4b524",
+      "source_path": "face_recognition_sface_2021dec.onnx",
+      "github_lfs_pointer_repository": "https://github.com/opencv/opencv_zoo",
+      "github_lfs_pointer_revision": "47534e27c9851bb1128ccc0102f1145e27f23f98",
+      "github_lfs_pointer_path": "models/face_recognition_sface/face_recognition_sface_2021dec.onnx",
+      "license": "Apache-2.0",
+      "license_source": "https://github.com/opencv/opencv_zoo/blob/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_recognition_sface/LICENSE"
+    }
+  ]
+}

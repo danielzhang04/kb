@@ -11,6 +11,8 @@
  *
  * Supported: ATX headings, fenced code blocks, unordered lists, blockquotes, bold/italic, inline
  * code, and links with a scheme allowlist (http/https/mailto/relative; `javascript:` etc. dropped).
+ * Tables are deliberately an opt-in extension for readers that need them; the default remains the
+ * small established markdown subset used by card and KB surfaces.
  */
 
 /** Escape the five HTML-significant characters. Applied to the whole source before any transform. */
@@ -49,8 +51,26 @@ function renderInline(escaped: string): string {
   return out;
 }
 
+export interface MarkdownRenderOptions {
+  /** Enable the deliberately narrow GFM-style pipe table subset. */
+  tables?: boolean;
+}
+
+/** Parse one simple GFM table row after the source has already been HTML-escaped. */
+function tableCells(line: string): string[] | null {
+  const trimmed = line.trim();
+  if (!trimmed.includes('|')) return null;
+  const body = trimmed.replace(/^\|/, '').replace(/\|$/, '');
+  const cells = body.split('|').map((cell) => cell.trim());
+  return cells.length > 0 && cells.every((cell) => cell.length > 0) ? cells : null;
+}
+
+function isTableSeparator(cells: readonly string[], expectedColumns: number): boolean {
+  return cells.length === expectedColumns && cells.every((cell) => /^:?-{3,}:?$/.test(cell));
+}
+
 /** Render markdown source to a safe HTML string. Input is escaped before any transform. */
-export function renderMarkdown(source: string): string {
+export function renderMarkdown(source: string, options: MarkdownRenderOptions = {}): string {
   const lines = escapeHtml(source).split(/\r?\n/);
   const html: string[] = [];
   let inCode = false;
@@ -70,7 +90,8 @@ export function renderMarkdown(source: string): string {
     }
   };
 
-  for (const line of lines) {
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
     // fenced code block toggles (``` may be escaped? backticks are not escaped, so plain match).
     if (/^```/.test(line)) {
       flushPara();
@@ -86,6 +107,24 @@ export function renderMarkdown(source: string): string {
     }
     if (inCode) {
       html.push(line);
+      continue;
+    }
+
+    const header = options.tables ? tableCells(line) : null;
+    const separator = header && index + 1 < lines.length ? tableCells(lines[index + 1]) : null;
+    if (header && separator && isTableSeparator(separator, header.length)) {
+      flushPara();
+      closeList();
+      html.push(`<table><thead><tr>${header.map((cell) => `<th>${renderInline(cell)}</th>`).join('')}</tr></thead><tbody>`);
+      index += 2;
+      while (index < lines.length) {
+        const row = tableCells(lines[index]);
+        if (!row || row.length !== header.length) break;
+        html.push(`<tr>${row.map((cell) => `<td>${renderInline(cell)}</td>`).join('')}</tr>`);
+        index += 1;
+      }
+      html.push('</tbody></table>');
+      index -= 1;
       continue;
     }
 

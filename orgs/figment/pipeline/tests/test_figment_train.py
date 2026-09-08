@@ -7,6 +7,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -412,9 +413,11 @@ def test_tester_prompt_is_trigger_prefixed_for_every_persona_not_only_dop(comman
     tester = load_json(plan_path(out, plan["stages"]["tester"]["runs"][0]))
     text = tester["workflow"]["5"]["inputs"]["text"]
     assert text.startswith("creator002krea2 woman, ")
-    assert "Close-up portrait photograph of an adult woman" in text
+    assert _synthetic_look()["age_stage"] in text
+    assert "fully clothed" in text
     # the old, un-prefixed prompt text must never appear verbatim as the prompt itself.
-    assert not text.startswith("Close-up portrait photograph of an adult woman")
+    assert not text.startswith("Close-up portrait photograph of")
+    assert "mid twenties" not in text
 
 
 def test_creator001_real_persona_tester_gen_and_detail_prompts_are_trigger_prefixed(
@@ -444,6 +447,187 @@ def test_creator001_real_persona_tester_gen_and_detail_prompts_are_trigger_prefi
     detail_text = detail_manifest["workflow"]["5"]["inputs"]["text"]
     assert detail_text.startswith("creator001krea2 woman, ")
     assert not detail_text.startswith("Photograph of an adult woman,")
+
+
+def test_tester_prompt_derives_age_from_persona_and_keeps_adult_clothed_constraints(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    age_stage = (
+        "a woman in her early twenties, about twenty-two, an adult woman's face and "
+        "adult woman's proportions"
+    )
+    _synthetic_persona(personas_root, look=_synthetic_look(age_stage=age_stage))
+
+    plan = command.build_plan(
+        "creator-002", "tester", tmp_path / "tester", personas_root=personas_root,
+        skip_pin_verify=True,
+    )
+    manifest = load_json(plan_path(tmp_path / "tester", plan["stages"]["tester"]["runs"][0]))
+    text = manifest["workflow"]["5"]["inputs"]["text"]
+
+    assert age_stage in text
+    assert "mid twenties" not in text
+    assert "She is an adult woman, fully clothed" in text
+
+
+def test_held_out_diagnostic_protocol_freezes_candidate_control_inputs(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "creator002krea2.safetensors"
+    candidate.write_bytes(b"synthetic safetensors fixture")
+    out = tmp_path / "diagnostic-protocol.json"
+
+    protocol = command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, out, personas_root=personas_root,
+        canonical_anchor="anchors/a01.jpg",
+    )
+
+    assert load_json(out) == protocol
+    assert protocol["schema"] == "figment/held-out-diagnostic-protocol@1"
+    assert protocol["promotion"] == {"allowed": False}
+    assert protocol["persona"]["age_stage"] == _synthetic_look()["age_stage"]
+    assert protocol["persona"]["canonical_anchor"]["reference"] == "anchors/a01.jpg"
+    assert len(protocol["persona"]["reference_set"]) == 3
+    assert all(len(row["sha256"]) == 64 for row in protocol["persona"]["reference_set"])
+    assert protocol["checkpoints"][0]["candidate"]["sha256"] == hashlib.sha256(
+        candidate.read_bytes(),
+    ).hexdigest()
+    assert protocol["checkpoints"][1]["id"] == "base-control-no-lora"
+    assert protocol["seeds"] == [1595, 481516234, 90210, 314159, 271828]
+    assert len(protocol["cells"]) == 10
+    assert {row["checkpoint"] for row in protocol["cells"]} == {
+        "candidate-lora", "base-control-no-lora",
+    }
+    assert {row["id"] for row in protocol["criteria"]} == {
+        "realism", "within_batch_identity", "reference_identity", "apparent_persona_age",
+    }
+    assert all(row["status"] == "unscored" for row in protocol["criteria"])
+    assert all("score" not in row and "approval" not in row for row in protocol["criteria"])
+    persona_age = next(row for row in protocol["criteria"] if row["id"] == "apparent_persona_age")
+    assert protocol["persona"]["age_stage"] in persona_age["question"]
+    prompt = protocol["prompts"][0]["text"]
+    assert _synthetic_look()["age_stage"] in prompt
+    assert "fully clothed" in prompt
+
+
+def test_held_out_diagnostic_protocol_refuses_overwrite_and_non_safetensors_candidate(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "candidate.safetensors"
+    candidate.write_bytes(b"fixture")
+    out = tmp_path / "protocol.json"
+    command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, out, personas_root=personas_root,
+        canonical_anchor="anchors/a01.jpg",
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="overwrite frozen"):
+        command.build_held_out_diagnostic_protocol(
+            "creator-002", candidate, out, personas_root=personas_root,
+            canonical_anchor="anchors/a01.jpg",
+        )
+    non_checkpoint = tmp_path / "candidate.bin"
+    non_checkpoint.write_bytes(b"fixture")
+    with pytest.raises(command.FigmentTrainError, match=".safetensors"):
+        command.build_held_out_diagnostic_protocol(
+            "creator-002", non_checkpoint, tmp_path / "other.json", personas_root=personas_root,
+            canonical_anchor="anchors/a01.jpg",
+        )
+
+
+def test_held_out_diagnostic_cli_subcommand_is_registered(command):
+    parser = command.build_parser()
+    args = parser.parse_args([
+        "held-out-diagnostic", "--creator", "creator-002", "--candidate-checkpoint", "c.safetensors",
+        "--out", "protocol.json", "--canonical-anchor", "anchors/a01.jpg",
+    ])
+    assert args.command == "held-out-diagnostic"
+    assert args.candidate_checkpoint == Path("c.safetensors")
+    assert args.out == Path("protocol.json")
+    assert args.canonical_anchor == "anchors/a01.jpg"
+
+
+def test_held_out_diagnostic_protocol_requires_canonical_anchor_for_a_reference_set(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "candidate.safetensors"
+    candidate.write_bytes(b"fixture")
+
+    with pytest.raises(command.FigmentTrainError, match="needs --canonical-anchor"):
+        command.build_held_out_diagnostic_protocol(
+            "creator-002", candidate, tmp_path / "protocol.json", personas_root=personas_root,
+        )
+
+
+def test_held_out_diagnostic_protocol_uses_a_single_reference_without_a_multi_anchor_average(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(
+        personas_root, anchor_names=("a01.jpg",), exemplars=("a01",),
+    )
+    candidate = tmp_path / "candidate.safetensors"
+    candidate.write_bytes(b"fixture")
+
+    protocol = command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, tmp_path / "protocol.json", personas_root=personas_root,
+    )
+
+    assert protocol["persona"]["canonical_anchor"]["reference"] == "anchors/a01.jpg"
+    assert protocol["persona"]["reference_set"] == [protocol["persona"]["canonical_anchor"]]
+
+
+@pytest.mark.parametrize(
+    ("age_stage", "message"),
+    [
+        ("a child with an adult woman's face", "child/minor wording"),
+        ("a woman about twenty-three years old", "must explicitly describe an adult"),
+    ],
+)
+def test_tester_prompt_rejects_child_or_non_adult_age_stage(command, age_stage, message):
+    persona = {"identity": {"look": {"age_stage": age_stage}}}
+    with pytest.raises(command.FigmentTrainError, match=message):
+        command._tester_prompt(persona, {"trigger": "fixture"})
+
+
+def test_tester_prompt_allows_different_explicit_adult_age(command):
+    age_stage = "a woman about twenty-nine, an adult woman's face and adult proportions"
+    text = command._tester_prompt(
+        {"identity": {"look": {"age_stage": age_stage}}}, {"trigger": "fixture"},
+    )
+    assert age_stage in text
+
+
+def test_frozen_protocol_publication_has_one_winner_under_an_interleaving(command, tmp_path):
+    """Two writers that reach exclusive creation together cannot replace either result."""
+    out = tmp_path / "protocol.json"
+    barrier = threading.Barrier(2)
+    outcomes: list[object] = []
+
+    def write(payload):
+        try:
+            barrier.wait(timeout=5)
+            command._write_frozen_json(out, payload)
+            outcomes.append(payload)
+        except command.FigmentTrainError as exc:
+            outcomes.append(exc)
+
+    left = threading.Thread(target=write, args=({"writer": "left"},))
+    right = threading.Thread(target=write, args=({"writer": "right"},))
+    left.start()
+    right.start()
+    left.join(timeout=5)
+    right.join(timeout=5)
+
+    assert not left.is_alive() and not right.is_alive()
+    assert len([item for item in outcomes if isinstance(item, dict)]) == 1
+    assert len([item for item in outcomes if isinstance(item, command.FigmentTrainError)]) == 1
+    assert load_json(out) in ({"writer": "left"}, {"writer": "right"})
 
 
 def _fake_run(out: Path, *, usd: float = 0.25) -> tuple[dict, Path]:

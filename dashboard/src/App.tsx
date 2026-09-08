@@ -33,6 +33,7 @@ import { Projects } from './views/Projects';
 import { SchedulesBody as Schedules } from './views/Schedules';
 import { Terminal } from './views/Terminal';
 import { Workflows } from './views/Workflows';
+import { FigmentWorkspace } from './figment/FigmentWorkspace';
 
 const DISABLED_SSE_FACTORY: SseFactory = () => ({
   addEventListener: () => undefined,
@@ -168,8 +169,9 @@ function Sidebar({ active, onSelect, rail, onToggleRail, badges }: {
   );
 }
 
-function ViewBody({ entry, onPush, onBack, onSectionChange, onNavigateTarget, onOpenAgentTerminal, onOpenWorkflowTerminal }: {
+function ViewBody({ entry, token, onPush, onBack, onSectionChange, onNavigateTarget, onOpenAgentTerminal, onOpenWorkflowTerminal }: {
   entry: NavEntry;
+  token?: string;
   onPush: (target: NavTarget) => void;
   onBack: () => void;
   onSectionChange: (section: string) => void;
@@ -188,6 +190,7 @@ function ViewBody({ entry, onPush, onBack, onSectionChange, onNavigateTarget, on
     case 'agents': return <Agents filter={entry.filter} focusAgentId={entry.focus?.kind === 'agent' ? entry.focus.id : null} onOpenAgent={(id) => onPush({ ...focusTarget({ kind: 'agent', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onBack={onBack} activeSectionId={entry.section} onSectionChange={onSectionChange} onNavigate={onNavigateTarget} onOpenTerminal={onOpenAgentTerminal} />;
     case 'workflows': return <Workflows filter={entry.filter} focusWorkflowId={entry.focus?.kind === 'workflow' ? entry.focus.id : null} focusRunRef={entry.focus?.kind === 'run' ? entry.focus.id : null} onOpenWorkflow={(id) => onPush({ ...focusTarget({ kind: 'workflow', id }), ...(entry.filter ? { filter: entry.filter } : {}) })} onOpenRun={(id) => onPush(focusTarget({ kind: 'run', id }))} onBack={onBack} onNavigate={onNavigateTarget} activeSectionId={entry.section} onSectionChange={onSectionChange} onOpenTerminal={onOpenWorkflowTerminal} />;
     case 'projects': return <section aria-label="Projects view"><Projects /></section>;
+    case 'figment': return <FigmentWorkspace token={token} />;
     case 'files': return <section aria-label="Files view"><Browser /></section>;
     case 'health': return <Health />;
   }
@@ -293,7 +296,7 @@ function AuthenticatedAppShell(): React.JSX.Element {
           <div className="persistent-terminal-surface" hidden={!terminalVisible} aria-hidden={!terminalVisible} data-testid="persistent-terminal-surface">
             <Terminal ptyEnabled={runtimeCapabilities.pty === true} visible={terminalVisible} onOpenHealth={() => goTo('health')} />
           </div>
-          {view !== 'terminal' ? <ViewBody entry={current} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={openTerminal} onOpenWorkflowTerminal={openTerminal} /> : null}
+          {view !== 'terminal' ? <ViewBody entry={current} token={session?.token} onPush={push} onBack={() => setStack((value) => backStack(value))} onSectionChange={(section) => setStack((value) => setSectionOnStack(value, section))} onNavigateTarget={navigateTo} onOpenAgentTerminal={openTerminal} onOpenWorkflowTerminal={openTerminal} /> : null}
         </main>
         <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} onRun={runPaletteCommand} />
       </div>

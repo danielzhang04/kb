@@ -15,6 +15,9 @@ import type { SubprocessPort } from './inbox/resolvers.ts';
 import { registerHealthRoutes } from './health/routes.ts';
 import { createHomeRoutePorts, registerHomeRoutes, createActivationReader } from './home/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
+import { registerFigmentRead } from './figment/routes.ts';
+import { registerFigmentTesterPreview } from './figment/planPreview.ts';
+import type { FigmentLocalTrainingEvidenceRoots } from './figment/localTraining.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
@@ -124,6 +127,11 @@ export interface BuildAppOptions {
   coordinationPublication?: SurfaceContext['coordinationPublication'];
   openPr?: SurfaceContext['openPr'];
   traceRoot?: string | null;
+  /** Optional fixed private diagnostic directory. The Figment read route never accepts a client path. */
+  figmentDiagnosticRoot?: string | null;
+  figmentGeneratedInputRoot?: string | null;
+  /** Fixed receipt directories for a historical local-training preparation projection. */
+  figmentLocalTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -264,6 +272,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
       registerTraceRead(scope, surfaceCtx.traceRoot);
     }
+    const configuredLocalTraining = options.figmentLocalTrainingEvidence ?? (() => {
+      const values = [
+        process.env.DASHBOARD_FIGMENT_LOCAL_CPU_PREFLIGHT_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_TOKENIZER_LAUNCH_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_PLAN_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_TOKENIZER_LOAD_ROOT,
+      ];
+      if (values.every((value) => value === undefined)) return null;
+      return { cpuPreflight: values[0] ?? '', tokenizerLaunch: values[1] ?? '', plan: values[2] ?? '', tokenizerLoad: values[3] ?? '' };
+    })();
+    registerFigmentRead(scope, {
+      repoRoot,
+      diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
+      generatedInputRoot: options.figmentGeneratedInputRoot ?? process.env.DASHBOARD_FIGMENT_GENERATED_INPUT_ROOT ?? null,
+      localTrainingEvidence: configuredLocalTraining,
+    });
+    registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });
     registerWorkflows(scope, surfaceCtx);
     // P6 W6.1 [P6-C20]: v1 READS join the existing read scope, under the same originPlugin +

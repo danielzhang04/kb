@@ -206,6 +206,20 @@ def _write_json(path: Path, value: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def _write_frozen_json(path: Path, value: Any) -> None:
+    """Create one immutable JSON protocol without replacing a racing writer's file."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with path.open("x", encoding="utf-8") as handle:
+            json.dump(value, handle, indent=2, ensure_ascii=False)
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+    except FileExistsError as exc:
+        raise FigmentTrainError(f"refusing to overwrite frozen diagnostic protocol: {path}") from exc
+
+
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
@@ -814,7 +828,47 @@ def _compose_triggered_prompt(training: dict, body: str) -> str:
     return _persona_trigger_clause(training) + body
 
 
-def _tester_workflow(creator_id: str, training: dict) -> dict[str, Any]:
+def _tester_age_stage(persona: dict[str, Any]) -> str:
+    """Return the persona-owned apparent-age wording for tester prompts.
+
+    A tester is a measurement of one creator, so it must not silently substitute a
+    shared age band.  ``persona.py`` validates ``identity.look`` for normal callers;
+    this check also protects direct helper use in tests and future local tools.
+    """
+    look = persona.get("identity", {}).get("look")
+    age_stage = look.get("age_stage") if isinstance(look, dict) else None
+    if not isinstance(age_stage, str) or not age_stage.strip():
+        raise FigmentTrainError(
+            "persona.identity.look.age_stage is required to compose the tester prompt"
+        )
+    age_stage = age_stage.strip()
+    lower = age_stage.casefold()
+    if re.search(r"\b(?:child(?:ren)?|minor|underage|teen(?:age|ager)?|adolescent|schoolgirl)\b", lower):
+        raise FigmentTrainError(
+            "persona.identity.look.age_stage contains child/minor wording and cannot be used "
+            "for a tester prompt"
+        )
+    if not re.search(r"\badult\b", lower):
+        raise FigmentTrainError(
+            "persona.identity.look.age_stage must explicitly describe an adult for a tester prompt"
+        )
+    return age_stage
+
+
+def _tester_prompt(persona: dict[str, Any], training: dict[str, Any]) -> str:
+    """Build the fixed, clothed portrait prompt for a persona's checkpoint ladder."""
+    return _compose_triggered_prompt(training, (
+        f"Close-up portrait photograph of {_tester_age_stage(persona)}. "
+        "She is an adult woman, fully clothed in a plain fitted black crew-neck top, "
+        "shoulders up, facing the camera, neutral relaxed expression with a faint "
+        "smile. Natural skin texture with visible pores and fine flyaway hairs, no "
+        "retouching. Soft even daylight from a window camera-left, plain warm off-white "
+        "wall behind her, shallow depth of field, shot on a phone camera."
+    ))
+
+
+def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
+    creator_id = persona["id"]
     trigger = training["trigger"]
     return {
         "1": {"class_type": "UNETLoader", "inputs": {
@@ -835,14 +889,7 @@ def _tester_workflow(creator_id: str, training: dict) -> dict[str, Any]:
             "clip": ["2", 0],
         }},
         "5": {"class_type": "CLIPTextEncode", "inputs": {
-            "text": _compose_triggered_prompt(training, (
-                "Close-up portrait photograph of an adult woman in her mid twenties, "
-                "shoulders up, facing the camera, neutral relaxed expression with a faint "
-                "smile. Natural skin texture with visible pores and fine flyaway hairs, "
-                "no retouching. She wears a plain fitted black crew-neck top. Soft even "
-                "daylight from a window camera-left, plain warm off-white wall behind her, "
-                "shallow depth of field, shot on a phone camera."
-            )),
+            "text": _tester_prompt(persona, training),
             "clip": ["4", 1],
         }},
         "6": {"class_type": "ConditioningZeroOut", "inputs": {
@@ -890,7 +937,7 @@ def _tester_manifest(
         **_pod_base(pins, training["pod_class"], "tester"),
         "models": deepcopy(pins["pins"]["tester"]["models"]),
         "custom_nodes": deepcopy(pins["pins"]["tester"]["custom_nodes"]),
-        "workflow": _tester_workflow(creator_id, training),
+        "workflow": _tester_workflow(persona, training),
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
             "files": [f"out/{train_out_dirname}/*.safetensors"],
@@ -916,6 +963,138 @@ def _tester_manifest(
             }],
         } for index, (step, label) in enumerate(checkpoints)],
     }
+
+
+DIAGNOSTIC_PROTOCOL_SCHEMA = "figment/held-out-diagnostic-protocol@1"
+# These are deliberately fixed rather than sampled by a caller.  A candidate and its
+# no-LoRA control therefore receive identical latent noise on every diagnostic rerun.
+DIAGNOSTIC_PROTOCOL_SEEDS = (1595, 481516234, 90210, 314159, 271828)
+DIAGNOSTIC_PROTOCOL_CRITERIA = (
+    ("realism", "Does this image read as an unretouched, plausible photograph?"),
+    ("within_batch_identity", "Do images in this arm read as the same person?"),
+    ("reference_identity", "Does this arm resemble the selected canonical anchor?"),
+)
+
+
+def _diagnostic_criteria(age_stage: str) -> list[dict[str, str]]:
+    """Return the four unscored diagnostic questions for this frozen persona wording."""
+    return [
+        {"id": criterion_id, "question": question, "status": "unscored"}
+        for criterion_id, question in DIAGNOSTIC_PROTOCOL_CRITERIA
+    ] + [{
+        "id": "apparent_persona_age",
+        "question": (
+            "Does the image read as an adult matching this frozen persona age stage: "
+            f"{age_stage}"
+        ),
+        "status": "unscored",
+    }]
+
+
+def _diagnostic_file_entry(path: Path) -> dict[str, Any]:
+    """Return the minimum reproducibility record for one local diagnostic input."""
+    path = Path(path).resolve()
+    if not path.is_file() or path.stat().st_size <= 0:
+        raise FigmentTrainError(f"diagnostic input is missing or empty: {path}")
+    return {
+        "name": path.name,
+        "bytes": path.stat().st_size,
+        "sha256": _sha256(path),
+    }
+
+
+def build_held_out_diagnostic_protocol(
+    creator_id: str,
+    candidate_checkpoint: Path,
+    out: Path,
+    *,
+    personas_root: Path = PERSONAS_ROOT,
+    canonical_anchor: str | None = None,
+) -> dict[str, Any]:
+    """Freeze an unscored candidate-versus-control image evaluation slate.
+
+    This is deliberately a protocol record, not a pod manifest and not a grade or
+    approval.  It preserves the candidate and reference hashes plus the identical
+    seeds/prompts needed to later compare a LoRA arm against the pinned no-LoRA tester
+    base.  A multi-reference persona must name its audited canonical anchor; the full
+    set remains recorded as context and is never silently treated as an average target.
+    Its output is non-promotable by construction.
+    """
+    out = Path(out).resolve()
+    candidate_checkpoint = Path(candidate_checkpoint).resolve()
+    if candidate_checkpoint.suffix.lower() != ".safetensors":
+        raise FigmentTrainError("diagnostic candidate checkpoint must be a .safetensors file")
+
+    persona, training, pins = _load_inputs(creator_id, Path(personas_root))
+    persona = dict(persona)
+    persona_path = Path(personas_root) / creator_id / "persona.yaml"
+    persona["_persona_path"] = str(persona_path)
+    candidate = _diagnostic_file_entry(candidate_checkpoint)
+
+    anchors: list[dict[str, Any]] = []
+    for relative in persona["identity"]["references"]:
+        entry = _diagnostic_file_entry(persona_path.parent / relative)
+        anchors.append({"reference": relative, **entry})
+
+    references = [row["reference"] for row in anchors]
+    if canonical_anchor is None:
+        if len(references) != 1:
+            raise FigmentTrainError(
+                "held-out diagnostic needs --canonical-anchor when persona has multiple "
+                f"references: {references}"
+            )
+        canonical_anchor = references[0]
+    if canonical_anchor not in references:
+        raise FigmentTrainError(
+            "canonical anchor must exactly name one current persona.identity.references "
+            f"entry: {canonical_anchor!r}"
+        )
+    selected_anchor = next(row for row in anchors if row["reference"] == canonical_anchor)
+
+    prompt = _tester_prompt(persona, training)
+    prompts = [{
+        "id": "persona-age-portrait-v1",
+        "text": prompt,
+        "age_source": "persona.identity.look.age_stage",
+    }]
+    checkpoints = [
+        {"id": "candidate-lora", "kind": "lora", "candidate": candidate},
+        {
+            "id": "base-control-no-lora",
+            "kind": "base-model-no-lora",
+            "models": deepcopy(pins["pins"]["tester"]["models"]),
+        },
+    ]
+    cells = [
+        {
+            "id": f"{checkpoint['id']}--{prompt_row['id']}--seed-{seed}",
+            "checkpoint": checkpoint["id"],
+            "prompt": prompt_row["id"],
+            "seed": seed,
+        }
+        for checkpoint in checkpoints
+        for prompt_row in prompts
+        for seed in DIAGNOSTIC_PROTOCOL_SEEDS
+    ]
+    protocol = {
+        "schema": DIAGNOSTIC_PROTOCOL_SCHEMA,
+        "creator": creator_id,
+        "purpose": "held-out candidate-versus-no-lora diagnostic; not a promotion record",
+        "promotion": {"allowed": False},
+        "persona": {
+            "id": persona["id"],
+            "age_stage": _tester_age_stage(persona),
+            "canonical_anchor": selected_anchor,
+            "reference_set": anchors,
+        },
+        "checkpoints": checkpoints,
+        "prompts": prompts,
+        "seeds": list(DIAGNOSTIC_PROTOCOL_SEEDS),
+        "cells": cells,
+        "criteria": _diagnostic_criteria(_tester_age_stage(persona)),
+    }
+    _write_frozen_json(out, protocol)
+    return protocol
 
 
 # ---------------------------------------------------------------------------
@@ -1500,6 +1679,22 @@ def _approved_dataset_names(approval: dict[str, Any]) -> set[str]:
             name = entry.get("name") if isinstance(entry, dict) else None
             if not isinstance(name, str) or Path(name).name != name:
                 raise FigmentTrainError("dataset approval has a malformed file inventory")
+            names.add(name)
+    # A single-seed curation record is evidence, never an acceptance signal.  Once
+    # an operator separately accepts the resulting dataset, its immutable record
+    # and retained source/provenance snapshots must accompany the staged dataset so
+    # the approval subject remains reviewable and fresh.
+    curation = subject.get("curation")
+    if curation is not None:
+        if not isinstance(curation, dict):
+            raise FigmentTrainError("dataset approval has malformed curation evidence")
+        rows = [curation.get("record"), *(curation.get("snapshots") or [])]
+        if len(rows) < 2:
+            raise FigmentTrainError("dataset approval curation evidence is incomplete")
+        for row in rows:
+            name = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(name, str) or Path(name).name != name:
+                raise FigmentTrainError("dataset approval has malformed curation evidence")
             names.add(name)
     return names
 
@@ -3167,6 +3362,18 @@ def build_parser() -> argparse.ArgumentParser:
     accept_dataset.add_argument("--dataset-dir", required=True, type=Path)
     accept_dataset.add_argument("--decided-by", required=True)
     accept_dataset.add_argument("--decided-at", required=True)
+
+    diagnostic = commands.add_parser(
+        "held-out-diagnostic",
+        help="freeze an unscored candidate-versus-no-LoRA evaluation protocol; never runs a pod",
+    )
+    diagnostic.add_argument("--creator", required=True)
+    diagnostic.add_argument("--candidate-checkpoint", required=True, type=Path)
+    diagnostic.add_argument("--out", required=True, type=Path)
+    diagnostic.add_argument(
+        "--canonical-anchor",
+        help="exact current persona identity.references entry; required when more than one exists",
+    )
     return parser
 
 
@@ -3218,6 +3425,12 @@ def main(argv: list[str] | None = None) -> int:
                 decided_by=args.decided_by, decided_at=args.decided_at,
             )
             print(f"dataset accepted: {Path(args.dataset_dir).resolve() / 'dataset-approval.json'}")
+        elif args.command == "held-out-diagnostic":
+            result = build_held_out_diagnostic_protocol(
+                args.creator, args.candidate_checkpoint, args.out,
+                canonical_anchor=args.canonical_anchor,
+            )
+            print(f"wrote unscored held-out diagnostic protocol: {args.out.resolve()}")
         else:
             result = apply_rulings(
                 args.creator, args.stage, args.plan, args.rulings,
