@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated 2026-09-08 14:26 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 14:41 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `af7b07bc`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `57e2cad7`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
@@ -62,8 +62,15 @@ The image SHA-256 is `3d6e97572ac4be8a7e7fd786bed7a8eea7580abb097bdf4eaef0a9a429
 Root and protocol independently rejected it for training: two extra portrait faces
 in the background, changed facial proportions and clothing. The raw fixed640 observer
 also detected three faces and correctly withheld all similarities. Runtime success
-does not establish quality. A controlled original-pixel face-crop variant is being
-built, with the graph changing only its image conditioning input; no crop run yet.
+does not establish quality. Controlled original-pixel face-crop integration `57e2cad7`
+passed 33 parent and 33 independent checks. Its actual run generated a 1024-square
+image but failed launcher teardown verification for wrapper13288; no completed receipt
+exists. Root separately verified wrapper13288 and children640/41660 absent, with
+port8190 refusing connection; recovery evidence preserves the failed journal. Both
+visual reviewers rejected altered identity/clothing and another background portrait.
+The observer detected two faces and withheld similarities. Crop framing alone did
+not fix these failures. A wrapper natural-exit reporting repair is under review;
+the next image hypothesis changes only the positive/negative prompt profile.
 There is no external provider charge for the local attempt; native billing is unknown.
 
 The Figment-only Gemini comparison adapter remains accepted in `56226790`, but its
@@ -71,7 +78,7 @@ actual Google export is blocked pending the exact user question; no retry or alt
 export is allowed. The existing LoRA-export question is also pending. There are no
 active pods. Recorded compute remains $37.800385 of $50 and today's recorded compute
 remains $2.110134. Keep-awake owner 16580 and supervisor 19564 were reverified alive
-at 10:20 Eastern. No Instagram/account work, production promotion, merge, or deployment.
+at 10:34 Eastern. No Instagram/account work, production promotion, merge, or deployment.
 Experimental executor `af7b07bc` is accepted after 23 parent and 23 independent
 checks. It retains exact reviews, revalidates/stages only declared training files,
 binds the canonical Ops accounting context, prevents admission replay and verifies

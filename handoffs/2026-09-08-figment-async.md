@@ -471,3 +471,43 @@ LoRA research option; current20-row contract unchanged. Do not edit another work
 files. Studio STATE content remains unchanged/normalization-only; coordination lives
 here. Both exact export questions remain pending, no retry/alternate export. No pods
 or reservations; arc37.800385 and daily2.110134 unchanged. Keep-awake active10:20Eastern.
+
+## 14:41 UTC: crop generated but launcher failed; separate recovery preserved
+
+Studio57e2cad7 pushed, book8fb3a6e0 plus correctedREADME/image-production. Crop
+integration33parent+33independent passed. Parent offlineplan SHA
+3d2be0f902d88118fbce736a44720335edb8bd3870853356e2300cad32e52c3f; actual
+model/persona/prompt/generation/runtime/reference equalbaselineV3, onlygraphnode2
+LoadImagechanged. Actual root main_private/figment-local-comfy-crop-20260908-v1,
+session55264 FINISHEDexit1; NO active generation. Manifest
+0fcbbd1c0d6778df23ef78f5678eac7a3d38b2f5b985bd9a7eb699f9c53991a1; cropinput
+5d6045e15a8d025ad33912234230c257678292331abdf122998ba4cefa28f27c,
+202609B384square, originalg01box512,17,896,401/noresize/Pillow12.3.0.
+Output f887f164ff3d57e11ef7b921fd0c1713eecfefda915fba9d74760c17c578a1f7,
+1174661B1024square. Prompt211f580f-e349-4fd9-b544-03c90f61df1f executed36.01s.
+
+Journal cfa93aeb4f235381a0093cb27f6d00bd3fbb6a2a264264923028d3ce83fd634a
+statusFAILED/verified_stoppedfalse, children41660/640terminated, wrapper13288
+missingfromstoppedlist, LocalComfyError only. Exact failing callsite unknown.
+Root recovery-observation.json14:36:20UTC independently binds originaljournal/output,
+all3exactprocessidentities absent and loopbackconnect_ex10061. No StopProcess action
+needed. NO completed receipt and NO journal rewrite. Bothroot/timestamp separately
+viewedPNG/g01/baseline: reject changedface, wardrobe andbackgroundportrait. Fixed640
+observerface_count2/allcosinesnull, not an identityscorefailure. No identicalrerun.
+
+Protocol wrapper-natural-exit repair WIPfreeze code59ec32e9280a1d4aa61b2874b51d58d685a392eef30cf49ee5cadb5db5a60060,
+parent35combinedchecksPASS; timestampscheduledindependentreview. Exact retainedPopen
+handle checked before wrappertermination and afterwrappererror; finiteerrorstage/code
+added. Afteraccept, plannedpromptprofile experiment: singleportrait/plainwall/no
+framedportraits/reflections, samecrop/seed/.65/24steps/models. No liveactionyet.
+
+Hub builds offline rejected-only completedlocaldiagnostic galleryadopter, underreview;
+parent7tests passed but found beforedecodepixelbound, cropbranch/boxbinding and
+pairpublicationfailureissues; authorfixes. Actualrootrequest preparedonly (noimport):
+main_private/figment-local-comfy-generated-input-requests-20260908/baseline-v3-rejected.json
+SHA6c996259c4e2fc9f36285b6752b363902d84755503116c29f4733bbac6bf8545. Failedcrop
+must remain refused by this completedreceiptadopter. Timestampwritesnewcropactualaudit.
+
+NoownedRunPods/numericholds; arc37.800385/daily2.110134 unchanged. ExactGoogleg01 and
+LoRAexports unanswered/no retries. Keepawakealive10:34Eastern. Continueasync; training
+capability/single-observationdesign follows currentimagefixes, not20-rowpadding.
