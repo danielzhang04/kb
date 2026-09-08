@@ -166,13 +166,58 @@ The accepted `expand/local_comfy_input.py` stays byte-for-byte unchanged while
 the current CPU and upcoming GPU work bind hash
 `2997BA3185AABFB146B13F38D18C854615A7190064D30F14037570398BEA7BAC`.
 
-After that freeze and review, the smallest runtime reuse is an extraction of
-only the existing post-staging owned lifecycle into a narrow helper such as
-`_execute_owned_prompts(root, manifest, prompts)`. That later helper keeps the
-accepted port refusal, isolated environment, retained `Popen` handle, Windows
-PID-plus-creation-time checks, bounded loopback requests, and verified teardown;
-the inference module supplies prevalidated ordered two-image batches. No
-900-line lifecycle clone is proposed.
+Phase C2 now adds `train/local_lora_matched_runtime.py` without changing the
+C1 graph/manifest or `expand/local_comfy_input.py`. It verifies the frozen C1
+and ownership-helper hashes, reads only fixed stage-derived producer plan,
+receipt, and admission locations, and defaults to validation only. A root
+admission must bind the selected stage, raw/canonical plan, producer receipt,
+producer admission, selected checkpoint (when applicable), C1/runtime/helper
+hashes, installed core loader source hashes, and the prior two diagnostic
+review digests. The fresh output root is a fixed `MAIN_PRIVATE` child named for
+the selected stage; callers cannot provide a path.
+
+With explicit `--execute`, C2 revalidates the evidence, stages one bounded
+adapter under `output/loras/`, and uses only the accepted helper's isolated
+environment, fixed loopback port, owned-listener checks, bounded local HTTP,
+output-node-11 PNG validator, and identity-bound teardown. It starts one
+server session for exactly two sequential graph rows and writes an exclusive
+dispatch marker before each single POST, with no retry. Its own stderr pump
+fails on truncation, reader error, or incomplete join. A non-base result is
+refused when a complete stderr journal contains either installed Comfy
+unmatched-LoRA warning form. The receipt records header U-Net key count and
+zero unmatched-key warnings only after that complete journal check. No
+900-line lifecycle clone is introduced.
+
+The C2 runtime starts one 600-second deadline before staging; listener startup
+and both ordered prompts consume that same deadline. It checks the live output
+directory on every poll: at most the two root PNGs and the one selected LoRA
+are permitted, with the PNG and LoRA byte caps enforced before a later
+post-teardown exact inventory and stream-hash reconciliation. Any failure
+after the fresh run root exists writes an exclusive, durable `failure.json`
+with the bounded stderr digest, completion state, retained rows, and teardown
+result. A success is impossible when teardown, the stderr reader, or that
+post-teardown inventory check fails.
+
+Before validation or launch, C2 also rehashes the pinned base checkpoint using
+the immutable helper's expected SHA-256, requires the installed Comfy Git HEAD
+and clean tracked worktree, and verifies the fixed interpreter, `nodes.py`, and
+`comfy/sd.py`. It invokes the interpreter with `-X utf8`; this retains Comfy's
+normal `cwd` import behavior while avoiding Windows console-code-page output
+failures. The pinned Comfy logger uses stderr by default when `--log-stdout`
+is absent, so the bounded stderr journal includes the core `comfy/lora.py`
+unmatched-key warning form used by this runtime. It does not make a quality
+claim from that journal.
+
+For every non-base stage, the admission and final receipt bind the raw base
+pair receipt and the two currently rehashed base PNG bytes by seed. Later
+stages additionally bind their fixed immediately preceding receipt, root
+review, and independent review raw digests. Each review must be a nonhuman,
+nonpromotable `continue` record with its actual role and nonempty reviewer ID.
+It contains exactly two structured observations, one for each fixed seed, with
+only these nonempty-string fields: `realism`, `resemblance_to_g01`, `pose`,
+`apparent_adulthood`, `apparent_age_fit`, `clothing`, and `defects`. The
+observation seed set and each review-row PNG hash must exactly match the prior
+receipt; free-text observation lists are not accepted.
 
 ## Evidence and review
 
