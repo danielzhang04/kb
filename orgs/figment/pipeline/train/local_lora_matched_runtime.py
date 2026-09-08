@@ -15,9 +15,6 @@ import re
 import stat
 import subprocess
 import sys
-import threading
-import time
-import uuid
 from pathlib import Path
 from typing import Any
 
@@ -27,8 +24,10 @@ STUDIO_PRIVATE = STUDIO / "_private"
 MAIN_PRIVATE = STUDIO.parents[1]
 C1_PATH = HERE / "local_lora_matched_inference.py"
 OWNERSHIP_PATH = HERE.parent / "expand" / "local_comfy_input.py"
+PAIR_ENGINE_PATH = HERE / "local_lora_pair_engine.py"
 C1_SHA256 = "bca8be929852fe19eab724f878f8985e4b3f6146050e564af91d0c83e6570d6f"
 OWNERSHIP_SHA256 = "2997ba3185aabfb146b13f38d18c854615a7190064d30f14037570398bea7bac"
+PAIR_ENGINE_SHA256 = "a4a0e3f03e720a3163c000ee22d7ee9739055da0d446603e49b58e1d0dbbd67d"
 SCHEMA = "figment/local-lora-matched-runtime@1"
 ADMISSION_SCHEMA = "figment/local-lora-matched-admission@1"
 QUALITY_PLAN_SCHEMA = "figment/local-one-source-quality-plan@1"
@@ -44,6 +43,7 @@ MAX_OUTPUT_ENTRIES = 3
 PAIR_SECONDS = 10 * 60
 BASE_MODEL_NAME = "RealVisXL_V5.0_fp16.safetensors"
 PRIOR = {"base": None, "current-20": "base", "current-50": "current-20", "current-final100": "current-50", "concise-50": "current-final100"}
+_PAIR_ENGINE: Any | None = None
 
 
 class MatchedRuntimeError(RuntimeError):
@@ -68,6 +68,21 @@ def _load(name: str, path: Path) -> Any:
     sys.modules[name] = module
     spec.loader.exec_module(module)
     return module
+
+
+def _assert_pair_engine_hash() -> None:
+    digest, _ = _file_hash(PAIR_ENGINE_PATH, 512 * 1024)
+    if digest != PAIR_ENGINE_SHA256:
+        raise MatchedRuntimeError("reviewed pair engine changed")
+
+
+def _pair_engine() -> Any:
+    """Load only the reviewed, byte-bound generic pair mechanics."""
+    global _PAIR_ENGINE
+    _assert_pair_engine_hash()
+    if _PAIR_ENGINE is None:
+        _PAIR_ENGINE = _load("figment_local_lora_pair_engine", PAIR_ENGINE_PATH)
+    return _PAIR_ENGINE
 
 
 def _file_hash(path: Path, maximum: int | None = None, *, allow_empty: bool = False) -> tuple[str, int]:
@@ -333,6 +348,7 @@ def _producer(plan: dict[str, Any], plan_raw: str, plan_sha: str, receipt_path: 
 def _load_bound_modules() -> tuple[Any, Any, dict[str, str]]:
     c1_hash, _ = _file_hash(C1_PATH, 256 * 1024)
     ownership_hash, _ = _file_hash(OWNERSHIP_PATH, 1024 * 1024)
+    _pair_engine()
     if c1_hash != C1_SHA256 or ownership_hash != OWNERSHIP_SHA256:
         raise MatchedRuntimeError("accepted graph or ownership helper changed")
     c1 = _load("figment_matched_c1", C1_PATH)
@@ -355,7 +371,7 @@ def _load_bound_modules() -> tuple[Any, Any, dict[str, str]]:
         raise MatchedRuntimeError("installed Comfy or base checkpoint pin cannot be verified") from exc
     nodes_hash, _ = _file_hash(helper.COMFY_ROOT / "nodes.py", 4 * 1024 * 1024)
     sd_hash, _ = _file_hash(helper.COMFY_ROOT / "comfy" / "sd.py", 4 * 1024 * 1024)
-    return c1, helper, {"c1_sha256": c1_hash, "ownership_sha256": ownership_hash, "comfy_nodes_sha256": nodes_hash, "comfy_sd_sha256": sd_hash, "comfy_commit": helper.COMFY_COMMIT, "comfy_base_model_sha256": base_record["sha256"]}
+    return c1, helper, {"c1_sha256": c1_hash, "ownership_sha256": ownership_hash, "pair_engine_sha256": PAIR_ENGINE_SHA256, "comfy_nodes_sha256": nodes_hash, "comfy_sd_sha256": sd_hash, "comfy_commit": helper.COMFY_COMMIT, "comfy_base_model_sha256": base_record["sha256"]}
 
 
 def validate(stage: str) -> dict[str, Any]:
@@ -378,257 +394,45 @@ def validate(stage: str) -> dict[str, Any]:
     return {"stage": stage, "plan": plan, "plan_file_sha256": plan_raw, "plan_sha256": plan_sha, "admission": admission, "matched_admission_sha256": _sha(admission_raw), "matched_admission_id": admission["admission_id"], "runtime_sha256": runtime_hash, "checkpoint": checkpoint, "rows": rows, "code": code, "producer_receipt_sha256": receipt_sha, "producer_admission_sha256": producer_sha, "base_receipt_sha256": base_receipt_sha, "base_png_sha256_by_seed": base_pngs}
 
 
-class _Pumper:
-    def __init__(self, stream: Any, path: Path):
-        self.stream, self.path, self.error, self.truncated, self.started = stream, path, None, False, False
-        self.thread = threading.Thread(target=self._run, daemon=True)
-    def _run(self) -> None:
-        kept = 0
-        try:
-            with self.path.open("ab") as handle:
-                while True:
-                    block = self.stream.read(4096)
-                    if not block: break
-                    if kept + len(block) > MAX_STDERR:
-                        self.truncated = True; return
-                    handle.write(block); handle.flush(); kept += len(block)
-        except BaseException as exc:
-            self.error = exc
-    def start(self) -> None:
-        self.thread.start(); self.started = True
-    def finish(self) -> None:
-        if not self.started:
-            return
-        self.thread.join(timeout=3)
-        if self.thread.is_alive() or self.error is not None or self.truncated:
-            raise MatchedRuntimeError("Comfy stderr journal is incomplete")
-
-
-def _entries(path: Path, maximum: int, root: Path, label: str) -> dict[str, Path]:
-    path = _safe_existing(path, root, label)
-    if _reparse(path) or not stat.S_ISDIR(path.lstat().st_mode):
-        raise MatchedRuntimeError(f"{label} is not a regular directory")
-    result: dict[str, Path] = {}
-    try:
-        with os.scandir(path) as scan:
-            for entry in scan:
-                if len(result) >= maximum:
-                    raise MatchedRuntimeError(f"{label} exceeds its entry bound")
-                candidate = Path(entry.path)
-                if entry.name in result or _reparse(candidate):
-                    raise MatchedRuntimeError(f"{label} has an unsafe entry")
-                result[entry.name] = candidate
-    except OSError as exc:
-        raise MatchedRuntimeError(f"cannot enumerate {label}") from exc
-    return result
-
-
-def _runtime_output_bound(output: Path, staged: Path | None) -> None:
-    entries = _entries(output, MAX_OUTPUT_ENTRIES, MAIN_PRIVATE, "matched output")
-    loras = entries.get("loras")
-    if loras is None or _reparse(loras) or not stat.S_ISDIR(loras.lstat().st_mode):
-        raise MatchedRuntimeError("matched output has no regular LoRA directory")
-    lora_entries = _entries(loras, 1, MAIN_PRIVATE, "matched LoRA output")
-    if set(lora_entries) != (set() if staged is None else {staged.name}):
-        raise MatchedRuntimeError("matched LoRA inventory is not exact")
-    for name, candidate in entries.items():
-        if name == "loras":
-            continue
-        if not name.endswith(".png") or _reparse(candidate) or not stat.S_ISREG(candidate.lstat().st_mode):
-            raise MatchedRuntimeError("matched output contains an unsafe file")
-        if candidate.stat().st_size > MAX_PNG:
-            raise MatchedRuntimeError("matched output PNG exceeds its byte bound")
-
-
-def _exact_output_inventory(output: Path, results: list[dict[str, Any]], staged: Path | None) -> None:
-    expected_pngs = {entry["output"]["filename"] for entry in results}
-    _runtime_output_bound(output, staged)
-    entries = _entries(output, MAX_OUTPUT_ENTRIES, MAIN_PRIVATE, "matched output")
-    if len(expected_pngs) != len(results) or set(entries) != expected_pngs | {"loras"}:
-        raise MatchedRuntimeError("matched output inventory is not exact")
-    for row in results:
-        output_record = row["output"]
-        name = output_record.get("filename")
-        if not isinstance(name, str) or name not in expected_pngs:
-            raise MatchedRuntimeError("matched output filename is invalid")
-        actual, size = _file_hash(entries[name], MAX_PNG)
-        if actual != output_record.get("sha256") or size != output_record.get("bytes"):
-            raise MatchedRuntimeError("matched output bytes differ from receipt row")
-
-
-def _journal_lora_application(pumper: _Pumper, checkpoint: dict[str, Any] | None) -> dict[str, int]:
-    pumper.finish()
-    raw = _read_bounded(pumper.path, MAX_STDERR, "Comfy stderr journal", allow_empty=True)
-    text = raw.decode("utf-8", errors="replace")
-    missing = text.count("lora key not loaded:") + text.count("NOT LOADED")
-    if checkpoint is not None and missing:
-        raise MatchedRuntimeError("Comfy reported unmatched LoRA keys")
-    return {"header_unet_keys": 0 if checkpoint is None else checkpoint["unet_tensor_keys"], "comfy_missing_lora_key_warnings": missing}
-
-
-def _record(root: Path, name: str, value: dict[str, Any]) -> None:
-    data = (json.dumps(value, sort_keys=True) + "\n").encode()
-    with (root / name).open("xb") as handle:
-        handle.write(data); handle.flush(); os.fsync(handle.fileno())
-
-
 def _receipt_inputs(evidence: dict[str, Any]) -> dict[str, Any]:
     base_pngs = evidence["base_png_sha256_by_seed"]
     return {"plan_file_sha256": evidence["plan_file_sha256"], "plan_sha256": evidence["plan_sha256"], "runtime_sha256": evidence["runtime_sha256"], "matched_admission_sha256": evidence["matched_admission_sha256"], "matched_admission_id": evidence["matched_admission_id"], "producer_receipt_sha256": evidence["producer_receipt_sha256"], "producer_admission_sha256": evidence["producer_admission_sha256"], "base_receipt_sha256": evidence["base_receipt_sha256"], "base_png_sha256_by_seed": None if base_pngs is None else {str(seed): digest for seed, digest in sorted(base_pngs.items())}, "checkpoint": evidence["checkpoint"], **evidence["code"]}
 
 
 def _read_bounded(path: Path, maximum: int, label: str, *, allow_empty: bool = False) -> bytes:
-    path = _safe_existing(path, MAIN_PRIVATE, label)
-    before = path.stat()
-    if _reparse(path) or not stat.S_ISREG(path.lstat().st_mode) or (not allow_empty and before.st_size == 0) or before.st_size > maximum:
-        raise MatchedRuntimeError(f"{label} has an unsafe file shape")
-    with path.open("rb") as handle:
-        raw = handle.read(maximum + 1)
-    after = path.stat()
-    if len(raw) != before.st_size or len(raw) > maximum or after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns:
-        raise MatchedRuntimeError(f"{label} changed while read")
-    return raw
+    return _pair_engine().read_bounded(path, maximum, label, root=MAIN_PRIVATE, safe_existing=_safe_existing, reparse=_reparse, error=MatchedRuntimeError, allow_empty=allow_empty)
 
 
 def _copy_stream(source: Path, target: Path, expected: str) -> None:
-    source = _safe_existing(source, STUDIO_PRIVATE, "selected checkpoint")
-    before = source.stat()
-    if before.st_size > MAX_LORA or _reparse(target.parent): raise MatchedRuntimeError("adapter copy boundary is unsafe")
-    digest = hashlib.sha256(); total = 0
-    with source.open("rb") as src, target.open("xb") as dst:
-        while True:
-            block = src.read(1024 * 1024)
-            if not block: break
-            total += len(block)
-            if total > MAX_LORA: raise MatchedRuntimeError("adapter copy exceeds bound")
-            digest.update(block); dst.write(block)
-        dst.flush(); os.fsync(dst.fileno())
-    after = source.stat()
-    if total != before.st_size or after.st_size != before.st_size or after.st_mtime_ns != before.st_mtime_ns or digest.hexdigest() != expected or _file_hash(target, MAX_LORA)[0] != expected:
-        raise MatchedRuntimeError("adapter changed while copied")
+    _pair_engine().copy_stream(source, target, expected, maximum=MAX_LORA, source_root=STUDIO_PRIVATE, safe_existing=_safe_existing, reparse=_reparse, file_hash=_file_hash, error=MatchedRuntimeError)
+
+
+def _pumper_factory(engine: Any) -> Any:
+    return lambda stream, path: engine.Pumper(stream, path, maximum=MAX_STDERR, error=MatchedRuntimeError)
 
 
 def execute(evidence: dict[str, Any]) -> dict[str, Any]:
-    """Run exactly two sequential prompts after revalidating fixed evidence."""
+    """Run exactly two policy-validated rows through the retained pair engine."""
     stage = evidence.get("stage")
     if not isinstance(stage, str):
         raise MatchedRuntimeError("execute requires validated stage")
     evidence = validate(stage)
     _c1, helper, _code = _load_bound_modules()
-    root = MAIN_PRIVATE / f"figment-local-lora-matched-{stage}-20260908-v1"
-    if root.exists() or root.parent != MAIN_PRIVATE or not MAIN_PRIVATE.is_dir():
-        raise MatchedRuntimeError("matched output root must be fresh and fixed")
-    root.mkdir()
-    output = root / "output"
-    loras = output / "loras"
-    temp = root / "temp"
-    user = root / "user"
-    home = root / "home"
-    for path in (output, loras, temp, user, home): path.mkdir()
-    stderr_path = root / "stderr.log"
-    stderr_path.open("xb").close()
+    engine = _pair_engine()  # Retain this reviewed module through cleanup and journaling.
     checkpoint = evidence["checkpoint"]
-    staged = None
-    process = wrapper = None
-    tracked: dict[int, Any] = {}
-    pumper: _Pumper | None = None
-    teardown: dict[str, Any] = {"verified_stopped": False}
-    results: list[dict[str, Any]] = []
-    application: dict[str, int] | None = None
-    deadline = time.monotonic() + PAIR_SECONDS
-    failure: BaseException | None = None
-    secondary_failures: list[str] = []
-    try:
-        if checkpoint is not None:
-            source = _quality_paths("current" if stage.startswith("current-") else "concise")[1].parent / "output" / checkpoint["filename"]
-            staged = loras / checkpoint["filename"]
-            _copy_stream(source, staged, checkpoint["sha256"])
-            copied = _checkpoint_header(staged, checkpoint["ss_steps"], evidence["plan"]["base_model"]["sha256"], root=MAIN_PRIVATE)
-            if copied["sha256"] != checkpoint["sha256"]:
-                raise MatchedRuntimeError("staged adapter hash changed")
-        _runtime_output_bound(output, staged)
-        if time.monotonic() >= deadline:
-            raise MatchedRuntimeError("matched run exceeded its one deadline before launch")
-        helper._port_available()
-        command = [str(helper.COMFY_PYTHON), "-X", "utf8", "main.py", "--listen", "127.0.0.1", "--port", str(helper.PORT), "--output-directory", str(output), "--temp-directory", str(temp), "--user-directory", str(user), "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch"]
-        process = subprocess.Popen(command, cwd=helper.COMFY_ROOT, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=helper._isolated_environment(root), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
-        pumper = _Pumper(process.stderr, stderr_path)
-        pumper.start()
-        wrapper = helper._process_identity(process.pid)
-        if wrapper is None:
-            raise MatchedRuntimeError("cannot identify owned Comfy wrapper")
-        tracked = helper._wait_for_owned_listener(wrapper, deadline, {wrapper.pid: wrapper})
-        opener = helper._loopback_opener()
-        for row in evidence["rows"]:
-            if time.monotonic() >= deadline:
-                raise MatchedRuntimeError("matched run exceeded its one deadline")
-            _runtime_output_bound(output, staged)
-            marker = root / f"dispatch-{row['seed']}.json"
-            with marker.open("xb") as handle:
-                handle.write(json.dumps({"stage": stage, "row_id": row["id"], "graph_sha256": _sha(json.dumps(row["graph"], sort_keys=True, separators=(",", ":")).encode())}, sort_keys=True).encode())
-            tracked = helper._require_owned_listener(wrapper, tracked)
-            queued = helper._local_json(opener, "POST", "/prompt", {"prompt": row["graph"], "client_id": uuid.uuid4().hex})
-            prompt_id = queued.get("prompt_id")
-            if not isinstance(prompt_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", prompt_id): raise MatchedRuntimeError("local prompt id is invalid")
-            completed = None
-            while time.monotonic() < deadline:
-                if pumper.error is not None or pumper.truncated:
-                    raise MatchedRuntimeError("Comfy stderr journal failed while polling")
-                _runtime_output_bound(output, staged)
-                tracked = helper._require_owned_listener(wrapper, tracked)
-                completed = helper._completed_output(helper._local_json(opener, "GET", f"/history/{prompt_id}"), prompt_id, output)
-                if completed is not None: break
-                time.sleep(0.5)
-            if completed is None: raise MatchedRuntimeError("matched prompt did not complete")
-            results.append({"row_id": row["id"], "seed": row["seed"], "prompt_id": prompt_id, "output": completed})
-        if len(results) != 2 or len({entry["output"]["sha256"] for entry in results}) != 2:
-            raise MatchedRuntimeError("matched pair output inventory is invalid")
-    except BaseException as exc:
-        failure = exc
-    finally:
-        try:
-            if wrapper is not None:
-                teardown = helper._teardown(wrapper, tracked, process)
-            elif process is not None:
-                try:
-                    process.terminate(); process.wait(timeout=5)
-                    teardown = {"verified_stopped": False, "retained_wrapper_cleanup": "terminated-without-identity"}
-                except BaseException as cleanup_error:
-                    teardown = {"verified_stopped": False, "retained_wrapper_cleanup": type(cleanup_error).__name__}
-        except BaseException as exc:
-            teardown = {"verified_stopped": False, "teardown_error_class": type(exc).__name__}
-            if failure is None:
-                failure = exc
-            else:
-                secondary_failures.append(type(exc).__name__)
-        try:
-            if pumper is not None:
-                application = _journal_lora_application(pumper, checkpoint)
-        except BaseException as exc:
-            if failure is None:
-                failure = exc
-            else:
-                secondary_failures.append(type(exc).__name__)
-    if failure is None:
-        try:
-            if teardown.get("verified_stopped") is not True:
-                raise MatchedRuntimeError("owned Comfy teardown was not verified")
-            _exact_output_inventory(output, results, staged)
-        except BaseException as exc:
-            failure = exc
-    if failure is not None:
-        try:
-            stderr_raw = _read_bounded(stderr_path, MAX_STDERR, "Comfy stderr journal", allow_empty=True)
-            stderr_sha = _sha(stderr_raw)
-        except BaseException as exc:
-            stderr_sha = None
-            secondary_failures.append(type(exc).__name__)
-        _record(root, "failure.json", {"schema": SCHEMA, "status": "failed", "not_promotable": True, "stage": stage, "inputs": _receipt_inputs(evidence), "failure_class": type(failure).__name__, "failure_message": str(failure)[:256], "teardown": teardown, "rows": results, "stderr_sha256": stderr_sha, "stderr_complete": pumper is None or (pumper.started and pumper.error is None and not pumper.truncated and not pumper.thread.is_alive()), "secondary_failure_classes": secondary_failures})
-        raise failure
-    record = {"schema": SCHEMA, "status": "complete", "not_promotable": True, "stage": stage, "inputs": _receipt_inputs(evidence), "rows": results, "lora_application": application, "teardown": teardown, "stderr_sha256": _file_hash(stderr_path, MAX_STDERR, allow_empty=True)[0], "deadline_seconds": PAIR_SECONDS}
-    _record(root, "receipt.json", record)
-    return record
+    source = None
+    if checkpoint is not None:
+        branch = "current" if stage.startswith("current-") else "concise"
+        source = _quality_paths(branch)[1].parent / "output" / checkpoint["filename"]
 
+    def verify_staged(path: Path) -> dict[str, Any]:
+        copied = _checkpoint_header(path, checkpoint["ss_steps"], evidence["plan"]["base_model"]["sha256"], root=MAIN_PRIVATE)
+        if copied["sha256"] != checkpoint["sha256"]:
+            raise MatchedRuntimeError("staged adapter hash changed")
+        return copied
+
+    root = MAIN_PRIVATE / f"figment-local-lora-matched-{stage}-20260908-v1"
+    return engine.execute_pair(evidence, helper, root=root, main_private=MAIN_PRIVATE, studio_private=STUDIO_PRIVATE, source=source, verify_staged=verify_staged, verify_before_success=_assert_pair_engine_hash, receipt_inputs=_receipt_inputs, sha=_sha, safe_existing=_safe_existing, reparse=_reparse, file_hash=_file_hash, error=MatchedRuntimeError, pumper_factory=_pumper_factory(engine), schema=SCHEMA, maximum_lora=MAX_LORA, maximum_stderr=MAX_STDERR, maximum_png=MAX_PNG, maximum_output_entries=MAX_OUTPUT_ENTRIES, deadline_seconds=PAIR_SECONDS)
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__); parser.add_argument("--stage", required=True); parser.add_argument("--execute", action="store_true")

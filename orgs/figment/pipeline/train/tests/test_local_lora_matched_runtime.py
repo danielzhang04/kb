@@ -103,7 +103,7 @@ class Helper:
 
 
 def evidence():
-    return {"stage": "base", "plan": {"base_model": {"sha256": "a" * 64}}, "plan_file_sha256": "a" * 64, "plan_sha256": "b" * 64, "admission": {}, "matched_admission_sha256": "b" * 64, "matched_admission_id": "figment-matched-base-v1", "runtime_sha256": "c" * 64, "checkpoint": None, "rows": [{"id": "base-seed-481516234", "seed": 481516234, "graph": {"seed": 481516234}}, {"id": "base-seed-90210", "seed": 90210, "graph": {"seed": 90210}}], "code": {"c1_sha256": "c" * 64, "ownership_sha256": "d" * 64}, "producer_receipt_sha256": "e" * 64, "producer_admission_sha256": "f" * 64, "base_receipt_sha256": None, "base_png_sha256_by_seed": None}
+    return {"stage": "base", "plan": {"base_model": {"sha256": "a" * 64}}, "plan_file_sha256": "a" * 64, "plan_sha256": "b" * 64, "admission": {}, "matched_admission_sha256": "b" * 64, "matched_admission_id": "figment-matched-base-v1", "runtime_sha256": "c" * 64, "checkpoint": None, "rows": [{"id": "base-seed-481516234", "seed": 481516234, "graph": {"seed": 481516234}}, {"id": "base-seed-90210", "seed": 90210, "graph": {"seed": 90210}}], "code": {"c1_sha256": "c" * 64, "ownership_sha256": "d" * 64, "pair_engine_sha256": "e" * 64}, "producer_receipt_sha256": "e" * 64, "producer_admission_sha256": "f" * 64, "base_receipt_sha256": None, "base_png_sha256_by_seed": None}
 
 
 def test_execute_runs_exactly_two_rows_and_requires_unique_output_hashes(tmp_path, monkeypatch):
@@ -118,6 +118,7 @@ def test_execute_runs_exactly_two_rows_and_requires_unique_output_hashes(tmp_pat
     assert result["inputs"]["runtime_sha256"] == item["runtime_sha256"]
     assert result["inputs"]["matched_admission_sha256"] == item["matched_admission_sha256"]
     assert result["inputs"]["matched_admission_id"] == item["matched_admission_id"]
+    assert result["inputs"]["pair_engine_sha256"] == item["code"]["pair_engine_sha256"]
 
 
 def test_execute_rejects_duplicate_output_hashes_and_still_tears_down(tmp_path, monkeypatch):
@@ -242,7 +243,7 @@ def test_teardown_or_journal_failure_still_writes_durable_failure(tmp_path, monk
     second = tmp_path / "second"
     second.mkdir()
     item, _helper = _wire_execute(second, monkeypatch)
-    monkeypatch.setattr(runtime, "_Pumper", BrokenPumper)
+    monkeypatch.setattr(runtime, "_pumper_factory", lambda _engine: BrokenPumper)
     monkeypatch.setattr(runtime.subprocess, "Popen", lambda *_args, **_kwargs: Process())
     with pytest.raises(runtime.MatchedRuntimeError, match="journal failed"):
         runtime.execute(item)
@@ -250,14 +251,47 @@ def test_teardown_or_journal_failure_still_writes_durable_failure(tmp_path, monk
     assert failure["failure_class"] == "MatchedRuntimeError"
 
 
-def test_copy_stream_stops_at_the_adapter_bound(tmp_path, monkeypatch):
-    monkeypatch.setattr(runtime, "STUDIO_PRIVATE", tmp_path)
-    monkeypatch.setattr(runtime, "MAX_LORA", 4)
-    source = tmp_path / "source.safetensors"
-    source.write_bytes(b"12345")
-    target = tmp_path / "target.safetensors"
-    with pytest.raises(runtime.MatchedRuntimeError, match="boundary is unsafe"):
-        runtime._copy_stream(source, target, hashlib.sha256(b"12345").hexdigest())
+def test_late_pair_engine_hash_failure_writes_durable_failure(tmp_path, monkeypatch):
+    item = evidence(); helper = Helper(); c1 = FakeC1(); calls = []
+    item["code"]["pair_engine_sha256"] = "g" * 64
+    monkeypatch.setattr(runtime, "MAIN_PRIVATE", tmp_path)
+    monkeypatch.setattr(runtime, "validate", lambda _stage: item)
+    monkeypatch.setattr(runtime, "_load_bound_modules", lambda: (c1, helper, item["code"]))
+    def changed_after_launch():
+        calls.append(True)
+        if len(calls) > 1:
+            raise runtime.MatchedRuntimeError("reviewed pair engine changed")
+    monkeypatch.setattr(runtime, "_assert_pair_engine_hash", changed_after_launch)
+    monkeypatch.setattr(runtime, "_PAIR_ENGINE", None)
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+    with pytest.raises(runtime.MatchedRuntimeError, match="reviewed pair engine changed"):
+        runtime.execute(item)
+    failure = json.loads((_run_root(tmp_path) / "failure.json").read_text())
+    assert len(calls) == 2
+    assert failure["inputs"]["pair_engine_sha256"] == "g" * 64
+    assert failure["teardown"]["verified_stopped"] is True
+
+
+def test_pumper_start_failure_tears_down_identified_wrapper(tmp_path, monkeypatch):
+    item, helper = _wire_execute(tmp_path, monkeypatch); calls = []
+    class FinishedThread:
+        def is_alive(self): return False
+    class StartFails:
+        def __init__(self, _stream, path):
+            self.path = path; self.started = False; self.error = None; self.truncated = False; self.thread = FinishedThread()
+        def start(self): raise RuntimeError("pump start failed")
+        def finish(self): return None
+    helper._teardown = lambda *_args: calls.append(True) or {"verified_stopped": True}
+    monkeypatch.setattr(runtime, "_pumper_factory", lambda _engine: StartFails)
+    monkeypatch.setattr(runtime.subprocess, "Popen", lambda *_args, **_kwargs: Process())
+    with pytest.raises(RuntimeError, match="pump start failed"):
+        runtime.execute(item)
+    root = _run_root(tmp_path)
+    failure = json.loads((root / "failure.json").read_text())
+    assert calls == [True]
+    assert failure["teardown"]["verified_stopped"] is True
+    assert failure["stderr_complete"] is False
+    assert not (root / "receipt.json").exists()
 
 
 def _observation(seed: int):
@@ -303,6 +337,30 @@ def test_prior_reviews_bind_actual_png_bytes_and_nonempty_observations(tmp_path,
         runtime._prior_reviews("current-20", {"prior_pair_review_digests": digests})
 
 
+def test_current50_refuses_the_current20_stop_record(tmp_path, monkeypatch):
+    monkeypatch.setattr(runtime, "MAIN_PRIVATE", tmp_path)
+    root, _rows = _write_prior_pair(tmp_path)
+    current = tmp_path / "figment-local-lora-matched-current-20-20260908-v1"
+    root.rename(current)
+    receipt_path = current / "receipt.json"
+    receipt = json.loads(receipt_path.read_text())
+    receipt["stage"] = "current-20"
+    receipt_path.write_text(json.dumps(receipt))
+    receipt_sha = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
+    for role in ("root", "independent"):
+        review_path = current / f"review-{role}.json"
+        review = json.loads(review_path.read_text())
+        review["stage"] = "current-20"
+        review["receipt_sha256"] = receipt_sha
+        review_path.write_text(json.dumps(review))
+    stopped = json.loads((current / "review-independent.json").read_text())
+    stopped["disposition"] = "stop"
+    (current / "review-independent.json").write_text(json.dumps(stopped))
+    digests = [hashlib.sha256((current / f"review-{role}.json").read_bytes()).hexdigest() for role in ("root", "independent")]
+    with pytest.raises(runtime.MatchedRuntimeError, match="prior pair review is invalid"):
+        runtime._prior_reviews("current-50", {"prior_pair_review_digests": digests})
+
+
 def test_bound_module_loader_requires_clean_comfy_and_checked_base(tmp_path, monkeypatch):
     c1_path = tmp_path / "c1.py"
     ownership_path = tmp_path / "ownership.py"
@@ -341,6 +399,19 @@ def test_bound_module_loader_requires_clean_comfy_and_checked_base(tmp_path, mon
     helper.git_clean = lambda _root: False
     with pytest.raises(runtime.MatchedRuntimeError, match="pinned clean"):
         runtime._load_bound_modules()
+
+
+def test_pair_engine_loader_requires_its_reviewed_source_hash(tmp_path, monkeypatch):
+    engine_path = tmp_path / "engine.py"
+    engine_path.write_text("VALUE = 1\n")
+    monkeypatch.setattr(runtime, "PAIR_ENGINE_PATH", engine_path)
+    monkeypatch.setattr(runtime, "PAIR_ENGINE_SHA256", hashlib.sha256(engine_path.read_bytes()).hexdigest())
+    monkeypatch.setattr(runtime, "_PAIR_ENGINE", None)
+    loaded = runtime._pair_engine()
+    assert loaded.VALUE == 1
+    engine_path.write_text("VALUE = 2\n")
+    with pytest.raises(runtime.MatchedRuntimeError, match="reviewed pair engine changed"):
+        runtime._pair_engine()
 
 
 def test_safe_existing_checks_ancestors_root_shape_and_exact_resolution(tmp_path, monkeypatch):
