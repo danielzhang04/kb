@@ -95,6 +95,12 @@ describe('Figment read projection', () => {
     expect(projection.diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', podId: 'fixture-pod', artifacts: [{ name: 'proof.png', width: 4, height: 3, sha256: digest(png()) }], artifactsTruncated: false });
     expect(projection.references).toMatchObject({ truncated: false, items: [{ creator: 'creator-a', name: 'g01.jpg', width: 4, height: 3 }] });
     expect(projection.localTraining).toEqual({ status: 'not-configured' });
+    expect(projection.localTrainingResults).toEqual({ status: 'not-configured' });
+  });
+
+  it('keeps completed-run roots optional and fails closed when their configured shape is malformed', async () => {
+    const paths = await fixture();
+    expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, {} as never).localTrainingResults).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
   });
 
   it('marks changed gate subjects and checkpoint hashes stale', async () => {

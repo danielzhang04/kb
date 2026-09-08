@@ -494,10 +494,12 @@ describe('server', () => {
     app = buildApp({
       validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
       figmentLocalTrainingEvidence: { cpuPreflight: 'missing-cpu', tokenizerLaunch: 'missing-launch', plan: 'missing-plan', tokenizerLoad: 'missing-tokenizer' },
+      figmentLocalTrainingResultRoots: { tenStep: { run: 'missing-ten-run', plan: 'missing-ten-plan', admissionParent: 'missing-ten-admission' }, currentQuality: { run: 'missing-current-run', plan: 'missing-current-plan', admissionParent: 'missing-current-admission', cpu: 'missing-current-cpu' } },
     });
+    expect((await app.inject({ method: 'GET', url: '/api/figment', headers: matrixHeaders })).statusCode).toBe(401);
     const response = await app.inject({ method: 'GET', url: '/api/figment', headers: sessionHeaders() });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' } });
+    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' }, localTrainingResults: { status: 'unavailable', reason: 'evidence-unavailable' } });
   });
 
   it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {

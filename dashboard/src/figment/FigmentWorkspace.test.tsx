@@ -59,11 +59,40 @@ describe('FigmentWorkspace', () => {
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
+  it('shows two historical completed-run cards without another request or a quality claim', async () => {
+    const localTrainingResults = { status: 'recorded' as const, historical: true as const, items: [
+      { kind: 'availability-probe' as const, completed: true as const, durationSeconds: 79.234, steps: 10, artifactCount: 1, checkpoints: [{ step: 10, sha256: 'a'.repeat(64), bytes: 170540916 }], quality: 'not-evaluated' as const },
+      { kind: 'current-quality-fit' as const, completed: true as const, durationSeconds: 217.629, steps: 100, artifactCount: 11, checkpoints: [{ step: 20, sha256: 'b'.repeat(64), bytes: 170540948 }, { step: 50, sha256: 'c'.repeat(64), bytes: 170540948 }, { step: 100, sha256: 'd'.repeat(64), bytes: 170540948 }], quality: 'not-evaluated' as const },
+    ] };
+    const fetchImpl = vi.fn(() => response({ ...projection, localTrainingResults })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
+    expect(screen.getByText('10-step local availability probe — Completed')).toBeTruthy();
+    expect(screen.getByText('Current-caption 100-step local fit — Completed')).toBeTruthy();
+    expect(screen.getByText('These records show completed local runs and artifact bindings. Quality has not been evaluated here.')).toBeTruthy();
+    expect(screen.getAllByText('Quality not evaluated by these records.')).toHaveLength(2);
+    expect(screen.queryByText('GPU training')).toBeNull();
+    expect(screen.queryByText('Quality review')).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
   it('normalizes an older hub response and rejects malformed local-training evidence', async () => {
     const oldHub = vi.fn(() => response(projection)) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={oldHub} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
     expect(screen.getByText('No local training evidence source is configured.')).toBeTruthy(); cleanup();
     const malformed = vi.fn(() => response({ ...projection, localTraining: { status: 'recorded', historical: false } })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
+  });
+
+  it('rejects malformed completed-run evidence', async () => {
+    const malformed = vi.fn(() => response({ ...projection, localTrainingResults: { status: 'recorded', historical: true, items: [] } })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
+  });
+
+  it('rejects completed-run evidence with unselected checkpoint steps', async () => {
+    const malformed = vi.fn(() => response({ ...projection, localTrainingResults: { status: 'recorded', historical: true, items: [
+      { kind: 'availability-probe', completed: true, durationSeconds: 1, steps: 10, artifactCount: 1, checkpoints: [{ step: 9, sha256: 'a'.repeat(64), bytes: 1 }], quality: 'not-evaluated' },
+      { kind: 'current-quality-fit', completed: true, durationSeconds: 1, steps: 100, artifactCount: 11, checkpoints: [{ step: 10, sha256: 'b'.repeat(64), bytes: 1 }, { step: 30, sha256: 'c'.repeat(64), bytes: 1 }, { step: 70, sha256: 'd'.repeat(64), bytes: 1 }], quality: 'not-evaluated' },
+    ] } })) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
   });
 

@@ -17,7 +17,7 @@ import { createHomeRoutePorts, registerHomeRoutes, createActivationReader } from
 import { registerTraceRead } from './trace/routes.ts';
 import { registerFigmentRead } from './figment/routes.ts';
 import { registerFigmentTesterPreview } from './figment/planPreview.ts';
-import type { FigmentLocalTrainingEvidenceRoots } from './figment/localTraining.ts';
+import type { FigmentLocalTrainingEvidenceRoots, FigmentLocalTrainingResultRoots } from './figment/localTraining.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
@@ -132,6 +132,8 @@ export interface BuildAppOptions {
   figmentGeneratedInputRoot?: string | null;
   /** Fixed receipt directories for a historical local-training preparation projection. */
   figmentLocalTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null;
+  /** Fixed receipt directories for historical completed local-run summaries. */
+  figmentLocalTrainingResultRoots?: FigmentLocalTrainingResultRoots | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -282,11 +284,25 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       if (values.every((value) => value === undefined)) return null;
       return { cpuPreflight: values[0] ?? '', tokenizerLaunch: values[1] ?? '', plan: values[2] ?? '', tokenizerLoad: values[3] ?? '' };
     })();
+    const configuredLocalTrainingResults = options.figmentLocalTrainingResultRoots ?? (() => {
+      const values = [
+        process.env.DASHBOARD_FIGMENT_LOCAL_TEN_STEP_RUN_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_TEN_STEP_PLAN_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_TEN_STEP_ADMISSION_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_CURRENT_QUALITY_RUN_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_CURRENT_QUALITY_PLAN_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_CURRENT_QUALITY_ADMISSION_ROOT,
+        process.env.DASHBOARD_FIGMENT_LOCAL_CURRENT_QUALITY_CPU_ROOT,
+      ];
+      if (values.every((value) => value === undefined)) return null;
+      return { tenStep: { run: values[0] ?? '', plan: values[1] ?? '', admissionParent: values[2] ?? '' }, currentQuality: { run: values[3] ?? '', plan: values[4] ?? '', admissionParent: values[5] ?? '', cpu: values[6] ?? '' } };
+    })();
     registerFigmentRead(scope, {
       repoRoot,
       diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
       generatedInputRoot: options.figmentGeneratedInputRoot ?? process.env.DASHBOARD_FIGMENT_GENERATED_INPUT_ROOT ?? null,
       localTrainingEvidence: configuredLocalTraining,
+      localTrainingResultRoots: configuredLocalTrainingResults,
     });
     registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });
