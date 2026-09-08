@@ -320,6 +320,37 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 
 # codex-worker
 
+## 2026-09-07 — KB VM-overhaul context recovery
+
+- The source resume worktree is `codex/kb-vm-overhaul-resume-20260907` at
+  `9512f79f`; it contains the three reviewed containment fixes and the
+  corrected/reviewed dormant Slice 1A plan. The two dirty implementation files
+  are `adapters.ts` and `spendGrantProvision.ts`; `adapters.test.ts` was added
+  in this wave. Keep this separate from the coordination proposal worktree.
+- The Slice 1A builder completed the four-file diff with 47 focused tests and
+  typecheck passing. Initial ESM spy instrumentation failed and was corrected;
+  independent adapter review on sol/high is pending.
+- The Lock preference and full-overhaul versus recovery-first scope are still
+  unanswered. A local proposal must keep Phase 0 incomplete, avoid minting
+  approval, avoid enabling dashboard dispatch, omit a terminal
+  `execution-controller`, and avoid treating isolated VM/readiness evidence as
+  deployment authorization.
+- Native task assignments record requested models (adapter/VM
+  `gpt-5.6-terra` high; context recovery `gpt-5.6-luna` high) while
+  responding-model telemetry is unavailable. Use unknown/unverified cost fields
+  rather than asserting zero spend or fabricating a grade.
+
+## 2026-09-08 — KB VM-overhaul checkpoint
+
+- A clean source WIP at `1ba6d038` and current HEAD `246b342f` preserve the
+  four-file Slice 1A result and drafted remaining-integration work order.
+- The fresh unaffected Linux gate passed 363 selected tests plus typecheck and
+  native Vite build from archive SHA-256
+  `8e4fd59ea86183199a7ad64a4d8bf09be2d4b39e69b2d847c3a0a6c854ae4613`; it
+  intentionally excluded the paused adapter fixture and is not full acceptance.
+- A fresh sol/high integration-plan review is active as an inert proposal task;
+  keep the paused Linux fixture retry bounded to one user-directed cycle.
+
 ## 2026-08-11 — Task A2, codex image engine
 
 - A single `p4_probe.py --sandbox read-only` attempt exited in 34.1 seconds with certificate and

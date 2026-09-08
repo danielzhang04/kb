@@ -1,66 +1,67 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-06 (approved implementation in isolated worktree; no live-state probe)_
+_Updated: 2026-09-08 (published draft checkpoint; no production change)_
 
 ## Now
-- Architecture audit and overhaul proposal prepared on
-  `codex/kb-platform-overhaul-20260906`, against main `39197cf5`.
-  Packet: `orgs/kb-ops/output/2026-09-06-platform-audit/README.md` on that branch.
-  Canonical continuation: `handoffs/2026-09-06-kb-platform-phase0-implementation.md`.
-- Daniel requested all capabilities and an architecture-flexible implementation
-  with adversarial reviews/tests throughout, preceded by a pre-build summary.
-  `implementation-sequence.md` adds bounded scopes and early dashboard/broker gates.
-  Daniel subsequently approved execution. The twelve-phase task checklist is
-  `dashboards/kb-platform-implementation.md`; Phase 0 is partly built and resumed
-  on its same manager card for bounded plan correction and fresh review; later
-  phases remain gated. Compatibility-preserving Lock wiring is a bounded working
-  assumption, not an explicit policy vote or approved UI redesign.
-  Implementation branch: `codex/kb-platform-phase0-20260906`, based on pending
-  prerequisite `e8bf8d35`, not on a merged or deployed outage repair.
-  Local commit `25f87ff3` contains the independently reviewed drain barrier:
-  70 focused tests pass, including falsey drain failures and explicit retries.
-  Reporter containment (`02092581`) and restricted diagnostics (`227e1bc9`) are
-  also committed locally, with independent READY/PASS reviews. Focused gates:
-  reporter 245, diagnostics/index/store 5+96+163; typecheck and native build pass.
-  No phase is complete. The existing Linux broker baseline passed 11 tests on
-  prerequisite e8bf8d35, not the new patches. Browser connection is unavailable.
-- September 6 recovery handoff records a dashboard hydrate outage. Pending repair
-  PR #173 (`e8bf8d35`) was inspected separately, not merged or deployed by this audit.
-  Current VM availability, enabled schedules, and execution-gate state are unverified.
-- Source review identifies remaining detached error-reporting paths, desktop
-  scheduler/worktree hazards, and missing production bindings for cross-host
-  placement and seven System learning paths. Details distinguish latent gaps from
-  defects on the existing single-VM path.
-- Runtime source changes are local only. No governance, approvals, live-state or
-  deployment changes were made. Local tests do not certify production readiness.
-  The validated checklist is local on the rebased coordination proposal. A publication
-  approval check blocked pushing; explicit permission was requested, not bypassed.
+
+- Daniel's requested scope remains the complete twelve-phase overhaul with
+  adversarial reviews and tests. Phase 0 is partly built and remains incomplete;
+  Phases 1–11 remain gated. Lock semantics are still a policy decision, not an
+  implementation approval.
+- The source/evidence checkpoint is published on draft PR176: remote head
+  `fb66695b`, final source commit `ddadeb07`. It includes WIP `1ba6d038`, the
+  initial remaining-integration plan `246b342f`, the exact-LF manual-runner fix,
+  and the evidence checkpoint. The source tree is clean. `9512f79f` remains the
+  recovered baseline and `246b342f` remains the historical initial draft
+  reference.
+- Slice 1A adapter WIP is paused awaiting one user-directed actual-mode-capture,
+  review, and Linux rerun cycle. The first integration-plan review returned
+  REQUEST CHANGES with four concrete blockers: ledger recovery API; all
+  pre-write release boundaries; immutable empty-claim/prompt-identity race
+  handling; and interface ordering. The second review returned REQUEST CHANGES
+  with two remaining blockers: attempt status/record ownership plus CAS-loser
+  claim release, and all-admitted ledger receipt tracking before Unlock. The
+  plan and Slice 1A fixture are paused under the two-failure rule pending one
+  renewed bounded correction/review cycle. Native responding-model and cost
+  telemetry remain unknown.
+- Windows evidence includes adapter 47 tests and the independent 4-file/79-test
+  gate. Fresh unaffected Linux evidence passed 363 selected tests, excluding
+  `adapters.test.ts`, plus typecheck, native Vite build (128 modules), and
+  realBroker 11. Node/npm were 24.19.0/11.17.0 against pins 24.18.0/11.16.0.
+  Archive SHA-256: `8e4fd59ea86183199a7ad64a4d8bf09be2d4b39e69b2d847c3a0a6c854ae4613`.
+- VM evidence is read-only: dashboard systemd failed/exit 1 on release
+  `39197cf5d9322f21d859d6f7a98d3a5b57cc42ea`, while tailnet `/healthz` and
+  `/readyz` returned HTTP 502. PR173 remains OPEN/MERGEABLE and is the unmerged
+  prerequisite. Browser bootstrap is blocked by the Windows ACL-read failure.
+- No production deployment, authority change, or governance change occurred.
+  Build/review/publication work was authorized and recorded; production
+  activation still requires its signed ceremony and acceptance evidence.
 
 ## Next
-- Complete the resumed bounded plan correction and fresh review. After technical
-  review, compatibility-preserving adapter work may proceed under Daniel's existing
-  approval; it does not resolve Lock/stop policy. Obtain further direction before
-  any new durable cancellation semantics or UI policy, and before claiming actual
-  browser/server evidence. All capabilities remain required. Confirm topology before
-  desktop/placement-dependent work and retain later decision gates.
-- Keep production outage recovery under its existing handoff/approval process.
-- Establish the real Linux broker/worker acceptance harness and compare bounded
-  SQLite/Temporal recovery implementations before committing to state migration.
+
+- Keep the plan and adapter implementation paused under the two-failure rule.
+  Await one user-directed bounded correction/review cycle for the two remaining
+  plan blockers and the Slice 1A actual-mode-capture/Linux rerun.
+- Preserve the full twelve-phase sequence and Phase 0 gate. Do not bind lifetime
+  callbacks, claim Phase 0, or infer production readiness from selected tests.
+- Keep VM/browser facts read-only and explicit. Continue only the authorized
+  isolated work; production activation remains separately signed and gated.
 
 ## Blocked
-- Live operational status cannot be inferred from these isolated source/test results.
-- The earlier execution-generation plan failed review twice; Daniel resumed its
-  bounded plan-correction/fresh-review path. Wake-me card
-  01K2KBARCH0600000000000112 keeps the nested post-await Git/file effect gap and
-  unresolved Lock/stop policy visible. No replacement UI/control was approved.
-- Reporter and diagnostics diffs exceed 400 changed lines; human review remains
-  required. Publication approval and an available interactive Browser are pending.
-- Production cutover and authority changes require their own human decisions and
-  gates. The audit is complete; implementation has started but is not phase-complete.
+
+- Phase 0 lacks the full generation fence, integration/browser/fault evidence,
+  and required human gate. The second review's two remaining plan blockers
+  remain unresolved.
+- Lock/stop semantics, runtime selection, topology, cutover, and production
+  authority remain open decisions. No replacement UI/control was approved.
+- Browser proof is unavailable; VM readiness is failed on the observed release.
+  Unknown native telemetry must remain unknown rather than becoming a zero-cost
+  or model-identity claim.
 
 ## Historical evidence (not current operational status)
+
 - July 21 Wave A supervised `self-lint-report` succeeded (`run-7b0b8de8`, four
-  runbook checks), then the daemon was returned to inert. The cadence was dormant
-  at that time. Do not carry those July observations forward as September facts.
+  runbook checks), then the daemon was returned to inert. Do not carry those
+  July observations forward as September facts.
 - Prior unresolved notes concerned repo-wide read-scope design and an intent-scan
   false positive. This audit did not adjudicate their current merge/status history.

@@ -1,0 +1,3 @@
+model	requested_model	responding_model	step	telemetry_status	usd
+unverified	unknown	unavailable	kb-vm-overhaul:unaffected-linux-363-gate	selected unaffected Linux evidence; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:integration-plan-review	active inert proposal review; unknown cost	unknown
