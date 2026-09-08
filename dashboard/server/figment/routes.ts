@@ -5,7 +5,7 @@
  * checkpoint approval; incomplete checkpoint lineage stays `unknown`.
  */
 import { createHash } from 'node:crypto';
-import { lstatSync, opendirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { closeSync, fstatSync, lstatSync, openSync, opendirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 
@@ -18,8 +18,11 @@ const MAX_JSON_DEPTH = 64;
 const MAX_DIR_ENTRIES = 256;
 const MAX_DIRECTORIES = 512;
 const MAX_DIAGNOSTIC_JOBS = 128;
-const MAX_FILES_PER_JOB = 32;
-const MAX_DIAGNOSTIC_ARTIFACTS = 512;
+const MAX_FILES_PER_JOB = 128;
+const MAX_DIAGNOSTIC_ARTIFACTS = 128;
+const MAX_DIAGNOSTIC_PNG_BYTES = 16 * 1024 * 1024;
+const MAX_DIAGNOSTIC_TOTAL_PNG_BYTES = 128 * 1024 * 1024;
+const MAX_DIAGNOSTIC_PNG_PIXELS = 32_000_000;
 const MAX_PLAN_STAGES = 8;
 const MAX_PLAN_RUNS_PER_STAGE = 32;
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -54,7 +57,7 @@ export interface FigmentProjection {
 export type DiagnosticProjection =
   | { status: 'not-configured' }
   | { status: 'unavailable'; reason: 'unsafe-configured-root' | 'missing-run-record' | 'malformed-run-record' | 'unsafe-artifact-reference' }
-  | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; modifiedAt: string }> };
+  | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; artifactsTruncated: boolean };
 
 interface SafeRoot { readonly path: string; readonly real: string; }
 
@@ -145,6 +148,32 @@ function isObject(value: unknown): value is Record<string, unknown> {
 function text(value: unknown): string | null { return typeof value === 'string' ? value : null; }
 function sha256File(path: string): string | null {
   try { return statSync(path).size <= MAX_HASH_BYTES ? createHash('sha256').update(readFileSync(path)).digest('hex') : null; } catch { return null; }
+}
+
+const PNG_SIGNATURE = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+function pngInfo(bytes: Buffer): { width: number; height: number } | null {
+  if (bytes.length < 33 || !bytes.subarray(0, 8).equals(PNG_SIGNATURE) || bytes.readUInt32BE(8) !== 13 || bytes.subarray(12, 16).toString('ascii') !== 'IHDR') return null;
+  const width = bytes.readUInt32BE(16); const height = bytes.readUInt32BE(20);
+  return width > 0 && height > 0 && width * height <= MAX_DIAGNOSTIC_PNG_PIXELS ? { width, height } : null;
+}
+
+/** Reads no more than the configured PNG limit, and rejects a file that changes while open. */
+function boundedPng(path: string): { bytes: Buffer; modifiedAt: string } | null {
+  let descriptor: number | null = null;
+  try {
+    descriptor = openSync(path, 'r');
+    const before = fstatSync(descriptor);
+    if (!before.isFile() || before.size < 0 || before.size > MAX_DIAGNOSTIC_PNG_BYTES) return null;
+    const bytes = Buffer.allocUnsafe(before.size);
+    let offset = 0;
+    while (offset < bytes.length) {
+      const read = readSync(descriptor, bytes, offset, bytes.length - offset, offset);
+      if (read <= 0) return null;
+      offset += read;
+    }
+    const after = fstatSync(descriptor);
+    return after.isFile() && after.size === before.size ? { bytes, modifiedAt: after.mtime.toISOString() } : null;
+  } catch { return null; } finally { if (descriptor !== null) { try { closeSync(descriptor); } catch { /* close failure cannot make an asset valid */ } } }
 }
 
 function canonicalJson(value: unknown): string {
@@ -317,31 +346,58 @@ function collectResearch(root: SafeRoot): FigmentProjection['research'] {
   return { available, artifacts: artifacts.sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name)), truncated };
 }
 
-function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticProjection {
-  if (!configuredRoot?.trim()) return { status: 'not-configured' };
-  const root = openRoot(configuredRoot);
-  if (root === null) return { status: 'unavailable', reason: 'unsafe-configured-root' };
+type DiagnosticReceipt = { dryRun: boolean | null; podId: string | null; files: Array<{ name: string; bytes: number }>; truncated: boolean };
+type DiagnosticUnavailable = Extract<DiagnosticProjection, { status: 'unavailable' }>;
+
+/** Validates bounded, ordered receipt membership without opening any output artifact. */
+function diagnosticReceipt(root: SafeRoot): DiagnosticReceipt | DiagnosticUnavailable {
   const run = readJson(root, 'run.json');
   if (run === null) return { status: 'unavailable', reason: 'missing-run-record' };
   if (!Array.isArray(run.jobs)) return { status: 'unavailable', reason: 'malformed-run-record' };
-  const artifacts: Array<{ name: string; bytes: number; modifiedAt: string }> = [];
+  const files: DiagnosticReceipt['files'] = [];
+  let totalBytes = 0; let truncated = false;
   if (run.jobs.length > MAX_DIAGNOSTIC_JOBS) return { status: 'unavailable', reason: 'malformed-run-record' };
   for (const job of run.jobs) {
     if (!isObject(job) || !Array.isArray(job.files)) return { status: 'unavailable', reason: 'malformed-run-record' };
     if (job.files.length > MAX_FILES_PER_JOB) return { status: 'unavailable', reason: 'malformed-run-record' };
     for (const file of job.files) {
-      if (artifacts.length >= MAX_DIAGNOSTIC_ARTIFACTS) return { status: 'unavailable', reason: 'malformed-run-record' };
+      if (files.length >= MAX_DIAGNOSTIC_ARTIFACTS) { truncated = true; break; }
       const name = isObject(file) ? text(file.path) : null;
-      if (!name || basename(name) !== name || name.includes('\\') || name.includes('/') || name === '.' || name === '..') {
+      const receiptBytes = isObject(file) ? file.bytes : null;
+      if (!name || !name.endsWith('.png') || basename(name) !== name || name.includes('\\') || name.includes('/') || name === '.' || name === '..'
+        || typeof receiptBytes !== 'number' || !Number.isSafeInteger(receiptBytes) || receiptBytes < 0) {
         return { status: 'unavailable', reason: 'unsafe-artifact-reference' };
       }
-      const path = safeFile(root, name);
-      if (path === null) return { status: 'unavailable', reason: 'unsafe-artifact-reference' };
-      const stats = statSync(path);
-      artifacts.push({ name, bytes: stats.size, modifiedAt: stats.mtime.toISOString() });
+      if (receiptBytes > MAX_DIAGNOSTIC_PNG_BYTES) return { status: 'unavailable', reason: 'malformed-run-record' };
+      if (totalBytes + receiptBytes > MAX_DIAGNOSTIC_TOTAL_PNG_BYTES) { truncated = true; break; }
+      files.push({ name, bytes: receiptBytes });
+      totalBytes += receiptBytes;
     }
+    if (truncated) break;
   }
-  return { status: 'diagnostic-not-promotable', dryRun: typeof run.dry_run === 'boolean' ? run.dry_run : null, podId: text(run.pod_id), artifacts };
+  return { dryRun: typeof run.dry_run === 'boolean' ? run.dry_run : null, podId: text(run.pod_id), files, truncated };
+}
+
+function diagnosticProjection(root: SafeRoot): DiagnosticProjection {
+  const receipt = diagnosticReceipt(root);
+  if ('status' in receipt) return receipt;
+  const artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }> = [];
+  for (const file of receipt.files) {
+      const path = safeFile(root, file.name);
+      if (path === null) return { status: 'unavailable', reason: 'unsafe-artifact-reference' };
+      const loaded = boundedPng(path);
+      if (loaded === null || loaded.bytes.length !== file.bytes) return { status: 'unavailable', reason: 'malformed-run-record' };
+      const info = pngInfo(loaded.bytes);
+      if (info === null) return { status: 'unavailable', reason: 'malformed-run-record' };
+      artifacts.push({ name: file.name, bytes: loaded.bytes.length, sha256: createHash('sha256').update(loaded.bytes).digest('hex'), ...info, modifiedAt: loaded.modifiedAt });
+  }
+  return { status: 'diagnostic-not-promotable', dryRun: receipt.dryRun, podId: receipt.podId, artifacts, artifactsTruncated: receipt.truncated };
+}
+
+function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticProjection {
+  if (!configuredRoot?.trim()) return { status: 'not-configured' };
+  const root = openRoot(configuredRoot);
+  return root === null ? { status: 'unavailable', reason: 'unsafe-configured-root' } : diagnosticProjection(root);
 }
 
 export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null): FigmentProjection {
@@ -355,4 +411,22 @@ export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string
 
 export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null }): void {
   app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot));
+  app.get('/api/figment/diagnostic-assets/:name', async (request, reply) => {
+    const { name } = request.params as { name?: unknown };
+    const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
+    if (typeof name !== 'string' || typeof sha256 !== 'string' || !SHA256.test(sha256)) return reply.code(404).send({ error: 'not-found' });
+    const root = options.diagnosticRoot?.trim() ? openRoot(options.diagnosticRoot) : null;
+    if (root === null) return reply.code(404).send({ error: 'not-found' });
+    const receipt = diagnosticReceipt(root);
+    if ('status' in receipt) return reply.code(404).send({ error: 'not-found' });
+    const expected = receipt.files.find((artifact) => artifact.name === name);
+    if (expected === undefined) return reply.code(404).send({ error: 'not-found' });
+    try {
+      const path = safeFile(root, name);
+      const loaded = path === null ? null : boundedPng(path);
+      const info = loaded === null ? null : pngInfo(loaded.bytes);
+      if (loaded === null || loaded.bytes.length !== expected.bytes || info === null || createHash('sha256').update(loaded.bytes).digest('hex') !== sha256) return reply.code(409).send({ error: 'stale-diagnostic-asset' });
+      return reply.header('content-type', 'image/png').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded.bytes);
+    } catch { return reply.code(409).send({ error: 'stale-diagnostic-asset' }); }
+  });
 }

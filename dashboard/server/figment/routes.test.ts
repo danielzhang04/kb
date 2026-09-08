@@ -3,12 +3,19 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import Fastify from 'fastify';
+import { PNG } from 'pngjs';
 import { buildFigmentProjection, registerFigmentRead } from './routes.ts';
 
 const temporary: string[] = [];
 afterEach(async () => { while (temporary.length) await rm(temporary.pop()!, { recursive: true, force: true }); });
 
-function digest(value: string): string { return createHash('sha256').update(value).digest('hex'); }
+function digest(value: string | Buffer): string { return createHash('sha256').update(value).digest('hex'); }
+function png(salt = 0, width = 4, height = 3): Buffer {
+  const image = new PNG({ width, height });
+  for (let index = 0; index < image.data.length; index += 1) image.data[index] = (index * 31 + salt) & 255;
+  return Buffer.from(PNG.sync.write(image));
+}
 async function json(path: string, value: unknown): Promise<void> { await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, JSON.stringify(value), 'utf8'); }
 
 async function fixture(): Promise<{ repo: string; diagnostic: string; subject: string; accepted: string }> {
@@ -54,8 +61,9 @@ async function fixture(): Promise<{ repo: string; diagnostic: string; subject: s
   await writeFile(join(figment, 'research', 'book', 'chapter.md'), 'book', 'utf8');
   const diagnostic = await mkdtemp(join(tmpdir(), 'figment-diagnostic-'));
   temporary.push(diagnostic);
-  await writeFile(join(diagnostic, 'proof.png'), 'fixture image', 'utf8');
-  await json(join(diagnostic, 'run.json'), { dry_run: false, pod_id: 'fixture-pod', jobs: [{ files: [{ path: 'proof.png' }] }] });
+  const proof = png();
+  await writeFile(join(diagnostic, 'proof.png'), proof);
+  await json(join(diagnostic, 'run.json'), { dry_run: false, pod_id: 'fixture-pod', jobs: [{ files: [{ path: 'proof.png', bytes: proof.length }] }] });
   return { repo, diagnostic, subject, accepted };
 }
 
@@ -81,7 +89,7 @@ describe('Figment read projection', () => {
       expect.objectContaining({ area: 'research', name: 'index.md' }),
       expect.objectContaining({ area: 'book', name: 'chapter.md' }),
     ]));
-    expect(projection.diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', podId: 'fixture-pod', artifacts: [{ name: 'proof.png' }] });
+    expect(projection.diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', podId: 'fixture-pod', artifacts: [{ name: 'proof.png', width: 4, height: 3, sha256: digest(png()) }], artifactsTruncated: false });
   });
 
   it('marks changed gate subjects and checkpoint hashes stale', async () => {
@@ -129,16 +137,100 @@ describe('Figment read projection', () => {
     temporary.push(link);
     await symlink(paths.diagnostic, link, 'junction');
     expect(buildFigmentProjection(paths.repo, link).diagnostic).toEqual({ status: 'unavailable', reason: 'unsafe-configured-root' });
-    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files: [{ path: '../outside.txt' }] }] });
+    await symlink(join(paths.diagnostic, 'proof.png'), join(paths.diagnostic, 'linked.png'), 'file');
+    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files: [{ path: 'linked.png', bytes: png().length }] }] });
+    expect(buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic).toEqual({ status: 'unavailable', reason: 'unsafe-artifact-reference' });
+    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files: [{ path: '../outside.txt', bytes: 1 }] }] });
     expect(buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic).toEqual({ status: 'unavailable', reason: 'unsafe-artifact-reference' });
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
-      expect(path).toBe('/api/figment');
-      handler = candidate;
+      if (path === '/api/figment') handler = candidate;
+      else expect(path).toBe('/api/figment/diagnostic-assets/:name');
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();
     expect((response as { diagnostic: { status: string } }).diagnostic.status).toBe('unavailable');
+  });
+
+  it('streams only a receipt-listed PNG at the displayed hash and detects stale substitution', async () => {
+    const paths = await fixture();
+    const projection = buildFigmentProjection(paths.repo, paths.diagnostic);
+    if (projection.diagnostic.status !== 'diagnostic-not-promotable') throw new Error('fixture diagnostic unavailable');
+    const asset = projection.diagnostic.artifacts[0];
+    const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic }); await app.ready();
+    const url = `/api/figment/diagnostic-assets/${asset.name}?sha256=${asset.sha256}`;
+    // This listed sibling is deliberately not a PNG. Serving the first asset proves the
+    // binary route validates receipt membership but reads only its requested file.
+    const sibling = Buffer.from('not a PNG');
+    await writeFile(join(paths.diagnostic, 'unrequested.png'), sibling);
+    await json(join(paths.diagnostic, 'run.json'), { dry_run: false, pod_id: 'fixture-pod', jobs: [{ files: [{ path: 'proof.png', bytes: asset.bytes }, { path: 'unrequested.png', bytes: sibling.length }] }] });
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200);
+    expect(response.headers['content-type']).toContain('image/png');
+    expect(response.headers['x-content-type-options']).toBe('nosniff');
+    expect(response.rawPayload).toEqual(png());
+    const replacement = png(19);
+    expect(replacement.length).toBe(asset.bytes);
+    await writeFile(join(paths.diagnostic, asset.name), replacement);
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/diagnostic-assets/..%2Foutside.png?sha256=' + asset.sha256 })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/diagnostic-assets/not-listed.png?sha256=' + asset.sha256 })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('truncates after exactly 128 receipt-listed PNGs and refuses oversized assets', async () => {
+    const paths = await fixture();
+    const files: Array<{ path: string; bytes: number }> = [];
+    const bytes = png();
+    for (let index = 0; index < 129; index += 1) {
+      const name = `proof-${String(index).padStart(3, '0')}.png`;
+      await writeFile(join(paths.diagnostic, name), bytes); files.push({ path: name, bytes: bytes.length });
+    }
+    await json(join(paths.diagnostic, 'run.json'), { jobs: Array.from({ length: 5 }, (_unused, index) => ({ files: files.slice(index * 32, (index + 1) * 32) })) });
+    const diagnostic = buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic;
+    expect(diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', artifactsTruncated: true });
+    if (diagnostic.status === 'diagnostic-not-promotable') expect(diagnostic.artifacts).toHaveLength(128);
+    const oversized = Buffer.alloc(16 * 1024 * 1024 + 1);
+    await writeFile(join(paths.diagnostic, 'too-large.png'), oversized);
+    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files: [{ path: 'too-large.png', bytes: oversized.length }] }] });
+    expect(buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic).toEqual({ status: 'unavailable', reason: 'malformed-run-record' });
+    const oversizedDimensions = png(); oversizedDimensions.writeUInt32BE(100_000, 16); oversizedDimensions.writeUInt32BE(100_000, 20);
+    await writeFile(join(paths.diagnostic, 'too-wide.png'), oversizedDimensions);
+    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files: [{ path: 'too-wide.png', bytes: oversizedDimensions.length }] }] });
+    expect(buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic).toEqual({ status: 'unavailable', reason: 'malformed-run-record' });
+  });
+
+  it('accepts a single receipt job with the actual 81-frame video output shape', async () => {
+    const paths = await fixture();
+    const image = png(); const files: Array<{ path: string; bytes: number }> = [];
+    for (let index = 0; index < 81; index += 1) {
+      const name = `frame-${String(index).padStart(3, '0')}.png`;
+      await writeFile(join(paths.diagnostic, name), image);
+      files.push({ path: name, bytes: image.length });
+    }
+    await json(join(paths.diagnostic, 'run.json'), { dry_run: false, pod_id: 'fixture-pod', jobs: [{ files }] });
+    const diagnostic = buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic;
+    expect(diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', artifactsTruncated: false });
+    if (diagnostic.status === 'diagnostic-not-promotable') expect(diagnostic.artifacts).toHaveLength(81);
+  });
+
+  it('stops at the aggregate cap before opening the next receipt-listed artifact', async () => {
+    const paths = await fixture();
+    const limit = 16 * 1024 * 1024;
+    const head = png(); const atPerFileLimit = Buffer.concat([head, Buffer.alloc(limit - head.length)]);
+    const files: Array<{ path: string; bytes: number }> = [];
+    for (let index = 0; index < 8; index += 1) {
+      const name = `cap-${index}.png`;
+      await writeFile(join(paths.diagnostic, name), atPerFileLimit);
+      files.push({ path: name, bytes: limit });
+    }
+    // The ninth listed file is deliberately absent: at 128 MiB, projection must mark
+    // truncation without attempting to open it.
+    files.push({ path: 'must-not-open.png', bytes: limit });
+    await json(join(paths.diagnostic, 'run.json'), { jobs: [{ files }] });
+    const diagnostic = buildFigmentProjection(paths.repo, paths.diagnostic).diagnostic;
+    expect(diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', artifactsTruncated: true });
+    if (diagnostic.status === 'diagnostic-not-promotable') expect(diagnostic.artifacts).toHaveLength(8);
   });
 
   it('skips oversized JSON records with a readable warning', async () => {

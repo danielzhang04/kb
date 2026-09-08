@@ -4,7 +4,7 @@ import './figment.css';
 
 type ReviewState = 'unreviewed' | 'stale' | 'approved' | 'unknown';
 type MachineGateState = 'current' | 'stale' | null;
-type Tab = 'creators' | 'plans' | 'records' | 'research';
+type Tab = 'creators' | 'assets' | 'plans' | 'records' | 'research';
 interface RecordRow { path: string; type: string; creator: string | null; reviewState: ReviewState; machineGateState: MachineGateState; schema: string | null; }
 interface ResearchArtifact { area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string; }
 interface Projection {
@@ -13,7 +13,7 @@ interface Projection {
   creatorsTruncated: boolean; records: RecordRow[]; recordsTruncated: boolean;
   plans: { items: Array<{ path: string; creator: string; variant: string | null; stages: Array<{ name: string; runCount: number; declaredCeilingUsd: number | null }>; declaredCeilingUsd: number }>; truncated: boolean };
   research: { available: boolean; artifacts: ResearchArtifact[]; truncated: boolean };
-  diagnostic: { status: 'not-configured' } | { status: 'unavailable'; reason: string } | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; modifiedAt: string }> };
+  diagnostic: { status: 'not-configured' } | { status: 'unavailable'; reason: string } | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; artifactsTruncated: boolean };
 }
 
 const states = new Set<ReviewState>(['unreviewed', 'stale', 'approved', 'unknown']);
@@ -23,6 +23,7 @@ const nullableString = (value: unknown): value is string | null => value === nul
 const finite = (value: unknown): value is number => typeof value === 'number' && Number.isFinite(value) && value >= 0;
 const bounded = (value: unknown): value is unknown[] => Array.isArray(value) && value.length <= 512;
 const safeArtifactName = (name: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._ -]{0,180}$/.test(name) && name !== '.' && name !== '..' && !name.includes('..');
+const sha256 = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
 
 function valid(value: unknown): Projection | null {
   if (!object(value) || value.schema !== 'figment/hub@1' || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.diagnostic)) return null;
@@ -31,7 +32,7 @@ function valid(value: unknown): Projection | null {
   if (!value.plans.items.every((plan) => object(plan) && string(plan.path) && string(plan.creator) && nullableString(plan.variant) && finite(plan.declaredCeilingUsd) && bounded(plan.stages) && plan.stages.every((stage) => object(stage) && string(stage.name) && finite(stage.runCount) && (stage.declaredCeilingUsd === null || finite(stage.declaredCeilingUsd))))) return null;
   if (!value.research.artifacts.every((row) => object(row) && (row.area === 'research' || row.area === 'book') && string(row.name) && finite(row.bytes) && string(row.modifiedAt) && Number.isFinite(Date.parse(row.modifiedAt)))) return null;
   const d = value.diagnostic;
-  if (!(d.status === 'not-configured' || d.status === 'unavailable' && string(d.reason) || d.status === 'diagnostic-not-promotable' && (typeof d.dryRun === 'boolean' || d.dryRun === null) && nullableString(d.podId) && bounded(d.artifacts) && d.artifacts.every((row) => object(row) && string(row.name) && finite(row.bytes) && string(row.modifiedAt) && Number.isFinite(Date.parse(row.modifiedAt))))) return null;
+  if (!(d.status === 'not-configured' || d.status === 'unavailable' && string(d.reason) || d.status === 'diagnostic-not-promotable' && (typeof d.dryRun === 'boolean' || d.dryRun === null) && nullableString(d.podId) && typeof d.artifactsTruncated === 'boolean' && bounded(d.artifacts) && d.artifacts.every((row) => object(row) && string(row.name) && safeArtifactName(row.name) && finite(row.bytes) && sha256(row.sha256) && finite(row.width) && finite(row.height) && string(row.modifiedAt) && Number.isFinite(Date.parse(row.modifiedAt))))) return null;
   return value as unknown as Projection;
 }
 
@@ -71,6 +72,34 @@ function Records({ rows, truncated }: { rows: RecordRow[]; truncated: boolean })
 function Plans({ plans }: { plans: Projection['plans'] }): React.JSX.Element {
   if (!plans.items.length) return <p className="figment__empty">No frozen Figment plans are available.</p>;
   return <><p className="figment__inert">Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.</p><div className="figment__plans">{plans.items.map((plan) => <article className="figment__plan" key={plan.path}><h2>{plan.creator}{plan.variant ? ` · ${plan.variant}` : ''}</h2><code className="figment__record-path">{plan.path}</code><p>Declared ceiling: ${plan.declaredCeilingUsd.toFixed(2)}</p><ul>{plan.stages.map((stage) => <li key={stage.name}><strong>{stage.name}</strong> · {stage.runCount} run{stage.runCount === 1 ? '' : 's'} · declared ${stage.declaredCeilingUsd?.toFixed(2) ?? 'unavailable'}</li>)}</ul></article>)}</div>{plans.truncated ? <p className="figment__notice">The plan list reached its safe display limit.</p> : null}</>;
+}
+
+function Assets({ diagnostic, token, fetchImpl }: { diagnostic: Projection['diagnostic']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
+  const [assets, setAssets] = useState<Array<{ name: string; url: string; width: number; height: number }>>([]);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (diagnostic.status !== 'diagnostic-not-promotable' || !diagnostic.artifacts.length) { setAssets([]); setError(null); return; }
+    let live = true; let next = 0; const controllers: AbortController[] = []; const urls: string[] = [];
+    const results: Array<{ name: string; url: string; width: number; height: number } | undefined> = new Array(diagnostic.artifacts.length);
+    setAssets([]); setError(null);
+    const load = async (): Promise<void> => {
+      while (live && next < diagnostic.artifacts.length) {
+        const index = next; next += 1; const artifact = diagnostic.artifacts[index]; const controller = new AbortController(); controllers.push(controller);
+        try {
+          const response = await fetchImpl(`/api/figment/diagnostic-assets/${encodeURIComponent(artifact.name)}?sha256=${artifact.sha256}`, { ...requestOptions(token), signal: controller.signal });
+          if (!response.ok) throw new Error(response.status === 409 ? 'A listed diagnostic asset changed before it could be reviewed.' : 'A listed diagnostic asset could not be read.');
+          const blob = await response.blob(); if (!live) return;
+          const url = URL.createObjectURL(blob); urls.push(url); results[index] = { name: artifact.name, url, width: artifact.width, height: artifact.height };
+          setAssets(results.filter((item): item is NonNullable<typeof item> => item !== undefined));
+        } catch (cause) { if (live && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'A listed diagnostic asset could not be read.'); }
+      }
+    };
+    void Promise.all(Array.from({ length: Math.min(3, diagnostic.artifacts.length) }, () => load()));
+    return () => { live = false; controllers.forEach((controller) => controller.abort()); urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [diagnostic, fetchImpl, token]);
+  if (diagnostic.status !== 'diagnostic-not-promotable') return <p className="figment__empty">No diagnostic assets are available for review.</p>;
+  if (!diagnostic.artifacts.length) return <p className="figment__empty">This diagnostic record lists no reviewable PNG assets.</p>;
+  return <><p className="figment__inert">Diagnostic assets only. They are not promotable and do not approve identity, quality, or a checkpoint.</p>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}<div className="figment__assets">{assets.map((asset) => <figure className="figment__asset" key={asset.name}><img src={asset.url} alt={`Diagnostic asset ${asset.name}`} /><figcaption>{asset.name} · {asset.width}×{asset.height}</figcaption></figure>)}</div>{diagnostic.artifactsTruncated ? <p className="figment__notice">The diagnostic asset list reached its safe review limit.</p> : null}</>;
 }
 
 function Research({ research, token, fetchImpl }: { research: Projection['research']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
@@ -119,5 +148,5 @@ export function FigmentWorkspace({ token, fetchImpl = fetch }: { token?: string;
   useEffect(() => { let live = true; setError(false); setProjection(null); void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => { if (!response.ok) throw new Error('figment unavailable'); const decoded = valid(await response.json()); if (!decoded) throw new Error('invalid figment projection'); if (live) setProjection(decoded); }).catch(() => { if (live) setError(true); }); return () => { live = false; }; }, [fetchImpl, refresh, token]);
   if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={() => setRefresh((v) => v + 1)}>Retry</button> : null}</main>;
   if (!projection.available) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p className="figment__empty">The Figment project records are unavailable.</p></main>;
-  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['plans', 'Frozen plans'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'plans' ? <Plans plans={projection.plans} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
+  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
 }
