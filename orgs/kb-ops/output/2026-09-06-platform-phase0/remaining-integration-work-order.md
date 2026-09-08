@@ -13,6 +13,21 @@ strict-current; exact legacy v3/v2 decoding is confined to the existing module
 migration boundary. This does not release frozen Slice 1A files, add C1 delivery
 or B binding, or alter the plan's remaining acceptance.
 
+## C delivery staging decisions
+
+C may expose an optional `messageClaims` port until B binds activation last. If
+that port is absent, begin refuses before any claim, PTY, session, write, or
+destructive drain effect. The deprecated `drainMessages` option may remain only
+for the existing B constructor's type compatibility; C never invokes it and has
+no delivery fallback. B supplies the real chain store and generation admission
+callback at integration. A passing C port suite is not an activated runtime gate.
+
+Read-only terminal observation is permitted, not required. C may return the
+named reconciliation refusal for every cross-adapter observed claim, including
+acknowledged tombstones. Such observers have zero mutation or delivery authority.
+Exact same-adapter duplicate calls still reuse the creator's existing launch
+promise. No synthetic terminal receipt or new adoption path is required.
+
 ## Frozen boundary and common contract
 
 `dashboard/server/control/adapters.ts`, `adapters.test.ts`, `spendGrantProvision.ts`, and `spendGrantProvision.test.ts` remain frozen for this work order. At fixture commit `42125cb2`, the full 399-test Linux gate, 47-test Windows gate, and mutation-only verifier passed with the source checksum restored. Those are retained source-slice results; the separate planning review below does not establish integrated implementation acceptance. Their optional `assertForwardAdmission(): void` callback is the only worktree/grant seam used below. This plan does not release or edit any frozen file.
