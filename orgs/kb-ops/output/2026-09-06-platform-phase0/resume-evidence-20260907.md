@@ -1,6 +1,8 @@
 # VM-resume evidence — DRAFT
 
-**Status at 2026-09-08:** source and coordination drafts only. Nothing here is a deployment, release approval, VM recovery, browser proof, model run, or production result. Phase 0 remains incomplete.
+**Fixture-cycle record:** source and coordination drafts only. Nothing here is a deployment, release approval, VM recovery, browser proof, model run, or production result. Phase 0 remains incomplete.
+
+The later plan-only cycle resolved the three planning findings below; see [plan ownership review](plan-ownership-review-20260908.md). Earlier pause statements in this record describe the fixture cycle, not the latest plan verdict.
 
 ## Historical 2026-09-07 archive run — retained evidence, not current acceptance
 
@@ -11,7 +13,7 @@
 - Historical `unaffected` mode exited 0 after excluding only `server/control/adapters.test.ts`: 363 selected tests passed, plus typecheck/build. Its included suites were spend-grant (11), boot diagnostics (1), store boot diagnostics (4), activation (70), automatic failure reporter (4), store (163), launch (7), queue bridge (92), and real broker integration (11).
 - The historical `all` invocation stopped in `adapters.test.ts`: 34 passed, 2 failed because the test expected `0700` but inherited setgid mode `02700`. This was an affected fixture result, not an unaffected-suite success. The current correction cycle below addresses that fixture through its corrected overlay and completed mutation verification.
 
-## Current 2026-09-08 correction/review cycle
+## Earlier 2026-09-08 fixture correction/review cycle
 
 The user authorized one bounded correction/review cycle. Current source evidence is separate from the historical archive:
 
