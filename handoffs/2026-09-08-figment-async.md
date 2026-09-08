@@ -4,6 +4,27 @@ Active async build. **8 AM Eastern is a progress checkpoint, not a stop.** Conti
 work and keep-awake afterward; do not end the active parent merely at a perceived
 human gate. Instagram integration is deferred.
 
+## Latest checkpoint ? 2026-09-08 10:30 UTC
+
+Supersedes active-pod statements in the prior checkpoint below: **NO ACTIVE POD**.
+Video wo5uka031lxh7m completed10:23:35UTC; parentGETabsent/list0verified. ReceiptSHA
+9172e3cf0de1ae39f39708e562400316ea1601a46518c2781e12b3695b2fc9db; cost0.129426,
+427.463seconds. Existingprovisional replaced; arc37.383855/50,daily1.693604/10.
+81PNG?MP4?actualframeextraction worked; MP4hash2084e7f6...ea674,5.0625sec16fps512x288.
+Parentfirst/mid/lastvisualREJECTS coloredstreaks/face/backgrounddistortion. Noqualitypass.
+Auditall81hashes in ledgers/audit/figment-video-diagnostic-2026-09-08.json. Parent9assembly
+and8extractortestsPASS; independentassemblerreviewPASS. Nativeharnessreceiptsuccess,
+PowerShellTee wrapperexit1 recordedhonestly; no nativefailureindicated/no rerunjustforwrapper.
+
+Studioe6bb85e4pushed; booknowreflectsactualvideo failure. PlansUIWIPparentfoundaggregate
+finitebudgetoverflow andmissingstagesfabricatedzero; authorhub_final_review repairing.
+Safetableopt-in rootreviewPASS6tests andvisualscreenshotreadable; awaitingcombinedcommit.
+Readerfixture secondserver32436/5418; sameapprovedheadlessChrome; do notkillPID4476
+becauseitactuallyusesexistingapprovedprofile, notextraone. Timestamp_fix nowindependent
+all81video/sourcecausalreview. Protocol_review builds offlinecontentbriefcompiler using
+existingtaxonomy/templates; noplatformactions. LoRAuploadquestionstillpending; no retry.
+No8AMcheckpointyet (12:00UTC); keepactiveorchestration/keepawakebeyondit.
+
 ## Current checkpoint ? 2026-09-08 10:24 UTC
 
 This section supersedes the older snapshot below. Work continues; 8AM Eastern
