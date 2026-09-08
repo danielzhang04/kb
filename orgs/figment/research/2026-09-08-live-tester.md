@@ -77,11 +77,25 @@ The five raw PNGs are `1448x2176`, were visually inspected by the parent Codex a
 (`codex-worker`) at original resolution, and were found unambiguously adult and fully
 clothed; no quarantine was needed. The parent's qualitative judgment was weak
 intended-character resemblance across all five; later steps appeared closer in hair and
-lips qualitatively, but that is not a proven improvement. The operator's checkpoint
-decision remains pending.
+lips qualitatively, but that is not a proven improvement.
 This diagnostic has no held-out controls or scoring and does not provide the
 driver-bound lineage required for promotion. No operator QA stamp, ruling, or promotion
 was performed.
+
+The operator then reviewed the five-image board qualitatively: “(1) For the most part,
+these images look semi-real. (2) These images (a) don't read like the same person or like
+the same person compared to the references and (b) read like mid-30s women not 21 year
+olds.” This feedback is about realism, identity consistency, and apparent age; it is
+distinct from the parent agent's adult/clothing QA. No candidate was selected and no
+promotion was approved.
+
+The existing persona contract says `age_stage: early twenties, about twenty-one`
+(`persona.yaml:11`), and `identity-spec.md:12` says apparent age is about 21. The
+frozen diagnostic manifest's prompt instead says “an adult woman in her mid twenties”
+(`creator-001-existing1250-tester.yaml:94`). This is a pre-existing specification versus
+tester-prompt mismatch, not a newly changed requirement. It is not established as the
+sole cause of the apparent mid-30s reading or the identity failure. Future test prompts
+must derive the age language from `persona.yaml`.
 
 The latest wiring review found no concrete error: trigger wiring and LoRA strength
 `1.0` were correct, and checkpoint steps were correct. Raw-to-turbo template parity is
@@ -114,7 +128,8 @@ No retraining, parameter search, automatic promotion, merge, or deployment occur
 
 ## Next step
 
-Obtain the operator's checkpoint review and a defined driver-bound held-out comparison
-before any further paid run or promotion. Use the retry evidence to optimize and measure
-the transfer path before considering another run; do not auto-rerun. Any future images
-still require full-resolution visual QA before delivery.
+Use the received feedback to define a driver-bound held-out comparison that measures
+realism, within-batch identity consistency, reference identity, and apparent adult age
+targeted at 21 independently before any further paid run or promotion. Use the retry
+evidence to optimize and measure the transfer path before considering another run; do not
+auto-rerun. Any future images still require full-resolution visual QA before delivery.
