@@ -87,3 +87,37 @@ status. This observation neither accepts nor rejects the candidate for training.
 
 The provenance prompt is therefore broadly reflected in the visible wardrobe and pose change, but
 its self-described preservation outcome is not independently established by that prompt or record.
+
+## E01 shoulders-up / original strapped-top candidate
+
+Viewed the canonical `creator-001/anchors/g01.jpg` and
+`C:/Users/danie/kb/_private/figment-single-seed-20260908/g01-e01-shoulders-up-v1.png` at their
+original resolutions. The candidate SHA-256 is
+`ab8a6830e17ea9d215826f886ac0d654e09e47a6795f2af66289929ce21518a5` (1,967,232 bytes,
+1697 x 927); the canonical source SHA-256 is
+`e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed`. Its provenance record
+(SHA-256 `d7434891d0f1f56ae1845932f1c511fd664ebc1e08f6be2eb7a3b744bca58cfc`) binds the sole
+original source, frozen request `63d847c38205ca4822c9cdd4fd76b1ddae17a986cfae97d4d8669bc8be387f8e`,
+and prompt `b1d305daa9c21f3ee4a0b9cbda9241b5ef5258aed5431058ecb743b411fe54df`. This is a
+descriptive experimental observation, not a training or approval decision.
+
+- **Crop, pose, and setting:** E01 is substantially closer than the waist-to-upper-hip source and
+  frames the head, shoulders, and upper chest. It supplies a useful closer-framing variation, but
+  it is not a strict shoulders-only crop because appreciable upper chest remains visible. The room,
+  square-shoulder arrangement, and black strapped-top family remain recognizable. The head and
+  face read slightly more upright and symmetric than the source, so preservation of the exact pose
+  is not established.
+- **Styling and geometry:** center-parted dark hair, small earrings, necklace layering, black
+  straps, brow shape, nose bridge, lip shape, and the broad jaw taper give the images shared visual
+  cues. E01's eyes are more open and more symmetric, while its cheeks and lower face read fuller;
+  its nose and eyelid asymmetry do not closely reproduce the source. One comparison cannot
+  establish identity preservation.
+- **Realism:** hair flyaways, fabric texture, pores, ordinary room perspective, and soft light are
+  credible. The candidate's cheek and under-eye transitions are smoother and its facial symmetry
+  more polished than the source, giving it a mildly retouched or generated appearance on close
+  inspection. No text or watermark is visible.
+- **Adult presentation and clothing:** the person presents as an adult, without any exact-age
+  inference. The black strapped top is intact and opaque; no clothing failure is visible.
+
+E01 may remain a separately labeled closer-framing experiment. This visual comparison alone does
+not establish resemblance, broader pose coverage, or suitability for any later use.
