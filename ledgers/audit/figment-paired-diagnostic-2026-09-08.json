@@ -1,0 +1,39 @@
+{
+  "schema": "figment/experiment-admission@1",
+  "manager_card": "01K9FIGMENT0800000000000004",
+  "status": "reserved-not-yet-launched",
+  "authorization": "User standing async RunPod authorization within unchanged total $50 arc cap",
+  "manifest": "C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/combined-candidate-control-v1.yaml",
+  "manifest_sha256": "7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f",
+  "output_directory": "C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1",
+  "owner": "codex-worker parent",
+  "cells": 10,
+  "arms": ["candidate-final1250", "base-control-no-lora"],
+  "canonical_comparison_anchor": "g01",
+  "production_promotable": false,
+  "budget": {
+    "arc_cap_usd": 50.0,
+    "arc_estimated_usd_before": 37.015061,
+    "daily_limit_usd": 10.0,
+    "daily_numeric_usd_before": 1.324810,
+    "reserved_max_usd": 2.50,
+    "max_minutes": 115,
+    "preflight_estimate_usd": 2.491667,
+    "max_placement_attempts": 1,
+    "note": "Reservation is not a numeric expense; actual harness cost will be appended once run terminates. No other parent experiment reservation is active."
+  },
+  "verification": {
+    "independent_reviewer": "figment_protocol_review",
+    "verdict": "PASS private diagnostic admission",
+    "dry_run_cells": 10,
+    "upload_bytes": 228587800,
+    "upload_chunks": 14,
+    "candidate_reaches_lora_node": true,
+    "control_bypasses_lora_node": true,
+    "provider_pods_before": 0,
+    "numeric_budget_reconciled": true
+  },
+  "pod_id": null,
+  "actual_receipt": null,
+  "termination_verified": null
+}

@@ -97,6 +97,24 @@ must be considered; no provider calls or subprocess launch from read APIs.
 
 ## Exact Next Step
 
+UPDATE: Hub committed `af01a818`; parent final126focusedtests, typecheck and production
+build passed. Final creator-truncation field was implemented by a different reviewer
+and inspected/tested by parent. No deployment/browser visual QA yet; browser runtime
+reports no browser available. Initial video planner is WIP with independent high
+findings (self-declared acceptance and unrelated frame files); builder fixes it after
+manifest review. Do not accept its initial production/sample claims.
+
+NEXT LIVE ACTION: combined candidate/control manifest independently PASS, SHA
+`7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f`; one pod,
+10cells, one final228587800-byte checkpoint, 14chunks. Parent reserved $2.50 /115min,
+oneplacement in `ledgers/audit/figment-paired-diagnostic-2026-09-08.json`; current ledger
+arc37.015061/daily1.324810 of10, provider0pods. Harness minimum113minutes fits115.
+Output must be fresh `C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1`.
+No pod created yet at this reservation. Launch with current studio harness, explicit
+ops-proposal cost ledger, --max-usd2.50 --max-minutes115, then preserve recovery journal,
+monitor, terminate/verify and independently read absence. Do not duplicate this run
+if a resumed session finds its journal/output; recover/inspect first.
+
 Harvest the API re-review and frontend fixes/re-review; accept only verified units.
 Commit source-corrected initial book, independently inspect the imagegen variation,
 and evaluate the worker's candidate/control manifest and actual dataset audit. Then
