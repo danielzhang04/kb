@@ -391,3 +391,50 @@ and mobile v3 visual review. Both v3 fixtures load 17 images/four generated card
 no overflow. Keep recorded RunPod arc $37.800385/$50 and daily $2.110134 unchanged; no
 pods or numeric holds. Google exact-g01 export and existing-LoRA export questions stay
 pending. Keep-awake owner 16580 and supervisor 19564 were alive 09:26 Eastern.
+
+## 13:46 UTC: Windows runtime repair; executor implementation continues
+
+Studio head `db807f35` pushed, PR179 description refreshed. `c264d74f` accepted
+gallery readability (13 parent/independent UI checks, typechecks, 17-image desktop
+and mobile fixture). Current owned fixture PID40096/port5419. `58a6d71c` and
+`74f9fe5c` reconcile book status; `f6b5096d` is the experimental compiler (10+10
+checks), while `83c00054` is the separate canonical-seed coverage audit. Do not
+confuse these two records. No eligible 20-row real dataset exists.
+
+`fea2ef96` adds the owned Inductor cache after baseline V1 failed. The real import
+probe receipt main_private/figment-local-comfy-importprobe-20260908-v2/receipt.json
+SHA bd338a42627b68b7415377baa77948790ba5285ad0f85f73e13c0da15302e54c passed.
+Probe v1 is incomplete due to its receipt helper being called twice; v2 is valid.
+
+Baseline V2 main_private/figment-local-comfy-baseline-20260908-v2 reached Comfy
+server startup, but Popen PID33680 was a venv redirector, with actual Python41576
+and conhost34896. No POST marker or image exists. Root verified parent/creation
+identity, stopped leaf41576, then the wrapper exited. All three PIDs were verified
+absent. Journal SHA a3ff8ec4235227d42cd0fd4992de76365072f2ad1b97f9048926cffecc788255;
+stderr SHA 2b605833b4b5f72192ab2ca21bedc1d81156bdcf7c9c556c8da5407428affb4a;
+manifest SHA b45656b829ad06e4fe9e218a75603505e35f82608b355c20b640bf87203e1c5f.
+The log also shows attempted shared ComfyUI/user/comfyui.db backup denied by the
+sandbox. `--user-directory` alone did not suppress legacy migration. Audit doc
+docs/figment/2026-09-08-local-comfy-runtime-audit.md is committed in db807f35.
+
+Current workers: protocol repairs exact Windows descendant PID/creation-time
+tracking, private database URL and log flushing, with a real tiny-server fixture
+before any third Comfy start. Root flagged 64-bit ctypes signatures, same-handle
+creation-time verification, exited-vs-access-denied distinction and retaining
+descendants before readiness. Do not run until frozen review and real fixture pass.
+Protocol also has a crop-protocol doc WIP: 384-square original-g01 crop, same
+graph except LoadImage. Root requested removal of its circular requirement for
+crop visual review before crop generation; no crop or third image run yet.
+
+Hub worker builds experimental_execute.py plus bounded shared review revalidation
+in experimental_train.py; timestamp independently reviews the design. Exact raw
+review bytes must be retained because parsed review cannot reconstruct its old
+raw hash. Executor, not generic upload expansion, owns file type/size/hash bounds.
+A fixed plan-plus-admission marker must prevent ambiguous replay across fresh
+output directories. No harness/governance/production-approval edits or live run.
+
+Paid arc remains37.800385/daily2.110134, no holds or owned pods. Both exact export
+questions (existing LoRA-to-RunPod, g01-to-Google) remain unanswered; do not retry
+or use an alternate export. Keep-awake09:44Eastern owner16580/supervisor19564alive.
+Native telemetry remains unknown; root repaired the malformed last metadata row
+to the established eight-column schema. Continue active async work past8AM.

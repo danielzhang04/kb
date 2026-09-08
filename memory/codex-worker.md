@@ -585,3 +585,14 @@ status and use followup_task for an idle agent. Use send_message only to steer a
 turn. Signal to recognize: a completed status persists after a new task was queued;
 waiting longer does not itself activate the worker. This is separate from keep-awake:
 a live machine and a pending mailbox do not prove work is executing.
+
+## 2026-09-08 - Verify the real Windows launch shape before trusting mocked ownership
+
+The local Comfy fixture assumed the Popen PID also owned its listening socket.
+The actual Windows venv executable was a redirector with a separate Python child.
+Next time a runner owns local resources, I will test the real interpreter with a
+small disposable server before the full model workload, bind process creation
+identity as well as PID, and verify descendant teardown. Also inspect effective
+database migration paths: an explicit user directory did not suppress Comfy's
+legacy shared-database backup attempt. Mocked lifecycle tests and an import probe
+do not establish process-tree or state-directory isolation.

@@ -1,10 +1,10 @@
 # Figment current state
 
-Updated 2026-09-08 13:33 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 13:46 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `58a6d71c`, is accepted but not
-yet pushed to draft PR179, stacked on foundation PR178. Local runner `f03bae3a` is pushed. The research book, authenticated studio, actual
+Studio branch `codex/figment-studio-20260908`, head `db807f35`, is pushed to draft
+PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
 
@@ -47,7 +47,14 @@ marker or output image exists. `manifest.json` SHA-256 is
 `b1f7ae4efc56f4137f073f7511120847800a94b63c696b60dbdbcbc7aa0048dc`; the journal
 records verified teardown. The capped startup log attributes the failure to
 `torch._dynamo` cache initialization with no username in the isolated environment.
-Protocol is repairing only an owned `TORCHINDUCTOR_CACHE_DIR`; no retry has started.
+The owned `TORCHINDUCTOR_CACHE_DIR` fix passed an isolated real import probe and
+15 parent checks, and is committed in `fea2ef96`. The second attempt reached server
+startup but was stopped before POST: the virtual-environment redirector's PID differed
+from its actual Python child. Root verified leaf 41576, wrapper 33680 and conhost 34896
+absent after intervention. A default database migration also attempted a shared-install
+backup and was denied. Audit `db807f35` preserves both attempts. Exact descendant
+creation-time tracking, explicit private database URL and live bounded log flushing
+are under repair; a real tiny-server ownership fixture precedes any third image run.
 This local failure creates no provider charge, but native-runtime billing remains
 unknown rather than zero. Parent and independent focused launcher suites each passed
 15 after the runner review; the parent's first default-temp pytest attempt was denied,
@@ -58,4 +65,6 @@ actual Google export is blocked pending the exact user question; no retry or alt
 export is allowed. The existing LoRA-export question is also pending. There are no
 active pods. Recorded compute remains $37.800385 of $50 and today's recorded compute
 remains $2.110134. Keep-awake owner 16580 and supervisor 19564 were alive at 09:26
-Eastern. No Instagram/account work, production promotion, merge, or deployment.
+Eastern; keep-awake was reverified alive at 09:44. No Instagram/account work,
+production promotion, merge, or deployment. The experimental executor is now being
+built against integrity fixtures while an independent worker reviews its design.
