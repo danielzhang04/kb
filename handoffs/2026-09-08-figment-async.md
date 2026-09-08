@@ -27,9 +27,11 @@ Private root C:/Users/danie/kb/_private/figment-video-experiment-20260908.
 Manifest head-turn-v3.json SHA99c5b8b2f470be477b7439c433a3834e82d3eaf82ab805687a197358415d7208.
 Receipt live-head-turn-v3/run.json SHA1f024e43299bcc956bfba2d78fc261842499603e3fa222cf4d506a0d7fc6e3ce.
 Parent81-frame evidence: head-turn-v3-parent-source-verification.json. Only the motion
-prompt differs from V2; same seed, first frame, pins, dimensions and sampler. Worker
-is assembling/extracting into fresh assembled-head-turn-v3/extracted-head-turn-v3 and
-reviewing all81 frames. No quality or motion-adherence conclusion yet.
+prompt differs from V2; same seed, first frame, pins, dimensions and sampler. Assembly/extraction completed into assembled-head-turn-v3/extracted-head-turn-v3.
+Independent all81 plus selected originals and parent contact sheet/first/mid/last review
+agree: stable appearance/clothing/room, but turn-and-return not demonstrated. No precise
+angle claim or production promotion. Movie SHA53d05b3818f0aa9f34afd6d523a0b988aab9e3ef7ba75d0820e02a026321ef5a.
+Committed93217b61; ops audit ledgers/audit/figment-video-head-turn-2026-09-08.json.
 
 V2 podwtaiyxr0g1zmz6 absent/parentlist0, finished10:53:43UTC,0.227441/751.182s.
 81frames1280x704/16fps/5.0625s; all81independentvisualreviewcoherentface/clothing/room,
@@ -62,7 +64,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **ba691920 pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **93217b61 pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -147,12 +149,16 @@ old observations remain unchanged. Parent and independent reviewer each passed34
 The isolated observer venv intentionally lacks pytest; parent used Python313's test
 runtime, while actual observations use the pinned observer venv.
 
-- figment_protocol_review: admitted actual19-input fixed640 batch into fresh
-  observations-v2, same inventory/model/source hashes, separate raw table and no
-  thresholds. Aggregate binds code/pins/adoption/input/output hashes. Review on completion.
-- figment_timestamp_fix: V3 assembly/extraction/all81 visual QA and review document.
-- figment_hub_final_review: bounded design for single-seed dataset provenance, curation,
-  captions and leakage prevention; reuse existing pipeline. No code until root review.
+- figment_protocol_review: V2 actual19-input batch complete, aggregate
+  56c6e76c40ad25f5954522316630dc71542403b7778530eceb04f6d14cd5873c. All19 and allanchors
+  exactlyone detection with uniformfixed640; independent audit pending. Now designs
+  actionable6-8input single-g01 expansion slate, no generation yet.
+- figment_timestamp_fix: independent actualV2 receipt/table audit, then narrow video
+  book wording fix to distinguish V1 failure from V2/V3 stability and unmetV3motion.
+- figment_hub_final_review: building provenance-bound single-seed curation compiler
+  and required lineage/staging compatibility; no fabricated eligibility/approval.
+  Existing builder remains sole reencoder. Current3generated derivatives ineligible.
+  Same-g01 eval derivatives explicitly not independent identity validation.
 
 Root supervises evidence/accounting, independently reviews actual observations and V3,
 then builds the next useful dataset unit. Exact LoRA upload question still pending;
