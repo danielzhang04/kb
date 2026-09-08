@@ -1,0 +1,5 @@
+actual_cost	list_price_estimate_usd	requested_model	responding_model	status	task	ts	usd
+unknown; ambient subscription		runtime-selected	unavailable	boss-orientation; parent model id and token usage unavailable	boss-remote-context-20260908	2026-09-08T22:34:36.330310+00:00	0
+unknown; ambient subscription	0	opus	none	oauth-refresh failure; zero model usage	boss-remote-context-20260908	2026-09-08T22:34:36.335849+00:00	0
+unknown; ambient subscription	0.043675	opus	claude-opus-5	completed; one tool-disabled remote turn	boss-remote-context-20260908	2026-09-08T22:34:36.355180+00:00	0
+unknown; ambient subscription	0.001091	CLI-internal	claude-haiku-4-5-20251001	auxiliary usage reported by CLI; not requested worker	boss-remote-context-20260908	2026-09-08T22:34:36.381623+00:00	0
