@@ -23,6 +23,8 @@ from typing import Any
 
 
 SCHEMA = "figment/identity-observation@1"
+FIXED640_SCHEMA = "figment/identity-observation@2"
+FIXED640_PREPROCESSING = "fixed-max-edge-640@1"
 PIN_SCHEMA = "figment/identity-observer-pins@1"
 PIN_MANIFEST = Path(__file__).with_name("identity_observe_pins.json")
 MAX_PIN_BYTES = 64 * 1024
@@ -271,6 +273,98 @@ def _one_face(detector: Any, image: Any) -> tuple[Any | None, dict[str, Any] | N
     return faces[0], observation, None
 
 
+def _fixed640_input(cv2: Any, image: Any) -> tuple[Any, dict[str, Any]]:
+    """Resize only detector input; callers retain original pixels for SFace."""
+    try:
+        original_height, original_width = image.shape[:2]
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise IdentityObserveError("candidate image decoder returned invalid dimensions") from exc
+    if original_width <= 0 or original_height <= 0:
+        raise IdentityObserveError("candidate image decoder returned invalid dimensions")
+    edge = max(original_width, original_height)
+    if edge <= 640:
+        detector_image = image
+        resized = False
+    else:
+        scale = 640 / edge
+        detector_width = round(original_width * scale)
+        detector_height = round(original_height * scale)
+        if detector_width <= 0 or detector_height <= 0:
+            raise IdentityObserveError("fixed detector resize produced invalid dimensions")
+        try:
+            detector_image = cv2.resize(image, (detector_width, detector_height), interpolation=cv2.INTER_AREA)
+        except Exception as exc:
+            raise IdentityObserveError("fixed detector resize failed") from exc
+        resized = True
+    detector_height, detector_width = detector_image.shape[:2]
+    return detector_image, {
+        "id": FIXED640_PREPROCESSING,
+        "original_size": {"width": original_width, "height": original_height},
+        "detector_input_size": {"width": detector_width, "height": detector_height},
+        "sx": detector_width / original_width,
+        "sy": detector_height / original_height,
+        "interpolation": "INTER_AREA",
+        "resized": resized,
+        "recognizer_pixels": "original",
+    }
+
+
+def _map_face_to_original(face: Any, sx: float, sy: float) -> Any:
+    """Map YuNet detector coordinates to original pixels; confidence is unchanged."""
+    if not all(math.isfinite(value) and value > 0 for value in (sx, sy)):
+        raise IdentityObserveError("fixed detector scale is invalid")
+    raw = _face(face)
+    if raw is None:
+        raise IdentityObserveError("detector returned malformed face data")
+    try:
+        import numpy as np
+        values = np.asarray(list(face), dtype=np.float32).reshape(-1).copy()
+    except Exception as exc:
+        raise IdentityObserveError("detector returned malformed face data") from exc
+    if len(values) < 15:
+        raise IdentityObserveError("detector returned malformed face data")
+    for index in (0, 2, 4, 6, 8, 10, 12):
+        values[index] /= sx
+    for index in (1, 3, 5, 7, 9, 11, 13):
+        values[index] /= sy
+    return values
+
+
+def _one_face_fixed640(detector: Any, cv2: Any, original: Any) -> tuple[Any | None, dict[str, Any] | None, str | None, dict[str, Any]]:
+    detector_image, metadata = _fixed640_input(cv2, original)
+    try:
+        height, width = detector_image.shape[:2]
+        detector.setInputSize((width, height))
+        detected = detector.detect(detector_image)
+        faces = detected[1] if isinstance(detected, tuple) and len(detected) == 2 else None
+    except Exception as exc:
+        raise IdentityObserveError("local face detector failed") from exc
+    try:
+        count = 0 if faces is None else len(faces)
+    except TypeError:
+        metadata["face_count"] = None
+        metadata["detector_face"] = None
+        metadata["mapped_face"] = None
+        return None, None, "detector returned malformed faces", metadata
+    metadata["face_count"] = count
+    if count != 1:
+        metadata["detector_face"] = None
+        metadata["mapped_face"] = None
+        return None, None, "multiple faces detected" if count > 1 else "no face detected", metadata
+    detector_face = _face(faces[0])
+    if detector_face is None:
+        metadata["detector_face"] = None
+        metadata["mapped_face"] = None
+        return None, None, "detector returned malformed face data", metadata
+    mapped = _map_face_to_original(faces[0], metadata["sx"], metadata["sy"])
+    mapped_observation = _face(mapped)
+    if mapped_observation is None:
+        raise IdentityObserveError("mapped detector face is invalid")
+    metadata["detector_face"] = detector_face
+    metadata["mapped_face"] = mapped_observation
+    return mapped, mapped_observation, None, metadata
+
+
 def _embedding(recognizer: Any, image: Any, face: Any) -> list[float]:
     try:
         aligned = recognizer.alignCrop(image, face)
@@ -355,10 +449,12 @@ def _write_fresh(root: Path, value: str | Path, record: dict[str, Any]) -> None:
         raise IdentityObserveError("could not write a fresh observation") from exc
 
 
-def _observe_with_backend(*, root: Path, model_dir: str | Path, image_path: str | Path, anchor_paths: list[str | Path], output_path: str | Path, pins: dict[str, Any], pins_sha256: str, cv2: Any) -> dict[str, Any]:
+def _observe_with_backend(*, root: Path, model_dir: str | Path, image_path: str | Path, anchor_paths: list[str | Path], output_path: str | Path, pins: dict[str, Any], pins_sha256: str, cv2: Any, detector_preprocessing: str | None = None) -> dict[str, Any]:
     """Internal seam for tests; callers still receive only raw, non-promotable output."""
     if not isinstance(anchor_paths, list) or not 1 <= len(anchor_paths) <= MAX_ANCHORS:
         raise IdentityObserveError(f"anchors must contain 1 to {MAX_ANCHORS} root-relative images")
+    if detector_preprocessing not in {None, FIXED640_PREPROCESSING}:
+        raise IdentityObserveError("detector_preprocessing must be omitted or fixed-max-edge-640@1")
     models = _verify_models(root, model_dir, pins)
     for model in models.values():
         model["verified_path"] = _within(root, _relative(model_dir, "model directory") / model["filename"], "verified model")
@@ -375,9 +471,18 @@ def _observe_with_backend(*, root: Path, model_dir: str | Path, image_path: str 
     if width <= 0 or height <= 0 or width * height > MAX_PIXELS:
         raise IdentityObserveError("candidate image exceeds its pixel limit")
     detector, recognizer = _runtime(cv2, models, width, height)
-    candidate_face, candidate_observation, candidate_reason = _one_face(detector, candidate)
+    candidate_metadata: dict[str, Any] | None = None
+    anchor_detected: list[tuple[dict[str, Any], Any, Any | None, dict[str, Any] | None, str | None, dict[str, Any] | None]] = []
+    if detector_preprocessing == FIXED640_PREPROCESSING:
+        candidate_face, candidate_observation, candidate_reason, candidate_metadata = _one_face_fixed640(detector, cv2, candidate)
+        for source_before, data in anchor_inputs:
+            decoded = _decode(cv2, data, "anchor image")
+            anchor_face, anchor_observation, anchor_reason, anchor_metadata = _one_face_fixed640(detector, cv2, decoded)
+            anchor_detected.append((source_before, decoded, anchor_face, anchor_observation, anchor_reason, anchor_metadata))
+    else:
+        candidate_face, candidate_observation, candidate_reason = _one_face(detector, candidate)
     record: dict[str, Any] = {
-        "schema": SCHEMA,
+        "schema": FIXED640_SCHEMA if detector_preprocessing == FIXED640_PREPROCESSING else SCHEMA,
         "provenance": "local raw detector/recognizer observations from hash-pinned inputs; no identity verdict, threshold, approval, or feature vector is recorded",
         "model_pins": {
             "manifest_sha256": pins_sha256,
@@ -397,20 +502,35 @@ def _observe_with_backend(*, root: Path, model_dir: str | Path, image_path: str 
         "candidate": {"source_before": candidate_before, "face": candidate_observation, "unavailable_reason": candidate_reason},
         "anchors": [],
     }
+    if candidate_metadata is not None:
+        record["candidate"]["detector_preprocessing"] = candidate_metadata
     if candidate_face is not None:
         candidate_embedding = _embedding(recognizer, candidate, candidate_face)
-        for source_before, data in anchor_inputs:
-            decoded = _decode(cv2, data, "anchor image")
-            anchor_face, anchor_observation, reason = _one_face(detector, decoded)
-            cosine: float | None = None
-            if anchor_face is not None:
-                cosine = _cosine(candidate_embedding, _embedding(recognizer, decoded, anchor_face))
-            record["anchors"].append({"source_before": source_before, "face": anchor_observation, "raw_cosine": cosine, "unavailable_reason": reason})
+        if detector_preprocessing == FIXED640_PREPROCESSING:
+            for source_before, decoded, anchor_face, anchor_observation, reason, metadata in anchor_detected:
+                cosine: float | None = None
+                if anchor_face is not None:
+                    cosine = _cosine(candidate_embedding, _embedding(recognizer, decoded, anchor_face))
+                record["anchors"].append({"source_before": source_before, "face": anchor_observation, "raw_cosine": cosine, "unavailable_reason": reason, "detector_preprocessing": metadata})
+        else:
+            for source_before, data in anchor_inputs:
+                decoded = _decode(cv2, data, "anchor image")
+                anchor_face, anchor_observation, reason = _one_face(detector, decoded)
+                cosine: float | None = None
+                if anchor_face is not None:
+                    cosine = _cosine(candidate_embedding, _embedding(recognizer, decoded, anchor_face))
+                record["anchors"].append({"source_before": source_before, "face": anchor_observation, "raw_cosine": cosine, "unavailable_reason": reason})
     else:
-        record["anchors"] = [
-            {"source_before": source_before, "face": None, "raw_cosine": None, "unavailable_reason": "candidate face unavailable"}
-            for source_before, _data in anchor_inputs
-        ]
+        if detector_preprocessing == FIXED640_PREPROCESSING:
+            record["anchors"] = [
+                {"source_before": source_before, "face": anchor_observation, "raw_cosine": None, "unavailable_reason": "candidate face unavailable", "detector_unavailable_reason": reason, "detector_preprocessing": metadata}
+                for source_before, _decoded, _anchor_face, anchor_observation, reason, metadata in anchor_detected
+            ]
+        else:
+            record["anchors"] = [
+                {"source_before": source_before, "face": None, "raw_cosine": None, "unavailable_reason": "candidate face unavailable"}
+                for source_before, _data in anchor_inputs
+            ]
     candidate_after = _hash_file(root, image_path, "candidate image", MAX_IMAGE_BYTES)
     if candidate_after != candidate_before:
         raise IdentityObserveError("candidate image changed during observation")
@@ -432,7 +552,7 @@ def _observe_with_backend(*, root: Path, model_dir: str | Path, image_path: str 
     return record
 
 
-def observe(*, root: Path, model_dir: str | Path, image_path: str | Path, anchor_paths: list[str | Path], output_path: str | Path) -> dict[str, Any]:
+def observe(*, root: Path, model_dir: str | Path, image_path: str | Path, anchor_paths: list[str | Path], output_path: str | Path, detector_preprocessing: str | None = None) -> dict[str, Any]:
     """Run only after the checked-in model pins have been explicitly admitted."""
     root = _safe_root(root)
     pins, pins_sha256 = _load_pins()
@@ -444,7 +564,7 @@ def observe(*, root: Path, model_dir: str | Path, image_path: str | Path, anchor
     except ImportError as exc:
         raise IdentityObserveError("pinned OpenCV runtime is not installed") from exc
     _verify_runtime(cv2, pins)
-    return _observe_with_backend(root=root, model_dir=model_dir, image_path=image_path, anchor_paths=anchor_paths, output_path=output_path, pins=pins, pins_sha256=pins_sha256, cv2=cv2)
+    return _observe_with_backend(root=root, model_dir=model_dir, image_path=image_path, anchor_paths=anchor_paths, output_path=output_path, pins=pins, pins_sha256=pins_sha256, cv2=cv2, detector_preprocessing=detector_preprocessing)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -454,9 +574,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--image", required=True, help="root-relative candidate image")
     parser.add_argument("--anchor", action="append", required=True, help="root-relative anchor image; repeat up to 16 times")
     parser.add_argument("--out", required=True, help="fresh root-relative .json observation")
+    parser.add_argument("--detector-preprocessing", choices=[FIXED640_PREPROCESSING], help="optional detector-only preprocessing; omit for native v1 behavior")
     args = parser.parse_args(argv)
     try:
-        observe(root=args.root, model_dir=args.models, image_path=args.image, anchor_paths=args.anchor, output_path=args.out)
+        observe(root=args.root, model_dir=args.models, image_path=args.image, anchor_paths=args.anchor, output_path=args.out, detector_preprocessing=args.detector_preprocessing)
     except IdentityObserveError as exc:
         parser.error(str(exc))
     return 0

@@ -31,8 +31,9 @@ OpenCV's own hosted model pages expose those exact file digests for
 [YuNet](https://huggingface.co/opencv/face_detection_yunet/blob/main/face_detection_yunet_2023mar.onnx)
 and
 [SFace](https://huggingface.co/opencv/face_recognition_sface/blob/main/face_recognition_sface_2021dec.onnx).
-The pair has no cached local copy, and `cv2` is not installed in the examined
-Python 3.13 environment. `onnxruntime` 1.27.0 is installed, but it does not
+At the time of this initial audit, the pair had no cached local copy and `cv2`
+was not installed in the examined Python 3.13 environment. `onnxruntime` 1.27.0
+was installed, but it did not
 replace the detector's landmark decode and SFace alignment implementation.
 Adoption therefore needs either a locked OpenCV package version or a reviewed
 local ONNX pre/post-processing implementation; it must not add auto-download.
@@ -41,6 +42,32 @@ The explicit directory-level model-file licenses make this a better
 commercial-use candidate than the current scorer, subject to preserving their
 notices and normal legal review. It is not a claim that training-data history
 or deployment law has been independently cleared.
+
+## Fixed detector preprocessing v2
+
+The admitted local observer keeps its native detector path as the default and
+emits `figment/identity-observation@1` for that legacy behavior. Its only
+alternate detector option is `fixed-max-edge-640@1`, which emits
+`figment/identity-observation@2`. It applies one deterministic rule to every
+detector input: when `max(width, height)` exceeds 640, resize to a maximum edge
+of 640 with preserved aspect ratio and `cv2.INTER_AREA`; otherwise do not
+upscale. The receipt records original and detector dimensions, the actual
+rounded `sx` and `sy`, interpolation, face count, detector-space face, and the
+bounding box and five landmarks mapped back to original pixels for the
+candidate and every anchor.
+
+SFace receives the original decoded pixels and those mapped coordinates. The
+resize is detector-only and remains in memory. It does not lower the 0.9 YuNet
+score threshold, change NMS/top-k, choose a different resize by sample, alter
+the exactly-one-face rule, or change a gate. `@1` and `@2` raw values are not
+calibrated or cross-version comparable.
+
+The fixed rule follows a detector-only probe on g01, g02, and the paired 1595
+candidate/control: native input produced face counts 1, 2, 0, and 0; the fixed
+640 detector inputs produced 1, 1, 1, and 1 with the same detector settings.
+The probe is `_private/figment-identity-observer-20260908/detector-probe-fixed640-v1.json`.
+The pinned YuNet README says its training scheme targets faces around 10×10 to
+300×300 pixels. [Pinned YuNet README](https://raw.githubusercontent.com/opencv/opencv_zoo/47534e27c9851bb1128ccc0102f1145e27f23f98/models/face_detection_yunet/README.md)
 
 ## Rejected reuse paths
 

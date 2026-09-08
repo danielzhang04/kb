@@ -87,29 +87,38 @@ class _Detector:
 
 
 class _Recognizer:
+    def __init__(self):
+        self.align_calls: list[tuple[tuple[int, ...], list[float]]] = []
+
     def alignCrop(self, image, face):
+        self.align_calls.append((tuple(image.shape), [float(value) for value in list(face)]))
         return image
 
     def feature(self, image):
         return np.array([[3.0, 4.0]], dtype=np.float32)
 
 
-def _backend(mode: str = "one"):
+def _backend(mode: str = "one", shape: tuple[int, int] = (6, 8)):
     detector = _Detector(mode)
+    recognizer = _Recognizer()
     return SimpleNamespace(
         __version__="4.12.0",
         IMREAD_COLOR=1,
-        imdecode=lambda _data, _mode: np.zeros((6, 8, 3), dtype=np.uint8),
+        INTER_AREA=3,
+        imdecode=lambda _data, _mode: np.zeros((*shape, 3), dtype=np.uint8),
+        resize=lambda _image, size, interpolation: np.zeros((size[1], size[0], 3), dtype=np.uint8),
         FaceDetectorYN=SimpleNamespace(create=lambda *_args: detector),
-        FaceRecognizerSF=SimpleNamespace(create=lambda *_args: _Recognizer()),
+        FaceRecognizerSF=SimpleNamespace(create=lambda *_args: recognizer),
         detector=detector,
+        recognizer=recognizer,
     )
 
 
-def _run(tmp_path: Path, pins: dict, pins_sha: str, backend, *, out: str = "result.json") -> dict:
+def _run(tmp_path: Path, pins: dict, pins_sha: str, backend, *, out: str = "result.json", detector_preprocessing: str | None = None) -> dict:
     return observe._observe_with_backend(
         root=observe._safe_root(tmp_path), model_dir="models", image_path="candidate.png",
         anchor_paths=["anchors/g01.png"], output_path=out, pins=pins, pins_sha256=pins_sha, cv2=backend,
+        detector_preprocessing=detector_preprocessing,
     )
 
 
@@ -193,6 +202,64 @@ def test_exactly_one_face_records_raw_cosine_landmarks_and_hashes_only(tmp_path:
     assert runtime["verified_runtime"] == {"distribution_version": "4.12.0.88", "cv2_version": "4.12.0"}
     assert runtime["backend"] == "opencv-dnn-cpu"
     assert runtime["detector_parameters"]["top_k"] == 5000
+    assert result["schema"] == observe.SCHEMA
+    assert "detector_preprocessing" not in result["candidate"]
+
+
+def test_fixed640_non_square_maps_detector_coordinates_to_original_pixels_for_sface(tmp_path: Path):
+    root, pins, pins_sha = _fixture_root(tmp_path)
+    backend = _backend(shape=(1001, 2003))
+    result = _run(root, pins, pins_sha, backend, detector_preprocessing=observe.FIXED640_PREPROCESSING)
+    candidate = result["candidate"]
+    metadata = candidate["detector_preprocessing"]
+    assert result["schema"] == observe.FIXED640_SCHEMA
+    assert metadata["id"] == observe.FIXED640_PREPROCESSING
+    assert metadata["original_size"] == {"width": 2003, "height": 1001}
+    assert metadata["detector_input_size"] == {"width": 640, "height": 320}
+    assert metadata["sx"] == pytest.approx(640 / 2003)
+    assert metadata["sy"] == pytest.approx(320 / 1001)
+    assert metadata["interpolation"] == "INTER_AREA"
+    assert metadata["resized"] is True
+    assert candidate["face"]["bbox"]["x"] == pytest.approx(1 / metadata["sx"])
+    assert candidate["face"]["bbox"]["y"] == pytest.approx(1 / metadata["sy"])
+    assert metadata["mapped_face"] == candidate["face"]
+    assert metadata["detector_face"]["bbox"]["x"] == pytest.approx(1.0)
+    anchor_metadata = result["anchors"][0]["detector_preprocessing"]
+    assert anchor_metadata["detector_input_size"] == {"width": 640, "height": 320}
+    assert backend.detector.sizes == [(640, 320), (640, 320)]
+    assert all(shape == (1001, 2003, 3) for shape, _face in backend.recognizer.align_calls)
+    assert backend.recognizer.align_calls[0][1][0] == pytest.approx(1 / metadata["sx"])
+
+
+def test_fixed640_never_upscales_small_inputs_and_preserves_anchor_metadata(tmp_path: Path):
+    root, pins, pins_sha = _fixture_root(tmp_path)
+    backend = _backend()
+    result = _run(root, pins, pins_sha, backend, detector_preprocessing=observe.FIXED640_PREPROCESSING)
+    for item in [result["candidate"], *result["anchors"]]:
+        metadata = item["detector_preprocessing"]
+        assert metadata["original_size"] == {"width": 8, "height": 6}
+        assert metadata["detector_input_size"] == {"width": 8, "height": 6}
+        assert metadata["sx"] == 1.0 and metadata["sy"] == 1.0
+        assert metadata["resized"] is False
+        assert metadata["recognizer_pixels"] == "original"
+
+
+@pytest.mark.parametrize(("mode", "reason"), [("none", "no face"), ("multi", "multiple faces")])
+def test_fixed640_preserves_exactly_one_face_rule_and_records_anchor_null_metadata(tmp_path: Path, mode: str, reason: str):
+    root, pins, pins_sha = _fixture_root(tmp_path)
+    result = _run(root, pins, pins_sha, _backend(mode), detector_preprocessing=observe.FIXED640_PREPROCESSING)
+    assert result["candidate"]["face"] is None
+    assert result["candidate"]["detector_preprocessing"]["face_count"] == (0 if mode == "none" else 2)
+    anchor = result["anchors"][0]
+    assert anchor["raw_cosine"] is None
+    assert anchor["detector_preprocessing"]["id"] == observe.FIXED640_PREPROCESSING
+    assert reason in anchor["detector_unavailable_reason"]
+
+
+def test_invalid_detector_preprocessing_is_rejected_before_model_work(tmp_path: Path):
+    root, pins, pins_sha = _fixture_root(tmp_path)
+    with pytest.raises(observe.IdentityObserveError, match="detector_preprocessing"):
+        _run(root, pins, pins_sha, _backend(), detector_preprocessing="resize-until-it-works")
 
 
 def test_second_image_read_is_bounded_when_source_grows(tmp_path: Path, monkeypatch):
