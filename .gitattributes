@@ -47,3 +47,9 @@
 /HEARTBEAT.md text eol=lf
 /tests/fixtures/dashboard-v3-p4-mirror-vectors.json text eol=lf
 /tests/fixtures/dashboard-v3-p6-contract-vectors.json text eol=lf
+
+# Creator-002's identity spec is bound by persona.yaml's raw SHA-256. Keep the
+# checked-in bytes stable across Windows and Linux checkouts.
+/orgs/figment/personas/creator-002/identity-spec.md text eol=lf
+# Figment personas bind this shared register spec by its raw SHA-256 too.
+/orgs/figment/pipeline/look-spec-v2.md text eol=lf

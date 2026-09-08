@@ -47,6 +47,16 @@ orgs/figment/research/10sorlabs-package/
 # for pod uploads (see orgs/figment/pipeline/expand/runs/_uploads/ below).
 personas/anchors/
 orgs/figment/personas/*/anchors/
+# Creator-002's three synthetic acceptance anchors are the portable fixture for
+# the second-persona proof. Keep the broader anchor bulk rule above for all other
+# personas, while tracking only this fixture and its generator.
+!orgs/figment/personas/creator-002/anchors/
+orgs/figment/personas/creator-002/anchors/*
+!orgs/figment/personas/creator-002/anchors/c002-a1.jpg
+!orgs/figment/personas/creator-002/anchors/c002-a2.jpg
+!orgs/figment/personas/creator-002/anchors/c002-a3.jpg
+!orgs/figment/personas/creator-002/anchors/make_placeholders.py
+!orgs/figment/personas/creator-002/anchors/README.md
 orgs/figment/personas/*/batches/*/images/
 orgs/figment/personas/*/batches/*/rejected/
 orgs/figment/personas/*/batches/*/blind/
