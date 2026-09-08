@@ -286,3 +286,37 @@ Hubworker now updatesbook foracceptedcuration and designs only a minimalgenerate
 input inventory/gallery (currentfour) reusingexistingauth/pathbounds. No UIcode yet.
 Rootcontinuesreview/integration.8AMreportdelivered12:00;keepawakealive07:59lastcheck.
 RunPodallabsent; exactLoRAuploadquestionstillpending andmustnotbe retried/bypassed.
+
+
+## 12:52 UTC: Gemini adapter accepted; exact export blocked before execution
+
+Studio head56226790 pushed. Gemini code SHA6d10f4f834a85916e23073865f9fc2c2610205c6137f823b81a44a38de56fc0b;
+tests1bd0cebd4fa7475761cf92cfa33319d0f1df5435b014594c0afcca3af6c46e45.
+Parent20 and independent20 tests PASS. Actualmetadata path/hash pinned; fixedg01/E01;
+real bounded image decode; wide2K envelope; skipthoughtimages; preserveknownusage on
+invalidoutput; root-local exclusive reservationmarker acrossoutputdirectories;
+keypresencebeforemarker; initialmanifestbyteshash; no retries or redirects.
+Docs final700a0ca464fa18f84f0f59c80d2cb410218b8ab172f8aa1d7aad9ebcce66874c
+and readinessf273105c6f15f20aae3c533ac6a258c2851d0d0aef7903b168c2cd0d558ed1ef.
+
+Fresh root admission and request under STUDIO/_private/figment-gemini-experiment-20260908:
+request-e01-v1.json SHA2433bd5acae15214b454e82f4d3e42fd73a394d9de0709a6be5ac463fe9c9754,
+selfhash7d8a4ab11e3e71a34ed8c34df8d7ca423d0bd8d4c7bd297065855560c20a2ed3;
+admission-e01-v1.json SHA1484033b479b58361fe7ece23fada1cc72a469984d722682df58f46e5771eb1b.
+It is agent experiment admission under user authorization, NOT humanqualityapproval.
+Actual offline plan succeeded without credential/network. The4.60hold was committed
+to dedicated figment-gemini-2026-09-08.tsv and audited, then execution was rejected by
+automatic approval review before process creation. Reason: privateg01 upload toGoogle
+requires exact-image authorization despitegeneralGeminipermission. Userreceived short
+explanation and asyncquestion specifically permitting g01.jpg toGoogleforonecomparison.
+No retry/alternateexport whilepending. Verified no live-e01-v1 directory or reservation
+marker; releasedhold to0.000000/state released-no-process-start. Thiszero is knownzero
+providerattempts, not unknownnativebilling. Arc37.800385/daily2.110134 unchanged.
+Originalrequestexpires30min afterissue; ifanswerarriveslater freezefreshafterrechecking.
+
+Two actual pendingexportquestions now: existingLoRAtoRunPod; originalg01toGoogle.
+Do not treat either as blocking localbook/hub/traininginfrastructure work. Hubworker
+repairs generatedinputprojection (junctions, invalidscanbounds, requestedimage-onlyhash).
+Timestampindependentlyreviews hub. Protocolanalyzes explicitexperimentaltrainingadmission
+vs productionapproval without code/gatechanges or fakehumanrulings. Keepawake verified
+08:35Eastern; nextphase recheck.8AMreportalreadydelivered;continueasync.

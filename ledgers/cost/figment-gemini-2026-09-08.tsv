@@ -1,2 +1,2 @@
 model	step	usd	request_id	reservation_ref	state
-gemini-3-pro-image	gemini-input-diagnostic	4.600000	gemini-e01-20260908-v1	gemini-e01-reserve-20260908-v1	reserved
+gemini-3-pro-image	gemini-input-diagnostic	0.000000	gemini-e01-20260908-v1	gemini-e01-reserve-20260908-v1	released-no-process-start

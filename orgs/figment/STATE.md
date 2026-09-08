@@ -1,9 +1,9 @@
-﻿# Figment current state
+# Figment current state
 
-Updated 2026-09-08 12:43 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 12:52 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `3084d1cc`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `56226790`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
@@ -31,14 +31,16 @@ is $2.110134. The studio runner retains its stricter $10 daily configuration (th
 checkout currently says $30). No outstanding numeric reservation. Native-agent and
 built-in image-generation billing is unknown where the runtime does not expose it.
 
-Current work: a Figment-only Gemini comparison adapter is undergoing repair and
-independent review. One read-only model metadata GET succeeded; no Gemini generation
-has run. A proposed $4.60 conservative reservation fits the arc and stricter daily
-limits but has not been written. Root admission, final review and an exact held row
-are required before the sole generation request. This is within the user's standing
-paid-compute/Gemini authorization, not a new inferred human gate. In parallel, a
-generated-input gallery is being implemented with source hashes and dated review
-declarations; its code is not yet accepted.
+Current work: the Figment-only Gemini comparison adapter was accepted in 56226790
+after 20 parent and 20 independent tests. Its exact source/prompt/metadata bindings,
+one-attempt reservation marker, bounded decoding and sanitized receipts are reviewed.
+The actual generation command was rejected by automatic approval review BEFORE
+process start: exact g01-to-Google export permission is required. A second explicit
+async approval question is pending. No image was sent or provider cost incurred; the
+$4.60 reservation was released after verifying no dispatch marker/output directory.
+The source request/admission and refusal audit remain preserved. No retry or alternate
+export while pending. In parallel, generated-input gallery implementation is undergoing
+repair/review, and an experimental-training admission design is being analyzed locally.
 
 The exact existing-LoRA upload still awaits the user's answer after automatic
 approval review rejected it. No retry or alternate export. Other work continues.
