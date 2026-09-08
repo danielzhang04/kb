@@ -376,6 +376,7 @@ def test_new_opener_ignores_ambient_proxy_configuration(monkeypatch):
     control = urllib.request.build_opener()
     assert any(isinstance(h, urllib.request.ProxyHandler) and h.proxies.get("https") == "http://proxy.invalid:3128" for h in control.handlers)
     assert any(isinstance(h, module._PinnedRedirectHandler) for h in opener.handlers)
+    assert module._validated_url("https://us.aws.cdn.hf.co/model").hostname == "us.aws.cdn.hf.co"
     with pytest.raises(module.OmniGen2PreparationError, match="host allowlist"):
         module._validated_url("https://example.com/x")
 

@@ -34,7 +34,7 @@ COMFY_COMMIT = "95d755cd8107a72258d452b5d3657273d571f07d"
 PRIVATE_BASE = Path(r"C:\Users\danie\kb\_private")
 PRIVATE_ROOT = PRIVATE_BASE / "figment-local-omnigen2-models-20260908-v1"
 FEASIBILITY_PATH = "docs/figment/2026-09-08-local-omnigen2-feasibility.md"
-FEASIBILITY_SHA256 = "43b1c6fe64fd817971ab9250dc63789af75ecff5a4ff473367bfb3fa9182d9d4"
+FEASIBILITY_SHA256 = "daf48e21a2eabd2b9f9d4e44f5ec464108a884a95cacc81bb12f952379823939"
 MIN_START_FREE_BYTES = 35 * 1024**3
 MIN_REMAINING_FREE_BYTES = 20 * 1024**3
 EXPECTED_TOTAL_BYTES = 15_779_025_788
@@ -50,6 +50,7 @@ ALLOWED_HOSTS = frozenset({
     "cdn-lfs-us-1.hf.co",
     "cdn-lfs-eu-1.hf.co",
     "cas-bridge.xethub.hf.co",
+    "us.aws.cdn.hf.co",
 })
 SAFE_PRIVATE_CHILD = re.compile(r"\.?[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)

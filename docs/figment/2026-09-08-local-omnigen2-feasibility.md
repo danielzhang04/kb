@@ -23,7 +23,14 @@ Download only these paths, from one immutable revision, into a new private
 models root. Start each request at the pinned `huggingface.co` resolve URL and
 accept HTTPS redirects only to `huggingface.co`, `cdn-lfs.huggingface.co`,
 `cdn-lfs-us-1.hf.co`, `cdn-lfs-eu-1.hf.co`, or
-`cas-bridge.xethub.hf.co`. A signed CDN URL need not repeat the repository name.
+`cas-bridge.xethub.hf.co`, or `us.aws.cdn.hf.co`. The first preparation attempt
+stopped before reading payload bytes because the pinned Hub URL redirected to
+the last host. A separate HEAD request recorded only HTTPS, status 302, and
+the destination hostname; Hugging Face's official download documentation lists
+it as a CDN edge. The empty retained failure root remains evidence. This narrow
+addition does not permit wildcard hosts or change any model pin.
+[Official download host list](https://huggingface.co/docs/hub/models-downloading)
+A signed CDN URL need not repeat the repository name.
 Record the repository, revision, path, and final hostname, but do not persist a
 signed URL or its query string. Reject any other host, a size mismatch, a fourth
 file, or a SHA-256 mismatch.
