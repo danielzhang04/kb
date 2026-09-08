@@ -438,3 +438,36 @@ questions (existing LoRA-to-RunPod, g01-to-Google) remain unanswered; do not ret
 or use an alternate export. Keep-awake09:44Eastern owner16580/supervisor19564alive.
 Native telemetry remains unknown; root repaired the malformed last metadata row
 to the established eight-column schema. Continue active async work past8AM.
+
+## 14:26 UTC: local image completed and rejected; executor accepted
+
+Studio af7b07bc pushed. Windows launcher repair41449404 passed25 parent and25
+independent tests including actual Windows descendants/failure fixtures. Baseline V3
+main_private/figment-local-comfy-baseline-20260908-v3 completed one1024x1024 image,
+1128774bytes, SHA3d6e97572ac4be8a7e7fd786bed7a8eea7580abb097bdf4eaef0a9a4299fb8d8.
+Manifest4c1a9fdd6324a4e0fc72b199aeef884145b70b341b787a329d5146074586909e;
+receipt/journal f5ca0af5d75d2204751ab4db8f0067ab87f6b6cd015d96e7d3db895e3b2c9570.
+Wrapper30076 and children34112/41524 were verified stopped by runner and root,
+port8190 clear. No running generation session remains. Root and protocol each viewed
+original g01 and output independently: photo-like, adult-presenting but altered face,
+white/black tee and two additional portrait faces on background board. Reject training.
+Fixed640 observer also detects3 faces, all similarities null because candidate face
+unavailable (not a low similarity score). Observer receipt SHA
+38ca093281744b6d1067ad79c77a4d852e8b857f1b7a700c6375f48d561e90e7.
+
+Executor af7b07bc accepted:23 parent checks33.27s and23 independent28.13s. Code SHA
+61dd9110aa0b10c5d39ce1c4fd58bb213136a7f099632ffaa4ef46f2f5c76a2e; tests
+89f3cbc72768e2ee577f408bc04c9cefd405d76551210299b7cca4e164f5f7b3. Reviewer caught
+extra/malformed artifact receipt rows being collapsed away; repaired exact typed
+inventory and regression passed. Uses canonical Ops ledger root and strict studio
+10/day plus50/arc, exact source/staged inventory, retained raw review, stable admission
+ID replay marker and no production promotion. No eligible dataset/live training.
+
+Protocol now integrates original-pixel384-square g01 crop into local launcher as
+explicit condition, only LoadImage graph delta, same seed/prompt/models/24steps.
+Helper five synthetic tests passed parent; no actual crop/run yet. Timestamp reviews
+integration after freeze. Hub updates runtime audit/book and a future single-observation
+LoRA research option; current20-row contract unchanged. Do not edit another worker's
+files. Studio STATE content remains unchanged/normalization-only; coordination lives
+here. Both exact export questions remain pending, no retry/alternate export. No pods
+or reservations; arc37.800385 and daily2.110134 unchanged. Keep-awake active10:20Eastern.

@@ -94,3 +94,4 @@ native-runtime billing/model telemetry unavailable; provider accounting separate
 native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-canonical-seed-adequacy-audit	not-exposed
 native-runtime telemetry unavailable; local runner v1 failed before listener/POST, provider request absent; billing not asserted zero		not-exposed		gpt-5.6-terra	not-exposed	figment-local-comfy-baseline-v1-failure-and-torchinductor-repair	not-exposed
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-windows-ownership-repair-and-experimental-executor-design	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-v3-visual-rejection-and-executor-final-review	not-exposed
