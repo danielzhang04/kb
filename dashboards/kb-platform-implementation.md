@@ -33,27 +33,31 @@ retain their separate human gates.
 5. **C1 schema/migration: DONE / READY.** Committed and pushed as `5a480e5c`.
    Final independent review passed all 230 tests in seven scoped files,
    dashboard typecheck, and diff checking. Both minor diagnostic findings closed.
-   **C1 delivery: PAUSED pending user approval.** Terra owns the adapter and focused tests; Sol
-   independently prepares adversarial probes. B wiring remains the final stage.
-6. **D1 ledger design — PAUSED.** The same rebase-recovery finding failed two
-   correction/review attempts. Root has asked the user for one further bounded
-   cycle; no D1 draft edit or implementation dispatch may occur until answered.
+   **C1 delivery: BUILD / FINAL GATE.** Terra reports 93/93 adapter tests and
+   8/8 vertical tests separately; combined gate and independent review remain.
+6. **D1 ledger design: READY; implementation ACTIVE.** Sol's corrected design
+   passed a separate fresh review. The exact candidate proof and checkpoint
+   before publication close the historical recovery finding.
+7. **A1 engine/grant: PLAN READY; implementation ACTIVE.** Root independently
+   verified the pre-edit baseline: 104/104 tests across two files, full typecheck.
+   The four-file window includes the strict grant outcome and resumable tokenless
+   interruption; it is independent of C/D1. Production acceptance is still pending.
+8. **B generation integration: WAITING on accepted A/C/D ports.** Then run full
+   integration/fault gates, independent review, and required production gates.
 
-C1 delivery is frozen after the same malformed write-intent fulfillment test
-failed twice: cleanup first threw on an undefined result, then one prompt write
-was observed after the partial correction. This test returns undefined; it does
-not test a thrown undefined rejection. Root requested one bounded correction:
-validate transition results before effects, preserve the malformed-return case,
-and add actual durable-transition-then-throw probes. No C repair before approval.
-Independent A1 engine/grant preflight is active, with no production edits.
-The strict outcome type and a resumable tokenless boundary are being reviewed.
+The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery has resumed. D1 design is independently TECHNICALLY READY and its implementation is released. A1 engine/grant preflight is accepted and its four-file implementation is released. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+
+Keep-awake is active through a hidden Windows native system-required request,
+PID 31648, with a fresh heartbeat and 12-hour expiry at approximately
+2026-09-08 19:19 UTC. Status/stop files are under root `_private/overnight-awake-20260908.*`.
+This is a scoped helper, not a changed global power plan or verified app setting.
 
 ## Current evidence and boundaries
 
 PR176 targets main at source head
 `36f76379c422aa1133f5421fe6258dd254e9d35e`; it records accepted A0, C0, D0, and C1 schema.
-C1 delivery source is frozen and uncommitted. The frozen Slice 1A
-adapter/grant files remain unchanged. Coordination is based on
+C1 delivery and the released A1/D1 implementation are uncommitted WIP.
+The older Slice 1A checkout remains untouched. Coordination is based on
 `9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
 
 Linux run Y5mujQ passed all 399 selected tests, including 11 isolated realBroker

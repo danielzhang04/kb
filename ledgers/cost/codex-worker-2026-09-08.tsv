@@ -29,3 +29,7 @@ unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-correction-pause
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-interim-review	confirmed malformed fulfillment is not a falsey rejection; separate probes required; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-engine-grant-preflight	read-only independent next-stage plan; C and D1 pauses retained; responding model and cost unavailable	unknown
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:A1-resume-seam-preflight	read-only independent boundary and cleanup inspection; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-renewed-correction	user renewed bounded correction; separate 93 and 8 passes, combined and independent pending; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-renewed-design-review	fresh independent design technically ready, root released bounded implementation; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-four-file-build	corrected plan accepted; root baseline104 and typecheck passed; implementation dispatched; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-implementation-dispatch	reviewed checkpoint receipt parser pinned-day scope; no real ledger publication; responding model and cost unavailable	unknown

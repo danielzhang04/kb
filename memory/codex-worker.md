@@ -603,3 +603,13 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   It does not test an ambiguous rejection after a landed write. Use an actual
   throw undefined after the real transition for the latter, and name each fault
   precisely. Validate a transition result before accepting further authority.
+
+## 2026-09-08 - renewed async authority and phase progression
+
+A later explicit user continuation directive can renew a previously paused
+bounded correction. Update tasklist, wake decision and handoff immediately;
+retaining stale "await approval" text strands authorized work. Preserve failure
+history separately. A native Windows thread execution-state helper provides a
+bounded keep-awake request without changing global power policy; verify API
+success plus live heartbeat/PID, not an assumed app setting. A1/C/D1 file scopes
+are independent; B alone waits for all accepted ports.
