@@ -48,7 +48,7 @@ Studio worktree:
 `C:\Users\danie\kb\_private\codex-worktrees\figment-studio-20260908`
 Studio branch:
 `codex/figment-studio-20260908`
-Studio head is `be0da659`, pushed.
+Studio head is `614b6e40`, pushed.
 Studio draft PR:
 https://github.com/danielzhang04/kb/pull/179
 PR179 is stacked on foundation PR178, whose accepted head is `37d580d9`.
@@ -139,12 +139,48 @@ root also observed Python35628 during setup and verified all three plus
 launcher41760 absent afterward. No active fit session remains (83044 completed).
 Original CPU staging is unchanged; latent/text cache NPZ files are confined to
 the new GPU stage. Do not reuse the V1 admission marker or rewrite failure evidence.
-`figment_fit_repair` solely owns a narrow explicit Python UTF-8 launch correction
-and Unicode-pipe regression. Review its new freeze before a fresh V2 admission/run.
-`figment_training_hub_plan` now owns the dashboard training-evidence implementation
-and design; `figment_fit_independent_review` reviews that separate hub work.
-The hub must describe historical preparation only, not infer a global absence of
-GPU admission or quality work from old CPU receipts. No promotion has occurred.
+The UTF-8 correction was accepted at `937d27b2`, source
+`5554d92cfa52e91a001da376a247dac6a6a75250c5759516692833599aa84bed`.
+The final 15-test suite passed independently; root reran the two changed cases.
+Actual V2 in Studio `_private/figment-local-lora-fit-20260908-v2` COMPLETED
+all ten steps in 79.234 seconds, exit0, verified teardown, no samples.
+Receipt raw SHA256: `071af1206db70a4c0294fa3372f910bd1a19233aae79df30f94ae58328b0030a`.
+V2 admission raw: `38429b694110a7c17260106fd2cc5021804df00c644813ffb3ea7b6488176e9b`;
+canonical: `2f1514062aae4e6f0dbd0d1d978da80772e2fce6aee2e8ec0ca9b7da71ba367e`.
+Final `output/figmentlocalg01probe.safetensors` is 170,540,916 bytes,
+SHA256 `032123a1bc31b8e6dab3c8d00f961189ff3e0ddda2d051bd587a5de879afd135`.
+Independent bounded-header audit verified 2,166 F16 tensors, ss_steps10,
+one image, rank32/alpha16/bf16. Root separately checked all 85,115,602 weight
+elements finite with NumPy mmap, without CUDA; private `root-checkpoint-audit.json`
+hash `f1f59dd15fa8e8d53649cca40ee66b091c9985e0d6e88b4f9fd8df32dacd2460`.
+Root verified retained PIDs28696/32456 and separately observed35396/37004 absent
+at16:47UTC. GPU memory was0 used. Session62776 completed; no active fit remains.
+No quality result or accepted LoRA follows from this runtime success.
+
+The historical preparation hub projection is accepted at `614b6e40` (nine files).
+It reads four fixed configured receipt files, closes a root-found null-hash
+comparison defect, exposes historical preparation only, and labels GPU/quality
+as unreported by these receipts. Missing localTraining is backward compatible.
+Author123 focused tests/typecheck passed; independent122 before final delta plus
+five delta tests; root five delta tests and actual four-receipt Node projection passed.
+The full dashboard suite was aborted after at least59 failures across19 files;
+there is no final count or clean baseline proof. Do not call these proven
+pre-existing failures. Detailed categories are being preserved in the hub audit.
+`figment_training_hub_plan` now owns a fresh actual-receipt desktop/mobile fixture
+at MAIN `_private/ignored_private/figment-training-preview-20260908-v1`, port5420,
+plus `docs/figment/2026-09-08-local-training-hub-review.md`. Existing Node40096
+gallery fixture5419 remains untouched. Await capture hashes and root visual review.
+`figment_fit_independent_review` now writes the V1/V2 runtime audit and small
+research-book status updates; it completed independent actual-artifact review.
+`figment_fit_repair` owns quality Phase A: new local_quality_plan.py,
+local_quality_cpu_preflight.py, local_quality.toml, their two test files, and
+the local-quality-runner design. Existing ten-step modules remain unchanged.
+Phase A has no GPU executor or live authority. A later shared-runtime Phase B
+must preserve the ten-step admission contract and use fresh quality CPU evidence.
+The quality evaluation remains20/50/final100; pinned sd-scripts saves every10
+and ALSO the final100, yielding eleven exact files named `-step00000010` through
+`-step00000100` plus final. Per-file256MiB, aggregate3GiB; about1.876GB actual-size
+extrapolation from V2. Do not repeat the rejected four-file/six-digit-name design.
 The eventual first probe remains bounded to at most ten steps, twenty minutes, and no sample export. The subsequent quality protocol is accepted as a design only at `1056eb92`: identical 100-step cosine schedules with 20/50/100 checkpoints, predeclared 50-step caption comparison, and matched base/LoRA prompts including the trigger. Read `docs/figment/2026-09-08-one-source-quality-experiment.md` only after the ten-step fit succeeds.
 ## Local Windows runtime rules
 
