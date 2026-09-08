@@ -20,3 +20,11 @@ Actual Fable 5.1 authored and repaired the validator. Actual Opus 5 reviewed its
 The most consequential root finding was the first implementation's whole-model byte retention. It would have allocated multiple gigabytes before resource monitoring began. Streaming fixed that behavior; the measured real verification confirms the correction. A passing small fixture alone would not have exposed it.
 
 Remaining controller review, hardware preflight and explicit one-run admission are separate steps. Research-only licensing and unresolved identity consistency remain unchanged.
+
+## Controller accepted after review
+
+Actual Opus 5 subsequently returned READY for the thin controller and its tests. Root removed an unreachable PNG-reader fallback, clarified when an engine-owned failure receipt exists, and separated the planner's declared `manifest_sha256` from `manifest_record_sha256` of the whole stored record. The final 18 controller tests passed in 0.75 seconds, including distinct assertions for those two digests. Accepted controller SHA is `9ed5aa16aeecb86edecf390f57166bbe0447f1c2e35c121a4e68157f62569300`; its bootstrap binds the accepted admission source above.
+
+Root retained failure on invalid PNG bytes once Comfy reports a completed output. The reviewed local `SaveImage` calls `img.save` before appending the output record and returning it; treating a corrupt reported output as a pending write would weaken the check. The output bound remains three directory entries because it includes the mandatory empty `loras` directory alongside two PNGs. Reparse checks continue through every ancestor. These decisions reject optional review suggestions that did not match the actual execution path.
+
+The first root admission-preparation check stopped before evidence gathering because available RAM was below the 12 GiB floor. No run root, admission, or GPU process was created. That is a resource-readiness observation, not a failed image experiment. Further preparation must use fresh resource observations while preserving this failed diagnostic.
