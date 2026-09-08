@@ -17,3 +17,5 @@ native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra
 native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-lineage-independent-review	
 native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-review-documentation	
 native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-handoff-refresh	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-recovery-authorized-final-review	
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-live-local-preflight	
