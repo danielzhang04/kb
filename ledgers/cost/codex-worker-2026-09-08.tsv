@@ -38,3 +38,7 @@ unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:B-integration-preflight	plan
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:managed-cancellation-acceptance	root17 and typecheck PASS, fc5e7100; now independent D1 review; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-frozen-and-linux-toolchain	builder174 native11 Python typecheck PASS; isolated pinned toolchain preparation; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-expanded-matrix	lastfull121 PASS; real composition and operator cancel tracking regression active; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-correction-accepted	three red/green corruption regressions; builder177 root18+11 typecheck;647f4746; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D1-independent-closure-A1-review	both D1 findings closed; A1 source review active; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:Linux-runner-expansion	exactpins enforced; named suite and same-shell evidence; syntax only; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:Linux-pins-and-C-fixtures	isolated tooling independently verified; direct C fixture correction and browser preflight; responding model and cost unavailable	unknown

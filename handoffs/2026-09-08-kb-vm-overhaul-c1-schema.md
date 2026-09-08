@@ -1,6 +1,6 @@
 # KB VM overhaul async continuation handoff - 2026-09-08
 
-The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is frozen for independent review. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is accepted and pushed at 647f4746 after independent review and correction. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
 
 ## What worked (with evidence)
 
@@ -38,10 +38,12 @@ probe remains failed systemd / HTTP502 and PR173 open; no fresh health claim.
 | --- | --- | --- |
 | C adapter, adapter test, vertical test, delivery DRAFT | DONE accepted 1f0084ef | root independent review |
 | execution.ts/test, spendGrantProvision.ts/test, A1 DRAFT | WIP building | c1_schema_review, Sol-high requested |
-| D1 atomic document/checkpoint, queue bridge/receipt, Python day, Plane-A parser and roster test, D1 DRAFT | Frozen; independent review active | c1_schema_build, Terra-high requested |
+| D1 receipt/checkpoint/ledger/parser | DONE accepted 647f4746; builder177/root18+11/typecheck | independent Terra and root |
 | B integration preflight DRAFT | PLAN READY committed fc5e7100; build waits for A1/D1 | root accepted |
 | Managed cancellation pair | DONE accepted fc5e7100, root17/typecheck | root independent review |
-| Isolated pinned Linux toolchain | Preparation active, no global install | integration_plan_review, Sol-high requested |
+| Isolated pinned Linux toolchain | READY; root live versions and hashes verified | integration_plan_review, Sol-high requested |
+| Expanded Linux runner | Prepared; root review finishing; no new integration run | c1_schema_build, Terra-high requested |
+| Remaining direct C test fixtures + browser preflight | Active two-file fixture correction and read-only browser plan | integration_plan_review, Sol-high requested |
 | tasklist, STATE, parent card, wake decision, this handoff | current checkpoint | root |
 
 SOURCE: C:/Users/danie/kb/_private/codex-worktrees/kb-vm-overhaul-resume-20260907,
@@ -53,8 +55,9 @@ telemetry unavailable. No formal grade, merge, deployment or phase completion.
 ## Exact next step
 
 B preflight and managed cancellation are accepted at fc5e7100. Finish A1
-expanded tests (last full run121), independently review D1 (builder174/11 and
-typecheck), prepare isolated pinned Linux tooling, then dispatch B implementation.
+expanded tests (last full run129; real C proof still pending), independent
+A1 review, direct C fixture correction and runner review, then dispatch B. D1
+is accepted647f4746 and isolated exact Linux tooling is independently verified.
 Complete Phase0 gates before advancing each remaining phase sequentially.
 
 ## Load list

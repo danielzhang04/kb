@@ -622,3 +622,5 @@ Two fresh early-exit probes caught these gaps after a 101-test builder pass;
 correction and root103/typecheck passed at source1f0084ef.
 
 2026-09-08 async review: A fulfilled PortResult promise can still refuse cleanup. The cancellation controller must validate the result before the engine can treat close as proof and remove an owned worktree; preserve falsey first failures while always attempting registered cleanup. Managed pair independently17/typecheck PASS at fc5e7100. A1/D1/B and final Linux gates remain pending.
+
+2026-09-08 D1 review: Keep candidate receipt fields local until a sidecar is proven; returning required after mutating an intent postimage can persist an invalid document through the transaction final save. Strict recovery parsing also needs lexical CSV/decimal validation, not Number equality alone. Three red/green probes closed these findings; D1 accepted647f4746. Exact isolated Linux tooling is verified; final integrated run remains pending.

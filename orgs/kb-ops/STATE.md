@@ -13,8 +13,9 @@ _Updated: 2026-09-08 (async continuation; cancellation accepted, A1 testing, D1 
 - C delivery is accepted and pushed at `1f0084ef`. Root independently passed
   103/103 focused tests, full typecheck, diffcheck, and two early-exit red/green
   probes. B integration plan is accepted; B production waits for A1/D1.
-- D1 design passed independent review. Its implementation is frozen with builder 174 native tests,
-  11 Python tests and typecheck passing. Terra independently reviews it now.
+- D1 design passed independent review. Its implementation is accepted at 647f4746 after two
+  concrete corruption findings were corrected and independently closed. Builder
+  177 native tests; root receipt18, Python11 and typecheck PASS.
 - A1 engine/grant corrected preflight is accepted. Sol owns the atomic four-file
   implementation. Root pre-edit baseline passed 104/104 and full typecheck.
 - Windows scoped keep-awake helper PID 31648 is active, heartbeat verified;
@@ -24,16 +25,17 @@ _Updated: 2026-09-08 (async continuation; cancellation accepted, A1 testing, D1 
 - Retained Linux399/Windows47/mutation evidence is prior-only. Last VM observation
   remains failed systemd / HTTP502; PR173 remains open. No production deploy occurred.
 
-The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is frozen for independent review. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
+The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery and the managed cancellation correction are accepted. D1 implementation is accepted and pushed at 647f4746 after independent review and correction. A1 engine/grant is completing its expanded test matrix; B integration has an accepted plan and waits for the remaining ports. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
 
 - Managed cancellation correction accepted/pushed `fc5e7100`; independent
   17/17 and full typecheck PASS. A1 expanded tests include real C/controller
   composition and an additional operator-cancel settlement tracking correction.
-- Isolated pinned Linux toolchain preparation is active; Windows pins match.
+- Isolated Linux Node24.18/npm11.16 is independently verified; Windows pins
+  match too. Expanded runner review and direct C fixture repair are active.
 
 ## Next
 
-Finish and independently review A1 and D1; integrate B only after accepted
+Finish and independently review A1; D1 is accepted. Integrate B only after accepted
 ports; run phase-level fault/integration and environment gates. Continue the
 remaining phases sequentially under the user's authorization. Signed production
 and explicit runtime-selection decisions remain gates at their actual position.
@@ -44,7 +46,7 @@ and explicit runtime-selection decisions remain gates at their actual position.
   its required human gate. Implementation remains bounded by its ordered stages
   and evidence.
 - The VM is not ready on the observed release, browser proof is absent, and the
-  Linux toolchain differs from the repository pin.
+  final integrated Linux run remains outstanding (exact pins are now available).
 
 ## Historical evidence (not current operational status)
 
