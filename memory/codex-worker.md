@@ -590,3 +590,9 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   boundary that must stop delivery.
 - Preserve the exact focused command in the evidence and handoff:
   `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/agentSessionChains.test.ts`.
+
+## Assert observable failure channels at boot (2026-09-08)
+
+- An empty registry result may be a swallowed read failure. A real legacy boot
+  regression must also reject its warning channel, then prove the migrated
+  bytes and preserved backup. Schema acceptance is separate from delivery.

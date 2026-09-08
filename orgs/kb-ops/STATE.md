@@ -1,19 +1,19 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-08 (C0/D0 ready; C1 under independent review; D1 paused)_
+_Updated: 2026-09-08 (A0/C0/D0/C1 schema ready; C1 delivery building; D1 paused)_
 
 ## Now
 
 - The complete twelve-phase overhaul remains active. Phase 0 is incomplete and
-  Phases 1–11 remain gated. A0, C0, and D0 are independently ready; C1 schema
-  and migration work is active. None of this authorizes production.
+  Phases 1–11 remain gated. A0, C0, D0, and C1 schema are independently ready; C1
+  delivery work is active. None of this authorizes production.
 - PR176 targets main at current source head
-  `2b323531008419b3d87dfbbb312bc8cdc381c041`, which includes the ready C0
-  claim-store port and D0 canonical-admission correction after A0. The frozen
+  `5a480e5cd4b147a283ea0e9abe29202a7fe3fe29`, which includes the ready C0
+  claim-store port, D0 canonical-admission correction, and C1 schema after A0. The frozen
   Slice 1A adapter/grant files remain unchanged. D0's corrective source commit
   is `57aebea0`; the earlier plan review head is
   `ccb2ec9565f92a867c85f693a10f64a2e93032e0`. The coordination baseline is
-  `a4e4d06838335972bf066506b2d7b06e24171fc9` for PR177.
+  `9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
 - Retained Slice 1A evidence is unchanged: Linux Y5mujQ passed 399 selected
   tests, typecheck, and a 128-module native Vite build; Windows passed 47 in
   5.55 s. HrOmLA's full/sparse mutation proof passed after the deliberate chmod
@@ -26,12 +26,12 @@ _Updated: 2026-09-08 (C0/D0 ready; C1 under independent review; D1 paused)_
   focused claim-store command: 18/18 passed in 1.18 s (923 ms tests). **D0 —
   READY.** Its builder focused suite passed 45/45 in 2.64 s, including the
   red/green held scheduler proof for post-await forward mutations.
-- **C1 — FROZEN UNDER INDEPENDENT REVIEW.** The builder completed 65 focused
-  PTY tests and 164 adapter/surface focused tests. Root found one malformed
-  fixture inference error in typecheck; the builder corrected that fixture only,
-  reran the 24-test migration subset, and root reran dashboard typecheck PASS.
-  The subset is a rerun, not an additional test total. Fresh Sol-high review is
-  active; no delivery or B binding is active. **D1 —
+- **C1 schema: READY / COMMITTED.** Published as `5a480e5c`; final independent
+  review passed all 230 tests in seven scoped files, full dashboard typecheck,
+  and diff checking. **C1 delivery: BUILDING.** Terra owns adapter delivery;
+  Sol independently prepares adversarial probes. An absent claim port refuses
+  before any effect. The deprecated drain option is never called; B wires the
+  active chain store and lifetime only at the final integration stage. **D1 —
   PAUSED.** Its same rebase-recovery design finding failed two correction/review
   attempts; root has asked the user for one further bounded cycle. Do not change
   the D1 draft or dispatch implementation while that answer is pending.
@@ -42,7 +42,7 @@ _Updated: 2026-09-08 (C0/D0 ready; C1 under independent review; D1 paused)_
 
 ## Next
 
-- Complete and independently review the C1 schema/migration port. Await the
+- Complete and independently review the C1 delivery adapter. Await the
   user's D1-cycle decision before touching its design. Do not create a runnable
   controller, deploy, merge, or mark Phase 0 complete.
 

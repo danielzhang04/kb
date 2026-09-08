@@ -21,3 +21,7 @@ unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C0-root-verification	requested
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-schema-dispatch	requested Terra-high C1 schema/migration builder; responding model and cost unavailable	unknown
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D1-ledger-design-review	requested Terra-high design/review; same finding paused pending user decision; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-independent-review	requested Sol-high against frozen C1 bytes; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-final-verdict	independent final 230 tests and typecheck passed; schema published 5a480e5c; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-builder-dispatch	creator-only adapter delivery and focused tests; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-review-preflight	independent adversarial delivery probes; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-coordination-readonly	stale-state synthesis discarded by root; no file edits; responding model and cost unavailable	unknown

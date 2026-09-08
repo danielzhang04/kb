@@ -25,16 +25,16 @@ retain their separate human gates.
 2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47, and the
    full/sparse mutation proof are prior evidence, not tests rerun in this wave.
 3. **C0 claim store — DONE / READY.** Source head
-   `2b323531008419b3d87dfbbb312bc8cdc381c041` includes C0. Root independently
+   `5a480e5cd4b147a283ea0e9abe29202a7fe3fe29` includes C0. Root independently
    verified typecheck and 18/18 focused claim-store tests in 1.18 s.
 4. **D0 canonical admission — DONE / READY.** The bounded correction is at
    `57aebea0`; its focused suite passed 45/45 in 2.64 s and includes the held
    scheduler red/green proof.
-5. **C1 schema/migration — FROZEN UNDER INDEPENDENT REVIEW.** Terra-high
-   completed 65 PTY and 164 adapter/surface focused tests. After one
-   malformed-fixture inference correction, root reran the 24-test migration
-   subset and dashboard typecheck PASS; the subset is not added to that total.
-   Fresh Sol-high review is active. No message delivery or B binding is active.
+5. **C1 schema/migration: DONE / READY.** Committed and pushed as `5a480e5c`.
+   Final independent review passed all 230 tests in seven scoped files,
+   dashboard typecheck, and diff checking. Both minor diagnostic findings closed.
+   **C1 delivery: BUILDING.** Terra owns the adapter and focused tests; Sol
+   independently prepares adversarial probes. B wiring remains the final stage.
 6. **D1 ledger design — PAUSED.** The same rebase-recovery finding failed two
    correction/review attempts. Root has asked the user for one further bounded
    cycle; no D1 draft edit or implementation dispatch may occur until answered.
@@ -42,10 +42,10 @@ retain their separate human gates.
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-`2b323531008419b3d87dfbbb312bc8cdc381c041`; it records A0, C0, and D0 only.
-The C1 source files are actively owned and uncommitted. The frozen Slice 1A
+`5a480e5cd4b147a283ea0e9abe29202a7fe3fe29`; it records accepted A0, C0, D0, and C1 schema.
+Only C1 delivery source is actively owned and uncommitted. The frozen Slice 1A
 adapter/grant files remain unchanged. Coordination is based on
-`a4e4d06838335972bf066506b2d7b06e24171fc9` for PR177.
+`9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
 
 Linux run Y5mujQ passed all 399 selected tests, including 11 isolated realBroker
 tests, typecheck, and native Vite build (128 modules), from source archive
