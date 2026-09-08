@@ -435,6 +435,7 @@ describe('server', () => {
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
     '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing', '/api/figment',
     '/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000',
+    '/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
@@ -498,6 +499,7 @@ describe('server', () => {
   it.each([
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
     ['/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000', 404],
+    ['/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
     ['/api/control/runs/example/events/stream', 404], ['/api/attention', 200], ['/api/schedules', 200],

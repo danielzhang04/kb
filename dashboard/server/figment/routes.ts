@@ -8,6 +8,7 @@ import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, lstatSync, openSync, opendirSync, readFileSync, readSync, realpathSync, statSync } from 'node:fs';
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
+import { collectDeclaredReferences, isDeclaredReference, isOpaqueReferenceTarget, readDeclaredReference } from './references.ts';
 
 const RECORD_NAMES = new Set(['plan.json', 'driver-plan.json', 'run.json', 'gate.json', 'accepted-checkpoint.json']);
 const MAX_RECORDS = 256;
@@ -50,6 +51,7 @@ export interface FigmentProjection {
   recordsTruncated: boolean;
   plans: { items: Array<{ path: string; creator: string; variant: string | null; stages: Array<{ name: string; runCount: number; declaredCeilingUsd: number | null }>; declaredCeilingUsd: number }>; truncated: boolean };
   research: { available: boolean; artifacts: Array<{ area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string }>; truncated: boolean };
+  references: { items: Array<{ creator: string; name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; truncated: boolean };
   diagnostic: DiagnosticProjection;
   warnings: string[];
 }
@@ -403,14 +405,24 @@ function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticPr
 export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null): FigmentProjection {
   const warnings: string[] = [];
   const root = openRoot(join(repoRoot, 'orgs', 'figment'));
-  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
   const collected = collectRecords(root, warnings);
   const creators = collectCreators(root);
-  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), diagnostic: readDiagnostic(diagnosticRoot), warnings };
 }
 
 export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null }): void {
   app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot));
+  app.get('/api/figment/reference-assets/:creator/:name', async (request, reply) => {
+    const { creator, name } = request.params as { creator?: unknown; name?: unknown };
+    const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
+    if (typeof creator !== 'string' || typeof name !== 'string' || typeof sha256 !== 'string' || !SHA256.test(sha256) || !isOpaqueReferenceTarget(creator, name)) return reply.code(404).send({ error: 'not-found' });
+    const referenceRoot = join(options.repoRoot, 'orgs', 'figment');
+    if (!isDeclaredReference(referenceRoot, creator, name)) return reply.code(404).send({ error: 'not-found' });
+    const loaded = readDeclaredReference(referenceRoot, creator, name, sha256);
+    if (loaded === null) return reply.code(409).send({ error: 'stale-declared-reference' });
+    return reply.header('content-type', loaded.contentType).header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded.bytes);
+  });
   app.get('/api/figment/diagnostic-assets/:name', async (request, reply) => {
     const { name } = request.params as { name?: unknown };
     const { sha256 } = (request.query ?? {}) as { sha256?: unknown };

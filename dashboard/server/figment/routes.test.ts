@@ -16,6 +16,7 @@ function png(salt = 0, width = 4, height = 3): Buffer {
   for (let index = 0; index < image.data.length; index += 1) image.data[index] = (index * 31 + salt) & 255;
   return Buffer.from(PNG.sync.write(image));
 }
+function jpeg(width = 4, height = 3): Buffer { return Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0, 0xff, 0xc0, 0x00, 0x0b, 8, height >> 8, height & 255, width >> 8, width & 255, 1, 1, 0x11, 0, 0xff, 0xd9]); }
 async function json(path: string, value: unknown): Promise<void> { await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, JSON.stringify(value), 'utf8'); }
 
 async function fixture(): Promise<{ repo: string; diagnostic: string; subject: string; accepted: string }> {
@@ -23,8 +24,10 @@ async function fixture(): Promise<{ repo: string; diagnostic: string; subject: s
   const figment = join(repo, 'orgs', 'figment');
   temporary.push(repo);
   await json(join(figment, 'personas', 'creator-a', 'persona.yaml'), {
-    id: 'creator-a', lora: { tier: 'provisional', trigger: 'creatora' }, accounts: [{ tier: 'instagram' }],
+    id: 'creator-a', identity: { references: ['anchors/g01.jpg'] }, lora: { tier: 'provisional', trigger: 'creatora' }, accounts: [{ tier: 'instagram' }],
   });
+  await mkdir(join(figment, 'personas', 'creator-a', 'anchors'), { recursive: true });
+  await writeFile(join(figment, 'personas', 'creator-a', 'anchors', 'g01.jpg'), jpeg());
   await writeFile(join(figment, 'personas', 'broken', 'persona.yaml'), '{bad json', { encoding: 'utf8', flag: 'w' }).catch(async () => {
     await mkdir(join(figment, 'personas', 'broken'), { recursive: true });
     await writeFile(join(figment, 'personas', 'broken', 'persona.yaml'), '{bad json', 'utf8');
@@ -90,6 +93,7 @@ describe('Figment read projection', () => {
       expect.objectContaining({ area: 'book', name: 'chapter.md' }),
     ]));
     expect(projection.diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', podId: 'fixture-pod', artifacts: [{ name: 'proof.png', width: 4, height: 3, sha256: digest(png()) }], artifactsTruncated: false });
+    expect(projection.references).toMatchObject({ truncated: false, items: [{ creator: 'creator-a', name: 'g01.jpg', width: 4, height: 3 }] });
   });
 
   it('marks changed gate subjects and checkpoint hashes stale', async () => {
@@ -145,7 +149,7 @@ describe('Figment read projection', () => {
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
       if (path === '/api/figment') handler = candidate;
-      else expect(path).toBe('/api/figment/diagnostic-assets/:name');
+      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name').toBe(true);
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();
@@ -175,6 +179,20 @@ describe('Figment read projection', () => {
     expect((await app.inject({ method: 'GET', url })).statusCode).toBe(409);
     expect((await app.inject({ method: 'GET', url: '/api/figment/diagnostic-assets/..%2Foutside.png?sha256=' + asset.sha256 })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/figment/diagnostic-assets/not-listed.png?sha256=' + asset.sha256 })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('streams only a declared persona reference at its projection hash', async () => {
+    const paths = await fixture(); const projection = buildFigmentProjection(paths.repo);
+    const asset = projection.references.items[0];
+    const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo }); await app.ready();
+    const url = `/api/figment/reference-assets/${asset.creator}/${asset.name}?sha256=${asset.sha256}`;
+    const response = await app.inject({ method: 'GET', url });
+    expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toContain('image/jpeg'); expect(response.headers['x-content-type-options']).toBe('nosniff');
+    await writeFile(join(paths.repo, 'orgs', 'figment', 'personas', 'creator-a', 'anchors', 'g01.jpg'), jpeg(5, 3));
+    expect((await app.inject({ method: 'GET', url })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/reference-assets/creator-a/..%2Fg01.jpg?sha256=' + asset.sha256 })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/reference-assets/creator-a/not-declared.jpg?sha256=' + asset.sha256 })).statusCode).toBe(404);
     await app.close();
   });
 
