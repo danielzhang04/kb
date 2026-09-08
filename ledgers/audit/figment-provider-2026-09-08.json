@@ -1,0 +1,344 @@
+{
+  "queried_utc": "2026-09-08T04:32:22.249758+00:00",
+  "known_pod_count": 53,
+  "billing_rows": [
+    {
+      "podId": "35bo7pu3x8y7z9",
+      "amount": 0.0016842723125591874,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 1437
+    },
+    {
+      "podId": "53okx5et00vjl3",
+      "amount": 0.0017124334117397666,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 1574
+    },
+    {
+      "podId": "6stvks3z8elf16",
+      "amount": 0.20454278634861112,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 968046
+    },
+    {
+      "podId": "boxfv5zbz5mp4i",
+      "amount": 0.05914185510482639,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 899594
+    },
+    {
+      "podId": "eczhwx3opyd5pt",
+      "amount": 0.005895489011891186,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 21924
+    },
+    {
+      "podId": "edwtg6lvaf5wap",
+      "amount": 0.7643128276104107,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 3623684
+    },
+    {
+      "podId": "hv9s4uygm1sg21",
+      "amount": 0.006770694257284049,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 19425
+    },
+    {
+      "podId": "k760lvdw3516to",
+      "amount": 0.0743400234496221,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 743012
+    },
+    {
+      "podId": "o84sgham1ajrqy",
+      "amount": 0.14758005551993847,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 690930
+    },
+    {
+      "podId": "of4ji9qcnswo5v",
+      "amount": 0.5057287003146484,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 2399491
+    },
+    {
+      "podId": "qfxkoopsm6iryf",
+      "amount": 0.03486602776683867,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 156105
+    },
+    {
+      "podId": "rhwxump63ibno2",
+      "amount": 0.0016620723181404173,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 1329
+    },
+    {
+      "podId": "s7djeauvew2myd",
+      "amount": 0.012958789360709488,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 56286
+    },
+    {
+      "podId": "t5ocytsnzs9vsr",
+      "amount": 0.10763742052949965,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 510128
+    },
+    {
+      "podId": "v9dha4wm4yosea",
+      "amount": 0.0016733778174966574,
+      "time": "2026-09-02 00:00:00",
+      "timeBilledMs": 1384
+    },
+    {
+      "podId": "0tpo3kkl5yc53f",
+      "amount": 0.08701832219958305,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 419954
+    },
+    {
+      "podId": "6m7msp08wu0oav",
+      "amount": 0.38396097533404827,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1847648
+    },
+    {
+      "podId": "6y4p3im4z9xfkq",
+      "amount": 0.3901323720347136,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1877671
+    },
+    {
+      "podId": "8ges4xvt11dd1b",
+      "amount": 0.390975970774889,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1881775
+    },
+    {
+      "podId": "ayebqqiu1ztw9n",
+      "amount": 0.3862494230270386,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1858781
+    },
+    {
+      "podId": "gaif9jp3pbdjcj",
+      "amount": 0.36371478508226573,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1749153
+    },
+    {
+      "podId": "isc3u9xta3oy47",
+      "amount": 0.32751341979019344,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1552768
+    },
+    {
+      "podId": "jmahjcptjttzek",
+      "amount": 0.38851136714220047,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1869785
+    },
+    {
+      "podId": "lmy2nya7i8ba2n",
+      "amount": 0.3139999972190708,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1487027
+    },
+    {
+      "podId": "nc27uic26ifb2s",
+      "amount": 0.22141118720173836,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1063622
+    },
+    {
+      "podId": "r2yck1p1qp1jgp",
+      "amount": 0.3873479177709669,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1864125
+    },
+    {
+      "podId": "se0cih7csz2m8z",
+      "amount": 0.1712236941093579,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 822845
+    },
+    {
+      "podId": "vm7779mwwbwvyw",
+      "amount": 0.25185962626710534,
+      "time": "2026-09-03 00:00:00",
+      "timeBilledMs": 1198236
+    },
+    {
+      "podId": "2o77w9s7n6pb2d",
+      "amount": 0.15530703612603247,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 748791
+    },
+    {
+      "podId": "7041iaa95af4u1",
+      "amount": 0.004992357455193996,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1198
+    },
+    {
+      "podId": "9dd4nur6in3hqa",
+      "amount": 0.30927739222534,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 974066
+    },
+    {
+      "podId": "ae9gz2r21d4pgi",
+      "amount": 0.2642412041313946,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 836026
+    },
+    {
+      "podId": "anpe2tpupvih6z",
+      "amount": 0.4577325831633061,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1442970
+    },
+    {
+      "podId": "cl57tjpvqwt8a7",
+      "amount": 0.35574683430604637,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1710390
+    },
+    {
+      "podId": "khtbw6bdura1qq",
+      "amount": 0.30038506258279085,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 949284
+    },
+    {
+      "podId": "m8k65jrsur6q6q",
+      "amount": 0.4536348385736346,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1482953
+    },
+    {
+      "podId": "mj9n9qh2t31sk5",
+      "amount": 0.400124023668468,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1306220
+    },
+    {
+      "podId": "nc27uic26ifb2s",
+      "amount": 0.16464830562472343,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 794235
+    },
+    {
+      "podId": "qpn9cx7rm42yzo",
+      "amount": 0.2857298490125686,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 932227
+    },
+    {
+      "podId": "s68h0bj0m7faai",
+      "amount": 0.3706614544498734,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 1166099
+    },
+    {
+      "podId": "xxviaztv52cxl0",
+      "amount": 0.21737404610030353,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 714110
+    },
+    {
+      "podId": "xzpb5t5a9afbar",
+      "amount": 0.9780867085792124,
+      "time": "2026-09-04 00:00:00",
+      "timeBilledMs": 3108054
+    },
+    {
+      "podId": "0fg9c88gpjkd7f",
+      "amount": 0.19736183201894164,
+      "time": "2026-09-05 00:00:00",
+      "timeBilledMs": 615140
+    },
+    {
+      "podId": "igvqxqcrmltsig",
+      "amount": 1.869985170662403,
+      "time": "2026-09-05 00:00:00",
+      "timeBilledMs": 5946740
+    },
+    {
+      "podId": "iw12lyi84um2b9",
+      "amount": 0.3453824289608747,
+      "time": "2026-09-05 00:00:00",
+      "timeBilledMs": 1093312
+    },
+    {
+      "podId": "khtbw6bdura1qq",
+      "amount": 0.33198572252877057,
+      "time": "2026-09-05 00:00:00",
+      "timeBilledMs": 1049066
+    },
+    {
+      "podId": "pmdrbbodffjbx8",
+      "amount": 0.08895395905710757,
+      "time": "2026-09-05 00:00:00",
+      "timeBilledMs": 267799
+    },
+    {
+      "podId": "hjgt8kad511955",
+      "amount": 0.23591998359188437,
+      "time": "2026-09-06 00:00:00",
+      "timeBilledMs": 771540
+    },
+    {
+      "podId": "qnnaoycl3lmwaf",
+      "amount": 0.37592783477157354,
+      "time": "2026-09-06 00:00:00",
+      "timeBilledMs": 1226306
+    },
+    {
+      "podId": "fn938tol6mgbtp",
+      "amount": 2.661973272683099,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 8487557
+    },
+    {
+      "podId": "hvtovmusbx6a1t",
+      "amount": 3.131744190584868,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 9979461
+    },
+    {
+      "podId": "idb1hskq79h4l3",
+      "amount": 0.3053083874983713,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 950254
+    },
+    {
+      "podId": "jm67txnsqfj662",
+      "amount": 2.009899497847073,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 6573980
+    },
+    {
+      "podId": "pmi9y2gsoaxkea",
+      "amount": 0.40566559694707394,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 1281709
+    },
+    {
+      "podId": "rmefpbe9v5rgou",
+      "amount": 0.22679757210426033,
+      "time": "2026-09-07 00:00:00",
+      "timeBilledMs": 742940
+    },
+    {
+      "podId": "hvtovmusbx6a1t",
+      "amount": 0.09546296577900648,
+      "time": "2026-09-08 00:00:00",
+      "timeBilledMs": 300000
+    }
+  ],
+  "reported_total_usd": "22.9947359941215834977",
+  "missing_pod_ids": []
+}
