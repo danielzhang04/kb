@@ -1,0 +1,322 @@
+/**
+ * Read-only Figment hub projection.  It deliberately reads a small, fixed record
+ * inventory; the request has no path parameters and cannot select a filesystem
+ * location. A JSON ruling or a current SHA-bound machine gate is never an operator
+ * checkpoint approval; incomplete checkpoint lineage stays `unknown`.
+ */
+import { createHash } from 'node:crypto';
+import { lstatSync, opendirSync, readFileSync, realpathSync, statSync } from 'node:fs';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import type { FastifyInstance } from 'fastify';
+
+const RECORD_NAMES = new Set(['plan.json', 'driver-plan.json', 'run.json', 'gate.json', 'accepted-checkpoint.json']);
+const MAX_RECORDS = 256;
+const MAX_DEPTH = 8;
+const MAX_JSON_BYTES = 1_048_576;
+const MAX_HASH_BYTES = 1_048_576;
+const MAX_JSON_DEPTH = 64;
+const MAX_DIR_ENTRIES = 256;
+const MAX_DIRECTORIES = 512;
+const MAX_DIAGNOSTIC_JOBS = 128;
+const MAX_FILES_PER_JOB = 32;
+const MAX_DIAGNOSTIC_ARTIFACTS = 512;
+const SHA256 = /^[a-f0-9]{64}$/;
+
+export type ReviewState = 'unreviewed' | 'stale' | 'approved' | 'unknown';
+export type MachineGateState = 'current' | 'stale' | null;
+
+export interface FigmentRecord {
+  path: string;
+  type: string;
+  creator: string | null;
+  /** Checkpoint promotion state, never inferred from a machine gate or rulings file. */
+  reviewState: ReviewState;
+  /** SHA-bound machine gate evidence, reported separately from operator approval. */
+  machineGateState: MachineGateState;
+  schema: string | null;
+}
+
+export interface FigmentProjection {
+  schema: 'figment/hub@1';
+  available: boolean;
+  creators: Array<{ id: string; persona: 'valid' | 'malformed'; loraTier: string | null; loraTrigger: string | null; accountTiers: string[] }>;
+  creatorsTruncated: boolean;
+  records: FigmentRecord[];
+  recordsTruncated: boolean;
+  research: { available: boolean; artifacts: Array<{ area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string }>; truncated: boolean };
+  diagnostic: DiagnosticProjection;
+  warnings: string[];
+}
+
+export type DiagnosticProjection =
+  | { status: 'not-configured' }
+  | { status: 'unavailable'; reason: 'unsafe-configured-root' | 'missing-run-record' | 'malformed-run-record' | 'unsafe-artifact-reference' }
+  | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; modifiedAt: string }> };
+
+interface SafeRoot { readonly path: string; readonly real: string; }
+
+function openRoot(candidate: string): SafeRoot | null {
+  try {
+    const path = resolve(candidate);
+    const info = lstatSync(path);
+    if (!info.isDirectory() || info.isSymbolicLink()) return null;
+    return { path, real: realpathSync(path) };
+  } catch { return null; }
+}
+
+function inside(root: string, candidate: string): boolean {
+  const value = relative(root, candidate);
+  return value === '' || (!value.startsWith(`..${sep}`) && value !== '..' && !isAbsolute(value));
+}
+
+/** Refuse every symlink along a selected path, including a junction hidden in a parent directory. */
+function safeFile(root: SafeRoot, candidate: string): string | null {
+  const path = isAbsolute(candidate) ? resolve(candidate) : resolve(root.path, candidate);
+  if (!inside(root.path, path)) return null;
+  try {
+    let cursor = root.path;
+    const rest = relative(root.path, path).split(/[\\/]/).filter(Boolean);
+    for (const segment of rest) {
+      cursor = join(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) return null;
+    }
+    if (!lstatSync(path).isFile()) return null;
+    const real = realpathSync(path);
+    return inside(root.real, real) ? path : null;
+  } catch { return null; }
+}
+
+function safeDirectory(root: SafeRoot, candidate: string): string | null {
+  const path = isAbsolute(candidate) ? resolve(candidate) : resolve(root.path, candidate);
+  if (!inside(root.path, path)) return null;
+  try {
+    let cursor = root.path;
+    for (const segment of relative(root.path, path).split(/[\\/]/).filter(Boolean)) {
+      cursor = join(cursor, segment);
+      if (lstatSync(cursor).isSymbolicLink()) return null;
+    }
+    if (!lstatSync(path).isDirectory()) return null;
+    return inside(root.real, realpathSync(path)) ? path : null;
+  } catch { return null; }
+}
+
+function withinJsonDepth(text: string): boolean {
+  let depth = 0; let quoted = false; let escaped = false;
+  for (const character of text) {
+    if (quoted) { if (escaped) escaped = false; else if (character === '\\') escaped = true; else if (character === '"') quoted = false; continue; }
+    if (character === '"') quoted = true;
+    else if (character === '{' || character === '[') { depth += 1; if (depth > MAX_JSON_DEPTH) return false; }
+    else if (character === '}' || character === ']') depth -= 1;
+  }
+  return !quoted && depth === 0;
+}
+
+function readJson(root: SafeRoot, candidate: string, warnings: string[] = []): Record<string, unknown> | null {
+  const path = safeFile(root, candidate);
+  if (path === null) return null;
+  try {
+    if (statSync(path).size > MAX_JSON_BYTES) { warnings.push(`Skipped oversized JSON record: ${relative(root.path, path).split(sep).join('/')}`); return null; }
+    const source = readFileSync(path, 'utf8');
+    if (!withinJsonDepth(source)) { warnings.push(`Skipped overly nested JSON record: ${relative(root.path, path).split(sep).join('/')}`); return null; }
+    const value: unknown = JSON.parse(source);
+    return isObject(value) ? value : null;
+  } catch { return null; }
+}
+
+function boundedEntries(directory: string): { entries: import('node:fs').Dirent[]; truncated: boolean } {
+  const entries: import('node:fs').Dirent[] = [];
+  try {
+    const handle = opendirSync(directory);
+    try {
+      let entry = handle.readSync();
+      while (entry !== null && entries.length < MAX_DIR_ENTRIES) { entries.push(entry); entry = handle.readSync(); }
+      return { entries, truncated: entry !== null };
+    } finally { handle.closeSync(); }
+  } catch { return { entries, truncated: false }; }
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function text(value: unknown): string | null { return typeof value === 'string' ? value : null; }
+function sha256File(path: string): string | null {
+  try { return statSync(path).size <= MAX_HASH_BYTES ? createHash('sha256').update(readFileSync(path)).digest('hex') : null; } catch { return null; }
+}
+
+function canonicalJson(value: unknown): string {
+  if (value === null || typeof value === 'string' || typeof value === 'boolean') return JSON.stringify(value) as string;
+  if (typeof value === 'number') {
+    if (!Number.isFinite(value)) throw new Error('non-finite JSON number');
+    return JSON.stringify(value) as string;
+  }
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (isObject(value)) return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`).join(',')}}`;
+  throw new Error('non-JSON value');
+}
+
+function creatorFrom(path: string): string | null {
+  const parts = path.split(/[\\/]/);
+  const index = parts.indexOf('personas');
+  return index >= 0 && /^[a-z0-9-]{1,80}$/i.test(parts[index + 1] ?? '') ? parts[index + 1] : null;
+}
+
+function gateMachineState(root: SafeRoot, record: Record<string, unknown>): MachineGateState {
+  if (record.decision !== 'verified' || typeof record.subject_path !== 'string' || !SHA256.test(String(record.subject_sha256 ?? ''))) return null;
+  const subject = safeFile(root, record.subject_path);
+  if (subject === null) return 'stale';
+  const digest = sha256File(subject);
+  return digest !== null && digest === record.subject_sha256 ? 'current' : 'stale';
+}
+
+/**
+ * This is intentionally narrower than pipeline/lineage.py's approval algorithm. It can identify a
+ * corrupt accepted record, but does not recreate its full review subject; without that freshness proof
+ * it returns unknown. The train driver remains the sole authority that can promote a checkpoint.
+ */
+function checkpointState(root: SafeRoot, record: Record<string, unknown>): ReviewState {
+  if (record.schema !== 'figment/accepted-checkpoint@1') return 'unknown';
+  const approval = text(record.approval_lineage);
+  const approvalDigest = text(record.approval_lineage_sha256);
+  const plan = text(record.source_plan);
+  const planDigest = text(record.source_plan_sha256);
+  if (!approval || !SHA256.test(approvalDigest ?? '') || !plan || !SHA256.test(planDigest ?? '')) return 'unknown';
+  const approvalPath = safeFile(root, approval);
+  const planPath = safeFile(root, plan);
+  if (approvalPath === null || planPath === null) return 'unknown';
+  const approvalActual = sha256File(approvalPath);
+  const planActual = sha256File(planPath);
+  if (approvalActual === null || planActual === null) return 'unknown';
+  if (approvalActual !== approvalDigest || planActual !== planDigest) return 'stale';
+  const lineage = readJson(root, approval);
+  if (lineage?.schema !== 'figment/approval-lineage@1' || !isObject(lineage.subject) || !SHA256.test(String(lineage.subject_sha256 ?? ''))) return 'unknown';
+  try {
+    return createHash('sha256').update(canonicalJson(lineage.subject)).digest('hex') === lineage.subject_sha256
+      ? 'unknown' : 'stale';
+  } catch { return 'unknown'; }
+}
+
+function recordState(root: SafeRoot, type: string, record: Record<string, unknown> | null): ReviewState {
+  if (record === null) return 'unknown';
+  if (type === 'gate') return gateMachineState(root, record) === 'stale' ? 'stale' : 'unknown';
+  if (type === 'accepted-checkpoint') return checkpointState(root, record);
+  return typeof record.schema === 'string' || type === 'plan' ? 'unreviewed' : 'unknown';
+}
+
+function recordType(name: string): string {
+  if (name === 'accepted-checkpoint.json') return 'accepted-checkpoint';
+  if (name === 'driver-plan.json' || name === 'plan.json') return 'plan';
+  return name.slice(0, -'.json'.length);
+}
+
+function collectRecords(root: SafeRoot, warnings: string[]): { records: FigmentProjection['records']; truncated: boolean } {
+  const records: FigmentProjection['records'] = [];
+  let truncated = false; let directories = 0;
+  const visit = (directory: string, depth: number): void => {
+    if (records.length >= MAX_RECORDS || depth > MAX_DEPTH || directories >= MAX_DIRECTORIES) { truncated = true; return; }
+    const safe = safeDirectory(root, directory);
+    if (safe === null) return;
+    directories += 1;
+    const listed = boundedEntries(safe);
+    if (listed.truncated) { truncated = true; warnings.push(`Record discovery stopped after ${MAX_DIR_ENTRIES} entries in one directory.`); }
+    const entries = listed.entries;
+    for (const entry of entries) {
+      if (records.length >= MAX_RECORDS) { truncated = true; return; }
+      const child = join(safe, entry.name);
+      if (entry.isSymbolicLink()) continue;
+      if (entry.isDirectory()) { visit(child, depth + 1); continue; }
+      if (!entry.isFile() || !RECORD_NAMES.has(entry.name)) continue;
+      const document = readJson(root, child, warnings);
+      records.push({
+        path: relative(root.path, child).split(sep).join('/'), type: recordType(entry.name), creator: creatorFrom(relative(root.path, child)),
+        reviewState: recordState(root, recordType(entry.name), document),
+        machineGateState: entry.name === 'gate.json' && document !== null ? gateMachineState(root, document) : null,
+        schema: text(document?.schema),
+      });
+    }
+  };
+  // Current driver plans may live at `runs/`; the pipeline location is retained for legacy plan roots.
+  for (const start of ['personas', 'runs', join('pipeline', 'train', 'runs')]) visit(join(root.path, start), 0);
+  if (directories >= MAX_DIRECTORIES) warnings.push('Record discovery reached its safe directory limit.');
+  return { records, truncated };
+}
+
+function collectCreators(root: SafeRoot): { creators: FigmentProjection['creators']; truncated: boolean } {
+  const directory = safeDirectory(root, 'personas');
+  if (directory === null) return { creators: [], truncated: false };
+  try {
+    const listed = boundedEntries(directory);
+    return { creators: listed.entries.flatMap<FigmentProjection['creators'][number]>((entry) => {
+      if (!entry.isDirectory() || entry.isSymbolicLink() || !/^[a-z0-9-]{1,80}$/i.test(entry.name)) return [];
+      const persona = readJson(root, join('personas', entry.name, 'persona.yaml'));
+      if (persona === null) return [{ id: entry.name, persona: 'malformed' as const, loraTier: null, loraTrigger: null, accountTiers: [] }];
+      const lora: Record<string, unknown> = isObject(persona.lora) ? persona.lora : {};
+      const accounts = Array.isArray(persona.accounts) ? persona.accounts : [];
+      return [{ id: entry.name, persona: 'valid' as const, loraTier: text(lora.tier), loraTrigger: text(lora.trigger), accountTiers: accounts.flatMap((account) => isObject(account) && typeof account.tier === 'string' ? [account.tier] : []) }];
+    }), truncated: listed.truncated };
+  } catch { return { creators: [], truncated: false }; }
+}
+
+function collectResearch(root: SafeRoot): FigmentProjection['research'] {
+  const artifacts: FigmentProjection['research']['artifacts'] = [];
+  let available = false;
+  let truncated = false;
+  for (const [area, location] of [['research', 'research'], ['book', join('research', 'book')]] as const) {
+    const directory = safeDirectory(root, location);
+    if (directory === null) continue;
+    available = true;
+    try {
+      const listed = boundedEntries(directory);
+      if (listed.truncated) truncated = true;
+      for (const entry of listed.entries) {
+        if (artifacts.length >= MAX_RECORDS) { truncated = true; break; }
+        if (!entry.isFile() || entry.isSymbolicLink()) continue;
+        const file = safeFile(root, join(location, entry.name));
+        if (file === null) continue;
+        const stats = statSync(file);
+        artifacts.push({ area, name: entry.name, bytes: stats.size, modifiedAt: stats.mtime.toISOString() });
+      }
+    } catch { /* unavailable child is simply omitted */ }
+  }
+  return { available, artifacts: artifacts.sort((a, b) => a.area.localeCompare(b.area) || a.name.localeCompare(b.name)), truncated };
+}
+
+function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticProjection {
+  if (!configuredRoot?.trim()) return { status: 'not-configured' };
+  const root = openRoot(configuredRoot);
+  if (root === null) return { status: 'unavailable', reason: 'unsafe-configured-root' };
+  const run = readJson(root, 'run.json');
+  if (run === null) return { status: 'unavailable', reason: 'missing-run-record' };
+  if (!Array.isArray(run.jobs)) return { status: 'unavailable', reason: 'malformed-run-record' };
+  const artifacts: Array<{ name: string; bytes: number; modifiedAt: string }> = [];
+  if (run.jobs.length > MAX_DIAGNOSTIC_JOBS) return { status: 'unavailable', reason: 'malformed-run-record' };
+  for (const job of run.jobs) {
+    if (!isObject(job) || !Array.isArray(job.files)) return { status: 'unavailable', reason: 'malformed-run-record' };
+    if (job.files.length > MAX_FILES_PER_JOB) return { status: 'unavailable', reason: 'malformed-run-record' };
+    for (const file of job.files) {
+      if (artifacts.length >= MAX_DIAGNOSTIC_ARTIFACTS) return { status: 'unavailable', reason: 'malformed-run-record' };
+      const name = isObject(file) ? text(file.path) : null;
+      if (!name || basename(name) !== name || name.includes('\\') || name.includes('/') || name === '.' || name === '..') {
+        return { status: 'unavailable', reason: 'unsafe-artifact-reference' };
+      }
+      const path = safeFile(root, name);
+      if (path === null) return { status: 'unavailable', reason: 'unsafe-artifact-reference' };
+      const stats = statSync(path);
+      artifacts.push({ name, bytes: stats.size, modifiedAt: stats.mtime.toISOString() });
+    }
+  }
+  return { status: 'diagnostic-not-promotable', dryRun: typeof run.dry_run === 'boolean' ? run.dry_run : null, podId: text(run.pod_id), artifacts };
+}
+
+export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null): FigmentProjection {
+  const warnings: string[] = [];
+  const root = openRoot(join(repoRoot, 'orgs', 'figment'));
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, research: { available: false, artifacts: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  const collected = collectRecords(root, warnings);
+  const creators = collectCreators(root);
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, research: collectResearch(root), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+}
+
+export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null }): void {
+  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot));
+}

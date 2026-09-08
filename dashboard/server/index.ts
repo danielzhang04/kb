@@ -15,6 +15,7 @@ import type { SubprocessPort } from './inbox/resolvers.ts';
 import { registerHealthRoutes } from './health/routes.ts';
 import { createHomeRoutePorts, registerHomeRoutes, createActivationReader } from './home/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
+import { registerFigmentRead } from './figment/routes.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
@@ -124,6 +125,8 @@ export interface BuildAppOptions {
   coordinationPublication?: SurfaceContext['coordinationPublication'];
   openPr?: SurfaceContext['openPr'];
   traceRoot?: string | null;
+  /** Optional fixed private diagnostic directory. The Figment read route never accepts a client path. */
+  figmentDiagnosticRoot?: string | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -264,6 +267,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     if (surfaceCtx.runtimeCapabilities.localTranscripts && surfaceCtx.traceRoot) {
       registerTraceRead(scope, surfaceCtx.traceRoot);
     }
+    registerFigmentRead(scope, {
+      repoRoot,
+      diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
+    });
     registerBrainSearch(scope, { repoRoot });
     registerWorkflows(scope, surfaceCtx);
     // P6 W6.1 [P6-C20]: v1 READS join the existing read scope, under the same originPlugin +

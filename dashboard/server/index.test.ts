@@ -433,7 +433,7 @@ describe('server', () => {
 
   it.each([
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
-    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing',
+    '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing', '/api/figment',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
     '/api/workflows', '/api/workflows/profiles', '/api/workflows/example',
@@ -687,7 +687,7 @@ describe('P1 route matrix', () => {
     ]) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(404);
     }
-    for (const url of ['/api/index', '/api/schedules']) {
+    for (const url of ['/api/index', '/api/schedules', '/api/figment']) {
       expect((await app.inject({ method: 'GET', url, headers: sessionHeaders() })).statusCode, url).toBe(200);
     }
   });

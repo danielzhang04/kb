@@ -99,12 +99,15 @@ describe('App P1 shell', () => {
     expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/index')).toBe(false);
   });
 
-  it('renders the exact nine destinations, two dividers, and no retired destination', async () => {
+  it('renders the ten destinations, two dividers, and Figment route', async () => {
     await renderApp();
     expect([...document.querySelectorAll('.mc-nav-item__label')].map((node) => node.textContent)).toEqual([
-      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Projects', 'Files', 'Health',
+      'Home', 'Inbox', 'Schedules', 'Terminal', 'Agents', 'Workflows', 'Projects', 'Figment', 'Files', 'Health',
     ]);
     expect(screen.getAllByRole('separator')).toHaveLength(2);
+    fireEvent.click(screen.getByRole('button', { name: 'Figment' }));
+    await waitFor(() => expect(fetchStub.mock.calls.some(([input]) => String(input) === '/api/figment')).toBe(true));
+    expect(screen.getByLabelText('Figment workspace')).toBeTruthy();
   });
 
   it('falls malformed or removed URL ingress back to clean Home', async () => {
