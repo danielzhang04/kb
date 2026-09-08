@@ -1,0 +1,545 @@
+{
+  "schema": "figment/video-diagnostic-audit@1",
+  "pod_id": "wo5uka031lxh7m",
+  "manifest_sha256": "6be375a27bb82b1b41a48fc6a5efdf0b71ef9ebc240e1bb1efbac8e286b8ff92",
+  "receipt_sha256": "9172e3cf0de1ae39f39708e562400316ea1601a46518c2781e12b3695b2fc9db",
+  "assembly_receipt_sha256": "194b2b7f816487992d100577ad6b4ac31c2955c64d488688838e26a6a60f499c",
+  "extraction_receipt_sha256": "e18a91493769e24a966d147652b45cce518736ac143ffe40b5034658dafa955f",
+  "estimated_actual_usd": 0.129426,
+  "elapsed_seconds": 427.463,
+  "finished_utc": "2026-09-08T10:23:35+00:00",
+  "provider_verification": {
+    "observer": "codex-worker parent existing authenticated RunPod API",
+    "get_pod_absent": true,
+    "list_pods_count": 0
+  },
+  "movie": {
+    "bytes": 391981,
+    "path": "assembled-v1/diagnostic.mp4",
+    "sha256": "2084e7f6cb5ad1ea954524f8b5c14b92e5ef319405aad6653250ef875aaea674"
+  },
+  "metadata": {
+    "duration_seconds": "5.062500",
+    "expected_duration_seconds": "5.0625",
+    "fps": 16,
+    "frame_count": 81,
+    "height": 288,
+    "width": 512
+  },
+  "frames": [
+    {
+      "bytes": 214448,
+      "index": 1,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_01.png",
+      "sha256": "bce7bf27f7c711df93f850b3e14e4d0fbb6cf90c2864df5c6a988652ef8c1f5b"
+    },
+    {
+      "bytes": 214263,
+      "index": 2,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_02.png",
+      "sha256": "f567681fbf69e7770e8b616a07bf992c201456233c7d541b71ea1646270a34f7"
+    },
+    {
+      "bytes": 211237,
+      "index": 3,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_03.png",
+      "sha256": "c5a1d9835ce86a26813172ec9a5e9f937ba6766fd36ac41ecd0bfc63182f7100"
+    },
+    {
+      "bytes": 208543,
+      "index": 4,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_04.png",
+      "sha256": "76eef2a926d5d0f44981399bfdedc843bd0f1513712d133bbdcab4525ee77950"
+    },
+    {
+      "bytes": 207279,
+      "index": 5,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_05.png",
+      "sha256": "c56ba8d261c0c43937024a4e108751a86c3596b177a9f57aa087c23b9626e1a6"
+    },
+    {
+      "bytes": 209740,
+      "index": 6,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_06.png",
+      "sha256": "ea5e1356bd6a1b36d4a8bb1abadc7c23a20f3b1e078e50c875a50424562499f8"
+    },
+    {
+      "bytes": 218213,
+      "index": 7,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_07.png",
+      "sha256": "36add61420df598e008e32ab1db279c8b10ca69ba19005040c9c0f384c28db70"
+    },
+    {
+      "bytes": 217160,
+      "index": 8,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_08.png",
+      "sha256": "bb10c0c720d2ffc5c90a1d4a6faeb572d1b35a3a3a2fd6b39edca7300be85dcc"
+    },
+    {
+      "bytes": 218039,
+      "index": 9,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_09.png",
+      "sha256": "9a4c77f908d16f9d12221a05ad2a902e7405f455908793e8bff6e5187cc28010"
+    },
+    {
+      "bytes": 220766,
+      "index": 10,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_10.png",
+      "sha256": "e5e86c07edf009f119b5c750c9926f7caf56b777bcbe5d1fed76405458d65a0d"
+    },
+    {
+      "bytes": 220923,
+      "index": 11,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_11.png",
+      "sha256": "6d992edc3064721885306105436773d88c74a208c1b7da8f077ae2778c0f89d4"
+    },
+    {
+      "bytes": 220767,
+      "index": 12,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_12.png",
+      "sha256": "638d93516427ae8da4997567a06e23ef3aa96edc24ac9e828cb8d6c05bcd19c2"
+    },
+    {
+      "bytes": 222058,
+      "index": 13,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_13.png",
+      "sha256": "53601dcfbec32ab3ae14ca9eaf9f467661f983820db90846a67910cb098f9bed"
+    },
+    {
+      "bytes": 223722,
+      "index": 14,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_14.png",
+      "sha256": "45a61238c16bad7df6a4768339068cb2da8b0897444f525520cc6997b1445e98"
+    },
+    {
+      "bytes": 223523,
+      "index": 15,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_15.png",
+      "sha256": "14465679fbd3addbf6ba475dc85e070c193620a39116f2043e51b89e14282ab6"
+    },
+    {
+      "bytes": 222477,
+      "index": 16,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_16.png",
+      "sha256": "a8bf9f5685c193fb4ca83e34342b41b3e04d0105533c110fcc16d527c037a177"
+    },
+    {
+      "bytes": 220555,
+      "index": 17,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_17.png",
+      "sha256": "a4a538a27440a3f4b31998d1e56401119f4abb43693436b60bceb04e20fcbbf6"
+    },
+    {
+      "bytes": 225100,
+      "index": 18,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_18.png",
+      "sha256": "e5d83c437bffe9e1245fb2f420f426911246556d477dabc3650a803d06c82675"
+    },
+    {
+      "bytes": 222499,
+      "index": 19,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_19.png",
+      "sha256": "218b133aad69fdf8a85c1ce0645d88f4008cda263f15c9157fefd57c61802f63"
+    },
+    {
+      "bytes": 221390,
+      "index": 20,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_20.png",
+      "sha256": "8bf8a2662b217c000bf9dc175dc83d6ce05166d73e1e674193bc7bab88ec8e69"
+    },
+    {
+      "bytes": 221953,
+      "index": 21,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_21.png",
+      "sha256": "f28149294bf26851f5e92eab557ee35900aa59f55829de0c41192f81321d16ac"
+    },
+    {
+      "bytes": 224718,
+      "index": 22,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_22.png",
+      "sha256": "4b54a3afe9f04e0f151513a0b16cbe3df3405743cb834e96d4adbec04b395d37"
+    },
+    {
+      "bytes": 224160,
+      "index": 23,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_23.png",
+      "sha256": "edebc655e08f8e28dcb3f06ede8537b16c31d46e8b842f48da82ac94cec40171"
+    },
+    {
+      "bytes": 224671,
+      "index": 24,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_24.png",
+      "sha256": "df1e4406d8486a94a7ddc5270dbde9fda6cb60cd77425d5e31f4faf8e5db5dd3"
+    },
+    {
+      "bytes": 222345,
+      "index": 25,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_25.png",
+      "sha256": "2d6f04b7869f940f44fe5625e111c325651cfb98eca45ef5b574900a7c487da3"
+    },
+    {
+      "bytes": 224136,
+      "index": 26,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_26.png",
+      "sha256": "15278ed78a78d130892458f24a758f51e9f2715064e494fa8df7e1496f86bcd8"
+    },
+    {
+      "bytes": 224241,
+      "index": 27,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_27.png",
+      "sha256": "749f6a7ef497029707b270f1c8375bf71de2ea5548a7eea34be8d2b20f218096"
+    },
+    {
+      "bytes": 224340,
+      "index": 28,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_28.png",
+      "sha256": "a5f59f65bdffbbcc3c25a73961a0d6f04c26c1c960e811e1fa8d1dd73d33fbb3"
+    },
+    {
+      "bytes": 225578,
+      "index": 29,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_29.png",
+      "sha256": "d1f716f80d670f10f93d2c6ee31cdaee9b49af444f33fbe904e3beba4082d283"
+    },
+    {
+      "bytes": 227795,
+      "index": 30,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_30.png",
+      "sha256": "7a58d56ac763151a81b99c6e65367ae3d148c6a74376e7839ec80aa798ac630c"
+    },
+    {
+      "bytes": 228241,
+      "index": 31,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_31.png",
+      "sha256": "022efe5e70feae72c38ae06a8d7c476d6de46131b8fa2f873874f675cd522735"
+    },
+    {
+      "bytes": 225853,
+      "index": 32,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_32.png",
+      "sha256": "bfd5086004e230ff24d7a0e351a1378d4d84f7db5da38caee2666ca3d9af6ccf"
+    },
+    {
+      "bytes": 224357,
+      "index": 33,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_33.png",
+      "sha256": "faaaca4d4dc9ae251222638a768a779c9a41afaee01fe43f9398b2ec32d0134d"
+    },
+    {
+      "bytes": 226878,
+      "index": 34,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_34.png",
+      "sha256": "8ad449cba28b15ca30ae902a74a59a0b4f8fe5ff82e1fd7eb6392b62ee9e985a"
+    },
+    {
+      "bytes": 225811,
+      "index": 35,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_35.png",
+      "sha256": "564aacd106a4419ef0919be378797ca00a32beedd7567450871e1fbcf2722506"
+    },
+    {
+      "bytes": 224587,
+      "index": 36,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_36.png",
+      "sha256": "6c49fd90940c7852e031fa3d12a177df43d12449c32f20ca19db7436b9074f0c"
+    },
+    {
+      "bytes": 222121,
+      "index": 37,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_37.png",
+      "sha256": "b63314bc5e29d25357ffa344c1981d6f6e608acdbe74b3c26450cbb0ce758619"
+    },
+    {
+      "bytes": 225654,
+      "index": 38,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_38.png",
+      "sha256": "c10f3dbb027cab1cceebba162cec388794782f429c971d5f18bd40d90073a089"
+    },
+    {
+      "bytes": 224916,
+      "index": 39,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_39.png",
+      "sha256": "471e02e0d93c9328189519f703236e00bbc354bc1b68798cf6f8ef8e1509398e"
+    },
+    {
+      "bytes": 223670,
+      "index": 40,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_40.png",
+      "sha256": "47bc824720d6c29740b55c28efa73b2360671dcbea51798807b3ba5b4e7b1fde"
+    },
+    {
+      "bytes": 222899,
+      "index": 41,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_41.png",
+      "sha256": "1c5e112ba18183bc605b80975c93582c3e2e4cfd62067d6d054e2bc65d62b6ea"
+    },
+    {
+      "bytes": 223574,
+      "index": 42,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_42.png",
+      "sha256": "94f3f63faa7ef2816c70176193bd80e03b8a5e4670a78267807d6ef815adb086"
+    },
+    {
+      "bytes": 224311,
+      "index": 43,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_43.png",
+      "sha256": "57d4d302a93b03aae8ec669f233447d3b72ecd4492f477b8245d4d3d5240d869"
+    },
+    {
+      "bytes": 222487,
+      "index": 44,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_44.png",
+      "sha256": "20eb37e6855e19c64501a8714aa9f9fded6018dfef5fd20b16967c7ee6b28dd9"
+    },
+    {
+      "bytes": 220843,
+      "index": 45,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_45.png",
+      "sha256": "7a1aee4ac3ae51eb0e731693e085423373adde9ecb7442fcb25850a54ae95e5f"
+    },
+    {
+      "bytes": 222181,
+      "index": 46,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_46.png",
+      "sha256": "46c8e27e1e83e074a81f8b55408f43f8b12c43b9437af79f9b3a775e0103191e"
+    },
+    {
+      "bytes": 221049,
+      "index": 47,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_47.png",
+      "sha256": "ca63d0576577a5416d546a75adf7bfba390821ef9d67cbf5d137d93fea8d6669"
+    },
+    {
+      "bytes": 219806,
+      "index": 48,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_48.png",
+      "sha256": "62723a8d58e21387e79ae32023b26a4cae5b1146c5c3b7052354f3883ed2aa73"
+    },
+    {
+      "bytes": 218704,
+      "index": 49,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_49.png",
+      "sha256": "7bc02f51d4cdd755d8ecd9e8c42218d676a3d998813a8c380b33da45b3e2a055"
+    },
+    {
+      "bytes": 224090,
+      "index": 50,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_50.png",
+      "sha256": "f066849e53bc6f33380f8205610998815ba2d969300a7c47d83fb9b5f927fe8f"
+    },
+    {
+      "bytes": 223282,
+      "index": 51,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_51.png",
+      "sha256": "58a1ea9eda90bfed97e63a84eb2705668b1ac1914e4aa438066b0c2f45937e50"
+    },
+    {
+      "bytes": 222795,
+      "index": 52,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_52.png",
+      "sha256": "2241f1faf48369d634ab6e1dd3f99193a354041feeb57bf47c42d66b5a443387"
+    },
+    {
+      "bytes": 220979,
+      "index": 53,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_53.png",
+      "sha256": "a4b8b07bacc5442d182c32eab592f3fb6ed943dc23eb9df926992b7366172111"
+    },
+    {
+      "bytes": 221694,
+      "index": 54,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_54.png",
+      "sha256": "438a8f875f56c1809f15ab2ac29b3f1b83b8241d7e443fd72d3f9bc9954fb629"
+    },
+    {
+      "bytes": 221622,
+      "index": 55,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_55.png",
+      "sha256": "4561b6d29328cb52ac0b32e284cee52b5418e9d915f038230bf3eba463459891"
+    },
+    {
+      "bytes": 218270,
+      "index": 56,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_56.png",
+      "sha256": "d4d23b77185c911c260368731959c2a53b88511ea3501cb56cb09da5ee7c37be"
+    },
+    {
+      "bytes": 216841,
+      "index": 57,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_57.png",
+      "sha256": "3b5999fbaee8f8efb6fa1bbff913002550b3569f6417edd6fcc28c3dbc534782"
+    },
+    {
+      "bytes": 218677,
+      "index": 58,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_58.png",
+      "sha256": "8fff1f81cb694eebd741d4269da80d8a6d96ee60383652d46d9c3c33133682b7"
+    },
+    {
+      "bytes": 218393,
+      "index": 59,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_59.png",
+      "sha256": "b391593c97c13f4985db33c7480b38be08ab94663ac64f39ae7544b5d0b78d43"
+    },
+    {
+      "bytes": 217675,
+      "index": 60,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_60.png",
+      "sha256": "d3d9c8a8f249772a0b53887c0b4038afbd14445d128a5b1a09e21d65294fe822"
+    },
+    {
+      "bytes": 216679,
+      "index": 61,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_61.png",
+      "sha256": "ff3d972fbac2320d3ece1d1b294e1ed6a38f7b7a39f36d53468904c144e3773d"
+    },
+    {
+      "bytes": 216854,
+      "index": 62,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_62.png",
+      "sha256": "ed6e933884ecc5c0242c8471f51ce9f349c6d28bf0ace4c6e757558ed5d511be"
+    },
+    {
+      "bytes": 216657,
+      "index": 63,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_63.png",
+      "sha256": "12460d31b8a96e9f9e48562cbabd712ff5f676cfbf9dc2e983e58afcc74c5dd6"
+    },
+    {
+      "bytes": 214634,
+      "index": 64,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_64.png",
+      "sha256": "ebde6105b65e41430eb4f4bbb6c77bf0c44f466f089dc1f5927a81dba6629044"
+    },
+    {
+      "bytes": 212169,
+      "index": 65,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_65.png",
+      "sha256": "202fbf4b86fcbc1724f3fa52a05b52735dc790d8c9753ae8b5293b69ce03bae2"
+    },
+    {
+      "bytes": 211926,
+      "index": 66,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_66.png",
+      "sha256": "0e61292952241a5a2a4c960925928cb52cbaccc0bde2fd8bd0d3db06b121fa86"
+    },
+    {
+      "bytes": 212110,
+      "index": 67,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_67.png",
+      "sha256": "451be34e429008e5dce0c3a202b41219d03734a0dc3712eac7d176c2da9cb961"
+    },
+    {
+      "bytes": 211743,
+      "index": 68,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_68.png",
+      "sha256": "c8ac62646c3493070f1cf7e5869263d00764ed3f438583e0ad42f70896f8e486"
+    },
+    {
+      "bytes": 212274,
+      "index": 69,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_69.png",
+      "sha256": "e8cb3f9efbd5b9d5ae8e0ef14121683991bfdb1653c10f5f2e373e115715b677"
+    },
+    {
+      "bytes": 211866,
+      "index": 70,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_70.png",
+      "sha256": "8561648134f6e35a0bfcffbf385febaf4df32be6956b4b2dd71dc5d88bc2183b"
+    },
+    {
+      "bytes": 211422,
+      "index": 71,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_71.png",
+      "sha256": "fd2e00cdeadd00ead83a11e00f40232411d8dba04d07fd4a252a60655da59399"
+    },
+    {
+      "bytes": 222278,
+      "index": 72,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_72.png",
+      "sha256": "864f094da386e63dfd66c12e2d135e192daf3ff36ac0561aaf52fecb686f495e"
+    },
+    {
+      "bytes": 219807,
+      "index": 73,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_73.png",
+      "sha256": "d07b0b9c929c4bb79eb8ab6f065d9cfdffe7a553c121209454961504c646e70f"
+    },
+    {
+      "bytes": 223695,
+      "index": 74,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_74.png",
+      "sha256": "6b488bd1c2cc5a82c8883379dbf5b7d7d432db70b9d90bb570a64ac8f164535c"
+    },
+    {
+      "bytes": 225309,
+      "index": 75,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_75.png",
+      "sha256": "cc0284b20843649209aab965b893e99f0e099d8ea5bf86abb96d1828714ac882"
+    },
+    {
+      "bytes": 224979,
+      "index": 76,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_76.png",
+      "sha256": "374b96869179929a263731b5607b5a98af53d3b024b4354b874ff553eaeed215"
+    },
+    {
+      "bytes": 224567,
+      "index": 77,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_77.png",
+      "sha256": "6d7359d3f3ffc7db2167a43efa89b0b1e2c76058096f89c824a90ab872f2c760"
+    },
+    {
+      "bytes": 225533,
+      "index": 78,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_78.png",
+      "sha256": "b4618fb8df7870effebc5a166dd578f5ad5ad2562cdf91376609246dd2154ba9"
+    },
+    {
+      "bytes": 224991,
+      "index": 79,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_79.png",
+      "sha256": "7473b0eada62afb51f0c645853a9618d997e24cd5df9bc310452c08c5a2620ba"
+    },
+    {
+      "bytes": 223575,
+      "index": 80,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_80.png",
+      "sha256": "62221163a6cf1a011572b9a02cbe8a0b320bc44d9f9990c089046fad5b711228"
+    },
+    {
+      "bytes": 221938,
+      "index": 81,
+      "path": "live-v1/video-creator-001-fe33f2d0c396e-s4815162342-p31750089500e-wd1020d3af19d_81.png",
+      "sha256": "a74e01105aa8d0f8e85ad53ab75faf17a3babca71fbb1eb6088812f08529d905"
+    }
+  ],
+  "sampled_frames": [
+    {
+      "bytes": 121888,
+      "index": 0,
+      "label": "first",
+      "path": "extracted-v1/first.png",
+      "sha256": "e63d843bc1c22170bf8096076d9fe78e771878e35a9e6c3ec751a904d553aa4e"
+    },
+    {
+      "bytes": 177499,
+      "index": 40,
+      "label": "middle",
+      "path": "extracted-v1/middle.png",
+      "sha256": "e8cca10bd8ee186b6b6d94e296e72ae093e87007c7b48117a6923bae835a53d8"
+    },
+    {
+      "bytes": 178431,
+      "index": 80,
+      "label": "last",
+      "path": "extracted-v1/last.png",
+      "sha256": "9f453d42cabbdc6959603dd3e6e3e464cb47539b6dd5dfe7b2eb050954b16a3d"
+    }
+  ],
+  "parent_visual_observation": "First frame recognizable; severe colored streaks, facial distortion and background warping by midpoint/end. Rejected as sufficient visual quality. Full81frame independent audit pending.",
+  "not_promotable": true,
+  "run_binding_limit": "Run receipt binds output name/seed/file list; does not carry executed-workflow hash. Parent frozen manifest and actual launch separately recorded.",
+  "shell_wrapper_exit": 1,
+  "shell_wrapper_note": "PowerShell pipeline returned1 while native harness receipt records completion with noerror and verified teardown; do not call wrapperexit0. No paid rerun warranted."
+}

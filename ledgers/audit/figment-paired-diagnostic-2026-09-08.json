@@ -1,0 +1,135 @@
+{
+  "schema": "figment/experiment-admission@1",
+  "manager_card": "01K9FIGMENT0800000000000004",
+  "status": "completed-diagnostic-not-promotable",
+  "authorization": "User standing async RunPod authorization within unchanged total $50 arc cap",
+  "manifest": "C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/combined-candidate-control-v1.yaml",
+  "manifest_sha256": "7bad70d7dd3d024eadb4b78dd63fa9c4b92277d707a772089274212428ed903f",
+  "output_directory": "C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1",
+  "owner": "codex-worker parent",
+  "cells": 10,
+  "arms": [
+    "candidate-final1250",
+    "base-control-no-lora"
+  ],
+  "canonical_comparison_anchor": "g01",
+  "production_promotable": false,
+  "budget": {
+    "arc_cap_usd": 50.0,
+    "arc_estimated_usd_before": 37.015061,
+    "daily_limit_usd": 10.0,
+    "daily_numeric_usd_before": 1.32481,
+    "reserved_max_usd": 2.5,
+    "max_minutes": 115,
+    "preflight_estimate_usd": 2.491667,
+    "max_placement_attempts": 1,
+    "note": "Harness provisional estimate replaced by final measured estimate0.239368; reservation released. One ledger row for this pod, no double booking.",
+    "provisional_numeric_row_usd": null
+  },
+  "verification": {
+    "independent_reviewer": "figment_protocol_review",
+    "verdict": "PASS private diagnostic admission",
+    "dry_run_cells": 10,
+    "upload_bytes": 228587800,
+    "upload_chunks": 14,
+    "candidate_reaches_lora_node": true,
+    "control_bypasses_lora_node": true,
+    "provider_pods_before": 0,
+    "numeric_budget_reconciled": true
+  },
+  "pod_id": "cicx4at1447lp0",
+  "actual_receipt": "C:\\Users\\danie\\kb\\_private\\figment-single-seed-experiment-20260908\\live-combined-v1\\run.json",
+  "termination_verified": true,
+  "acquired_utc": "2026-09-08T09:33:59Z",
+  "exec_session_id": 58386,
+  "recovery_journal": "C:/Users/danie/kb/_private/figment-single-seed-experiment-20260908/live-combined-v1/recovery-figment-bakeoff-20260908-093357-6d4795.json",
+  "receipt_sha256": "2ad823ca8db9a377013be75572ee3baf3129900da2f6e665392ff0eb49f86638",
+  "independent_provider_absent": true,
+  "provider_pods_after": 0,
+  "finished_utc": "2026-09-08T09:47:08+00:00",
+  "elapsed_seconds": 790.572,
+  "estimated_actual_usd": 0.239368,
+  "files": [
+    {
+      "output_name": "c001-heldout-candidate-seed-1595",
+      "seed": 1595,
+      "file": "c001-heldout-candidate-seed-1595.png",
+      "sha256": "04f07f6682077fec1f82d329dcf5ce44241e9b3c7ccf455bee8ed71295f915b3",
+      "bytes": 3032203
+    },
+    {
+      "output_name": "c001-heldout-candidate-seed-481516234",
+      "seed": 481516234,
+      "file": "c001-heldout-candidate-seed-481516234.png",
+      "sha256": "0c2bbfa5538ec45d4b85b39bfc278489ebb0ba683a424efb1d7520cf6acb1f06",
+      "bytes": 2919183
+    },
+    {
+      "output_name": "c001-heldout-candidate-seed-90210",
+      "seed": 90210,
+      "file": "c001-heldout-candidate-seed-90210.png",
+      "sha256": "c52c2a749df8e4ad5a0bb2fa97c57847136517f07483e71a587fcb51a098b5e9",
+      "bytes": 3088323
+    },
+    {
+      "output_name": "c001-heldout-candidate-seed-314159",
+      "seed": 314159,
+      "file": "c001-heldout-candidate-seed-314159.png",
+      "sha256": "6f2cb703719da7170b4ccd42d72b3c2fb7ed6922650edf3b45c2b905d9a163bc",
+      "bytes": 2890944
+    },
+    {
+      "output_name": "c001-heldout-candidate-seed-271828",
+      "seed": 271828,
+      "file": "c001-heldout-candidate-seed-271828.png",
+      "sha256": "ed6de8381f84bd9c776e96123d31b7a08e9b87a0af0c3266b9d0d48e7bdadaa2",
+      "bytes": 3010765
+    },
+    {
+      "output_name": "c001-heldout-control-seed-1595",
+      "seed": 1595,
+      "file": "c001-heldout-control-seed-1595.png",
+      "sha256": "f06039e1116d96f2ae1790ac40a28446d83f0242cd8f7084a71cedbcafa8e19b",
+      "bytes": 2919530
+    },
+    {
+      "output_name": "c001-heldout-control-seed-481516234",
+      "seed": 481516234,
+      "file": "c001-heldout-control-seed-481516234.png",
+      "sha256": "39887df2d28bb44748e254b4b0b8886266f19b72fca0cd459b748af19a1fe294",
+      "bytes": 2929174
+    },
+    {
+      "output_name": "c001-heldout-control-seed-90210",
+      "seed": 90210,
+      "file": "c001-heldout-control-seed-90210.png",
+      "sha256": "1e706a527720b2c3255fd375b7f8c84f1e6af1c67a28f7ac1dd31ee83fc34d45",
+      "bytes": 2931294
+    },
+    {
+      "output_name": "c001-heldout-control-seed-314159",
+      "seed": 314159,
+      "file": "c001-heldout-control-seed-314159.png",
+      "sha256": "86468b1f9393402fc809cd9b50bd86d3fa435ce411cf0052e56009f35bd02ea0",
+      "bytes": 3000966
+    },
+    {
+      "output_name": "c001-heldout-control-seed-271828",
+      "seed": 271828,
+      "file": "c001-heldout-control-seed-271828.png",
+      "sha256": "620e1b7e842bc2b190357bc25b67f01227a15c8b76b16f99d17a0c6352a07392",
+      "bytes": 2990090
+    }
+  ],
+  "parent_observations": {
+    "reviewer": "codex-worker parent",
+    "original_resolution_images_inspected": 10,
+    "image_validation": "All10PNG decode/dimensions1448x2176 and bytecounts match receipts; outputSHA256 newly computed and frozen here because run.json does not include imagehashes",
+    "adult_presentation": "all ten clearly adult by visual inspection; exact age not verifiable",
+    "clothing": "all ten opaque intact black tops",
+    "identity": "both arms show within-arm visual similarity; LoRA changes the rendered identity, but does not sufficiently match canonicalg01",
+    "age_target": "correctedprompt did not establish intended about21 appearance",
+    "production_approval": null,
+    "independent_visual_review": "pending"
+  }
+}

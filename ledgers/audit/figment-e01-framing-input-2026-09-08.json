@@ -1,0 +1,41 @@
+{
+  "schema": "figment/generated-input-audit@1",
+  "input_id": "E01",
+  "source": {
+    "reference": "anchors/g01.jpg",
+    "sha256": "e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed",
+    "role": "sole original reference; no prior generated candidate supplied"
+  },
+  "output": {
+    "file": "g01-e01-shoulders-up-v1.png",
+    "sha256": "ab8a6830e17ea9d215826f886ac0d654e09e47a6795f2af66289929ce21518a5",
+    "bytes": 1967232,
+    "dimensions": [
+      1697,
+      927
+    ]
+  },
+  "provenance_sha256": "d7434891d0f1f56ae1845932f1c511fd664ebc1e08f6be2eb7a3b744bca58cfc",
+  "request_sha256": "63d847c38205ca4822c9cdd4fd76b1ddae17a986cfae97d4d8669bc8be387f8e",
+  "prompt_sha256": "b1d305daa9c21f3ee4a0b9cbda9241b5ef5258aed5431058ecb743b411fe54df",
+  "observer_receipt_sha256": "ae56906334b5464a3a89a0ad0c6304615b1f401338a8e3613199254cc34e0905",
+  "observer_receipt_path": "_private/figment-identity-observer-20260908/observations-e01-v1/e01-fixed640.json",
+  "raw_observations": [
+    {
+      "anchor": "_private/codex-worktrees/figment-studio-20260908/orgs/figment/personas/creator-001/anchors/g01.jpg",
+      "raw_cosine": 0.8000484647180488
+    },
+    {
+      "anchor": "_private/codex-worktrees/figment-studio-20260908/orgs/figment/personas/creator-001/anchors/g02.jpg",
+      "raw_cosine": 0.6187554243400055
+    },
+    {
+      "anchor": "_private/codex-worktrees/figment-studio-20260908/orgs/figment/personas/creator-001/anchors/g07.jpg",
+      "raw_cosine": 0.6740120657146446
+    }
+  ],
+  "visual_review": "Independent and parent observed closer chest-up coverage, more open/symmetric eyes and fuller lower-face read; exact framing and identity preservation not established. Adult in intact opaque original-style top.",
+  "training_eligible": false,
+  "operator_approval": null,
+  "billing_status": "built-in imagegen billing/model not exposed; not recorded as zero"
+}

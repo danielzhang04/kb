@@ -108,6 +108,7 @@ After restart, run `python scripts/preamble.py` from `C:/Users/danie/kb`; read `
 
 - **Initial dependency junction command** - it was run from inside `dashboard/` with a redundant `dashboard/node_modules` path, creating a scratch nested junction and leaving tools undiscoverable. The exact junction and empty parent were removed, then the link was recreated correctly as `dashboard/node_modules`.
 - **First mirror pytest run** - 22 fixtures failed before test bodies because pytest selected owner-only `C:/Users/danie/AppData/Local/Temp/pytest-of-danie`. Re-running with `--basetemp .pytest-tmp-sync` passed all 23 tests.
+  September 8 followup: setting `PYTEST_DEBUG_TEMPROOT` did not create its directory when the pod tests that normally create it were excluded. A nested `--basetemp` then produced 314 setup errors. Next time a suite uses a custom temporary root, I will create its parent explicitly and distinguish fixture setup failures from test-body regressions. Signal: many unrelated tests fail at the same `os.mkdir` with WinError 3.
 - **Immediate PM2 restart** - deliberately not performed: `origin/ops` is stale for six dynamically read declarations/workflows, and deploying reviewed code against that state would be a mismatched code/data pair. Also, PM2 `startOrRestart` cannot retarget the stored script path/cwd.
 - **GitHub PR query** - `gh pr view 72` returned HTTP 401 in this session; PR existence/state is inferred from the supplied URL plus the still-unmerged remote branch and `origin/ops` ancestry.
 
@@ -441,3 +442,181 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+## 2026-09-08 — A reproducible test needs portable assets and stable bytes
+
+Figment's second-persona acceptance claimed a checked-in fixture, but its anchors
+and generator were ignored; restoring the three original dummy images exposed a
+second failure because Windows checkout converted a hash-bound spec from LF to CRLF.
+The original LF digest exactly matched the declared hash, distinguishing transport
+mutation from a changed identity specification. Next time a pipeline relies on
+content hashes and local fixtures, I will test from a fresh checkout with an explicit
+asset bootstrap and verify the byte policy before accepting a local green suite.
+Signal to recognize: a test requires untracked files or passes only in the author's
+worktree while semantic Git diffs remain empty. Keep missing-input failures separate
+from product-behavior failures; never refresh a hash merely to silence the guard.
+The implementation repair narrowly tracked synthetic fixtures and LF-pinned identity
+specs; parent verification from a fresh Windows checkout passed all eight creator-002
+acceptance tests. Creator-001 exposed the same byte-policy issue, resolved with its
+exact Git blob rather than a new declared hash.
+
+## 2026-09-08 — Research conclusions need current code and calibrated evidence
+
+An older Figment test header described creator contamination that current code had
+already fixed, and an experiment's prose said no result entered the anchor band even
+though its own numbers included two inside that band. Next time I inherit research
+or review findings, I will verify the executing function and arithmetic before
+promoting the conclusion into a plan. Signal to recognize: a comment describes a
+known defect while later regression tests say fixed, or a universal method-rejection
+claim rests on a small trial and a proxy score. Separate historical causes, current
+defects and untested causal hypotheses in the handoff so repeated summaries do not
+turn tentative explanations into architectural facts.
+
+## 2026-09-08 — Verify the configured client before declaring connectivity blocked
+
+The default Python lacked requests, and a standard-library RunPod probe returned
+403. The already-installed Python 3.13 client used by the historical harness connected
+with the same ambient environment and verified pod absence plus billing history.
+Next time an operator reports working peer terminals, I will trace executable and
+client setup before treating one probe as account-wide evidence or asking for a key.
+Signal to recognize: historical commands name a different runtime from the current
+shell default. Runtime/package discovery and existing client use do not require
+opening credential stores.
+
+## 2026-09-08 — Bind the incoming decision, not just the resulting receipt
+
+An approval receipt can hash current images correctly while still accepting an old
+ruling sheet after those images were replaced and regraded with unchanged IDs.
+Next time a workflow persists human decisions, I will carry the reviewed subject
+digest into the incoming decision and reject replay against a different revision.
+Signal to recognize: an output approval has a content hash, but its input contains
+only stable IDs and a reviewer name. Recomputing the input digest during apply would
+relabel the old decision rather than prove what the operator actually reviewed.
+
+## 2026-09-08 — Admission scope must match the resource that can be overwritten
+
+Changing recovery.json to a unique per-attempt filename preserved the old journal
+but did not protect the shared output folder or run.json from another paid attempt.
+Next time a retry creates a fresh identity, I will test two different identities
+against the same durable output boundary, including concurrent requests and
+malformed prior state. Signal to recognize: collision tests reuse one identifier
+while production generates a different one on every invocation. Preserving history,
+refusing duplicate execution, and verifying cleanup are separate requirements.
+
+## 2026-09-08 ? Reviewed inventory must equal uploaded inventory
+
+Hashing manifest-listed images and captions did not constrain a later whole-directory
+copy or recursive upload. An unlisted symlink could therefore copy outside bytes into
+a dataset that otherwise had valid approval. Next time reviewed assets feed a bulk
+upload, I will stage only the approved inventory and recheck the exact staged entries
+immediately before execution. Signal to recognize: validation enumerates selected
+manifest rows while execution walks an entire directory. Check the bytes that cross
+the boundary, including metadata, rather than inferring upload safety from approval.
+
+## 2026-09-08 - Persist resource identity before optional metadata
+
+The actual provider returned a Go UTC timestamp absent from the offline fixtures,
+so optional parsing failed before the acquired pod ID reached durable storage.
+Next time a create callback receives a resource ID, I will persist the ID first and
+normalize optional metadata afterward, while still requiring fresh ownership evidence
+before recovery deletion. Signal to recognize: an acquired resource exists in the
+receipt but its recovery journal has a null ID. Exact observed-format fixtures caught
+this gap; a permissive timestamp parser would have weakened recovery instead.
+
+## 2026-09-08 - Unknown billing telemetry needs a metadata schema
+
+Blank USD values in native-worker telemetry made the real compute budget reader fail
+closed, even though those rows contained no numeric expense. Next time runtime billing
+is unavailable, I will record that uncertainty in a distinct metadata shard with no
+numeric USD column and keep the ordinary cost-shard name free for actual charges.
+Signal to recognize: accounting instrumentation blocks admission because unknown
+amounts are encoded as malformed numeric values. Preserve every actual expense;
+unknown is not zero, and provider observations must not double-book run estimates.
+
+## 2026-09-08 - Readiness and transfer dominate small GPU diagnostics
+
+The corrected five-image run spent roughly 26 minutes starting and 44 minutes uploading,
+while its five job records totaled under three minutes. Next time a small GPU run looks
+stalled, I will inspect separate control-plane, service-health, transfer and job phases
+before treating desiredStatus=RUNNING as application readiness. Signal to recognize:
+provider says RUNNING while the proxy is unavailable or the harness is still uploading.
+The authenticated v2 pod-log SSE endpoint supplied redacted startup evidence when no
+browser was available; use the configured client and never persist credential-bearing
+lines. Improve measured transfer/caching behavior before simply buying faster compute.
+
+## 2026-09-08 - Diagnostic prompts must preserve persona requirements
+
+The creator specification said about21, but the standalone tester prompt asked for
+midtwenties; operator review then found older-looking outputs and identity drift.
+Next time I build a diagnostic prompt, I will derive its identity and age requirements
+from the current persona and explicitly record any deliberate experimental override.
+Signal to recognize: a hard-coded tester prompt duplicates fields already present in
+the persona specification. Adult/clothing compliance, realism, identity fidelity and
+intended age are separate judgments; passing one cannot stand in for the others.
+The wording mismatch is observed, while its contribution to the result remains unproven.
+
+## 2026-09-08 - Keep-awake status must include live ownership
+
+An armed power-state file remained after both old lease owners and the supervisor
+were dead. Next time overnight work is requested, I will verify owner PID/start identity,
+supervisor liveness and actual power-arm evidence rather than trusting armed:true.
+Signal to recognize: status reports armed but alive:false for the supervisor/leases.
+The existing Acquire path reconciled stale settings and restored a live supervised lease.
+An awake laptop does not itself provide an agent sequencer; the active native session
+and a detached runner are different capabilities and must be reported separately.
+
+## 2026-09-08 - Check detector input scale before interpreting unavailable identity values
+
+All ten large paired portraits returned no face under native YuNet input, although
+faces were visibly clear. The pinned model documentation describes a smaller trained
+face scale; one uniform max-edge640 detector-only probe restored availability without
+changing confidence thresholds. Next time clear faces all become unavailable, I will
+inspect preprocessing and model input assumptions before drawing identity conclusions.
+Preserve original receipts, version the preprocessing, apply it identically to every
+candidate and reference, and map coordinates to the original recognizer pixels. Raw
+similarity remains uncalibrated even after detection works; a visually rejected image
+can still yield a high similarity value.
+
+## 2026-09-08 - An idle worker needs a new turn, not just a queued message
+
+A follow-up review stayed idle because send_message delivered context without starting
+a completed worker. Next time a delegated task has no progress, I will inspect worker
+status and use followup_task for an idle agent. Use send_message only to steer an active
+turn. Signal to recognize: a completed status persists after a new task was queued;
+waiting longer does not itself activate the worker. This is separate from keep-awake:
+a live machine and a pending mailbox do not prove work is executing.
+
+## 2026-09-08 - Verify the real Windows launch shape before trusting mocked ownership
+
+The local Comfy fixture assumed the Popen PID also owned its listening socket.
+The actual Windows venv executable was a redirector with a separate Python child.
+Next time a runner owns local resources, I will test the real interpreter with a
+small disposable server before the full model workload, bind process creation
+identity as well as PID, and verify descendant teardown. Also inspect effective
+database migration paths: an explicit user directory did not suppress Comfy's
+legacy shared-database backup attempt. Mocked lifecycle tests and an import probe
+do not establish process-tree or state-directory isolation.
+
+## 2026-09-08 - Preserve useful output when shutdown reporting fails
+
+A local image was generated and hash-verified, but the Windows venv wrapper exited
+between child teardown and a PID metadata query. The original failed journal lacked
+an exact error stage; a later independent absence check belonged in a separate
+recovery observation, not a rewritten completion receipt. Keep those facts distinct.
+A verified raster and frozen graph can still support a qualified image comparison;
+do not repeat generation merely to replace a reporting failure with a green receipt.
+For future wrappers, consult the exact retained process handle before and after a
+wrapper-only termination error, and preserve bounded stage/error codes. Also test
+adopters against actual historical manifest shapes before relying on synthetic fixtures.
+
+### 2026-09-08: Verify device masking empirically before weakening a preflight
+A Windows CUDA build reported availability true but device count zero with an empty visible-device setting; the real trainer parser then failed in an optional model dependency. A tiny isolated probe of documented CUDA_VISIBLE_DEVICES=-1 plus PYTORCH_NVML_BASED_CUDA_CHECK=1 produced false/zero/uninitialized, and the unchanged real parser then passed. Keep raw failures and distinguish inferred import call sites from traced causes. Test supported environment controls before replacing upstream parsing with a weaker local imitation; preserve actionable bounded exception causes. Evidence: Figment training-preflight audit and handoff15:43UTC.
+
+### 2026-09-08: Feedback delivery is not worker activation
+A completed worker received queued repair messages but remained idle, delaying the GPU executor. Check status after a final response and use followup_task to activate work; send_message alone does not restart an idle worker. Assign one writer and one reviewer explicitly, and use a fresh bounded worker when an old thread returns acknowledgments instead of implementation. Root corrected the dispatch and preserved the rejected code boundary; no unreviewed GPU run occurred.
+
+### 2026-09-08: Verify effective viewport and exact parser launch shape
+A mobile overflow test compared scrollWidth with an already expanded innerWidth, falsely passing a453px layout configured at390px. Compare scrollWidth with clientWidth and independently verify configured versus effective viewport widths. The wrapped navigation then passed at390px and was visually reviewed. A new CPU helper also used a relative sibling import that would fail under the intended isolated -I launch; load by checked absolute path and exercise that exact interpreter shape. These are runtime-contract checks, not reasons to weaken the intended isolation.
+
+### 2026-09-08: A self-hash and coarse recipe map do not validate semantics
+Recomputing a five-field recipe projection could not detect changed learning rate or rank in a TOML file. Validate the complete parsed recipe against the declared fixed configuration, and check the dataset parent that the real trainer scans as well as its selected leaf. Keep raw receipt hash failures explicit: a null canonical-hash sentinel must be rejected before nullable wrapper comparisons. Windows trainer output also needs explicit UTF-8 when its normal status messages include non-ASCII text; the accepted ten-step V2 run proved that correction.

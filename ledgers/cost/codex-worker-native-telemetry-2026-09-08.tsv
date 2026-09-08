@@ -1,0 +1,109 @@
+accounting_status	input_tokens	model	output_tokens	requested_model	responding_model	step	usd_status
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		runtime-default	not-exposed	figment-architecture-orchestrator	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-code-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-reference-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-loop-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-synthesis-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		runtime-default	not-exposed	figment-foundation-orchestrator	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-portability	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-lineage	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-foundation-review-round1	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-tester-prepare	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-review-fixes	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-lineage-test-adapt	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-foundation-review-round2	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-local-fixes	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-lineage-independent-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-review-documentation	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-handoff-refresh	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-recovery-authorized-final-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-live-local-preflight	not-exposed
+native-runtime-telemetry-unavailable; recovery offline review		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-review-capacity-fallback	not-exposed
+native-runtime-telemetry-unavailable; exact daily guard check		not-exposed		gpt-5.6-luna	not-exposed	figment-live-exact-budget-preflight	not-exposed
+native-runtime-telemetry-unavailable; parser fix after terminated live attempt		not-exposed		gpt-5.6-terra	not-exposed	figment-observed-provider-timestamp-fix	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-observed-timestamp-independent-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-live-report-readability	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-active-pod-handoff-refresh	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-startup-phase-diagnostic	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-historical-run-timing	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-transfer-retry-budget-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-next-studio-slice-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-diagnostic-vs-driver-provenance-followup	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-live-upload-report-refresh	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-existing-board-preparation	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-diagnostic-board-build-verification	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-active-lora-wiring-readonly-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-final-diagnostic-report-capture	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-final-report-attribution-correction	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-final-record-consistency-review	not-exposed
+native-runtime telemetry unavailable; final stale-card correction recheck		not-exposed		gpt-5.6-terra	not-exposed	figment-final-record-superseded-instructions-recheck	not-exposed
+native-runtime telemetry unavailable; documentation only, no GPU		not-exposed		gpt-5.6-luna	not-exposed	figment-operator-feedback-report-update	not-exposed
+native-runtime telemetry unavailable; documentation only, no GPU		not-exposed		gpt-5.6-luna	not-exposed	figment-tester-prompt-age-mismatch-record	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-async-capability-gap-map	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-async-runtime-audit	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-research-book-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-persona-heldout-protocol-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-api-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-protocol-independent-review	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-anchor-consistency-audit	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-research-book-claim-correction	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-protocol-fix-and-independent-rereview	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-api-independent-review-and-limits-fix	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-frontend-build-and-independent-review	not-exposed
+native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-dataset-audit-and-experiment-plan	not-exposed
+built-in imagegen billing telemetry unavailable; distinct from RunPod cost		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-frontal-study	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-final-fresh-review-and-explicit-truncation-fix	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-offline-planner-build-and-adversarial-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-planner-remediation	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-small-model-adoption-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-combined-manifest-build-and-independent-admission	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-hub-preview-and-independent-input-review	not-exposed
+built-in imagegen billing telemetry unavailable; GPU ledger separate		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-wardrobe-only-study	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-paired-output-and-23-image-independent-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-frame-extractor-build-adversarial-review-and-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-reader-build-review-and-race-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native81frame-video-compiler-build-review-and-admission	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-full-persona-look-diagnostic-design-and-structural-dryrun	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local81frame-assembly-build	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-81frame-assembly-independent-review-repair-and-live-verification	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-book-update-sourcecheck-and-video81frame-visual-causal-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-safe-book-table-build-review-and-isolated-visualQA	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-frozenplans-build-review-overflow-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-offline-contentbrief-build-lineage-review-and-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native-resolution-video-v2-build-and-independent-admission	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-identity-scorer-local-readiness-probe	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-gallery-build-adversarial-review-repairs	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native-video-v2-fullframe-visual-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-offline-plan-preview-probe-and-build	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-pinned-offline-observer-build-and-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-actual-reference-observations-and-independent-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-declared-reference-gallery-build-review-visualqa	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-fixed640-source-supported-detector-probe	not-exposed
+built-in-imagegen billing/model telemetry unavailable; not recorded as zero		not-exposed		built-in-imagegen	not-exposed	figment-g01-small-head-turn-input	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-fixed640-observer-build-review-and-actual-batch	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-head-turn-v3-fullframe-visual-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-curation-infrastructure-design	not-exposed
+built-in-imagegen billing/model telemetry unavailable; not recorded as zero		not-exposed		built-in-imagegen	not-exposed	figment-e01-shoulders-up-input	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-curation-build-and-adversarial-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-e01-review-and-gemini-path-readiness	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-gemini-diagnostic-build-security-review-and-book-integration	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-generated-gallery-build-adversarial-review-and-real-preview	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-experimental-training-plan-build-review	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-comfy-capability-and-owned-launcher-build	not-exposed
+native-runtime billing/model telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-canonical-seed-adequacy-audit	not-exposed
+native-runtime telemetry unavailable; local runner v1 failed before listener/POST, provider request absent; billing not asserted zero		not-exposed		gpt-5.6-terra	not-exposed	figment-local-comfy-baseline-v1-failure-and-torchinductor-repair	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-windows-ownership-repair-and-experimental-executor-design	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-v3-visual-rejection-and-executor-final-review	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-crop-actual-recovery-and-gallery-adopter-review	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-simple-portrait-gallery-adoption-and-local-training-preflight	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-one-observation-planner-accepted-actual-staging	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-cpu-import-diagnosis-and-tokenizer-preparation	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-real-cpu-and-tokenizer-preflights-pass-gpu-review	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-noon-checkpoint-quality-protocol-and-fresh-fit-repair	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-fit-independent-rejection-and-training-hub-plan	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-fit-accepted-first-runtime-unicode-failure	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-fit-v2-complete-hub-accepted-quality-phase-a	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-quality-phase-a-accepted-plans-staged-runtime-hub-audits	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-quality-cpu-complete-current100-fit-running-c1-accepted	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-current100-complete-finite-audit-c2-request-changes	not-exposed

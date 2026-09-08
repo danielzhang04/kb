@@ -1,0 +1,146 @@
+{
+  "schema": "figment/single-seed-real-refusal-probe@1",
+  "compiler": {
+    "path": "C:\\Users\\danie\\kb\\_private\\codex-worktrees\\figment-studio-20260908\\orgs\\figment\\pipeline\\train\\curate_single_seed.py",
+    "sha256": "2d52bb03984499de1a2f1967f53a93515e5c7c57e7593baf79c7dc39b9881f49"
+  },
+  "canonical_g01": {
+    "path": "personas/creator-001/anchors/g01.jpg",
+    "bytes": 737366,
+    "sha256": "e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed"
+  },
+  "cases": [
+    {
+      "artifact": "g01-frontal-black-tee-v1",
+      "command": [
+        "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\danie\\kb\\_private\\codex-worktrees\\figment-studio-20260908\\orgs\\figment\\pipeline\\train\\curate_single_seed.py",
+        "--request",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-frontal-black-tee-v1\\request.json",
+        "--out",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-frontal-black-tee-v1\\out"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "single-seed curation error: derivative provenance does not prove it is first-generation, not chained\n",
+      "source": {
+        "image": {
+          "name": "g01-frontal-black-tee-v1.png",
+          "bytes": 2065874,
+          "sha256": "6fdcf4aba25a286afbed1872e4d2bc3f4e6ac1e5451e065ce501cf00c69fbe35"
+        },
+        "provenance": {
+          "name": "g01-frontal-black-tee-v1.provenance.json",
+          "bytes": 2587,
+          "sha256": "267f01aad224edc0be44a37490c9ef048853894452c5c4099a3ab990c7968482"
+        },
+        "training_eligible": false,
+        "status": "rejected-as-sufficient-identity-training-input"
+      },
+      "out_exists": false,
+      "approval_exists": false,
+      "plan_exists": false
+    },
+    {
+      "artifact": "g01-wardrobe-only-black-tee-v1",
+      "command": [
+        "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\danie\\kb\\_private\\codex-worktrees\\figment-studio-20260908\\orgs\\figment\\pipeline\\train\\curate_single_seed.py",
+        "--request",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-wardrobe-only-black-tee-v1\\request.json",
+        "--out",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-wardrobe-only-black-tee-v1\\out"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "single-seed curation error: derivative is not explicitly training-eligible\n",
+      "source": {
+        "image": {
+          "name": "g01-wardrobe-only-black-tee-v1.png",
+          "bytes": 1862877,
+          "sha256": "e33f2d0c396e4e0f7eed49240271d972d36bdafa2a6f27ef04dcfaaf3cf6f6a2"
+        },
+        "provenance": {
+          "name": "g01-wardrobe-only-black-tee-v1.provenance.json",
+          "bytes": 2585,
+          "sha256": "1c7c7187468370f64e0285ca44fc3f180925bec88ab7b11fe53d7c4c2a2e8145"
+        },
+        "training_eligible": false,
+        "status": "experimental-independently-observed-not-training-approved"
+      },
+      "out_exists": false,
+      "approval_exists": false,
+      "plan_exists": false
+    },
+    {
+      "artifact": "g01-small-head-turn-charcoal-tee-v1",
+      "command": [
+        "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\danie\\kb\\_private\\codex-worktrees\\figment-studio-20260908\\orgs\\figment\\pipeline\\train\\curate_single_seed.py",
+        "--request",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-small-head-turn-charcoal-tee-v1\\request.json",
+        "--out",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-small-head-turn-charcoal-tee-v1\\out"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "single-seed curation error: derivative is not explicitly training-eligible\n",
+      "source": {
+        "image": {
+          "name": "g01-small-head-turn-charcoal-tee-v1.png",
+          "bytes": 1893859,
+          "sha256": "55e60a741ff1e4be78cccde7a807ca8ff9e261cd4b3ab1131bb3060b38961dcb"
+        },
+        "provenance": {
+          "name": "g01-small-head-turn-charcoal-tee-v1.provenance.json",
+          "bytes": 2544,
+          "sha256": "a6a5a8355d35a92e4efdbc3de6c1814a527349dd32bcd8fe7eb6bc3afdb16e23"
+        },
+        "training_eligible": false,
+        "status": "experimental-unreviewed"
+      },
+      "out_exists": false,
+      "approval_exists": false,
+      "plan_exists": false
+    },
+    {
+      "artifact": "g01-e01-shoulders-up-v1",
+      "command": [
+        "C:\\Users\\danie\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+        "C:\\Users\\danie\\kb\\_private\\codex-worktrees\\figment-studio-20260908\\orgs\\figment\\pipeline\\train\\curate_single_seed.py",
+        "--request",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-e01-shoulders-up-v1\\request.json",
+        "--out",
+        "C:\\Users\\danie\\kb\\_private\\figment-curation-real-refusal-20260908\\cases\\g01-e01-shoulders-up-v1\\out"
+      ],
+      "exit_code": 2,
+      "stdout": "",
+      "stderr": "single-seed curation error: derivative is not explicitly training-eligible\n",
+      "source": {
+        "image": {
+          "name": "g01-e01-shoulders-up-v1.png",
+          "bytes": 1967232,
+          "sha256": "ab8a6830e17ea9d215826f886ac0d654e09e47a6795f2af66289929ce21518a5"
+        },
+        "provenance": {
+          "name": "g01-e01-shoulders-up-v1.provenance.json",
+          "bytes": 2969,
+          "sha256": "d7434891d0f1f56ae1845932f1c511fd664ebc1e08f6be2eb7a3b744bca58cfc"
+        },
+        "training_eligible": false,
+        "status": "experimental-unreviewed"
+      },
+      "out_exists": false,
+      "approval_exists": false,
+      "plan_exists": false
+    }
+  ],
+  "parent_verification": {
+    "observed_date": "2026-09-08",
+    "checks": "all four source/provenance bytes and hashes match; every output absent; compiler hash matches",
+    "parent_final_tests": "37 curation/full freshness plus9train-first passed; earlier broader109regression passed before final boundary repairs",
+    "independent_final_tests": "20curation,5freshness,9train-first passed",
+    "accepted_commit": "3084d1cc",
+    "private_probe_sha256": "40d78e3fa2bcafecb10a925911115b0aa1e4485c6e4ad74d0ed92d4f89729bfc"
+  }
+}
