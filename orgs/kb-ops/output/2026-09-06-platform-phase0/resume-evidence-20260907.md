@@ -1,40 +1,41 @@
-# VM-resume Linux verification evidence — DRAFT
+# VM-resume evidence — DRAFT
 
-**Status:** focused synthetic Linux verification only. This is not a deployment, release approval, VM recovery, browser proof, or real-model execution result.
+**Status at 2026-09-08:** source and coordination drafts only. Nothing here is a deployment, release approval, VM recovery, browser proof, model run, or production result. Phase 0 remains incomplete.
 
-## Source and execution boundary
+## Historical 2026-09-07 archive run — retained evidence, not current acceptance
 
-- Reviewed snapshot archive SHA-256: `8e4fd59ea86183199a7ad64a4d8bf09be2d4b39e69b2d847c3a0a6c854ae4613`.
-- Snapshot basis: `9512f79f` plus the four reviewed source/test files. The current worktree also contains WIP `1ba6d038` and plan `246b342f`; neither is represented as a deployment claim here.
-- The runner extracted the archive into a fresh native WSL `/tmp/kb-vm-resume-linux-gates.miRPJe` directory, ran the repository preamble, and used `npm ci --offline` from the existing cache (293 packages, 8 s).
-- Executor versions were Node `v24.19.0` and npm `11.17.0`; repository pins are Node `24.18.0` and npm `11.16.0`. This mismatch was recorded, not waived.
-- npm left `node-pty` pending under its allow-scripts policy. The harness explicitly compiled only the locked `node-pty` package using npm's installed node-gyp and `/usr/include/node`, then required its `spawn` capability. It neither approved package scripts nor changed npm policy, the lockfile, or dependencies.
+- Reviewed archive SHA-256: `8e4fd59ea86183199a7ad64a4d8bf09be2d4b39e69b2d847c3a0a6c854ae4613`.
+- Snapshot basis: `9512f79f` plus the then-reviewed four source/test files. It does not establish the state of the current 09-08 correction archive.
+- A fresh native WSL extraction ran the preamble and `npm ci --offline` (293 packages, 8 s). It used Node `v24.19.0` and npm `11.17.0`; repository pins are Node `24.18.0` and npm `11.16.0`. The mismatch was recorded, not waived.
+- npm left `node-pty` pending under allow-scripts policy. The harness compiled only locked `node-pty` with npm's installed node-gyp and `/usr/include/node`, then required `spawn`; it did not approve scripts, change policy, lockfiles, or dependencies.
+- Historical `unaffected` mode exited 0 after excluding only `server/control/adapters.test.ts`: 363 selected tests passed, plus typecheck/build. Its included suites were spend-grant (11), boot diagnostics (1), store boot diagnostics (4), activation (70), automatic failure reporter (4), store (163), launch (7), queue bridge (92), and real broker integration (11).
+- The historical `all` invocation stopped in `adapters.test.ts`: 34 passed, 2 failed because the test expected `0700` but inherited setgid mode `02700`. This was an affected fixture result, not an unaffected-suite success. The current correction cycle below addresses that fixture through its corrected overlay and completed mutation verification.
 
-## Observed unaffected mode
+## Current 2026-09-08 correction/review cycle
 
-`linux-verification.sh <trusted-git-archive> <evidence-directory> unaffected` exited 0. It intentionally excluded only `server/control/adapters.test.ts`; this is a scoped result and never a full-gates acceptance.
+The user authorized one bounded correction/review cycle. Current source evidence is separate from the historical archive:
 
-| Gate | Result |
+- Trusted correction archive: `_private/linux-correction-source-20260908.tar`.
+- Trusted archive SHA-256: `6d09d54ab5356a8425f9c5b1b0fb6291fcb153159ad709136dc12f32bc5aa073`.
+- Archive basis: `ddadeb073acad732fcc60496016dacd75d38e26b`.
+- Overlay: only corrected `dashboard/server/control/adapters.test.ts`, SHA-256 `235e5461fe6810f21722a15405db5418867feec123b9ec3f4df9f7bc43043c1d`.
+- Fresh Windows focused command passed in 5.55 s: `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/adapters.test.ts server/control/spendGrantProvision.test.ts` — 47 passed.
+
+Linux run `Y5mujQ` completed the current full selected gate. It used the same observed Node/npm versions as the historical run, which remain mismatched from repository pins. An existing, unchanged unawaited-rejection warning at `adapters.test.ts:511` surfaced; it is outside this source/test correction scope.
+
+| Gate | Current state |
 | --- | --- |
-| `spendGrantProvision.test.ts` | 11 passed |
-| `bootDiagnostics.test.ts` | 1 passed |
-| `storeBootDiagnostics.test.ts` | 4 passed |
-| `activation.test.ts` | 70 passed |
-| `automaticFailureReporter.test.ts` | 4 passed |
-| `store.test.ts` | 163 passed |
-| `launch.test.ts` | 7 passed |
-| `queueBridge.test.ts` | 92 passed |
-| `realBroker.integration.test.ts` | 11 passed on Linux with the compiled native dependency |
-| Typecheck / build | passed; Vite transformed 128 modules |
+| Native Linux full selected suite | PASS — 399 tests: adapters 36, spend-grant 11, boot diagnostics 1, store boot diagnostics 4, activation 70, automatic failure reporter 4, store 163, launch 7, queue bridge 92, real broker integration 11 |
+| Typecheck / build | PASS — build transformed 128 modules |
+| Linux mutation check | PASS — run `HrOmLA` exited 0. Mutant: 2 failed / 0 passed / 34 pending, both full and sparse held-add assertions observing illicit `02770` instead of the captured `02700` baseline. Restored: 0 failed / 2 passed / 34 pending. |
+| Independent remaining-integration work-order review | REQUEST CHANGES — see current findings below |
 
-The selected test total was **363 passed**. The runner used `--configLoader native`, `--no-cache`, one worker, and no file parallelism.
+The independent review found three concrete plan blockers. C still omits `sessionPersistence.ts` and its test from the exact-keys schema/persistence scope. The claim nonce does not transfer durable ownership, and no cross-store bound state proves that an ambiguous landed CAS cannot release a winner's claim. `ledgerRecoveries` is owned only by `RetiredExecution`, which is created at Lock; active-generation settlement needs a per-generation map from construction that Lock retains. The user-authorized correction/review cycle is consumed, so this work order remains WIP and no repair is made here.
 
-## Paused adapter result and limitations
+The Slice 1A source gate is technically verified by the full 399-test gate and the completed mutation check. The mutation JSON SHA-256 values are mutant `a7c005aa4ea803f323015fd7dd890317cc91ad6328aca9f73750195f0c1524eb` and restored `1eda738c359040a4c7b5cfeb2fdc7c8714a96eea8c02e77f18a25126261c7d7e`. The restored `adapters.ts` checksum matched the original trusted source. JSON evidence is under `_private/linux-gate-evidence/kb-vm-resume-linux-gates.HrOmLA.adapters-held-add.{mutant,restored}.json`; the same directory contains `kb-vm-resume-linux-gates.HrOmLA.log` and its status, scope, and source-archive hash records. The first combined run passed all selected gates but exited 1 before mutation because its LF anchor missed CRLF source; HrOmLA corrected that verifier mismatch and ran only the mutation checks. This cycle changed only the test fixture; verification exercised the dormant source slice without production changes. The full Phase 0 generation fence remains gated regardless of the Slice 1A result.
 
-The initial `all` invocation stopped at `server/control/adapters.test.ts`: 34 passed and 2 failed. Both failures expected mode `0700` after forward-admission revocation but observed inherited setgid mode `02700`. No repair or retry is authorized; `unaffected` excludes that one file only.
+## Scope limits and external posture
 
-The synthetic tests use local archive code and deterministic test processes. They do not contact the VM, network, models, credential stores, or a spend API, and they do not touch a production broker service; the broker tests start an isolated test server. They do not establish browser behavior, production state recovery, or deploy readiness.
+All recorded tests are synthetic/local archive or worktree tests. They do not contact the VM, network, models, credential stores, spend APIs, or production broker services. The isolated broker harness does not prove browser behavior, production recovery, deployment readiness, or VM health.
 
-## Coordinator-observed platform status
-
-Windows verification was reported as 79 containment tests and 47 adapter tests. PR #173 remains open. Under the user's narrow status-check authorization, the VM dashboard was failed on release `39197cf5`, the broker was active, and tailnet `/healthz` and `/readyz` returned 502. No deployment or recovery mutation was performed.
+Root last verified PR #173 as OPEN and draft PRs #176 (source/main) and #177 (coordination/ops) as OPEN. The last 2026-09-07/08 read-only probe observed the VM dashboard failed on release `39197cf5`, broker activity, and tailnet `/healthz` and `/readyz` HTTP 502; this is historical observation, not a current liveness claim. No merge, deploy, runtime cutover, or production mutation was performed in this cycle. Local draft PR bodies are updated for root's existing-draft update flow; this worker does not publish them.
