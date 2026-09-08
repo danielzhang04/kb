@@ -4,6 +4,14 @@ Identity begins with a stable reference contract, not a prompt adjective. The fr
 
 The reference set should contain several views with consistent lighting, expression, and adult presentation, plus a small set of deliberately different poses. Store hashes and provenance beside every file. For the next experiment, use `g01` alone as the canonical seed because it is the established primary frontal reference; retain `g02` and `g07` as labeled comparators, since visible similarity does not prove full identity agreement and they may already be present in prior training inputs. A generated passport can be a useful package pattern, but it is not evidence of identity. The 10sorLabs package generates its own anchor and keeps later stages in one model lineage; Figment's anchor crosses model families, which is a structural difficulty identified in [r25](../r25-why-they-can-and-we-cant.md).
 
+The accepted [canonical-seed adequacy audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md)
+at `83c00054` leaves that provisional `g01` choice unchanged. Under one fixed
+detector setup, `g07` had more face-pixel coverage than `g01`, while `g02` had
+less. That measurement does not select an identity source: crop, pose,
+lighting, styling, and background also vary. Any source replacement needs a
+separately frozen comparison, with one declared reference per condition and
+all other generation and review inputs held fixed.
+
 Dataset preparation follows a narrow loop: inspect, remove duplicates and identity-breaking frames, caption observable facts, and record exclusions. Low-denoise fanout is a package-derived idea from [r14](../r14-10sorlabs-package.md), not a guaranteed recipe. Captions should name the trigger and scene facts while avoiding claims that the image cannot support. Full-body and difficult-angle samples deserve separate review because face and clothing errors can be hidden at dataset scale.
 
 | Evidence/status | What it establishes | Limitation |
@@ -22,3 +30,11 @@ The separately reviewed fixed640 observer mode then produced a fresh V2 receipt 
 The accepted single-seed curation compiler now freezes an input request, the full original `g01` bytes, every derivative image, and every derivative provenance record into a dataset draft. It accepts only a declared first-generation output of that exact `g01` with `training_eligible: true`; that assertion is evidence to be separately reviewed, never an operator approval. Captions are trigger-prefixed, bounded, and copied into numbered sidecars. The curation record binds each train entry's caption, variation, split, source hash, provenance snapshot, and numbered sidecar; it rejects duplicate derivative hashes across train and eval. Derived eval images share `g01` ancestry, so they are within-identity diagnostics rather than independent reference validation. Changes before or during capture that make the frozen request/source evidence inconsistent prevent publication. Later external staging changes are allowed and cannot rewrite the retained snapshots from which the dataset is built.
 
 The current four generated candidates remain unavailable as training data. The offline private refusal probe copied their bytes and provenance without edits: wardrobe-only, small-head-turn, and E01 were rejected because `training_eligible` is false. The frontal black-tee record also says false, but failed an earlier first-generation-role check. None produced a dataset, approval, or plan. This establishes a refusal path, not positive data quality: there is still no accepted multi-view, independently reviewed, visually identity-consistent training set.
+
+The accepted experimental compiler at `f6b5096d` preserves this boundary. It
+requires an exact current curation, 20 or more reviewed rows including `g01`
+and 19 distinct first-generation derivatives, and agent evidence that remains
+explicitly non-promotable. It emits only a fresh private planning record;
+there is no experimental executor, operator dataset acceptance, production
+training plan, checkpoint decision, or LoRA export. The compiler therefore
+does not turn the absent 20-row set into a pending training run.

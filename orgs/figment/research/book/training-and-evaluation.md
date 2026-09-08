@@ -19,4 +19,13 @@ The legacy raw-only identity command has `torch`, `torchvision`, `facenet_pytorc
 
 The accepted curation path now provides a train-first-compatible draft boundary without selecting data or running training. It materializes only retained snapshots, validates the finished draft before its atomic publication, and requires the existing explicit dataset acceptance before train-first staging. Staging carries the curation record and exact snapshot inventory beside the numbered images and captions, so a changed retained source, provenance, caption, or mapping makes a later acceptance stale. Final acceptance verification reported 37 curation/freshness tests and nine train-first tests after the boundary repairs. The earlier 109-test Python curation, builder, lineage and train-first regression predates those final curation repairs; both results establish integrity and refusal behavior, not image quality or an eligible dataset.
 
+The separately accepted `f6b5096d` experimental compiler takes the same
+lineage boundary further only as an offline plan compiler. Its distinct schema
+is rejected by production `load_plan`; it has no provider call, subprocess,
+checkpoint-selection, QA-stamp, approval writer, or executor. It requires a
+private fresh output and rechecks current curation before publication, but no
+current input set satisfies its 20-row requirement. A future plan from this
+compiler would still be diagnostic and non-promotable, not a production
+acceptance or an authorization to export a LoRA.
+
 For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The four actual generated candidates are retained as failed or unreviewed experiment evidence only; no current training output follows from the compiler or its positive synthetic fixtures.

@@ -15,6 +15,32 @@ The live checkpoint ladder completed five jobs at 250, 500, 750, 1000, and final
 
 The later paired final-LoRA versus no-LoRA diagnostic completed five fixed seed pairs under one corrected prompt. One independent visual audit found a clear arm-level identity split and candidate resemblance cues to `g01`; the parent review found `g01` resemblance insufficient and the intended about-21 presentation unestablished. That disagreement is preserved as unresolved, not converted into a pass. The pair is evidence about this LoRA condition and prompt family only; it did not promote a checkpoint or isolate prompt wording. See the [paired diagnostic review](../../../../docs/figment/2026-09-08-paired-diagnostic-review.md).
 
+## Current implementation status — 2026-09-08
+
+The accepted experimental compiler at commit `f6b5096d` can freeze a private,
+non-promotable plan only after it receives a current, single-`g01` curation and
+an agent-observed review of at least 20 exact training rows. It neither starts
+training nor writes an operator acceptance, checkpoint selection, QA stamp, or
+production plan; production loaders reject its separate schema. The four
+currently recorded generated inputs remain unavailable, so there is no
+20-row accepted first-generation dataset and no experimental plan to execute.
+
+The [canonical-seed audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md), accepted at
+`83c00054`, leaves `g01` provisional. It found that `g07` has more detected
+face-pixel coverage, but its other visual differences are confounders; it does
+not select a replacement seed. A source-selection comparison would need a
+separately frozen, controlled protocol.
+
+An existing local ComfyUI installation and selected pins are inventoried in the
+[local capability record](../../../../docs/figment/2026-09-08-local-comfy-capability.md). The reviewed local
+executor at `f03bae3a` passed its parent and independent suites and an offline
+validator. Its first one-image smoke attempted startup but failed before a
+listener or POST because Torch's default Inductor cache lookup required a
+username; no local image or export exists. A corrected smoke with an isolated
+`TORCHINDUCTOR_CACHE_DIR` is pending. Exact Google/g01 export and LoRA export
+remain blocked, production acceptance remains an operator decision, and
+Instagram work remains deferred.
+
 ## Governing rules
 
 1. Freeze persona, references, prompt, seed, model, node, and checkpoint in a manifest before a run.
