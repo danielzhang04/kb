@@ -1680,6 +1680,22 @@ def _approved_dataset_names(approval: dict[str, Any]) -> set[str]:
             if not isinstance(name, str) or Path(name).name != name:
                 raise FigmentTrainError("dataset approval has a malformed file inventory")
             names.add(name)
+    # A single-seed curation record is evidence, never an acceptance signal.  Once
+    # an operator separately accepts the resulting dataset, its immutable record
+    # and retained source/provenance snapshots must accompany the staged dataset so
+    # the approval subject remains reviewable and fresh.
+    curation = subject.get("curation")
+    if curation is not None:
+        if not isinstance(curation, dict):
+            raise FigmentTrainError("dataset approval has malformed curation evidence")
+        rows = [curation.get("record"), *(curation.get("snapshots") or [])]
+        if len(rows) < 2:
+            raise FigmentTrainError("dataset approval curation evidence is incomplete")
+        for row in rows:
+            name = row.get("name") if isinstance(row, dict) else None
+            if not isinstance(name, str) or Path(name).name != name:
+                raise FigmentTrainError("dataset approval has malformed curation evidence")
+            names.add(name)
     return names
 
 
