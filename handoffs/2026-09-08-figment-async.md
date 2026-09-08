@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 15:34 UTC / 11:34 Eastern. See the latest dated section below. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 15:43 UTC / 11:43 Eastern. See the latest dated section below. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -627,3 +627,52 @@ Requires actualcompletedCPU+tokenizerreceipts beforeGPUadmission; initial10steps
 No generation/trainingsessioncurrentlyrunning. Keepawake11:20alive; no pods/holds,
 37.800385arc/2.110134day unchanged. Nativebillingunknown. Pendingexactexportquestions
 unanswered, no retries. Continueasync; no new20rowacceptance or productionpromotion.
+
+## 15:43 UTC: actual CPU and tokenizer preflights COMPLETE; GPU executor repair
+
+Studio ac232343 pushed. CPU mask94b6e096 passed14 parentfocusedtests; parser
+24317914b2a05790bcf887ab4941f67d623d2c18e73218f019d4f962a173336e.
+Supported CUDA_VISIBLE_DEVICES=-1/PYTORCH_NVML_BASED_CUDA_CHECK1 resolvedtheimportfailure;
+actualsd-scripts parserretained, no staticreplacement/monkeypatch. Tinyprobe
+MAIN_private/figment-cuda-mask-probe-20260908-v1/result.json
+34d9224c13f6660fb524cee23c8420f47ae18053e4d9fdf52cba07424f00db86
+observedfalse/0/uninitialized. Priorxformerscallsite remainsinferencewithouttrace.
+Officialsource https://docs.pytorch.org/docs/stable/cuda_environment_variables.html;
+localinstalledtorch2.11 implementationchecked, don'tinfercurrentwebversionmatches.
+
+Actual CPU V3 main_private/figment-local-cpu-preflight-20260908-v3/receipt.json
+raw8a9831fd42b173af2cd7bfb2fbe9239a56b4a4618eb46d147cff3bbf02da8bb0.
+Helper100b35555cd6a1a3365cf95095b5b03c69519113552ec1547247c7629da2b310.
+Exit0/5.451s,exactoneimage/repeat1,actualbucket896x512,target768x768,captionmatch,
+CUDA-1/unavailable/0/uninitialized,teardownverifiedtrue. Wrapper40192creation
+134333555526047878 andchild37776creation134333555526151793stopped; rootindependently
+absent. no-output/no-logsdirectoriesabsent. This is realdataset/configparse proof,
+notGPUfit or identity. V1/V2failuresunchanged.
+
+TokenizerCUDAcorrection ac232343 passed10parenttests;code
+41468515878bb969ce1dce3a647a0dbf36db4263490053182606320b542819a1.
+Actual load helper884837aba14ee10c35ef9a9ca199747f1fdb07e51257224cd53ba440dd1959bd
+reusesprivateCPUv2 bb0d...processhelpers (setsfreshroot/overridesCUDA-1/NVML1).
+MAIN_private/figment-local-tokenizer-load-20260908-v1/receipt.json
+raw30ea57c86eb4d473ddc6f325f19d5fb6712a203542cd34ca1e238173359f5ffd.
+STUDIO/_private/local-lora-tokenizers-20260908-v1/local-tokenizer-load.json
+raw16b3ea1e97ec6e6918c26f135f5409bc785c0f6d70625417e37bd8c86ce513e4;
+frozen59bb4ec29fac75b65230d904d0f3a3e05b5c2e452eeee78483fb504ec44f0f81.
+Exit0/3.456s;2CLIPtokenizers19fixedprobe-captions tokens each,pad49407/0,
+local_files_onlytrue,torchimported/CUDAfalse0/uninitialized. Wrapper17328creation
+134333556154127443,child7660creation134333556154220905stopped; rootindependentlyabsent.
+Preparedreceipt/copies rehashedafterloadunchanged. No tokenizer/model downloads.
+
+Next GPU code train/local_single_observation_fit.py plus tests/design is NOTaccepted.
+Initialfreezec716a084cd4936ffd6a69068672d0533166eff4658a65f9143a6d4f4db9df2f1
+hadroot/protocolconcreteblockers: -I importpath/no-B; admissionreplayacrossfreshout;
+helperpins; naturalexitrace/late/logreadererrors; TensorBoardactualfilelimits/
+checkpointstreamhash+validheader; finalstagedhashes; tokenizerpathcontainment/
+preparedvsinventoryhashnaming/pad0; evidencepaths; unrecordedwrappercleanup.
+Timestamp AUTHORSonecombinedrepair; protocolREADONLYreviewafterfreeze. Hubwrites
+actualtraining-preflightaudit and training/identitybookstatusupdates. Rootadmission
+mustbind acceptedfinalcode andactualreceipts before<=10step/20minGPUprobe. Noactual
+GPUtraining/admission/dispatch yet. Noexecsessionscurrentlyrunning.
+
+Keepawake11:37aliveowner16580/supervisor19564; no pods/holds,37.800385arc2.110134day.
+ExactGoogleg01andLoRAexportquestionsstillpending/no retries. Continueasync.

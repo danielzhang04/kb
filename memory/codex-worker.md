@@ -608,3 +608,6 @@ do not repeat generation merely to replace a reporting failure with a green rece
 For future wrappers, consult the exact retained process handle before and after a
 wrapper-only termination error, and preserve bounded stage/error codes. Also test
 adopters against actual historical manifest shapes before relying on synthetic fixtures.
+
+### 2026-09-08: Verify device masking empirically before weakening a preflight
+A Windows CUDA build reported availability true but device count zero with an empty visible-device setting; the real trainer parser then failed in an optional model dependency. A tiny isolated probe of documented CUDA_VISIBLE_DEVICES=-1 plus PYTORCH_NVML_BASED_CUDA_CHECK=1 produced false/zero/uninitialized, and the unchanged real parser then passed. Keep raw failures and distinguish inferred import call sites from traced causes. Test supported environment controls before replacing upstream parsing with a weaker local imitation; preserve actionable bounded exception causes. Evidence: Figment training-preflight audit and handoff15:43UTC.

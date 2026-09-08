@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated 2026-09-08 15:34 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 15:43 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `d1becf08`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `ac232343`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
@@ -100,3 +100,5 @@ planner and CPU dataset-parser preflight are accepted after 12 parent and 12 ind
 training probe has run yet; the unrelated trial-persona scripts/data are not reused.
 
 Actual CPU parser attempts V1/V2 failed during dependency import with all recorded processes stopped. V2 exposed an Invalid device id error with CUDA hidden. The failure receipts are preserved; no CPU parse success or GPU training is claimed. The separate tokenizer path passed10 parent and10 independent checks and prepared ten verified local files (7,323,340 bytes); actual loading is next. Exact current state is in the handoff15:34UTC.
+
+CPU V3 now completed using supported CUDA -1/NVML masking: real sd-scripts parsed one image into896x512 with no CUDA initialization. The two copied tokenizers also loaded locally; both actual receipts verified teardown and unchanged inputs. No GPU training has run. The10-step/20-minute GPU launcher is under combined execution-bug repair and independent review. See canonicalhandoff15:43UTC for exact hashes and ownership.
