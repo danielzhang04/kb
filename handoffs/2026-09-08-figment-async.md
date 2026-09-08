@@ -4,6 +4,76 @@ Active async build. **8 AM Eastern is a progress checkpoint, not a stop.** Conti
 work and keep-awake afterward; do not end the active parent merely at a perceived
 human gate. Instagram integration is deferred.
 
+## Current checkpoint ? 2026-09-08 10:24 UTC
+
+This section supersedes the older snapshot below. Work continues; 8AM Eastern
+(12:00UTC) remains a checkpoint only. Keep-awake supervisor19564/owner16580 alive,
+last checked06:06Eastern. Existing Python313 at
+C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe has requests;
+default Python312 does not. Use Python313 for live RunPod commands.
+
+### ONE ACTIVE VIDEO POD ? parent owns cleanup
+
+Pod **wo5uka031lxh7m**, acquired10:16:30UTC, exec session **56854**. Max$1.75/80min,
+one L40S/oneplacement. It is still in service readiness, not generated evidence.
+Private root C:/Users/danie/kb/_private/figment-video-experiment-20260908;
+manifest wan22-first-frame-v1.json SHA
+6be375a27bb82b1b41a48fc6a5efdf0b71ef9ebc240e1bb1efbac8e286b8ff92;
+output live-v1; redacted log live-v1-console.log;
+journal live-v1/recovery-figment-bakeoff-20260908-101628-0694dd.json.
+One81-frame512x288 nativeWan2.2TI2V5B job,16fps, seed4815162342. Firstframe is
+experimental wardrobe-only g01-derived image e33f2d0c...6a2, reviewed adult/clothed.
+No production identity approval. Node/modelpins reviewed; no external customnodes.
+Harness provisional1.733333 is already in Figmentdailyledger. Arc including active
+reservation38.987762/50; daily3.297511/10. Actual realized priorarc37.254429.
+Update existing provisional row on completion; never double-book. Independently
+verify provider absence after harness exits; use durable recover if interrupted.
+
+### Prompt-only comparison BLOCKED, NOT STARTED
+
+Frozen private manifest candidate-prompt-full-look-v1.yaml under
+figment-single-seed-experiment-20260908, SHA
+668ade24399652d0936797c88a5ab35915106161aadcc333da3a4930a42602e9.
+IndependentPASS: candidate-LoRA age-only vs full-look, samefive seeds; appliedgraphs
+differ only node5text after filenameprefix normalization. Bounds$2.50/115min,
+minimum113min/estimated2.491667. No numericreservation because no podcreated.
+Automatic approval rejected the LoRA upload TWICE, even after proving uploaded
+checkpoint byteidentical to RunPod's original training output and fictionalPersona.
+User question pending via request_user_input_async: authorization to upload exact
+creator001krea2.safetensors to RunPod for this comparison. DO NOT RETRY or work around
+this boundary until answer. Other work continues. Earlier syntheticPNGvideo upload
+was initiallyrejected then SAMEcommand approved after newprovenance/zeroEXIF checks.
+
+### Newly accepted work / ongoing workers
+
+Studio **2ff9e7a1 pushed PR179**:82adceb1 accepted hardened frameextractor + paired/
+inputvisualreviews; bd6391b5 accepted native5Bcompiler +readablehub;2ff9e7a1 frozen
+promptcomparisonprotocol. Parent8extractor+13compiler+14hubtests, typecheck/buildPASS.
+Opsproposal9dc25936pushed PR175 beforethischeckpoint; originops46266f37unchanged.
+Previouspairedpodcicx4at1447lp0 is absent and finalized0.239368. Independentreview
+sayscandidate resemblesg01; parentdisagrees sufficientresemblance/targetage; tracked
+pairedreviewpreservesdisagreement. Two generatedinputprovenancefilesupdated,trainingfalse.
+
+- figment_hub_final_review: builds bounded Frozenplans view by extendingexisting
+  /api/figment projection/UI overreal driverplan schemas. No command/runner/writeAPI.
+  Its frame_assemble.py +9tests/docs frozen afterremediation (requireactualsuccessful
+  non-dryrunterminated receipts; missingdocsadded), awaiting protocol_review rereview.
+- figment_protocol_review: rereviews assembler; authoredsevenexistingbookchapter+
+  video-integrationdocupdates, rootasked correctlivevideo/pendinguploadstatus and
+  trailingnewlines. Rootsourcecheck beforecommit.
+- figment_timestamp_fix: fixes table rendering discoveredinactualBookreaderpreview.
+  Opt-in safetables in existingdashboard/src/lib/markdown.ts/tests; coordinates one
+  Figmentreaderflag/CSS with plansowner. Renew screenshot; cleanupONLYownextraChrome
+  4476 after exactprivateprofilecommand/PID check, notexisting37892oroperatorprofiles.
+
+Preview127.0.0.1:5417Node34616/Chrome37892CDP9229. CurrentBookvisualfixture screenshot
+_private/ignored_private/figment-preview-20260908/screenshots/research-book-reader-fixture.png.
+Fixture visiblylabeled, real chapter copied; no claimproductionauthsmoke. Rawtables
+findingbeingfixed. Parentmust viewfinal screenshot. PR179description and PR175body
+need refresh afteracceptingcurrentunits. Keepqueue04WORKING, nofakeinspectorgrade.
+
+---
+
 ## Authority and target
 
 Build a source-backed research book and 10sorlabs-inspired infrastructure for
