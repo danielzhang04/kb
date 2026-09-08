@@ -69,7 +69,7 @@ Figment contract. Wake-up card `01K9FIGMENT0800000000000003` is in the ops propo
 Local fixes continue to make a concrete reviewable result. A third independent
 recovery acceptance and the paid tester remain paused at that boundary.
 
-## Recovery: final local-fix state; independent verdict pending
+## Recovery: final local-fix state; independent verdict accepted
 
 Recovery commit `66be5887` delivers the final local fixes for this review: the
 run-directory lock remains held through finalization; existing `run.json`, legacy
@@ -79,11 +79,14 @@ replacement failures receive a bounded retry; and dry-run accounting writes only
 an isolated zero-cost ledger. The builder reports **24 focused recovery tests and
 287 existing pod tests passed**.
 
-This is the final local implementation state, but the final independent recovery
-verdict is **PENDING**: a third independent acceptance has not run because work paused
-for user continuation after two `REQUEST CHANGES` reviews. No live or paid tester
-launch is implied. Parent non-recovery integration is complete; its final result is recorded below.
-This integration does not replace the pending recovery acceptance.
+This was the final local implementation state at the time of the second review. The
+subsequent timestamp and acquisition fix is committed at `88a1da1a` and passed terra's
+independent acceptance: **319 tests passed in 15.14 seconds**. The parser now accepts
+the observed strict Go UTC format alongside zone-aware ISO and epoch timestamps,
+rejects malformed/ambiguous values, and persists the acquired ID before optional
+provider-metadata parsing. This resolves the recovery review's pending status.
+No live or paid tester launch is implied by this review section. Parent non-recovery
+integration is complete; its final result is recorded below.
 
 ## Approval/checkpoint lineage: accepted at 23ce226d
 
@@ -145,8 +148,9 @@ reference text to its raw HEAD bytes; tracked baseline files were restored after
 The final frozen integration returned **700 passed, 13 failed in 58.82 seconds**;
 its failure set exactly matches the 13 reproduced baseline failures. No new
 integration failures remain. Lineage source and tests are committed as `23ce226d`.
-Recovery tests are excluded from this independent integration run because their
-third acceptance remains paused; this does not replace recovery review.
+Recovery tests were excluded from this earlier independent integration run; the
+subsequent recovery acceptance is recorded in the recovery section above. This does
+not change the historical baseline comparison or its reproduced failure set.
 
 During the lineage review, the reviewer identified that train-first copied unlisted
 source files and could dereference a symlink into its recursive upload. The final

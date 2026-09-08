@@ -46,9 +46,13 @@ verification. Approval/checkpoint lineage (`23ce226d`) passed independent code a
 security review with 111 focused tests. Parent frozen non-recovery integration
 returned 700 passes and 13 failures reproduced unchanged on the baseline. Recovery
 fixes (`66be5887`) have 24 focused plus 287 existing pod tests passing in builder
-checks, but independent acceptance remains paused after two failed review rounds.
+checks. The authorized final independent recheck subsequently passed all 311 tests;
+the live attempt then exposed a provider timestamp format missing from fixtures.
+That narrow correction is independently accepted at `88a1da1a` with 319 tests.
 
 Draft code PR: https://github.com/danielzhang04/kb/pull/178. The active canonical
-handoff and bounded recovery continuation are in draft ops PR #175. No live pod,
-merge, deployment, or publication occurred during this implementation. The foundation
-package is not fully accepted until recovery review is resolved.
+handoff and bounded recovery continuation are in draft ops PR #175. The initial live tester startup failed safely and was terminated; a single
+corrected attempt is running under the original experiment ceiling. See
+`2026-09-08-live-tester.md` for current operational evidence. Technical foundation
+review is complete; checkpoint quality remains unproven. No merge, deployment, or
+publication occurred.
