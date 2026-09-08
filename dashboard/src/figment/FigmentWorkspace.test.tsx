@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FigmentWorkspace } from './FigmentWorkspace';
 
 const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [] } };
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
+
+afterEach(cleanup);
 
 describe('FigmentWorkspace', () => {
   it('renders evidence states without treating a machine gate as checkpoint approval', async () => {
@@ -31,6 +33,69 @@ describe('FigmentWorkspace', () => {
     const fetchImpl = vi.fn(() => response({ ...projection, creatorsTruncated: true })) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={fetchImpl} />);
     await screen.findByText('The creator list reached its safe display limit.');
+  });
+
+  it('shows a distinguishable record path and reads only listed research artifacts through the KB reader', async () => {
+    const research = {
+      ...projection.research,
+      artifacts: [
+        { area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' },
+        { area: 'book' as const, name: 'next.md', bytes: 1024, modifiedAt: '2026-09-08T00:00:00Z' },
+      ],
+    };
+    const fetchImpl = vi.fn((url: string) => {
+      if (url === '/api/figment') return response({ ...projection, research });
+      if (url.includes('chapter.md')) return response({ path: 'orgs/figment/research/book/chapter.md', content: '# Chapter\n[Next](next.md)\n[External](https://example.com)' });
+      if (url.includes('next.md')) return response({ path: 'orgs/figment/research/book/next.md', content: '# Next chapter' });
+      return Promise.reject(new Error('unexpected URL'));
+    }) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Runs & review' }));
+    expect(screen.getByText('runs/a/run.json')).toBeTruthy();
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    fireEvent.click(screen.getAllByRole('button', { name: 'Read' })[0]);
+    await screen.findByRole('heading', { name: 'Chapter' });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/kb/file?path=orgs%2Ffigment%2Fresearch%2Fbook%2Fchapter.md', expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
+    expect(screen.getByRole('link', { name: 'External' }).getAttribute('href')).toBe('https://example.com');
+    fireEvent.click(screen.getByRole('link', { name: 'Next' }));
+    await screen.findByRole('heading', { name: 'Next chapter' });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/kb/file?path=orgs%2Ffigment%2Fresearch%2Fbook%2Fnext.md', expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
+    fireEvent.click(screen.getByRole('button', { name: 'Back to research index' }));
+    await screen.findByText('chapter.md');
+  });
+
+  it('does not reopen the reader when a deferred request resolves after Back', async () => {
+    let resolveChapter: ((value: Response) => void) | undefined;
+    let chapterSignal: AbortSignal | null = null;
+    const delayedChapter = new Promise<Response>((resolve) => { resolveChapter = resolve; });
+    const fetchImpl = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/figment') return response(projection);
+      if (url.includes('chapter.md')) { chapterSignal = options?.signal instanceof AbortSignal ? options.signal : null; return delayedChapter; }
+      return Promise.reject(new Error('unexpected URL'));
+    }) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Read' }));
+    expect(screen.getByRole('status')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Back to research index' }));
+    expect((chapterSignal as AbortSignal | null)?.aborted).toBe(true);
+    resolveChapter?.(new Response(JSON.stringify({ path: 'orgs/figment/research/book/chapter.md', content: '# Late chapter' }), { headers: { 'content-type': 'application/json' } }));
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    expect(screen.queryByLabelText('Research reader')).toBeNull();
+    expect(screen.getByText('chapter.md')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Late chapter' })).toBeNull();
+  });
+
+  it('keeps malformed research filenames inert rather than constructing a KB path', async () => {
+    const fetchImpl = vi.fn(() => response({ ...projection, research: { ...projection.research, artifacts: [{ area: 'research' as const, name: '../outside.md', bytes: 1, modifiedAt: '2026-09-08T00:00:00Z' }] } })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('Unavailable filename')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Read' })).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
 
   it('fails closed when nested diagnostic or record fields are malformed', async () => {
