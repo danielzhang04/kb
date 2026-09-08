@@ -100,6 +100,7 @@ describe('Git worktree adapter', () => {
     const path = join(worktreeRoot, 'run-1', 'attempt-1');
     mkdirSync(commonDir, { recursive: true });
     const calls: { args: readonly string[]; cwd: string }[] = [];
+    let addedPathMode: number | undefined;
     let releaseAdd: (() => void) | undefined;
     let addStarted: (() => void) | undefined;
     const addStartedPromise = new Promise<void>((resolvePromise) => { addStarted = resolvePromise; });
@@ -111,6 +112,7 @@ describe('Git worktree adapter', () => {
           return new Promise((resolvePromise) => {
             releaseAdd = () => {
               mkdirSync(path, { recursive: true, mode: 0o700 });
+              addedPathMode = statSync(path).mode & 0o7777;
               resolvePromise(successfulGitResult());
             };
           });
@@ -142,9 +144,12 @@ describe('Git worktree adapter', () => {
     releaseAdd?.();
     await expect(pending).rejects.toThrow('forward admission withdrawn');
 
-    // The held fake Git add creates the attempt directory at 0700. On Linux, a reached post-add
-    // chmod group would change it to the production 02770 mode; revocation leaves it untouched.
-    if (process.platform !== 'win32') expect(statSync(path).mode & 0o7777).toBe(0o700);
+    // Linux can inherit the parent setgid bit, so retain the fake Git add's actual mode as the
+    // baseline. A reached post-add chmod group would change it to production mode 02770.
+    if (process.platform !== 'win32') {
+      expect(addedPathMode).not.toBe(0o2770);
+      expect(statSync(path).mode & 0o7777).toBe(addedPathMode);
+    }
     expect(calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'))).toHaveLength(1);
     expect(calls.filter((call) => call.args.includes('--show-toplevel'))).toHaveLength(0);
     expect(calls.filter((call) => call.args.includes('--git-common-dir'))).toHaveLength(0);
