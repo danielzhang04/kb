@@ -108,3 +108,9 @@ anchor cosine make later calibration reproducible. Do not serialize a pass/fail
 field, a threshold, an approval state, or a raw embedding vector. Calibration
 may compare these unthresholded observations with the existing anchor sets, but
 cannot alter gate thresholds or promote media.
+
+## Actual fixed640 raw run
+
+The reviewed `fixed-max-edge-640@1` observer mode was run locally over all 19 inventory inputs and the same three declared anchors. It wrote `figment/identity-observation@2` receipts in `_private/figment-identity-observer-20260908/observations-v2/`. The aggregate `batch-run.json` is SHA-256 `56c6e76c40ad25f5954522316630dc71542403b7778530eceb04f6d14cd5873c`; it binds the admitted pins, verified adoption receipt, exact observer-code SHA-256, inventory v3, mode, and every receipt hash.
+
+All inputs produced exactly one detector face under the one fixed detector rule. This is a detector-availability outcome, not a calibrated identity claim. The complete raw table and the separate V1/V2 limitations are in [raw reference observations](2026-09-08-raw-reference-observations.md). These values do not alter a threshold, pass state, quality decision, legacy gate, or independent visual assessment.
