@@ -7,3 +7,7 @@ unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:current-cycle-coordination	r
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:renewed-independent-review	requested Sol-high; responding unavailable; result pending	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:linux-harness	requested Sol-high; responding unavailable; all-399 Linux result pending	unknown
 unverified	gpt-5.6-terra+gpt-5.6-sol	unavailable	kb-vm-overhaul:bounded-cycle-final-result	fixture 399/Linux, Windows 47, mutation proof, and independent artifact recheck technically ready; plan REQUEST CHANGES; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:plan-ownership-builder	requested Sol-high different-builder plan-only correction; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-independent-review	requested Terra-high independent plan review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-coordination	requested Terra-high coordination/root cross-check; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol+gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-final-verdict	different-builder plan correction, independent Terra review, and root cross-check technically ready; responding model and cost unavailable	unknown

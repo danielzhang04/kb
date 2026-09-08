@@ -20,24 +20,25 @@ retain their separate human gates.
 
 ## Current terminal task list
 
-1. **Cycle evidence — DONE.** Linux 399, Windows 47, full-plus-sparse mutation
-   proof, and independent Sol artifact recheck are recorded in the completed
-   cycle card. No phase is complete.
-2. **Plan repair — FROZEN.** The review returned REQUEST CHANGES for
-   sessionPersistence/test omission, durable creator-nonce/CAS ownership, and
-   the active-generation ledger map. Do not repair it in this cycle.
-3. **Exact next plan step — WAIT FOR RENEWED DIRECTION.** Propose the ownership
-   fix and fresh review for the three blockers only. Do not bind the full
-   lifetime path, deploy, merge, or mark any phase complete.
+1. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47,
+   full-plus-sparse mutation proof, and the independent Sol artifact recheck are
+   recorded. They are prior evidence, not a new run.
+2. **Plan correction — DONE / TECHNICALLY READY.** Fresh Terra review and root
+   cross-check found no concrete blockers. C owns persistence migration and
+   constructors; creator-only CAS ownership and active-generation receipt
+   registration are explicit; ambiguous landed writes require reconciliation.
+3. **Next authorized stage — A0 INTERFACES.** Start the reviewed plan's bounded
+   A0 neutral-interface stage separately from Phase 0 acceptance. Do not create
+   a runnable controller, deploy, merge, or mark any phase complete.
 
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-8237febde3db147e161172cc87d2ab76c7bb1814, which includes fixture commit
-42125cb2 and the evidence/paused-plan commit; its remote body is updated.
-ddadeb073acad732fcc60496016dacd75d38e26b and fb66695b are historical bases.
+ccb2ec9565f92a867c85f693a10f64a2e93032e0, which records the technically ready
+plan review. Fixture commit 42125cb2 remains unchanged from source head
+8237febde3db147e161172cc87d2ab76c7bb1814; PR176's remote body is updated.
 This coordination proposal is on codex/kb-vm-overhaul-ops-20260907 for PR177;
-0992b7b884aa4d6c2d393cdf04e1fab7c7e39a90 is historical baseline only.
+c7792546648b28cc87e72262b2951942a1362065 is historical baseline only.
 
 Linux run Y5mujQ passed all 399 selected tests, including 11 isolated realBroker
 tests, typecheck, and native Vite build (128 modules), from source archive
@@ -50,12 +51,13 @@ Independent Sol recheck is TECHNICALLY READY after verifying disk archive SHA,
 overlay, 399/typecheck/build evidence, JSON mutant/restored counts and modes,
 exact checksums, and unchanged source.
 
-The independent plan review is REQUEST CHANGES. It found that C omits
-sessionPersistence.ts/test despite exactKeys validation; creator nonce is not
-durable cross-store ownership and ambiguous landed CAS may release the winner;
-and the RetiredExecution ledger map is created only at Lock rather than with and
-retained by the active generation. Plan work is paused pending renewed user
-direction.
+The renewed plan-only correction/review cycle is **TECHNICALLY READY**. It
+assigned C the actual persistence migration and constructors; limited
+release/write-intent CAS to a creator-owned handle in the same chain; retained
+ambiguous landed writes and crashes for reconciliation without automatic
+recovery; and required a pre-effect active-generation registry with an immutable
+subject/run/rows snapshot and pure-key reuse through Lock. No implementation
+tests ran in this planning cycle, and no source binding occurred.
 
 The last read-only VM probe found dashboard systemd failed with exit 1 on release
 39197cf5d9322f21d859d6f7a98d3a5b57cc42ea; tailnet /healthz and /readyz returned

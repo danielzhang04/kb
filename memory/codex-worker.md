@@ -540,3 +540,23 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   typecheck/build, mutant/restored counts and modes, checksums, and unchanged
   source. This fixture evidence does not resolve separate ownership defects in
   the paused plan.
+
+## Preserve completed evidence when a bounded review cycle reopens (2026-09-08)
+
+- A renewed plan-only correction authorization changes the active task sequence,
+  not the outcome of a prior fixture gate. Keep the completed card historical,
+  retain its exact evidence as frozen context, and make the new builder, fresh
+  reviewer, and root checkpoint explicit without creating runnable micro-cards.
+- Record requested model intent and unavailable response/cost telemetry as
+  ledger facts. Do not infer a passed review, a source change, or a new fixture
+  run before the independent outcome arrives.
+
+## Make durable state authority explicit in an ownership plan (2026-09-08)
+
+- A plan must assign state authority to the persistence migration, constructors,
+  durable CAS handle, and active-generation registry. Naming a future component
+  in prose is not an ownership boundary.
+- When a CAS outcome may have landed, automated recovery cannot safely transfer
+  the original owner's release or replay authority. Preserve the receipt for
+  reconciliation and prove a same-chain creator handle before any release or
+  write-intent action.
