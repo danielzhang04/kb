@@ -14,6 +14,7 @@ import hashlib
 import importlib.util
 import json
 import os
+import re
 import stat
 import sys
 from pathlib import Path
@@ -24,6 +25,7 @@ HERE = Path(__file__).resolve().parent
 PLAN_SCHEMA = "figment/local-single-observation-lora-plan@1"
 MAX_PLAN_BYTES = 32 * 1024
 MAX_FILE_BYTES = 8 * 1024 * 1024
+MAX_DIAGNOSTIC_CHARS = 384
 OFFLINE_ENV = {
     "CUDA_VISIBLE_DEVICES": "",
     "HF_HUB_OFFLINE": "1",
@@ -35,6 +37,36 @@ OFFLINE_ENV = {
 
 class CpuPreflightError(ValueError):
     pass
+
+
+def _bounded_exception_chain(error: BaseException) -> str:
+    """Expose a small actionable cause without copying runtime output verbatim."""
+    parts: list[str] = []
+    current: BaseException | None = error
+    for _ in range(3):
+        if current is None:
+            break
+        name = type(current).__name__
+        if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,79}", name):
+            name = "Exception"
+        message = " ".join(str(current).split())
+        # Parser/config errors can include arbitrary local values. Keep the
+        # diagnosis useful while never retaining a secret-like value or path.
+        if re.search(r"(?i)(api[ _-]?key|access[ _-]?token|password|secret|credential)", message):
+            message = "<redacted-sensitive-message>"
+        else:
+            message = re.sub(r"(?i)(?:[a-z]:[\\/]|/)[^\s]+", "<path>", message)
+            message = message[:MAX_DIAGNOSTIC_CHARS]
+        parts.append(f"{name}: {message}" if message else name)
+        current = current.__cause__
+    return " <- ".join(parts)
+
+
+def _raise_sd_scripts_rejection(error: BaseException) -> None:
+    raise CpuPreflightError(
+        "sd-scripts rejected the fixed CPU dataset/config; cause="
+        + _bounded_exception_chain(error)
+    ) from error
 
 
 def _load_planner() -> Any:
@@ -240,7 +272,7 @@ def parse_cpu_preflight(plan_path: Path, *, private_root: Path | None = None) ->
         if torch.cuda.is_initialized():
             raise CpuPreflightError("CPU parsing initialized CUDA")
     except Exception as exc:
-        raise CpuPreflightError("sd-scripts rejected the fixed CPU dataset/config") from exc
+        _raise_sd_scripts_rejection(exc)
     finally:
         sys.argv = original_argv if "original_argv" in locals() else sys.argv
         if str(planner.SD_SCRIPTS_ROOT) in sys.path:

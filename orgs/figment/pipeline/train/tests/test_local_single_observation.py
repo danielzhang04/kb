@@ -204,6 +204,20 @@ def test_bounded_reader_refuses_file_that_grows_after_initial_stat(tmp_path, mon
         reader(path, 5, "member")
 
 
+def test_cpu_preflight_preserves_a_bounded_redacted_sd_scripts_cause():
+    cause = ValueError("invalid bucket at C:\\private\\plan")
+    with pytest.raises(preflight.CpuPreflightError) as raised:
+        preflight._raise_sd_scripts_rejection(cause)
+    message = str(raised.value)
+    assert "cause=ValueError:" in message
+    assert "invalid bucket" in message
+    assert "<path>" in message
+    assert raised.value.__cause__ is cause
+    with pytest.raises(preflight.CpuPreflightError, match="<redacted-sensitive-message>") as secret:
+        preflight._raise_sd_scripts_rejection(ValueError("api_key=not-retained"))
+    assert "not-retained" not in str(secret.value)
+
+
 def test_cpu_preflight_rejects_mutated_plan_and_extra_dataset_member_before_sd_scripts_import(tmp_path, monkeypatch):
     personas, private = fixture_inputs(tmp_path, monkeypatch)
     plan = planner.build_plan(Path("probe"), personas_root=personas, private_root=private)
