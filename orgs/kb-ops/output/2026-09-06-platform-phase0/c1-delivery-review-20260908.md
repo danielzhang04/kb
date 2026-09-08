@@ -1,3 +1,43 @@
+# Current independent C delivery review - 2026-09-08
+
+**REQUEST CHANGES.** The user renewed the earlier bounded correction in the
+2026-09-08 overnight directive. The 101-test builder gate passed, but root's
+fresh two-scenario adversarial probe failed 2/2 (93 unrelated cases skipped).
+This is the first execution of these exact new probes, not a rerun of the
+historical malformed-fulfillment failure. Production bytes were not edited by
+the reviewer. The worker is correcting the findings under ongoing authorization.
+
+1. **HIGH: required EOF can be skipped before acknowledgement.** At
+   `attemptSessionAdapter.ts:1385`, a Codex process that exits immediately after
+   accepting its only prompt skips `endInput`, then reaches `ackClaim` at 1400.
+   Root used the existing `MemorySessionHost.finishAfterWrite = 0` with the real
+   C0 store. EOF calls were zero but acknowledgement calls were one. This clears
+   the queued-message witness although required delivery never completed.
+   Require completion of EOF before acknowledgement; skipped EOF is close-only
+   with the durable write-intent retained.
+2. **HIGH: outer refusal settlement bypasses close-only ambiguity.** A Claude
+   process that exits after the first of two opening prompts reaches
+   `failAfterStart` from line1361. That helper avoids its own terminal CAS, but
+   leaves creator authority intact. The result refusal path at1453 then invokes
+   `settleRecord`, whose only ambiguity exclusion at827 is poisoned ownership,
+   so the bound operation becomes failed. The root probe observed exactly one
+   write and `failed` where `bound` is required. Preserve the uncertain claim and
+   PTY receipt across every outer completion path, including cancellation after
+   write intent; do not release, retry terminal settlement, or resume delivery.
+
+Command (isolated copy of frozen test harness plus the two appended probes):
+
+    npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/attemptSessionAdapter.review.test.ts -t "review:"
+
+Result: **2 failed / 93 skipped**, one file, 1.02s total. Initial review-copy
+creation used the wrong relative directory and found no file/tests; after that
+setup correction this was the first product execution. No count is attributed
+to that infrastructure failure. Root's temporary review file will be removed
+once both probes are preserved in the real suite. Full typecheck remains
+pending while A1/D1 production files are actively edited.
+
+---
+
 # DRAFT — C1 claim-delivery interim review, 2026-09-08
 
 Reviewer: `codex-worker` (independent; did not author the implementation)
@@ -126,6 +166,41 @@ already proves that the real atomic store can persist a mutation and then reject
 with a falsey value; C may compose that proof with mutate-then-throw-`undefined`
 adapter doubles rather than editing the C0 fault seam. D1 remains paused and is
 outside this review.
+
+## 2026-09-08 pause confirmation
+
+The later focused run reached a real repeated-scenario pause on the test named
+`closes only when a landed falsey write-intent result makes delivery ambiguous`.
+Its first failure was a `TypeError` while cleanup dereferenced an undefined
+claim. After an optional-chain-only adjustment, the same scenario failed again
+because one host write occurred where the assertion expected zero. No C tests
+were run by this reviewer.
+
+Read-only inspection confirmed that the test did not inject the fault named in
+its title. Its wrapper awaited the real `recordWriteIntent` mutation and then
+returned `undefined as never`, which is a malformed fulfillment. It did not
+`throw undefined`, so it did not prove the required landed-then-falsey
+rejection. The adapter assigned that unchecked fulfillment to its local claim,
+passed the admission check, and issued the first host write. The observed write
+was therefore a truthful exposure of missing return validation, not evidence
+that the required ambiguity case was safe.
+
+The bounded correction proposed at the pause has two separate proof obligations:
+
+- retain the malformed-fulfillment case and validate each claim-port success
+  before local assignment or the next effect, including immutable identity,
+  fingerprints, exact next state, and the PTY revision where applicable;
+- add true mutation-then-`throw undefined` probes for the named durable claim
+  transitions, proving stage-appropriate zero next effects and no release after
+  an ambiguous mutation.
+
+The affected transition results are `claimMessages` (`created`/`claimed` plus a
+creator handle), `bindPromptFingerprint` (`prompt-bound`), `admitPtyBind`
+(`pty-bind-admitted`), `markPtyBound` (`pty-bound` plus the exact PTY revision),
+`recordWriteIntent` (`write-intent`), `ackClaim`
+(`acknowledged` with cleared messages), and `releasePrewrite` (`released` with
+cleared messages). The production and tests remained frozen after this
+confirmation pending explicit correction authorization.
 
 This DRAFT is not a formal inspector grade and grants no acceptance, commit,
 merge, deployment, or Phase 0 authority.

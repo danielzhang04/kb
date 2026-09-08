@@ -28,6 +28,46 @@ acknowledged tombstones. Such observers have zero mutation or delivery authority
 Exact same-adapter duplicate calls still reuse the creator's existing launch
 promise. No synthetic terminal receipt or new adoption path is required.
 
+## Overnight continuation and A1/grant window
+
+On 2026-09-08 the user directed the remaining work to run asynchronously overnight
+and to keep most implementation in one consolidated merge. Root treats this as
+renewed authorization for the pending bounded C-delivery and D1-design correction
+cycles. Existing evidence remains historical; neither correction is accepted by
+that authorization alone. Implementation accumulates in PR176; coordination uses
+the separate Codex-to-ops PR177 required by repository routing.
+
+After independent A1 preflight review and coordinator verification of its
+corrections, root releases only `execution.ts`/test and
+`spendGrantProvision.ts`/test for one atomic strict-outcome implementation window.
+The grant files' prior Slice 1A fences and tests must be preserved. `adapters.ts`
+and its test stay frozen. A1 is technically independent of C delivery and D1;
+B still starts only after all A/C/D surfaces pass acceptance.
+
+For tokenless grant refusal only, amend Brief A's parking tuple to an interrupted
+attempt and interrupted worker session, with stage/run waiting-human. Strictly
+zero-settle the issued reservation and remove the unused worktree once before
+creating the idempotent intervention. Explicit Resume then uses the existing
+successor path. Do not add a cause-adoption mechanism or store API. The detailed
+guard map, cleanup rules, and required tests are in
+[the A1 preflight](a1-engine-grant-preflight-20260908.md). This amendment supersedes
+the original linear port ordering and tokenless attempt/session tuple below;
+it grants no activation, merge, or deployment acceptance.
+
+## D1 implementation release after independent design review
+
+Root accepted the corrected D1 design after fresh independent TECHNICALLY READY
+review. The user's ongoing overhaul authorization releases the exact files:
+`control/atomicJsonDocument.ts`/test, `control/queueBridge.ts`/test, new
+`control/fleetLedgerReceipt.ts`/test, `planeA/ledgers.ts`/test,
+`agents/roster.test.ts` (all under dashboard/server), `scripts/ledger.py`, and
+`tests/test_ledger.py`. No publisher API or roster production edit is released.
+The checkpoint primitive, pinned-day compatibility, and original-writer parsing
+are mandatory parts of D1, not optional implementation cleanup. Use the exact
+proof, lock order, falsey checkpoint escape, and recovery limits in the D1 design
+and its independent review. No actual ledger publication is part of local tests.
+This supersedes the earlier D1 design pause; B still waits for accepted ports.
+
 ## Frozen boundary and common contract
 
 `dashboard/server/control/adapters.ts`, `adapters.test.ts`, `spendGrantProvision.ts`, and `spendGrantProvision.test.ts` remain frozen for this work order. At fixture commit `42125cb2`, the full 399-test Linux gate, 47-test Windows gate, and mutation-only verifier passed with the source checksum restored. Those are retained source-slice results; the separate planning review below does not establish integrated implementation acceptance. Their optional `assertForwardAdmission(): void` callback is the only worktree/grant seam used below. This plan does not release or edit any frozen file.
