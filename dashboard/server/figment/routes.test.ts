@@ -96,11 +96,13 @@ describe('Figment read projection', () => {
     expect(projection.references).toMatchObject({ truncated: false, items: [{ creator: 'creator-a', name: 'g01.jpg', width: 4, height: 3 }] });
     expect(projection.localTraining).toEqual({ status: 'not-configured' });
     expect(projection.localTrainingResults).toEqual({ status: 'not-configured' });
+    expect(projection.matchedGallery).toEqual({ status: 'not-configured' });
   });
 
   it('keeps completed-run roots optional and fails closed when their configured shape is malformed', async () => {
     const paths = await fixture();
     expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, {} as never).localTrainingResults).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+    expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, undefined, {} as never).matchedGallery).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
   });
 
   it('marks changed gate subjects and checkpoint hashes stale', async () => {
@@ -156,7 +158,7 @@ describe('Figment read projection', () => {
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
       if (path === '/api/figment') handler = candidate;
-      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name').toBe(true);
+      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name' || path === '/api/figment/matched-gallery-assets/:assetId').toBe(true);
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();
@@ -200,6 +202,13 @@ describe('Figment read projection', () => {
     expect((await app.inject({ method: 'GET', url })).statusCode).toBe(409);
     expect((await app.inject({ method: 'GET', url: '/api/figment/reference-assets/creator-a/..%2Fg01.jpg?sha256=' + asset.sha256 })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/figment/reference-assets/creator-a/not-declared.jpg?sha256=' + asset.sha256 })).statusCode).toBe(404);
+    await app.close();
+  });
+
+  it('keeps the matched-gallery asset route opaque and stale without configured evidence', async () => {
+    const paths = await fixture(); const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo }); await app.ready();
+    expect((await app.inject({ method: 'GET', url: '/api/figment/matched-gallery-assets/../receipt.json?sha256=' + 'a'.repeat(64) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/matched-gallery-assets/base-481516234?sha256=' + 'a'.repeat(64) })).statusCode).toBe(409);
     await app.close();
   });
 

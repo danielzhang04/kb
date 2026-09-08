@@ -96,6 +96,34 @@ describe('FigmentWorkspace', () => {
     render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
   });
 
+  it('shows four opaque matched assets and preserves the recorded review disagreement', async () => {
+    const observations = { realism: 'recorded realism', resemblance_to_g01: 'recorded resemblance', pose: 'recorded pose', apparent_adulthood: 'recorded adulthood', apparent_age_fit: 'recorded age', clothing: 'recorded clothing', defects: 'recorded defects' };
+    const review = (disposition: 'continue' | 'stop') => ({ disposition, observations });
+    const matchedGallery = { status: 'recorded' as const, historical: true as const, notPromotable: true as const, conditioning: 'no-pixel-reference-conditioning' as const, pairs: [481516234, 90210].map((seed) => ({ seed, base: { assetId: `base-${seed}` as const, sha256: 'a'.repeat(64), bytes: 90, width: 1024 as const, height: 1024 as const }, current20: { assetId: `current-20-${seed}` as const, sha256: 'b'.repeat(64), bytes: 90, width: 1024 as const, height: 1024 as const }, reviews: { root: { base: review('continue'), current20: review('continue') }, independent: { base: review('continue'), current20: review('stop') } } })) };
+    const originalCreate = URL.createObjectURL; const originalRevoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:matched') }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    try {
+      const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response({ ...projection, diagnostic: { status: 'not-configured' }, matchedGallery }) : response('png', 200)) as unknown as typeof fetch;
+      render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
+      await screen.findByRole('img', { name: 'Matched diagnostic base seed 481516234' });
+      expect(screen.getByText('Matched diagnostic pairs')).toBeTruthy(); expect(screen.getAllByText(/Independent diagnostic — stop/)).toHaveLength(2); expect(screen.queryByText('No diagnostic assets are available for review.')).toBeNull();
+      const assetCalls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => String(url).includes('/matched-gallery-assets/'));
+      expect(assetCalls).toHaveLength(4); expect(assetCalls.every(([url]) => !String(url).includes('output') && !String(url).includes('receipt'))).toBe(true);
+      expect(fetchImpl).toHaveBeenCalledWith('/api/figment/matched-gallery-assets/base-481516234?sha256=' + 'a'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
+      cleanup();
+      const oversized = { ...matchedGallery, pairs: matchedGallery.pairs.map((pair, index) => index === 0 ? { ...pair, base: { ...pair.base, bytes: 8 * 1024 * 1024 + 1 } } : pair) };
+      const malformedFetch = vi.fn(() => response({ ...projection, matchedGallery: oversized })) as unknown as typeof fetch;
+      render(<FigmentWorkspace fetchImpl={malformedFetch} />); await screen.findByText('Figment records are unavailable.');
+    } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
+  });
+
+  it('rejects malformed matched-gallery evidence while accepting an older absent field', async () => {
+    const older = vi.fn(() => response(projection)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={older} />); await screen.findByText('creator-a'); cleanup();
+    const malformed = vi.fn(() => response({ ...projection, matchedGallery: { status: 'recorded', historical: true, notPromotable: true, conditioning: 'no-pixel-reference-conditioning', pairs: [] } })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
+  });
+
   it('requests only the fixed offline tester preview and labels its limits', async () => {
     const preview = { schema: 'figment/plan-preview@1', offlinePreview: true, notPromotable: true, creator: 'creator-001', stage: 'tester', runCount: 1, declaredCeilingUsd: 2.5, manifestSha256: 'a'.repeat(64) };
     const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response(preview)) as unknown as typeof fetch;

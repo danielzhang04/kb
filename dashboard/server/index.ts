@@ -18,6 +18,7 @@ import { registerTraceRead } from './trace/routes.ts';
 import { registerFigmentRead } from './figment/routes.ts';
 import { registerFigmentTesterPreview } from './figment/planPreview.ts';
 import type { FigmentLocalTrainingEvidenceRoots, FigmentLocalTrainingResultRoots } from './figment/localTraining.ts';
+import type { FigmentMatchedGalleryRoots } from './figment/matchedGallery.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
@@ -134,6 +135,8 @@ export interface BuildAppOptions {
   figmentLocalTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null;
   /** Fixed receipt directories for historical completed local-run summaries. */
   figmentLocalTrainingResultRoots?: FigmentLocalTrainingResultRoots | null;
+  /** Fixed private roots for the historical base/current-20 matched diagnostic pair gallery. */
+  figmentMatchedGalleryRoots?: FigmentMatchedGalleryRoots | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -297,12 +300,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       if (values.every((value) => value === undefined)) return null;
       return { tenStep: { run: values[0] ?? '', plan: values[1] ?? '', admissionParent: values[2] ?? '' }, currentQuality: { run: values[3] ?? '', plan: values[4] ?? '', admissionParent: values[5] ?? '', cpu: values[6] ?? '' } };
     })();
+    const configuredMatchedGallery = options.figmentMatchedGalleryRoots ?? (() => {
+      const values = [process.env.DASHBOARD_FIGMENT_MATCHED_BASE_ROOT, process.env.DASHBOARD_FIGMENT_MATCHED_CURRENT20_ROOT];
+      if (values.every((value) => value === undefined)) return null;
+      return { base: values[0] ?? '', current20: values[1] ?? '' };
+    })();
     registerFigmentRead(scope, {
       repoRoot,
       diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
       generatedInputRoot: options.figmentGeneratedInputRoot ?? process.env.DASHBOARD_FIGMENT_GENERATED_INPUT_ROOT ?? null,
       localTrainingEvidence: configuredLocalTraining,
       localTrainingResultRoots: configuredLocalTrainingResults,
+      matchedGalleryRoots: configuredMatchedGallery,
     });
     registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });

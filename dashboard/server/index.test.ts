@@ -435,6 +435,7 @@ describe('server', () => {
     '/api/kb/tree', '/api/kb/file?path=docs/x.md', '/api/kb/history?path=docs/x.md',
     '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing', '/api/figment',
     '/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000',
+    '/api/figment/matched-gallery-assets/base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
@@ -495,11 +496,12 @@ describe('server', () => {
       validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
       figmentLocalTrainingEvidence: { cpuPreflight: 'missing-cpu', tokenizerLaunch: 'missing-launch', plan: 'missing-plan', tokenizerLoad: 'missing-tokenizer' },
       figmentLocalTrainingResultRoots: { tenStep: { run: 'missing-ten-run', plan: 'missing-ten-plan', admissionParent: 'missing-ten-admission' }, currentQuality: { run: 'missing-current-run', plan: 'missing-current-plan', admissionParent: 'missing-current-admission', cpu: 'missing-current-cpu' } },
+      figmentMatchedGalleryRoots: { base: 'missing-matched-base', current20: 'missing-matched-current' },
     });
     expect((await app.inject({ method: 'GET', url: '/api/figment', headers: matrixHeaders })).statusCode).toBe(401);
     const response = await app.inject({ method: 'GET', url: '/api/figment', headers: sessionHeaders() });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' }, localTrainingResults: { status: 'unavailable', reason: 'evidence-unavailable' } });
+    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' }, localTrainingResults: { status: 'unavailable', reason: 'evidence-unavailable' }, matchedGallery: { status: 'unavailable', reason: 'evidence-unavailable' } });
   });
 
   it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
@@ -511,6 +513,7 @@ describe('server', () => {
   it.each([
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
     ['/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000', 404],
+    ['/api/figment/matched-gallery-assets/base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState } from 'react';
 import { renderMarkdown } from '../lib/markdown';
 import './figment.css';
 
@@ -12,6 +12,10 @@ interface DeclaredReference { creator: string; name: string; bytes: number; sha2
 interface GeneratedInput { name: string; bytes: number; sha256: string; width: number; height: number; sourceReference: string; sourceSha256: string; generatedOn: string | null; reviewStatus: string; visualReview: Record<string, string>; }
 type LocalTraining = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; preparation: { source: 'anchors/g01.jpg'; originalObservations: 1; repeatCount: 1; targetResolution: [number, number]; effectiveBucket: [number, number]; cpuCudaMasked: true; cpuVerifiedTeardown: true; tokenizerLoads: Array<{ id: string; probeTokenCount: number }> } };
 type LocalTrainingResults = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; items: Array<{ kind: 'availability-probe' | 'current-quality-fit'; completed: true; durationSeconds: number; steps: number; artifactCount: number; checkpoints: Array<{ step: number; sha256: string; bytes: number }>; quality: 'not-evaluated' }> };
+type MatchedObservation = { realism: string; resemblance_to_g01: string; pose: string; apparent_adulthood: string; apparent_age_fit: string; clothing: string; defects: string; };
+type MatchedAsset = { assetId: 'base-481516234' | 'base-90210' | 'current-20-481516234' | 'current-20-90210'; sha256: string; bytes: number; width: 1024; height: 1024; };
+type MatchedReview = { disposition: 'continue' | 'stop'; observations: MatchedObservation; };
+type MatchedGallery = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; notPromotable: true; conditioning: 'no-pixel-reference-conditioning'; pairs: Array<{ seed: 481516234 | 90210; base: MatchedAsset; current20: MatchedAsset; reviews: { root: { base: MatchedReview; current20: MatchedReview }; independent: { base: MatchedReview; current20: MatchedReview } } }> };
 interface Projection {
   schema: 'figment/hub@1'; available: boolean;
   creators: Array<{ id: string; persona: 'valid' | 'malformed'; loraTier: string | null; loraTrigger: string | null; accountTiers: string[] }>;
@@ -22,6 +26,7 @@ interface Projection {
   generatedInputs: { available: boolean; items: GeneratedInput[]; truncated: boolean };
   localTraining: LocalTraining;
   localTrainingResults: LocalTrainingResults;
+  matchedGallery: MatchedGallery;
   diagnostic: { status: 'not-configured' } | { status: 'unavailable'; reason: string } | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; artifactsTruncated: boolean };
 }
 
@@ -70,6 +75,26 @@ function localTrainingResults(value: unknown): LocalTrainingResults | null {
   return seen.size === 2 ? value as unknown as LocalTrainingResults : null;
 }
 
+function matchedGallery(value: unknown): MatchedGallery | null {
+  // Older @1 hubs did not have this optional historical projection.
+  if (value === undefined) return { status: 'not-configured' };
+  if (!object(value)) return null;
+  if (value.status === 'not-configured') return { status: 'not-configured' };
+  if (value.status === 'unavailable' && value.reason === 'evidence-unavailable') return { status: 'unavailable', reason: 'evidence-unavailable' };
+  if (value.status !== 'recorded' || value.historical !== true || value.notPromotable !== true || value.conditioning !== 'no-pixel-reference-conditioning' || !Array.isArray(value.pairs) || value.pairs.length !== 2) return null;
+  const seeds = [481516234, 90210] as const;
+  const fields = ['realism', 'resemblance_to_g01', 'pose', 'apparent_adulthood', 'apparent_age_fit', 'clothing', 'defects'] as const;
+  for (const [index, pairValue] of value.pairs.entries()) {
+    if (!object(pairValue) || pairValue.seed !== seeds[index] || !object(pairValue.base) || !object(pairValue.current20) || !object(pairValue.reviews)) return null;
+    for (const [kind, asset] of [['base', pairValue.base], ['current-20', pairValue.current20]] as const) if (asset.assetId !== `${kind}-${seeds[index]}` || !sha256(asset.sha256) || typeof asset.bytes !== 'number' || !Number.isSafeInteger(asset.bytes) || asset.bytes < 1 || asset.bytes > 8 * 1024 * 1024 || asset.width !== 1024 || asset.height !== 1024) return null;
+    for (const role of ['root', 'independent'] as const) {
+      const reviewSet = pairValue.reviews[role]; if (!object(reviewSet)) return null;
+      for (const kind of ['base', 'current20'] as const) { const review = reviewSet[kind]; const observations = object(review) && object(review.observations) ? review.observations : null; if (!object(review) || (review.disposition !== 'continue' && review.disposition !== 'stop') || observations === null || !fields.every((field) => string(observations[field]) && observations[field].length > 0 && observations[field].length <= 4096)) return null; }
+    }
+  }
+  return value as unknown as MatchedGallery;
+}
+
 function valid(value: unknown): Projection | null {
   if (!object(value) || value.schema !== 'figment/hub@1' || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.references) || !bounded(value.references.items) || typeof value.references.truncated !== 'boolean' || !object(value.generatedInputs) || typeof value.generatedInputs.available !== 'boolean' || !bounded(value.generatedInputs.items) || typeof value.generatedInputs.truncated !== 'boolean' || !object(value.diagnostic)) return null;
   if (!value.creators.every((row) => object(row) && string(row.id) && (row.persona === 'valid' || row.persona === 'malformed') && nullableString(row.loraTier) && nullableString(row.loraTrigger) && bounded(row.accountTiers) && row.accountTiers.every(string))) return null;
@@ -82,7 +107,8 @@ function valid(value: unknown): Projection | null {
   if (!(d.status === 'not-configured' || d.status === 'unavailable' && string(d.reason) || d.status === 'diagnostic-not-promotable' && (typeof d.dryRun === 'boolean' || d.dryRun === null) && nullableString(d.podId) && typeof d.artifactsTruncated === 'boolean' && bounded(d.artifacts) && d.artifacts.every((row) => object(row) && string(row.name) && safeArtifactName(row.name) && finite(row.bytes) && sha256(row.sha256) && finite(row.width) && finite(row.height) && string(row.modifiedAt) && Number.isFinite(Date.parse(row.modifiedAt))))) return null;
   const training = localTraining(value.localTraining);
   const results = localTrainingResults(value.localTrainingResults);
-  return training === null || results === null ? null : { ...value, localTraining: training, localTrainingResults: results } as unknown as Projection;
+  const gallery = matchedGallery(value.matchedGallery);
+  return training === null || results === null || gallery === null ? null : { ...value, localTraining: training, localTrainingResults: results, matchedGallery: gallery } as unknown as Projection;
 }
 
 function validTesterPreview(value: unknown): TesterPreview | null {
@@ -199,8 +225,26 @@ function GeneratedInputs({ generated, token, fetchImpl }: { generated: Projectio
   return <section className="figment__references"><h2>Generated-input experiments: creator-001 (unapproved)</h2><p className="figment__inert">These creator-001 experiments use g01 as the provisional seed; g02 and g07 remain comparators. Immutable provenance snapshots and recorded review declarations only. They may not reflect later independent review. These are not accepted references, identity proof, training data, or approvals.</p>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}<div className="figment__assets figment__generated-assets">{assets.map((asset) => { const item = generated.items.find((row) => row.name === asset.name); return item ? <figure className="figment__asset figment__generated-asset" key={item.name}><img src={asset.url} alt={`Generated input experiment ${item.name}`} /><figcaption><strong>{item.name}</strong><span>{item.width}x{item.height} · Generated on: {item.generatedOn ?? 'not recorded'}</span><dl className="figment__generated-observations"><dt>Recorded observations</dt><dd><strong>Status</strong>: {item.reviewStatus}</dd>{Object.entries(item.visualReview).map(([label, observation]) => <dd key={label}><strong>{generatedObservationLabel(label)}</strong>: {observation}</dd>)}</dl><details><summary>Source and hashes</summary><dl><dt>Declared source</dt><dd>{item.sourceReference}</dd><dt>Source SHA-256</dt><dd>{item.sourceSha256}</dd><dt>Output SHA-256</dt><dd>{item.sha256}</dd></dl></details></figcaption></figure> : null; })}</div>{generated.truncated ? <p className="figment__notice">The generated-input list reached its safe review limit.</p> : null}</section>;
 }
 
-function Assets({ diagnostic, references, generatedInputs, token, fetchImpl }: { diagnostic: Projection['diagnostic']; references: Projection['references']; generatedInputs: Projection['generatedInputs']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
-  return <><DeclaredReferences references={references} token={token} fetchImpl={fetchImpl} /><GeneratedInputs generated={generatedInputs} token={token} fetchImpl={fetchImpl} /><DiagnosticAssets diagnostic={diagnostic} token={token} fetchImpl={fetchImpl} /></>;
+function MatchedGallery({ gallery, token, fetchImpl }: { gallery: Projection['matchedGallery']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
+  const [assets, setAssets] = useState<Record<string, string>>({}); const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (gallery.status !== 'recorded') { setAssets({}); return; }
+    let live = true; const controllers: AbortController[] = []; const urls: string[] = []; setAssets({}); setError(null);
+    const listed = gallery.pairs.flatMap((pair) => [pair.base, pair.current20]);
+    void Promise.all(listed.map(async (asset) => { const controller = new AbortController(); controllers.push(controller); try { const response = await fetchImpl(`/api/figment/matched-gallery-assets/${encodeURIComponent(asset.assetId)}?sha256=${asset.sha256}`, { ...requestOptions(token), signal: controller.signal }); if (!response.ok) throw new Error('A recorded matched image could not be read.'); const url = URL.createObjectURL(await response.blob()); if (!live) { URL.revokeObjectURL(url); return; } urls.push(url); setAssets((previous) => ({ ...previous, [asset.assetId]: url })); } catch (cause) { if (live && !controller.signal.aborted) setError(cause instanceof Error ? cause.message : 'A recorded matched image could not be read.'); } }));
+    return () => { live = false; controllers.forEach((controller) => controller.abort()); urls.forEach((url) => URL.revokeObjectURL(url)); };
+  }, [gallery, token, fetchImpl]);
+  if (gallery.status === 'not-configured') return <></>;
+  if (gallery.status === 'unavailable') return <section className="figment__references"><h2>Matched diagnostic pairs</h2><p className="figment__empty">Recorded matched diagnostic evidence could not be verified.</p></section>;
+  const labels: Record<keyof MatchedObservation, string> = { realism: 'Realism', resemblance_to_g01: 'Resemblance to g01', pose: 'Pose', apparent_adulthood: 'Apparent adulthood', apparent_age_fit: 'Apparent age fit', clothing: 'Clothing', defects: 'Defects' };
+  const review = (role: 'root' | 'independent', stage: 'base' | 'current20', item: MatchedReview): React.JSX.Element => <details key={`${role}-${stage}`}><summary>{role === 'root' ? 'Root' : 'Independent'} diagnostic — {item.disposition}</summary><dl>{(Object.keys(labels) as Array<keyof MatchedObservation>).map((key) => <Fragment key={key}><dt>{labels[key]}</dt><dd>{item.observations[key]}</dd></Fragment>)}</dl></details>;
+  const image = (pair: Extract<MatchedGallery, { status: 'recorded' }>['pairs'][number], label: 'Base' | 'Current step 20', asset: MatchedAsset, stage: 'base' | 'current20'): React.JSX.Element => <figure className="figment__asset figment__generated-asset" key={asset.assetId}>{assets[asset.assetId] ? <img src={assets[asset.assetId]} alt={`Matched diagnostic ${label.toLowerCase()} seed ${pair.seed}`} /> : <div className="figment__empty" role="status">Loading recorded image…</div>}<figcaption><strong>Seed {pair.seed} · {label}</strong><span>{asset.width}x{asset.height}</span>{review('root', stage, pair.reviews.root[stage])}{review('independent', stage, pair.reviews.independent[stage])}</figcaption></figure>;
+  return <section className="figment__references"><h2>Matched diagnostic pairs</h2><p className="figment__inert">Matched diagnostic only. Base used no reference pixel conditioning; current step 20 applies a locally trained adapter and also used no reference pixel conditioning.</p><p className="figment__inert">Training complete; image quality reviewed separately. These recorded diagnostic observations are not a promotion or human QA.</p>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}{gallery.pairs.map((pair) => <section key={pair.seed} aria-label={`Matched diagnostic pair seed ${pair.seed}`}><h3>Seed {pair.seed}</h3><div className="figment__assets figment__generated-assets">{image(pair, 'Base', pair.base, 'base')}{image(pair, 'Current step 20', pair.current20, 'current20')}</div></section>)}</section>;
+}
+
+function Assets({ diagnostic, references, generatedInputs, matchedGallery, token, fetchImpl }: { diagnostic: Projection['diagnostic']; references: Projection['references']; generatedInputs: Projection['generatedInputs']; matchedGallery: Projection['matchedGallery']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
+  const hideEmptyDiagnostic = matchedGallery.status === 'recorded' && diagnostic.status !== 'diagnostic-not-promotable';
+  return <><DeclaredReferences references={references} token={token} fetchImpl={fetchImpl} /><GeneratedInputs generated={generatedInputs} token={token} fetchImpl={fetchImpl} /><MatchedGallery gallery={matchedGallery} token={token} fetchImpl={fetchImpl} />{hideEmptyDiagnostic ? null : <DiagnosticAssets diagnostic={diagnostic} token={token} fetchImpl={fetchImpl} />}</>;
 }
 
 function TrainingReadiness({ training, results }: { training: LocalTraining; results: LocalTrainingResults }): React.JSX.Element {
@@ -255,5 +299,5 @@ export function FigmentWorkspace({ token, fetchImpl = fetch }: { token?: string;
   useEffect(() => { let live = true; setError(false); setProjection(null); void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => { if (!response.ok) throw new Error('figment unavailable'); const decoded = valid(await response.json()); if (!decoded) throw new Error('invalid figment projection'); if (live) setProjection(decoded); }).catch(() => { if (live) setError(true); }); return () => { live = false; }; }, [fetchImpl, refresh, token]);
   if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={() => setRefresh((v) => v + 1)}>Retry</button> : null}</main>;
   if (!projection.available) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p className="figment__empty">The Figment project records are unavailable.</p></main>;
-  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
+  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} matchedGallery={projection.matchedGallery} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
 }
