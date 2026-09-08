@@ -739,23 +739,8 @@ def attach_lease_status(exc: BaseException, lease: PodLease) -> BaseException:
 
 
 def parse_remote_timestamp(value: Any) -> datetime:
-    """Parse the common ISO or epoch timestamp shapes returned for RunPod pods."""
-    if isinstance(value, bool):
-        raise ValueError("boolean is not a creation timestamp")
-    if isinstance(value, (int, float)):
-        seconds = float(value)
-        if abs(seconds) >= 100_000_000_000:
-            seconds /= 1000.0
-        return datetime.fromtimestamp(seconds, timezone.utc)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("empty creation timestamp")
-    text = value.strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    parsed = datetime.fromisoformat(text)
-    if parsed.tzinfo is None:
-        parsed = parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
+    """Parse only explicit-zone provider timestamps for name-recovery bounds."""
+    return pod_recovery.parse_provider_timestamp(value)
 
 
 def session_bad_hosts_path() -> Path:

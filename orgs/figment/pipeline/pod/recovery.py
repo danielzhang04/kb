@@ -26,6 +26,10 @@ ID_RE = re.compile(r"[A-Za-z0-9-]+")
 CREATE_WINDOW = timedelta(minutes=30)
 CLOCK_SKEW = timedelta(minutes=5)
 ERROR_CODE_RE = re.compile(r"[a-z0-9-]{1,80}")
+GO_UTC_TIMESTAMP_RE = re.compile(
+    r"^(?P<date>\d{4}-\d{2}-\d{2}) "
+    r"(?P<time>\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?) \+0000 UTC$"
+)
 RUN_DIRECTORY_LOCK_NAME = ".figment-recovery-run.lock"
 WINDOWS_TRANSIENT_REPLACE_ERRORS = {32, 33}
 ATOMIC_REPLACE_ATTEMPTS = 3
@@ -292,11 +296,23 @@ def record_acquired(path: Path, pod_id: str, pod: dict[str, Any] | None = None) 
     document = load_journal(path, verify_manifest=False)
     if not ID_RE.fullmatch(str(pod_id)):
         raise RecoveryError("provider returned an unsafe pod id")
-    provider_last_started = _provider_last_started_utc(pod) if isinstance(pod, dict) else None
-    changes: dict[str, Any] = {"state": "acquired", "pod_id": str(pod_id)}
-    if provider_last_started is not None:
-        changes["provider_last_started_utc"] = provider_last_started.isoformat(timespec="seconds")
-    return update_journal(path, document, **changes)
+    # The returned ID is the durable recovery handle.  Persist it before trying to
+    # normalize optional provider metadata: a malformed timestamp must not erase a
+    # known ID, but it also cannot authorize a later recovery DELETE.
+    acquired = update_journal(path, document, state="acquired", pod_id=str(pod_id))
+    if not isinstance(pod, dict):
+        return acquired
+    try:
+        provider_last_started = _provider_last_started_utc(pod)
+    except (TypeError, ValueError, OverflowError):
+        return acquired
+    if provider_last_started is None:
+        return acquired
+    return update_journal(
+        path,
+        acquired,
+        provider_last_started_utc=provider_last_started.isoformat(timespec="seconds"),
+    )
 
 
 def record_terminal(
@@ -317,21 +333,30 @@ def record_terminal(
     return update_journal(path, document, **changes)
 
 
+def parse_provider_timestamp(value: Any) -> datetime:
+    """Parse an explicit-zone ISO timestamp or RunPod's exact Go UTC form."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        seconds = float(value) / (1000.0 if abs(float(value)) >= 100_000_000_000 else 1.0)
+        return datetime.fromtimestamp(seconds, timezone.utc)
+    if isinstance(value, str):
+        go_style = GO_UTC_TIMESTAMP_RE.fullmatch(value)
+        if go_style:
+            text = f"{go_style['date']}T{go_style['time']}+00:00"
+        else:
+            text = value[:-1] + "+00:00" if value.endswith("Z") else value
+        parsed = datetime.fromisoformat(text)
+        if parsed.tzinfo is None or parsed.utcoffset() is None:
+            raise ValueError("provider timestamp lacks an unambiguous timezone")
+        return parsed.astimezone(timezone.utc)
+    raise ValueError("provider timestamp has unsupported type")
+
+
 def _provider_last_started_utc(pod: dict[str, Any]) -> datetime | None:
     """Return RunPod's documented lastStartedAt; it is not a creation timestamp."""
     value = pod.get("lastStartedAt")
     if value is None:
         return None
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        seconds = float(value) / (1000.0 if abs(float(value)) >= 100_000_000_000 else 1.0)
-        return datetime.fromtimestamp(seconds, timezone.utc)
-    if isinstance(value, str):
-        text = value[:-1] + "+00:00" if value.endswith("Z") else value
-        parsed = datetime.fromisoformat(text)
-        if parsed.tzinfo is None:
-            raise ValueError("provider timestamp lacks timezone")
-        return parsed.astimezone(timezone.utc)
-    raise ValueError("provider timestamp has unsupported type")
+    return parse_provider_timestamp(value)
 
 
 def verify_name_and_last_start(document: dict[str, Any], pod: dict[str, Any]) -> str:

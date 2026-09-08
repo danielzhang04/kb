@@ -2222,6 +2222,40 @@ def test_N8_name_recovery_rejects_pods_older_than_this_run(created_at, expected_
         assert "has no creation timestamp" in stream.getvalue()
 
 
+def test_N8_name_recovery_accepts_runpod_go_utc_creation_timestamp():
+    pod = ready_pod("same-name")
+    pod["createdAt"] = "2026-01-02 00:00:00.000 +0000 UTC"
+
+    class MatchingAPI:
+        def list_pods(self):
+            return [pod]
+
+    lease = rr.PodLease(
+        MatchingAPI(), {"name": "same-name"}, logging.getLogger("N8-go-utc"),
+        started_utc=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+    assert lease._named_matches() == [pod]
+
+
+def test_N8_name_recovery_rejects_timezone_less_creation_timestamp():
+    pod = ready_pod("same-name")
+    pod["createdAt"] = "2026-01-02T00:00:00"
+
+    class MatchingAPI:
+        def list_pods(self):
+            return [pod]
+
+    logger, stream = logger_and_stream()
+    lease = rr.PodLease(
+        MatchingAPI(), {"name": "same-name"}, logger,
+        started_utc=datetime(2026, 1, 2, tzinfo=timezone.utc),
+    )
+
+    assert lease._named_matches() == []
+    assert "unusable creation timestamp" in stream.getvalue()
+
+
 def test_N9_wait_outputs_counts_only_output_images(monkeypatch):
     history = {
         "prompt": {

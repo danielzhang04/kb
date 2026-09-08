@@ -35,6 +35,7 @@ recovery = rr.pod_recovery
 
 NAME = "figment-bakeoff-20260908-120000-a1b2c3"
 CREATED = datetime.now(timezone.utc).replace(microsecond=0)
+GO_UTC = "2026-09-08 05:56:53.472 +0000 UTC"
 
 
 def _pod(pod_id: str = "pod-owned", *, name: str = NAME) -> dict[str, str]:
@@ -46,7 +47,9 @@ def _pod(pod_id: str = "pod-owned", *, name: str = NAME) -> dict[str, str]:
     }
 
 
-def _intent(tmp_path: Path, *, pod_id: str | None = None) -> Path:
+def _intent(
+        tmp_path: Path, *, pod_id: str | None = None,
+        created_utc: datetime = CREATED) -> Path:
     manifest = tmp_path / "manifest.yaml"
     manifest.write_text("image: pinned\n", encoding="utf-8")
     journal = recovery.create_intent(
@@ -56,7 +59,7 @@ def _intent(tmp_path: Path, *, pod_id: str | None = None) -> Path:
         pod_name=NAME,
         max_minutes=20.0,
         max_usd=0.30,
-        created_utc=CREATED,
+        created_utc=created_utc,
     )
     if pod_id is not None:
         recovery.record_acquired(journal, pod_id, _pod(pod_id))
@@ -271,6 +274,7 @@ def test_recovery_intent_precedes_create_and_callback_persists_id(tmp_path):
             assert before["state"] == "intent"
             assert before["pod_name"] == payload["name"]
             self.pod = _pod()
+            self.pod["lastStartedAt"] = GO_UTC
             return dict(self.pod)
 
     api = CreateAPI()
@@ -281,7 +285,32 @@ def test_recovery_intent_precedes_create_and_callback_persists_id(tmp_path):
     )
     with lease:
         assert recovery.load_journal(journal)["pod_id"] == "pod-owned"
+    acquired = recovery.load_journal(journal)
+    assert acquired["state"] == "acquired"
+    assert acquired["provider_last_started_utc"] == "2026-09-08T05:56:53+00:00"
+
+
+def test_recovery_acquisition_persists_id_when_optional_timestamp_is_invalid(tmp_path):
+    journal = _intent(tmp_path)
+    pod = _pod()
+    pod["lastStartedAt"] = "2026-09-08 05:56:53 UTC"
+
+    acquired = recovery.record_acquired(journal, "pod-owned", pod)
+
+    assert acquired["pod_id"] == "pod-owned"
+    assert "provider_last_started_utc" not in acquired
     assert recovery.load_journal(journal)["state"] == "acquired"
+
+
+def test_recovery_acquisition_without_provider_id_preserves_intent(tmp_path):
+    journal = _intent(tmp_path)
+
+    with pytest.raises(recovery.RecoveryError, match="unsafe pod id"):
+        recovery.record_acquired(journal, "", _pod())
+
+    preserved = recovery.load_journal(journal)
+    assert preserved["state"] == "intent"
+    assert preserved["pod_id"] is None
 
 
 def test_recovery_callback_write_failure_retains_in_memory_id_for_teardown(tmp_path):
@@ -327,6 +356,40 @@ def test_recovery_treats_delete_404_style_absence_as_verified(tmp_path):
     assert api.deleted == ["pod-owned"]
     assert result["recovery_status"] == "terminated"
     assert result["absence_verified"] is True
+
+
+def test_recovery_accepts_runpod_go_utc_timestamp_for_owned_pod(tmp_path):
+    journal = _intent(
+        tmp_path,
+        pod_id="pod-owned",
+        created_utc=datetime(2026, 9, 8, 5, 56, 52, tzinfo=timezone.utc),
+    )
+    pod = _pod()
+    pod["lastStartedAt"] = GO_UTC
+    api = _API(pod=pod)
+
+    result = recovery.reconcile(journal, api, _logger(), rr.PodLease, sleep=lambda _seconds: None)
+
+    assert api.deleted == ["pod-owned"]
+    assert result["absence_verified"] is True
+
+
+@pytest.mark.parametrize("timestamp", [
+    "2026-09-08 05:56:53 UTC",
+    "2026-09-08 05:56:53.472 +0000 EDT",
+    "2026-09-08 05:56:53.472 +0100 UTC",
+])
+def test_recovery_refuses_delete_for_invalid_or_ambiguous_provider_timestamp(tmp_path, timestamp):
+    journal = _intent(tmp_path, pod_id="pod-owned")
+    pod = _pod()
+    pod["lastStartedAt"] = timestamp
+    api = _API(pod=pod)
+
+    with pytest.raises(recovery.RecoveryError, match="cannot verify ownership"):
+        recovery.reconcile(journal, api, _logger(), rr.PodLease, sleep=lambda _seconds: None)
+
+    assert api.deleted == []
+    assert recovery.load_journal(journal)["state"] == "uncertain"
 
 
 def test_recovery_refuses_foreign_id_before_delete(tmp_path):
