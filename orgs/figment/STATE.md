@@ -1,10 +1,10 @@
 # Figment current state
 
-Updated 2026-09-08 16:00 UTC / noon Eastern. Async work continues after the
+Updated 2026-09-08 16:36 UTC / 12:36 Eastern. Async work continues after the
 8 AM checkpoint. Instagram integration is deferred. The canonical
 [handoff](../../handoffs/2026-09-08-figment-async.md) contains the resume load list.
 
-Studio branch `codex/figment-studio-20260908`, head `1056eb92`, is pushed to
+Studio branch `codex/figment-studio-20260908`, head `be0da659`, is pushed to
 [ draft PR179](https://github.com/danielzhang04/kb/pull/179), stacked on PR178.
 The research book, authenticated studio, offline tester-plan preview, reference
 and diagnostic galleries, raw identity observer, single-seed curation compiler,
@@ -31,17 +31,17 @@ tokenizers also loaded from ten verified local copies. Both actual runs exited0
 and verified process teardown; parent and independent audits matched hashes.
 See Studio `docs/figment/2026-09-08-local-training-preflight-audit.md`.
 
-The ten-step, twenty-minute local GPU fit launcher is still under repair and
-has not been admitted or run. `figment_fit_repair` is the sole author;
-`figment_fit_independent_review` independently reviews its final freeze. The fresh
-worker replaces a completed worker whose queued feedback did not restart it.
-Remaining execution fixes cover admission replay, helper hashes, path handling,
-private staged-file revalidation, bounded trainer artifacts, valid checkpoint
-headers, and complete process cleanup. No local GPU training result is claimed.
-The initial fresh freeze also passed seven narrow tests while containing a
-nonexistent helper path and the wrong DreamBooth data-directory level. Review
-rejected it; the author is repairing actual-path and lifecycle test coverage.
-A separate worker is designing the studio's local-training evidence projection.
+The ten-step, twenty-minute local GPU launcher is accepted after 14 focused
+tests and independent review. Actual full input validation passed. The first
+admitted run loaded the model, cached its single observation, and created the
+LoRA/optimizer, then failed before step1 after 110.283 seconds: Windows cp1252
+could not encode the trainer's Japanese status text. The failure and private
+cache are preserved; teardown was verified and root observed no remaining run
+processes. No checkpoint or sample was produced. `figment_fit_repair` owns the
+narrow UTF-8 launch correction and test before a separately admitted V2 run.
+`figment_training_hub_plan` implements the historical preparation view, reviewed
+by `figment_fit_independent_review`; those old receipts cannot establish a global
+absence of GPU admission or quality work.
 The later one-source quality experiment is a design only, with matched schedules,
 fixed comparisons, and separate resemblance, realism, adult-presentation and
 clothing observations; crops do not create independent identity evidence.

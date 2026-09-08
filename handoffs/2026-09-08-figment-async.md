@@ -48,7 +48,7 @@ Studio worktree:
 `C:\Users\danie\kb\_private\codex-worktrees\figment-studio-20260908`
 Studio branch:
 `codex/figment-studio-20260908`
-Studio head is `1056eb92`, pushed.
+Studio head is `be0da659`, pushed.
 Studio draft PR:
 https://github.com/danielzhang04/kb/pull/179
 PR179 is stacked on foundation PR178, whose accepted head is `37d580d9`.
@@ -120,18 +120,31 @@ Both tokenizer loads were local-files-only and had verified teardown.
 No tokenizer or model download is established by those receipts.
 ## GPU fit-probe boundary
 
-The GPU fit-probe code freeze was rejected and remains under repair.
-`figment_fit_repair` is the only current GPU-code author. The prior timestamp worker is completed/interrupted; queued messages did not reactivate it. Use followup_task after a worker finishes.
-`figment_fit_independent_review` is the current independent reviewer.
-Its review rejected the fresh d689c374 freeze: nonexistent CPU-helper path,
-wrong DreamBooth data-directory level, incomplete safetensors structure bounds,
-missing final staged-copy recheck, and lifecycle/log-bound defects. Root and
-reviewer sent a finite repair list; `followup_task` reactivated the sole author.
-`figment_training_hub_plan` separately owns only the new local-training hub design
-document, to make preparation, fit, and quality evidence distinct in the studio.
-Keep that authorship isolated; do not edit its moving files without an explicit transfer of ownership.
-Do not execute, admit, or train from unreviewed GPU code.
-No GPU training, admission, dispatch, checkpoint, sample export, or promotion has occurred.
+The local GPU executor was accepted at `be0da659`, source hash
+`3bc31032410ad43cb0c4ed5d389b4fa6f0396a01f95119dcca1ffc8a7e4674c1`.
+Parent and independent suites passed 14 tests; a final deterministic late-reader
+case was separately verified. Actual default CLI validation passed with current
+model bytes, CPU receipt, and tokenizers before execution.
+The parent admission is Studio `_private/figment-local-lora-fit-admission-20260908-v1.json`,
+canonical hash `b2d508dce03f81f44661d35fc6feb986f15f37556f8c98c875e7c0d5d41bca6b`,
+raw hash `1dfa092d867ad4c313d6d7a72d51f1119d00e1b4fb9423844bdebc95045c8e1a`.
+Actual run Studio `_private/figment-local-lora-fit-20260908-v1` failed after
+110.283 seconds, exit1, before the first training step. Model/cache/LoRA/AdamW
+setup completed, then `train_network.py:1394` printed Japanese text through
+Windows cp1252 and raised UnicodeEncodeError. No checkpoint or sample exists.
+Preserved `failure.json` raw hash is
+`b67569dc15329ab0d5f79fd79bc5fe3748f80d1f2144b09a7727283538fa2cc7`.
+It reports verified teardown for retained wrapper34316 and child35456;
+root also observed Python35628 during setup and verified all three plus
+launcher41760 absent afterward. No active fit session remains (83044 completed).
+Original CPU staging is unchanged; latent/text cache NPZ files are confined to
+the new GPU stage. Do not reuse the V1 admission marker or rewrite failure evidence.
+`figment_fit_repair` solely owns a narrow explicit Python UTF-8 launch correction
+and Unicode-pipe regression. Review its new freeze before a fresh V2 admission/run.
+`figment_training_hub_plan` now owns the dashboard training-evidence implementation
+and design; `figment_fit_independent_review` reviews that separate hub work.
+The hub must describe historical preparation only, not infer a global absence of
+GPU admission or quality work from old CPU receipts. No promotion has occurred.
 The eventual first probe remains bounded to at most ten steps, twenty minutes, and no sample export. The subsequent quality protocol is accepted as a design only at `1056eb92`: identical 100-step cosine schedules with 20/50/100 checkpoints, predeclared 50-step caption comparison, and matched base/LoRA prompts including the trigger. Read `docs/figment/2026-09-08-one-source-quality-experiment.md` only after the ten-step fit succeeds.
 ## Local Windows runtime rules
 
