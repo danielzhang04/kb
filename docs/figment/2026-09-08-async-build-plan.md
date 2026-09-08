@@ -11,9 +11,9 @@ detached runner has been claimed. Keep-awake is held by the active parent proces
 durable handoffs preserve work across context resets. Eight AM Eastern is a progress
 checkpoint, not termination. Continue afterward while useful authorized work remains.
 
-## Baseline and known evidence
+## Historical baseline and known evidence
 
-- Source baseline `37d580d9`; work branch `codex/figment-studio-20260908`.
+- At planning time, source baseline `37d580d9`; work branch `codex/figment-studio-20260908`.
 - Portable fixtures, lineage and recovery independently reviewed; 111 focused lineage
   checks, 319 recovery/pod checks. Prior broad integration: 700 pass,13 unchanged baseline
   failures. Do not claim a green broad suite or spend cycles retesting unrelated failures.
@@ -24,6 +24,14 @@ checkpoint, not termination. Continue afterward while useful authorized work rem
 - Recorded compute arc $37.015061 / $50, headroom $12.984939. Respect the current tighter
   daily harness guard as well. No new paid job starts without a frozen manifest, current
   ledger reconciliation, reserved worst-case cost, fresh output and tested teardown.
+
+## Current execution priorities — 2026-09-08
+
+1. Run the one bounded local ComfyUI smoke with its corrected isolated cache, then record the actual result. A failed smoke is evidence, not a reason to retry automatically.
+2. Consider a hash-bound `g01` crop only if that smoke and its original-resolution review identify framing as a material limitation; preserve the original and use a controlled comparison.
+3. Build diverse, first-generation, adult-clothed candidate evidence under the sole `g01` lineage. It becomes training input only after original-resolution review and all 20 required rows are eligible.
+4. Design, build, and independently review the experimental executor in parallel against the real recipe and synthetic integrity fixtures. Any actual training remains dependent on eligible data, a frozen manifest, current cost reconciliation, and admitted export; do not substitute the executor for production acceptance or a LoRA export path.
+5. Finish end-to-end hub integration around real bounded records and their limitations. No status, checkpoint, or human gate may be fabricated to make a pending stage appear complete.
 
 ## Build/review sequence
 
