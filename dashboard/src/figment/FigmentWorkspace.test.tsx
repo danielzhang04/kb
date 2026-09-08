@@ -83,6 +83,7 @@ describe('FigmentWorkspace', () => {
       const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response('jpeg', 200)) as unknown as typeof fetch;
       const view = render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
       await screen.findByRole('img', { name: 'Declared reference creator-a g01.jpg' });
+      expect(screen.getByText('g01.jpg | 4x3')).toBeTruthy();
       expect(screen.getByText(/do not associate a diagnostic with this creator/)).toBeTruthy(); expect((screen.getByLabelText('Selected reference creator') as HTMLSelectElement).value).toBe('creator-a');
       expect(fetchImpl).toHaveBeenCalledWith('/api/figment/reference-assets/creator-a/g01.jpg?sha256=' + 'b'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
       view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:reference');
