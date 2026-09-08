@@ -69,7 +69,45 @@
     "method": "all five raw PNGs viewed at original resolution",
     "adult_and_clothed": "pass",
     "qualitative_identity": "weak resemblance to intended creator; no candidate selected",
-    "operator_ruling": "not performed",
+    "operator_ruling": "No formal driver ruling; qualitative operator feedback is recorded separately below",
     "promotion_eligible": false
+  },
+  "operator_feedback": {
+    "reviewer": "Daniel",
+    "source": "interactive user feedback after opening five-image board",
+    "date": "2026-09-08",
+    "verbatim": "(1) For the most part, these images look semi-real. (2) These images (a) don't read like the same person or like the same person compared to the references and (b) read like mid-30s women not 21 year olds.",
+    "subject_receipt_sha256": "dd623b534a6007e9be5ef3da6f5cae3fe5ff80778db5d2961d6e155843490c8b",
+    "subject_images": [
+      {
+        "file": "c001-tensor-tester-000000250.png",
+        "sha256": "9880ed00f09d6c40549bcf935f32925807dfb0ad0244b59d7945784a9f6813ab"
+      },
+      {
+        "file": "c001-tensor-tester-000000500.png",
+        "sha256": "71d53cd990df431907847897f5033df5ccd0f830b055ccff6f9b9df8a21647df"
+      },
+      {
+        "file": "c001-tensor-tester-000000750.png",
+        "sha256": "7cc991c8d89cc14dd1f7eaf4812dd2278ff7b6a686c712bbcde6593c1e346187"
+      },
+      {
+        "file": "c001-tensor-tester-000001000.png",
+        "sha256": "0e2ed76f5038cfa5656f657a3d5cbfe079814df23ff3b08371e23b28d4df0495"
+      },
+      {
+        "file": "c001-tensor-tester-final.png",
+        "sha256": "e48622df4da6034d9327ba2557063120a14acffe9fe0472adbd2884f252f47d2"
+      }
+    ],
+    "assessment": {
+      "realism": "partial; semi-real",
+      "within_batch_identity": "does not read as same person",
+      "reference_identity": "does not match references",
+      "apparent_age": "operator reads mid-30s; target clearly adult about21"
+    },
+    "selected_checkpoint": null,
+    "promotion_approved": false,
+    "formal_driver_ruling_written": false
   }
 }

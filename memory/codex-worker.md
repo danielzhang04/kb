@@ -543,3 +543,14 @@ provider says RUNNING while the proxy is unavailable or the harness is still upl
 The authenticated v2 pod-log SSE endpoint supplied redacted startup evidence when no
 browser was available; use the configured client and never persist credential-bearing
 lines. Improve measured transfer/caching behavior before simply buying faster compute.
+
+## 2026-09-08 - Diagnostic prompts must preserve persona requirements
+
+The creator specification said about21, but the standalone tester prompt asked for
+midtwenties; operator review then found older-looking outputs and identity drift.
+Next time I build a diagnostic prompt, I will derive its identity and age requirements
+from the current persona and explicitly record any deliberate experimental override.
+Signal to recognize: a hard-coded tester prompt duplicates fields already present in
+the persona specification. Adult/clothing compliance, realism, identity fidelity and
+intended age are separate judgments; passing one cannot stand in for the others.
+The wording mismatch is observed, while its contribution to the result remains unproven.

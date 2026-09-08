@@ -1,7 +1,7 @@
 # Figment evaluation handoff - 2026-09-08
 
 **Topic:** Foundations accepted; five-checkpoint diagnostic completed safely;
-identity quality needs an operator decision and a controlled follow-up.
+operator review rejects identity consistency and target-age appearance; controlled follow-up needed.
 
 ## Context
 
@@ -58,9 +58,26 @@ No training, merge, deployment, or publication occurred in this continuation.
   and step metadata; Raw training/Turbo inference is intentional template parity.
   This does not prove the cause of the quality shortfall or justify immediate retraining.
 
+## Operator feedback received - 2026-09-08
+
+Daniel reviewed the five-image board and said:
+
+> (1) For the most part, these images look semi-real. (2) These images (a) don't read like the same person or like the same person compared to the references and (b) read like mid-30s women not 21 year olds.
+
+This is qualitative feedback on the five image hashes in the audit, not a numeric
+score or formal driver ruling. No candidate is selected or approved for promotion.
+The prior agent adult/clothing check passed; the operator's identity and target-age
+criteria did not. Realism is partial, not accepted as finished quality.
+
+The existing persona already specifies about 21 (`persona.yaml` age_stage and
+`identity-spec.md`). The frozen diagnostic prompt instead requested mid twenties.
+Future test prompts must use the persona's existing clearly-adult target age. This
+verified mismatch does not alone explain the mid-30s appearance or identity drift.
+Preserve the completed manifest and images unchanged as diagnostic evidence.
+
 ## What Has NOT Been Tried Yet
 
-- Operator checkpoint ruling, quantitative scoring of these outputs, a frozen held-out
+- Formal driver checkpoint ruling, quantitative scoring of these outputs, a frozen held-out
   prompt/seed comparison with an unchanged control, or accepted checkpoint promotion.
 - Driver-bound tester evidence for this standalone diagnostic. Do not relabel its
   receipt as a driver run or fabricate plan/evaluation/approval lineage.
@@ -82,8 +99,9 @@ No training, merge, deployment, or publication occurred in this continuation.
 
 ## Exact Next Step
 
-Open the diagnostic board for operator review, then define a driver-bound held-out
-comparison that can distinguish weak identity learning from inference behavior.
+Operator board review has been received; define a driver-bound held-out comparison
+that evaluates realism, identity across outputs, reference-identity match, and apparent
+adult age about 21 separately, and distinguishes learning from inference behavior.
 Keep thresholds fixed, include a control, and address the measured transfer overhead
 in the execution plan. Do not choose a checkpoint merely because all jobs completed.
 
