@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 12:11 UTC / 08:11 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 12:29 UTC / 08:29 Eastern. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -64,7 +64,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **91da266c pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **3084d1cc pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -243,3 +243,46 @@ and ambient-key presence only. No credential stores, API execution, install, log
 image export authorized for that research subtask. Original references used Gemini;
 source-family compatibility is a hypothesis, not a promised quality improvement.
 No RunPod running or new reservation; actual arc37.800385, daily2.110134 unchanged.
+
+## Current phase: curation accepted; Gemini implementation under review
+
+Curation committed3084d1cc after root final37+9 tests, independent20+5+9, and
+parent rehash of four actual refusal probes. The real-data probe is frozen at
+_private/figment-curation-real-refusal-20260908/results.json; ops audit
+ledgers/audit/figment-single-seed-curation-2026-09-08.json records it. All4 refused
+without output/approval/plan. Final repairs include snapshot-only builder input,
+complete lineage validation before publication, parsed-request snapshot hash,
+320-byte caption plus WindowsCRLF acceptance, exact caption sidecar mapping and
+case-insensitive rejection. Earlier moving-code issues below are now repaired.
+
+Timestamp builds Figment-only pipeline/expand/gemini_input.py +tests/docs. Protocol
+is its independent reviewer. No generation call and NO numeric Gemini reservation
+yet. User explicitly permits Gemini/paidcompute; no new inferred human gate. Existing
+FYT adapter remains untouched. Root confirmed ambient GEMINI_API_KEY via ONE
+read-only model GET,HTTP200, no image upload. Whitelisted attestation:
+_private/figment-gemini-experiment-20260908/model-metadata-20260908-1219.json,
+model models/gemini-3-pro-image,version3.0,input131072/output32768. Publicdocsinput
+65536 differs; preserve discrepancy. Pricing Standard2/Minput,120/Mimageoutput,
+12/Mtext-thinking, freeAPI tier notavailable for thismodel. Proposed conservative
+reservation4.60 includes fullinput/fullimageoutput plusseparatethinkingwindow;
+notanexpectedinvoice orproviderhardcostcap. No realcall until frozenreview/admission.
+
+Gemini planned ledger: dedicated figment-gemini-2026-09-08.tsv, columns
+model,step,usd,request_id,reservation_ref,state. Exactreservedrow model
+gemini-3-pro-image;stepgemini-input-diagnostic;usd4.600000;frozenrequestid/ref;
+statereserved. Existinghelper daily *-day.tsv andarcfigment-*.tsv glob includesit.
+Executor mustrequirethisexistingexactrow and check0additionalexposure (avoid double
+counting), persist exclusive dispatch.json before soleHTTPPOST, never retry/redirect,
+retain fullreservation onuncertainbilling. Rootownsreservation/reconciliation.
+Currentarc37.800385/daily2.110134; proposed4.60wouldgive42.400385/6.710134under50/10.
+
+IndependentmovingGemini review requires exactcanonicalg01/E01promptbinding, actual
+nestedmetadataattestation, boundedrealPILdecode rather than fakeheaders, Windows
+junctionandwrite-timecontainment, plausiblewide2K/aspectlimits (notmaxedge2048),
+sanitaryusage/modelVersion/serviceTier metadata, no rawsecret/error/response logging.
+No newSDK orcredentialstoreaccess. Requests/Pillow alreadyinstalledPython313.
+
+Hubworker now updatesbook foracceptedcuration and designs only a minimalgenerated-
+input inventory/gallery (currentfour) reusingexistingauth/pathbounds. No UIcode yet.
+Rootcontinuesreview/integration.8AMreportdelivered12:00;keepawakealive07:59lastcheck.
+RunPodallabsent; exactLoRAuploadquestionstillpending andmustnotbe retried/bypassed.

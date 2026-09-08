@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated2026-09-08 12:02 UTC. The8 AM Eastern checkpoint is a report; work continues.
+Updated2026-09-08 12:29 UTC. The8 AM Eastern checkpoint is a report; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `a6d8283f`, pushed to draftPR179
+Studio branch `codex/figment-studio-20260908`, head `3084d1cc`, pushed to draftPR179
 stacked on foundationPR178. Research book, authenticated studio, actual offline plan
 preview, reference and diagnostic gallery, image/video diagnostics and local raw
 identity observations are built, tested and independently reviewed.
@@ -34,3 +34,8 @@ No Instagram/account work, production promotion, merge or deployment has occurre
 
 8 AM report delivered; work continues. Single-seed curation compiler is being built and
 reviewed. Next generated input is a frozen g01-only shoulders-up framing experiment.
+
+Single-seed compiler accepted3084d1cc after final46parentchecks and4realinputrefusals.
+Geminiambientkeyworksforread-onlymetadata. A Figment-only one-attempt adapter is being
+built/reviewed; no generation or numericreservation yet. Proposed4.60reserve fits
+current37.800385/50 arc and2.110134/10 daily totals. Exactprivateartifacts inhandoff.
