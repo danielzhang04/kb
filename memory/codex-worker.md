@@ -108,6 +108,7 @@ After restart, run `python scripts/preamble.py` from `C:/Users/danie/kb`; read `
 
 - **Initial dependency junction command** - it was run from inside `dashboard/` with a redundant `dashboard/node_modules` path, creating a scratch nested junction and leaving tools undiscoverable. The exact junction and empty parent were removed, then the link was recreated correctly as `dashboard/node_modules`.
 - **First mirror pytest run** - 22 fixtures failed before test bodies because pytest selected owner-only `C:/Users/danie/AppData/Local/Temp/pytest-of-danie`. Re-running with `--basetemp .pytest-tmp-sync` passed all 23 tests.
+  September 8 followup: setting `PYTEST_DEBUG_TEMPROOT` did not create its directory when the pod tests that normally create it were excluded. A nested `--basetemp` then produced 314 setup errors. Next time a suite uses a custom temporary root, I will create its parent explicitly and distinguish fixture setup failures from test-body regressions. Signal: many unrelated tests fail at the same `os.mkdir` with WinError 3.
 - **Immediate PM2 restart** - deliberately not performed: `origin/ops` is stale for six dynamically read declarations/workflows, and deploying reviewed code against that state would be a mismatched code/data pair. Also, PM2 `startOrRestart` cannot retarget the stored script path/cwd.
 - **GitHub PR query** - `gh pr view 72` returned HTTP 401 in this session; PR existence/state is inferred from the supplied URL plus the still-unmerged remote branch and `origin/ops` ancestry.
 
@@ -501,3 +502,13 @@ against the same durable output boundary, including concurrent requests and
 malformed prior state. Signal to recognize: collision tests reuse one identifier
 while production generates a different one on every invocation. Preserving history,
 refusing duplicate execution, and verifying cleanup are separate requirements.
+
+## 2026-09-08 ? Reviewed inventory must equal uploaded inventory
+
+Hashing manifest-listed images and captions did not constrain a later whole-directory
+copy or recursive upload. An unlisted symlink could therefore copy outside bytes into
+a dataset that otherwise had valid approval. Next time reviewed assets feed a bulk
+upload, I will stage only the approved inventory and recheck the exact staged entries
+immediately before execution. Signal to recognize: validation enumerates selected
+manifest rows while execution walks an entire directory. Check the bytes that cross
+the boundary, including metadata, rather than inferring upload safety from approval.

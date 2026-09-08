@@ -1,2 +1,3 @@
 action	branch	project	result
 figment-architecture-analysis	codex/figment-analysis-2026-09-07	figment	DRAFT report and replacement handoff; no code/runtime changes; provider HTTP403; partial focused verification
+figment-foundation-implementation	codex/figment-foundation-20260908	figment	DRAFT PR178 head27a2df60; portable and lineage independent PASS; 111 focused pass; parent700pass13reproducedbaselinefail; recovery final acceptance pending; no new GPU/deploy/merge

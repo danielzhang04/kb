@@ -1,7 +1,8 @@
 # Figment foundation handoff — 2026-09-08
 
-**Topic:** Active implementation after the architecture audit. WIP capture while
-builders finish; do not mistake this handoff for completed or approved recovery.
+**Topic:** Foundation implementation and verification handoff after the architecture
+audit. Portable fixtures and lineage passed independent review. Recovery fixes are
+committed, with their final independent acceptance still pending.
 
 ## Context and authorization
 
@@ -17,12 +18,15 @@ client with ambient credentials. It succeeds. The default Python 3.12 lacks requ
 the earlier standard-library HTTP 403 did not establish the configured client's
 availability. No credential store was opened, no key printed or copied.
 
-The **recovery item has reached two failed independent reviews**. Operator was
-notified and wake-up card `queue/blocked/01K9FIGMENT0800000000000003.md` was published
-in the ops proposal. Local fixes continue to make the result concrete; third independent
-recovery acceptance and paid launch are paused at the recorded review boundary.
-Approval-lineage review is a separate item and continues. Do not silently launch a
-pod because generic paid authorization exists, or demand generic permission again.
+The **recovery item reached two failed independent reviews**. Operator was notified
+and wake-up card `queue/blocked/01K9FIGMENT0800000000000003.md` was published in the
+ops proposal. Final local fixes are now delivered in recovery commit `66be5887` and
+draft PR [#178](https://github.com/danielzhang04/kb/pull/178), but third independent
+recovery acceptance and paid launch remain paused at the recorded review boundary.
+Approval-lineage source is accepted at `23ce226d`; independent review returned
+PASS / READY with 111 focused tests. The final code/report head is `27a2df60`,
+pushed to draft PR #178. Do not silently launch a pod because generic paid authorization exists, or
+demand generic permission again.
 
 ## What WORKED (with evidence)
 
@@ -37,10 +41,20 @@ pod because generic paid authorization exists, or demand generic permission agai
   digest changed. Four formerly blocked creator-001 tests plus test_persona passed
   **30 tests**. Three original fictional creator-001 references were copied into
   ignored anchors for integration only; do not stage them.
-- Existing test adaptation returned **90 passed, 2 deselected** before the creator-001
-  followup above. Adapted fixtures now use real synthetic images/hashes and actual
-  local grade/ruling/promotion paths, not manual chosen-step config. This is not a
-  claim that the final full suite has passed.
+- Existing test adaptation returned **94 passed** after the evaluation-subject ruling
+  contract was applied. Adapted fixtures now use real synthetic images/hashes and
+  actual local grade/ruling/promotion paths, not manual chosen-step config. This is
+  not a claim that the final full suite has passed.
+- The delivered lineage changes require accepted dataset provenance, human ruling
+  metadata and evaluation-subject binding; checkpoint-step selection is tied to a
+  completed train receipt and accepted checkpoint promotion. Independent lineage
+  review passed 111 tests with no remaining findings. Parent final integration:
+  **700 passed, 13 failed in 58.82s**, all failures reproduced unchanged on baseline.
+- Recovery commit `66be5887` delivers directory-wide run admission held through
+  finalize, refusal of prior `run.json` and journals before POST, terminal placement
+  journals, bounded WinError 32/33 retries, and isolated dry-run dummy writes.
+  Builder verification reported **24 focused recovery checks and 287 pod checks
+  passed**; the third independent recovery acceptance is still pending.
 - Provider list returned zero pods. GETs for both interrupted tester IDs
   `pmi9y2gsoaxkea` and `hvtovmusbx6a1t` returned 404, confirming current absence.
 - All five historical cost shards in the ops proposal exactly match the original
@@ -59,6 +73,10 @@ pod because generic paid authorization exists, or demand generic permission agai
   `35f23c56b249bca2b93d0719da6d87f6eb4e96f709d4aecb7a2c7968e6ab0e91`.
   Its dry run completed simulated uploads/jobs. Live output is absent; **no new
   paid pod has been launched**. The prompt is an adult, clothed shoulders-up portrait.
+- The local tester's source-hash continuity does not attest to provider-side weight
+  consumption because provider receipts expose byte counts rather than signed digests.
+  The prepared standalone diagnostic cannot create driver-bound tester evidence by
+  itself; the old unbound tester must be rerun through the driver before promotion.
 
 ## What Did NOT Work (and why)
 
@@ -66,29 +84,50 @@ pod because generic paid authorization exists, or demand generic permission agai
   importlib loader; unsupported createdAt assumptions; journal overwrite destroys
   ownership; raw exceptions bypass redaction. Builder fixed import, documented
   lastStartedAt handling, safe error codes, and per-attempt journal filenames.
-- Second review still found a HIGH: a different random pod name can reuse an
+- Second review (historical) still found a HIGH: a different random pod name can reuse an
   unresolved output directory, start another paid attempt and overwrite run.json.
   Only same-name collisions were tested. Also, avoided-placement journals remain
-  acquired although their leases were closed. Builder is implementing directory-wide
-  admission, receipt preservation, and per-placement terminal updates now.
-- Parent combined recovery/pod test run: **303 passed, 1 failed in 15.49s**, from
-  a WinError 32 sharing violation during atomic journal replacement. Reviewer's
-  isolated 17-test run passed. Builder is adding a bounded OS-specific retry with
-  deterministic persistent-lock refusal tests. Do not erase this evidence as noise.
+  acquired although their leases were closed. These findings are addressed by
+  delivered commit `66be5887`; retain the review as historical evidence.
+- Parent's combined recovery/pod test run (historical): **303 passed, 1 failed in
+  15.49s**, from a WinError 32 sharing violation during atomic journal replacement.
+  The reviewer's isolated 17-test run passed. The delivered recovery commit adds
+  bounded OS-specific retries and deterministic persistent-lock refusal tests; do not
+  erase the original contention evidence.
 - The missing-ID timeout branch safely discovers then refuses deletion. Automatic
   cleanup after POST timeout before ID persistence is not delivered; it needs
   operator reconciliation. A local journal/CLI is not an external always-on watchdog.
 - Old dry runs with explicit shared ledger paths appended dummy zero-cost rows.
-  Exact test artifacts were identified and removed. Recovery changes now isolate
-  all dry-run writes, including explicit ledger cases; independent recheck pending.
+  Exact test artifacts were identified and removed. The delivered recovery changes
+  isolate all dry-run writes, including explicit ledger cases; independent acceptance
+  remains pending.
+
+## Integration history and final result
+
+- The first nonrecovery full-suite attempt reported **392 passed, 314 setup errors, and
+  3 failures** because the nested pytest basetemp parent was missing; this was a test
+  setup/environment error with no product interpretation. After creating
+  `PYTEST_DEBUG_TEMPROOT` explicitly before the nested `--basetemp`, the corrected
+  parent broad run reported **697 passed, 14 failed in 58.38s**. One failure is
+  relevant: a stricter tester-inventory fixture declares artifacts that do not exist,
+  and the builder subsequently materialized its declared test artifacts. The other 13 failures were
+  independently reproduced against unchanged `3b48d911` with the same four files;
+  that baseline run had **88 passed and 13 failed in 2.28s**:
+  two calibration-timeout contract failures, two missing ignored 10sorlabs source
+  graph inputs, three missing `facenet_pytorch` dependencies, and six Git Bash
+  Windows mkdir permission failures. The baseline required private creator-001
+  reference copies and temporary raw HEAD text bytes; tracked files were restored
+  afterward. The final frozen run returned **700 passed, 13 failed in 58.82s**;
+  its remaining failures exactly match that baseline set. It is not an all-green suite.
+- The reviewer caught unlisted source files/symlinks being copied into train-first
+  uploads. Final code copies approved inventory only and rejects extra entries or
+  symlinks in the staged directory immediately before training. The independent
+  reviewer accepted this fix at `23ce226d` with 111 focused tests passing.
 
 ## What Has NOT Been Tried Yet
 
-- Final full Figment integration suite after source/test freeze.
-- Independent lineage verdict; reviewer is active. Parent raised old-ruling replay
-  after a new grade on changed images with the same IDs: incoming rulings need an
-  expected evaluation digest, not only an outgoing approval digest.
-- Third recovery acceptance (paused after the second failure), new live tester,
+- Third recovery acceptance (paused after the second failure; an asynchronous bounded
+  continuation was requested and has no answer yet), new live tester,
   held-out candidate comparison, operator checkpoint choice, final output QA,
   second real persona, studio UI, merge/deploy/publishing.
 
@@ -96,12 +135,11 @@ pod because generic paid authorization exists, or demand generic permission agai
 
 | Files | Status | Notes |
 | --- | --- | --- |
-| .gitattributes / fixture assets | DONE, partial commit | 10448378 plus uncommitted creator-001 LF followup |
-| pipeline/figment_train.py, lineage.py, training_config.py, README | WIP | Explicit checkpoint promotion, current approval, dataset admission; tests/review finishing |
-| pipeline/pod/runpod_run.py, recovery.py, README | WIP | Remaining directory/receipt guard and Windows retry fixes; two reviews failed |
-| pipeline/tests changed fixtures + new tests | WIP | Relevant subsets passed; final suite not yet run |
-| research/2026-09-08-{foundation-plan,foundation-review,existing-candidate-preflight,tester-preparation}.md | WIP evidence | Parent-maintained; keep final outcomes current |
-| code-worktree memory/codex-worker.md | MOVE TO OPS | Accidental untracked worker lesson; parent must dedupe/transfer, never stage as product |
+| .gitattributes / fixture assets | DONE | 10448378 plus creator-001 LF normalization; declared hashes preserved |
+| pipeline/figment_train.py, lineage.py, training_config.py, README | DONE | `23ce226d`; independent PASS / READY, 111 focused tests |
+| pipeline/pod/runpod_run.py, recovery.py, README | DELIVERED, ACCEPTANCE PENDING | `66be5887` / [PR #178](https://github.com/danielzhang04/kb/pull/178) contains directory admission, receipt/journal guards, bounded Windows retries, and dry-run isolation; third independent acceptance pending |
+| pipeline/tests changed fixtures + new tests | DONE for lineage | Final parent 700 passed / 13 reproduced baseline failures; recovery acceptance remains separate |
+| research/2026-09-08-{foundation-plan,foundation-review,existing-candidate-preflight,tester-preparation}.md | DONE | `27a2df60`; final review history, limits, live command and candidate hashes |
 | Prepared private tester tree | READY BUT PAUSED | Use live-output only after review boundary resolved; never reuse dry-run-output |
 
 Coordination proposal worktree:
@@ -116,18 +154,27 @@ source. Do not overwrite historical failed receipts or source checkpoints.
 
 ## Exact next step
 
-Collect active builders' final changes and independent lineage findings. Finish
-necessary local fixes/tests, commit and publish a concrete reviewable implementation
-PR and update this handoff. Keep the recovery review boundary explicit; once its
-continuation is authorized, independently recheck and execute the prepared tester
-with guards rechecked. The exact live command is in the tester-preparation report.
+Resolve the pending bounded recovery continuation. The concrete fixes are at
+`66be5887`; the source/report branch head is `27a2df60`. If Daniel authorizes the
+additional round, independently review recovery and, only if it passes, execute
+the prepared five-image diagnostic under its unchanged $2.50 / 115-minute /
+one-placement limits. Recheck preamble and authoritative daily/arc ledger first.
+The exact command is in the tester-preparation report. Verify termination, record
+actual costs and inspect every output at full resolution. Do not treat this raw
+standalone diagnostic as driver-bound approval evidence or silently retrain.
 
-Active native workers at capture: figment_lineage (sol production/new tests),
-figment_lineage_review (sol independent review), figment_recovery (terra remaining
-fixes); fixture adapter luna completed. Responding-model and token/USD telemetry
-is unavailable. Native review is not a formal inspector grade. Python pytest
-needs an explicit private --basetemp; pod suite also needs PYTEST_DEBUG_TEMPROOT
-set to a parent of that basetemp. Git mutations require approved escalation here.
+Lineage and portability workers/reviewers are finished. Recovery builder is finished;
+its third independent acceptance has not run. All work remains on unmerged draft
+PRs, so keep these worktrees for resume. Responding-model and token/USD telemetry
+is unavailable; native review is not a formal inspector grade. No deployment,
+merge, publication or new GPU launch occurred.
+
+Python pytest needs an explicit private `--basetemp`. Create
+`PYTEST_DEBUG_TEMPROOT` as a directory before using its nested basetemp; the pod
+suite additionally checks that ancestor relationship. Git mutations need approved
+escalation in this environment. The full integration logs are private:
+`C:/Users/danie/kb/_private/figment-integration-final-20260908.log` and
+`C:/Users/danie/kb/_private/figment-integration-baseline-20260908.log`.
 
 ## Load list
 
