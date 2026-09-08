@@ -83,3 +83,11 @@ over existing local sessions or start desktop-heavy tests. Dashboard recovery is
 - memory/codex-worker.md on ops; handoffs/README.md; save-session skill
 - This handoff and the two newer LOCAL handoffs listed above
 - docs/runbooks/2026-09-03-vm-agent-launch-preflight.md on origin/main
+
+
+## Operator clarification ? 2026-09-08
+- Dashboard is being handled separately; use direct SSH for VM compute. Do not couple offloading to dashboard recovery.
+- Leave no retained task files/workspaces on the VM. Prefer non-persistent sessions, stream results to desktop, clean only owned artifacts. Explain that SSH/system/provider logging and authentication state mean literal zero traces cannot be guaranteed.
+- Removed and verified absent both owned VM probe transcripts (3f95a5c8-b7ac-4c06-a9e4-a4941a10870b and 088a1096-41aa-4ea8-beb4-4150ad714997). Historical transcript grep evidence remains valid; remote transcript paths now absent by user request. No new model worker started this turn.
+- VM ops has skills/curated but lacks .claude/skills and .agents/skills; release has none of those directories. Desktop-equivalent skill loading was NOT established. Remote CLIs have VM filesystem and separately configured tools/connectors; desktop resources are not automatically inherited.
+- No PR per small task. Routine ops should proceed within existing access rules. Consolidate main changes into one main PR toward session end. Existing draft #180 is historical; no new PR created for this clarification.

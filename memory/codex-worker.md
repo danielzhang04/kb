@@ -448,3 +448,11 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - WORKED: SSH proved VM capacity and a tool-disabled Opus CLI probe succeeded despite a failed dashboard. Separate transport, subscription/model response, broker health, and governed workflow execution in claims.
 - FAILED then recovered: transient OAuth refresh contention cleared on one bounded retry; Windows PowerShell CRLF required LF-normalized remote scripts. Never repair credentials as objects.
 - REMAINS: remote edits/build/test and Fable are untested. CLI modelUsage included an auxiliary Haiku call; Opus worker verification does not imply all internal calls used Opus. Read newer local coordination worktrees as well as origin/ops before describing the live handoff board.
+
+- Operator clarification: direct SSH offloading is independent of dashboard work; clean owned remote artifacts and disclose unavoidable log limits. Remote filesystem/skills/connectors require explicit parity setup. Batch main changes into one session-end PR; avoid per-small-task PRs. Two owned probe transcripts removed and absence verified.
+
+## 2026-09-08 ? Gate evidence must exercise the real producer/consumer contract
+
+- WORKED: all historical hashes matched, but a real gate invocation plus actual workflow prerequisite call exposed a JSON-versus-marker mismatch hidden by fixtures that invented both sides. Validate the real contract before trusting a large test count.
+- FAILED then corrected: a broad tool-disabled remote review timed out; a two-file Opus question completed quickly. Python seen inside the sandbox differed from the existing user runtime. Sparse checkout omitted a gate-bound hook. Separate these infrastructure gaps from product failures.
+- REMAINS: prospecting scope/offline-retention choices and detached worker lifecycle. Non-persistence proved absence of one session transcript, not zero provider/system bookkeeping or complete tool parity.
