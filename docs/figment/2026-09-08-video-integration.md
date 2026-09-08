@@ -1,69 +1,57 @@
-# Figment offline video diagnostic contract
+# Figment video diagnostic contract
 
-`orgs/figment/pipeline/video/video_plan.py` records bounded local inputs for an
-offline diagnostic. It has no renderer, provider, subprocess, download,
-credential, approval, or production path. Its CLI requires `--root`; every
-input and output path is relative to that directory. Traversal, symlinks,
-oversized files, malformed JSON, and output overwrites fail closed.
+Figment currently has two diagnostic-only planning/compilation paths, neither of
+which is a production video result.
 
-The motion guidance comes from `orgs/figment/research/r15b-edit-motion.md`:
-use a single clothed adult subject, a short action, and begin with a small test
-(60 frames at 12 fps). This is planning guidance only. It does not establish
-accepted upstream lineage, render a video, or perform visual, duration,
-identity, or temporal QA.
+`orgs/figment/pipeline/video/video_plan.py` is the older offline planner. It can
+record a local driving-video concept and supplied-image inventory, but has no
+renderer, provider, subprocess, download, credential, approval, or production
+path. Its records are deliberately unverified local planning evidence, not
+extracted-frame or temporal-QA proof.
 
-## Evidence records
+`orgs/figment/pipeline/video/video_manifest.py` is the reviewed native Wan 2.2
+TI2V-5B compiler. It is the current diagnostic path: a hash-bound start image
+plus short text motion instruction, a pinned native-Comfy workflow and model
+inventory, and one non-promotable 512 x 288, 81-frame-at-16-fps image job. It
+does **not** take a driving clip. The `LoadImage` node supplies
+`Wan22ImageToVideoLatent.start_image`; text remains a separate positive
+conditioner. The compiler has local fixture and existing-harness dry-run tests;
+it does not itself start a pod or download a model. The existing harness has
+admitted manifest `6be375a2…8ff92` under the 80-minute/$1.75 diagnostic bound
+and acquired pod `wo5uka031lxh7m` at 10:16:30 UTC. It completed at 10:23:35 UTC with 81 PNGs, estimated cost $0.129426, and
+independently verified absence. Local assembly and extraction verified a
+5.0625-second 512x288/16fps MP4. Parent visual review rejects severe colored
+streaks, face distortion and background warping in later frames.
 
-`figment/video-first-frame-input@1` records a local first-frame path, byte
-count, and SHA-256. It rejects approval-shaped fields and reports
-`unverified-local-input`; the record is not an operator acceptance receipt.
+## Evidence boundaries
 
-`figment/video-diagnostic-plan@1` accepts only `--mode diagnostic`. It records
-the 60-frame budget and sample indices 0, 29, and 59, but sets `renderer` to
-`null`, `offline_only` to true, and `not_promotable` to true. Production mode is
-rejected until real upstream lineage and human gates are wired.
+`figment/video-first-frame-input@1` is an approval-free diagnostic input with
+path, bytes, and SHA-256. `figment/video-diagnostic-plan@1` remains offline-only
+and non-promotable. Neither authorizes use of a local frame as an accepted
+production input.
 
-`figment/video-sample-inventory@1` hashes a supplied candidate file and three
-supplied image files. It calls their relationship
-`unverified-local-inventory`: the files were not extracted from the video and
-are not evidence of timing, duration, identity, or temporal quality. The
-inventory only verifies that its separately supplied initial image matches the
-diagnostic plan's input hash.
+The reviewed `frame_extract.py` adapter probes actual media and hashes decoded
+first, midpoint, and final frames. It rejects traversal, symlinks and Windows
+junctions, malformed or oversized media, and partial output failures. Its
+reviewed tests establish local extraction mechanics only; they do not establish
+that a native diagnostic rendered, that a supplied image came from a video, or
+that identity/temporal quality passed.
+
+`frame_assemble.py` assembled this run using its ordered 81 PNGs and local
+receipt. The MP4 SHA256 is
+`2084e7f6cb5ad1ea954524f8b5c14b92e5ef319405aad6653250ef875aaea674`.
+The input receipt binds output names and seed, not an executed-workflow hash;
+parent/provider observations remain separate. The clip is non-promotable.
 
 ## Model status
 
-The plan names the Wan 2.2 I2V candidate only as `blocked-unadopted`. Figment has
-no approved video tensor-pin profile or safe asset inventory, so this code does
-not download or run it. The official project describes the Wan 2.2 I2V family
-and its installation requirements, while the pinned model revision lists the
-artifacts and the repository's model page labels the licence Apache-2.0. These
-external statements remain adoption research, not an approved pin.
+The Wan 2.2 TI2V-5B pins are an admitted diagnostic inventory. The compiler
+does not perform provider work; the existing harness completed the bounded
+diagnostic above. Its output proves execution mechanics and fails parent visual
+quality review. No production approval is represented here. The
+source basis is the [Wan adoption audit](2026-09-08-video-model-adoption-audit.md), including its official Wan and ComfyUI citations.
 
-- [Wan 2.2 official repository](https://github.com/Wan-Video/Wan2.2)
-- [Wan 2.2 I2V pinned model revision](https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B/tree/00182421b2da3589352abed7e139a6bd5c1f86ab)
-
-## Local use
-
-```powershell
-python orgs/figment/pipeline/video/video_plan.py plan `
-  --root .\diagnostic `
-  --persona persona.json `
-  --first-frame-input first-frame-input.json `
-  --driving-video driving.mp4 `
-  --action "walk slowly toward the camera in a fully clothed street-style shot" `
-  --out plan.json
-
-python orgs/figment/pipeline/video/video_plan.py samples `
-  --root .\diagnostic `
-  --plan plan.json `
-  --video candidate.mp4 `
-  --initial-frame accepted.png `
-  --first supplied-first.png `
-  --middle supplied-middle.png `
-  --last supplied-last.png `
-  --out samples.json
-```
-
-Future rendering needs separately approved model adoption, safe asset intake,
-real upstream lineage, actual media extraction and temporal QA, and the
-pipeline's human gates. None is represented as completed by these records.
+Production still needs real upstream lineage and successful temporal QA.
+This diagnostic's verified assembly/extraction does not establish those properties. A later
+driving-clip path is a distinct production experiment; it is not part of the
+current native start-image-plus-text compiler.

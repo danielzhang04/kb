@@ -11,7 +11,9 @@ This book is a decision record for a fictional adult creator system. It turns th
 | Live proof | Frozen manifest, receipt, hashes, and observed run on 2026-09-08. | Proves this run's mechanics only. |
 | Hypothesis | A proposed cause or next experiment. | Requires a held-out comparison. |
 
-The live diagnostic completed five checkpoint jobs at 250, 500, 750, 1000, and final 1250. It produced five 1448x2176 PNGs, all adult and fully clothed by the parent Codex agent's visual inspection. The operator's qualitative review found them mostly semi-real, inconsistent with the references and each other, and reading as mid-30s rather than 21. No candidate was selected or promoted. See [live tester report](../2026-09-08-live-tester.md) and [foundation plan](../2026-09-08-foundation-plan.md).
+The live checkpoint ladder completed five jobs at 250, 500, 750, 1000, and final 1250. It produced five 1448x2176 PNGs. The historical operator review found them mostly semi-real, inconsistent with the references and each other, and older than the stated target; no candidate was selected or promoted. See [live tester report](../2026-09-08-live-tester.md) and [foundation plan](../2026-09-08-foundation-plan.md).
+
+The later paired final-LoRA versus no-LoRA diagnostic completed five fixed seed pairs under one corrected prompt. One independent visual audit found a clear arm-level identity split and candidate resemblance cues to `g01`; the parent review found `g01` resemblance insufficient and the intended about-21 presentation unestablished. That disagreement is preserved as unresolved, not converted into a pass. The pair is evidence about this LoRA condition and prompt family only; it did not promote a checkpoint or isolate prompt wording. See the [paired diagnostic review](../../../../docs/figment/2026-09-08-paired-diagnostic-review.md).
 
 ## Governing rules
 

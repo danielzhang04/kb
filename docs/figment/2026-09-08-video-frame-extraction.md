@@ -40,6 +40,30 @@ The command creates a fresh `extracted-frames/` directory containing
 `first.png`, `middle.png`, `last.png`, and `frame-extraction.json`. Existing
 directories are never reused or overwritten.
 
+## Ordered PNG assembly
+
+`frame_assemble.py` accepts a frozen non-promotable I2V manifest and a local
+receipt with successful-harness fields: `figment/runpod-run@1`, `dry_run: false`,
+verified teardown, no error, and a terminated placement. This schema/state
+validation cannot authenticate the issuer; parent/provider evidence remains
+separate. The harness record can bind only its one job's output name, seed,
+ordered 81 downloaded PNG names, and byte counts. The
+adapter computes local PNG SHA-256 values itself; it does not claim that the
+receipt binds an executed workflow hash, identity, or temporal quality.
+
+It requires `output_name_01.png` through `_81.png`, probes every frame,
+enforces the 16-fps 81-frame manifest budget, and writes a fresh non-promotable
+MP4 only after hashes hold before and after assembly. FFprobe then checks 81
+decoded frames and the 81/16-second duration.
+
+```powershell
+python orgs/figment/pipeline/video/frame_assemble.py `
+  --root .\diagnostic `
+  --manifest manifest.json `
+  --run-receipt run\run.json `
+  --out assembled
+```
+
 FFmpeg documents the stream-selection and filtering model used by the adapter:
 
 Validation on 2026-09-08: the first independent review requested junction guards,
