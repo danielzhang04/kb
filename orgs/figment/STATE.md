@@ -276,3 +276,21 @@ final values.
   gate/judge/budgets/pickle folded (fb1f20ae), static workflows persona-free (cdd2f438). 889 tests green before the
   last three commits; full rerun pending.
 - Spend 2026-09-07 so far: $2.86.
+
+## 2026-09-07 23:20 — HANDOFF: network outage orphaned a pod; tester rerun pending; harness hardening in flight
+
+- Trigger-word fix (abc91610) landed; tester #2 (pod pmi9y2gsoaxkea) and #3 (hvtovmusbx6a1t) both hit a LOCAL
+  DNS/network outage (NameResolutionError for rest.runpod.io) during readiness; the harness's terminate path gave up
+  after 5 attempts in ~30 s and exited "POD STILL RUNNING". #2 was terminated by hand at 08:30 (+3 min). #3 could not
+  be reached: the session itself lost the API for ~15 h; terminate + absence verified only at 23:16. **Worst-case
+  orphan charge 08:37→23:16 ≈ $16 at $1.09/h** — logged as `pod-orphan-estimate` rows in the ledger; VERIFY against
+  RunPod billing (the pod may have been stopped earlier by RunPod). This breaches the $10 day guard if real.
+- Harness hardening (terminate backoff ≥15 min, POD-STILL-RUNNING sentinel + ledger row + manual command, readiness
+  clock paused while our own network is down, `sweep` subcommand) was being built when the agent died on the same
+  outage; resumed at 23:17 — NOT yet landed. Until it lands: after any harness failure run
+  `runpod_run.py status` and `terminate --pod-id <id>` by hand.
+- Train-first LoRA (5 checkpoints under `orgs/figment/runs/c001-tf/train/runs/out/creator-001-tensor-train-first/`)
+  is still UNTESTED with the trigger word. Tester plan ready: `orgs/figment/runs/c001-tf4/plan.json` (outputs staged);
+  rerun = `figment_train.py run --creator creator-001 --stage tester --plan orgs/figment/runs/c001-tf4/plan.json`
+  (~$0.30) → `grade --stage tester` → pick checkpoint by judge → `apply-rulings` → `plan --stage gen` (+detail) → run.
+- Suite: 964 passed (detached run, 08:15). Branch `claude/figment` HEAD abc91610 (pushed).
