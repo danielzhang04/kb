@@ -51,6 +51,7 @@ BUILD_SET_MODULE = TRAIN_DIR / "build_training_set.py"
 QA_MODULE = HERE / "qa_stamp.py"
 SCORE_CELLS_MODULE = HERE / "score_cells.py"
 IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
+LINEAGE_MODULE = HERE / "lineage.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
@@ -147,6 +148,10 @@ def _score_cells_module():
 
 def _identity_gate_module():
     return _load_module("_figment_train_identity_gate", IDENTITY_GATE_MODULE)
+
+
+def _lineage_module():
+    return _load_module("_figment_train_lineage", LINEAGE_MODULE)
 
 
 def _pod_runner_module():
@@ -967,7 +972,9 @@ def _gen_workflow(training: dict, pins: dict) -> dict[str, Any]:
     return workflow
 
 
-def _gen_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
+def _gen_manifest(
+    persona: dict, training: dict, pins: dict, *, checkpoint_upload: str | None = None,
+) -> dict[str, Any]:
     """`_gen_manifest` mirrors `_tester_manifest` -- `_pod_base`, `pins.gen`
     models/nodes, the lorapath launcher's `training` block, a chunked upload of ONLY the
     chosen checkpoint, `seed_fields: ["seed", "noise_seed"]` -- but plans generation, not
@@ -1016,6 +1023,7 @@ def _gen_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
             "substitutions": substitutions,
         })
 
+    checkpoint_upload = checkpoint_upload or f"out/{creator_id}-tensor-train/{checkpoint_name}"
     return {
         **_pod_base(pins, training["pod_class"], "gen"),
         "models": models,
@@ -1023,7 +1031,7 @@ def _gen_manifest(persona: dict, training: dict, pins: dict) -> dict[str, Any]:
         "workflow": workflow,
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
-            "files": [f"out/{creator_id}-tensor-train/{checkpoint_name}"],
+            "files": [checkpoint_upload],
             "subfolder": trigger,
             "type": "input",
             "overwrite": True,
@@ -1064,7 +1072,8 @@ def _copy_detail_images(out: Path, persona: dict, image_paths: list[Path]) -> li
 
 
 def _detail_manifest(
-    persona: dict, training: dict, pins: dict, names: list[str],
+    persona: dict, training: dict, pins: dict, names: list[str], *,
+    checkpoint_upload: str | None = None,
 ) -> dict[str, Any]:
     """r25 ranked cause #2, made durable: re-detail already-rendered Track-1
     tester/dataset cells (named by `names`, already staged under
@@ -1102,6 +1111,7 @@ def _detail_manifest(
                 ],
             })
 
+    checkpoint_upload = checkpoint_upload or f"out/{creator_id}-tensor-train/{checkpoint_name}"
     return {
         **_pod_base(pins, training["pod_class"], "detail"),
         "models": deepcopy(pins["pins"]["detail"]["models"]),
@@ -1116,7 +1126,7 @@ def _detail_manifest(
                 "overwrite": True,
             },
             {
-                "files": [f"out/{creator_id}-tensor-train/{checkpoint_name}"],
+                "files": [checkpoint_upload],
                 "subfolder": trigger,
                 "type": "input",
                 "overwrite": True,
@@ -1360,7 +1370,10 @@ def build_plan(
             manifests = [_tester_manifest(persona, training, pins)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
         elif current == "gen":
-            gen_manifest = _gen_manifest(persona, training, pins)
+            checkpoint_upload = _stage_accepted_checkpoint(out, persona, training)
+            gen_manifest = _gen_manifest(
+                persona, training, pins, checkpoint_upload=checkpoint_upload,
+            )
             gen_workflow_path = out / "train" / "workflows" / "krea2_gen_api.json"
             _write_json(gen_workflow_path, gen_manifest.pop("workflow"))
             gen_manifest["workflow"] = "../workflows/krea2_gen_api.json"
@@ -1373,7 +1386,9 @@ def build_plan(
                         f"--detail-images matched no files: {detail_images!r}"
                     )
                 names = _copy_detail_images(out, persona, image_paths)
-                detail_manifest = _detail_manifest(persona, training, pins, names)
+                detail_manifest = _detail_manifest(
+                    persona, training, pins, names, checkpoint_upload=checkpoint_upload,
+                )
                 detail_workflow_path = out / "train" / "workflows" / "krea2_detail_only_api.json"
                 _write_json(detail_workflow_path, detail_manifest.pop("workflow"))
                 detail_manifest["workflow"] = "../workflows/krea2_detail_only_api.json"
@@ -1414,6 +1429,97 @@ def build_plan(
 TRAIN_FIRST_DATASET_MARKERS = ("_dataset.ready", "dataset_manifest.json")
 
 
+def accept_train_first_dataset(
+    creator_id: str, dataset_dir: Path, *, decided_by: str, decided_at: str,
+) -> dict[str, Any]:
+    """Record an explicit operator acceptance of an existing captioned dataset."""
+    if not decided_by.strip() or not decided_at.strip():
+        raise FigmentTrainError("dataset acceptance requires decided_by and decided_at")
+    dataset_dir = Path(dataset_dir).resolve()
+    approval_path = dataset_dir / "dataset-approval.json"
+    if approval_path.exists():
+        raise FigmentTrainError(f"refusing to overwrite dataset approval: {approval_path}")
+    try:
+        subject = _lineage_module().dataset_subject(dataset_dir)
+    except ValueError as exc:
+        raise FigmentTrainError(f"dataset cannot be accepted: {exc}") from exc
+    if subject["count"] < 20:
+        raise FigmentTrainError(
+            f"dataset has only {subject['count']} images; training requires at least 20"
+        )
+    document = _lineage_module().wrap_subject(
+        _lineage_module().DATASET_APPROVAL_SCHEMA, subject,
+        creator=creator_id, decision="verified",
+        decided_by=decided_by.strip(), decided_at=decided_at.strip(),
+    )
+    _write_json(approval_path, document)
+    return document
+
+
+def _validated_train_first_dataset(creator_id: str, dataset_dir: Path) -> dict[str, Any]:
+    approval_path = dataset_dir / "dataset-approval.json"
+    if not approval_path.is_file():
+        raise FigmentTrainError(
+            f"train-first dataset has no operator provenance at {approval_path}. For an "
+            "existing historical dataset, inspect its full-resolution images and captions, "
+            "then run `figment_train.py accept-dataset --creator ... --dataset-dir ... "
+            "--decided-by ... --decided-at ...`; a legacy ready marker is insufficient."
+        )
+    approval = _read_json(approval_path)
+    if (approval.get("schema") != _lineage_module().DATASET_APPROVAL_SCHEMA
+            or approval.get("creator") != creator_id
+            or approval.get("decision") != "verified"
+            or not isinstance(approval.get("decided_by"), str)
+            or not approval["decided_by"].strip()
+            or not isinstance(approval.get("decided_at"), str)
+            or not approval["decided_at"].strip()):
+        raise FigmentTrainError("train-first dataset approval is malformed or belongs to another creator")
+    try:
+        current = _lineage_module().dataset_subject(dataset_dir)
+        _lineage_module().assert_current(
+            approval, current, label="train-first dataset operator approval",
+        )
+    except ValueError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+    if current["count"] < 20:
+        raise FigmentTrainError(
+            f"train-first dataset has only {current['count']} images; training requires at least 20"
+        )
+    return approval
+
+
+def _approved_dataset_names(approval: dict[str, Any]) -> set[str]:
+    subject = approval.get("subject") or {}
+    rows = subject.get("files") or []
+    names = {"dataset_manifest.json", "dataset-approval.json"}
+    for row in rows:
+        if not isinstance(row, dict):
+            raise FigmentTrainError("dataset approval has a malformed file inventory")
+        for kind in ("image", "caption"):
+            entry = row.get(kind)
+            name = entry.get("name") if isinstance(entry, dict) else None
+            if not isinstance(name, str) or Path(name).name != name:
+                raise FigmentTrainError("dataset approval has a malformed file inventory")
+            names.add(name)
+    return names
+
+
+def _assert_exact_staged_dataset(dataset_dir: Path, approval: dict[str, Any]) -> None:
+    expected = _approved_dataset_names(approval) | {"_dataset.ready", "training.json"}
+    actual = {item.name for item in dataset_dir.iterdir()}
+    if actual != expected:
+        raise FigmentTrainError(
+            "staged training dataset has unexpected or missing entries; "
+            f"missing={sorted(expected - actual)}, unexpected={sorted(actual - expected)}"
+        )
+    for name in sorted(expected):
+        item = dataset_dir / name
+        if item.is_symlink() or not item.is_file():
+            raise FigmentTrainError(
+                f"staged training dataset entry must be a regular file, not a symlink: {name}"
+            )
+
+
 def build_train_first_plan(
     creator_id: str,
     dataset_dir: Path,
@@ -1446,10 +1552,9 @@ def build_train_first_plan(
     the "train-first" idea and DOP are independent choices that happen to ship
     together here.
 
-    `dataset_dir` must already carry `_dataset.ready` and `dataset_manifest.json` --
-    this function only copies it into the plan (minus any `training.json` an operator
-    may have hand-placed) and renders training.json into the copy; it never selects,
-    captions, or re-verifies the underlying cells itself.
+    `dataset_dir` must carry `_dataset.ready`, `dataset_manifest.json`, and a current
+    operator `dataset-approval.json`. Every image hash, caption, count, and approval
+    subject is verified before copying; this function never selects or captions cells.
     """
     dataset_dir = Path(dataset_dir).resolve()
     if not all((dataset_dir / marker).is_file() for marker in TRAIN_FIRST_DATASET_MARKERS):
@@ -1457,6 +1562,7 @@ def build_train_first_plan(
             f"dataset_dir is not ready (missing {' or '.join(TRAIN_FIRST_DATASET_MARKERS)}): "
             f"{dataset_dir}"
         )
+    dataset_approval = _validated_train_first_dataset(creator_id, dataset_dir)
     out = Path(out).resolve()
     # Same guard build_plan uses, against the same filename -- a train-first plan is a
     # `plan.json` like any other, not a separately-named artifact.
@@ -1499,14 +1605,15 @@ def build_train_first_plan(
     plan_dataset_dirname = f"{creator_id}-tensor-dataset-train-first"
     plan_dataset_dir = train_runs_dir / plan_dataset_dirname
     plan_dataset_dir.mkdir(parents=True, exist_ok=True)
-    for item in sorted(dataset_dir.iterdir()):
-        # training.json is rendered fresh below (so this plan's DOP settings always
-        # win over anything an operator hand-placed in the source dir), and
-        # _dataset.ready is written LAST, after it -- same "marker last" contract
-        # `build_training_set.py` itself follows.
-        if item.name in ("training.json", "_dataset.ready"):
-            continue
-        shutil.copy2(item, plan_dataset_dir / item.name)
+    # Copy only the operator-approved inventory. Arbitrary source side files never
+    # enter a plan, even if their extension would match a later upload glob.
+    for name in sorted(_approved_dataset_names(dataset_approval)):
+        item = dataset_dir / name
+        if item.is_symlink() or not item.is_file():
+            raise FigmentTrainError(
+                f"approved dataset entry must be a regular file, not a symlink: {name}"
+            )
+        shutil.copy2(item, plan_dataset_dir / name)
 
     config = _render_training_config(
         training["trigger"], training["steps"], training["save_every"],
@@ -1552,6 +1659,11 @@ def build_train_first_plan(
         # The one thing that makes this plan.json different from a `build_plan` one --
         # `_install_stage_config`'s only fork point (see this function's own docstring).
         "variant": "train-first",
+        "dataset_approval": {
+            "path": str((dataset_dir / "dataset-approval.json").resolve()),
+            "sha256": _sha256(dataset_dir / "dataset-approval.json"),
+            "subject_sha256": dataset_approval["subject_sha256"],
+        },
     }
     _write_json(out / "plan.json", plan)
     return plan
@@ -1707,6 +1819,31 @@ def _write_stage_state(path: Path, state: dict[str, Any]) -> None:
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "gen":
+        expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
+        if not isinstance(expected, str):
+            raise FigmentTrainError("gen plan has no accepted checkpoint digest")
+        for run in plan["stages"]["gen"]["runs"]:
+            manifest_path = root / run["manifest"]
+            manifest = _read_json(manifest_path)
+            checkpoint_files = [
+                value
+                for upload in manifest.get("uploads") or []
+                for value in upload.get("files") or []
+                if isinstance(value, str) and value.endswith(".safetensors")
+            ]
+            if len(checkpoint_files) != 1 or any(ch in checkpoint_files[0] for ch in "*?[]"):
+                raise FigmentTrainError("gen manifest must upload exactly one explicit checkpoint")
+            staged = (manifest_path.parent / checkpoint_files[0]).resolve()
+            try:
+                staged.relative_to(root.resolve())
+            except ValueError as exc:
+                raise FigmentTrainError("gen checkpoint upload escapes the reviewed plan root") from exc
+            if not staged.is_file() or _sha256(staged) != expected:
+                raise FigmentTrainError(
+                    "staged gen checkpoint changed after planning; create a fresh gen plan"
+                )
+        return
     if stage not in ("smoke", "train"):
         return
     if plan.get("variant") == "train-first":
@@ -1714,6 +1851,27 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
         # settings) and wrote `_dataset.ready` directly into its own
         # `<id>-tensor-dataset-train-first` copy -- there is no module-10
         # "grade/dataset" operator-ruling step in this lineage to gate on.
+        if stage == "train":
+            dataset_dir = root / "train" / "runs" / f"{plan['creator']}-tensor-dataset-train-first"
+            approval = _validated_train_first_dataset(plan["creator"], dataset_dir)
+            _assert_exact_staged_dataset(dataset_dir, approval)
+            planned = plan.get("dataset_approval") or {}
+            copied_path = dataset_dir / "dataset-approval.json"
+            if (_sha256(copied_path) != planned.get("sha256")
+                    or approval.get("subject_sha256") != planned.get("subject_sha256")):
+                raise FigmentTrainError(
+                    "train-first dataset approval differs from the approval captured by plan.json"
+                )
+            training = plan["training"]
+            expected_config = _render_training_config(
+                training["trigger"], training["steps"], training["save_every"],
+                dop_enabled=training["dop_enabled"],
+                dop_multiplier=training["dop_multiplier"], dop_class=training["dop_class"],
+            )
+            if _read_json(dataset_dir / "training.json") != expected_config:
+                raise FigmentTrainError(
+                    "train-first training.json changed after planning; create a fresh plan"
+                )
         return
     dataset_dir = root / "train" / "runs" / f"{plan['creator']}-tensor-dataset"
     approved = root / "grade" / "dataset" / "approved-list.json"
@@ -1721,10 +1879,101 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
         raise FigmentTrainError(
             "operator dataset rulings have not been applied; run grade and apply-rulings first"
         )
+    _load_current_approval(plan, root, "dataset")
+    dataset_approval = _validated_train_first_dataset(plan["creator"], dataset_dir)
+    _assert_exact_staged_dataset(dataset_dir, dataset_approval)
     config_source = root / plan["configs"][stage]
     if not config_source.is_file():
         raise FigmentTrainError(f"planned {stage} config is missing: {config_source}")
+    training = plan["training"]
+    expected_config = (
+        _render_training_config(training["trigger"], 100, 50)
+        if stage == "smoke" else
+        _render_training_config(training["trigger"], training["steps"], training["save_every"])
+    )
+    if _read_json(config_source) != expected_config:
+        raise FigmentTrainError(
+            f"planned {stage} training config changed; create a fresh plan"
+        )
     shutil.copy2(config_source, dataset_dir / "training.json")
+
+
+def _tester_checkpoint_inputs(plan: dict[str, Any], root: Path, run: dict[str, Any]) -> list[dict[str, Any]]:
+    manifest_path = root / run["manifest"]
+    if _sha256(manifest_path) != run["sha256"]:
+        raise FigmentTrainError("tester manifest changed after planning")
+    manifest = _read_json(manifest_path)
+    expected = {
+        item["value"]
+        for job in manifest.get("jobs") or []
+        for item in job.get("substitutions") or []
+        if item.get("field") == "lora_name" and isinstance(item.get("value"), str)
+    }
+    matches: dict[str, Path] = {}
+    for upload in manifest.get("uploads") or []:
+        for pattern in upload.get("files") or []:
+            if not isinstance(pattern, str) or ".safetensors" not in pattern:
+                continue
+            for raw in glob.glob(str(manifest_path.parent / pattern)):
+                path = Path(raw).resolve()
+                try:
+                    path.relative_to(root.resolve())
+                except ValueError as exc:
+                    raise FigmentTrainError("tester checkpoint input escapes the plan root") from exc
+                if path.name in matches:
+                    raise FigmentTrainError(f"duplicate tester checkpoint input {path.name!r}")
+                if not path.is_file() or path.stat().st_size <= 0:
+                    raise FigmentTrainError(f"tester checkpoint input is missing or empty: {path}")
+                matches[path.name] = path
+    if set(matches) != expected:
+        raise FigmentTrainError(
+            f"tester checkpoint inputs do not match its candidate slate; "
+            f"missing={sorted(expected - set(matches))}, unexpected={sorted(set(matches) - expected)}"
+        )
+    return [
+        {
+            "filename": name, "path": _relative(matches[name], root),
+            "bytes": matches[name].stat().st_size, "sha256": _sha256(matches[name]),
+        }
+        for name in sorted(matches)
+    ]
+
+
+def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path) -> None:
+    """Recheck the durable, non-cost portion of a completed tester receipt.
+
+    Live execution already performs full ledger reconciliation before recording a run
+    complete. Promotion repeats the receipt/job checks so later edits cannot turn a
+    failed or unrelated tester run into checkpoint provenance.
+    """
+    receipt = _read_json(Path(out_dir) / "run.json")
+    if not isinstance(receipt, dict) or receipt.get("error"):
+        raise FigmentTrainError("checkpoint promotion requires a successful tester receipt")
+    if receipt.get("dry_run") is not False:
+        raise FigmentTrainError(
+            "tester receipt dry_run must be boolean false to authorize checkpoint promotion"
+        )
+    if receipt.get("termination_verified") is not True:
+        raise FigmentTrainError("checkpoint promotion requires tester teardown verification")
+    if any(
+        row.get("termination_verified") is not True
+        for row in receipt.get("placement_attempts") or []
+    ):
+        raise FigmentTrainError("checkpoint promotion requires every tester placement terminated")
+    expected_jobs = manifest.get("jobs") or []
+    actual_jobs = receipt.get("jobs") or []
+    if len(actual_jobs) != len(expected_jobs):
+        raise FigmentTrainError("tester receipt job count disagrees with its reviewed manifest")
+    for expected, actual in zip(expected_jobs, actual_jobs):
+        if actual.get("output_name") != expected.get("output_name"):
+            raise FigmentTrainError("tester receipt jobs disagree with its reviewed manifest")
+        files = actual.get("files") or []
+        if len(files) != expected.get("expected_images", 1) or any(
+            not isinstance(row.get("bytes"), int) or row["bytes"] <= 0 for row in files
+        ):
+            raise FigmentTrainError(
+                f"tester receipt output evidence is invalid for {expected.get('output_name')!r}"
+            )
 
 
 def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]:
@@ -1745,16 +1994,20 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
     state_path = root / "stage.json"
     state = _stage_state(state_path, creator_id, Path(plan_path).resolve())
 
-    def _already_settled(current: str) -> bool:
-        return (current in state["completed_stages"]
-                or (root / "grade" / current / "rulings.json").is_file())
-
     for current in requested:
-        if _already_settled(current):
+        if current in state["completed_stages"]:
             if stage != "all":
                 raise FigmentTrainError(
                     f"stage {current!r} is already complete or graded; refusing a live retry"
                 )
+            if current in GRADEABLE_STAGES:
+                approval = _load_current_approval(plan, root, current)
+                if current == "anchor" and approval.get("transition", {}).get("requires_replan"):
+                    raise FigmentTrainError(
+                        "anchor approval is current and the completed anchor run will not be repeated, "
+                        "but promotion changed the persona references; create a fresh plan for dataset "
+                        "and later stages"
+                    )
             continue
         _install_stage_config(current, plan, root)
         state["status"] = f"running:{current}"
@@ -1785,7 +2038,15 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                     raise FigmentTrainError(
                         f"planned run field {field!r} no longer matches the bounded harness command"
                     )
-            state["runs"][key] = {"status": "running", "started_utc": datetime.now(timezone.utc).isoformat()}
+            tester_inputs = (
+                _tester_checkpoint_inputs(plan, root, run) if current == "tester" else None
+            )
+            attempt = {
+                "status": "running", "started_utc": datetime.now(timezone.utc).isoformat(),
+            }
+            if tester_inputs is not None:
+                attempt["checkpoint_inputs"] = tester_inputs
+            state["runs"][key] = attempt
             _write_stage_state(state_path, state)
             try:
                 result = subprocess.run(run["argv"], cwd=ROOT)
@@ -1806,25 +2067,32 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                 verify_run_record(
                     current, manifest, root / run["out"], Path(plan["ledger_dir"]),
                 )
+                if tester_inputs is not None:
+                    current_inputs = _tester_checkpoint_inputs(plan, root, run)
+                    if current_inputs != tester_inputs:
+                        raise FigmentTrainError(
+                            "tester checkpoint inputs changed while the tester run was active; "
+                            "the rendered candidates cannot be promoted"
+                        )
             except FigmentTrainError as exc:
-                state["runs"][key] = {"status": "failed", "error": str(exc)}
+                state["runs"][key] = {
+                    **attempt, "status": "failed", "error": str(exc),
+                }
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
                 raise
-            state["runs"][key] = {"status": "complete"}
+            state["runs"][key] = {**attempt, "status": "complete"}
             _write_stage_state(state_path, state)
         state["completed_stages"].append(current)
         state["status"] = f"complete:{current}"
         _write_stage_state(state_path, state)
-        if current == "dataset" and stage == "all":
-            dataset_dir = root / "train" / "runs" / f"{creator_id}-tensor-dataset"
-            if not (dataset_dir / "_dataset.ready").is_file():
-                state["status"] = "waiting:dataset-rulings"
-                _write_stage_state(state_path, state)
-                raise FigmentTrainError(
-                    "dataset stage completed; STOP for full-resolution operator grading and "
-                    "apply-rulings, then invoke --stage all again to resume without rerunning it"
-                )
+        if current in ("anchor", "dataset") and stage == "all":
+            state["status"] = f"waiting:{current}-rulings"
+            _write_stage_state(state_path, state)
+            raise FigmentTrainError(
+                f"{current} stage completed; STOP for full-resolution operator grading and "
+                "apply-rulings, then invoke --stage all again to resume without rerunning it"
+            )
     state["status"] = "complete"
     _write_stage_state(state_path, state)
     return state
@@ -2025,6 +2293,78 @@ def _load_persona_document_for_gate(plan: dict[str, Any]) -> dict[str, Any]:
     return _read_json(persona_path)
 
 
+def _persona_path_for_plan(plan: dict[str, Any]) -> Path:
+    return (ROOT / plan["assets"]["persona_dir"] / "persona.yaml").resolve()
+
+
+def _current_persona_training(plan: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    persona_path = _persona_path_for_plan(plan)
+    try:
+        merged = _training_config_module().load_persona_with_training(persona_path)
+    except (OSError, ValueError) as exc:
+        raise FigmentTrainError(f"current persona/training configuration is invalid: {exc}") from exc
+    return merged, merged["training"]
+
+
+def _current_review_subject(
+    plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any],
+) -> dict[str, Any]:
+    persona, training = _current_persona_training(plan)
+    manifest_paths = [root / run["manifest"] for run in plan["stages"][stage]["runs"]]
+    anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
+    checkpoint_inputs = None
+    if stage == "tester":
+        state_path = root / "stage.json"
+        if state_path.is_file():
+            state = _stage_state(state_path, plan["creator"], root / "plan.json")
+            checkpoint_inputs = [
+                {
+                    "manifest": run["manifest"],
+                    "manifest_sha256": run["sha256"],
+                    "status": state.get("runs", {}).get(run["manifest"], {}).get("status"),
+                    "inputs": state.get("runs", {}).get(run["manifest"], {}).get(
+                        "checkpoint_inputs"
+                    ),
+                }
+                for run in plan["stages"][stage]["runs"]
+            ]
+    try:
+        return _lineage_module().review_subject(
+            creator=plan["creator"], stage=stage, plan_path=root / "plan.json",
+            manifest_paths=manifest_paths, images=grading["images"], anchors=anchors,
+            persona=persona, training=training, threshold_path=HERE / "gate.yaml",
+            score_path=root / "grade" / stage / "gate.json",
+            checkpoint_inputs=checkpoint_inputs,
+        )
+    except (OSError, ValueError) as exc:
+        raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
+
+
+def _load_current_approval(
+    plan: dict[str, Any], root: Path, stage: str, *, required: bool = True,
+) -> dict[str, Any] | None:
+    grade_dir = root / "grade" / stage
+    approval_path = grade_dir / "approval-lineage.json"
+    if not approval_path.is_file():
+        if required:
+            raise FigmentTrainError(
+                f"{stage} has no current operator approval; run grade and apply-rulings first"
+            )
+        return None
+    grading = _read_json(grade_dir / "grading-manifest.json")
+    approval = _read_json(approval_path)
+    if approval.get("schema") != _lineage_module().APPROVAL_SCHEMA:
+        raise FigmentTrainError(f"unsupported approval lineage at {approval_path}")
+    try:
+        _lineage_module().assert_current(
+            approval, _current_review_subject(plan, root, stage, grading),
+            label=f"{stage} operator approval",
+        )
+    except ValueError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+    return approval
+
+
 def _run_identity_gate(
     plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
     grade_dir: Path, *, skip_judge: bool = False,
@@ -2104,11 +2444,23 @@ def build_grade(
     manifest_path = grade_dir / "grading-manifest.json"
     template_path = grade_dir / "rulings.template.json"
     page_path = grade_dir / "board.html"
-    _write_json(manifest_path, {"creator": creator_id, "stage": stage, "images": images})
+    grading_document = {"creator": creator_id, "stage": stage, "images": images}
+    _write_json(manifest_path, grading_document)
+    subject = _current_review_subject(plan, root, stage, grading_document)
+    _write_json(
+        grade_dir / "evaluation-inputs.json",
+        _lineage_module().wrap_subject(
+            _lineage_module().EVALUATION_SCHEMA, subject,
+            creator=creator_id, stage=stage,
+        ),
+    )
     _write_json(template_path, {
         "schema": "figment/rulings-template@1",
         "creator": creator_id,
         "stage": stage,
+        "evaluation_subject_sha256": _lineage_module().canonical_sha256(subject),
+        "decided_by": None,
+        "decided_at": None,
         "rulings": [{
             "image_id": row["image_id"],
             "decision": None,
@@ -2135,11 +2487,23 @@ def build_grade(
 
 def _normalize_rulings(
     creator_id: str, stage: str, document: Any, image_ids: list[str],
+    evaluation_subject_sha256: str,
 ) -> dict[str, Any]:
     if not isinstance(document, dict):
         raise FigmentTrainError("rulings document must be an object")
     if document.get("creator") != creator_id or document.get("stage") != stage:
         raise FigmentTrainError("rulings creator/stage does not match the command")
+    if document.get("evaluation_subject_sha256") != evaluation_subject_sha256:
+        raise FigmentTrainError(
+            "rulings were filled for a different evaluation subject; use the current "
+            "grade's rulings template"
+        )
+    decided_by = document.get("decided_by")
+    decided_at = document.get("decided_at")
+    if not isinstance(decided_by, str) or not decided_by.strip():
+        raise FigmentTrainError("rulings require a non-empty human decided_by identity")
+    if not isinstance(decided_at, str) or not decided_at.strip():
+        raise FigmentTrainError("rulings require a non-empty decided_at timestamp")
     raw = document.get("rulings")
     if not isinstance(raw, list):
         raise FigmentTrainError("rulings document must contain a rulings list")
@@ -2174,12 +2538,157 @@ def _normalize_rulings(
         "schema": "figment/rulings@1",
         "creator": creator_id,
         "stage": stage,
+        "evaluation_subject_sha256": evaluation_subject_sha256,
+        "decided_by": decided_by.strip(),
+        "decided_at": decided_at.strip(),
         "rulings": [by_id[image_id] for image_id in image_ids],
     }
 
 
+def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[str, Any]:
+    training = plan["training"]
+    allowed = _checkpoint_steps(training["steps"], training["save_every"]) + [training["steps"]]
+    if step not in allowed:
+        raise FigmentTrainError(
+            f"checkpoint step {step} was not produced by this plan; choose one of {allowed}"
+        )
+    filename = _checkpoint_name(training["trigger"], None if step == training["steps"] else step)
+    tester_matches: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    for run in plan["stages"]["tester"]["runs"]:
+        manifest_path = root / run["manifest"]
+        if _sha256(manifest_path) != run["sha256"]:
+            raise FigmentTrainError("tester manifest changed after the reviewed plan was written")
+        manifest = _read_json(manifest_path)
+        for job in manifest.get("jobs") or []:
+            values = [
+                item.get("value") for item in job.get("substitutions") or []
+                if item.get("field") == "lora_name"
+            ]
+            if filename in values:
+                tester_matches.append((run, manifest, job["output_name"]))
+    if len(tester_matches) != 1:
+        raise FigmentTrainError(
+            f"tester manifest does not map checkpoint {filename!r} to exactly one candidate"
+        )
+
+    tester_run, tester_manifest, tester_image_id = tester_matches[0]
+    state_path = root / "stage.json"
+    if not state_path.is_file():
+        raise FigmentTrainError(
+            "checkpoint promotion requires this plan's completed train and tester stages"
+        )
+    state = _stage_state(state_path, plan["creator"], root / "plan.json")
+    if "train" not in state.get("completed_stages", []):
+        raise FigmentTrainError("checkpoint promotion requires this plan's completed train stage")
+    if "tester" not in state.get("completed_stages", []):
+        raise FigmentTrainError("checkpoint promotion requires this plan's completed tester stage")
+    tester_state = state.get("runs", {}).get(tester_run["manifest"], {})
+    if tester_state.get("status") != "complete":
+        raise FigmentTrainError("checkpoint promotion requires its tester run to be complete")
+    tester_inputs = tester_state.get("checkpoint_inputs")
+    if not isinstance(tester_inputs, list) or not tester_inputs:
+        raise FigmentTrainError(
+            "completed tester run has no checkpoint digest inventory; rerun under the current "
+            "driver before promoting a candidate"
+        )
+    _verify_tester_receipt_evidence(tester_manifest, root / tester_run["out"])
+
+    matches: list[tuple[dict[str, Any], Path]] = []
+    for run in plan["stages"].get("train", {}).get("runs", []):
+        manifest_path = root / run["manifest"]
+        if _sha256(manifest_path) != run["sha256"]:
+            raise FigmentTrainError("train manifest changed after the reviewed plan was written")
+        manifest = _read_json(manifest_path)
+        if filename not in [item.get("local") for item in manifest.get("artifacts") or []]:
+            continue
+        if state.get("runs", {}).get(run["manifest"], {}).get("status") != "complete":
+            continue
+        run_out = (root / run["out"]).resolve()
+        checkpoint = (run_out / filename).resolve()
+        try:
+            checkpoint.relative_to(run_out)
+        except ValueError as exc:
+            raise FigmentTrainError("selected checkpoint escapes its planned train output") from exc
+        matches.append((run, checkpoint))
+    if len(matches) != 1:
+        raise FigmentTrainError(
+            f"checkpoint {filename!r} is not a unique artifact of this plan's completed train run"
+        )
+    run, checkpoint = matches[0]
+    if not checkpoint.is_file() or checkpoint.stat().st_size <= 0:
+        raise FigmentTrainError(f"produced checkpoint is missing or empty: {checkpoint}")
+    receipt = _read_json(checkpoint.parent / "run.json")
+    artifact_rows = [
+        item for item in receipt.get("artifacts") or []
+        if item.get("remote") == filename and item.get("bytes") == checkpoint.stat().st_size
+    ]
+    if (receipt.get("error") is not None or receipt.get("dry_run") is not False
+            or receipt.get("termination_verified") is not True
+            or len(artifact_rows) != 1):
+        raise FigmentTrainError(
+            f"checkpoint {filename!r} lacks a real successful, teardown-verified train receipt"
+        )
+    recorded_inputs = [
+        item for item in tester_inputs
+        if isinstance(item, dict) and item.get("filename") == filename
+    ]
+    current_input = {
+        "filename": filename,
+        "path": _relative(checkpoint, root),
+        "bytes": checkpoint.stat().st_size,
+        "sha256": _sha256(checkpoint),
+    }
+    if len(recorded_inputs) != 1 or recorded_inputs[0] != current_input:
+        raise FigmentTrainError(
+            f"checkpoint {filename!r} no longer matches the bytes recorded for the completed "
+            "tester run; rerun tester before promotion"
+        )
+    return {
+        "step": step,
+        "filename": filename,
+        "tester_image_id": tester_image_id,
+        "path": str(checkpoint),
+        "bytes": checkpoint.stat().st_size,
+        "sha256": _sha256(checkpoint),
+        "train_manifest": run["manifest"],
+        "train_manifest_sha256": run["sha256"],
+    }
+
+
+def _config_path_value(path: Path) -> str:
+    path = Path(path).resolve()
+    try:
+        return path.relative_to(ROOT.resolve()).as_posix()
+    except ValueError:
+        return str(path)
+
+
+def _persist_checkpoint_selection(
+    plan: dict[str, Any], step: int, digest: str, approval_path: Path,
+) -> None:
+    persona_path = _persona_path_for_plan(plan)
+    sidecar_path = persona_path.with_name("training.yaml")
+    target = sidecar_path if sidecar_path.is_file() else persona_path
+    document = _read_json(target)
+    training = document.get("training")
+    if not isinstance(training, dict):
+        raise FigmentTrainError(f"cannot persist checkpoint selection: {target} has no training object")
+    training.update({
+        "chosen_checkpoint_step": step,
+        "chosen_checkpoint_sha256": digest,
+        "chosen_checkpoint_approval": _config_path_value(approval_path),
+    })
+    _write_json(target, document)
+
+
+def _resolve_config_path(value: str) -> Path:
+    path = Path(value)
+    return path.resolve() if path.is_absolute() else (ROOT / path).resolve()
+
+
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
+    checkpoint_step: int | None = None,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
     if stage not in GRADEABLE_STAGES:
@@ -2196,8 +2705,24 @@ def apply_rulings(
     image_ids = [row.get("image_id") for row in images]
     if any(not isinstance(value, str) for value in image_ids) or len(set(image_ids)) != len(image_ids):
         raise FigmentTrainError("grading manifest has invalid or duplicate image ids")
+    evaluation_path = grade_dir / "evaluation-inputs.json"
+    if not evaluation_path.is_file():
+        raise FigmentTrainError(
+            f"review freshness record is missing: {evaluation_path}; rebuild the grade"
+        )
+    evaluation = _read_json(evaluation_path)
+    if evaluation.get("schema") != _lineage_module().EVALUATION_SCHEMA:
+        raise FigmentTrainError("review freshness record has an unsupported schema")
+    try:
+        _lineage_module().assert_current(
+            evaluation, _current_review_subject(plan, root, stage, grading),
+            label=f"{stage} numeric evaluation",
+        )
+    except ValueError as exc:
+        raise FigmentTrainError(str(exc)) from exc
     normalized = _normalize_rulings(
         creator_id, stage, _read_json(Path(rulings_path)), image_ids,
+        evaluation["subject_sha256"],
     )
     if stage == "anchor":
         keeps = [r for r in normalized["rulings"] if r["decision"] == "keep"]
@@ -2220,8 +2745,11 @@ def apply_rulings(
         raise FigmentTrainError(
             f"no gate.json at {gate_path}; run `figment_train.py grade` before apply-rulings"
         )
+    gate_document = _read_json(gate_path)
+    if gate_document.get("schema") != "figment/gate@1":
+        raise FigmentTrainError("gate.json must be the per-cell numeric figment/gate@1 document")
     gate_by_id: dict[str, dict[str, Any]] = {
-        row["image_id"]: row for row in _read_json(gate_path).get("rows", [])
+        row["image_id"]: row for row in gate_document.get("rows", [])
     }
     ungated = [image_id for image_id in image_ids if image_id not in gate_by_id]
     if ungated:
@@ -2262,11 +2790,56 @@ def apply_rulings(
             f"dataset approved only {len(approved_rows)} images; training requires at least 20"
         )
 
+    checkpoint = None
+    if checkpoint_step is not None:
+        if stage != "tester":
+            raise FigmentTrainError("--checkpoint-step is only valid for tester rulings")
+        checkpoint = _checkpoint_candidate(plan, root, checkpoint_step)
+        if checkpoint["tester_image_id"] not in {row["image_id"] for row in approved_rows}:
+            raise FigmentTrainError(
+                f"checkpoint step {checkpoint_step} was not explicitly kept by the tester rulings"
+            )
+
     rulings_out = grade_dir / "rulings.json"
     review_out = grade_dir / "review-manifest.json"
     approved_out = grade_dir / "approved-list.json"
-    if any(path.exists() for path in (rulings_out, review_out, approved_out)):
-        raise FigmentTrainError("refusing to overwrite previously applied rulings")
+    approval_out = grade_dir / "approval-lineage.json"
+    accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
+    if any(path.exists() for path in (rulings_out, review_out, approved_out, approval_out)):
+        if not (stage == "tester" and checkpoint is not None
+                and not accepted_checkpoint_out.exists()
+                and rulings_out.is_file() and _read_json(rulings_out) == normalized):
+            raise FigmentTrainError("refusing to overwrite previously applied rulings")
+        _load_current_approval(plan, root, stage)
+        approved_existing = _read_json(approved_out)
+        if checkpoint["tester_image_id"] not in {
+            row.get("image_id") for row in approved_existing.get("images") or []
+        }:
+            raise FigmentTrainError("selected checkpoint was not kept by the applied tester rulings")
+        accepted_document = {
+            "schema": _lineage_module().CHECKPOINT_SCHEMA,
+            "creator": creator_id,
+            "operator": {
+                "decided_by": normalized["decided_by"],
+                "decided_at": normalized["decided_at"],
+            },
+            "source_plan": str((root / "plan.json").resolve()),
+            "source_plan_sha256": _sha256(root / "plan.json"),
+            "approval_lineage": str(approval_out.resolve()),
+            "approval_lineage_sha256": _sha256(approval_out),
+            "training_inputs": _lineage_module().training_input_projection(plan["training"]),
+            "checkpoint": checkpoint,
+        }
+        _write_json(accepted_checkpoint_out, accepted_document)
+        _persist_checkpoint_selection(
+            plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
+        )
+        return {
+            "rulings": str(rulings_out), "review_manifest": str(review_out),
+            "approved_list": str(approved_out),
+            "approval_lineage": str(approval_out),
+            "accepted_checkpoint": str(accepted_checkpoint_out),
+        }
 
     if stage == "dataset":
         approved_dir = grade_dir / "approved"
@@ -2305,6 +2878,16 @@ def apply_rulings(
             dataset_dir.parent.mkdir(parents=True, exist_ok=True)
             shutil.move(str(temporary_approved), str(approved_dir))
             shutil.move(str(temporary_dataset), str(dataset_dir))
+            dataset_subject = _lineage_module().dataset_subject(dataset_dir)
+            _write_json(
+                dataset_dir / "dataset-approval.json",
+                _lineage_module().wrap_subject(
+                    _lineage_module().DATASET_APPROVAL_SCHEMA, dataset_subject,
+                    creator=creator_id, decision="verified",
+                    decided_by=normalized["decided_by"], decided_at=normalized["decided_at"],
+                    source_approval=str(approval_out.resolve()),
+                ),
+            )
     elif stage == "anchor":
         approved = approved_rows[0]
         image_id = approved["image_id"]
@@ -2346,11 +2929,110 @@ def apply_rulings(
     _write_json(rulings_out, normalized)
     _write_json(review_out, review)
     _write_json(approved_out, approved_document)
-    return {
+    settled_subject = _current_review_subject(plan, root, stage, grading)
+    approval_document = _lineage_module().wrap_subject(
+        _lineage_module().APPROVAL_SCHEMA,
+        settled_subject,
+        creator=creator_id, stage=stage, decision="verified",
+        decided_by=normalized["decided_by"], decided_at=normalized["decided_at"],
+        rulings_sha256=_sha256(rulings_out),
+        reviewed_subject=evaluation["subject"],
+        reviewed_subject_sha256=evaluation["subject_sha256"],
+        transition=(
+            {"kind": "anchor-promotion", "requires_replan": True,
+             "from_subject_sha256": evaluation["subject_sha256"],
+             "to_subject_sha256": _lineage_module().canonical_sha256(settled_subject)}
+            if stage == "anchor" else {"kind": "none", "requires_replan": False}
+        ),
+    )
+    _write_json(approval_out, approval_document)
+    result = {
         "rulings": str(rulings_out),
         "review_manifest": str(review_out),
         "approved_list": str(approved_out),
+        "approval_lineage": str(approval_out),
     }
+    if checkpoint is not None:
+        accepted_document = {
+            "schema": _lineage_module().CHECKPOINT_SCHEMA,
+            "creator": creator_id,
+            "operator": {
+                "decided_by": normalized["decided_by"],
+                "decided_at": normalized["decided_at"],
+            },
+            "source_plan": str((root / "plan.json").resolve()),
+            "source_plan_sha256": _sha256(root / "plan.json"),
+            "approval_lineage": str(approval_out.resolve()),
+            "approval_lineage_sha256": _sha256(approval_out),
+            "training_inputs": _lineage_module().training_input_projection(plan["training"]),
+            "checkpoint": checkpoint,
+        }
+        _write_json(accepted_checkpoint_out, accepted_document)
+        _persist_checkpoint_selection(
+            plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
+        )
+        result["accepted_checkpoint"] = str(accepted_checkpoint_out)
+    return result
+
+
+def _stage_accepted_checkpoint(
+    out: Path, persona: dict[str, Any], training: dict[str, Any],
+) -> str:
+    step = training.get("chosen_checkpoint_step")
+    digest = training.get("chosen_checkpoint_sha256")
+    approval_value = training.get("chosen_checkpoint_approval")
+    if step is None:
+        raise FigmentTrainError(
+            "gen requires a chosen checkpoint; apply tester rulings with --checkpoint-step"
+        )
+    if not isinstance(digest, str) or not isinstance(approval_value, str):
+        raise FigmentTrainError(
+            "legacy chosen_checkpoint_step has no checkpoint hash/provenance; re-apply the "
+            "tester rulings with --checkpoint-step"
+        )
+    approval_path = _resolve_config_path(approval_value)
+    if approval_path.name != "accepted-checkpoint.json" or approval_path.parent.name != "tester":
+        raise FigmentTrainError("chosen checkpoint approval must be a tester accepted-checkpoint.json")
+    expected_plan_path = approval_path.parents[2] / "plan.json"
+    accepted = _read_json(approval_path)
+    if (accepted.get("schema") != _lineage_module().CHECKPOINT_SCHEMA
+            or accepted.get("creator") != persona["id"]):
+        raise FigmentTrainError("chosen checkpoint approval is malformed or belongs to another creator")
+    source_plan_path = Path(accepted.get("source_plan", "")).resolve()
+    if source_plan_path != expected_plan_path.resolve():
+        raise FigmentTrainError("chosen checkpoint approval names a plan outside its own review root")
+    if _sha256(source_plan_path) != accepted.get("source_plan_sha256"):
+        raise FigmentTrainError("chosen checkpoint source plan changed after promotion")
+    source_plan, source_root = _load_plan(persona["id"], source_plan_path)
+    approval_lineage = approval_path.with_name("approval-lineage.json")
+    if (Path(accepted.get("approval_lineage", "")).resolve() != approval_lineage.resolve()
+            or _sha256(approval_lineage) != accepted.get("approval_lineage_sha256")):
+        raise FigmentTrainError("tester approval lineage changed after checkpoint promotion")
+    _load_current_approval(source_plan, source_root, "tester")
+    expected_inputs = _lineage_module().training_input_projection(training)
+    if (accepted.get("training_inputs") != expected_inputs
+            or accepted.get("training_inputs")
+            != _lineage_module().training_input_projection(source_plan["training"])):
+        raise FigmentTrainError("training inputs changed after checkpoint promotion")
+    candidate = _checkpoint_candidate(source_plan, source_root, step)
+    recorded = accepted.get("checkpoint")
+    if not isinstance(recorded, dict):
+        raise FigmentTrainError("chosen checkpoint approval has no checkpoint record")
+    for field in ("step", "filename", "tester_image_id", "path", "bytes", "sha256",
+                  "train_manifest", "train_manifest_sha256"):
+        if recorded.get(field) != candidate.get(field):
+            raise FigmentTrainError(f"chosen checkpoint provenance changed at field {field!r}")
+    if candidate["sha256"] != digest:
+        raise FigmentTrainError("chosen checkpoint bytes do not match training configuration")
+
+    upload_name = _checkpoint_name(training["trigger"], step)
+    staged_dir = out / "train" / "runs" / "accepted-checkpoint"
+    staged_dir.mkdir(parents=True, exist_ok=True)
+    staged = staged_dir / upload_name
+    shutil.copy2(candidate["path"], staged)
+    if _sha256(staged) != digest:
+        raise FigmentTrainError("staged checkpoint hash differs from the approved checkpoint")
+    return f"accepted-checkpoint/{upload_name}"
 
 
 def command_gate(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]:
@@ -2368,7 +3050,22 @@ def command_gate(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]
     document = _read_json(gate_path)
     if document.get("own_anchor") is None and not document.get("rows"):
         raise FigmentTrainError(f"gate.json at {gate_path} is empty or malformed")
-    return document
+    evaluation_path = root / "grade" / stage / "evaluation-inputs.json"
+    if not evaluation_path.is_file():
+        raise FigmentTrainError("cached gate has no freshness record; rebuild it with `grade`")
+    evaluation = _read_json(evaluation_path)
+    grading = _read_json(root / "grade" / stage / "grading-manifest.json")
+    try:
+        _lineage_module().assert_current(
+            evaluation, _current_review_subject(plan, root, stage, grading),
+            label=f"cached {stage} numeric gate",
+        )
+    except ValueError as exc:
+        raise FigmentTrainError(str(exc)) from exc
+    result = deepcopy(document)
+    result["freshness"] = "cached-current"
+    result["recalculated"] = False
+    return result
 
 
 def _format_gate_table(document: dict[str, Any]) -> str:
@@ -2439,6 +3136,10 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
     apply.add_argument("--plan", type=Path, default=Path("plan.json"))
     apply.add_argument("--rulings", required=True, type=Path)
+    apply.add_argument(
+        "--checkpoint-step", type=int, default=None,
+        help="tester only: promote this explicitly kept checkpoint candidate",
+    )
 
     gate = commands.add_parser("gate", help="print the fail-closed gate's pass/fail table")
     gate.add_argument("--creator", required=True)
@@ -2458,6 +3159,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
     )
+    accept_dataset = commands.add_parser(
+        "accept-dataset",
+        help="record explicit operator acceptance of an existing train-first dataset",
+    )
+    accept_dataset.add_argument("--creator", required=True)
+    accept_dataset.add_argument("--dataset-dir", required=True, type=Path)
+    accept_dataset.add_argument("--decided-by", required=True)
+    accept_dataset.add_argument("--decided-at", required=True)
     return parser
 
 
@@ -2494,6 +3203,7 @@ def main(argv: list[str] | None = None) -> int:
             print(f"rulings template: {result['rulings_template']}")
         elif args.command == "gate":
             document = command_gate(args.creator, args.stage, args.plan)
+            print("cached evaluation; freshness verified against current inputs (no recalculation)")
             print(_format_gate_table(document))
         elif args.command == "train-first":
             result = build_train_first_plan(
@@ -2502,8 +3212,17 @@ def main(argv: list[str] | None = None) -> int:
             print(f"wrote {args.out.resolve() / 'plan.json'} "
                   f"({len(result['stages'])} stage(s))")
             _print_train_budget(result)
+        elif args.command == "accept-dataset":
+            result = accept_train_first_dataset(
+                args.creator, args.dataset_dir,
+                decided_by=args.decided_by, decided_at=args.decided_at,
+            )
+            print(f"dataset accepted: {Path(args.dataset_dir).resolve() / 'dataset-approval.json'}")
         else:
-            result = apply_rulings(args.creator, args.stage, args.plan, args.rulings)
+            result = apply_rulings(
+                args.creator, args.stage, args.plan, args.rulings,
+                checkpoint_step=args.checkpoint_step,
+            )
             print(f"applied rulings: {result['rulings']}")
             print(f"approved list: {result['approved_list']}")
     except (FigmentTrainError, OSError) as exc:

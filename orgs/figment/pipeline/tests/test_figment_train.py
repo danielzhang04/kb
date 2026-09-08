@@ -10,6 +10,7 @@ import sys
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 
 ROOT = Path(__file__).resolve().parents[4]
@@ -221,7 +222,7 @@ def _synthetic_persona(
     anchors = target / "anchors"
     anchors.mkdir(parents=True)
     for name in anchor_names:
-        (anchors / name).write_bytes(("image-" + name).encode())
+        Image.new("RGB", (8, 8), color=(128, 96, 64)).save(anchors / name)
 
     identity_spec = target / "identity.md"
     register_spec = target / "register.md"
@@ -606,6 +607,7 @@ def test_dataset_grading_template_round_trip_builds_only_kept_training_images(co
             # is about the dataset-build round-trip, not the gate, hence the override.
             "gate_override": "fixture: no real face in this synthetic image",
         })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("filled.json")
     filled.write_text(json.dumps(template, indent=2) + "\n", encoding="utf-8")
 
@@ -645,6 +647,7 @@ def test_apply_rulings_fails_closed_when_a_kept_cell_fails_safety(command, tmp_p
             "gate_override": "fixture: no real face in this synthetic image",
         })
     template["rulings"][0]["adult_read"] = "ambiguous"
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("unsafe.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
     with pytest.raises(command.FigmentTrainError, match="safety"):
@@ -701,6 +704,7 @@ def test_apply_rulings_refuses_a_keep_on_a_failed_gate_cell_without_override(com
             "hands": "pass", "lighting": "pass", "adult_read": "pass",
             "garment_integrity": "pass", "real_person_resemblance": "clear",
         })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("no-override.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
     with pytest.raises(command.FigmentTrainError, match="gate"):
@@ -717,6 +721,7 @@ def test_apply_rulings_allows_a_keep_on_a_failed_gate_cell_with_override(command
             "garment_integrity": "pass", "real_person_resemblance": "clear",
             "gate_override": "operator manually confirmed identity from the full-res original",
         })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("override.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
     result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
@@ -739,6 +744,7 @@ def test_apply_rulings_refuses_when_gate_json_is_missing(command, tmp_path):
             "garment_integrity": "pass", "real_person_resemblance": "clear",
             "gate_override": "would-be override, should never be reached",
         })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("missing-gate.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
     with pytest.raises(command.FigmentTrainError, match="gate.json"):
@@ -762,9 +768,10 @@ def test_apply_rulings_refuses_when_gate_json_does_not_cover_every_graded_cell(c
             "garment_integrity": "pass", "real_person_resemblance": "clear",
             "gate_override": "would-be override, should never be reached",
         })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-08T00:00:00Z"})
     filled = Path(grade["rulings_template"]).with_name("partial-coverage.json")
     filled.write_text(json.dumps(template), encoding="utf-8")
-    with pytest.raises(command.FigmentTrainError, match="does not cover"):
+    with pytest.raises(command.FigmentTrainError, match="stale|does not cover"):
         command.apply_rulings("creator-002", "dataset", plan_file, filled)
 
 
@@ -967,7 +974,7 @@ def _build_grade_with_fake_stage1_and_judge(
 # ---------------------------------------------------------------------------
 
 
-def _prebuilt_dataset_dir(path: Path, *, count: int = 2) -> Path:
+def _prebuilt_dataset_dir(path: Path, *, command, count: int = 20) -> Path:
     """A dataset directory shaped exactly like build_training_set.py's output
     contract -- NN.png/.txt pairs, dataset_manifest.json, _dataset.ready written
     last -- WITHOUT training.json, since build_train_first_plan renders and writes
@@ -976,13 +983,21 @@ def _prebuilt_dataset_dir(path: Path, *, count: int = 2) -> Path:
     files = []
     for index in range(1, count + 1):
         stem = f"{index:02d}"
-        (path / f"{stem}.png").write_bytes(PNG_1X1)
+        image_path = path / f"{stem}.png"
+        image_path.write_bytes(PNG_1X1)
         (path / f"{stem}.txt").write_text("creator001krea2 woman\n", encoding="utf-8")
-        files.append({"image": f"{stem}.png", "caption_file": f"{stem}.txt", "sha256": "x"})
+        files.append({
+            "image": f"{stem}.png", "caption_file": f"{stem}.txt",
+            "sha256": hashlib.sha256(image_path.read_bytes()).hexdigest(),
+        })
     (path / "dataset_manifest.json").write_text(
         json.dumps({"count": count, "caption_mode": "provided", "files": files}), encoding="utf-8",
     )
     (path / "_dataset.ready").write_text("", encoding="utf-8")
+    command.accept_train_first_dataset(
+        "creator-002", path, decided_by="operator-fixture",
+        decided_at="2026-09-08T00:00:00Z",
+    )
     return path
 
 
@@ -991,7 +1006,7 @@ def test_build_train_first_plan_emits_train_and_tester_manifests_that_dry_run(
 ):
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)  # steps=600, save_every=200 -> ladder [200, 400] + final
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-plan"
 
     plan = command.build_train_first_plan(
@@ -1051,7 +1066,7 @@ def test_build_train_first_plan_honors_dop_from_the_persona_training_config(
     persona_document["training"]["dop_multiplier"] = 2.0
     persona_document["training"]["dop_class"] = "woman"
     persona_path.write_text(json.dumps(persona_document, indent=2), encoding="utf-8")
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-dop"
 
     command.build_train_first_plan(
@@ -1102,7 +1117,7 @@ def test_train_first_cli_subcommand_is_registered_and_parses(command):
 def test_build_train_first_plan_refuses_to_overwrite_an_existing_plan(command, tmp_path):
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-plan"
     command.build_train_first_plan(
         "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
@@ -1128,7 +1143,7 @@ def test_build_train_first_plan_shares_the_normal_plan_schema_plus_documented_ex
 ):
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
 
     normal_plan = command.build_plan(
         "creator-002", "all", tmp_path / "normal-plan",
@@ -1140,9 +1155,9 @@ def test_build_train_first_plan_shares_the_normal_plan_schema_plus_documented_ex
     )
 
     assert train_first_plan["schema"] == normal_plan["schema"] == "figment/train-plan@1"
-    # "variant" is the ONLY top-level key a train-first plan carries that a normal one
-    # doesn't -- everything else (assets, configs, ledger_dir, ...) is the same shape.
-    assert set(train_first_plan) - set(normal_plan) == {"variant"}
+    # The variant and its accepted dataset lineage are the only extra top-level facts;
+    # everything else (assets, configs, ledger_dir, ...) has the normal plan shape.
+    assert set(train_first_plan) - set(normal_plan) == {"variant", "dataset_approval"}
     assert train_first_plan["variant"] == "train-first"
     assert set(normal_plan) - set(train_first_plan) == set()
 
@@ -1174,7 +1189,7 @@ def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
     here) and records the order the two stages actually ran in."""
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)  # steps=600, save_every=200 -> 2 checkpoints + final
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-run"
 
     ledger_dir = tmp_path / "ledger"
@@ -1212,6 +1227,8 @@ def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
         }
         expected_artifacts = manifest.get("artifacts") or []
         if expected_artifacts:
+            for row in expected_artifacts:
+                (run_out / row["local"]).write_bytes(b"x" * 12)
             run_doc["artifacts"] = [
                 {"remote": row["remote"], "bytes": 12} for row in expected_artifacts
             ]
@@ -1243,7 +1260,7 @@ def test_train_first_plan_grade_stage_tester_works(command, tmp_path):
     `out`-relative anchor files the same way a normal plan's is."""
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-grade"
 
     plan = command.build_train_first_plan(
@@ -1393,7 +1410,7 @@ def test_build_train_first_plan_train_run_entry_carries_budget(command, tmp_path
     persona_document["training"]["steps"] = 1000
     persona_document["training"]["save_every"] = 250
     persona_path.write_text(json.dumps(persona_document, indent=2), encoding="utf-8")
-    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset")
+    dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
     out = tmp_path / "train-first-budget"
 
     plan = command.build_train_first_plan(
