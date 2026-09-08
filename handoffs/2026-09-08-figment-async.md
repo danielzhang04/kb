@@ -363,3 +363,31 @@ orimageexport; oneprompt/fixedseed/jobdeadline,alwaysownPIDteardown. NOTSTARTED.
 Bothactualexportquestionsstillpending: oldLoRAtoRunPod andoriginalg01toGoogle. No retry,
 alternateexport,RunPod,pendingreservationornewprovidercharge. Arc37.800385/daily2.110134.
 Keepawakeverified08:52Easternowner16580/supervisor19564alive. Continueasyncpast8AM.
+
+
+## 09:30 Eastern: accepted local baseline v1 failed before dispatch
+
+Accepted local runner `f03bae3a` was executed by root in the fresh private root
+`C:/Users/danie/kb/_private/figment-local-comfy-baseline-20260908-v1`. This is a
+local-only baseline attempt, not a provider run. Parent/independent focused suites
+each passed 15; the first parent pytest invocation hit the default-temp denial and the
+owned-base-temp rerun passed.
+
+The run **failed before listener readiness and before any prompt POST**. Child PID
+33972 exited 1 and the journal records verified teardown; there is no dispatch marker,
+output image, provider request, or local completion receipt. Frozen inputs remain:
+manifest SHA-256 `b1f7ae4efc56f4137f073f7511120847800a94b63c696b60dbdbcbc7aa0048dc`,
+journal `d0d7c2f7977bb02c2dff1fd3d2168df8b0b8b9ab140a6171eccca101ea9494cf`, and
+capped startup log `1cbb18d4e36df1bce5aa002a275aac7008e667a4192f1bb3084469e5740adcae`.
+The log attributes the startup error to `torch._dynamo` cache initialization calling
+`getpass.getuser()` with no username in the isolated environment. Protocol is making a
+narrow owned `TORCHINDUCTOR_CACHE_DIR` repair; no retry has begun. Local provider cost
+is known absent for this attempt; native runtime billing telemetry is otherwise unknown,
+not zero.
+
+Accepted experimental compiler `f6b5096d` passed 10 parent and 10 independent checks; canonical-seed adequacy audit `83c00054` records that g01 is retained. Gallery
+polish `c264d74f` passed 13 parent and 13 independent UI/typecheck checks plus desktop
+and mobile v3 visual review. Both v3 fixtures load 17 images/four generated cards with
+no overflow. Keep recorded RunPod arc $37.800385/$50 and daily $2.110134 unchanged; no
+pods or numeric holds. Google exact-g01 export and existing-LoRA export questions stay
+pending. Keep-awake owner 16580 and supervisor 19564 were alive 09:26 Eastern.

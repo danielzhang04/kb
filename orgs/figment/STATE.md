@@ -1,10 +1,10 @@
 # Figment current state
 
-Updated 2026-09-08 13:13 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 13:33 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `b138e9e7`, is pushed to draft
-PR179, stacked on foundation PR178. The research book, authenticated studio, actual
+Studio branch `codex/figment-studio-20260908`, head `58a6d71c`, is accepted but not
+yet pushed to draft PR179, stacked on foundation PR178. Local runner `f03bae3a` is pushed. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
 
@@ -31,21 +31,31 @@ is $2.110134. The studio runner retains its stricter $10 daily configuration (th
 checkout currently says $30). No outstanding numeric reservation. Native-agent and
 built-in image-generation billing is unknown where the runtime does not expose it.
 
-Current work: the Figment-only Gemini comparison adapter was accepted in 56226790
-after 20 parent and 20 independent tests. Its exact source/prompt/metadata bindings,
-one-attempt reservation marker, bounded decoding and sanitized receipts are reviewed.
-The actual generation command was rejected by automatic approval review BEFORE
-process start: exact g01-to-Google export permission is required. A second explicit
-async approval question is pending. No image was sent or provider cost incurred; the
-$4.60 reservation was released after verifying no dispatch marker/output directory.
-The source request/admission and refusal audit remain preserved. No retry or alternate
-export while pending. In parallel, the generated-input gallery is accepted in7f158b08 after independent/parent124 checks,
-TypeScript checks and a real17-image fixture review. Experimental-training compiler
-repairs are undergoing fresh independent review. An existing local ComfyUI CUDA
-installation and selected model hashes have been verified; a bounded loopback-only
-launcher is being built, without starting it. Canonical-seed adequacy is under review.
+Current work: accepted experimental-training compiler `f6b5096d` passed 10 parent and
+10 independent checks while retaining the established curation/acceptance boundary.
+Canonical-seed adequacy audit `83c00054` records g01 retained. Gallery polish
+`c264d74f` passed 13 parent UI/typecheck checks and 13 independent UI/typecheck checks,
+including desktop and mobile v3 fixture review: 17 images loaded, four generated cards,
+and no overflow. The v3 desktop screenshot SHA-256 is
+`78c3595d3bc39c16bbb841e44219f70c9b62ab6e9b8b87468f186dbceb5dd892`; mobile is
+`9052638f60dbb48aeea6389245e2f06ea8fa44ace315cc72193d49c912d2f73f`.
 
-The exact existing-LoRA upload still awaits the user's answer after automatic
-approval review rejected it. No retry or alternate export. Other work continues.
-Keep-awake owner 16580 and supervisor 19564 were alive at 08:52 Eastern, with the
-lease armed. No Instagram/account work, production promotion, merge or deployment.
+The accepted local Comfy runner `f03bae3a` reached a bounded baseline v1 attempt under
+`C:/Users/danie/kb/_private/figment-local-comfy-baseline-20260908-v1`, then failed
+before listener readiness or a prompt POST. Its child PID 33972 exited 1; no dispatch
+marker or output image exists. `manifest.json` SHA-256 is
+`b1f7ae4efc56f4137f073f7511120847800a94b63c696b60dbdbcbc7aa0048dc`; the journal
+records verified teardown. The capped startup log attributes the failure to
+`torch._dynamo` cache initialization with no username in the isolated environment.
+Protocol is repairing only an owned `TORCHINDUCTOR_CACHE_DIR`; no retry has started.
+This local failure creates no provider charge, but native-runtime billing remains
+unknown rather than zero. Parent and independent focused launcher suites each passed
+15 after the runner review; the parent's first default-temp pytest attempt was denied,
+then the owned-base-temp rerun passed.
+
+The Figment-only Gemini comparison adapter remains accepted in `56226790`, but its
+actual Google export is blocked pending the exact user question; no retry or alternate
+export is allowed. The existing LoRA-export question is also pending. There are no
+active pods. Recorded compute remains $37.800385 of $50 and today's recorded compute
+remains $2.110134. Keep-awake owner 16580 and supervisor 19564 were alive at 09:26
+Eastern. No Instagram/account work, production promotion, merge, or deployment.
