@@ -9,6 +9,7 @@ different schema before a stage can run.
 from __future__ import annotations
 
 import argparse
+import base64
 import hashlib
 import importlib.util
 import json
@@ -324,6 +325,128 @@ def _canonical(value: dict[str, Any]) -> bytes:
     return json.dumps(copy, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
 
 
+def _review_snapshot(review: dict[str, Any], raw: bytes) -> dict[str, str]:
+    """Retain exact bounded review bytes for a later execution revalidation.
+
+    ``frozen_inputs.review`` remains useful parsed evidence, but JSON serialization of a
+    plan cannot reconstruct an arbitrary source document's whitespace or line endings.
+    The base64 string is therefore deliberately an evidence snapshot, not a second
+    review authority.
+    """
+    if len(raw) < 1 or len(raw) > MAX_REVIEW_BYTES:
+        raise ExperimentalTrainError("experimental review exceeds its byte limit")
+    try:
+        parsed = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:  # defensive; caller parsed it.
+        raise ExperimentalTrainError("experimental review snapshot is invalid") from exc
+    if parsed != review:
+        raise ExperimentalTrainError("experimental review changed while it was captured")
+    return {
+        "sha256": hashlib.sha256(raw).hexdigest(),
+        "base64": base64.b64encode(raw).decode("ascii"),
+    }
+
+
+def _decode_review_snapshot(plan: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
+    """Recover exact review bytes retained by new executable experimental plans.
+
+    Older ``@1`` plans stay valid planning records.  They are intentionally refused
+    by this helper because their parsed review plus a raw hash cannot prove which raw
+    document produced the hash.
+    """
+    frozen = plan.get("frozen_inputs")
+    inputs = plan.get("inputs")
+    if not isinstance(frozen, dict) or not isinstance(inputs, dict):
+        raise ExperimentalTrainError("experimental plan has malformed frozen inputs")
+    snapshot = frozen.get("review_snapshot")
+    if not isinstance(snapshot, dict) or set(snapshot) != {"sha256", "base64"}:
+        raise ExperimentalTrainError("experimental plan lacks an exact review snapshot for execution")
+    digest, encoded = snapshot.get("sha256"), snapshot.get("base64")
+    if (not isinstance(digest, str) or not HEX.fullmatch(digest)
+            or not isinstance(encoded, str) or len(encoded) > (MAX_REVIEW_BYTES * 4 // 3 + 8)):
+        raise ExperimentalTrainError("experimental review snapshot is malformed")
+    try:
+        raw = base64.b64decode(encoded.encode("ascii"), validate=True)
+        review = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError, json.JSONDecodeError) as exc:
+        raise ExperimentalTrainError("experimental review snapshot cannot be decoded") from exc
+    if (len(raw) < 1 or len(raw) > MAX_REVIEW_BYTES
+            or hashlib.sha256(raw).hexdigest() != digest
+            or inputs.get("review_sha256") != digest):
+        raise ExperimentalTrainError("experimental review snapshot hash disagrees with the plan")
+    _check_json(review, "experimental review snapshot")
+    if not isinstance(review, dict) or review != frozen.get("review"):
+        raise ExperimentalTrainError("experimental review snapshot disagrees with parsed frozen review")
+    return review, raw
+
+
+def revalidate_experimental_plan(
+    plan: dict[str, Any], *, personas_root: Path, train_module: Any | None = None,
+) -> dict[str, Any]:
+    """Revalidate an executable plan against current retained local evidence.
+
+    This never starts a provider, stages files, or turns an agent observation into a
+    production acceptance.  It is shared by the future executor and deliberately
+    requires the raw review snapshot added after the initial planning-only ``@1``
+    records.
+    """
+    if not isinstance(plan, dict) or plan.get("schema") != SCHEMA:
+        raise ExperimentalTrainError("unsupported experimental plan schema")
+    if plan.get("purpose") != PURPOSE or plan.get("not_promotable") is not True:
+        raise ExperimentalTrainError("experimental plan is not explicitly non-promotable")
+    if plan.get("frozen_sha256") != hashlib.sha256(_canonical(plan)).hexdigest():
+        raise ExperimentalTrainError("experimental plan frozen hash is invalid")
+    execution = plan.get("execution")
+    if execution != {
+        "provider_start_allowed": False,
+        "checkpoint_acceptance_allowed": False,
+        "qa_stamp_allowed": False,
+    }:
+        raise ExperimentalTrainError("experimental plan execution flags are invalid")
+    creator = plan.get("creator")
+    inputs = plan.get("inputs")
+    frozen = plan.get("frozen_inputs")
+    recipe_recorded = plan.get("training_recipe")
+    if (creator != "creator-001" or not isinstance(inputs, dict)
+            or not isinstance(frozen, dict) or not isinstance(recipe_recorded, dict)
+            or not isinstance(inputs.get("dataset_locator"), str)):
+        raise ExperimentalTrainError("experimental plan has malformed execution inputs")
+    review, review_raw = _decode_review_snapshot(plan)
+    dataset_dir = Path(inputs["dataset_locator"])
+    lineage = _lineage_module()
+    subject, curation, curation_raw = _load_current_subject(dataset_dir, lineage)
+    _validate_review(review, creator=creator, subject=subject, curation=curation, lineage=lineage)
+    recipe = _recipe(creator, Path(personas_root), train_module or _figment_train_module())
+    if recipe.get("persona_id") != creator:
+        raise ExperimentalTrainError("pinned training recipe belongs to another creator")
+    _validate_creator_seed_and_trigger(
+        creator, subject, curation, personas_root=Path(personas_root), recipe=recipe,
+    )
+    expected_inputs = {
+        "dataset_subject_sha256": _canonical_sha256(subject, lineage),
+        "review_sha256": hashlib.sha256(review_raw).hexdigest(),
+        "curation_record_sha256": hashlib.sha256(curation_raw).hexdigest(),
+        "canonical_seed": subject["curation"]["canonical_seed"],
+        "train_row_count": subject["count"],
+    }
+    if (any(inputs.get(key) != value for key, value in expected_inputs.items())
+            or frozen.get("review") != review
+            or frozen.get("dataset_subject") != subject
+            or frozen.get("curation") != curation
+            or recipe_recorded != recipe):
+        raise ExperimentalTrainError("experimental plan inputs changed after compilation")
+    return {
+        "creator": creator,
+        "dataset_dir": dataset_dir,
+        "subject": subject,
+        "curation": curation,
+        "review": review,
+        "review_raw": review_raw,
+        "recipe": recipe,
+        "plan_sha256": plan["frozen_sha256"],
+    }
+
+
 def _write_fresh(path: Path, value: dict[str, Any]) -> None:
     data = (json.dumps(value, sort_keys=True, indent=2, ensure_ascii=True) + "\n").encode("utf-8")
     path.parent.mkdir(parents=True, exist_ok=False)
@@ -383,7 +506,12 @@ def build_experimental_training_plan(
             "canonical_seed": subject["curation"]["canonical_seed"],
             "train_row_count": subject["count"],
         },
-        "frozen_inputs": {"review": review, "dataset_subject": subject, "curation": curation},
+        "frozen_inputs": {
+            "review": review,
+            "review_snapshot": _review_snapshot(review, review_raw),
+            "dataset_subject": subject,
+            "curation": curation,
+        },
         "training_recipe": recipe,
     }
     plan["frozen_sha256"] = hashlib.sha256(_canonical(plan)).hexdigest()

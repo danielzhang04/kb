@@ -5,6 +5,7 @@ import hashlib
 import importlib.util
 import json
 import sys
+import base64
 from pathlib import Path
 
 import pytest
@@ -159,10 +160,47 @@ def test_builds_private_frozen_nonpromotable_plan_and_production_loader_rejects(
     assert plan["inputs"]["review_sha256"] == sha(review)
     assert plan["inputs"]["revalidate_before_execution"] is True
     assert plan["frozen_inputs"]["review"]["schema"] == experimental.REVIEW_SCHEMA
+    snapshot = plan["frozen_inputs"]["review_snapshot"]
+    assert snapshot["sha256"] == sha(review)
+    assert base64.b64decode(snapshot["base64"], validate=True) == review.read_bytes()
     assert plan["frozen_inputs"]["dataset_subject"]["curation"]["canonical_seed"]["path"] == "anchors/g01.jpg"
     assert plan["frozen_sha256"] == hashlib.sha256(experimental._canonical(plan)).hexdigest()
     with pytest.raises(production.FigmentTrainError, match="unsupported schema"):
         production._load_plan("creator-001", path)
+
+
+def test_exact_review_snapshot_revalidates_and_legacy_plan_remains_planning_only(tmp_path):
+    dataset, personas = make_dataset(tmp_path)
+    review = make_review(dataset, tmp_path / "review.json")
+    plan, _private = build(tmp_path, dataset, personas, review)
+    context = experimental.revalidate_experimental_plan(
+        plan, personas_root=personas, train_module=Recipe(tmp_path),
+    )
+    assert context["review_raw"] == review.read_bytes()
+
+    legacy = json.loads(json.dumps(plan))
+    legacy["frozen_inputs"].pop("review_snapshot")
+    legacy["frozen_sha256"] = hashlib.sha256(experimental._canonical(legacy)).hexdigest()
+    with pytest.raises(experimental.ExperimentalTrainError, match="exact review snapshot"):
+        experimental.revalidate_experimental_plan(
+            legacy, personas_root=personas, train_module=Recipe(tmp_path),
+        )
+
+    malformed = json.loads(json.dumps(plan))
+    malformed["frozen_inputs"]["review_snapshot"]["base64"] = "AAAA"
+    malformed["frozen_sha256"] = hashlib.sha256(experimental._canonical(malformed)).hexdigest()
+    with pytest.raises(experimental.ExperimentalTrainError, match="snapshot"):
+        experimental.revalidate_experimental_plan(
+            malformed, personas_root=personas, train_module=Recipe(tmp_path),
+        )
+
+    disagreeing = json.loads(json.dumps(plan))
+    disagreeing["frozen_inputs"]["review"]["creator"] = "other"
+    disagreeing["frozen_sha256"] = hashlib.sha256(experimental._canonical(disagreeing)).hexdigest()
+    with pytest.raises(experimental.ExperimentalTrainError, match="disagrees with parsed"):
+        experimental.revalidate_experimental_plan(
+            disagreeing, personas_root=personas, train_module=Recipe(tmp_path),
+        )
 
 
 @pytest.mark.parametrize("state,adult,message", [
