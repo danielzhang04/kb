@@ -19,6 +19,15 @@ The legacy raw-only identity command has `torch`, `torchvision`, `facenet_pytorc
 
 The accepted curation path now provides a train-first-compatible draft boundary without selecting data or running training. It materializes only retained snapshots, validates the finished draft before its atomic publication, and requires the existing explicit dataset acceptance before train-first staging. Staging carries the curation record and exact snapshot inventory beside the numbered images and captions, so a changed retained source, provenance, caption, or mapping makes a later acceptance stale. Final acceptance verification reported 37 curation/freshness tests and nine train-first tests after the boundary repairs. The earlier 109-test Python curation, builder, lineage and train-first regression predates those final curation repairs; both results establish integrity and refusal behavior, not image quality or an eligible dataset.
 
+The accepted one-observation local planner now has completed CPU and tokenizer
+readiness receipts. The CPU parser resolved the frozen one-image staged dataset,
+caption, and 896×512 effective bucket under a no-device CUDA mask; the separate
+local-only tokenizer load resolved both SDXL CLIP tokenizers to 19 tokens for
+the fixed availability-probe `CAPTION_PROBE`, not the 330-byte training-caption
+content. The [local training preflight audit](../../../../docs/figment/2026-09-08-local-training-preflight-audit.md)
+records hashes and the preserved V1/V2 failures. These are readiness checks
+only: no GPU fit, model-weight load, checkpoint, sample, or export occurred.
+
 The separately accepted `f6b5096d` compiler and `af7b07bc` executor keep the
 same lineage boundary outside production `load_plan`. The executor defaults to
 offline preparation; a harness dry-run uses the existing manifest contract,
@@ -47,7 +56,8 @@ The [IP-Adapter best-practice note](https://github.com/tencent-ailab/IP-Adapter)
 also says its default CLIP image processor center-crops non-square images and
 describes a scale tradeoff between diversity and prompt consistency. That makes
 the present non-square `g01` conditioning and any crop protocol part of the
-experimental condition, not additional identity evidence. This option is not
-implemented and does not relax the accepted 20-row compiler or executor.
+experimental condition, not additional identity evidence. The one-observation
+planner and its CPU/tokenizer checks are implemented, but the GPU fit diagnostic
+remains unrun. This does not relax the accepted 20-row compiler or executor.
 
-For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The four actual generated candidates are retained as failed or unreviewed experiment evidence only; no current training output follows from the compiler or its positive synthetic fixtures.
+For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The historical four original generated candidates are retained as failed or unreviewed experiment evidence only. The current gallery contains six candidates after two rejected local-Comfy diagnostics; none is eligible training data, and no current training output follows from the compiler or its positive synthetic fixtures.
