@@ -9,6 +9,7 @@ import {
 } from './claudeLaunchPolicy.ts';
 import { toolCapArgv } from './workflowProfiles.ts';
 import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
+import { createAgentSessionChainStore } from './agentSessionChains.ts';
 import { mapWindowsLaunchRecipe } from '../pty/launcherProfiles.ts';
 import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
 import { createSessionPersistence, createTranscriptRetention } from '../pty/sessionPersistence.ts';
@@ -126,6 +127,7 @@ describe('the end-to-end wire: proposal profile -> resolved policy -> recipe tab
     roots.push(stateRoot);
     const adapter = createAttemptSessionAdapter({
       host,
+      messageClaims: createAgentSessionChainStore(stateRoot),
       sessionRecords: createSessionRecordRegistry({
         host,
         hostKind: 'desktop',
