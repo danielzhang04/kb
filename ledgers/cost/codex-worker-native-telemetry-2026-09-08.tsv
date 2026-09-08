@@ -53,3 +53,10 @@ native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt
 native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-frontend-build-and-independent-review	not-exposed
 native-runtime billing/model telemetry unavailable; no new GPU		not-exposed		gpt-5.6-terra	not-exposed	figment-single-seed-dataset-audit-and-experiment-plan	not-exposed
 built-in imagegen billing telemetry unavailable; distinct from RunPod cost		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-frontal-study	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-final-fresh-review-and-explicit-truncation-fix	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-offline-planner-build-and-adversarial-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-planner-remediation	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-video-small-model-adoption-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-combined-manifest-build-and-independent-admission	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-hub-preview-and-independent-input-review	not-exposed
+built-in imagegen billing telemetry unavailable; GPU ledger separate		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-wardrobe-only-study	not-exposed
