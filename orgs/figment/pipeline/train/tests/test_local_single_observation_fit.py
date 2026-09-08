@@ -81,6 +81,13 @@ def test_marker_replay_and_fresh_output(tmp_path):
  with pytest.raises(fit.FitProbeError):fit._fresh(p,"figment-local-lora-fit-one")
  marker=p/"marker";fit._exclusive(marker,b"one")
  with pytest.raises(fit.FitProbeError):fit._exclusive(marker,b"two")
+def test_admission_binds_extracted_runtime_hash(tmp_path):
+ private=tmp_path/"private";private.mkdir();hashes=fit._hashes();prepared={"inventory_sha256":"d"*64}
+ value={"schema":fit.ADMISSION_SCHEMA,"admission_id":"runtime-bind","plan_sha256":"a"*64,"cpu_receipt_sha256":"b"*64,"tokenizer_inventory_sha256":prepared["inventory_sha256"],"tokenizer_prepared_receipt_sha256":"c"*64,"tokenizer_probe_sha256":"e"*64,"allow_gpu_fit_probe":True,"max_train_steps":10,"max_wall_seconds":fit.MAX_WALL_SECONDS,"gpu_device":0,"max_final_checkpoint_bytes":fit.MAX_FINAL_BYTES,"not_promotable":True,**hashes}
+ value["frozen_sha256"]=fit._sha(json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=True).encode());path=private/"admission.json";path.write_text(json.dumps(value),encoding="utf-8")
+ assert fit._admission(path,private,"a"*64,"b"*64,prepared,"c"*64,"e"*64,hashes)["runtime_sha256"]==hashes["runtime_sha256"]
+ value["runtime_sha256"]="f"*64;value["frozen_sha256"]=fit._sha(json.dumps({k:v for k,v in value.items() if k!="frozen_sha256"},sort_keys=True,separators=(",",":"),ensure_ascii=True).encode());path.write_text(json.dumps(value),encoding="utf-8")
+ with pytest.raises(fit.FitProbeError,match="current code"):fit._admission(path,private,"a"*64,"b"*64,prepared,"c"*64,"e"*64,hashes)
 def test_pump_reader_error_and_truncation(tmp_path):
  class Bad:
   def read(self,_):raise OSError()

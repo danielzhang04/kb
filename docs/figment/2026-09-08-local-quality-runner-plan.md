@@ -2,11 +2,11 @@
 
 ## Purpose and boundary
 
-This is a design for a later, explicitly admitted local quality diagnostic
-described in [the one-source experiment](2026-09-08-one-source-quality-experiment.md).
-It does not implement a runner, alter the ten-step fit probe, authorize a GPU
-run, generate samples, accept a checkpoint, export an artifact, or promote a
-LoRA.
+This design is implemented as a later, explicitly admitted local quality
+diagnostic described in [the one-source experiment](2026-09-08-one-source-quality-experiment.md).
+Its executor still requires a fresh root parent admission and `--execute` before
+it can start a GPU process. It does not generate samples, accept a checkpoint,
+export an artifact, or promote a LoRA.
 
 The admitted V2 fit probe is useful execution evidence: it completed ten steps
 in 79.234 seconds, exited zero, recorded verified teardown, and wrote one
@@ -120,14 +120,14 @@ fixed private root again prevents reuse with a different output directory.
 
 ## Minimal implementation map
 
-Do not copy the existing fit executor into a second 400-line launcher. Extract
-only reviewed, non-policy helpers from `local_single_observation_fit.py` into a
-small shared internal module: fixed-root/reparse checks, bounded reads and
-stream hashes, exact private staging, tokenizer copy verification, admission
-marker creation, process environment construction, pipe capture, owned-process
-tracking through the accepted `local_comfy_input.py` helper, and safetensors
-header validation. The shared module must take a declarative run policy; it
-must not default an unspecified policy to the ten-step route.
+`local_fit_runtime.py` holds the reviewed, non-policy runtime: fixed-root and
+reparse checks, bounded reads and stream hashes, exact private staging, pipe
+capture, owned-process tracking through the accepted `local_comfy_input.py`
+helper, log/output monitoring, and safetensors header validation. Its required
+`RunPolicy` names every runtime limit, marker namespace, and permitted artifact;
+it has no implicit ten-step policy. `local_single_observation_fit.py` supplies
+its unchanged one-checkpoint policy, while `local_quality_fit.py` supplies the
+closed eleven-artifact quality policy.
 
 Keep two separate policy validators:
 
@@ -138,9 +138,9 @@ Keep two separate policy validators:
 | CPU receipt | current plan only | fresh receipt for each changed caption/recipe branch |
 | evaluation | none in trainer | post-run review only, separately authorized |
 
-This preserves the existing ten-step route byte-for-byte apart from any future
-mechanical import of already-tested shared helpers. The quality runner must
-never widen a ten-step admission, accept its checkpoint, or use its dispatch
+The extraction preserves the ten-step validator and its one-checkpoint policy;
+its focused regression suite covers the imported lifecycle. The quality runner
+never widens a ten-step admission, accepts its checkpoint, or uses its dispatch
 marker namespace.
 
 ## Runtime containment
@@ -153,10 +153,25 @@ retained wrapper handle and the accepted Windows identity/descendant helper;
 unverified cleanup fails the run and never kills a foreign PID.
 
 The 20-minute deadline includes model load, cache creation, all 100 steps, and
-eleven saves. Stream logs, TensorBoard files, and output inventory are bounded
-while live. Timeout, logging overflow, nonzero exit, identity ambiguity,
-missing checkpoint, metadata mismatch, or unverified teardown produces a
-failure receipt and preserves bounded evidence. There is no automatic retry.
+eleven saves. Streams and all writer-created log/TensorBoard files share a
+256 KiB, 24-entry bound; the output tree is checked while live against the
+eleven-name allowlist, 256 MiB per file, and 3 GiB total. Timeout, logging
+overflow, nonzero exit, identity ambiguity, missing checkpoint, metadata
+mismatch, or unverified teardown produces a failure receipt and preserves
+bounded evidence. There is no automatic retry.
+
+`local_quality_fit.py` admits only a fixed-private quality plan, the raw and
+canonical plan hashes in a complete quality CPU-launch receipt, the frozen CPU
+parser/planner/helper/ownership hashes, and a root admission that also pins the
+fixed private CPU-launcher source hash. It validates the CPU result's caption,
+768 target resolution, 896-by-512 effective bucket, and CPU-only CUDA state.
+It then copies the frozen JPEG, caption, TOML, and ten tokenizer assets into a
+private run tree; after the slow current source/template/model revalidation it
+rehashes those run-owned files before `Popen`. A stable exclusive marker under
+`figment-local-quality-fit-dispatches` prevents an admission id from being
+reused with a different fresh output. The final receipt records only digest
+bindings for the plan, CPU receipt, tokenizer evidence, recipe, launcher, and
+current helper sources, never private input paths.
 
 No sampler or exporter belongs to the trainer invocation. Any paired base/LoRA
 rendering and human review described by the experiment is a later separately
