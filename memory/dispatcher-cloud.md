@@ -759,3 +759,23 @@
   card, so no 4b verification needed this run.
 - Cost: 2026-09-06 $2.8226 (33 rows); 2026-09-07 $0.00 (subscription). Budget $30/day untouched.
 - Silent run appropriate (nothing new broke; all pending items already carry wake/decision cards).
+
+## 2026-09-08 nightly (dispatcher-cloud, cloud VM)
+- WORKED: clean nightly. preamble OK, sync_skills --check clean (in sync), dispatcher emitted 1
+  card (6a9fa8e1-1ebb28d6 nightly-review, T1 acts-alone, sonnet-5); executed inline as owner
+  inbox->working->done; dashboards regenerated; cost step logged.
+- STEP-2B (recurring, fully carded — did NOT file a duplicate): sync_daemon_dirs.py still absent
+  on ops; ran the check via the origin/main-copy workaround -> exit 1, single ops-only extra
+  orgs/kb-ops/workflows/acceptance-run.md, IDENTICAL to prior runs. Both the missing-tool gap and
+  this drift are carded under umbrella 6a605ebb-d86dff79. Desktop --sync --prune + a script-mirror
+  decision owed at the desk. LESSON HELD: read this shard + check existing cards before writing a
+  step-2b wake card.
+- COST SHIFT worth noting: 2026-09-07 ledger = ~$19.40 across 11 rows (vs $2.82 the day before),
+  almost all RunPod L40S. $15.97 of it is a WORST-CASE ceiling-rate orphan estimate for pod
+  hvtovmusbx6a1t (08:37-23:16) flagged "verify RunPod billing" — real spend likely much lower,
+  but flagged in handover for Daniel to confirm. Still under the $30/day ceiling either way.
+- Queue by state: inbox 51, working 3 (this card done after; 6a6bc3dd halted terminal since
+  2026-07-30; d126c410 figment long-running working), done 1577, approvals 1, archived 10.
+- Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
+  card, so no 4b verification needed this run.
+- Silent run appropriate (nothing new broke; all pending items already carry wake/decision cards).

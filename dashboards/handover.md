@@ -1,11 +1,12 @@
 # System Handover
-_Generated: 2026-09-07 06:25 UTC_
+_Generated: 2026-09-08 06:20 UTC_
 
 **What happened overnight.** The nightly dispatcher ran cleanly: preamble passed, the skills
 mirror check (`sync_skills --check`) was in sync, and one `nightly-review` cadence card was
-dispatched and executed. Spending is comfortably under control — $2.82 yesterday against the
-$30/day ceiling, and $0.00 so far today. Dashboards were regenerated from live queue, ledger,
-and project state.
+dispatched and executed. Spending stayed under the $30/day ceiling — yesterday's ledger shows
+~$19.40, but $15.97 of that is a flagged WORST-CASE RunPod orphan estimate ("verify RunPod
+billing"), so the real figure is likely well below it; $0.00 so far today. Dashboards were
+regenerated from live queue, ledger, and project state.
 
 **What is waiting on you.**
 1. **One approval (T3):** figment GATE A eye-gate (`65d8f246-8a461521`) — the blind seven-axis
@@ -14,8 +15,10 @@ and project state.
    `codex/atlas-enhancements-20260820`; the project contract holds it for your review before commit.
 3. **faceless-youtube** — the `bricks-fresh` run is paused at the P6B gate (18/25 slots), and the
    Variant D trial (25/25 verified) needs your keep / edit / iterate / revert decision.
-4. **prospecting** — the live Snov run on 30 NYC VC firms is awaiting your judgment; later phases
-   sit behind their own gates.
+4. **prospecting** — the live Snov run on 30 NYC VC firms is awaiting your judgment; P8 batch 2
+   and later phases sit behind their own gates.
+5. **RunPod billing check** — worth confirming the actual cost of pod `hvtovmusbx6a1t` against
+   the worst-case $15.97 estimate ledgered yesterday.
 
 **Housekeeping (all already tracked — nothing new).** The daemon-dir mirror check ran via the
 documented workaround (the check tool lives on `main`, not `ops`) and found only one recurring
