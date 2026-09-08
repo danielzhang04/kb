@@ -1,6 +1,6 @@
 # Figment current state
 
-Updated 2026-09-08 17:20 UTC / 13:20 Eastern. Async work continues after the
+Updated 2026-09-08 17:13 UTC / 13:13 Eastern. Async work continues after the
 8 AM checkpoint. Instagram integration is deferred. The canonical
 [handoff](../../handoffs/2026-09-08-figment-async.md) contains the resume load list.
 

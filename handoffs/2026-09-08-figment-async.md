@@ -1,6 +1,6 @@
 # Figment async handoff - 2026-09-08
 
-Current at 13:20 Eastern; noon checkpoint retained below.
+Current at 13:13 Eastern; noon checkpoint retained below.
 This is the canonical resumable handoff for the active Figment async run.
 It replaces the prior append-only timeline at this path.
 Read cited audits and private receipts for historical detail rather than reconstructing it here.
@@ -207,7 +207,7 @@ Verify teardown and process absence before writing a completed receipt.
 Never kill a process merely because it shares a port or executable name.
 ## Required reading on resume
 
-### Latest accepted boundary, 17:20 UTC
+### Latest accepted boundary, 17:13 UTC
 
 Runtime audit/book committed aa4cb02c. Mobile navigation correction and visual audit
 committed a4897d09. Root viewed the V2 mobile capture: all six tabs in two rows,
