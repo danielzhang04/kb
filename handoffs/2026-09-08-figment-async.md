@@ -122,7 +122,13 @@ No tokenizer or model download is established by those receipts.
 
 The GPU fit-probe code freeze was rejected and remains under repair.
 `figment_fit_repair` is the only current GPU-code author. The prior timestamp worker is completed/interrupted; queued messages did not reactivate it. Use followup_task after a worker finishes.
-`figment_protocol_review` is the independent reviewer.
+`figment_fit_independent_review` is the current independent reviewer.
+Its review rejected the fresh d689c374 freeze: nonexistent CPU-helper path,
+wrong DreamBooth data-directory level, incomplete safetensors structure bounds,
+missing final staged-copy recheck, and lifecycle/log-bound defects. Root and
+reviewer sent a finite repair list; `followup_task` reactivated the sole author.
+`figment_training_hub_plan` separately owns only the new local-training hub design
+document, to make preparation, fit, and quality evidence distinct in the studio.
 Keep that authorship isolated; do not edit its moving files without an explicit transfer of ownership.
 Do not execute, admit, or train from unreviewed GPU code.
 No GPU training, admission, dispatch, checkpoint, sample export, or promotion has occurred.

@@ -33,11 +33,15 @@ See Studio `docs/figment/2026-09-08-local-training-preflight-audit.md`.
 
 The ten-step, twenty-minute local GPU fit launcher is still under repair and
 has not been admitted or run. `figment_fit_repair` is the sole author;
-`figment_protocol_review` independently reviews its final freeze. The fresh
+`figment_fit_independent_review` independently reviews its final freeze. The fresh
 worker replaces a completed worker whose queued feedback did not restart it.
 Remaining execution fixes cover admission replay, helper hashes, path handling,
 private staged-file revalidation, bounded trainer artifacts, valid checkpoint
 headers, and complete process cleanup. No local GPU training result is claimed.
+The initial fresh freeze also passed seven narrow tests while containing a
+nonexistent helper path and the wrong DreamBooth data-directory level. Review
+rejected it; the author is repairing actual-path and lifecycle test coverage.
+A separate worker is designing the studio's local-training evidence projection.
 The later one-source quality experiment is a design only, with matched schedules,
 fixed comparisons, and separate resemblance, realism, adult-presentation and
 clothing observations; crops do not create independent identity evidence.
