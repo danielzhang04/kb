@@ -355,6 +355,7 @@ describe('composite-principal session policy', () => {
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: 'attempt-a',
+      messageClaim: null,
       receipt: null,
       revision: 1,
       updatedAt: NOW,
@@ -658,6 +659,7 @@ describe('composite-principal session policy', () => {
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: null,
+      messageClaim: null,
       receipt: null,
       revision: 0,
       updatedAt: '2026-08-23T11:00:00.000Z',
@@ -668,21 +670,35 @@ describe('composite-principal session policy', () => {
   it('creates, replays and CAS-conflicts durable attempt operations', async () => {
     const { persistence, state } = validatingPersistence();
     const registry = createSessionRecordRegistry({ persistence, host: {} as SessionHost, now: () => NOW });
+    const claim = { claimRef: 'claim-session-record', declarationFingerprint: 'c'.repeat(64),
+      promptFingerprint: 'd'.repeat(64) };
+    const initial = attemptOperation({ messageClaim: claim });
 
     expect(await registry.readOperation(attemptOperation().operationKey)).toBeNull();
-    const created = await registry.writeOperation(attemptOperation(), null);
-    expect(created).toEqual({ ok: true, value: attemptOperation({ revision: 1, updatedAt: NOW }) });
+    const created = await registry.writeOperation(initial, null);
+    expect(created).toEqual({ ok: true, value: attemptOperation({ messageClaim: claim, revision: 1, updatedAt: NOW }) });
+    claim.claimRef = 'claim-mutated-after-write';
+    expect(await registry.readOperation(initial.operationKey)).toMatchObject({
+      messageClaim: { claimRef: 'claim-session-record' },
+    });
     // `expectedRevision: null` means "must not exist": a second create is a conflict, not an upsert.
-    expect(await registry.writeOperation(attemptOperation(), null)).toMatchObject({
+    expect(await registry.writeOperation(initial, null)).toMatchObject({
       ok: false, refusal: 'binding-conflict',
     });
-    expect(await registry.writeOperation(attemptOperation({ status: 'bound' }), 0)).toMatchObject({
+    expect(await registry.writeOperation(attemptOperation({ status: 'bound', messageClaim: {
+      claimRef: 'claim-session-record', declarationFingerprint: 'c'.repeat(64), promptFingerprint: 'd'.repeat(64),
+    } }), 0)).toMatchObject({
       ok: false, refusal: 'binding-conflict',
     });
     expect(await registry.readOperation(attemptOperation().operationKey))
-      .toEqual(attemptOperation({ revision: 1, updatedAt: NOW }));
-    expect(await registry.writeOperation(attemptOperation({ status: 'completed', promptsDelivered: 3 }), 1))
-      .toEqual({ ok: true, value: attemptOperation({ status: 'completed', promptsDelivered: 3,
+      .toEqual(attemptOperation({ messageClaim: { claimRef: 'claim-session-record', declarationFingerprint: 'c'.repeat(64),
+        promptFingerprint: 'd'.repeat(64) }, revision: 1, updatedAt: NOW }));
+    expect(await registry.writeOperation(attemptOperation({ status: 'completed', promptsDelivered: 3, messageClaim: {
+      claimRef: 'claim-session-record', declarationFingerprint: 'c'.repeat(64), promptFingerprint: 'd'.repeat(64),
+    } }), 1))
+      .toEqual({ ok: true, value: attemptOperation({ status: 'completed', promptsDelivered: 3, messageClaim: {
+        claimRef: 'claim-session-record', declarationFingerprint: 'c'.repeat(64), promptFingerprint: 'd'.repeat(64),
+      },
         revision: 2, updatedAt: NOW }) });
     expect(state.document.attemptOperations[attemptOperation().operationKey])
       .toMatchObject({ status: 'completed', revision: 2 });

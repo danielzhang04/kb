@@ -47,3 +47,6 @@
 /HEARTBEAT.md text eol=lf
 /tests/fixtures/dashboard-v3-p4-mirror-vectors.json text eol=lf
 /tests/fixtures/dashboard-v3-p6-contract-vectors.json text eol=lf
+
+# The manual Linux verification runner is invoked from Windows worktrees.
+/orgs/kb-ops/output/2026-09-06-platform-phase0/linux-verification.sh text eol=lf

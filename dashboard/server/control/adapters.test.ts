@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto';
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { dirname, join, resolve } from 'node:path';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DEFAULT_ATTEMPT_BUDGET, DEFAULT_BUDGET } from './activation.ts';
 import type { ExecutionProfile } from './policy.ts';
 import { canonicalStageResultHash, iterationResultOperationKey } from './execution.ts';
@@ -84,7 +84,156 @@ function fakeGit(repoRoot: string, commonDir: string): {
   };
 }
 
+function successfulGitResult(stdout = Buffer.alloc(0)) {
+  return { exitCode: 0, stdout, stderr: '' };
+}
+
 describe('Git worktree adapter', () => {
+  it.each([
+    { name: 'the default full-checkout path', sparseReadScope: false, sparsePaths: undefined },
+    { name: 'the sparse-checkout path', sparseReadScope: true, sparsePaths: ['queue'] },
+  ])('does not admit post-add work for $name after forward admission is revoked', async ({ sparseReadScope, sparsePaths }) => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    mkdirSync(commonDir, { recursive: true });
+    const calls: { args: readonly string[]; cwd: string }[] = [];
+    let addedPathMode: number | undefined;
+    let releaseAdd: (() => void) | undefined;
+    let addStarted: (() => void) | undefined;
+    const addStartedPromise = new Promise<void>((resolvePromise) => { addStarted = resolvePromise; });
+    const runner: GitCommandRunner = {
+      run(args, cwd) {
+        calls.push({ args, cwd });
+        if (args.includes('worktree') && args.includes('add')) {
+          addStarted?.();
+          return new Promise((resolvePromise) => {
+            releaseAdd = () => {
+              mkdirSync(path, { recursive: true, mode: 0o700 });
+              addedPathMode = statSync(path).mode & 0o7777;
+              resolvePromise(successfulGitResult());
+            };
+          });
+        }
+        return Promise.resolve(successfulGitResult());
+      },
+    };
+    let revoked = false;
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner,
+      sparseReadScope,
+      assertForwardAdmission: () => {
+        if (revoked) throw new Error('forward admission withdrawn');
+      },
+    });
+
+    const pending = adapter.ensure({
+      operationKey: 'worktree:attempt-1',
+      runRef: 'run-1',
+      path,
+      ...(sparsePaths ? { sparsePaths } : {}),
+    });
+    await addStartedPromise;
+    expect(calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'))).toHaveLength(1);
+    revoked = true;
+    releaseAdd?.();
+    await expect(pending).rejects.toThrow('forward admission withdrawn');
+
+    // Linux can inherit the parent setgid bit, so retain the fake Git add's actual mode as the
+    // baseline. A reached post-add chmod group would change it to production mode 02770.
+    if (process.platform !== 'win32') {
+      expect(addedPathMode).not.toBe(0o2770);
+      expect(statSync(path).mode & 0o7777).toBe(addedPathMode);
+    }
+    expect(calls.filter((call) => call.args.includes('worktree') && call.args.includes('add'))).toHaveLength(1);
+    expect(calls.filter((call) => call.args.includes('--show-toplevel'))).toHaveLength(0);
+    expect(calls.filter((call) => call.args.includes('--git-common-dir'))).toHaveLength(0);
+    if (sparseReadScope) {
+      expect(calls.filter((call) => call.args.includes('sparse-checkout') && call.args.includes('init'))).toHaveLength(0);
+      expect(calls.filter((call) => call.args.includes('sparse-checkout') && call.args.includes('set'))).toHaveLength(0);
+      expect(calls.filter((call) => call.args.at(-1) === 'checkout')).toHaveLength(0);
+    }
+  });
+
+  it.each([
+    { name: 'existing-tree ensure', operationKey: 'worktree:attempt-1' },
+    { name: 'inspect', operationKey: 'inspect:attempt-1' },
+  ])('stops every later verification runner when admission is revoked during the first verify runner for $name', async ({ name, operationKey }) => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const commonDir = join(repoRoot, '.git');
+    const worktreeRoot = join(root, 'worktrees');
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    mkdirSync(commonDir, { recursive: true });
+    mkdirSync(path, { recursive: true });
+    const calls: { args: readonly string[]; cwd: string }[] = [];
+    let releaseFirstVerify: (() => void) | undefined;
+    let firstVerifyStarted: (() => void) | undefined;
+    const firstVerifyStartedPromise = new Promise<void>((resolvePromise) => { firstVerifyStarted = resolvePromise; });
+    const runner: GitCommandRunner = {
+      run(args, cwd) {
+        calls.push({ args, cwd });
+        if (args.includes('--show-toplevel')) {
+          firstVerifyStarted?.();
+          return new Promise((resolvePromise) => {
+            releaseFirstVerify = () => resolvePromise(successfulGitResult(Buffer.from(`${path}\n`)));
+          });
+        }
+        return Promise.resolve(successfulGitResult(Buffer.from(`${commonDir}\n`)));
+      },
+    };
+    let revoked = false;
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner,
+      assertForwardAdmission: () => {
+        if (revoked) throw new Error('forward admission withdrawn');
+      },
+    });
+
+    const pending = name === 'existing-tree ensure'
+      ? adapter.ensure({ operationKey, runRef: 'run-1', path })
+      : adapter.inspect({ operationKey, runRef: 'run-1', path });
+    await firstVerifyStartedPromise;
+    expect(calls).toHaveLength(1);
+
+    revoked = true;
+    releaseFirstVerify?.();
+    await expect(pending).rejects.toThrow('forward admission withdrawn');
+
+    expect(calls).toHaveLength(1);
+  });
+
+  it('refuses every forward worktree side effect when admission is already revoked at adapter entry', async () => {
+    const root = temporaryRoot();
+    const repoRoot = join(root, 'repo');
+    const worktreeRoot = join(root, 'worktrees');
+    const path = join(worktreeRoot, 'run-1', 'attempt-1');
+    mkdirSync(join(repoRoot, '.git'), { recursive: true });
+    const run = vi.fn<GitCommandRunner['run']>();
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: { run },
+      assertForwardAdmission: () => { throw new Error('forward admission withdrawn'); },
+    });
+
+    await expect(adapter.ensure({ operationKey: 'worktree:attempt-1', runRef: 'run-1', path }))
+      .rejects.toThrow('forward admission withdrawn');
+
+    expect(run).not.toHaveBeenCalled();
+    expect(existsSync(join(worktreeRoot, '.disabled-hooks'))).toBe(false);
+    expect(existsSync(dirname(path))).toBe(false);
+  });
+
   it('idempotently creates only the planned attempt worktree at a pinned commit', async () => {
     const root = temporaryRoot();
     const repoRoot = join(root, 'repo');
@@ -434,7 +583,14 @@ describe('Git worktree adapter', () => {
     const worktreeRoot = join(root, 'worktrees');
     mkdirSync(commonDir, { recursive: true });
     const fake = fakeGit(repoRoot, commonDir);
-    const adapter = createGitWorktreeAdapter({ repoRoot, worktreeRoot, baseCommit: 'a'.repeat(40), runner: fake.runner });
+    const adapter = createGitWorktreeAdapter({
+      repoRoot,
+      worktreeRoot,
+      baseCommit: 'a'.repeat(40),
+      runner: fake.runner,
+      // Cleanup stays independently admissible after forward work has been withdrawn.
+      assertForwardAdmission: () => { throw new Error('forward admission withdrawn'); },
+    });
     const path = join(worktreeRoot, 'run-1', 'attempt-1');
 
     await adapter.remove({ operationKey: 'worktree-remove:attempt-1', runRef: 'run-1', path });

@@ -1,5 +1,4 @@
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { FastifyInstance } from 'fastify';
@@ -12,7 +11,7 @@ import { runtimeCapabilities, runtimeExecutionHost } from './runtime/capabilitie
 // The browser's own decoder, run against the REAL route body: the cutover rests on this coupling.
 import { decodeRuntimeCapabilities } from '../src/lib/runtimeCapabilities.tsx';
 import { fileURLToPath } from 'node:url';
-import { createInMemoryControlPlaneStore } from './control/store.ts';
+import { ControlStoreStartupHydrationError, createInMemoryControlPlaneStore } from './control/store.ts';
 import { request as httpRequest } from 'node:http';
 import type { AddressInfo } from 'node:net';
 
@@ -59,6 +58,7 @@ import { resolveDaemonVersion } from './placement/selfAdvertise.ts';
 import { ADVERTISEMENT_INTERVAL_MS } from './placement/contracts.ts';
 import { selectPlacementHost } from './placement/select.ts';
 import type { WriterLease } from './control/writerLease.ts';
+import { acquireWriterLease } from './control/writerLease.ts';
 import { createExistingRootFileStoreHarnessForTest } from './control/test-fixtures/controlStore.ts';
 import { readDevelopmentScheduleSeedSource } from './schedules/seedImport.ts';
 import { publishVerifiedScheduleMarkerRemoval } from './write/branch.ts';
@@ -71,6 +71,7 @@ const originalStateRoot = process.env.DASHBOARD_STATE_ROOT;
 const TEST_ORIGIN = 'http://kb.test';
 const TRACE_FIXTURES = fileURLToPath(new URL('./trace/__fixtures__/', import.meta.url));
 const REPO_ROOT = fileURLToPath(new URL('../../', import.meta.url));
+const TEST_TEMP_ROOT = join(REPO_ROOT, '_private', 'dashboard-index-tests');
 const MIGRATION_FIXTURES = fileURLToPath(new URL('./control/__fixtures__/dv3/', import.meta.url));
 const PAUSE_MARKER = (readdirSync(MIGRATION_FIXTURES).map((name) => {
   try { return JSON.parse(readFileSync(join(MIGRATION_FIXTURES, name), 'utf8')) as Record<string, unknown>; } catch { return {}; }
@@ -81,6 +82,10 @@ const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 // later matrix rows are still running.
 const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
 const subjectHeaders = (subject: string) => ({ ...matrixHeaders, authorization: `Bearer ${mintSession(subject, TEST_SESSION).token}` });
+function makeWorktreeTemp(prefix: string): string {
+  mkdirSync(TEST_TEMP_ROOT, { recursive: true });
+  return mkdtempSync(join(TEST_TEMP_ROOT, prefix));
+}
 function buildApp(options: Parameters<typeof buildProductionApp>[0] = {}) {
   return buildProductionApp({ controlStore: createInMemoryControlPlaneStore(), ...options });
 }
@@ -122,7 +127,7 @@ function refusingSessionHost(touches?: { count: number }): SessionHost {
 }
 
 beforeEach(() => {
-  testStateRoot = mkdtempSync(join(tmpdir(), 'kb-index-test-state-'));
+  testStateRoot = makeWorktreeTemp('kb-index-test-state-');
   process.env.DASHBOARD_STATE_ROOT = testStateRoot;
 });
 
@@ -275,6 +280,101 @@ describe('server', () => {
     expect(release).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps a typed startup-hydration failure diagnostic-only, lease-held, and route-restricted', async () => {
+    const { lease, release } = countingLease();
+    const buildApplication = vi.fn();
+    const probePtyCapability = vi.fn();
+    const probeAdvertisementCapabilities = vi.fn();
+    app = await start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      controlStoreFactory: () => { throw new ControlStoreStartupHydrationError(new Error('raw document bytes')); },
+      buildApplication,
+      probePtyCapability,
+      probeAdvertisementCapabilities,
+    });
+
+    expect((await app.inject({ method: 'GET', url: '/healthz' })).statusCode).toBe(503);
+    expect((await app.inject({ method: 'GET', url: '/readyz' })).statusCode).toBe(503);
+    expect((await app.inject({ method: 'GET', url: '/api/control/runs/example' })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/auth/assert/options' })).statusCode).toBe(404);
+    expect(buildApplication).not.toHaveBeenCalled();
+    expect(probePtyCapability).not.toHaveBeenCalled();
+    expect(probeAdvertisementCapabilities).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+
+    await app.close();
+    app = undefined;
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('classifies a real corrupt on-disk control document before it can compose the full server', async () => {
+    const controlDir = join(testStateRoot!, 'control');
+    mkdirSync(controlDir, { recursive: true });
+    writeFileSync(join(controlDir, 'control-plane.json'), '{broken-json', 'utf8');
+    const lease = acquireWriterLease({ stateRoot: testStateRoot!, bootId: 'corrupt-start-test' });
+    const release = vi.spyOn(lease, 'release');
+
+    app = await start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      probePtyCapability: vi.fn(),
+      probeAdvertisementCapabilities: vi.fn(),
+    });
+
+    const health = await app.inject({ method: 'GET', url: '/healthz' });
+    expect(health.statusCode).toBe(503);
+    expect(health.json()).toEqual({ ok: false, code: 'control-store-hydration-failed' });
+    expect((await app.inject({ method: 'GET', url: '/api/schedules' })).statusCode).toBe(404);
+    expect(release).not.toHaveBeenCalled();
+    await app.close();
+    app = undefined;
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not convert an untyped startup failure into diagnostics', async () => {
+    const { lease, release } = countingLease();
+    await expect(start(0, '127.0.0.1', {
+      leaseFactory: () => lease,
+      controlStoreFactory: () => { throw new Error('ordinary-startup-failure'); },
+    })).rejects.toThrow('ordinary-startup-failure');
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('never rebinds typed diagnostics away from literal loopback', async () => {
+    const { lease, release } = countingLease();
+    const bootDiagnosticsFactory = vi.fn();
+    await expect(start(0, '127.0.0.2', {
+      leaseFactory: () => lease,
+      controlStoreFactory: () => { throw new ControlStoreStartupHydrationError(new Error('bad bytes')); },
+      bootDiagnosticsFactory,
+    })).rejects.toThrow('control-store diagnostics require loopback bind');
+    expect(bootDiagnosticsFactory).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledTimes(1);
+  });
+
+  it('releases once when diagnostic construction or listen fails', async () => {
+    const construction = countingLease();
+    await expect(start(0, '127.0.0.1', {
+      leaseFactory: () => construction.lease,
+      controlStoreFactory: () => { throw new ControlStoreStartupHydrationError(new Error('bad bytes')); },
+      bootDiagnosticsFactory: () => { throw new Error('diagnostic-construction-failed'); },
+    })).rejects.toThrow('control-store diagnostics failed to start');
+    expect(construction.release).toHaveBeenCalledTimes(1);
+
+    const listening = countingLease();
+    let onClose: (() => Promise<void>) | undefined;
+    const failingDiagnostics = {
+      addHook: (_name: string, hook: () => Promise<void>) => { onClose = hook; },
+      listen: async () => { throw new Error('diagnostic-listen-failed'); },
+      close: async () => { await onClose?.(); },
+    } as unknown as ReturnType<typeof buildProductionApp>;
+    await expect(start(0, '127.0.0.1', {
+      leaseFactory: () => listening.lease,
+      controlStoreFactory: () => { throw new ControlStoreStartupHydrationError(new Error('bad bytes')); },
+      bootDiagnosticsFactory: () => failingDiagnostics,
+    })).rejects.toThrow('control-store diagnostics failed to start');
+    expect(listening.release).toHaveBeenCalledTimes(1);
+  });
+
   it('omits PTY routes on Linux and reports the governed bridge capability', async () => {
     // Tripwire: a closed capability must not CONSTRUCT or touch a session host at all.
     const touches = { count: 0 };
@@ -342,8 +442,8 @@ describe('server', () => {
   });
 
   it('resumes an incomplete pause publication on the second real Schedule boot after unlink', async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-real-boot-repo-'));
-    const stateRoot = mkdtempSync(join(tmpdir(), 'schedule-real-boot-state-'));
+    const repoRoot = makeWorktreeTemp('schedule-real-boot-repo-');
+    const stateRoot = makeWorktreeTemp('schedule-real-boot-state-');
     const harness = createExistingRootFileStoreHarnessForTest();
     try {
       const source = await readDevelopmentScheduleSeedSource(REPO_ROOT);
@@ -390,9 +490,9 @@ describe('server', () => {
    * `pull --rebase origin ops` against the disabled origin and crash-loops the daemon on every start.
    */
   it('resolves the env publication mode for the default boot marker publisher', async () => {
-    const repoRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-repo-'));
-    const stateRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-state-'));
-    const outboxRoot = mkdtempSync(join(tmpdir(), 'schedule-outbox-boot-spool-'));
+    const repoRoot = makeWorktreeTemp('schedule-outbox-boot-repo-');
+    const stateRoot = makeWorktreeTemp('schedule-outbox-boot-state-');
+    const outboxRoot = makeWorktreeTemp('schedule-outbox-boot-spool-');
     const harness = createExistingRootFileStoreHarnessForTest();
     const originalPublication = process.env.KB_COORDINATION_PUBLICATION;
     try {

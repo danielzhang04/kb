@@ -67,6 +67,59 @@ function fakeMinter(token = 'raw-token-abc'): SpendGrantMinter & { calls: Array<
 }
 
 describe('provisionAttemptSpendGrant', () => {
+  it('refuses mint and token-file write when forward admission is already revoked', async () => {
+    const mint = vi.fn<SpendGrantMinter['mint']>();
+    const write = vi.fn();
+
+    await expect(provisionAttemptSpendGrant(input(), {
+      grantStore: { mint },
+      routeUrl: 'http://x/api',
+      ttlMs: 60_000,
+      writeGrantFile: write,
+      assertForwardAdmission: () => { throw new Error('forward admission withdrawn'); },
+    })).rejects.toThrow('forward admission withdrawn');
+
+    expect(mint).not.toHaveBeenCalled();
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('discards a held minted token when admission is revoked before the distinct file write', async () => {
+    const token = 'raw-token-that-must-not-escape';
+    let releaseMint: ((value: { grantRef: string; token: string }) => void) | undefined;
+    let mintStarted: (() => void) | undefined;
+    const mintStartedPromise = new Promise<void>((resolvePromise) => { mintStarted = resolvePromise; });
+    const mint = vi.fn<SpendGrantMinter['mint']>(() => new Promise((resolvePromise) => {
+      releaseMint = resolvePromise;
+      mintStarted?.();
+    }));
+    const write = vi.fn();
+    const admissionCalls: unknown[][] = [];
+    let revoked = false;
+    const pending = provisionAttemptSpendGrant(input(), {
+      grantStore: { mint },
+      routeUrl: 'http://x/api',
+      ttlMs: 60_000,
+      writeGrantFile: write,
+      assertForwardAdmission: (...metadata: unknown[]) => {
+        admissionCalls.push(metadata);
+        if (revoked) throw new Error('forward admission withdrawn');
+      },
+    });
+
+    await mintStartedPromise;
+    expect(mint).toHaveBeenCalledTimes(1);
+
+    revoked = true;
+    releaseMint?.({ grantRef: 'grant-deadbeefdeadbeefdeadbeefdeadbeef', token });
+    const error = await pending.catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe('forward admission withdrawn');
+    expect((error as Error).message).not.toContain(token);
+    expect(write).not.toHaveBeenCalled();
+    expect(admissionCalls).toEqual([[], []]);
+  });
+
   it('mints and writes the token file for an approved spending stage, deriving the operation server-side', async () => {
     const grantStore = fakeMinter();
     const written: Array<{ path: string; contents: SpendGrantFileContents }> = [];

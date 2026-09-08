@@ -117,6 +117,11 @@ export interface CanonicalGitResultIntegratorOptions {
   outboxRoot?: string;
   runPy?: PyRunner;
   /**
+   * Synchronous ownership fence for a forward integration callback.  The composition root supplies the
+   * current execution lifetime; keeping this optional preserves existing callers until that binding lands.
+   */
+  assertForwardAdmission?: () => void;
+  /**
    * READ-ONLY branch resolution for the coordination checkout, injected as its OWN seam — deliberately
    * NOT the mutating `coordinationGit` runner, exactly as `audit/log.ts` keeps `resolveCheckedOutBranch`
    * outside its `OpsGitRunner` (commit 2fdb2ca). Faking the mutating runner therefore cannot neuter the
@@ -649,6 +654,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   const git = options.gitRunner ?? createLocalGitCommandRunner();
   const rawOpsGit = options.coordinationGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
+  const assertForwardAdmission = options.assertForwardAdmission ?? (() => undefined);
   const statePath = join(stateRoot, 'control', 'canonical-integration.json');
   // [C-S4] No eager mkdir under the worktree root. On the VM that root is `/var/lib/kb-shell/worktrees`,
   // broker-owned (02770, installer-created) and not writable by the dashboard uid at composition time, so
@@ -691,7 +697,9 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
    * non-git directory, an unresolvable or timed-out check — REFUSES. The run parks; nothing is pushed.
    */
   const opsGit: GitRunner = async (cwd, args) => {
+    assertForwardAdmission();
     const branch = await resolveCoordinationBranch(cwd);
+    assertForwardAdmission();
     if (branch !== COORDINATION_BRANCH) {
       const resolved = branch === null
         ? 'UNRESOLVED (detached HEAD, not a git repo, or git failed/timed out)'
@@ -707,11 +715,19 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         `${COORDINATION_GIT_GUARD_REASON}: coordination checkout '${cwd}' is on ${resolved}, not '${COORDINATION_BRANCH}'`,
       );
     }
-    return rawOpsGit(cwd, [...coordinationPrefix, ...args]);
+    assertForwardAdmission();
+    const result = await rawOpsGit(cwd, [...coordinationPrefix, ...args]);
+    assertForwardAdmission();
+    return result;
   };
   let tail: Promise<unknown> = Promise.resolve();
 
-  const gitRaw = (args: string[], cwd: string) => git.run([...gitPrefix, ...args], cwd);
+  const gitRaw = async (args: string[], cwd: string) => {
+    assertForwardAdmission();
+    const result = await git.run([...gitPrefix, ...args], cwd);
+    assertForwardAdmission();
+    return result;
+  };
   const gitRun = async (args: string[], cwd: string, label: string): Promise<string> => {
     const result = await gitRaw(args, cwd);
     if (result.exitCode !== 0) throw new CanonicalResultIntegrationError(`${label} failed: ${result.stderr.slice(0, 512)}`);
@@ -737,6 +753,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     const path = integrationPath(runRef);
     const branch = `codex/managed-${createHash('sha256').update(runRef).digest('hex').slice(0, 24)}`;
     if (!existsSync(path)) {
+      assertForwardAdmission();
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
       const branchExists = await gitRaw(['show-ref', '--verify', '--quiet', `refs/heads/${branch}`], repoRoot);
       if (branchExists.exitCode !== 0 && branchExists.exitCode !== 1) {
@@ -816,6 +833,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         remote: 'generation lineage is not remotely durable',
         stored: 'generation lineage is not durable in the shared object store',
       });
+      assertForwardAdmission();
       return;
     }
     let publishedCommit: string;
@@ -833,6 +851,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       throw new CanonicalResultIntegrationError('published coordination commit is not immutable');
     }
     const wire = canonicalWire(record);
+    assertForwardAdmission();
     const verified = runPy(coordinationRoot, CANONICAL_RESULT_VERIFY_SCRIPT, JSON.stringify({
       cardRef: record.cardRef, runRef: record.runRef, result: wire, gitCommit: publishedCommit,
     }));
@@ -860,6 +879,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     // A concurrent writer may have finished this record between the state read and this call.
     if (record.state === 'canonical-committed') {
       await verifyCanonical(record);
+      assertForwardAdmission();
       return { status: 'replayed', resultHash: publicResult(record).resultHash,
         durability: 'canonical', attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
     }
@@ -969,12 +989,14 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         remote: 'published lineage does not equal the integrated commit',
         stored: 'stored lineage does not equal the integrated commit',
       });
+      assertForwardAdmission();
       record.state = 'lineage-committed';
       saveState(statePath, state);
     }
 
     if (record.state === 'lineage-committed') {
       if (record.cardRef === null) {
+        assertForwardAdmission();
         record.state = 'canonical-committed';
         saveState(statePath, state);
         return { status: 'integrated' as const, resultHash: record.result.resultHash,
@@ -984,7 +1006,9 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       // longer stages/commits/pushes coordination git itself. `prepareCoordination` still runs once here
       // to fail-closed on a dirty coordination index BEFORE the walk (parity with the retired heredoc's
       // index guard) and to reconcile the checkout the TS validator reads the live card from.
+      assertForwardAdmission();
       await prepareCoordination(coordinationRoot, opsGit, options.publication, options.outboxRoot);
+      assertForwardAdmission();
       const dirty = await opsGit(coordinationRoot, ['diff', '--cached', '--name-only', '-z']);
       if (dirty) throw new CanonicalResultIntegrationError('coordination index is dirty');
       record.state = 'canonical-intent';
@@ -1046,10 +1070,12 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         toState: to,
         ...(write === undefined ? {} : { write }),
       };
+      assertForwardAdmission();
       await publisher(
         { ...draft, idempotencyKey: reconciliationIdempotencyKey(draft) },
         { authenticatedTaskAction: false },
       );
+      assertForwardAdmission();
     };
 
     // Validate the LIVE card in TS (the faithful port of the retired heredoc's checks) BEFORE minting any
@@ -1105,6 +1131,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
       throw new CanonicalResultIntegrationError('canonical managed card cannot legally transition to done');
     }
     await verifyCanonical(record);
+    assertForwardAdmission();
     record.state = 'canonical-committed';
     saveState(statePath, state);
     return { status: 'integrated' as const, resultHash: publicResult(record).resultHash,
@@ -1113,7 +1140,11 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
 
   const serialize = <T>(operation: () => Promise<T>): Promise<T> =>
     withOpsTransaction(() => {
-      const next = tail.then(operation, operation);
+      const guarded = () => {
+        assertForwardAdmission();
+        return operation();
+      };
+      const next = tail.then(guarded, guarded);
       tail = next.then(() => undefined, () => undefined);
       return next;
     });
@@ -1153,12 +1184,14 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
             );
           }
           await verifyCanonical(settled);
+          assertForwardAdmission();
           return publicResult(settled);
         }
         // The coordination push can succeed before its acknowledgement/final verification returns.
         // Re-prove the exact journaled card from one immutable fetched ops commit; only that remotely
         // durable state may promote canonical-intent. Dirty, local-only, unpushed, or different cards fail.
         await verifyCanonical(record);
+        assertForwardAdmission();
         if (record.state === 'canonical-intent') {
           record.state = 'canonical-committed';
           saveState(statePath, state);
@@ -1195,6 +1228,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         const lineage = await ensureLineage(input.runRef);
         const commit = await gitRun(['rev-parse', 'HEAD'], lineage.path, 'lineage base resolution');
         if (!SHA.test(commit)) throw new CanonicalResultIntegrationError('lineage base is not immutable');
+        assertForwardAdmission();
         return commit;
       });
     },
@@ -1252,6 +1286,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
         }
         if (record?.state === 'canonical-committed') {
           await verifyCanonical(record);
+          assertForwardAdmission();
           return { status: 'replayed' as const, resultHash: publicResult(record).resultHash,
             durability: 'canonical' as const, attemptBaseCommit: record.attemptBaseCommit, integrationCommit: record.integrationCommit as string };
         }
@@ -1282,6 +1317,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
           if (!SHA.test(attemptBaseCommit) || !SHA.test(integrationBaseCommit)) {
             throw new CanonicalResultIntegrationError('integration bases must be immutable');
           }
+          assertForwardAdmission();
           record = {
             operationKey: input.operationKey, fingerprint, subject: input.subject, runRef: input.runRef,
             stageId: input.stageId, attemptRef: input.attemptRef, cardRef: input.canonicalCardRef, integrationBranch: lineage.branch,

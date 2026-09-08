@@ -51,6 +51,11 @@ export type ProvisionSpendGrantResult =
 
 export interface ProvisionSpendGrantDeps {
   grantStore: SpendGrantMinter;
+  /**
+   * Optional synchronous admission check for the forward mint and token-file write steps. Omitted by
+   * current callers, preserving the existing always-admitted behavior.
+   */
+  assertForwardAdmission?: () => void;
   /** The absolute route URL a worker POSTs paid calls to, written into the token file. */
   routeUrl: string;
   /** Grant TTL — sized to a stage lifetime, validated by the store against its own [1min, 6h] bounds. */
@@ -108,7 +113,10 @@ export async function provisionAttemptSpendGrant(
     if (gateRequestRef === null) gateRequestRef = request.requestRef;
   }
 
+  const assertForwardAdmission = deps.assertForwardAdmission ?? (() => {});
   let minted: { grantRef: string; token: string };
+  // This remains outside the catch below so a refusal is not classified as a grant-store outcome.
+  assertForwardAdmission();
   try {
     minted = await deps.grantStore.mint({
       runRef: input.runRef,
@@ -128,6 +136,8 @@ export async function provisionAttemptSpendGrant(
     throw error;
   }
 
+  // A mint issued before revocation may finish, but it must not arm a later worktree with its token.
+  assertForwardAdmission();
   const write = deps.writeGrantFile ?? defaultWriteGrantFile;
   write(input.worktreePath, {
     token: minted.token,

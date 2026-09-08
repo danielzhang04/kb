@@ -9,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ExecutionProfile } from '../control/policy.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal.ts';
 import { createAttemptSessionAdapter } from '../control/attemptSessionAdapter.ts';
+import { createAgentSessionChainStore } from '../control/agentSessionChains.ts';
 import type {
   ApprovedAttemptDeclaration,
   BrokerServerFrame,
@@ -390,6 +391,7 @@ describe.skipIf(process.platform !== 'linux')('real Linux broker attempt-start v
 
     adapter = createAttemptSessionAdapter({
       host: client,
+      messageClaims: createAgentSessionChainStore(stateRoot),
       sessionRecords: registry,
     });
   });

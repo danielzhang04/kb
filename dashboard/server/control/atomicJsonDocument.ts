@@ -27,6 +27,7 @@ export interface AtomicJsonDocumentOptions<T> {
 export interface AtomicJsonDocument<T> {
   read(): T;
   mutate<R>(callback: (document: T) => R | Promise<R>): Promise<R>;
+  mutateCheckpointed<R>(callback: (document: T, checkpoint: () => void) => R | Promise<R>): Promise<R>;
 }
 
 /**
@@ -106,24 +107,39 @@ export function createAtomicJsonDocument<T>(options: AtomicJsonDocumentOptions<T
     }
   };
 
+  const mutateCheckpointed = async <R>(
+    callback: (document: T, checkpoint: () => void) => R | Promise<R>,
+  ): Promise<R> => {
+    const mutex = await acquire();
+    let committed = false;
+    let checkpointActive = true;
+    try {
+      const document = read();
+      const checkpoint = (): void => {
+        if (!checkpointActive) throw options.error('atomic document checkpoint is no longer active');
+        options.validate(document);
+        save(document);
+      };
+      const result = await callback(document, checkpoint);
+      checkpointActive = false;
+      save(document);
+      mutex.exec('COMMIT');
+      committed = true;
+      return result;
+    } finally {
+      checkpointActive = false;
+      if (!committed) {
+        try { mutex.exec('ROLLBACK'); } catch { /* process/SQLite releases the OS lock on close */ }
+      }
+      try { mutex.close(); } catch { /* fail closed: a leaked handle keeps exclusion, never weakens it */ }
+    }
+  };
+
   return {
     read,
-    async mutate(callback) {
-      const mutex = await acquire();
-      let committed = false;
-      try {
-        const document = read();
-        const result = await callback(document);
-        save(document);
-        mutex.exec('COMMIT');
-        committed = true;
-        return result;
-      } finally {
-        if (!committed) {
-          try { mutex.exec('ROLLBACK'); } catch { /* process/SQLite releases the OS lock on close */ }
-        }
-        try { mutex.close(); } catch { /* fail closed: a leaked handle keeps exclusion, never weakens it */ }
-      }
+    mutate(callback) {
+      return mutateCheckpointed((document) => callback(document));
     },
+    mutateCheckpointed,
   };
 }

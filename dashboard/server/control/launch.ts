@@ -29,6 +29,12 @@ import type { InternalServiceCaller } from '../auth/session.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
 import { decodeHostKind, decodeRunnableRef } from './p2Decoders.ts';
 import type { HostKind, RunnableRef } from './p2Contracts.ts';
+import {
+  superviseDetachedAutomaticExecution,
+  surfaceAutomaticExecutionFailure,
+} from './automaticFailureReporter.ts';
+
+export { surfaceAutomaticExecutionFailure } from './automaticFailureReporter.ts';
 
 /**
  * P6 W6.2 [P6-C80]: the ONE reusable binding of `write/asyncGit.ts`'s real transaction span, exported
@@ -40,7 +46,6 @@ import type { HostKind, RunnableRef } from './p2Contracts.ts';
 export function runOpsTransaction<T>(fn: () => Promise<T>): Promise<T> {
   return withOpsTransaction(fn);
 }
-
 /** A transport-neutral HTTP outcome. Routes serialise it with `reply.code(status).send(body)`. */
 export interface LaunchOutcome {
   status: number;
@@ -546,12 +551,13 @@ export async function executeApprovedLaunch(
         summary: 'approved run published; automatic executor owns Manager and Worker startup',
       });
       const runAutomatic = ctx.runAutomatic;
-      void runAutomatic({ subject: sub, runRef, proposal: parsed.value }).catch((error: unknown) => {
-        ctx.controlStore.createHumanRequest(sub, runRef, {
-          kind: 'intervention', title: 'Automatic execution needs intervention',
-          prompt: error instanceof Error ? error.message : 'automatic execution adapter failed',
-        });
-      });
+      superviseDetachedAutomaticExecution(
+        runAutomatic({ subject: sub, runRef, proposal: parsed.value }),
+        {
+          surface: 'approved-launch', runRef,
+          onRejected: (error: unknown) => { surfaceAutomaticExecutionFailure(ctx.controlStore, sub, runRef, error); },
+        },
+      );
       return { status: 201, body: { ok: true, runRef, cards: outcome.cards } };
     } catch (error) {
       const latest = ctx.controlStore.getRun(sub, runRef);

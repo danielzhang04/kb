@@ -225,7 +225,7 @@ function assertReceipt(value: unknown): asserts value is OperationReceipt {
 function assertAttemptOperation(key: unknown, value: unknown): asserts value is AttemptOperationRecord {
   const item = object(value);
   if (item === null || !exactKeys(item, ['operationKey', 'requestHash', 'status', 'promptsDelivered',
-    'sessionId', 'attemptRef', 'receipt', 'revision', 'updatedAt'])
+    'sessionId', 'attemptRef', 'messageClaim', 'receipt', 'revision', 'updatedAt'])
     || typeof item.operationKey !== 'string' || !OPERATION_KEY_RE.test(item.operationKey)
     || item.operationKey !== key
     || typeof item.requestHash !== 'string' || !SHA256_RE.test(item.requestHash)
@@ -234,11 +234,29 @@ function assertAttemptOperation(key: unknown, value: unknown): asserts value is 
     || !(item.sessionId === null || (typeof item.sessionId === 'string' && SESSION_ID_RE.test(item.sessionId)))
     || !(item.attemptRef === null || safeRef(item.attemptRef))
     || !safeInteger(item.revision) || !timestamp(item.updatedAt)) fail();
+  assertMessageClaim(item.messageClaim);
   if (item.receipt !== null) {
     assertReceipt(item.receipt);
     if (item.receipt.operationKey !== item.operationKey
       || item.receipt.requestHash !== item.requestHash) fail();
   }
+}
+
+function assertMessageClaim(value: unknown): void {
+  if (value === null) return;
+  const item = object(value);
+  if (item === null || !exactKeys(item, ['claimRef', 'declarationFingerprint', 'promptFingerprint'])
+    || !boundedText(item.claimRef, 160)
+    || typeof item.declarationFingerprint !== 'string' || !SHA256_RE.test(item.declarationFingerprint)
+    || typeof item.promptFingerprint !== 'string' || !SHA256_RE.test(item.promptFingerprint)) fail();
+}
+
+/** Exact pre-C1 attempt-operation row. This is accepted only by the migration boundary. */
+function assertLegacyAttemptOperation(key: unknown, value: unknown): void {
+  const item = object(value);
+  if (item === null || !exactKeys(item, ['operationKey', 'requestHash', 'status', 'promptsDelivered',
+    'sessionId', 'attemptRef', 'receipt', 'revision', 'updatedAt'])) fail();
+  assertAttemptOperation(key, { ...item, messageClaim: null });
 }
 
 function assertLegacyRun(value: unknown): void {
@@ -347,12 +365,64 @@ export function assertPtySessionsDocumentV2(value: unknown): asserts value is Pt
     if (item === null || !exactKeys(item,
       ['operator', 'runRef', 'attemptRef', 'managedSessionRef', 'sessionId', 'createdAt'])) fail();
   }
-  assertPtySessionsDocumentV3({ ...structuredClone(document), schema: PTY_SESSIONS_SCHEMA, epochId: null });
+  const operations = object(document.attemptOperations);
+  if (operations === null) fail();
+  for (const [key, operation] of Object.entries(operations)) assertLegacyAttemptOperation(key, operation);
+  assertPtySessionsDocumentV3(normalizeLegacyPtySessionsDocument({
+    schema: 'kb.pty-sessions/v3', revision: document.revision, epochId: null,
+    sessions: document.sessions, attemptBindings: document.attemptBindings,
+    operationReceipts: document.operationReceipts, attemptOperations: operations,
+    legacyRuns: document.legacyRuns, legacyArchiveKeys: document.legacyArchiveKeys,
+  }));
 }
 
 export const validatePtySessionsDocumentV2 = (value: unknown): value is PtySessionsDocumentV2 => {
   try { assertPtySessionsDocumentV2(value); return true; } catch { return false; }
 };
+
+/** Decode the exact pre-C1 v3 document at the one durable migration boundary. */
+export function decodeLegacyPtySessionsDocumentV3(value: unknown): PtySessionsDocumentV3 {
+  const document = object(value);
+  const keys = ['schema', 'revision', 'sessions', 'attemptBindings',
+    'operationReceipts', 'attemptOperations', 'legacyRuns', 'legacyArchiveKeys', 'epochId'];
+  if (document === null || !exactKeys(document, keys) || document.schema !== PTY_SESSIONS_SCHEMA) fail();
+  const operations = object(document.attemptOperations);
+  if (operations === null) fail();
+  for (const [key, operation] of Object.entries(operations)) assertLegacyAttemptOperation(key, operation);
+  const normalized = normalizeLegacyPtySessionsDocument({
+    schema: PTY_SESSIONS_SCHEMA, revision: document.revision, epochId: document.epochId,
+    sessions: document.sessions, attemptBindings: document.attemptBindings,
+    operationReceipts: document.operationReceipts, attemptOperations: operations,
+    legacyRuns: document.legacyRuns, legacyArchiveKeys: document.legacyArchiveKeys,
+  });
+  assertPtySessionsDocumentV3(normalized);
+  return normalized;
+}
+
+/** Explicit compatibility map: legacy rows never become current writes until their null binding is present. */
+function normalizeLegacyPtySessionsDocument(source: {
+  schema: 'kb.pty-sessions/v3'; revision: unknown; epochId: unknown; sessions: unknown;
+  attemptBindings: unknown; operationReceipts: unknown; attemptOperations: Record<string, unknown>;
+  legacyRuns: unknown; legacyArchiveKeys: unknown;
+}): PtySessionsDocumentV3 {
+  const attemptOperations: Record<string, AttemptOperationRecord> = {};
+  for (const [key, operation] of Object.entries(source.attemptOperations)) {
+    const item = object(operation);
+    if (item === null) fail();
+    attemptOperations[key] = { ...structuredClone(item), messageClaim: null } as AttemptOperationRecord;
+  }
+  return {
+    schema: PTY_SESSIONS_SCHEMA,
+    revision: source.revision as number,
+    epochId: source.epochId as string | null,
+    sessions: structuredClone(source.sessions) as PtySessionsDocumentV3['sessions'],
+    attemptBindings: structuredClone(source.attemptBindings) as PtySessionsDocumentV3['attemptBindings'],
+    operationReceipts: structuredClone(source.operationReceipts) as PtySessionsDocumentV3['operationReceipts'],
+    attemptOperations,
+    legacyRuns: structuredClone(source.legacyRuns) as PtySessionsDocumentV3['legacyRuns'],
+    legacyArchiveKeys: structuredClone(source.legacyArchiveKeys) as PtySessionsDocumentV3['legacyArchiveKeys'],
+  };
+}
 
 export function createEmptyPtySessionsDocument(): PtySessionsDocumentV3 {
   return {

@@ -76,6 +76,12 @@ function fixture(options: {
   /** What `refs/heads/<lineage branch>` holds in the SHARED object store after the cherry-pick. Omitted
    *  => the integration commit, i.e. what a real cherry-pick on a checked-out branch actually writes. */
   storedLineageCommit?: string;
+  holdFirstGit?: boolean;
+  holdPublisher?: boolean;
+  holdFinalLineageProof?: boolean;
+  holdAttemptStatus?: boolean;
+  holdIntegrationBaseResolution?: boolean;
+  missingIntegrationRoot?: boolean;
 } = {}) {
   const workspace = root();
   const repoRoot = join(workspace, 'repo');
@@ -87,7 +93,8 @@ function fixture(options: {
   const lineageBranch = `codex/managed-${createHash('sha256').update(runRef).digest('hex').slice(0, 24)}`;
   const stageId = 'stage-1';
   const attemptPath = planAttemptWorktreePath(worktreeRoot, runRef, 'attempt-1');
-  for (const path of [repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, attemptPath]) mkdirSync(path, { recursive: true });
+  for (const path of [repoRoot, coordinationRoot, worktreeRoot, stateRoot, attemptPath]) mkdirSync(path, { recursive: true });
+  if (!options.missingIntegrationRoot) mkdirSync(integrationRoot, { recursive: true });
   const cardRef = workflowCardId(runRef, stageId);
   const changedPath = 'dashboard/server/result.txt';
   const content = 'bounded result\n';
@@ -176,6 +183,28 @@ function fixture(options: {
   let staged = false;
   let failAttemptResolution = options.failAfterAttemptCommit ?? false;
   let failLineageResolution = options.failAfterCherryPick ?? false;
+  let forwardAdmissionOpen = true;
+  let firstGitHeld = false;
+  let releaseFirstGit: (() => void) | undefined;
+  let markFirstGitStarted: (() => void) | undefined;
+  const firstGitStarted = new Promise<void>((resolve) => { markFirstGitStarted = resolve; });
+  let finalLineageProofHeld = false;
+  let releaseFinalLineageProof: (() => void) | undefined;
+  let markFinalLineageProofStarted: (() => void) | undefined;
+  const finalLineageProofStarted = new Promise<void>((resolve) => { markFinalLineageProofStarted = resolve; });
+  let holdFinalLineageHead = false;
+  let finalLineageHeadHeld = false;
+  let releaseFinalLineageHead: (() => void) | undefined;
+  let markFinalLineageHeadStarted: (() => void) | undefined;
+  const finalLineageHeadStarted = new Promise<void>((resolve) => { markFinalLineageHeadStarted = resolve; });
+  let attemptStatusHeld = false;
+  let releaseAttemptStatus: (() => void) | undefined;
+  let markAttemptStatusStarted: (() => void) | undefined;
+  const attemptStatusStarted = new Promise<void>((resolve) => { markAttemptStatusStarted = resolve; });
+  let integrationBaseHeld = false;
+  let releaseIntegrationBase: (() => void) | undefined;
+  let markIntegrationBaseStarted: (() => void) | undefined;
+  const integrationBaseStarted = new Promise<void>((resolve) => { markIntegrationBaseStarted = resolve; });
   const gitCalls: { cwd: string; args: readonly string[]; fullArgs: readonly string[] }[] = [];
   let lineagePushFails = options.lineagePushFails ?? false;
   const gitRunner: GitCommandRunner = {
@@ -193,6 +222,34 @@ function fixture(options: {
       expect(fullArgs).toContain('--literal-pathspecs');
       const args = fullArgs.slice(fullArgs.indexOf('--literal-pathspecs') + 1);
       gitCalls.push({ cwd, args: [...args], fullArgs: [...fullArgs] });
+      if (options.holdFirstGit && !firstGitHeld) {
+        firstGitHeld = true;
+        markFirstGitStarted?.();
+        await new Promise<void>((resolve) => { releaseFirstGit = resolve; });
+      }
+      if (options.holdFinalLineageProof && !finalLineageProofHeld
+        && args[0] === 'rev-parse' && String(args[1]).startsWith('refs/remotes/')) {
+        finalLineageProofHeld = true;
+        markFinalLineageProofStarted?.();
+        await new Promise<void>((resolve) => { releaseFinalLineageProof = resolve; });
+      }
+      if (holdFinalLineageHead && !finalLineageHeadHeld
+        && args[0] === 'rev-parse' && args[1] === 'HEAD' && cwd !== attemptPath && cwd !== repoRoot) {
+        finalLineageHeadHeld = true;
+        markFinalLineageHeadStarted?.();
+        await new Promise<void>((resolve) => { releaseFinalLineageHead = resolve; });
+      }
+      if (options.holdAttemptStatus && !attemptStatusHeld && args[0] === 'status' && cwd === attemptPath) {
+        attemptStatusHeld = true;
+        markAttemptStatusStarted?.();
+        await new Promise<void>((resolve) => { releaseAttemptStatus = resolve; });
+      }
+      if (options.holdIntegrationBaseResolution && !integrationBaseHeld
+        && args[0] === 'rev-parse' && args[1] === 'HEAD' && cwd !== attemptPath && cwd !== repoRoot) {
+        integrationBaseHeld = true;
+        markIntegrationBaseStarted?.();
+        await new Promise<void>((resolve) => { releaseIntegrationBase = resolve; });
+      }
       if (args[0] === 'show-ref') return { exitCode: 1, stdout: Buffer.alloc(0), stderr: '' };
       if (args[0] === 'worktree' && args[1] === 'add') {
         mkdirSync(String(args[2] === '-b' ? args[4] : args[2]), { recursive: true });
@@ -317,6 +374,10 @@ function fixture(options: {
   let cardFails = options.cardFails ?? false;
   let verifyFails = options.verifyFails ?? false;
   let cardMutations = 0;
+  let publisherHeld = false;
+  let releasePublisher: (() => void) | undefined;
+  let markPublisherStarted: (() => void) | undefined;
+  const publisherStarted = new Promise<void>((resolve) => { markPublisherStarted = resolve; });
   const runPy: PyRunner = (_cwd, code, jsonArg) => {
     if (code === CANONICAL_RESULT_VERIFY_SCRIPT) {
       if (verifyFails) return { exitCode: 1, stdout: '', stderr: 'committed canonical Result payload differs' };
@@ -358,6 +419,11 @@ function fixture(options: {
     expect(submitted.kind).toBe('card-transition');
     const intent = submitted as CardTransitionIntent;
     expect(intent.actor).toBe('dashboard-supervisor');
+    if (options.holdPublisher && !publisherHeld) {
+      publisherHeld = true;
+      markPublisherStarted?.();
+      await new Promise<void>((resolve) => { releasePublisher = resolve; });
+    }
     if (cardFails) throw new Error('canonical card mismatch');
     if (pushFails || remainingPushFailures > 0) {
       if (remainingPushFailures > 0) remainingPushFailures -= 1;
@@ -399,18 +465,35 @@ function fixture(options: {
   const integratorOptions = {
     repoRoot, coordinationRoot, integrationRoot, worktreeRoot, stateRoot, baseCommit: 'a'.repeat(40),
     gitRunner, coordinationGit, runPy, reconciliationPublisher, readStoreRevision, publication,
+    assertForwardAdmission: () => {
+      if (!forwardAdmissionOpen) throw new Error('forward admission withdrawn');
+    },
     outboxRoot: join(workspace, 'outbox'),
     resolveCoordinationBranch: async (path: string) => { branchResolutions.push(path); return coordinationBranch; },
   };
   const integrator = createCanonicalGitResultIntegrator(integratorOptions);
   return {
-    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, repoRoot, doneRel, branchResolutions,
+    input, integrator, gitCalls, coordinationCalls, stateRoot, coordinationRoot, repoRoot, integrationRoot, doneRel, branchResolutions,
     restartIntegrator: () => createCanonicalGitResultIntegrator(integratorOptions),
     setPushFails(value: boolean) { pushFails = value; },
     setCardFails(value: boolean) { cardFails = value; },
     setLineagePushFails(value: boolean) { lineagePushFails = value; },
     setCoordinationIndexDirty(value: boolean) { coordinationIndexDirty = value; },
     setVerifyFails(value: boolean) { verifyFails = value; },
+    withdrawForwardAdmission() { forwardAdmissionOpen = false; },
+    firstGitStarted,
+    releaseFirstGit() { releaseFirstGit?.(); },
+    finalLineageProofStarted,
+    releaseFinalLineageProof() { releaseFinalLineageProof?.(); },
+    holdFinalLineageHead() { holdFinalLineageHead = true; },
+    finalLineageHeadStarted,
+    releaseFinalLineageHead() { releaseFinalLineageHead?.(); },
+    attemptStatusStarted,
+    releaseAttemptStatus() { releaseAttemptStatus?.(); },
+    integrationBaseStarted,
+    releaseIntegrationBase() { releaseIntegrationBase?.(); },
+    publisherStarted,
+    releasePublisher() { releasePublisher?.(); },
     cardMutations: () => cardMutations,
   };
 }
@@ -460,6 +543,113 @@ function rewriteJournalAsLegacyReview(item: ReturnType<typeof fixture>): void {
 }
 
 describe('canonical Git result integrator', () => {
+  it('does not let a retired queued callback begin a later forward effect after an issued git call settles', async () => {
+    const item = fixture({ holdFirstGit: true });
+    const integrating = item.integrator.integrate(item.input);
+    await item.firstGitStarted;
+    const queuedLookup = item.integrator.lookup({
+      operationKey: 'result:unknown:stage-1', subject: item.input.subject, runRef: item.input.runRef, stageId: item.input.stageId,
+    });
+
+    item.withdrawForwardAdmission();
+    item.releaseFirstGit();
+
+    await expect(integrating).rejects.toThrow('forward admission withdrawn');
+    // A missing-record lookup has no Git or publisher work of its own. Its rejection therefore proves the
+    // admission check runs when the queued serialized callback executes, before it can start another hop.
+    await expect(queuedLookup).rejects.toThrow('forward admission withdrawn');
+    expect(item.gitCalls).toHaveLength(1);
+    expect(item.coordinationCalls).toEqual([]);
+    expect(item.cardMutations()).toBe(0);
+    // This first Git call is issued before `integrate` writes its intent journal. Withdrawal retains no
+    // invented receipt for an effect whose own issuance never reached a durable journal boundary.
+    expect(existsSync(join(item.stateRoot, 'control/canonical-integration.json'))).toBe(false);
+  });
+
+  it('retains an issued publisher hop but prevents verification and canonical success after withdrawal', async () => {
+    const item = fixture({ holdPublisher: true });
+    const integrating = item.integrator.integrate(item.input);
+    await item.publisherStarted;
+    const gitBeforeRelease = item.gitCalls.length;
+
+    item.withdrawForwardAdmission();
+    item.releasePublisher();
+
+    await expect(integrating).rejects.toThrow('forward admission withdrawn');
+    // The publisher was already issued before withdrawal and may settle its durable receipt. Nothing after
+    // it may run: verification would make more Git calls and canonical success would advance the journal.
+    expect(item.gitCalls).toHaveLength(gitBeforeRelease);
+    expect(item.cardMutations()).toBe(1);
+    const journal = JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')) as {
+      records: Array<{ state: string }>;
+    };
+    expect(journal.records).toHaveLength(1);
+    expect(journal.records[0]).toMatchObject({ state: 'canonical-intent' });
+  });
+
+  it('retains a no-card lineage receipt when its final durability proof resolves after withdrawal', async () => {
+    const item = fixture({ holdFinalLineageProof: true });
+    const input = { ...item.input, operationKey: 'result:run-1:stage-1:g2', canonicalCardRef: null };
+    const integrating = item.integrator.integrate(input);
+    await item.finalLineageProofStarted;
+    const gitBeforeRelease = item.gitCalls.length;
+
+    item.withdrawForwardAdmission();
+    item.releaseFinalLineageProof();
+
+    await expect(integrating).rejects.toThrow('forward admission withdrawn');
+    expect(item.gitCalls).toHaveLength(gitBeforeRelease);
+    expect(item.coordinationCalls).toEqual([]);
+    const journal = JSON.parse(readFileSync(join(item.stateRoot, 'control/canonical-integration.json'), 'utf8')) as {
+      records: Array<{ state: string }>;
+    };
+    expect(journal.records).toHaveLength(1);
+    expect(journal.records[0]).toMatchObject({ state: 'lineage-local' });
+  });
+
+  it('does not return a lineage base read that resolved after withdrawal', async () => {
+    const item = fixture();
+    await item.integrator.integrate(item.input);
+    item.holdFinalLineageHead();
+    const resolving = item.integrator.resolveBase!({
+      operationKey: 'base:run-1:stage-2', subject: item.input.subject, runRef: item.input.runRef,
+      stageId: 'stage-2', dependencyStageIds: [item.input.stageId],
+    });
+    await item.finalLineageHeadStarted;
+    const gitBeforeRelease = item.gitCalls.length;
+
+    item.withdrawForwardAdmission();
+    item.releaseFinalLineageHead();
+
+    await expect(resolving).rejects.toThrow('forward admission withdrawn');
+    expect(item.gitCalls).toHaveLength(gitBeforeRelease);
+  });
+
+  it('does not create a lineage directory when withdrawal lands after an issued attempt-status read', async () => {
+    const item = fixture({ holdAttemptStatus: true, missingIntegrationRoot: true });
+    const integrating = item.integrator.integrate(item.input);
+    await item.attemptStatusStarted;
+
+    item.releaseAttemptStatus();
+    queueMicrotask(() => queueMicrotask(() => item.withdrawForwardAdmission()));
+
+    await expect(integrating).rejects.toThrow('forward admission withdrawn');
+    expect(existsSync(item.integrationRoot)).toBe(false);
+    expect(item.gitCalls.some((call) => call.args[0] === 'worktree' && call.args[1] === 'add')).toBe(false);
+  });
+
+  it('does not create a fresh intent when withdrawal lands after integration-base resolution', async () => {
+    const item = fixture({ holdIntegrationBaseResolution: true });
+    const integrating = item.integrator.integrate(item.input);
+    await item.integrationBaseStarted;
+
+    item.releaseIntegrationBase();
+    queueMicrotask(() => queueMicrotask(() => item.withdrawForwardAdmission()));
+
+    await expect(integrating).rejects.toThrow('forward admission withdrawn');
+    expect(existsSync(join(item.stateRoot, 'control', 'canonical-integration.json'))).toBe(false);
+  });
+
   it('commits bounded attempt changes into lineage before the exact canonical card commit and replay', async () => {
     const item = fixture();
     expect(await item.integrator.lookup(item.input)).toBeNull();

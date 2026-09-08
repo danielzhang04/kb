@@ -1,0 +1,183 @@
+# DRAFT — Remaining Phase 0 integrated generation fence work order
+
+Status: **DRAFT; independent plan review TECHNICALLY READY on 2026-09-08.** The three assigned planning blockers are resolved; Phase 0 implementation and acceptance remain incomplete. This revision addresses the three findings from the 2026-09-08 **REQUEST CHANGES** review: C now owns the complete PTY persistence surface, claim delivery has one durable creator with no automatic takeover, and ledger recovery belongs to the active generation before any settlement effect. The verdict, evidence, and limits are in [the plan ownership review](plan-ownership-review-20260908.md). This planning verdict grants no merge, deployment, or production authority. The default remains the compatibility-preserving wiring brake: Lock withdraws this process generation, leaves the run resumable, and requires Resume after Unlock. It does not durably stop, interrupt, or complete a run.
+
+## Approved C1 compatibility-scope amendment
+
+The original technically-ready plan did not enumerate the real boot migration
+coverage for the newly non-optional attempt field. Root approved this additive
+C1 amendment before dispatch: C owns `pty/sessionMigration.ts` and its test;
+`http/surface.ts` remains read-only and C owns `http/surface.test.ts` only for
+the existing boot migration-before-read regression. Current persistence stays
+strict-current; exact legacy v3/v2 decoding is confined to the existing module
+migration boundary. This does not release frozen Slice 1A files, add C1 delivery
+or B binding, or alter the plan's remaining acceptance.
+
+## C delivery staging decisions
+
+C may expose an optional `messageClaims` port until B binds activation last. If
+that port is absent, begin refuses before any claim, PTY, session, write, or
+destructive drain effect. The deprecated `drainMessages` option may remain only
+for the existing B constructor's type compatibility; C never invokes it and has
+no delivery fallback. B supplies the real chain store and generation admission
+callback at integration. A passing C port suite is not an activated runtime gate.
+
+Read-only terminal observation is permitted, not required. C may return the
+named reconciliation refusal for every cross-adapter observed claim, including
+acknowledged tombstones. Such observers have zero mutation or delivery authority.
+Exact same-adapter duplicate calls still reuse the creator's existing launch
+promise. No synthetic terminal receipt or new adoption path is required.
+
+## Overnight continuation and A1/grant window
+
+On 2026-09-08 the user directed the remaining work to run asynchronously overnight
+and to keep most implementation in one consolidated merge. Root treats this as
+renewed authorization for the pending bounded C-delivery and D1-design correction
+cycles. Existing evidence remains historical; neither correction is accepted by
+that authorization alone. Implementation accumulates in PR176; coordination uses
+the separate Codex-to-ops PR177 required by repository routing.
+
+After independent A1 preflight review and coordinator verification of its
+corrections, root releases only `execution.ts`/test and
+`spendGrantProvision.ts`/test for one atomic strict-outcome implementation window.
+The grant files' prior Slice 1A fences and tests must be preserved. `adapters.ts`
+and its test stay frozen. A1 is technically independent of C delivery and D1;
+B still starts only after all A/C/D surfaces pass acceptance.
+
+For tokenless grant refusal only, amend Brief A's parking tuple to an interrupted
+attempt and interrupted worker session, with stage/run waiting-human. Strictly
+zero-settle the issued reservation and remove the unused worktree once before
+creating the idempotent intervention. Explicit Resume then uses the existing
+successor path. Do not add a cause-adoption mechanism or store API. The detailed
+guard map, cleanup rules, and required tests are in
+[the A1 preflight](a1-engine-grant-preflight-20260908.md). This amendment supersedes
+the original linear port ordering and tokenless attempt/session tuple below;
+it grants no activation, merge, or deployment acceptance.
+
+## D1 implementation release after independent design review
+
+Root accepted the corrected D1 design after fresh independent TECHNICALLY READY
+review. The user's ongoing overhaul authorization releases the exact files:
+`control/atomicJsonDocument.ts`/test, `control/queueBridge.ts`/test, new
+`control/fleetLedgerReceipt.ts`/test, `planeA/ledgers.ts`/test,
+`agents/roster.test.ts` (all under dashboard/server), `scripts/ledger.py`, and
+`tests/test_ledger.py`. No publisher API or roster production edit is released.
+The checkpoint primitive, pinned-day compatibility, and original-writer parsing
+are mandatory parts of D1, not optional implementation cleanup. Use the exact
+proof, lock order, falsey checkpoint escape, and recovery limits in the D1 design
+and its independent review. No actual ledger publication is part of local tests.
+This supersedes the earlier D1 design pause; B still waits for accepted ports.
+
+## Frozen boundary and common contract
+
+`dashboard/server/control/adapters.ts`, `adapters.test.ts`, `spendGrantProvision.ts`, and `spendGrantProvision.test.ts` remain frozen for this work order. At fixture commit `42125cb2`, the full 399-test Linux gate, 47-test Windows gate, and mutation-only verifier passed with the source checksum restored. Those are retained source-slice results; the separate planning review below does not establish integrated implementation acceptance. Their optional `assertForwardAdmission(): void` callback is the only worktree/grant seam used below. This plan does not release or edit any frozen file.
+
+Create `dashboard/server/control/executionLifetime.ts` with this server-internal interface:
+
+```ts
+export class ExecutionWithdrawnError extends Error {}
+export interface ExecutionLifetime {
+  readonly withdrawn: Promise<void>; // resolves once; never rejects
+  revoke(): void;                    // synchronous and idempotent
+  assertCurrent(): void;             // throws ExecutionWithdrawnError after revoke
+  track<T>(label: string, issued: Promise<T>): Promise<T>;
+  pending(): readonly string[];      // labels only; no values or secrets
+}
+export function createExecutionLifetime(): ExecutionLifetime;
+export type AutomaticExecutionSettlement =
+  | { kind: 'boundary'; outcome: ExecutionOutcome }
+  | { kind: 'withdrawn' };
+```
+
+`track` observes an already-issued promise; it never takes an effect factory and is not a lease. Each call site asserts immediately before a concrete effect, tracks its returned promise, then asserts after await before a later forward effect or projection. Every rejection stays observed; no process-global unhandled-rejection listener is introduced.
+
+Do not add a generic store proxy, `runPhase`, public DTO, or generic retry. `execution.ts` retains named transition/boundary helpers and adds explicit current-generation assertions at the top of each, immediately before actual store mutation. Reads may continue only to select cleanup or withdrawal. Cleanup is limited to owned cancellation/close/drain, one `worktree-remove:<attemptRef>`, zero-usage `settle:<attemptRef>` after an issued reservation, an issued canonical receipt, and a whole admitted ledger unit. It cannot create successors, prompts, grants, requests, or lifecycle state.
+
+## Ownership and integration order
+
+No two workers edit a listed file. Each stops with evidence after two verification failures on the same scenario. Builders may add focused tests for their section but may not weaken this work order or Slice 1A acceptance.
+
+| Order / owner | Sole files | Fixed handoff |
+| --- | --- | --- |
+| A — lifetime/engine | new `executionLifetime.ts` + test; new `spendGrantProvisionOutcome.ts`; `execution.ts`, `execution.test.ts` | Owns the neutral lifetime and grant-outcome interfaces, then explicit engine admission/projection checks. Does not edit activation, routes, attempts, canonical, ledger, or Slice 1A. |
+| B — activation/callers | `activation.ts` + test; `http/context.ts`; `routes.ts` + test; `launch.ts` + test | Sole owner of latch, wiring, settlement translation, and all detached callers. Consumes A/C/D interfaces unchanged. |
+| C — attempt/message receipts | `attemptSessionAdapter.ts` + test; `attemptVertical.integration.test.ts`; `agentSessionChains.ts` + test; `pty/contracts.ts` + test; `pty/sessionPersistence.ts` + test; `pty/sessionRecord.ts` + test; `pty/sessionMigration.ts` + test; `http/surface.test.ts` | Replaces destructive drain with durable claims, owns every changed `AttemptOperationRecord` literal plus the PTY exact-keys decoder, explicit legacy migration, cloning, persistence, and session/write/EOF fences. `http/surface.ts` stays read-only; its test proves the existing boot migration boundary. Generic receipts stay unchanged. Defines only options B passes. |
+| D — canonical/ledger/grant refusal | `canonicalResultIntegrator.ts` + test; `queueBridge.ts` + ledger tests; after Slice 1A is released for the integration wave, `spendGrantProvision.ts` + test | Fences canonical hops, adds ledger receipt/reconciliation, and implements the mandatory tokenless already-live refusal. Defines only construction/settlement options B passes. |
+
+The dependency graph is A0 interface stage → C plus D canonical/ledger ports → D grant port after Slice 1A release → A1 engine → B integration. A0 creates only `executionLifetime.ts` and `spendGrantProvisionOutcome.ts`; `SpendGrantProvisionOutcome` is `{ kind: 'ready' } | { kind: 'tokenless-already-live'; grantRef: string | null }`. D imports that type when it reopens the grant provisioner, and A1 imports the same type when it changes engine control flow. Thus A does not need a D-created interface, and no worker edits the same file. B starts only after A1/C/D focused acceptance passes and performs integrated wiring last. No partial activation wiring lands. The internal `runAutomatic` type becomes `Promise<AutomaticExecutionSettlement>` only in server control/context modules; browser DTOs remain unchanged.
+
+## Brief A — lifetime and engine projection
+
+1. A0 owns and freezes `SpendGrantProvisionOutcome` above before any port work. A1 adds optional `lifetime?: ExecutionLifetime` and `provisionSpendGrant?: (...) => Promise<SpendGrantProvisionOutcome>` to `AutomaticExecutionOptions`; omission preserves inactive and existing unit construction. B creates the lifetime; A only consumes it through an explicit local assertion.
+2. Immediately before and after every await, gate and track `managers.ensure`; `results.lookup`, `resolveBase`, `integrate`; `worktrees.ensure`, `inspect`; `skills.resolve`; `accounting.reserve`; `provisionSpendGrant`; and `workers.begin`. A post-await withdrawal cannot project its returned value.
+3. Gate each forward mutation: Manager successor creation, transitions, iteration requests, boundaries, events, and finalization. `onManagerStarted` is a forward projection and is gated.
+4. After a pre-revocation reserve resolves, use only its same-key zero-usage settlement. Do not ceiling settle, reserve again, grant, or start a worker. `worktrees.remove` stays one cleanup call; its catch may not append an event after withdrawal.
+5. Consume D's internal `SpendGrantProvisionOutcome`: `ready` continues; `tokenless-already-live` creates exactly one `intervention` boundary titled `automatic:spend:<stageId>:tokenless-already-live`, moves the attempt and worker session to `waiting`, and returns `waiting-human` before `workers.begin`. Its stable prompt says that a previous grant is live but has no capability file and that the bounded TTL must expire before Resume. It includes no raw token.
+6. Tests hold real promise seams for canonical lookup/base, Manager ensure, worktree ensure, reserve, grant provision, worker begin, inspect, and integration. Each proves at most one issued completion and zero next ports, store projections, or Manager callback. They also prove the tokenless outcome invokes zero workers. Boolean-only lifetime tests do not meet this brief.
+
+## Brief C — claim receipt and attempt admission
+
+Atomically migrate the agent-chain document to `kb.agent-session-chains/v2` with structured queued messages `{ messageRef, text, queuedAt, ordinal }`. `queueMessage` generates a ref and monotonic global per-run ordinal. This is stronger than per-agent monotonic restoration ordering, though an individual agent's values may be noncontiguous. The v1 decoder accepts only the exact legacy shape, and its first locked mutation assigns deterministic refs from `(runRef, agentId, ordinal, text)`, one migration timestamp, and array-order ordinals before writing v2, so duplicate text stays distinct and ordered. Claims are keyed by the adapter's bounded SHA-256 `hostKey` operation mapping and include empty claims; acknowledged and released claims remain immutable tombstones, never reacquire messages queued later, and are not silently evicted or reused when the bounded per-run document fills. The accepted C0 evidence and host-key boundary are recorded in [the C0 claim-store review](c0-claim-store-review-20260908.md):
+
+```ts
+{ claimRef, operationKey, declarationFingerprint, agentId, messageRefs, messages,
+  promptFingerprint: string | null, ptyOperationRevision: number | null,
+  state: 'claimed' | 'prompt-bound' | 'pty-bind-admitted' | 'pty-bound'
+    | 'write-intent' | 'acknowledged' | 'released',
+  ownerHandleHash, revision, claimedAt, updatedAt }
+```
+
+Expose internal CAS methods `claimMessages`, `bindPromptFingerprint`, `admitPtyBind`, `markPtyBound`, `recordWriteIntent`, `ackClaim`, and `releasePrewrite`. `claimMessages` returns either `{ disposition: 'created', claim, creatorHandle }` or `{ disposition: 'observed', claim }`. The raw random handle exists only in the successful creator result; the document stores its hash, observed/repeat results omit both, and logs/errors omit handles and message text. Every later mutation requires that handle, exact immutable identities, and expected revision. A falsey throw or rejection from any mutation is still failure. Because `AtomicJsonDocument.mutate` can rename durable JSON before its SQLite `COMMIT` or return throws, any thrown create/transition/release is an ambiguous landed mutation: the caller issues no next effect and does not infer state from a later read.
+
+The chain store is the sole delivery-state authority. `bindPromptFingerprint` sets the hash of exact encoded augmented prompt bytes plus ordered message refs once, before any PTY action. `admitPtyBind` is the exclusive `prompt-bound → pty-bind-admitted` transition and the point of no direct release; only the live creator that received its successful return may invoke the PTY operation CAS, once. After that CAS returns the exact matching record, `markPtyBound` records its revision. A throw/conflict anywhere between bind admission and successful `markPtyBound` is retained as reconciliation-required: it never releases or retries the PTY CAS. From `pty-bound`, `recordWriteIntent` and `releasePrewrite` are mutually exclusive CAS transitions in this same store. A cancellation, revocation, or start refusal may restore messages only by winning `pty-bound → released`; delivery may call the first `host.write` only after winning `pty-bound → write-intent`. Whichever loses performs zero effect. `releasePrewrite` restores claimed messages ahead of later messages by ordinal in the same mutation. `ackClaim` follows successful prompt writes/EOF, clears message text, and retains the identities/tombstone. A released tombstone also clears its copy after restoration. No TTL, stored-token takeover, cross-instance creator transfer, or automatic recovery exists.
+
+C changes only `AttemptOperationRecord`: add non-optional `messageClaim: null | { claimRef, declarationFingerprint, promptFingerprint }`. `AttemptOperationStatus`, generic `OperationReceipt`, `OperationReceipt.status`, and `AttemptStartReceipt` stay unchanged. Therefore `assertReceipt` exact keys/status, `beginOperationReceipt`/`settleOperationReceipt`, manual/run receipt literals, and the `claudeWorkerAdapter.test.ts`/`codexExecAdapter.test.ts` start-receipt fixtures require no edits and remain outside C. C owns every impacted `AttemptOperationRecord` constructor/literal in `attemptSessionAdapter.ts`, `attemptSessionAdapter.test.ts`, `attemptVertical.integration.test.ts`, `pty/contracts.test.ts`, `pty/sessionRecord.ts`, `pty/sessionRecord.test.ts`, `pty/sessionPersistence.test.ts`, `pty/sessionMigration.ts`, and `pty/sessionMigration.test.ts`; `http/surface.test.ts` covers the real existing boot path only. In `sessionPersistence.ts`, the current-v3 `assertAttemptOperation` exact-keys/status validation, nested receipt validation, cloning/serialization, retention, and read/write paths preserve the non-optional field. New persistence reads and writes remain strict-current. Exact legacy v3 and v2 decoders live only at the existing `sessionMigration.ts` boundary, where they normalize a validated old attempt operation to `messageClaim: null` before the current validator runs; the migration retains its backup/fsync/rename durability flow. The v2 schema decoder and v2→v3 migration remain readable, while every new write emits the new exact v3 shape. `SessionRecordRegistry.readOperation`/`writeOperation`, `nextRecord`, cancellation, and settlement clone/carry the binding without making it a second state authority.
+
+`attemptSessionAdapter.begin` orders work as claim → prepare exact augmented prompts → bind fingerprint → optional preflight operation read → admit PTY bind → one PTY attempt-operation CAS carrying all three immutable identities → mark PTY bound → start session → win write-intent → prompt writes/EOF → acknowledge. Preparation or a pre-admission refusal releases only while the creator can still win the same-store `claimed|prompt-bound → released` CAS. A preflight legacy/mismatched record may cause that release because this creator has not admitted a bind; absence on that read is never treated as proof. After bind admission, matching or mismatched PTY conflict, PTY throw, or mark-bound throw is ambiguous and cannot release. A prior PTY record with `messageClaim: null` is a legacy conflict, never an adoptable match. Every read-only adoption cross-checks all three bindings and current chain state: `released` cannot be revived by a stale PTY `bound` record, and `acknowledged` may only observe the already-existing terminal receipt. A repeated call may subscribe to the exact creator promise already held by the same adapter; every other repeat is observer-only and returns the existing refusal path with `message-claim-reconciliation-required`, starting no worker/session/write/release. No observer receives or uses a stored ownership value.
+
+C adds `assertForwardAdmission?: () => void`. Check before `startRunSession`, before the write-intent transition, before each `host.write` and `host.endInput`, and after their awaits before later hops. A successful write-intent followed by any throw/refusal, or a partial `host.write` result (`0 < accepted < prompt.byteLength`), is retained ambiguous: no later prompt/EOF, acknowledgement, restoration, or automatic duplicate. Cancellation/close and receipt observation remain cleanup. The existing refusal/boundary path surfaces reconciliation-required; it is not a silent pending promise and adds no public route or authority.
+
+The required interleavings are explicit:
+
+| Interleaving | Required result |
+| --- | --- |
+| Two stores/adapters claim the same operation | One `created` result owns the handle; the observer never binds, starts, writes, or releases, including when the claim is empty. |
+| Claim/transition mutation throws after a possible rename | Stop at that hop and surface reconciliation-required; no read-based release, retry, or forward effect. |
+| PTY bind conflicts or may have landed | The admitted creator retains the claim ambiguous; a matching record does not grant a repeat caller ownership. |
+| Cancel/revoke races first write | `releasePrewrite` and `recordWriteIntent` compete on the same claim revision; release winner restores once and write winner may issue once. The loser has zero effect. |
+| Write returns partial, refuses, or throws | Retain `write-intent`, perform cleanup only, and never release or resend. |
+| Restart sees claimed/bound/write-intent or a released tombstone | Return the named refusal or read-only terminal observation; never acquire later queued messages or create a worker. |
+
+Focused tests cover both schema migrations and exact-key rejection; clone/round-trip/retention of `messageClaim`; every changed constructor; empty-claim restart with a later queued message excluded; immutable prompt mismatch before PTY action; preparation and pre-admission release; ambiguous falsey mutation failure; matching and mismatched PTY conflicts after admission with no release; creator crash at every transition; two-adapter and cancel-versus-write CAS races; held session start; held/partial first write; stale PTY-bound plus released claim; acknowledgement/release tombstones; legacy `messageClaim: null`; duplicate begin; and restart with zero automatic duplicate.
+
+## Brief D — canonical and ledger recovery
+
+`createCanonicalGitResultIntegrator` gains optional `assertForwardAdmission`. Its serialized callback checks on entry, not just before joining `tail`, and immediately before attempt commit, lineage cherry-pick, lineage publication, coordination preparation, and every Git/publisher call. An issued hop may record its existing journal receipt; a retired callback cannot invoke the next hop, verify/project canonical success, or produce an engine event. Keep the current journal and operation keys; do not create a second saga or automatic retry.
+
+Add a local fleet-ledger receipt keyed by run plus a canonical hash of sorted terminal row identities/costs. Phases: `intent`, `rows-appended`, `committed`, `publication-uncertain`, and `completed`. Persist intent; append exact rows; persist rows-appended; use existing governed commit/publication; then prove exact rows/commit before completed. After append/crash, the same key reconciles by inspecting shards and Git, completing only proven missing phases and never appending duplicates. This is explicit cross-store recovery, not a fictional atomic transaction.
+
+B asserts current immediately before starting this whole ledger unit. If revocation precedes ledger admission, there is no D call, row, or Git effect; once admitted, the unit completes or retains its named receipt. D owns `FleetLedgerReceiptStore`, constructed by B as `createFleetLedgerReceiptStore({ stateRoot })` at `<stateRoot>/control/fleet-ledger-receipts.json`; D's settlement and reconciler both receive that same store, never a copied receipt. D exports pure synchronous `prepareFleetLedgerSettlement(input): { receiptKey, input: LedgerSettlementInput }`, where `input` is an immutable normalized snapshot containing the original subject/run and exact sorted terminal row identities/costs, plus effectful `beginFleetLedgerSettlement(deps, prepared): Promise<'settled' | 'required'>`. The key hashes that snapshot. `begin...` returns a native promise and its effect belongs to the already-registered key; it does not re-read changed terminal rows, derive a second identity, or expose another authority.
+
+Before calling `begin...`, B prepares the snapshot and inserts one `LedgerRecoveryEntry` containing that exact `receiptKey` and `input` into the active generation's registry. If that key already has a `pending`, `required`, or `recovering` entry, B requires byte-identical canonical input, reuses that exact entry, and never invokes D or overwrites its promise/state; a hash-key/input mismatch fails closed. For a new key, the entry is present as `pending` before any D effect can issue; then B calls `begin...` with the same prepared snapshot, stores its real completion promise, passes that same promise to `lifetime.track`, and attaches one observed continuation. A synchronous throw, including a falsey value, and a promise rejection both set this entry to `required`. Fulfillment with `required` does the same; fulfillment with `settled` removes it only if `registry.get(receiptKey) === entry`. Every completion/recovery callback uses that object-identity guard, so an older callback cannot clear or mutate a later same-key entry. D's durable same-key receipt remains idempotent if a settled key is encountered again after its active entry was removed.
+
+D exports `reconcileFleetLedgerReceipt({ receipts, repoRoot, publication, outboxRoot }, prepared): Promise<'settled' | 'required'>`; it consumes the entry's identical key/input snapshot, creates or reconciles a missing intent after an earlier synchronous begin failure, and proves exact rows/commit before returning `settled`. Expected incomplete/ambiguous states return `required` rather than throw. `ActivatedExecution` owns `reconcileLedger(entry)` as the sole B-to-D closure and passes no re-derived store data. Unlock refuses `execution-ledger-reconciliation-required` until this reconciler proves settlement; the present best-effort `console.error` must not hide that state.
+
+D tests held canonical Git/publisher (zero next hop/projection), held pre-ledger admission (zero rows/Git), held admitted commit (one unit completes), and crash-shaped phases (same-key reconciliation, never duplicate rows). B tests pre-registration before D invocation, a same-key repeat while each state is unresolved, synchronous falsey throw and falsey promise rejection, entry-identity-safe late completion, and removal only for a proven settled result.
+
+After the paused Slice 1A work has passed its separate review and is explicitly released for this integration wave, D reopens only `spendGrantProvision.ts` and its test. It replaces the current silent `already-live` no-op from `createSpendGrantProvisioner` with the internal discriminated return `SpendGrantProvisionOutcome = { kind: 'ready' } | { kind: 'tokenless-already-live'; grantRef: string | null }`. `provisionAttemptSpendGrant` still returns its existing result and still discards the raw token after revocation; only the engine-hook adapter maps `already-live` to the named outcome. D proves an already-live grant causes no token-file write and that the outcome contains no token or logger payload. A owns the corresponding no-worker engine test. This is mandatory Package 3 work, not a reviewer-finding exception or an optional cleanup.
+
+## Brief B — latch, settlement, and route graph
+
+B creates one active `ExecutionGeneration` containing the lifetime and `ledgerRecoveries: Map<receiptKey, LedgerRecoveryEntry>` before it constructs the engine or any `runAutomatic` closure. It passes the lifetime to A's engine and `lifetime.assertCurrent` to frozen worktree/grant constructors and C/D constructors. The wrapper races `engine.runToBoundary()` against `lifetime.withdrawn`, observes the losing engine promise through tracking, and returns `{ kind: 'withdrawn' }` promptly. Only `{ kind: 'boundary' }` admits ledger settlement through that generation's registry. No raw token, effect result, or caught secret enters a settlement or log.
+
+`ExecutionLatch.lock` calls `generation.lifetime.revoke()` synchronously before `attemptPort.drain()`, `attemptIo.stop`, or surface unbinding. `RetiredExecution` retains the exact `ExecutionGeneration` object and map reference that `runAutomatic` used while active; Lock never copies, reconstructs, or discovers ledger keys. Its entries have `{ receiptKey, input: LedgerSettlementInput, state: 'pending' | 'required' | 'recovering', completion: Promise<'settled' | 'required'> | null, observed: Promise<void> | null }` plus process-local identity. Retired wiring remains while host drain, tracked recovery-critical effects, or any entry exists, even with no attempt port. Thus a Lock taken immediately after ledger admission already sees the pending key and the input needed if begin failed before persisting intent, and a second Lock cannot invent or overwrite either.
+
+A later invocation of the existing Lock action while locked is the sole recovery trigger. For every `required` entry it first sets that same object to `recovering`, then invokes `retired.execution.reconcileLedger(entry)` once and observes the returned native promise. A synchronous throw or falsey rejection resets only that identity-matching entry to `required`; fulfillment with `required` does the same; fulfillment with `settled` removes only that exact entry. Repeated Lock while an entry is `pending` or `recovering` does not invoke settlement/recovery again. `unlock()` remains synchronous and returns `execution-draining` while drain/tracked work or any recovery is pending, then `execution-ledger-reconciliation-required` while any key is unproven. It constructs replacement wiring only after the retained generation has no drain/tracked barrier and the exact map is empty. Late callbacks are identity-guarded against the retired map and can never unlock, clear, or mutate a newer generation. No route, DTO, production binding, or new public authority is added; the existing Lock route's locked response is unchanged.
+
+Routes branch on withdrawal before generic reporting at every current consumer: pre-ack activation creates no failed receipt, Manager containment, or **Activation dispatch needs reconciliation**; post-202 activation creates no **Automatic execution needs intervention**; Manager successor and approved launch contain detached withdrawal; automatic resume creates no **Automatic resume needs intervention**. Genuine errors retain every existing reporter/transition. The run remains `roots-activated`/recovering and requires Resume after Unlock. The deterministic pre-ack response is `202 { ok: true, value: runDto(currentRun), starting: false }`: `currentRun` is read after withdrawal, the receipt remains `roots-activated`, and no new browser DTO or settlement field is exposed.
+
+## Integrated black-box obligations
+
+B's final suite pauses production-reachable seams, calls real Lock, then releases: (1) canonical lookup before Manager acknowledgement: no successor/callback/dispatch/intervention; (2) base resolution and each later port: no next port, boundary, event, or lifecycle projection; (3) full/sparse worktree add, inner verify, and grant mint: preserve Slice 1A counters, including no post-add chmod/verify, sparse command, token write, or token leak; (4) session-start and first-write: close/cancel and retain the correct operation/claim receipt; (5) canonical publisher and ledger: journal/ledger receipt survives while no next forward action runs; (6) two terminal runs admit distinct ledger keys, settle the second first, and leave the first uncertain: Lock/Unlock stays refused for the first key only, second Lock observes a real first-key recovery promise, and unlock succeeds only after it returns `settled`; repeat with both keys required and resolving out of order, then with falsey rejection; (7) repeat Lock while a key is pending/recovering and prove no second D call, repeat a same-key terminal observation and prove no entry overwrite, then release an older completion and prove its identity guard cannot clear the current entry; (8) Lock A, try Unlock during tracked A work (refused), unlock B after quiescence, then release A: A cannot mutate B's store or call B's ports.
+
+Required final gates are focused worker tests, B integrated suite, typecheck, and fresh independent review. No builder self-certifies acceptance.

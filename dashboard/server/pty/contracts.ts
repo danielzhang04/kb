@@ -242,11 +242,16 @@ export type AttemptOperationStatus = 'pending' | 'bound' | 'cancelled' | 'failed
  *  settles the operation `failed`. */
 export type AttemptOperationRecord = { operationKey: string; requestHash: string;
   status: AttemptOperationStatus; promptsDelivered: number; sessionId: string | null;
-  attemptRef: string | null; receipt: OperationReceipt | null; revision: number; updatedAt: string };
+  attemptRef: string | null;
+  /** Immutable binding to the message claim that admitted this operation, if any. */
+  messageClaim: null | { claimRef: string; declarationFingerprint: string; promptFingerprint: string };
+  receipt: OperationReceipt | null; revision: number; updatedAt: string };
+/** On-disk pre-C1 row shape, admitted only by the v2/v3 migration decoder. */
+export type LegacyAttemptOperationRecord = Omit<AttemptOperationRecord, 'messageClaim'>;
 export type ArchiveKeyEntry = { key: string; sessionRunRef: string; reason: string | null };
 export type PtySessionsDocumentV2 = { schema: 'kb.pty-sessions/v2'; revision: number;
   sessions: SessionRecord[]; attemptBindings: Omit<AttemptBinding, 'retired'>[];
-  operationReceipts: OperationReceipt[]; attemptOperations: Record<string, AttemptOperationRecord>;
+  operationReceipts: OperationReceipt[]; attemptOperations: Record<string, LegacyAttemptOperationRecord>;
   legacyRuns: SessionRunRecord[]; legacyArchiveKeys: ArchiveKeyEntry[] };
 export type PtySessionsDocumentV3 = { schema: 'kb.pty-sessions/v3'; revision: number;
   /** Last daemon epoch activated against this document. */

@@ -1,12 +1,13 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createSessionRecordRegistry } from '../pty/sessionRecord.ts';
 import { createEmptyPtySessionsDocument } from '../pty/sessionPersistence.ts';
 import type { SessionPersistence } from '../pty/sessionPersistence.ts';
 import { sha256Hex } from '../shared/hashing.ts';
 import { createAttemptIoStore } from './attemptIo.ts';
+import { createAgentSessionChainStore } from './agentSessionChains.ts';
 import {
   attemptDeclarationFingerprint,
   createAttemptSessionAdapter as createAttemptSessionAdapterRaw,
@@ -18,12 +19,58 @@ type TestAdapterOptions = Omit<AdapterOptions, 'sessionRecords'> & {
   sessionRecords?: AdapterOptions['sessionRecords'];
   hostKind?: 'desktop' | 'vm';
 };
+const claimRoots: string[] = [];
+afterEach(() => { for (const root of claimRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function memoryClaims(): NonNullable<AdapterOptions['messageClaims']> {
+  const root = mkdtempSync(join(tmpdir(), 'kb-attempt-claims-'));
+  claimRoots.push(root);
+  return createAgentSessionChainStore(root);
+}
+
+type MessageClaims = NonNullable<AdapterOptions['messageClaims']>;
+type ClaimTransitionName = keyof MessageClaims;
+
+function faultingClaims(
+  store: ReturnType<typeof createAgentSessionChainStore>,
+  fault: ClaimTransitionName,
+  disposition: 'falsey' | 'throw-undefined',
+): MessageClaims {
+  const afterRealTransition = async <T>(transition: () => Promise<T>): Promise<T> => {
+    await transition();
+    if (disposition === 'throw-undefined') throw undefined;
+    return undefined as never;
+  };
+  return {
+    claimMessages: (...input) => fault === 'claimMessages'
+      ? afterRealTransition(() => store.claimMessages(...input))
+      : store.claimMessages(...input),
+    bindPromptFingerprint: (input) => fault === 'bindPromptFingerprint'
+      ? afterRealTransition(() => store.bindPromptFingerprint(input))
+      : store.bindPromptFingerprint(input),
+    admitPtyBind: (input) => fault === 'admitPtyBind'
+      ? afterRealTransition(() => store.admitPtyBind(input))
+      : store.admitPtyBind(input),
+    markPtyBound: (input) => fault === 'markPtyBound'
+      ? afterRealTransition(() => store.markPtyBound(input))
+      : store.markPtyBound(input),
+    recordWriteIntent: (input) => fault === 'recordWriteIntent'
+      ? afterRealTransition(() => store.recordWriteIntent(input))
+      : store.recordWriteIntent(input),
+    ackClaim: (input) => fault === 'ackClaim'
+      ? afterRealTransition(() => store.ackClaim(input))
+      : store.ackClaim(input),
+    releasePrewrite: (input) => fault === 'releasePrewrite'
+      ? afterRealTransition(() => store.releasePrewrite(input))
+      : store.releasePrewrite(input),
+  };
+}
 function createAttemptSessionAdapter(
   options: TestAdapterOptions,
 ) {
   const { bindings = new MemoryBindings(), sessionRecords, hostKind: _hostKind, ...adapterOptions } = options;
   return createAttemptSessionAdapterRaw({
     ...adapterOptions,
+    messageClaims: adapterOptions.messageClaims ?? memoryClaims(),
     sessionRecords: sessionRecords ?? ('startRunSession' in bindings
       ? bindings as AdapterOptions['sessionRecords']
       : createMemorySessionRecords(options.host, bindings)),
@@ -150,7 +197,9 @@ class MemorySessionHost implements SessionHost {
   refuseEndInput = false;
   readonly receipts = new Map<string, HostStartReceipt>();
   readonly writeGates = new Map<number, Deferred<void>>();
+  endInputGate: Deferred<void> | null = null;
   readonly rejectedWrites = new Set<number>();
+  readonly partialWrites = new Map<number, number>();
   /** Phase 1 is now write-ahead, so `create` happens after an await: queued outcomes apply on arrival. */
   private readonly queuedResolve = new Map<number, Partial<HostStartReceipt>>();
   private readonly queuedRefuse = new Map<number, PortResult<HostStartReceipt>>();
@@ -247,13 +296,15 @@ class MemorySessionHost implements SessionHost {
       const index = this.attempts.findIndex((attempt) => attempt.sessionId === sessionId && !attempt.finished);
       if (index >= 0) this.finish(index, 0);
     }
-    return { ok: true as const, value: { accepted: data.byteLength } };
+    return { ok: true as const, value: { accepted: this.partialWrites.get(call) ?? data.byteLength } };
   }
   /** Ordered against `writes` on purpose: an end-of-input that raced ahead of the prompt it terminates
    *  would be indistinguishable here without the interleaving both arrays share. */
   async endInput(sessionId: string) {
     this.endInputCalls.push(sessionId);
     this.callOrder.push(`endInput:${sessionId}`);
+    const gate = this.endInputGate;
+    if (gate) await gate.promise;
     if (this.refuseEndInput) {
       return { ok: false as const, refusal: 'invalid-request' as const, detail: 'end-input refused' };
     }
@@ -550,7 +601,7 @@ describe('control operation key translation', () => {
     ]);
   });
 
-  it('cancels by the control key while updating the mapped durable record', async () => {
+  it('keeps a foreign control-key cancellation observer-only', async () => {
     const host = new MemorySessionHost();
     const { bindings, readDocument } = mixedOperationBindings(host);
     const controlOperationKey = 'automatic-attempt:attempt-x';
@@ -564,10 +615,12 @@ describe('control operation key translation', () => {
       reason: 'operator stop',
     });
 
-    expect(cancellation.ok).toBe(true);
+    expect(cancellation).toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
     expect(readDocument().attemptOperations[expectedHostKey]).toMatchObject({
       operationKey: expectedHostKey,
-      status: 'cancelled',
+      status: 'pending',
     });
     expect(readDocument().attemptOperations[controlOperationKey]).toBeUndefined();
   });
@@ -581,7 +634,7 @@ function seededRecord(
   const operationKey = `op-${sha256Hex(input.operationKey)}`;
   return {
     operationKey, requestHash, status: 'pending', promptsDelivered: 0,
-    sessionId: null, attemptRef: input.attemptRef,
+    sessionId: null, attemptRef: input.attemptRef, messageClaim: null,
     receipt: {
       operationKey, requestHash, status: 'pending', sessionId: null,
       attemptRef: input.attemptRef, refusal: null, createdAt: '2026-08-23T00:00:00.000Z', settledAt: null,
@@ -678,9 +731,9 @@ describe('registry-owned attempt session adapter', () => {
     const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'invalid-request' });
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
     expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
-    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('bound');
   });
 
   it('writes the durable pending intent before the host session exists and settles it terminally', async () => {
@@ -696,7 +749,7 @@ describe('registry-owned attempt session adapter', () => {
     expect(events[0]).toBe(`bindings.write:${expectedHostKey}:pending:0`);
     expect(events[1]).toBe(`host.create:${expectedHostKey}`);
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      status: 'bound', promptsDelivered: 1, sessionId: host.attempts[0].sessionId,
+      status: 'bound', promptsDelivered: 0, sessionId: host.attempts[0].sessionId,
       requestHash: attemptDeclarationFingerprint(input),
     });
     host.emit(0, codexTranscript('done'));
@@ -705,7 +758,7 @@ describe('registry-owned attempt session adapter', () => {
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('completed');
   });
 
-  it('refuses a different host session after adopting a create-CAS winner', async () => {
+  it('does not adopt or release after its one admitted PTY operation CAS loses', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
@@ -718,101 +771,298 @@ describe('registry-owned attempt session adapter', () => {
       void record;
     };
     const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
-    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
-    host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
-    // The registry owns the collision decision and closes only the session this instance created.
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    // The admitted write-ahead operation is one-shot. A losing CAS has no safe reader/adopter path.
+    expect(host.attempts).toHaveLength(0);
     expect(host.writes).toHaveLength(0);
-    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(host.closeCalls).toEqual([]);
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(1);
   });
 
-  it('reserves each prompt durably before writing it and never re-sends a reserved prompt', async () => {
-    const input = declaration();
-
-    // Crash before any prompt: nothing reserved, so a restart delivers both prompts exactly once.
-    const beforeHost = new MemorySessionHost();
-    const beforeBindings = new MemoryBindings();
-    beforeBindings.gate = deferred();
-    const crashed = createAttemptSessionAdapter({ host: beforeHost, bindings: beforeBindings }).begin(input);
-    await vi.waitFor(() => expect(beforeHost.attempts).toHaveLength(1));
-    beforeHost.resolveCreate(0);
-    await vi.waitFor(() => expect(beforeBindings.calls).toHaveLength(1));
-    beforeBindings.gate = null;
-    const restarted = createAttemptSessionAdapter({ host: beforeHost, bindings: beforeBindings }).begin(input);
-    await expect(restarted.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true } });
-    const beforeWrites = beforeHost.writes.map((write) => Buffer.from(write.bytes).toString('utf8'));
-    expect(beforeWrites).toHaveLength(2);
-    expect(new Set(beforeWrites).size).toBe(2);
-    void crashed;
-
-    // Crash after the reservation but before the bytes leave: the restart must NOT re-send prompt 1.
-    const betweenHost = new MemorySessionHost();
-    const betweenBindings = new MemoryBindings();
-    betweenHost.writeGates.set(1, deferred<void>());
-    const interrupted = createAttemptSessionAdapter({ host: betweenHost, bindings: betweenBindings }).begin(input);
-    await vi.waitFor(() => expect(betweenHost.attempts).toHaveLength(1));
-    betweenHost.resolveCreate(0);
-    await vi.waitFor(() => {
-      expect(betweenHost.writes).toHaveLength(1);
-      expect(betweenHost.writeCalls).toBe(2);
-      expect(betweenBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(2);
-    });
-    const resumed = createAttemptSessionAdapter({ host: betweenHost, bindings: betweenBindings }).begin(input);
-    await expect(resumed.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true } });
-    expect(betweenHost.writes).toHaveLength(1);
-    void interrupted;
-  });
-
-  it('recomputes the prompt reservation from the current record instead of a local index', async () => {
+  it('binds the exact encoded prompt bytes and ordered message refs before its one write-intent', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration();
-    // Force the first prompt reservation to lose its CAS while a rival advances the counter to 1.
-    bindings.beforeWrite = (record, _expected, call) => {
-      if (record.promptsDelivered === 1 && record.status === 'bound') {
-        bindings.conflictOn.add(call);
-        bindings.seed({
-          ...bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)!, promptsDelivered: 1, revision: 9,
-        });
-        bindings.beforeWrite = null;
-      }
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-order-'));
+    claimRoots.push(root);
+    const real = createAgentSessionChainStore(root);
+    await real.queueMessage(input.runRef, 'reviewer-agent', 'first durable message');
+    await real.queueMessage(input.runRef, 'reviewer-agent', 'second durable message');
+    const events: string[] = [];
+    const claims: NonNullable<AdapterOptions['messageClaims']> = {
+      claimMessages: async (...args) => { events.push('claim'); return real.claimMessages(...args); },
+      bindPromptFingerprint: async (arg) => { events.push('bind'); return real.bindPromptFingerprint(arg); },
+      admitPtyBind: async (arg) => { events.push('admit'); return real.admitPtyBind(arg); },
+      markPtyBound: async (arg) => { events.push('bound'); return real.markPtyBound(arg); },
+      recordWriteIntent: async (arg) => { events.push('intent'); return real.recordWriteIntent(arg); },
+      ackClaim: async (arg) => { events.push('ack'); return real.ackClaim(arg); },
+      releasePrewrite: (arg) => real.releasePrewrite(arg),
     };
-    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    const launch = createAttemptSessionAdapter({ host, bindings, messageClaims: claims }).begin(input);
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
-    // The counter advanced to 2 on the winner's state; it never regressed to 1 and re-armed a duplicate.
-    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.promptsDelivered).toBe(2);
-    expect(host.writes).toHaveLength(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    const observed = await real.claimMessages(input.runRef, 'reviewer-agent', `op-${sha256Hex(input.operationKey)}`,
+      attemptDeclarationFingerprint(input));
+    if (observed.disposition !== 'observed') throw new Error('claim must remain an immutable tombstone');
+    const bytes = host.writes.map((write) => Buffer.from(write.bytes).toString('base64'));
+    expect(observed.claim.messageRefs).toHaveLength(2);
+    expect(observed.claim.promptFingerprint).toBe(sha256Hex(JSON.stringify({
+      messageRefs: observed.claim.messageRefs, prompts: bytes,
+    })));
+    expect(events).toEqual(['claim', 'bind', 'admit', 'bound', 'intent', 'ack']);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.messageClaim).toEqual({
+      claimRef: observed.claim.claimRef,
+      declarationFingerprint: attemptDeclarationFingerprint(input),
+      promptFingerprint: observed.claim.promptFingerprint,
+    });
   });
 
-  it('refuses a prompt reservation that a cancel overtook, and writes no prompt bytes', async () => {
+  it('closes only when a landed falsey write-intent result makes delivery ambiguous', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
-    // The reservation CAS loses its revision check; by the time it re-reads, another instance has
-    // durably cancelled the key. The retry sees a terminal record and must refuse — even though the
-    // reservation patch changes only the counter and would leave the status exactly as it found it.
-    bindings.beforeWrite = (record, _expectedRevision, call) => {
-      if (record.promptsDelivered === 1 && record.status === 'bound') {
-        bindings.conflictOn.add(call);
-        const current = bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)!;
-        bindings.seed({ ...current, status: 'cancelled' });
-        bindings.beforeWrite = null;
-      }
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-falsey-'));
+    claimRoots.push(root);
+    const real = createAgentSessionChainStore(root);
+    const release = vi.fn((arg) => real.releasePrewrite(arg));
+    const claims: NonNullable<AdapterOptions['messageClaims']> = {
+      claimMessages: (...args) => real.claimMessages(...args), bindPromptFingerprint: (arg) => real.bindPromptFingerprint(arg),
+      admitPtyBind: (arg) => real.admitPtyBind(arg), markPtyBound: (arg) => real.markPtyBound(arg),
+      recordWriteIntent: async (arg) => { await real.recordWriteIntent(arg); return undefined as never; },
+      ackClaim: (arg) => real.ackClaim(arg), releasePrewrite: release,
     };
-    const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
+    const launch = createAttemptSessionAdapter({ host, bindings, messageClaims: claims }).begin(input);
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
-    expect(host.writes).toHaveLength(0);
-    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      status: 'cancelled', promptsDelivered: 0,
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
     });
+    expect(host.writes).toEqual([]);
+    expect(host.closeCalls).toEqual([host.attempts[0]!.sessionId]);
+    expect(release).not.toHaveBeenCalled();
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('bound');
   });
 
-  it('refuses to adopt a create-CAS winner that is still delivering its approved prompts', async () => {
+  it('poisons every malformed landed claim transition before its next delivery effect', async () => {
+    const transitions: Array<Exclude<ClaimTransitionName, 'releasePrewrite'>> = [
+      'claimMessages', 'bindPromptFingerprint', 'admitPtyBind', 'markPtyBound', 'recordWriteIntent', 'ackClaim',
+    ];
+    for (const transition of transitions) {
+      const host = new MemorySessionHost();
+      const bindings = new MemoryBindings();
+      const input = declaration('codex', { operationKey: `op-${transition.padEnd(8, '0')}${'a'.repeat(56)}` });
+      const root = mkdtempSync(join(tmpdir(), `kb-claim-malformed-${transition}-`));
+      claimRoots.push(root);
+      const real = createAgentSessionChainStore(root);
+      const launch = createAttemptSessionAdapter({
+        host, bindings, messageClaims: faultingClaims(real, transition, 'falsey'),
+      }).begin(input);
+      if (transition === 'recordWriteIntent' || transition === 'ackClaim') {
+        await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+        host.resolveCreate(0);
+      }
+      await expect(launch.receipt).resolves.toMatchObject({
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+      });
+      await launch.result;
+
+      const observed = await real.claimMessages(input.runRef, 'reviewer-agent', `op-${sha256Hex(input.operationKey)}`,
+        attemptDeclarationFingerprint(input));
+      expect(observed).toMatchObject({ disposition: 'observed' });
+      expect(host.writes).toHaveLength(transition === 'ackClaim' ? 1 : 0);
+      expect(host.closeCalls).toHaveLength(['recordWriteIntent', 'ackClaim'].includes(transition) ? 1 : 0);
+      // The malformed fulfillment may have committed its own transition, but cannot cause an adapter
+      // retry, a claim release, another PTY CAS, or a prompt beyond the already-admitted bytes.
+      expect(bindings.writeCalls).toBeLessThanOrEqual(transition === 'markPtyBound' ? 1 : 2);
+    }
+  });
+
+  it('poisons every landed claim transition that throws undefined after the real mutation', async () => {
+    const transitions: Array<Exclude<ClaimTransitionName, 'releasePrewrite'>> = [
+      'claimMessages', 'bindPromptFingerprint', 'admitPtyBind', 'markPtyBound', 'recordWriteIntent', 'ackClaim',
+    ];
+    for (const transition of transitions) {
+      const host = new MemorySessionHost();
+      const bindings = new MemoryBindings();
+      const input = declaration('codex', { operationKey: `op-${transition.padEnd(8, '0')}${'b'.repeat(56)}` });
+      const root = mkdtempSync(join(tmpdir(), `kb-claim-throw-${transition}-`));
+      claimRoots.push(root);
+      const real = createAgentSessionChainStore(root);
+      const launch = createAttemptSessionAdapter({
+        host, bindings, messageClaims: faultingClaims(real, transition, 'throw-undefined'),
+      }).begin(input);
+      if (transition === 'recordWriteIntent' || transition === 'ackClaim') {
+        await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+        host.resolveCreate(0);
+      }
+      await expect(launch.receipt).resolves.toMatchObject({
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+      });
+      await launch.result;
+      const observed = await real.claimMessages(input.runRef, 'reviewer-agent', `op-${sha256Hex(input.operationKey)}`,
+        attemptDeclarationFingerprint(input));
+      expect(observed).toMatchObject({ disposition: 'observed' });
+      expect(host.writes).toHaveLength(transition === 'ackClaim' ? 1 : 0);
+      expect(host.closeCalls).toHaveLength(['recordWriteIntent', 'ackClaim'].includes(transition) ? 1 : 0);
+    }
+  });
+
+  it('does not retry or advance when a landed release fulfillment is malformed or throws undefined', async () => {
+    for (const disposition of ['falsey', 'throw-undefined'] as const) {
+      const host = new MemorySessionHost();
+      const bindings = new MemoryBindings();
+      const input = declaration('codex', { operationKey: `op-release-${disposition === 'falsey' ? 'c' : 'd'}${'e'.repeat(53)}` });
+      const root = mkdtempSync(join(tmpdir(), `kb-claim-release-${disposition}-`));
+      claimRoots.push(root);
+      const real = createAgentSessionChainStore(root);
+      let admissions = 0;
+      const launch = createAttemptSessionAdapter({
+        host,
+        bindings,
+        messageClaims: faultingClaims(real, 'releasePrewrite', disposition),
+        assertForwardAdmission: () => {
+          admissions += 1;
+          if (admissions === 4) throw new Error('generation withdrawn after prompt binding');
+        },
+      }).begin(input);
+      await expect(launch.receipt).resolves.toMatchObject({
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+      });
+      await launch.result;
+      const observed = await real.claimMessages(input.runRef, 'reviewer-agent', `op-${sha256Hex(input.operationKey)}`,
+        attemptDeclarationFingerprint(input));
+      expect(observed).toMatchObject({ disposition: 'observed', claim: { state: 'released' } });
+      expect(host.attempts).toEqual([]);
+      expect(bindings.operations.size).toBe(0);
+    }
+  });
+
+  it('fences held start, opening write, EOF, and later instruction writes after withdrawal', async () => {
+    const launchWith = async (
+      runtime: 'codex' | 'claude',
+      configure: (host: MemorySessionHost, revoke: () => void) => Promise<void>,
+    ) => {
+      const host = new MemorySessionHost();
+      const bindings = new MemoryBindings();
+      const input = declaration(runtime);
+      const root = mkdtempSync(join(tmpdir(), 'kb-claim-withdrawal-'));
+      claimRoots.push(root);
+      const claims = createAgentSessionChainStore(root);
+      let revoked = false;
+      const adapter = createAttemptSessionAdapter({
+        host, bindings, messageClaims: claims,
+        assertForwardAdmission: () => { if (revoked) throw new Error('generation withdrawn'); },
+      });
+      const launch = adapter.begin(input);
+      await configure(host, () => { revoked = true; });
+      await expect(launch.receipt).resolves.toMatchObject({
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+      });
+      await launch.result;
+      return { host, claims, input };
+    };
+
+    const heldStart = await launchWith('codex', async (host, revoke) => {
+      await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+      revoke();
+      host.resolveCreate(0);
+    });
+    expect(heldStart.host.writes).toEqual([]);
+    expect(heldStart.host.closeCalls).toHaveLength(1);
+
+    const heldWrite = await launchWith('codex', async (host, revoke) => {
+      const gate = deferred<void>();
+      host.writeGates.set(0, gate);
+      await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+      host.resolveCreate(0);
+      await vi.waitFor(() => expect(host.writeCalls).toBe(1));
+      revoke();
+      gate.resolve();
+    });
+    expect(heldWrite.host.writes).toHaveLength(1);
+    expect(heldWrite.host.closeCalls).toHaveLength(1);
+
+    const heldEof = await launchWith('codex', async (host, revoke) => {
+      const gate = deferred<void>();
+      host.endInputGate = gate;
+      await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+      host.resolveCreate(0);
+      await vi.waitFor(() => expect(host.endInputCalls).toHaveLength(1));
+      revoke();
+      gate.resolve();
+    });
+    expect(heldEof.host.writes).toHaveLength(1);
+    expect(heldEof.host.closeCalls).toHaveLength(1);
+
+    const host = new MemorySessionHost();
+    const input = declaration('claude');
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-withdrawal-instruction-'));
+    claimRoots.push(root);
+    const claims = createAgentSessionChainStore(root);
+    let revoked = false;
+    const adapter = createAttemptSessionAdapter({
+      host, bindings: new MemoryBindings(), messageClaims: claims,
+      assertForwardAdmission: () => { if (revoked) throw new Error('generation withdrawn'); },
+    });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    const openingWrites = host.writes.length;
+    revoked = true;
+    await expect(adapter.queueRunInstruction({
+      operator: input.subject, runRef: input.runRef, idempotencyKey: 'withdrawn-instruction',
+      message: 'must not write',
+    })).resolves.toBe(false);
+    expect(host.writes).toHaveLength(openingWrites);
+    expect(host.closeCalls).toHaveLength(1);
+    await launch.result;
+  });
+
+  it('closes the owned PTY once when cancellation loses the pty-bound to write-intent race', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-cancel-intent-'));
+    claimRoots.push(root);
+    const real = createAgentSessionChainStore(root);
+    const entered = deferred<void>();
+    const releaseIntent = deferred<void>();
+    const release = vi.fn((arg) => real.releasePrewrite(arg));
+    const claims: NonNullable<AdapterOptions['messageClaims']> = {
+      claimMessages: (...args) => real.claimMessages(...args), bindPromptFingerprint: (arg) => real.bindPromptFingerprint(arg),
+      admitPtyBind: (arg) => real.admitPtyBind(arg), markPtyBound: (arg) => real.markPtyBound(arg),
+      recordWriteIntent: async (arg) => {
+        const intent = await real.recordWriteIntent(arg);
+        entered.resolve();
+        await releaseIntent.promise;
+        return intent;
+      },
+      ackClaim: (arg) => real.ackClaim(arg), releasePrewrite: release,
+    };
+    const adapter = createAttemptSessionAdapter({ host, bindings, messageClaims: claims });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await entered.promise;
+    const cancellation = adapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
+    await expect(cancellation).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    releaseIntent.resolve();
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    expect(host.writes).toHaveLength(0);
+    expect(host.closeCalls).toEqual([host.attempts[0]!.sessionId]);
+    expect(release).toHaveBeenCalledTimes(1);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('bound');
+  });
+
+  it('refuses without adoption when the one admitted PTY record CAS has another winner', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration(); // claude: two approved prompts
@@ -826,12 +1076,11 @@ describe('registry-owned attempt session adapter', () => {
       }
       void record;
     };
-    // Queued in advance: a rival session, if this instance wrongly creates one, gets a working receipt,
-    // so the failure mode under test is a wrong outcome rather than a hang.
-    host.resolveCreate(0);
     const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
-    // No second owner: no session, no interleaved prompt, and the winner's session is never closed.
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    // No second owner: no session, no interleaved prompt, and no stale claim release.
     expect(host.attempts).toHaveLength(0);
     expect(host.writes).toHaveLength(0);
     expect(host.closeCalls).toHaveLength(0);
@@ -840,7 +1089,7 @@ describe('registry-owned attempt session adapter', () => {
     });
   });
 
-  it('refuses and closes a new session when another instance already claimed the durable sessionId', async () => {
+  it('does not create or release when a stale PTY operation already names a different session', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
@@ -848,18 +1097,15 @@ describe('registry-owned attempt session adapter', () => {
       status: 'pending', promptsDelivered: 0, sessionId: 'pty-claimed-by-the-winner',
     }));
     const launch = createAttemptSessionAdapter({ host, bindings }).begin(input);
-    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
-    host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({
       ok: false, refusal: 'binding-conflict',
     });
-    // A host that did not dedupe by operationKey handed back a different session. The registry refuses
-    // it without repointing durable state and closes only the unclaimed newcomer.
-    expect(host.attempts[0].sessionId).not.toBe('pty-claimed-by-the-winner');
+    // Existing PTY state is not a delivery claim. It cannot be adopted or used to infer a release.
+    expect(host.attempts).toHaveLength(0);
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      status: 'failed', promptsDelivered: 0, sessionId: 'pty-claimed-by-the-winner',
+      status: 'pending', promptsDelivered: 0, sessionId: 'pty-claimed-by-the-winner',
     });
-    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(host.closeCalls).toEqual([]);
   });
 
   it('settles an attempt whose host receipt never resolves and releases its transcript', async () => {
@@ -877,7 +1123,7 @@ describe('registry-owned attempt session adapter', () => {
     expect(adapter.rawTranscript(input.attemptRef)!.byteLength).toBe(0);
   });
 
-  it('strands a reserved-but-unsent prompt and settles the attempt failed at the timer', async () => {
+  it('refuses a legacy reserved PTY record instead of treating it as a message claim', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration('codex');
@@ -886,37 +1132,34 @@ describe('registry-owned attempt session adapter', () => {
     bindings.seed(seededRecord(input, { status: 'pending', promptsDelivered: 1 }));
     const adapter = createAttemptSessionAdapter({ host, bindings, timeoutMs: 150 });
     const launch = adapter.begin(input);
-    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
-    host.resolveCreate(0);
-    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'binding-conflict' });
     expect(host.writes).toHaveLength(0);
-    // The session therefore idles with nothing to do until the timer reaps it.
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
-    expect(host.closeCalls).toEqual([host.attempts[0].sessionId]);
+    expect(host.closeCalls).toEqual([]);
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      status: 'failed', promptsDelivered: 1,
+      status: 'pending', promptsDelivered: 1,
     });
   });
 
-  it('cancels durably by operationKey without a live attempt and refuses the later begin', async () => {
+  it('refuses blind cancellation without a creator claim handle', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration();
     const canceller = createAttemptSessionAdapter({ host, bindings });
     await expect(canceller.cancel({ operationKey: input.operationKey, reason: 'operator stop' }))
       .resolves.toMatchObject({
-        ok: true, value: { sessionId: `pty-${'0'.repeat(32)}`, reason: 'abandoned' },
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
       });
-    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('cancelled');
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toBeUndefined();
 
     const later = createAttemptSessionAdapter({ host, bindings }).begin(input);
-    await expect(later.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
-    await expect(later.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
-    expect(host.attempts).toHaveLength(0);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(later.receipt).resolves.toMatchObject({ ok: true });
   });
 
   it('never resurrects a terminal operation and creates no session for one', async () => {
-    for (const [status, refusal] of [['completed', 'binding-conflict'], ['failed', 'internal'], ['cancelled', 'cancelled']] as const) {
+    for (const [status, refusal] of [['completed', 'binding-conflict'], ['failed', 'binding-conflict'], ['cancelled', 'binding-conflict']] as const) {
       const host = new MemorySessionHost();
       const bindings = new MemoryBindings();
       const input = declaration('codex', { operationKey: `op-${status.charCodeAt(0).toString(16)}${'7'.repeat(62)}` });
@@ -931,28 +1174,29 @@ describe('registry-owned attempt session adapter', () => {
     }
   });
 
-  it('reconstructs active-attempt selection on a fresh instance from the durable record and binding row', async () => {
+  it('keeps a fresh adapter observer-only even when a durable PTY binding exists', async () => {
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
     const input = declaration();
-    const first = createAttemptSessionAdapter({ host, bindings });
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-restart-observer-'));
+    claimRoots.push(root);
+    const claims = createAgentSessionChainStore(root);
+    const first = createAttemptSessionAdapter({ host, bindings, messageClaims: claims });
     const launch = first.begin(input);
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await launch.receipt;
-    const writesBefore = host.writes.length;
-
-    const restarted = createAttemptSessionAdapter({ host, bindings });
+    const restarted = createAttemptSessionAdapter({ host, bindings, messageClaims: claims });
     expect(restarted.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
     const replay = restarted.begin(input);
-    await expect(replay.receipt).resolves.toMatchObject({ ok: true, value: { replayed: true, sessionId: host.attempts[0].sessionId } });
-    expect(host.writes).toHaveLength(writesBefore);
-    expect(restarted.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(true);
+    await expect(replay.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    expect(restarted.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
     await expect(restarted.queueRunInstruction({
       operator: input.subject, runRef: input.runRef, idempotencyKey: 'reconstructed-1',
       message: 'Continue on the reconstructed session.',
-    })).resolves.toBe(true);
-    expect(host.writes.at(-1)!.sessionId).toBe(host.attempts[0].sessionId);
+    })).resolves.toBe(false);
     expect(bindings.byAttempt(input.subject, input.attemptRef)).not.toBeNull();
 
     // Durable binding row missing => the run is not live, whatever this instance's local flags say.
@@ -1125,7 +1369,7 @@ describe('registry-owned attempt session adapter', () => {
     const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
     await expect(adapter.begin(declaration('claude', { expectsIterationOutcome: true })).receipt)
       .resolves.toMatchObject({ ok: false, refusal: 'invalid-request', detail: expect.stringContaining('outcome fence') });
-    const launch = adapter.begin(complete);
+    const launch = adapter.begin({ ...complete, operationKey: `op-complete-${'a'.repeat(52)}` });
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await launch.receipt;
@@ -1163,7 +1407,8 @@ describe('registry-owned attempt session adapter', () => {
   it('barriers create refusal, atomic-start failure, cancel-before-create, and exit-before-receipt without a live projection', async () => {
     const input = declaration();
 
-    // Cancel before the session is created: the tombstone lands first and NO session is ever created.
+    // Cancel before a creator owns the claim is observer-only; the creator later notices cancellation,
+    // releases its prewrite claim, and never creates a session.
     const cancelHost = new MemorySessionHost();
     const cancelBindings = new MemoryBindings();
     const cancelAdapter = createAttemptSessionAdapter({ host: cancelHost, bindings: cancelBindings });
@@ -1171,7 +1416,7 @@ describe('registry-owned attempt session adapter', () => {
     const cancelResult = cancelAdapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
     expect(cancelAdapter.isRunLive({ operator: input.subject, runRef: input.runRef })).toBe(false);
     await expect(cancelResult).resolves.toMatchObject({
-      ok: true, value: { sessionId: `pty-${'0'.repeat(32)}`, reason: 'abandoned' },
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
     });
     await expect(cancelled.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
     await expect(cancelled.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
@@ -1220,7 +1465,7 @@ describe('registry-owned attempt session adapter', () => {
     expect(earlyBindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status).toBe('failed');
   });
 
-  it('persists cancellation through atomic start and refuses cancellation replay after restart', async () => {
+  it('persists creator cancellation through atomic start and leaves restart observer-only', async () => {
     const input = declaration();
     const host = new MemorySessionHost();
     const bindings = new MemoryBindings();
@@ -1233,7 +1478,7 @@ describe('registry-owned attempt session adapter', () => {
     const cancellation = adapter.cancel({ operationKey: input.operationKey, reason: 'operator stop' });
     await vi.waitFor(() => expect(
       bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)?.status,
-    ).toBe('cancelled'));
+    ).toBe('bound'));
     bindings.gate!.resolve();
     await expect(cancellation).resolves.toMatchObject({ ok: true, value: { reason: 'closed' } });
     await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
@@ -1243,8 +1488,10 @@ describe('registry-owned attempt session adapter', () => {
 
     const attemptsBeforeRestart = host.attempts.length;
     const replay = createAttemptSessionAdapter({ host, bindings }).begin(input);
-    await expect(replay.receipt).resolves.toMatchObject({ ok: false, refusal: 'cancelled' });
-    await expect(replay.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('cancelled') });
+    await expect(replay.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'binding-conflict', detail: 'existing PTY attempt operation cannot adopt a message claim',
+    });
+    await expect(replay.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('binding-conflict') });
     expect(host.attempts).toHaveLength(attemptsBeforeRestart);
   });
 
@@ -1311,7 +1558,7 @@ describe('registry-owned attempt session adapter', () => {
     await expect(write.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
     await expect(write.result).resolves.toMatchObject({ state: 'failed', summary: expect.stringContaining('internal') });
     expect(writeHost.closeCalls).toHaveLength(1);
-    expect(writeBindings.operations.get(`op-${sha256Hex(declaration().operationKey)}`)?.status).toBe('failed');
+    expect(writeBindings.operations.get(`op-${sha256Hex(declaration().operationKey)}`)?.status).toBe('bound');
 
     const closeHost = new MemorySessionHost();
     closeHost.rejectClose = true;
@@ -1375,8 +1622,45 @@ describe('registry-owned attempt session adapter', () => {
     expect(host.writes).toHaveLength(1);
     // The exited operation is durably terminal, so it is never resumed and prompt 0 is never re-sent.
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      status: 'failed', promptsDelivered: 1,
+      status: 'bound', promptsDelivered: 0,
     });
+  });
+
+  it('does not acknowledge when a Codex exit skips its required EOF', async () => {
+    const host = new MemorySessionHost();
+    host.finishAfterWrite = 0;
+    const claims = memoryClaims();
+    const acknowledged = vi.spyOn(claims, 'ackClaim');
+    const launch = createAttemptSessionAdapter({
+      host, bindings: new MemoryBindings(), messageClaims: claims,
+    }).begin(declaration('codex'));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'internal' });
+    await launch.result;
+    expect(host.writes).toHaveLength(1);
+    expect(host.endInputCalls).toEqual([]);
+    expect(acknowledged).not.toHaveBeenCalled();
+  });
+
+  it('keeps write-intent and its PTY record bound when Claude exits between opening frames', async () => {
+    const host = new MemorySessionHost();
+    host.finishAfterWrite = 0;
+    const bindings = new MemoryBindings();
+    const input = declaration('claude');
+    const root = mkdtempSync(join(tmpdir(), 'kb-claim-partial-opening-'));
+    claimRoots.push(root);
+    const claims = createAgentSessionChainStore(root);
+    const launch = createAttemptSessionAdapter({ host, bindings, messageClaims: claims }).begin(input);
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    await launch.result;
+    expect(host.writes).toHaveLength(1);
+    expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({ status: 'bound' });
+    const observed = await claims.claimMessages(input.runRef, 'reviewer-agent', `op-${sha256Hex(input.operationKey)}`,
+      attemptDeclarationFingerprint(input));
+    expect(observed).toMatchObject({ disposition: 'observed', claim: { state: 'write-intent' } });
   });
 
   it('refuses an exit observed mid-sequence, between the two approved Claude prompts', async () => {
@@ -1393,7 +1677,7 @@ describe('registry-owned attempt session adapter', () => {
     await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({
-      ok: false, refusal: 'internal', detail: 'session exited during approved prompt delivery',
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
     });
     await expect(launch.result).resolves.toMatchObject({ state: 'failed' });
     expect(host.writes).toHaveLength(1);
@@ -1413,7 +1697,7 @@ describe('registry-owned attempt session adapter', () => {
     await expect(launch.receipt).resolves.toMatchObject({ ok: true });
     expect(host.writes).toHaveLength(2);
     expect(bindings.operations.get(`op-${sha256Hex(input.operationKey)}`)).toMatchObject({
-      promptsDelivered: 2,
+      promptsDelivered: 0,
     });
   });
 
@@ -1555,19 +1839,22 @@ describe('registry-owned attempt session adapter', () => {
    * B2 regression. `agentMessages.deliver` answers `queued` only because THIS drain exists: the queued
    * text must reach the next attempt's own prompt, in chain order, and the chain must be empty after.
    */
-  it('drains queued operator messages into the next attempt\u2019s first prompt, in order', async () => {
+  it('claims queued operator messages into the next attempt\u2019s first prompt, in order', async () => {
     const host = new MemorySessionHost();
-    const chain = new Map<string, string[]>([['run:reviewer-agent', ['first queued', 'second queued']]]);
     const drainCalls: Array<[string, string]> = [];
     const input = declaration();
+    const claimRoot = mkdtempSync(join(tmpdir(), 'kb-attempt-claimed-queue-'));
+    claimRoots.push(claimRoot);
+    const claims = createAgentSessionChainStore(claimRoot);
+    await claims.queueMessage(input.runRef, 'reviewer-agent', 'first queued');
+    await claims.queueMessage(input.runRef, 'reviewer-agent', 'second queued');
     const adapter = createAttemptSessionAdapter({
       host,
       bindings: new MemoryBindings(),
+      messageClaims: claims,
       drainMessages: async (runRef, agentId) => {
         drainCalls.push([runRef, agentId]);
-        const drained = chain.get('run:reviewer-agent') ?? [];
-        chain.delete('run:reviewer-agent');
-        return drained;
+        return [];
       },
     });
 
@@ -1575,7 +1862,7 @@ describe('registry-owned attempt session adapter', () => {
     host.resolveCreate(0);
     await expect(launch.receipt).resolves.toMatchObject({ ok: true });
 
-    expect(drainCalls).toEqual([[input.runRef, 'reviewer-agent']]);
+    expect(drainCalls).toEqual([]);
     const prompts = host.writes.map((write) => Buffer.from(write.bytes).toString('utf8'));
     const workOrderPrompt = prompts.at(-1)!;
     expect(workOrderPrompt).toContain('first queued');
@@ -1584,7 +1871,68 @@ describe('registry-owned attempt session adapter', () => {
     // Inert data, ahead of the authoritative work order — never instructions.
     expect(workOrderPrompt.indexOf('second queued'))
       .toBeLessThan(workOrderPrompt.indexOf('Implement the approved attempt adapter.'));
-    expect(chain.size).toBe(0);
+    const later = await claims.claimMessages(input.runRef, 'reviewer-agent', `op-${'f'.repeat(64)}`, 'e'.repeat(64));
+    expect(later).toMatchObject({ disposition: 'created', claim: { messages: [] } });
+  });
+
+  it('acknowledges an empty claim without taking messages queued after that claim', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const input = declaration('codex');
+    const root = mkdtempSync(join(tmpdir(), 'kb-empty-claim-later-message-'));
+    claimRoots.push(root);
+    const claims = createAgentSessionChainStore(root);
+    const launch = createAttemptSessionAdapter({ host, bindings, messageClaims: claims }).begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await expect(launch.receipt).resolves.toMatchObject({ ok: true });
+    await claims.queueMessage(input.runRef, 'reviewer-agent', 'arrived after empty claim');
+
+    const observed = await claims.claimMessages(input.runRef, 'reviewer-agent', `op-${'f'.repeat(64)}`, 'e'.repeat(64));
+    expect(observed).toMatchObject({
+      disposition: 'created',
+      claim: { messages: [expect.objectContaining({ text: 'arrived after empty claim' })] },
+    });
+    host.finish(0);
+    await launch.result;
+  });
+
+  it('fails closed while the claim port is unbound and never invokes the legacy drain', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const drain = vi.fn(async () => ['must not drain']);
+    const launch = createAttemptSessionAdapterRaw({
+      host, sessionRecords: createMemorySessionRecords(host, bindings), drainMessages: drain,
+    }).begin(declaration());
+    await expect(launch.receipt).resolves.toMatchObject({ ok: false, refusal: 'unavailable' });
+    expect(drain).not.toHaveBeenCalled();
+    expect(host.attempts).toEqual([]);
+    expect(bindings.operations.size).toBe(0);
+  });
+
+  it('makes a shared-store observer begin and cancel reconciliation-only', async () => {
+    const host = new MemorySessionHost();
+    const bindings = new MemoryBindings();
+    const claimRoot = mkdtempSync(join(tmpdir(), 'kb-attempt-observer-'));
+    claimRoots.push(claimRoot);
+    const claims = createAgentSessionChainStore(claimRoot);
+    const records = createMemorySessionRecords(host, bindings);
+    const first = createAttemptSessionAdapterRaw({ host, sessionRecords: records, messageClaims: claims });
+    const second = createAttemptSessionAdapterRaw({ host, sessionRecords: records, messageClaims: claims });
+    const input = declaration();
+    const creator = first.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    const observer = second.begin(input);
+    await expect(observer.receipt).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    await expect(second.cancel({ operationKey: input.operationKey, reason: 'observer' })).resolves.toMatchObject({
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
+    });
+    expect(host.attempts).toHaveLength(1);
+    expect(host.writes).toEqual([]);
+    host.resolveCreate(0);
+    await expect(creator.receipt).resolves.toMatchObject({ ok: true });
   });
 
   /**

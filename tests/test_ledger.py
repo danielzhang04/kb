@@ -75,3 +75,32 @@ def test_append_recovers_zero_byte_shard(tmp_path):
     assert len(rows) == 1
     assert rows[0]["usd"] == "0.42"
     assert ledger.cost_today(tmp_path) == 0.42
+
+
+def test_append_accepts_an_exact_pinned_day_and_preserves_default(tmp_path):
+    pinned = ledger.append(tmp_path, "cost", "agent-a", {"usd": "0.10"}, day="2026-09-07")
+    assert pinned == tmp_path / "ledgers" / "cost" / "agent-a-2026-09-07.tsv"
+    assert ledger.read_day(tmp_path, "cost", "2026-09-07") == [{"usd": "0.10"}]
+    assert b"\r\n" not in pinned.read_bytes()
+    default = ledger.append(tmp_path, "cost", "agent-b", {"usd": "0.20"})
+    assert default.name == f"agent-b-{datetime.date.today().isoformat()}.tsv"
+
+
+def test_append_recovers_a_zero_byte_pinned_shard(tmp_path):
+    shard = tmp_path / "ledgers" / "cost" / "agent-a-2026-09-07.tsv"
+    shard.parent.mkdir(parents=True, exist_ok=True)
+    shard.touch()
+    ledger.append(tmp_path, "cost", "agent-a", {"usd": "0.42"}, day="2026-09-07")
+    assert ledger.read_day(tmp_path, "cost", "2026-09-07") == [{"usd": "0.42"}]
+
+
+def test_append_rejects_every_noncanonical_pinned_day_before_creating_a_path(tmp_path):
+    invalid = ["", "2026-9-7", "2026-09-07T00:00:00", "../2026-09-07", "2026-02-29", 20260907]
+    for day in invalid:
+        try:
+            ledger.append(tmp_path, "cost", "agent-a", {"usd": "1"}, day=day)
+        except ValueError as error:
+            assert str(error) == "ledger day must be exact ISO YYYY-MM-DD"
+        else:
+            raise AssertionError(f"accepted invalid day {day!r}")
+    assert not (tmp_path / "ledgers").exists()

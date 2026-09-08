@@ -98,4 +98,44 @@ await document.mutate(() => { process.exit(23); });
     await expect(document(path).mutate(() => undefined)).rejects.toThrow('atomic document mutex is unavailable');
     expect(readFileSync(mutexPath, 'utf8')).toBe('not a sqlite database');
   });
+
+  it('makes a checkpoint durable while retaining the SQLite exclusion lock', async () => {
+    const path = join(root(), 'state.json');
+    await document(path).mutateCheckpointed(async (value, checkpoint) => {
+      value.revision = 1;
+      checkpoint();
+      expect(document(path).read()).toEqual({ revision: 1 });
+      const contender = await child(`${childPrelude}
+try { await document.mutate((value) => { value.revision = 99; }); console.log('STOLE'); }
+catch (error) { console.log(error.message); }
+`, path);
+      expect(contender.stdout.trim()).toBe('atomic document state is busy');
+      value.revision = 2;
+    });
+    expect(document(path).read()).toEqual({ revision: 2 });
+  });
+
+  it('retains the last checkpoint when later work throws and preserves a falsey rejection', async () => {
+    const path = join(root(), 'state.json');
+    const rejected = document(path).mutateCheckpointed((value, checkpoint) => {
+      value.revision = 1;
+      checkpoint();
+      value.revision = 2;
+      throw undefined;
+    });
+    await expect(rejected).rejects.toBeUndefined();
+    expect(document(path).read()).toEqual({ revision: 1 });
+  });
+
+  it('refuses a retained checkpoint closure after its transaction releases the mutex', async () => {
+    const path = join(root(), 'state.json');
+    let escaped: (() => void) | null = null;
+    await document(path).mutateCheckpointed((value, checkpoint) => {
+      value.revision = 1;
+      escaped = checkpoint;
+    });
+    await document(path).mutate((value) => { value.revision = 2; });
+    expect(() => escaped!()).toThrow('atomic document checkpoint is no longer active');
+    expect(document(path).read()).toEqual({ revision: 2 });
+  });
 });

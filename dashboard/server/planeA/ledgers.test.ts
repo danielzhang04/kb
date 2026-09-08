@@ -3,7 +3,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
-import { rollupLedgers, sliceLedgers } from './ledgers.ts';
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { parseLedgerName, rollupLedgers, sliceLedgers } from './ledgers.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 
@@ -81,5 +82,20 @@ describe('sliceLedgers', () => {
   it('is empty-safe with no ledgers/ directory', () => {
     const empty = mkdtempSync(join(tmpdir(), 'planeA-noslices-'));
     expect(sliceLedgers(empty)).toEqual({ byDay: [], byWriter: [], usdPresent: false });
+  });
+
+  it('attributes a receipt-qualified cost shard to its original writer', () => {
+    const root = mkdtempSync(join(tmpdir(), 'planeA-fleet-receipt-'));
+    mkdirSync(join(root, 'ledgers', 'cost'), { recursive: true });
+    const key = 'a'.repeat(64);
+    writeFileSync(
+      join(root, 'ledgers', 'cost', `worker-desktop--fleet-${key}-2026-09-08.tsv`),
+      'billing\tcard_id\tmodel\tusd\nsubscription\twf-a\tmodel-a\t0\n',
+    );
+    expect(parseLedgerName(`worker-desktop--fleet-${key}-2026-09-08.tsv`)).toEqual({ writer: 'worker-desktop', date: '2026-09-08' });
+    expect(parseLedgerName('worker-desktop--fleet-not-a-key-2026-09-08.tsv')).toEqual({ writer: 'worker-desktop--fleet-not-a-key', date: '2026-09-08' });
+    expect(sliceLedgers(root).byWriter).toEqual([
+      expect.objectContaining({ key: 'worker-desktop', steps: 1, perModelSteps: { 'model-a': 1 } }),
+    ]);
   });
 });

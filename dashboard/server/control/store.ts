@@ -455,6 +455,48 @@ export function createPythonScheduleClaimRenderer(
 
 export class ControlStoreLimitError extends Error {}
 export class ControlStoreMigrationLimitError extends ControlStoreLimitError {}
+const STARTUP_HYDRATION_FAILURE = Symbol('startup-hydration-failure');
+/**
+ * A persisted control document could not be read, decoded, migrated, or validated during
+ * initial daemon construction. This deliberately excludes lease checks and every path that
+ * can persist a normalization, backup, migration, or ordinary write.
+ *
+ * The original message remains available to direct callers and existing store tests. Boot
+ * diagnostics must expose only a fixed code, never this message or its cause.
+ */
+export class ControlStoreStartupHydrationError extends Error {
+  constructor(cause: unknown) {
+    let message = 'control-plane startup hydration failed';
+    if (cause instanceof Error) {
+      try { message = cause.message; } catch {}
+    }
+    super(message);
+    this.name = 'ControlStoreStartupHydrationError';
+  }
+}
+
+export type ControlStoreStartupHydrationFailure = ControlStoreStartupHydrationError | ControlStoreLimitError;
+
+export function isControlStoreStartupHydrationError(error: unknown): error is ControlStoreStartupHydrationFailure {
+  return error instanceof ControlStoreStartupHydrationError
+    || (error instanceof ControlStoreLimitError
+      && (error as ControlStoreLimitError & { [STARTUP_HYDRATION_FAILURE]?: unknown })[STARTUP_HYDRATION_FAILURE] === true);
+}
+
+function startupHydrationFailure(error: unknown): ControlStoreStartupHydrationFailure {
+  // Preserve direct callers' established `instanceof ControlStoreLimitError` behavior while marking only
+  // the pre-write instance caught below as safe for diagnostics boot. A runtime-limit error is never marked.
+  if (error instanceof ControlStoreLimitError) {
+    try {
+      Object.defineProperty(error, STARTUP_HYDRATION_FAILURE, { value: true });
+      return error;
+    } catch {
+      // A hostile/frozen Error cannot escape the classification boundary through a throwing property access.
+    }
+  }
+  return new ControlStoreStartupHydrationError(error);
+}
+
 export class ControlStoreReadOnlyError extends Error {
   constructor() {
     super('control-plane store is read-only');
@@ -1692,7 +1734,13 @@ function validateIterationDurability(
         ? generationByRef.get(generation.predecessorGenerationRef) : undefined;
       const pendingPredecessor = attempt.baseGenerationRef === null
         ? undefined : generationByRef.get(attempt.baseGenerationRef);
+      // The join key below is a LOGICAL stage id ('build', 'no-progress-producer'), which repeats across
+      // runs. Without a subject/runRef guard this find binds an attempt to a still-open artifact-producing
+      // request belonging to a DIFFERENT run as soon as the validator sees more than one run at once --
+      // exactly the difference between the write path (single-run bundle via iterationBundleForRun) and
+      // hydrate (the whole document). Same guard the generation/request join above already carries.
       const pendingRequest = requests.find((request) => {
+        if (request.subject !== attempt.subject || request.runRef !== attempt.runRef) return false;
         if (receipts.some((receipt) => receipt.requestRef === request.requestRef)) return false;
         const loop = loopByRef.get(request.iterationLoopRef);
         const participant = loop?.participants.find((candidate) => candidate.participantId === request.recipientParticipantId);
@@ -6172,44 +6220,48 @@ export function createFileControlPlaneStore(
   let migrationBackupSource: Buffer | null = null;
   let migrationBackupFrom = 0;
   if (existsSync(path)) {
-    sourceBytes = statSync(path).size;
-    const source = readFileSync(path, 'utf8');
-    const parsed: unknown = JSON.parse(source);
-    if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && existsSync(acceptedSizePath)) {
-      try {
-        const basis: unknown = JSON.parse(readFileSync(acceptedSizePath, 'utf8'));
-        const sourceVersion = Number((parsed as Record<string, unknown>).version);
-        if (basis === null || typeof basis !== 'object' || Array.isArray(basis)
-          || Object.keys(basis).sort().join(',') !== 'maxBytes,schema,schemaVersion'
-          || (basis as Record<string, unknown>).schema !== 'kb.control-plane-accepted-size/v1'
-          || !Number.isSafeInteger((basis as Record<string, unknown>).schemaVersion)
-          || Number((basis as Record<string, unknown>).schemaVersion) < 1
-          || Number((basis as Record<string, unknown>).schemaVersion) > sourceVersion
-          || !Number.isSafeInteger((basis as Record<string, unknown>).maxBytes)
-          || Number((basis as Record<string, unknown>).maxBytes) < 1) {
-          throw new Error('invalid accepted-size sidecar shape');
+    try {
+      sourceBytes = statSync(path).size;
+      const source = readFileSync(path, 'utf8');
+      const parsed: unknown = JSON.parse(source);
+      if (parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) && existsSync(acceptedSizePath)) {
+        try {
+          const basis: unknown = JSON.parse(readFileSync(acceptedSizePath, 'utf8'));
+          const sourceVersion = Number((parsed as Record<string, unknown>).version);
+          if (basis === null || typeof basis !== 'object' || Array.isArray(basis)
+            || Object.keys(basis).sort().join(',') !== 'maxBytes,schema,schemaVersion'
+            || (basis as Record<string, unknown>).schema !== 'kb.control-plane-accepted-size/v1'
+            || !Number.isSafeInteger((basis as Record<string, unknown>).schemaVersion)
+            || Number((basis as Record<string, unknown>).schemaVersion) < 1
+            || Number((basis as Record<string, unknown>).schemaVersion) > sourceVersion
+            || !Number.isSafeInteger((basis as Record<string, unknown>).maxBytes)
+            || Number((basis as Record<string, unknown>).maxBytes) < 1) {
+            throw new Error('invalid accepted-size sidecar shape');
+          }
+          acceptedMaxBytes = Math.max(maxBytes, Number((basis as Record<string, unknown>).maxBytes));
+        } catch {
+          // Advisory recovery metadata: the configured base limit remains authoritative when unreadable.
+          console.warn('[control-store] ignoring invalid control-plane accepted-size sidecar');
         }
-        acceptedMaxBytes = Math.max(maxBytes, Number((basis as Record<string, unknown>).maxBytes));
-      } catch {
-        // Advisory recovery metadata: the configured base limit remains authoritative when unreadable.
-        console.warn('[control-store] ignoring invalid control-plane accepted-size sidecar');
       }
-    }
-    if (sourceBytes > acceptedMaxBytes) {
-      throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
-    }
-    legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
-      && (parsed as Record<string, unknown>).version === 1
-      && requiresGenericRewrite(parsed as Record<string, unknown>);
-    const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(source));
-    recovered = initial.document;
-    assertHydrated(recovered);
-    migrated = initial.applied.length > 0;
-    // P6 [P6-C32]: capture the exact preimage for ANY applied edge, not only v2 -> v3. `from` is the
-    // on-disk source version; `to` is the schema version we migrated up to.
-    if (initial.applied.length > 0) {
-      migrationBackupSource = Buffer.from(source, 'utf8');
-      migrationBackupFrom = Number((parsed as Record<string, unknown>).version);
+      if (sourceBytes > acceptedMaxBytes) {
+        throw new ControlStoreLimitError(`control-plane store exceeds ${acceptedMaxBytes} bytes`);
+      }
+      legacyRewrite = parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed)
+        && (parsed as Record<string, unknown>).version === 1
+        && requiresGenericRewrite(parsed as Record<string, unknown>);
+      const initial = migrateDocument(source, CONTROL_PLANE_SCHEMA_VERSION, migrationContext(source));
+      recovered = initial.document;
+      assertHydrated(recovered);
+      migrated = initial.applied.length > 0;
+      // P6 [P6-C32]: capture the exact preimage for ANY applied edge, not only v2 -> v3. `from` is the
+      // on-disk source version; `to` is the schema version we migrated up to.
+      if (initial.applied.length > 0) {
+        migrationBackupSource = Buffer.from(source, 'utf8');
+        migrationBackupFrom = Number((parsed as Record<string, unknown>).version);
+      }
+    } catch (error) {
+      throw startupHydrationFailure(error);
     }
   }
   const normalized = normalizeCrash(recovered, { stamp: startupStamp, bootId });

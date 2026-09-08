@@ -218,6 +218,7 @@ describe('strict PTY v2 persistence', () => {
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: null,
+      messageClaim: null,
       receipt: null,
       revision: 1,
       updatedAt: new Date(Date.parse(NOW) + index * 1_000).toISOString(),
@@ -266,6 +267,7 @@ describe('strict PTY v2 persistence', () => {
       promptsDelivered: 2,
       sessionId: SESSION_ID,
       attemptRef: 'attempt-a',
+      messageClaim: null,
       receipt: null,
       revision: 3,
       updatedAt: NOW,
@@ -278,6 +280,20 @@ describe('strict PTY v2 persistence', () => {
     expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, extra: true }))).toThrow(/invalid/i);
     expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, status: 'settled' }))).toThrow(/invalid/i);
     expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, promptsDelivered: -1 }))).toThrow(/invalid/i);
+    expect(() => {
+      const { messageClaim: _claim, ...legacy } = operation;
+      assertPtySessionsDocumentV3(withOperation(legacy));
+    }).toThrow(/invalid/i);
+    const claim = {
+      claimRef: 'claim-operation-a', declarationFingerprint: 'c'.repeat(64), promptFingerprint: 'd'.repeat(64),
+    };
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation, messageClaim: claim }))).not.toThrow();
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation,
+      messageClaim: { ...claim, extra: true } }))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation,
+      messageClaim: { claimRef: claim.claimRef, declarationFingerprint: claim.declarationFingerprint } }))).toThrow(/invalid/i);
+    expect(() => assertPtySessionsDocumentV3(withOperation({ ...operation,
+      messageClaim: { ...claim, promptFingerprint: 'not-a-sha' } }))).toThrow(/invalid/i);
     // The map key must be the row's own operationKey.
     expect(() => assertPtySessionsDocumentV3(withOperation(operation, `op-${'c'.repeat(64)}`))).toThrow(/invalid/i);
     // Referential: a non-null sessionId must name a session that still exists.

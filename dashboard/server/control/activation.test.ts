@@ -10,6 +10,7 @@ import {
   DEFAULT_ATTEMPT_BUDGET,
   DEFAULT_BUDGET,
   type ActivationDeps,
+  type ActivatedExecution,
   type BuildActivatedExecutionOptions,
   type ExecutionLatchState,
 } from './activation.ts';
@@ -545,7 +546,7 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(latch.current()).toBe(wiring);
   });
 
-  it('lock drains managed sessions, drops the wiring, and can be re-unlocked', () => {
+  it('lock drains managed sessions, drops the wiring, and can be re-unlocked', async () => {
     const { deps, latch, changes } = latchHarness();
     latch.unlock({ subject: 'operator' });
     const port = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.results[0]?.value;
@@ -555,8 +556,87 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(port.drain).toHaveBeenCalledOnce();
     // A locked latch locks idempotently, then unlocks again on a fresh assertion.
     expect(latch.lock({ subject: 'operator' }).state).toBe('locked');
+    await Promise.resolve();
     expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
     expect(deps.createEngine).toHaveBeenCalledTimes(2);
+  });
+
+  it('holds a replacement generation until a delayed host drain settles', async () => {
+    const { deps, latch } = latchHarness();
+    latch.unlock({ subject: 'operator' });
+    const port = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.results[0]?.value;
+    let releaseDrain!: () => void;
+    const delayedDrain = new Promise<void>((resolve) => { releaseDrain = resolve; });
+    port.drain.mockReturnValue(delayedDrain);
+
+    latch.lock({ subject: 'operator' });
+    // A second Lock shares the one observed drain; neither it nor Unlock can construct another wiring.
+    latch.lock({ subject: 'operator' });
+    expect(port.drain).toHaveBeenCalledOnce();
+    expect(latch.snapshot().state).toBe('locked');
+    expect(latch.current()).toBeNull();
+    expect(latch.unlock({ subject: 'operator' })).toEqual({ ok: false, reason: 'execution-draining' });
+    expect(deps.createEngine).toHaveBeenCalledTimes(1);
+
+    releaseDrain();
+    await delayedDrain;
+    await Promise.resolve();
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    expect(deps.createEngine).toHaveBeenCalledTimes(2);
+  });
+
+  describe.each([
+    ['synchronous throw', (failure: unknown) => () => { throw failure; }],
+    ['asynchronous rejection', (failure: unknown) => () => Promise.reject(failure)],
+  ])('%s drain failures', (_mode, failDrain) => {
+    it.each([undefined, null, false, 0, ''])('fails closed for falsey rejection %#', async (failure) => {
+      const { deps, latch } = latchHarness();
+      latch.unlock({ subject: 'operator' });
+      const port = (deps.createAttemptPort as ReturnType<typeof vi.fn>).mock.results[0]?.value;
+      port.drain.mockImplementation(failDrain(failure));
+
+      latch.lock({ subject: 'operator' });
+      await Promise.resolve();
+      expect(latch.snapshot().state).toBe('locked');
+      expect(latch.unlock({ subject: 'operator' })).toEqual({ ok: false, reason: 'execution-drain-failed' });
+      expect(port.drain).toHaveBeenCalledOnce();
+      expect(deps.createEngine).toHaveBeenCalledTimes(1);
+
+      port.drain.mockResolvedValue(undefined);
+      latch.lock({ subject: 'operator' });
+      expect(port.drain).toHaveBeenCalledTimes(2);
+      await Promise.resolve();
+      expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+      expect(deps.createEngine).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it('propagates an onChange failure only after synchronously withdrawing the active wiring', () => {
+    let throwOnLock = false;
+    let releaseDrain!: () => void;
+    const delayedDrain = new Promise<void>((resolve) => { releaseDrain = resolve; });
+    const attemptPort = { drain: vi.fn(() => delayedDrain) };
+    const execution = {
+      attemptPort,
+      attemptIo: { stop: vi.fn() },
+    } as unknown as ActivatedExecution;
+    const latch = createExecutionLatch({
+      env: {},
+      build: vi.fn(() => execution) as unknown as typeof buildActivatedExecution,
+      buildOptions: { controlStore: {} as never, repoRoot: '/repo', stateRoot: '/state' },
+      onChange: () => {
+        if (throwOnLock) throw new Error('surface rebinding failed');
+      },
+    });
+    expect(latch.unlock({ subject: 'operator' }).ok).toBe(true);
+    throwOnLock = true;
+
+    expect(() => latch.lock({ subject: 'operator' })).toThrow('surface rebinding failed');
+    expect(latch.snapshot().state).toBe('locked');
+    expect(latch.current()).toBeNull();
+    expect(attemptPort.drain).toHaveBeenCalledOnce();
+    expect(latch.unlock({ subject: 'operator' })).toEqual({ ok: false, reason: 'execution-draining' });
+    releaseDrain();
   });
 
   it('the env override unlocks at construction (headless/testing posture) and is reported as such', () => {

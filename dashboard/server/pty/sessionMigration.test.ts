@@ -109,6 +109,99 @@ describe('v1 PTY document migration', () => {
     expect(migrated.attemptBindings.every((binding: Record<string, unknown>) => !('retired' in binding))).toBe(true);
   });
 
+  it('maps exact legacy v3 and v2 attempt rows by adding a null message claim', async () => {
+    const stateRoot = root();
+    const path = join(stateRoot, 'pty', 'session-runs.json');
+    mkdirSync(join(stateRoot, 'pty'), { recursive: true });
+    const operationKey = `op-${'a'.repeat(64)}`;
+    const row = {
+      operationKey, requestHash: 'b'.repeat(64), status: 'pending', promptsDelivered: 0,
+      sessionId: null, attemptRef: null, receipt: null, revision: 2, updatedAt: NOW,
+    };
+    const v3 = {
+      schema: 'kb.pty-sessions/v3', revision: 7, epochId: null, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: { [operationKey]: row }, legacyRuns: [], legacyArchiveKeys: [],
+    };
+    const v3Bytes = Buffer.from(`${JSON.stringify(v3)}\n`, 'utf8');
+    writeFileSync(path, v3Bytes);
+    await expect(migratePtySessionDocument(path)).resolves.toMatchObject({
+      migrated: true, replayed: false, backupPath: `${path}.v3.bak`,
+    });
+    expect(readFileSync(`${path}.v3.bak`)).toEqual(v3Bytes);
+    expect(JSON.parse(readFileSync(path, 'utf8')).attemptOperations[operationKey]).toMatchObject({ messageClaim: null });
+    await expect(migratePtySessionDocument(path)).resolves.toMatchObject({
+      migrated: false, replayed: true, backupPath: `${path}.v3.bak`,
+    });
+
+    const { epochId: _epochId, ...v2Fields } = v3;
+    const v2 = { ...v2Fields, schema: 'kb.pty-sessions/v2' };
+    const v2Bytes = Buffer.from(`${JSON.stringify(v2)}\n`, 'utf8');
+    writeFileSync(path, v2Bytes);
+    await expect(migratePtySessionDocument(path)).resolves.toMatchObject({
+      migrated: true, replayed: false, backupPath: `${path}.v2.bak`,
+    });
+    expect(readFileSync(`${path}.v2.bak`)).toEqual(v2Bytes);
+    expect(JSON.parse(readFileSync(path, 'utf8')).attemptOperations[operationKey]).toMatchObject({ messageClaim: null });
+  });
+
+  it('refuses malformed or extra-key v3 claim rows without changing the source', async () => {
+    const stateRoot = root();
+    const path = join(stateRoot, 'pty', 'session-runs.json');
+    mkdirSync(join(stateRoot, 'pty'), { recursive: true });
+    const operationKey = `op-${'e'.repeat(64)}`;
+    const v3 = {
+      schema: 'kb.pty-sessions/v3', revision: 7, epochId: null, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: { [operationKey]: {
+        operationKey, requestHash: 'f'.repeat(64), status: 'pending', promptsDelivered: 0,
+        sessionId: null, attemptRef: null, messageClaim: { claimRef: 'claim-a', declarationFingerprint: 'a'.repeat(64) },
+        receipt: null, revision: 2, updatedAt: NOW,
+      } }, legacyRuns: [], legacyArchiveKeys: [],
+    };
+    const original = Buffer.from(`${JSON.stringify(v3)}\n`, 'utf8');
+    writeFileSync(path, original);
+    await expect(migratePtySessionDocument(path)).rejects.toBeInstanceOf(PtySessionMigrationError);
+    expect(readFileSync(path)).toEqual(original);
+    expect(existsSync(`${path}.v3.bak`)).toBe(false);
+
+    // Build a separate raw JSON-shaped input. The incomplete claim above deliberately has no type
+    // that could accept a later key, and this payload must remain malformed rather than cast current.
+    const extra = {
+      ...v3,
+      attemptOperations: { [operationKey]: {
+        ...v3.attemptOperations[operationKey],
+        messageClaim: {
+          claimRef: 'claim-a', declarationFingerprint: 'a'.repeat(64), promptFingerprint: 'b'.repeat(64), extra: true,
+        },
+      } },
+    };
+    const extraOriginal = Buffer.from(`${JSON.stringify(extra)}\n`, 'utf8');
+    writeFileSync(path, extraOriginal);
+    await expect(migratePtySessionDocument(path)).rejects.toBeInstanceOf(PtySessionMigrationError);
+    expect(readFileSync(path)).toEqual(extraOriginal);
+  });
+
+  it('preserves a conflicting old-v3 source and its named backup', async () => {
+    const stateRoot = root();
+    const path = join(stateRoot, 'pty', 'session-runs.json');
+    mkdirSync(join(stateRoot, 'pty'), { recursive: true });
+    const operationKey = `op-${'c'.repeat(64)}`;
+    const source = Buffer.from(`${JSON.stringify({
+      schema: 'kb.pty-sessions/v3', revision: 1, epochId: null, sessions: [], attemptBindings: [],
+      operationReceipts: [], attemptOperations: { [operationKey]: {
+        operationKey, requestHash: 'd'.repeat(64), status: 'pending', promptsDelivered: 0,
+        sessionId: null, attemptRef: null, receipt: null, revision: 1, updatedAt: NOW,
+      } }, legacyRuns: [], legacyArchiveKeys: [],
+    })}\n`, 'utf8');
+    const backup = Buffer.from('different v3 backup bytes', 'utf8');
+    writeFileSync(path, source);
+    writeFileSync(`${path}.v3.bak`, backup);
+    let caught: PtySessionMigrationError | null = null;
+    try { await migratePtySessionDocument(path); } catch (error) { caught = error as PtySessionMigrationError; }
+    expect(caught?.report).toContain('backup: pre-existing .v3.bak differs from source');
+    expect(readFileSync(path)).toEqual(source);
+    expect(readFileSync(`${path}.v3.bak`)).toEqual(backup);
+  });
+
   it.each(['directory', 'mutex', 'source-read', 'backup', 'fsync-backup', 'write-temp',
     'fsync-temp', 'validation', 'rename', 'fsync-parent'] as const)(
     'leaves the v1 input byte-identical when operation stage %s fails',

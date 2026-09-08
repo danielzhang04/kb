@@ -63,7 +63,10 @@ import { resolveDashboardStateRoot } from './composer/store.ts';
 import { acquireWriterLease } from './control/writerLease.ts';
 import type { FileControlPlaneAccess, WriterLease } from './control/writerLease.ts';
 import type { ControlPlaneStore } from './control/store.ts';
-import { createFileControlPlaneStore, createPythonScheduleClaimRenderer } from './control/store.ts';
+import {
+  createFileControlPlaneStore, createPythonScheduleClaimRenderer, isControlStoreStartupHydrationError,
+} from './control/store.ts';
+import { createBootDiagnosticsApp } from './bootDiagnostics.ts';
 import { loadP2MigrationEvidence } from './control/p2MigrationEvidence.ts';
 import { runP2ScheduleStartupMigrations } from './control/migrations.ts';
 import {
@@ -566,6 +569,10 @@ export interface StartOptions {
   repoRoot?: string;
   /** @internal */
   leaseFactory?: typeof acquireWriterLease;
+  /** @internal Startup-store seam for boot-failure containment tests. */
+  controlStoreFactory?: typeof createFileControlPlaneStore;
+  /** @internal Restricted-diagnostic construction seam for boot-failure containment tests. */
+  bootDiagnosticsFactory?: typeof createBootDiagnosticsApp;
   /** @internal */
   buildApplication?: typeof buildApp;
   /** @internal The one composition-time PTY probe; production runs the real host probe. */
@@ -642,14 +649,38 @@ export async function start(
     stateRoot: resolveDashboardStateRoot(),
     bootId: randomUUID(),
   });
+  const releaseLeaseOnce = (): void => {
+    const held = lease;
+    lease = null;
+    held?.release();
+  };
   try {
     const repoRoot = options.repoRoot ?? process.env.DASHBOARD_REPO_ROOT ?? fileURLToPath(new URL('../../', import.meta.url));
     let controlStore: ControlPlaneStore | undefined;
-    if (!options.buildApplication) {
-      controlStore = createFileControlPlaneStore(lease.stateRoot, { mode: 'already-locked', lease }, {
-        p2MigrationContext: loadP2MigrationEvidence(repoRoot),
-        renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
-      });
+    if (!options.buildApplication || options.controlStoreFactory) {
+      const controlStoreFactory = options.controlStoreFactory ?? createFileControlPlaneStore;
+      try {
+        controlStore = controlStoreFactory(lease.stateRoot, { mode: 'already-locked', lease }, {
+          p2MigrationContext: loadP2MigrationEvidence(repoRoot),
+          renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
+        });
+      } catch (error) {
+        if (!isControlStoreStartupHydrationError(error)) throw error;
+        if (host !== '127.0.0.1') {
+          throw new Error('control-store diagnostics require loopback bind');
+        }
+        let diagnostics: FastifyInstance | null = null;
+        try {
+          diagnostics = (options.bootDiagnosticsFactory ?? createBootDiagnosticsApp)();
+          diagnostics.addHook('onClose', async () => { releaseLeaseOnce(); });
+          await diagnostics.listen({ port, host: '127.0.0.1' });
+          return diagnostics;
+        } catch {
+          try { await diagnostics?.close(); } catch {}
+          releaseLeaseOnce();
+          throw new Error('control-store diagnostics failed to start');
+        }
+      }
       await runScheduleBootMigrations(repoRoot, controlStore);
     }
     // The one and only PTY probe of this process: composition asks the real host once, before any
@@ -720,8 +751,7 @@ export async function start(
       app.addHook('onClose', async () => { await new Promise<void>((done) => socket.close(() => done())); });
     }
     app.addHook('onClose', async () => {
-      lease?.release();
-      lease = null;
+      releaseLeaseOnce();
     });
     try {
       await app.listen({ port, host });
@@ -731,8 +761,7 @@ export async function start(
     }
     return app;
   } catch (error) {
-    lease?.release();
-    lease = null;
+    releaseLeaseOnce();
     throw error;
   }
 }

@@ -156,6 +156,19 @@ function headers(token: string) {
   return { origin: ORIGIN, host: 'localhost:5317', authorization: `Bearer ${token}`, 'content-type': 'application/json' };
 }
 
+async function expectNoUnhandledRejection(action: () => Promise<void>): Promise<void> {
+  const unhandled: unknown[] = [];
+  const observe = (reason: unknown): void => { unhandled.push(reason); };
+  process.on('unhandledRejection', observe);
+  try {
+    await action();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(unhandled).toEqual([]);
+  } finally {
+    process.off('unhandledRejection', observe);
+  }
+}
+
 async function readSseUntil(
   reader: ReadableStreamDefaultReader<Uint8Array>,
   predicate: (text: string) => boolean,
@@ -1637,6 +1650,60 @@ describe('control proposal routes', () => {
     expect(auditRows.some((event) => event.action === 'control-manager-successor-authorize')).toBe(true);
   });
 
+  it('contains the actual Manager-successor late rejection when its store reporter and logger throw', async () => {
+    const stored = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: 'composer-successor-fault', sourceTurnId: 'turn-successor-fault', title: proposal.title,
+      snapshot: proposal as unknown as JsonObject,
+    });
+    if (!stored.ok) throw new Error(stored.detail);
+    const approved = controlStore.decideProposal('operator', stored.value.proposalRef, 1, {
+      expectedHash: stored.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'approve-successor-fault',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const created = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' }, executionHost: 'desktop',
+      title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
+      expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
+      idempotencyKey: 'launch-successor-fault', stages: proposal.stages.map((stage) => ({ stageId: stage.id, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    if (!created.ok) throw new Error(created.detail);
+    const manager = created.value.sessions[0];
+    const interrupted = controlStore.transitionSession('operator', manager.sessionRef, manager.version, 'interrupted');
+    if (!interrupted.ok) throw new Error(interrupted.detail);
+
+    let rejectExecution!: (reason: Error) => void;
+    const wired = await activatedApp(undefined, {
+      runAutomatic: () => new Promise((_resolve, reject) => { rejectExecution = reject; }),
+    });
+    const reporter = vi.spyOn(controlStore, 'createHumanRequest').mockImplementation(() => {
+      throw new Error('store-reporter-private-sentinel');
+    });
+    const logLines: string[] = [];
+    const logger = vi.spyOn(console, 'error').mockImplementation((line) => {
+      logLines.push(String(line));
+      throw new Error('logger-private-sentinel');
+    });
+    try {
+      await expectNoUnhandledRejection(async () => {
+        const response = await wired.activated.inject({
+          method: 'POST', url: `/api/control/runs/${created.value.run.runRef}/manager/successor`, headers: headers(token),
+          payload: { expectedManagerGeneration: 1, runtime: proposal.manager.runtime, model: proposal.manager.model, idempotencyKey: 'manager-successor-fault' },
+        });
+        expect(response.statusCode, response.body).toBe(202);
+        expect(response.json()).toMatchObject({ ok: true, starting: true, value: { generation: 2 } });
+        rejectExecution(new Error('engine-private-sentinel'));
+      });
+      expect(logLines).toEqual([
+        `[automatic-execution:manager-successor] detached reporter failed for run ${created.value.run.runRef}`,
+      ]);
+      expect(logLines[0]).not.toContain('private-sentinel');
+    } finally {
+      reporter.mockRestore();
+      logger.mockRestore();
+      await wired.activated.close();
+    }
+  });
+
   it('claims activation once and replays concurrent exact requests without a second engine dispatch', async () => {
     const detail = seedActivatableRun();
     const payload = {
@@ -2147,6 +2214,55 @@ describe('control proposal routes', () => {
     }
   });
 
+  it('contains both actual auto-resume callbacks when park reporting and logging throw after the response', async () => {
+    for (const mode of ['fulfilled-refusal', 'rejected-activation'] as const) {
+      const detail = seedActivatableRun(false, `:auto-resume-${mode}`);
+      const boundary = seedOpenBoundary(detail.run.runRef);
+      const localAudits: Array<Record<string, unknown>> = [];
+      const wired = await activatedApp(undefined, {
+        ...(mode === 'fulfilled-refusal' ? { opsGit: () => { throw new Error('canonical preparation refused'); } } : {}),
+        appendAudit: (_root, event) => {
+          localAudits.push(event as Record<string, unknown>);
+          return { ts: new Date().toISOString(), ...(event as Record<string, unknown>) };
+        },
+      });
+      const receipt = mode === 'rejected-activation'
+        ? vi.spyOn(controlStore, 'getRunActivationReceipt').mockImplementation(() => {
+          throw new Error('activation-private-sentinel');
+        })
+        : null;
+      const reporter = vi.spyOn(controlStore, 'createHumanRequest').mockImplementation(() => {
+        throw new Error('park-reporter-private-sentinel');
+      });
+      const logLines: string[] = [];
+      const logger = vi.spyOn(console, 'error').mockImplementation((line) => {
+        logLines.push(String(line));
+        throw new Error('logger-private-sentinel');
+      });
+      try {
+        await expectNoUnhandledRejection(async () => {
+          const responded = await wired.activated.inject({
+            method: 'POST', url: `/api/control/human-requests/${boundary.requestRef}/respond`,
+            headers: headers(token), payload: respondPayload(boundary, 'responded'),
+          });
+          expect(responded.statusCode, responded.body).toBe(200);
+          expect(responded.json()).toMatchObject({ ok: true, value: { state: 'resolved' } });
+        });
+        expect(logLines).toEqual([
+          `[automatic-execution:automatic-resume] detached reporter failed for run ${detail.run.runRef}`,
+        ]);
+        expect(logLines[0]).not.toContain('private-sentinel');
+        expect(interventionTitles(detail.run.runRef)).toEqual(['Launch reconciliation required']);
+        expect(localAudits.filter((row) => row.action === 'control-run-activate-authorize')).toEqual([]);
+      } finally {
+        reporter.mockRestore();
+        receipt?.mockRestore();
+        logger.mockRestore();
+        await wired.activated.close();
+      }
+    }
+  });
+
   it('files ONE intervention for a failed activation dispatch, not one per surface', async () => {
     const detail = seedActivatableRun(false);
     const boundary = seedOpenBoundary(detail.run.runRef);
@@ -2504,6 +2620,54 @@ describe('control proposal routes', () => {
       expect(runAutomatic).toHaveBeenCalledTimes(1);
     } finally {
       await activated.close();
+    }
+  });
+
+  it('contains an actual post-202 executor rejection when its store reporter and logger throw', async () => {
+    const detail = seedActivatableRun(true, ':late-reporter-fault');
+    const payload = {
+      expectedRunVersion: detail.run.version,
+      expectedManagerGeneration: detail.run.managerGeneration,
+      idempotencyKey: `activate:${detail.run.runRef}:${detail.run.version}:late-reporter-fault`,
+    };
+    let rejectExecution!: (reason: Error) => void;
+    const wired = await activatedApp(undefined, {
+      runAutomatic: (input) => {
+        const current = controlStore.getRun(input.subject, input.runRef);
+        if (!current.ok) throw new Error(current.detail);
+        const running = controlStore.transitionRun(input.subject, input.runRef, current.value.run.version, 'running');
+        if (!running.ok) throw new Error(running.detail);
+        input.onManagerStarted?.();
+        return new Promise((_resolve, reject) => { rejectExecution = reject; });
+      },
+    });
+    const reporter = vi.spyOn(controlStore, 'createHumanRequest').mockImplementation(() => {
+      throw new Error('store-reporter-private-sentinel');
+    });
+    const logLines: string[] = [];
+    const logger = vi.spyOn(console, 'error').mockImplementation((line) => {
+      logLines.push(String(line));
+      throw new Error('logger-private-sentinel');
+    });
+    try {
+      await expectNoUnhandledRejection(async () => {
+        const response = await wired.activated.inject({
+          method: 'POST', url: `/api/control/runs/${detail.run.runRef}/activate`, headers: headers(token), payload,
+        });
+        expect(response.statusCode, response.body).toBe(202);
+        expect(controlStore.getRunActivationReceipt('operator', detail.run.runRef, payload)).toMatchObject({
+          ok: true, value: { phase: 'dispatched' },
+        });
+        rejectExecution(new Error('engine-private-sentinel'));
+      });
+      expect(logLines).toEqual([
+        `[automatic-execution:post-ack-execution] detached reporter failed for run ${detail.run.runRef}`,
+      ]);
+      expect(logLines[0]).not.toContain('private-sentinel');
+    } finally {
+      reporter.mockRestore();
+      logger.mockRestore();
+      await wired.activated.close();
     }
   });
 
