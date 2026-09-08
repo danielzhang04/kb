@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 10:47 UTC / 06:47 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 11:00 UTC / 07:00 Eastern. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -15,24 +15,21 @@ No merge, deployment, account action, publication or explicit generation is auth
 User allows one reference when the original set disagrees: g01 is the experimental
 canonical seed; g02/g07 remain comparators, possibly already in prior training.
 
-## Active compute ? ONE POD
+## Compute complete: no live pods or reservations
 
-- **wtaiyxr0g1zmz6**, acquired 10:41:14 UTC; exec session **98464**.
-- Private root: C:/Users/danie/kb/_private/figment-video-experiment-20260908.
-- Manifest native-resolution-v2.json, SHA
-  da8bb56b8d8bd3784325b8388baf535c6a22865495c7b5aab5803d2ed90b00b0.
-- Output live-native-resolution-v2; redacted log live-native-resolution-v2-console.log.
-- Recovery journal live-native-resolution-v2/recovery-figment-bakeoff-20260908-104112-2f4346.json.
-- One L40S, one placement, one 81-frame job; hard $1.75 / 80 minutes. Readiness2400s,
-  job1800s. Higher resolution1280x704 only; same first frame, seed4815162342, prompt,
-  model/VAE/pins, sampler,20steps,cfg5,shift8 as the failed512x288 run.
-- Independent manifest review PASS and dry-run81 outputs. Resolved graph SHA
-  e90100ed61440b7735406b74e789e5ac10cbe0965ca842d46d56c6b45165110a.
-  Static workflow source hash is explicitly not the modified graph hash.
-- Realized prior arc $37.383855; active provisional $1.733333 ALREADY ledgered.
-  Arc including exposure $39.117188/50; daily $3.426937/10. No other reservation.
-  Replace the existing row on completion, never double-book; parent GET absent and
-  list-pods verification after harness exit. If interrupted, use durable recovery.
+V2 pod wtaiyxr0g1zmz6 finished 10:53:43UTC; harness exit0, native termination verified,
+parent GET absent and list-pods0. $0.227441 /751.182s; existing provisional replaced.
+Measured arc $37.611296/50; daily $1.921045/10. No other reservation.
+Private root C:/Users/danie/kb/_private/figment-video-experiment-20260908;
+manifest native-resolution-v2.json SHA da8bb56b8d8bd3784325b8388baf535c6a22865495c7b5aab5803d2ed90b00b0.
+Output live-native-resolution-v2/run.json and assembled-native-resolution-v2/diagnostic.mp4;
+movie SHA b0c7cce2b54cfc5dc5c6a104b358282364a537a26c865bebab5e3df3689c7624.
+81frames1280x704/16fps/5.0625s; resolution-only variation from failedV1. All81 independent
+visual review: no earlier colored bands, geometry warp or late face blur; face/clothing/
+room coherent with blink and small head tilt. Parent first/mid/last agrees. This is a
+successful narrow diagnostic, not broad identity/age/content approval. Dedicated17tests.
+Audit ledgers/audit/figment-video-native-resolution-2026-09-08.json freezes81hashes,
+receipt/assembly/extraction and provider absence evidence. Root rehashed all81 successfully.
 
 Use configured Python313 absolute executable for live calls:
 C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe.
@@ -59,7 +56,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **d64a0aff pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **5deb8004 pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -100,27 +97,30 @@ has stronger resemblance and intact adult clothing; remains experimental/trainin
 Both derive directly from g01, with exact prompts and hashes; unknown model billing is
 not recorded as zero. Sourceg01 hash e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed.
 
+Gallery5deb8004 accepted/pushed: bounded authenticated receipt PNG view, parent107tests
+and typecheck. Aggregate-before-open and requested-file-only hashing fixed; one81-frame
+job supported under global128assets/128MiB. Visual UI QA pending.
+
 ## Worker scopes and next actions
 
--figment_hub_final_review: builds authenticated Asset review over one configured diagnostic
- root and receipt-listed PNGs;16MiB/file,128MiB aggregate hash work,128images; bounded
- thumbnails/objectURL cleanup, stale hash/path/junction checks. No new dependencies,
- client paths or approval actions. Freeze for timestamp_fix independent review.
--figment_timestamp_fix: independently reviews Asset review once frozen; authored video
- visual audit and reviewed resolution manifest. All81video quality review completed.
--figment_protocol_review: researches a pinned safe-format offline identity embedder and
- licence using primary sources; no installs/download/model execution/scorer edits.
- Existing FaceNet auto-loaded.pt and unpinned torch.hub are not a ready offline path.
+-figment_hub_final_review: builds actual offline tester-plan preview action in studio,
+fixed creator/stage/argv, no raw commands or provider access, bounded child and temp cleanup.
+-figment_timestamp_fix: completed V2 all81 visual review; next independently reviews new
+additive offline identity observer after author's current root-requested repairs.
+-figment_protocol_review: additive identity_observe.py and model pins pending admission;
+root checked exact HF revisions/LFS hashes/bytes and modeldir MIT/Apache licences, PyPI
+wheel hash. Fixes runtime provenance, bounded reads, model rehash and finite output before
+independent review. Preparing isolated pinned local install; no model execution yet.
+Existing FaceNet auto-loaded.pt and unpinned torch.hub are not a ready offline path.
 
-Root: monitor v2, verify teardown, assemble/extract/inspect allframes, reconcile existing
-reservation; accept reviewed hub change and compile/source-check remaining docs; maintain
-source-backed book and handoff. Prioritize real studio input/plan workflows after evidence
-viewer, not status-only completeness. No Instagram integration. First8AMcheckpoint notyet.
+Root: complete pinned offline observer adoption/test against real references/diagnostics,
+review actual plan workflow, visual-check gallery, update research book. LoRA-upload
+question remains pending; do not retry. No Instagram integration. First8AMcheckpoint notyet.
 
 ## Runtime, previews and coordination
 
 Keep-awake label codex-figment-async-20260908: owner16580, supervisor19564, both alive,
-AC armed, lastverified06:33Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
+AC armed, lastverified06:55Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
 External Codex CLI reports notloggedin; native parent/workers are execution lane, no
 promised detached restart after parentdeath. Do not open auth stores or stop for this.
 

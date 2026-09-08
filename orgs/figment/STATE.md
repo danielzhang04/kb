@@ -1,27 +1,20 @@
-# Figment ? current state
+# Figment current state
 
-Updated2026-09-08 10:47UTC. Async work continues through and past the8AMEastern
-checkpoint; Instagram integration is deferred. Canonical resumable detail is in
-[the active handoff](../../handoffs/2026-09-08-figment-async.md).
+Updated 2026-09-08 11:00UTC. Async work continues through/past8AMEastern checkpoint.
+Instagram deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Work: codex/figment-studio-20260908, draftPR179 stacked onPR178. Accepted head d64a0aff.
-Research book, bounded authenticated studio (creators/plans/runs/book), controlled
-image protocols, nativeWan5Bmanifest, real81-frame assembly/extraction, and offline
-content-brief compiler are implemented/reviewed/tested. Asset review is being built.
+Studio codex/figment-studio-20260908 head5deb8004 pushed, draftPR179 stacked onPR178.
+Research book, authenticated creators/plans/runs/book/image gallery, controlled image
+protocols, Wan5B compiler, real81-frame assembly/extraction and content-brief compiler
+are built/reviewed/tested. Gallery parent107tests/typecheck; visual UI check pending.
+Actual offline tester planning control and pinned local raw identity observer are in work.
 
-Quality remains unresolved. The operator rejected the earlier five checkpoint outputs
-for realism/identity/apparentage. The later pairedLoRA/base run shows distinct coherent
-arms, with unresolved parent/independent resemblance disagreement. Videov1 rendered and
-assembled81frames but failed visual quality for severe temporal artifacts. No checkpoint
-or content is promoted. g01 is the experimental canonical reference; alternate generated
-inputs retain hashes/reviews and are not trainingapproved.
+No live pods or reservations. V2 pod wtaiyxr0g1zmz6 terminated, parent GET absent/list0;
+$0.227441 replaced provisional. Measured arc37.611296/50, daily1.921045/10.
+1280x704 video81frames/16fps is coherent across independent all81-frame review and parent
+first/mid/last, avoiding V1 temporal collapse. Subtle blink/head tilt only; no broad
+identity/age/production approval. Earlier paired still resemblance disagreement unresolved.
+g01 remains experimental single seed, generated alternatives retain provenance.
 
-ONE ACTIVE POD: wtaiyxr0g1zmz6, native-resolution-only video comparison, bound$1.75/80min.
-Root owns cleanup and verifiedabsence. Realizedarc37.383855/50;1.733333activeprovisional
-alreadyledgered, giving39.117188includingexposure. No secondreservation.
-A frozen prompt-only imagecomparison awaits exactLoRAupload authorization after automatic
-review rejected export; no attempt/pod exists and no bypass is permitted.
-
-Next: finishvideo2/QA/accounting, independentlyreviewAssetUI, close pinnedoffline scorer
-gap, and build useful local input/plan workflows. Keepaccounts/publishing deferred.
-Only diagnostic and localfixture evidence is claimed; no deployment/liveauthvisualproof.
+Only prompt-only LoRA-upload comparison awaits exact upload authorization after automatic
+review rejection. No bypass/retry/pod for that item. Independent work continues.

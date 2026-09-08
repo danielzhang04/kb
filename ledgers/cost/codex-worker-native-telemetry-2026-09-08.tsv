@@ -73,3 +73,7 @@ native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exp
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-offline-contentbrief-build-lineage-review-and-repair	not-exposed
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native-resolution-video-v2-build-and-independent-admission	not-exposed
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-identity-scorer-local-readiness-probe	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-gallery-build-adversarial-review-repairs	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native-video-v2-fullframe-visual-review	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-offline-plan-preview-probe-and-build	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-pinned-offline-observer-build-and-review	not-exposed
