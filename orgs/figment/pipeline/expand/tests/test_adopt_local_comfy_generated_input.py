@@ -63,7 +63,11 @@ def fixture(tmp_path: Path) -> tuple[Path, Path, Path, str]:
     }
     receipt_raw = json.dumps(receipt).encode(); (run / "receipt.json").write_bytes(receipt_raw); (run / "journal.json").write_bytes(receipt_raw)
     dispatch = {"schema": adopt.LOCAL_SCHEMA, "manifest_sha256": digest(manifest_raw), "attempt": 1}; dispatch_raw = json.dumps(dispatch).encode(); (run / "dispatch-attempt.json").write_bytes(dispatch_raw)
-    identity = {"schema": adopt.IDENTITY_SCHEMA, "candidate": {"unavailable_reason": "multiple faces detected", "source_after": {"sha256": digest(output)}}}
+    observed_source = {"path": "_private/fixture/output/figment-local-comfy-input_00001_.png",
+                       "sha256": digest(output), "bytes": len(output)}
+    identity = {"schema": adopt.IDENTITY_SCHEMA, "candidate": {
+        "unavailable_reason": "multiple faces detected", "source_before": observed_source,
+        "source_after": observed_source}}
     identity_raw = json.dumps(identity).encode(); (run / "identity-fixed640.json").write_bytes(identity_raw)
     request = {
         "schema": adopt.REQUEST_SCHEMA, "request_id": "v3-rejected", "run_name": run.name,
@@ -88,6 +92,55 @@ def test_default_plan_is_offline_and_import_publishes_a_rejected_pair(tmp_path):
     assert record["generation"]["date_basis"].startswith("root-observed")
     assert record["source"]["derivation"]["independent_view"] is False
     assert set(record["generation"]["model_sha256"]) == {"checkpoint", "clip_vision", "ipadapter"}
+
+
+def test_fixed640_one_face_raw_observation_is_admitted_without_a_quality_decision(tmp_path):
+    private, requests, gallery, repo, name = fixture(tmp_path)
+    run = private / "figment-local-comfy-baseline-v3"
+    output = (run / "output" / "figment-local-comfy-input_00001_.png").read_bytes()
+    source = {"path": "_private/fixture/output/figment-local-comfy-input_00001_.png",
+              "sha256": digest(output), "bytes": len(output)}
+    identity = {
+        "schema": adopt.IDENTITY_SCHEMA,
+        "candidate": {"source_before": source, "source_after": source, "unavailable_reason": None,
+                      "face": {}, "detector_preprocessing": {"id": adopt.FIXED640_PREPROCESSING, "face_count": 1}},
+        "anchors": [{"raw_cosine": value, "unavailable_reason": None} for value in (0.2, 0.4, 0.6)],
+    }
+    identity_raw = json.dumps(identity).encode(); (run / "identity-fixed640.json").write_bytes(identity_raw)
+    request_path = requests / name; request = json.loads(request_path.read_text(encoding="utf-8"))
+    request["identity_observation_sha256"] = digest(identity_raw); request_path.write_text(json.dumps(request), encoding="utf-8")
+    result = adopt.adopt(name, request_root=requests, gallery_root=gallery, workspace_private=private, repo_root=repo)
+    assert result["status"] == "planned" and result["not_promotable"] is True
+    generation = result["provenance"]["generation"]
+    assert generation["identity_observation_sha256"] == digest(identity_raw)
+    assert "raw_cosine" not in json.dumps(result["provenance"])
+    assert result["provenance"]["review"]["training_eligible"] is False
+
+
+@pytest.mark.parametrize("mutate", ["before-source", "raw-cosine", "unavailable-shape"])
+def test_fixed640_one_face_refuses_unbound_or_incomplete_raw_observation(tmp_path, mutate):
+    private, requests, gallery, repo, name = fixture(tmp_path)
+    run = private / "figment-local-comfy-baseline-v3"
+    output = (run / "output" / "figment-local-comfy-input_00001_.png").read_bytes()
+    source = {"path": "_private/fixture/output/figment-local-comfy-input_00001_.png",
+              "sha256": digest(output), "bytes": len(output)}
+    identity = {
+        "schema": adopt.IDENTITY_SCHEMA,
+        "candidate": {"source_before": dict(source), "source_after": source, "unavailable_reason": None,
+                      "face": {}, "detector_preprocessing": {"id": adopt.FIXED640_PREPROCESSING, "face_count": 1}},
+        "anchors": [{"raw_cosine": 0.2, "unavailable_reason": None}],
+    }
+    if mutate == "before-source":
+        identity["candidate"]["source_before"]["sha256"] = "a" * 64
+    elif mutate == "raw-cosine":
+        identity["anchors"][0]["raw_cosine"] = None
+    else:
+        identity["candidate"]["unavailable_reason"] = ["multiple faces detected"]
+    identity_raw = json.dumps(identity).encode(); (run / "identity-fixed640.json").write_bytes(identity_raw)
+    request_path = requests / name; request = json.loads(request_path.read_text(encoding="utf-8"))
+    request["identity_observation_sha256"] = digest(identity_raw); request_path.write_text(json.dumps(request), encoding="utf-8")
+    with pytest.raises(adopt.AdoptionError, match="identity observation"):
+        adopt.adopt(name, request_root=requests, gallery_root=gallery, workspace_private=private, repo_root=repo)
 
 
 @pytest.mark.parametrize("mutate", ["output", "teardown", "identity"])

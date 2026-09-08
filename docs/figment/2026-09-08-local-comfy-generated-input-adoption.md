@@ -30,8 +30,11 @@ run root; `figment/local-comfy-input@1`; `diagnostic_only: true`; exactly one
 dispatch; completed receipt and journal; verified teardown with no unresolved
 process or teardown error; current sole `g01` source binding; a bounded,
 decoded 1024-square PNG matching its receipt; and an identity observation that
-binds the same PNG while explicitly reporting multiple faces without an
-identity verdict. It accepts only the fixed rejected status
+binds the same PNG before and after observation. The receipt may carry an
+established unavailable candidate state (`no face detected` or `multiple faces
+detected`), or fixed640 one-face metadata with finite raw anchor cosines. Those
+are immutable observation evidence, not an identity verdict, threshold, or
+quality decision. It accepts only the fixed rejected status
 `rejected-as-same-person-candidate` and `training_eligible: false` from the
 root-owned request. Those fields are a declared review snapshot, never an
 approval.
@@ -54,4 +57,5 @@ The current generated-input gallery already reads this exact provenance schema
 through its fixed root, hash-bound projection and binary endpoint. No route,
 auth, or UI expansion is required for the adopter. The gallery projects the
 bounded date/status/visual-review fields and does not expose raw prompts or
-approval fields.
+approval fields. The provenance binds the immutable identity-observation file
+SHA-256 but does not copy raw cosine values into the gallery record.

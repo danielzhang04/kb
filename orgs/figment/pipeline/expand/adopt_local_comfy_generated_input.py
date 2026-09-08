@@ -12,6 +12,7 @@ import argparse
 import hashlib
 import io
 import json
+import math
 import os
 import re
 import stat
@@ -39,6 +40,8 @@ HEX = re.compile(r"[0-9a-f]{64}\Z")
 SAFE_REQUEST = re.compile(r"[a-z0-9][a-z0-9-]{0,95}\.json\Z")
 SAFE_IMAGE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\.png\Z")
 REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+FIXED640_PREPROCESSING = "fixed-max-edge-640@1"
+ESTABLISHED_CANDIDATE_UNAVAILABLE = {"no face detected", "multiple faces detected"}
 
 
 class AdoptionError(ValueError):
@@ -211,6 +214,45 @@ def _derive(value: Any, canonical_sha: str) -> dict[str, Any]:
     raise AdoptionError("source derivation kind is unsupported")
 
 
+def _candidate_source(value: Any, expected_sha256: str, expected_bytes: int) -> None:
+    """Require the raw observer to have hashed these exact candidate bytes twice."""
+    if not isinstance(value, dict) or set(value) != {"path", "sha256", "bytes"}:
+        raise AdoptionError("identity observation candidate source is malformed")
+    if (not isinstance(value["path"], str) or not value["path"]
+            or value["sha256"] != expected_sha256 or value["bytes"] != expected_bytes):
+        raise AdoptionError("identity observation does not bind the local-Comfy output")
+
+
+def _identity_observation(identity: dict[str, Any], image: bytes) -> None:
+    """Accept raw fixed640 evidence or a known unavailable state, never a verdict."""
+    if identity.get("schema") != IDENTITY_SCHEMA:
+        raise AdoptionError("identity observation schema is not admitted")
+    candidate = identity.get("candidate")
+    if not isinstance(candidate, dict):
+        raise AdoptionError("identity observation candidate is malformed")
+    expected_sha256, expected_bytes = _hash(image), len(image)
+    _candidate_source(candidate.get("source_before"), expected_sha256, expected_bytes)
+    _candidate_source(candidate.get("source_after"), expected_sha256, expected_bytes)
+    reason = candidate.get("unavailable_reason")
+    if isinstance(reason, str) and reason in ESTABLISHED_CANDIDATE_UNAVAILABLE:
+        return
+    if reason is not None:
+        raise AdoptionError("identity observation has an unsupported unavailable state")
+    preprocessing = candidate.get("detector_preprocessing")
+    face = candidate.get("face")
+    if (not isinstance(preprocessing, dict) or preprocessing.get("id") != FIXED640_PREPROCESSING
+            or preprocessing.get("face_count") != 1 or not isinstance(face, dict)):
+        raise AdoptionError("identity observation is not a fixed640 one-face observation")
+    anchors = identity.get("anchors")
+    if not isinstance(anchors, list) or not 1 <= len(anchors) <= 16:
+        raise AdoptionError("identity observation lacks bounded raw anchor observations")
+    for anchor in anchors:
+        cosine = anchor.get("raw_cosine") if isinstance(anchor, dict) else None
+        if (isinstance(cosine, bool) or not isinstance(cosine, (int, float))
+                or not math.isfinite(float(cosine)) or anchor.get("unavailable_reason") is not None):
+            raise AdoptionError("identity observation raw anchor observations are incomplete")
+
+
 def _validate_run(request: dict[str, Any], workspace_private: Path, repo_root: Path) -> tuple[dict[str, Any], bytes, dict[str, Any]]:
     private = _root(workspace_private, "workspace private root")
     run = _root(private / request["run_name"], "local-Comfy run root")
@@ -297,12 +339,7 @@ def _validate_run(request: dict[str, Any], workspace_private: Path, repo_root: P
     if (output.get("bytes") != len(image) or output.get("sha256") != _hash(image)
             or output.get("dimensions") != [width, height] or [width, height] != [1024, 1024]):
         raise AdoptionError("local-Comfy output differs from its receipt")
-    if identity.get("schema") != IDENTITY_SCHEMA:
-        raise AdoptionError("identity observation schema is not admitted")
-    candidate = identity.get("candidate")
-    if (not isinstance(candidate, dict) or candidate.get("unavailable_reason") != "multiple faces detected"
-            or not isinstance(candidate.get("source_after"), dict) or candidate["source_after"].get("sha256") != _hash(image)):
-        raise AdoptionError("identity observation does not bind the local-Comfy output")
+    _identity_observation(identity, image)
     return manifest, image, output
 
 
@@ -339,7 +376,7 @@ def _provenance(request: dict[str, Any], manifest: dict[str, Any], output: dict[
         "generation": {
             "date": request["generation_date"], "date_basis": "root-observed adoption request; local receipt has no generation timestamp",
             "tool": "local_comfy_input.py", "mode": "local-Comfy availability diagnostic",
-            "manifest_sha256": request["manifest_sha256"], "receipt_sha256": request["receipt_sha256"], "journal_sha256": request["journal_sha256"], "dispatch_sha256": request["dispatch_sha256"],
+            "manifest_sha256": request["manifest_sha256"], "receipt_sha256": request["receipt_sha256"], "journal_sha256": request["journal_sha256"], "dispatch_sha256": request["dispatch_sha256"], "identity_observation_sha256": request["identity_observation_sha256"],
             "prompt_sha256": _sha(prompt.get("sha256"), "prompt.sha256"), "workflow_sha256": _sha(workflow.get("sha256"), "workflow.sha256"), "launcher_sha256": _sha(launcher.get("sha256"), "launcher.sha256"), "model_sha256": model_hashes,
         },
         "review": {"status": "rejected-as-same-person-candidate", "training_eligible": False, "operator_approval": None, **review},
