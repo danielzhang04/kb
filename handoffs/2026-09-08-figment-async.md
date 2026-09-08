@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 12:02 UTC / 08:02 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 12:11 UTC / 08:11 Eastern. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -64,7 +64,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **a6d8283f pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **91da266c pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -218,3 +218,28 @@ lineage.py and figment_train.py with focused tests and SINGLE-SEED-CURATION.md.
 Protocol worker reviews its boundary design and will independently review frozen code.
 Do not commit these moving files before review. Timestamp worker handles E01 input
 review. Root supervises next generation and retains all source/provenance evidence.
+
+## E01 completed and current review loop
+
+E01 generated through built-in imagegen using exact frozen request. Private output
+figment-single-seed-20260908/g01-e01-shoulders-up-v1.png SHAab8a6830e17ea9d215826f886ac0d654e09e47a6795f2af66289929ce21518a5,
+1967232B1697x927, metadata empty. Original tool output retained under generated_images.
+Adjacent provenance binds exact prompt/request/plan/source. Root and independent visual
+reviews note closer chest-up rather than strict shoulders-up framing, more open eyes,
+fuller lower face and some polished rendering. Adult/clothing intact, still experimental
+and trainingfalse. Plan8a6c61b4 and review91da266c pushed. Independent one-input local
+observer receipt observations-e01-v1/e01-fixed640.json SHAae56906334b5464a3a89a0ad0c6304615b1f401338a8e3613199254cc34e0905;
+19-input native/fixed640 baselines unchanged. Ops E01 audit binds artifacts/raw values.
+
+Compiler review identified a real snapshot-to-builder race: original external paths
+could change after evidence copies but before reencoding. Builder is correcting it to
+consume retained verified snapshots and bind train-row ordering to output pixels and
+captions. Reviewer also requires bounded new lineage reads, aggregate/pixel limits,
+Windows reparse handling, exact snapshots and no eval media in training. Code still
+moving; do not commit until independent review and parent relevant tests pass.
+
+Timestamp worker now checks Gemini image capability through non-secret existing code
+and ambient-key presence only. No credential stores, API execution, install, login or
+image export authorized for that research subtask. Original references used Gemini;
+source-family compatibility is a hypothesis, not a promised quality improvement.
+No RunPod running or new reservation; actual arc37.800385, daily2.110134 unchanged.
