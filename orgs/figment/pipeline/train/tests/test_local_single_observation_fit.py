@@ -1,6 +1,6 @@
 """CPU-only regression tests for fit executor containment and artifact gates."""
 from __future__ import annotations
-import importlib.util,json,sys
+import importlib.util,json,subprocess,sys
 from pathlib import Path
 import pytest
 HERE=Path(__file__).resolve().parents[1]
@@ -121,6 +121,10 @@ def test_fake_owned_nonzero_writes_failure_receipt(tmp_path,monkeypatch):
  with pytest.raises(fit.FitProbeError,match="nonzero"):fit.execute(e,out="figment-local-lora-fit-nonzero")
  r=json.loads((private/"figment-local-lora-fit-nonzero"/"failure.json").read_text());assert r["failure"]=="nonzero" and r["teardown"]["verified_stopped"]
  assert Path(seen[0][seen[0].index("--train_data_dir")+1]).name=="dataset"
+ assert seen[0][1:3]==["-X","utf8"]
+def test_utf8_interpreter_flag_preserves_japanese_pipe_output(tmp_path):
+ result=subprocess.run([sys.executable,"-X","utf8","-B","-c","print('学習開始')"],env=fit._env(tmp_path,0),stdout=subprocess.PIPE,stderr=subprocess.PIPE,check=False,timeout=10)
+ assert result.returncode==0 and result.stdout.decode("utf-8").strip()=="学習開始"
 def test_execute_replay_different_out_refuses_before_second_popen(tmp_path,monkeypatch):
  e=execution_evidence(tmp_path);calls=[]
  class P:

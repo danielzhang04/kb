@@ -146,6 +146,20 @@ writing a completed fit-probe receipt. The receipt remains
 
 ## Implemented executor boundary
 
+### V1 execution finding
+
+The separately admitted `figment-local-lora-fit-20260908-v1` reached CUDA,
+model/cache preparation, LoRA setup, and AdamW setup, then failed before step
+1 after 110.283 seconds.  `sd-scripts/train_network.py:1394` attempted to print
+Japanese text through a Windows cp1252 pipe and raised `UnicodeEncodeError`.
+The preserved private failure receipt and bounded logs record exit 1; no
+checkpoint or sample was produced. The private stage contains the completed
+latent and text-encoder caches. The executor now starts its exact child
+interpreter with `-X utf8` before `-B -m sdxl_train_network`, and a new
+pipe-output regression covers that interpreter boundary.  This documents a
+failed availability probe, not a training result or authority to retry; a new
+admission is required for any later execution.
+
 `local_single_observation_fit.py` now implements this as a validation-first
 executor.  The admission must bind the current launcher, planner, CPU parser,
 Comfy ownership helper, and tokenizer-preflight source hashes before any helper
