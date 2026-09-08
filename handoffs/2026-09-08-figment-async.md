@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 11:39 UTC / 07:39 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 11:50 UTC / 07:50 Eastern. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -15,20 +15,21 @@ No merge, deployment, account action, publication or explicit generation is auth
 User allows one reference when the original set disagrees: g01 is the experimental
 canonical seed; g02/g07 remain comparators, possibly already in prior training.
 
-## ONE ACTIVE POD: head-turn video V3
+## No active pods; head-turn V3 completed
 
-Pod **10g7pjks1hgfxp**, acquired11:31:54UTC; execsession13931. Rootowns allcleanup.
-Private root C:/Users/danie/kb/_private/figment-video-experiment-20260908;
-manifest head-turn-v3.json SHA99c5b8b2f470be477b7439c433a3834e82d3eaf82ab805687a197358415d7208.
-Output live-head-turn-v3; log live-head-turn-v3-console.log; recoveryjournal
-live-head-turn-v3/recovery-figment-bakeoff-20260908-113153-08a3de.json.
-Ready11:38:05UTC, sameacceptedPNG uploaded; one81frame1280x704 job running. SameV2seed/
-model/pins/sampler; onlyheadturn30degreesandreturnprompt differs. ParentexpandedgraphSHA
-023346a2e1011ce61a586003b1426564faf5335b26b7ab43fa887b2683963c24.
-Bound1.75/80min/oneL40S/oneplacement; provisional1.733333ALREADYledgered. Baselinearc
-37.611296; includingreservation39.344629/50,daily3.654378/10. Nootherreservation.
-Aftercompletion: independentproviderGETabsent/list, rehashfiles, assembly/extraction
-freshassembled-head-turn-v3/extracted-head-turn-v3, all81visualQA, replaceexistingrow.
+Pod `10g7pjks1hgfxp` finished at 11:42:17 UTC; harness session13931 exited0.
+Parent independently confirmed provider GET absent/list0, then decoded and hashed all
+81 original1280x704 PNGs. Estimated actual cost0.189089 over624.513s replaces the
+provisional ledger row. Current recorded arc **37.800385 /50**, daily **2.110134 /10**;
+no numeric reservations remain. Native model/imagegen billing is unavailable separately.
+
+Private root C:/Users/danie/kb/_private/figment-video-experiment-20260908.
+Manifest head-turn-v3.json SHA99c5b8b2f470be477b7439c433a3834e82d3eaf82ab805687a197358415d7208.
+Receipt live-head-turn-v3/run.json SHA1f024e43299bcc956bfba2d78fc261842499603e3fa222cf4d506a0d7fc6e3ce.
+Parent81-frame evidence: head-turn-v3-parent-source-verification.json. Only the motion
+prompt differs from V2; same seed, first frame, pins, dimensions and sampler. Worker
+is assembling/extracting into fresh assembled-head-turn-v3/extracted-head-turn-v3 and
+reviewing all81 frames. No quality or motion-adherence conclusion yet.
 
 V2 podwtaiyxr0g1zmz6 absent/parentlist0, finished10:53:43UTC,0.227441/751.182s.
 81frames1280x704/16fps/5.0625s; all81independentvisualreviewcoherentface/clothing/room,
@@ -61,7 +62,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **f0636c60 pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **ba691920 pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -139,23 +140,29 @@ under_private/figment-single-seed-20260908; exactg01-onlyprompt/provenanceadjace
 
 ## Worker scopes and next actions
 
--figment_protocol_review: builds separatelyversioned fixed-max-edge-640@1 detectorpreprocessing,
-INTER_AREA,noupscale, mapbbox/landmarks tooriginalpixelsbeforeSFace; metadataforeachinput.
-Native@1default andobservations-v1unchanged; new@2schema. No new19-inputrununtilreview.
-Alsocleansonlyowneduntracked_identity_observe*_pytest* dirswithsafecontainment.
--figment_hub_final_review: narrowreferencecaptionencodingfix +freshvisualQAcapture.
--figment_timestamp_fix: idle afteractualrawreceipt/tableauditPASS; usefollowup_task to
-activateforfixed640independentreview orV3all81visualQAwhenready. send_message DOESNOT
-startanidleagent; earlierqueuedreviewswereidleuntilrootexplicitfollowup.
+Accepted and pushed:2cc26b7b fixes reference caption encoding (fresh visual QA shows
+three references plus ten diagnostics without overflow); ba691920 adds explicit
+fixed-max-edge-640@1 detector-only preprocessing and schema@2. Native@1/default and
+old observations remain unchanged. Parent and independent reviewer each passed34 tests.
+The isolated observer venv intentionally lacks pytest; parent used Python313's test
+runtime, while actual observations use the pinned observer venv.
 
-Root: superviseV3cleanup/QA, review+runfixed640newobservationprotocol, thenprioritize
-curatedsingle-seeddatasetandidentitytestingbasedonevidence. ExactLoRAuploadquestionstill
-pending; noalternateexport/bypass.8AMEasterncheckpointnotyet; itisreportnotstop.
+- figment_protocol_review: admitted actual19-input fixed640 batch into fresh
+  observations-v2, same inventory/model/source hashes, separate raw table and no
+  thresholds. Aggregate binds code/pins/adoption/input/output hashes. Review on completion.
+- figment_timestamp_fix: V3 assembly/extraction/all81 visual QA and review document.
+- figment_hub_final_review: bounded design for single-seed dataset provenance, curation,
+  captions and leakage prevention; reuse existing pipeline. No code until root review.
+
+Root supervises evidence/accounting, independently reviews actual observations and V3,
+then builds the next useful dataset unit. Exact LoRA upload question still pending;
+no alternate export or retry. Use followup_task to activate idle workers: send_message
+queues a message but does not start their next turn. 8 AM checkpoint remains a report.
 
 ## Runtime, previews and coordination
 
 Keep-awake label codex-figment-async-20260908: owner16580, supervisor19564, both alive,
-AC armed, lastverified07:33Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
+AC armed, lastverified07:46Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
 External Codex CLI reports notloggedin; native parent/workers are execution lane, no
 promised detached restart after parentdeath. Do not open auth stores or stop for this.
 
@@ -163,7 +170,7 @@ Isolated preview Node34616/port5417, Chrome37892/CDP9229, configured private pro
 Readerfixture Node32436/5418, screenshot
 _private/ignored_private/figment-reader-preview-20260908/screenshots/research-book-reader-fixture.png.
 Galleryfixtureport5419 currentownedNode35824, privateCDP9229; screenshots under
-_private/ignored_private/figment-gallery-preview-20260908/screenshots. Parentviewed13images/nooverflow;captionrepairpending.
+_private/ignored_private/figment-gallery-preview-20260908/screenshots. Parentviewed13images/nooverflow; caption repair committed after fresh v2 visual QA.
 Rootviewed semantic table screenshot PASS; it visibly labels source-read fixture, not
 productionauth. PID4476 actually used approved existing profile; don't terminate as
 an alleged extra. No operator daemon/profile touched. Track owned preview cleanup later.
