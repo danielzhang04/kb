@@ -21,3 +21,4 @@ native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	n
 native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-live-local-preflight	not-exposed
 native-runtime-telemetry-unavailable; recovery offline review		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-review-capacity-fallback	not-exposed
 native-runtime-telemetry-unavailable; exact daily guard check		not-exposed		gpt-5.6-luna	not-exposed	figment-live-exact-budget-preflight	not-exposed
+native-runtime-telemetry-unavailable; parser fix after terminated live attempt		not-exposed		gpt-5.6-terra	not-exposed	figment-observed-provider-timestamp-fix	not-exposed
