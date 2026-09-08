@@ -1,10 +1,10 @@
 # Figment current state
 
-Updated 2026-09-08 17:13 UTC / 13:13 Eastern. Async work continues after the
+Updated 2026-09-08 17:35 UTC / 13:35 Eastern. Async work continues after the
 8 AM checkpoint. Instagram integration is deferred. The canonical
 [handoff](../../handoffs/2026-09-08-figment-async.md) contains the resume load list.
 
-Studio branch `codex/figment-studio-20260908`, head `784822ae`, is pushed to
+Studio branch `codex/figment-studio-20260908`, head `c2c88c1e`, is pushed to
 [ draft PR179](https://github.com/danielzhang04/kb/pull/179), stacked on PR178.
 The research book, authenticated studio, offline tester-plan preview, reference
 and diagnostic galleries, raw identity observer, single-seed curation compiler,
@@ -45,8 +45,14 @@ This proves local runtime fit only; no generated sample or quality result exists
 The distinct100-step quality planner/CPU preflight is accepted after16 root and
 16 independent tests plus an isolated helper import probe. Current and concise
 caption plans are staged; each retains one g01 and the same100-step schedule.
-Actual quality CPU checks await the private wrapper currently under construction.
-`figment_fit_repair` builds shared GPU execution support. The original20/50/100
+Both actual quality CPU checks completed: current6.986s and concise5.809s,
+exit0, one image/896x512 bucket, CUDA hidden, teardown verified. The private
+wrapper passed8 author/root tests; the CPU runtime audit is committed.
+Shared GPU execution passed20 root/independent tests plus the extracted-runtime
+admission regression. CURRENT100-step fit is now IN FLIGHT in root session18816,
+STUDIOprivate/figment-local-quality-fit-current-20260908-v1. Its10/20 checkpoints
+were observed. Do not restart or alter any bound code during execution.
+No concise GPU run/admission exists yet. The original20/50/100
 evaluation is preserved using eleven explicitly declared periodic/final files.
 The historical preparation view is accepted at614b6e40; it does not infer absence
 of GPU/quality work elsewhere. Author123 focused tests/typecheck, independent
@@ -54,9 +60,12 @@ review and root actual-receipt projection passed. Full dashboard testing was
 aborted after at least59 failures; these are not baseline-proven pre-existing.
 Fresh desktop/mobile fixture5420 is verified; a navigation wrap fixes the initial
 mobile viewport expansion. Runtime audit/book and mobile review are committed.
-`figment_fit_independent_review` now authors the private CPU wrapper for root review;
-`figment_training_hub_plan` builds offline matched-inference graphs and a progressive
-pair-review manifest. Quality training and sample generation remain unrun, with matched schedules,
+Offline matched-inference graphs and a progressive pair-review manifest are
+accepted9dc6f105 after6 tests. `figment_training_hub_plan` builds the separate
+pair runtime using immutable Comfy helpers; no sample has been generated yet.
+`figment_fit_repair` prepares a private eleven-checkpoint finite-weight audit
+for root use only after GPU completion; independent reviewer is available.
+The current quality experiment keeps matched schedules,
 fixed comparisons, and separate resemblance, realism, adult-presentation and
 clothing observations; crops do not create independent identity evidence.
 

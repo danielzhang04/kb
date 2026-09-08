@@ -1,6 +1,6 @@
 # Figment async handoff - 2026-09-08
 
-Current at 13:13 Eastern; noon checkpoint retained below.
+Current at 13:35 Eastern; noon checkpoint retained below.
 This is the canonical resumable handoff for the active Figment async run.
 It replaces the prior append-only timeline at this path.
 Read cited audits and private receipts for historical detail rather than reconstructing it here.
@@ -48,7 +48,7 @@ Studio worktree:
 `C:\Users\danie\kb\_private\codex-worktrees\figment-studio-20260908`
 Studio branch:
 `codex/figment-studio-20260908`
-Studio head is `784822ae`, pushed; PR179 body refreshed through local fit and hub.
+Studio head is `c2c88c1e`, pushed; PR179 body refreshed through ten-step fit and hub.
 Studio draft PR:
 https://github.com/danielzhang04/kb/pull/179
 PR179 is stacked on foundation PR178, whose accepted head is `37d580d9`.
@@ -206,6 +206,62 @@ Verify ownership before loopback requests or result publication.
 Verify teardown and process absence before writing a completed receipt.
 Never kill a process merely because it shares a port or executable name.
 ## Required reading on resume
+
+### Active execution, 17:35 UTC
+
+CURRENT100-step quality GPU fit is IN FLIGHT in root exec session18816.
+STUDIO/_private/figment-local-quality-fit-current-20260908-v1 contains the
+run;10/20 checkpoints were observed already. Never restart or overwrite it.
+Root separately observed wrapper30292/trainer33580/launcher41964 during the run;
+bind receipt creation identities before interpreting future PID presence.
+Deadline20min. All existing train/CPU/Comfy/tokenizer sources are FROZEN until exit.
+Next: poll existing session, inspect authoritative receipt/failure, verify teardown,
+audit exact11 checkpoint inventory and finite weights, then matched current20 images.
+
+Phase B committed4323772f, CPU audit c2c88c1e. Quality executor e32a348fd0330538597b6a619583acdd3b060c8d3255989181af6ac414396fdf;
+shared runtime7d6629299b1ec97593b2074ea14b3ef0897aae743966fbea2b609c3032bb8af0;
+tenstep733d0542d2a36608a6ba26994deb05ca3575acb911084e3bdf38fe9bd2092ddf.
+Root/independent20tests plus root runtime-binding regression passed; authorold16
+andquality5. The old tenstep policy now also binds its extracted runtime hash.
+Current-only admission raw029c8e730db2844cce692b49127cacac358594703f5ef0e3ea97ccf9b1fc42d4,
+canonical471c3569a77e2ea2190e9a3b71b51ba08adea10db52c9ef7a4731503444eceb4,
+STUDIO/_private/figment-local-quality-current-fit-admission-20260908-v1.json.
+Private preparation helper2563c05c41d773ffdf1571e6f5d82933cc46bed4d50fca67c4ab669d796b6839
+was root-reviewed and executed once. Full default executor validation passed6.651s
+before --execute. No concise GPU admission or execution exists.
+
+Both actual quality CPU preflights completed with source1/repeat1/896x512,
+CUDAfalse/0/uninitialized, exit0, teardownverified. MAIN/_private roots:
+- figment-local-quality-current-cpu-20260908-v1/receipt.json raw
+  adf88bf630773f65e4c42976b4b2ea326c103020fd23ca5670588369e20d11c7;
+ 6.986s, wrapper17328. Final targeted query13:30:47Eastern found no listedPID.
+- figment-local-quality-concise-cpu-20260908-v1/receipt.json raw
+  1f95f536bf2125d77cad171733d35905d0e7e3d8d1112cf8678d297a2b8d12c1;
+ 5.809s, wrapper36380/child28872, both absent in final targeted query.
+There was an intermediate numericPID17328 presence query then later absence;
+no creation comparison proved reuse, so do not assert a full PID history.
+The actual CPU wrapper is frozen at e890b68d64912e395dbfc3a3ef6e4f2719bcfe9ac1ec4d87a91c87a1ab8d43c4,
+8author/8root failure-path checks. Private tests35ce2ad7a53bbcd13b9250ffddad1e052032e55bfb5770f48cbfa5248bb18bc4.
+Root switched repair ownership after repeated partial progress-only finals;
+the final wrapper covers preidentity exceptions, thread startup, late pump errors,
+natural wrapper exit during discovery, exclusive logs and final input rehash.
+
+C1 offline matched graph/manifest accepted9dc6f105, modulebca8be929852fe19eab724f878f8985e4b3f6146050e564af91d0c83e6570d6f,
+tests f27c05f2ed1e66cd185a7d004c9e8244aa354c4b428b66aef784e255af0c14d1,
+doc774d5069bf0041c29eb9d01642a7aab68e8a161c0447c3bb22dabf10d41413a3;
+6author/root tests. Exact original evaluation prompt and2seeds, requiredbothplanhashes,
+closed reconstructed manifest, maximum10images, no execution/producer validation yet.
+Prior-pair review is a root+independent diagnostic observation, not a humanQA gate.
+
+Current workers: figment_training_hub_plan solely builds NEW C2 pair runtime/tests
+and updates matched design; it MUST reuse immutableComfy2997 lowlevel helpers,
+never refactor that bound source. Eachstage uses a fresh owned2-image server session,
+with robust bounded stderr and exactadapters/outputs, no generation byworker.
+figment_fit_repair prepares private audit-figment-quality-checkpoints-20260908.py
+for root execution ONLY AFTERcompletedGPUreceipt, NumPyfiniteaudit11files/noTorch.
+figment_fit_independent_review completed CPU/admissionaudit and is available for
+new explicit followup_task when a concrete review candidate is ready.
+No provider actions, reservations, exports, acceptance or production changes.
 
 ### Latest accepted boundary, 17:13 UTC
 
