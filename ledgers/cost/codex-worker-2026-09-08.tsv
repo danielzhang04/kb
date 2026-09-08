@@ -15,3 +15,9 @@ unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C0-claim-store-builder	request
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-builder	requested Terra fixture_correction D0; responding model and cost unavailable	unknown
 unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:A0-neutral-interface-builder	requested Terra-high A0 builder; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A0-neutral-interface-review	requested Sol-high A0 independent review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-review-and-correction	requested Terra-high; review and correction evidence recorded; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-final-review	requested Terra-high; ready 45/45 evidence recorded; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C0-root-verification	requested Sol-high port; root verified typecheck and focused tests; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-schema-dispatch	requested Terra-high C1 schema/migration builder; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D1-ledger-design-review	requested Terra-high design/review; same finding paused pending user decision; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-independent-review	requested Sol-high against frozen C1 bytes; responding model and cost unavailable	unknown

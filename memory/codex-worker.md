@@ -577,3 +577,16 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
   does not authorize code after that await. Check post-await journal promotion,
   returned bases, and public success values separately; a no-card path can skip
   the publisher guard entirely.
+
+## Fence outer continuations and test ambiguous landed writes (2026-09-08)
+
+- An inner async post-await admission check does not protect a later outer
+  continuation that creates a new intent or directory. Hold the real awaited
+  seam, withdraw after it resolves, and assert the actual next mutation did not
+  occur.
+- To test a possibly landed JSON mutation, delegate to the real atomic document
+  and throw a falsey value *after* its write completes. A mock that discards the
+  successful result only tests a normal failed mutation, not the ambiguous
+  boundary that must stop delivery.
+- Preserve the exact focused command in the evidence and handoff:
+  `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/agentSessionChains.test.ts`.

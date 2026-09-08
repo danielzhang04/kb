@@ -1,63 +1,56 @@
 # kb-ops — STATE
 
-_Updated: 2026-09-08 (A0 ready; C0 active; D0 bounded correction active)_
+_Updated: 2026-09-08 (C0/D0 ready; C1 under independent review; D1 paused)_
 
 ## Now
 
 - The complete twelve-phase overhaul remains active. Phase 0 is incomplete and
-  Phases 1–11 remain gated. The ownership plan is TECHNICALLY READY, A0 neutral
-  interfaces are complete and independently READY. C0 and the D0 review-driven
-  correction are active. None of this completes Phase 0 or
-  authorizes production.
+  Phases 1–11 remain gated. A0, C0, and D0 are independently ready; C1 schema
+  and migration work is active. None of this authorizes production.
 - PR176 targets main at current source head
-  df100897837d9ba6916bf810552127ca0f4029bf. It adds only A0's neutral
-  `executionLifetime` interface/test and `SpendGrantProvisionOutcome`; the
-  engine and frozen adapter/grant files remain untouched. The reviewed plan is
-  at ccb2ec9565f92a867c85f693a10f64a2e93032e0. This coordination proposal is at
-  b5b0233b143b921693e517e29e0c6c4dec17f8e8 for PR177.
-- Linux run Y5mujQ passed all 399 selected tests, including 11 isolated
-  realBroker tests, typecheck, and native Vite build (128 modules), from archive
-  6d09d54ab5356a8425f9c5b1b0fb6291fcb153159ad709136dc12f32bc5aa073. Root's
-  fresh Windows adapter gate passed 47 tests in 5.55s. The environment was Node
-  24.19.0/npm 11.17.0 versus pins Node 24.18.0/npm 11.16.0.
-- Fixture mutation proof passed. In HrOmLA, intentionally bad post-add chmod
-  produced 2 failed / 0 passed / 34 skipped in both full and sparse variants,
-  exposing 02770 versus captured 02700. Exact source restoration SHA checking
-  passed; restored fixture runs were 2 passed / 0 failed / 34 skipped.
-- Independent Sol recheck is TECHNICALLY READY: it verified disk archive SHA and
-  overlay, 399-pass/typecheck/build evidence, JSON mutant/restored counts and
-  modes, exact checksums, and unchanged source.
-- The renewed plan-only correction/review cycle is **TECHNICALLY READY** after
-  fresh Terra review and root cross-check. The plan now assigns C the actual
-  persistence migration and constructors; permits release/write-intent CAS only
-  to the creator-owned handle in the same chain; retains ambiguous landed writes
-  and crashes for reconciliation without automatic recovery; and pre-registers
-  an immutable active-generation receipt snapshot before effects, reusing its
-  pure key across Lock. This remains planning only; no source binding or Phase 0
-  acceptance is authorized.
+  `2b323531008419b3d87dfbbb312bc8cdc381c041`, which includes the ready C0
+  claim-store port and D0 canonical-admission correction after A0. The frozen
+  Slice 1A adapter/grant files remain unchanged. D0's corrective source commit
+  is `57aebea0`; the earlier plan review head is
+  `ccb2ec9565f92a867c85f693a10f64a2e93032e0`. The coordination baseline is
+  `a4e4d06838335972bf066506b2d7b06e24171fc9` for PR177.
+- Retained Slice 1A evidence is unchanged: Linux Y5mujQ passed 399 selected
+  tests, typecheck, and a 128-module native Vite build; Windows passed 47 in
+  5.55 s. HrOmLA's full/sparse mutation proof passed after the deliberate chmod
+  mutant failed and exact source restoration passed. Node/npm differed from the
+  repository pin (24.19.0/11.17.0 versus 24.18.0/11.16.0).
 - **A0 — READY.** Independent Sol review found the dormant lifetime interface
-  and outcome type ready. Its six focused behavioral cases passed in 196 ms and
-  dashboard typecheck passed; no engine, activation, or lifetime binding changed.
-- **C0 — ACTIVE.** Sol owns only `agentSessionChains.ts` and its test for the
-  claim-store protocol. **D0 — CORRECTION ACTIVE.** Terra's focused gate reported
-  41/41 passed, but independent review found a no-card post-await withdrawal
-  path that can promote canonical success. No broad suite or parallel typecheck.
-- Requested native work was Terra-high and Sol-high; responding-model, cost, and
-  inspection-grade telemetry are unknown and remain unrecorded. The last VM
-  probe remains failed systemd/HTTP 502 evidence; PR173 was last checked OPEN and
-  the signed production gate persists.
+  and outcome type ready; six focused behavioral cases passed in 196 ms and
+  dashboard typecheck passed. No engine, activation, or lifetime binding changed.
+- **C0 — READY.** Root independently verified dashboard typecheck and the exact
+  focused claim-store command: 18/18 passed in 1.18 s (923 ms tests). **D0 —
+  READY.** Its builder focused suite passed 45/45 in 2.64 s, including the
+  red/green held scheduler proof for post-await forward mutations.
+- **C1 — FROZEN UNDER INDEPENDENT REVIEW.** The builder completed 65 focused
+  PTY tests and 164 adapter/surface focused tests. Root found one malformed
+  fixture inference error in typecheck; the builder corrected that fixture only,
+  reran the 24-test migration subset, and root reran dashboard typecheck PASS.
+  The subset is a rerun, not an additional test total. Fresh Sol-high review is
+  active; no delivery or B binding is active. **D1 —
+  PAUSED.** Its same rebase-recovery design finding failed two correction/review
+  attempts; root has asked the user for one further bounded cycle. Do not change
+  the D1 draft or dispatch implementation while that answer is pending.
+- Requested native work was Terra-high and Sol-high; responding-model and cost
+  telemetry are recorded as unknown. The last VM probe remains historical
+  failed-systemd/HTTP-502 evidence; PR173 was last checked OPEN. The signed
+  production gate persists.
 
 ## Next
 
-- Resolve D0's admission review and complete C0, then review each final diff
-  before the next integration gate. Do not create a runnable controller, deploy,
-  merge, or mark Phase 0 complete.
+- Complete and independently review the C1 schema/migration port. Await the
+  user's D1-cycle decision before touching its design. Do not create a runnable
+  controller, deploy, merge, or mark Phase 0 complete.
 
 ## Blocked
 
 - Phase 0 still lacks generation-fence integration, browser/fault evidence, and
-  its required human gate. Implementation remains blocked pending its bounded
-  stages and evidence.
+  its required human gate. Implementation remains bounded by its ordered stages
+  and evidence.
 - The VM is not ready on the observed release, browser proof is absent, and the
   Linux toolchain differs from the repository pin.
 

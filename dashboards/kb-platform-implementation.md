@@ -5,7 +5,7 @@ the terminal checklist's durable projection, not an executor or new authority.
 All required capabilities remain in scope. Runtime selection and production work
 retain their separate human gates.
 
-- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/working/01K2KBARCH0600000000000100.md)) — BOUNDED CYCLE EVIDENCED; INCOMPLETE
+- [ ] Phase 0: Contain failures and establish dashboard diagnostics ([card](../queue/working/01K2KBARCH0600000000000100.md)) — BOUNDED PORTS EVIDENCED; INCOMPLETE
 - [ ] Phase 1: Freeze contracts and prove the existing broker ([card](../queue/inbox/01K2KBARCH0600000000000101.md))
 - [ ] Phase 2: Compare and select durable runtime ([card](../queue/inbox/01K2KBARCH0600000000000102.md))
 - [ ] Phase 3: Implement transactional commands and leases ([card](../queue/inbox/01K2KBARCH0600000000000103.md))
@@ -20,61 +20,46 @@ retain their separate human gates.
 
 ## Current terminal task list
 
-1. **A0 neutral interfaces — DONE / READY.** PR176 source head
-   `df100897837d9ba6916bf810552127ca0f4029bf` adds dormant lifetime interfaces
-   and the grant outcome type only. Independent Sol found it ready; six focused
-   behavioral tests passed in 196 ms and typecheck passed.
-2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47,
-   full-plus-sparse mutation proof, and the independent Sol artifact recheck are
-   recorded. They are prior evidence, not a new run.
-3. **Plan correction — DONE / TECHNICALLY READY.** Fresh Terra review and root
-   cross-check found no concrete blockers. C owns persistence migration and
-   constructors; creator-only CAS ownership and active-generation receipt
-   registration are explicit; ambiguous landed writes require reconciliation.
-4. **C0/D0 ports — C0 ACTIVE; D0 CORRECTION ACTIVE.** Sol owns only
-   `agentSessionChains.ts`/test claim protocol work. D0's 41/41 focused gate is
-   reported, but review found a post-await no-card canonical-success path after
-   withdrawal. Its bounded correction and re-review are active.
+1. **A0 neutral interfaces — DONE / READY.** The source port remains dormant;
+   six focused behavioral cases passed in 196 ms and typecheck passed.
+2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47, and the
+   full/sparse mutation proof are prior evidence, not tests rerun in this wave.
+3. **C0 claim store — DONE / READY.** Source head
+   `2b323531008419b3d87dfbbb312bc8cdc381c041` includes C0. Root independently
+   verified typecheck and 18/18 focused claim-store tests in 1.18 s.
+4. **D0 canonical admission — DONE / READY.** The bounded correction is at
+   `57aebea0`; its focused suite passed 45/45 in 2.64 s and includes the held
+   scheduler red/green proof.
+5. **C1 schema/migration — FROZEN UNDER INDEPENDENT REVIEW.** Terra-high
+   completed 65 PTY and 164 adapter/surface focused tests. After one
+   malformed-fixture inference correction, root reran the 24-test migration
+   subset and dashboard typecheck PASS; the subset is not added to that total.
+   Fresh Sol-high review is active. No message delivery or B binding is active.
+6. **D1 ledger design — PAUSED.** The same rebase-recovery finding failed two
+   correction/review attempts. Root has asked the user for one further bounded
+   cycle; no D1 draft edit or implementation dispatch may occur until answered.
 
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-df100897837d9ba6916bf810552127ca0f4029bf. It adds only A0's dormant
-`executionLifetime` interface/test and `SpendGrantProvisionOutcome`; the engine
-and frozen adapter/grant files remain unchanged. The reviewed plan is at
-ccb2ec9565f92a867c85f693a10f64a2e93032e0. This coordination proposal is at
-b5b0233b143b921693e517e29e0c6c4dec17f8e8 for PR177.
+`2b323531008419b3d87dfbbb312bc8cdc381c041`; it records A0, C0, and D0 only.
+The C1 source files are actively owned and uncommitted. The frozen Slice 1A
+adapter/grant files remain unchanged. Coordination is based on
+`a4e4d06838335972bf066506b2d7b06e24171fc9` for PR177.
 
 Linux run Y5mujQ passed all 399 selected tests, including 11 isolated realBroker
 tests, typecheck, and native Vite build (128 modules), from source archive
-6d09d54ab5356a8425f9c5b1b0fb6291fcb153159ad709136dc12f32bc5aa073. Root's
-fresh Windows adapter gate passed 47 tests in 5.55 seconds. HrOmLA mutation-only
-verification passed: the deliberate chmod gave 2 failed / 0 passed / 34 skipped
-in each full and sparse variant (02770 versus captured 02700); exact restoration
-SHA checks passed and restored runs gave 2 passed / 0 failed / 34 skipped.
-Independent Sol recheck is TECHNICALLY READY after verifying disk archive SHA,
-overlay, 399/typecheck/build evidence, JSON mutant/restored counts and modes,
-exact checksums, and unchanged source.
-
-The renewed plan-only correction/review cycle is **TECHNICALLY READY**. It
-assigned C the actual persistence migration and constructors; limited
-release/write-intent CAS to a creator-owned handle in the same chain; retained
-ambiguous landed writes and crashes for reconciliation without automatic
-recovery; and required a pre-effect active-generation registry with an immutable
-subject/run/rows snapshot and pure-key reuse through Lock. No implementation
-tests ran in this planning cycle, and no source binding occurred.
+`6d09d54ab5356a8425f9c5b1b0fb6291fcb153159ad709136dc12f32bc5aa073`. Windows
+passed 47 tests in 5.55 seconds. HrOmLA mutation verification passed: the
+deliberate chmod mutant failed in full and sparse variants; exact restoration
+then passed. This retained fixture evidence is not a new C1 run.
 
 The last read-only VM probe found dashboard systemd failed with exit 1 on release
-39197cf5d9322f21d859d6f7a98d3a5b57cc42ea; tailnet /healthz and /readyz returned
-HTTP 502. PR173 was last checked OPEN. No new probe, deployment, or browser work
-occurred. The signed production gate persists. Requested native work was
-Terra-high and Sol-high; responding-model, cost, and inspection-grade telemetry
-are unknown.
-
-Historical builder, review, and recovery evidence remains in the linked
-[Phase 0 card](../queue/working/01K2KBARCH0600000000000100.md),
-[wake-me card](../queue/inbox/01K2KBARCH0600000000000112.md), and completed
-[cycle record](../queue/done/01K2KBARCH0600000000000113.md).
+`39197cf5d9322f21d859d6f7a98d3a5b57cc42ea`; tailnet `/healthz` and `/readyz`
+returned HTTP 502. PR173 was last checked OPEN. No new probe, deployment, or
+browser work occurred. The signed production gate persists. Requested native
+models and their responding-model/cost telemetry are recorded separately as
+unknown.
 
 ## Phase rule
 
