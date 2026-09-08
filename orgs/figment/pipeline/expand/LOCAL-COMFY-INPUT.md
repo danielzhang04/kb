@@ -33,6 +33,12 @@ that fresh run’s owned input directory, binds its resulting hash in the
 execution manifest, and changes node 2's `LoadImage` filename. Full-frame
 conditioning remains the default.
 
+`--prompt-profile simple-portrait-v1` is a separate plan-only text condition.
+It keeps `baseline` as the default and binds the profile identifier together
+with the rendered persona-derived age, hair, eyes, positive text, and negative
+text. It changes only CLIP text nodes 6 and 7; the profile does not materialize
+media, alter conditioning, or make an output eligible for training.
+
 `--execute` exists only for a separately reviewed local admission. It requires a
 fresh direct child of the workspace private root, binds 127.0.0.1:8190, uses
 isolated input/output/temp/user/home/cache directories, permits only the

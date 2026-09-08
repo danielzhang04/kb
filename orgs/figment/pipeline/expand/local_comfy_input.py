@@ -49,6 +49,9 @@ MAX_PERSONA_BYTES = 128 * 1024
 NEGATIVE = "child, minor, nude, lingerie, explicit, extra person, distorted face"
 FULL_CONDITIONING = "full"
 FACE_CROP_CONDITIONING = "face-crop384"
+BASELINE_PROMPT_PROFILE = "baseline"
+SIMPLE_PORTRAIT_PROMPT_PROFILE = "simple-portrait-v1"
+PROMPT_PROFILES = (BASELINE_PROMPT_PROFILE, SIMPLE_PORTRAIT_PROMPT_PROFILE)
 MODELS = {
     "checkpoint": {
         "filename": "RealVisXL_V5.0_fp16.safetensors",
@@ -146,7 +149,7 @@ def git_clean(root: Path) -> bool:
                             shell=False, text=True, capture_output=True, timeout=10)
     return result.returncode == 0 and not result.stdout.strip()
 
-def _persona_prompt(repo_root: Path) -> tuple[str, dict[str, str]]:
+def _persona_prompt(repo_root: Path, profile: str) -> tuple[str, str, dict[str, str]]:
     """Use Figment's tester-age helper on exact bytes, never a generic age phrase."""
     persona_path = repo_root / PERSONA
     try:
@@ -176,13 +179,26 @@ def _persona_prompt(repo_root: Path) -> tuple[str, dict[str, str]]:
     eyes = look.get("eyes") if isinstance(look, dict) else None
     if not isinstance(hair, str) or not hair.strip() or not isinstance(eyes, str) or not eyes.strip():
         raise LocalComfyError("persona hair and eye wording is required")
-    prompt = (
-        f"Shoulders-up portrait photograph of {age_stage}. {hair.strip()}, {eyes.strip()}. "
-        "Clothed in the original black opaque strapped top, in the same bedroom setting "
-        "as the sole reference image. Natural skin texture with visible pores, photographic realism."
-    )
-    return prompt, {"repo_path": PERSONA, "sha256": hashlib.sha256(raw).hexdigest(), "age_stage": age_stage,
-                    "hair": hair.strip(), "eyes": eyes.strip(), "tester_age_helper_sha256": sha256_file(helper_path)}
+    if profile == BASELINE_PROMPT_PROFILE:
+        prompt = (
+            f"Shoulders-up portrait photograph of {age_stage}. {hair.strip()}, {eyes.strip()}. "
+            "Clothed in the original black opaque strapped top, in the same bedroom setting "
+            "as the sole reference image. Natural skin texture with visible pores, photographic realism."
+        )
+        negative = NEGATIVE
+    elif profile == SIMPLE_PORTRAIT_PROMPT_PROFILE:
+        prompt = (
+            f"Single-person shoulders-up portrait photograph of {age_stage}. {hair.strip()}, {eyes.strip()}. "
+            "Front-facing neutral face and neutral gaze. Clothed in an opaque black strapped top. "
+            "Plain unadorned bedroom wall. Natural daylight, natural skin texture with visible pores, "
+            "photographic realism."
+        )
+        negative = NEGATIVE + ", collage, framed portraits, pictures, mirrors, reflections, duplicate people"
+    else:
+        raise LocalComfyError("unsupported prompt profile")
+    return prompt, negative, {"repo_path": PERSONA, "sha256": hashlib.sha256(raw).hexdigest(), "age_stage": age_stage,
+                               "hair": hair.strip(), "eyes": eyes.strip(),
+                               "tester_age_helper_sha256": sha256_file(helper_path)}
 
 
 def _crop_helper() -> Any:
@@ -194,7 +210,7 @@ def _crop_helper() -> Any:
     spec.loader.exec_module(helper)
     return helper
 
-def _workflow(input_name: str, positive: str) -> dict[str, dict[str, Any]]:
+def _workflow(input_name: str, positive: str, negative: str) -> dict[str, dict[str, Any]]:
     return {
         "1": {"class_type": "CheckpointLoaderSimple", "inputs": {"ckpt_name": MODELS["checkpoint"]["filename"]}},
         "2": {"class_type": "LoadImage", "inputs": {"image": input_name}},
@@ -202,7 +218,7 @@ def _workflow(input_name: str, positive: str) -> dict[str, dict[str, Any]]:
         "4": {"class_type": "IPAdapterModelLoader", "inputs": {"ipadapter_file": MODELS["ipadapter"]["filename"]}},
         "5": {"class_type": "IPAdapterAdvanced", "inputs": {"model": ["1", 0], "ipadapter": ["4", 0], "image": ["2", 0], "clip_vision": ["3", 0], "weight": 0.65, "weight_type": "linear", "combine_embeds": "average", "start_at": 0.0, "end_at": 1.0, "embeds_scaling": "V only"}},
         "6": {"class_type": "CLIPTextEncode", "inputs": {"text": positive, "clip": ["1", 1]}},
-        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": NEGATIVE, "clip": ["1", 1]}},
+        "7": {"class_type": "CLIPTextEncode", "inputs": {"text": negative, "clip": ["1", 1]}},
         "8": {"class_type": "EmptyLatentImage", "inputs": {"width": WIDTH, "height": HEIGHT, "batch_size": 1}},
         "9": {"class_type": "KSampler", "inputs": {"model": ["5", 0], "seed": SEED, "steps": 24, "cfg": 6.0, "sampler_name": "dpmpp_2m", "scheduler": "karras", "positive": ["6", 0], "negative": ["7", 0], "latent_image": ["8", 0], "denoise": 1.0}},
         "10": {"class_type": "VAEDecode", "inputs": {"samples": ["9", 0], "vae": ["1", 2]}},
@@ -224,11 +240,14 @@ def validate_static_install(repo_root: Path) -> dict[str, Any]:
             raise LocalComfyError(f"installed custom node mapping missing {node_name}")
     return {"source": source_info, "models": pins}
 
-def build_manifest(repo_root: Path, conditioning: str = FULL_CONDITIONING) -> dict[str, Any]:
+def build_manifest(repo_root: Path, conditioning: str = FULL_CONDITIONING,
+                   prompt_profile: str = BASELINE_PROMPT_PROFILE) -> dict[str, Any]:
     if conditioning not in (FULL_CONDITIONING, FACE_CROP_CONDITIONING):
         raise LocalComfyError("unsupported conditioning mode")
+    if prompt_profile not in PROMPT_PROFILES:
+        raise LocalComfyError("unsupported prompt profile")
     verified = validate_static_install(repo_root)
-    positive, persona = _persona_prompt(repo_root)
+    positive, negative, persona = _persona_prompt(repo_root, prompt_profile)
     input_name = "g01.jpg"
     conditioning_record: dict[str, Any] = {"name": FULL_CONDITIONING, "source_filename": input_name,
                                             "materialized": False}
@@ -244,7 +263,7 @@ def build_manifest(repo_root: Path, conditioning: str = FULL_CONDITIONING) -> di
                            "output_filename": helper.CROP_NAME},
             "derivative": None,
         }
-    workflow = _workflow(input_name, positive)
+    workflow = _workflow(input_name, positive, negative)
     workflow_bytes = json.dumps(workflow, sort_keys=True, separators=(",", ":")).encode()
     return {
         "schema": SCHEMA,
@@ -259,7 +278,8 @@ def build_manifest(repo_root: Path, conditioning: str = FULL_CONDITIONING) -> di
         "conditioning": conditioning_record,
         "persona": persona,
         "models": verified["models"],
-        "prompt": {"positive": positive, "negative": NEGATIVE, "sha256": hashlib.sha256((positive + "\n" + NEGATIVE).encode()).hexdigest()},
+        "prompt": {"profile": prompt_profile, "positive": positive, "negative": negative,
+                   "sha256": hashlib.sha256((positive + "\n" + negative).encode()).hexdigest()},
         "workflow": {"api_prompt": workflow, "sha256": hashlib.sha256(workflow_bytes).hexdigest()},
         "generation": {"seed": SEED, "width": WIDTH, "height": HEIGHT, "images": 1,
                        "sampler": "dpmpp_2m", "scheduler": "karras", "steps": 24,
@@ -777,9 +797,10 @@ def _database_url(root: Path) -> str:
     return "sqlite:///" + database.as_posix()
 
 
-def execute(repo_root: Path, run_root: Path, conditioning: str = FULL_CONDITIONING) -> dict[str, Any]:
+def execute(repo_root: Path, run_root: Path, conditioning: str = FULL_CONDITIONING,
+            prompt_profile: str = BASELINE_PROMPT_PROFILE) -> dict[str, Any]:
     """Explicit local-only execution; intentionally never called by the default CLI."""
-    manifest = build_manifest(repo_root, conditioning)
+    manifest = build_manifest(repo_root, conditioning, prompt_profile)
     _port_available()
     root = _fresh_run_root(run_root, _workspace_private_root(repo_root))
     crop_record: dict[str, Any] | None = None
@@ -916,13 +937,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--execute", action="store_true", help="requires separate parent review; starts only owned local ComfyUI")
     parser.add_argument("--run-root", type=Path)
     parser.add_argument("--conditioning", choices=(FULL_CONDITIONING, FACE_CROP_CONDITIONING), default=FULL_CONDITIONING)
+    parser.add_argument("--prompt-profile", choices=PROMPT_PROFILES, default=BASELINE_PROMPT_PROFILE)
     args = parser.parse_args(argv)
     if args.execute:
         if args.run_root is None:
             parser.error("--execute requires --run-root")
-        print(json.dumps(execute(args.repo_root.resolve(), args.run_root, args.conditioning), sort_keys=True))
+        print(json.dumps(execute(args.repo_root.resolve(), args.run_root, args.conditioning, args.prompt_profile), sort_keys=True))
     else:
-        print(json.dumps(build_manifest(args.repo_root.resolve(), args.conditioning), indent=2, sort_keys=True))
+        print(json.dumps(build_manifest(args.repo_root.resolve(), args.conditioning, args.prompt_profile), indent=2, sort_keys=True))
     return 0
 
 if __name__ == "__main__":

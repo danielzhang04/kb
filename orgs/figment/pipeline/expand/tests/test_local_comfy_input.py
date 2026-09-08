@@ -108,6 +108,25 @@ def test_offline_manifest_binds_source_pins_prompt_and_one_image(local):
     assert "FaceID" not in json.dumps(graph)
 
 
+def test_simple_portrait_profile_binds_and_changes_only_clip_text_nodes(local):
+    module, repo = local
+    baseline = module.build_manifest(repo, module.FACE_CROP_CONDITIONING)
+    portrait = module.build_manifest(repo, module.FACE_CROP_CONDITIONING,
+                                     module.SIMPLE_PORTRAIT_PROMPT_PROFILE)
+    assert baseline["prompt"]["profile"] == module.BASELINE_PROMPT_PROFILE
+    assert portrait["prompt"]["profile"] == module.SIMPLE_PORTRAIT_PROMPT_PROFILE
+    assert portrait["prompt"]["sha256"] != baseline["prompt"]["sha256"]
+    assert portrait["persona"] == baseline["persona"]
+    for field in ("reference", "conditioning", "models", "generation", "runtime", "launcher", "comfyui", "custom_node"):
+        assert portrait[field] == baseline[field]
+    normalized = json.loads(json.dumps(portrait["workflow"]["api_prompt"]))
+    for node_id in ("6", "7"):
+        normalized[node_id]["inputs"]["text"] = baseline["workflow"]["api_prompt"][node_id]["inputs"]["text"]
+    assert normalized == baseline["workflow"]["api_prompt"]
+    with pytest.raises(module.LocalComfyError, match="unsupported prompt profile"):
+        module.build_manifest(repo, prompt_profile="unbounded-user-text")
+
+
 def test_face_crop_plan_only_binds_helper_and_changes_only_loadimage(local):
     module, repo = local
     full = module.build_manifest(repo)
