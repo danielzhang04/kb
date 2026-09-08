@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated 2026-09-08 15:04 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 15:17 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `23466fff`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `29551ed1`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
@@ -87,7 +87,7 @@ actual Google export is blocked pending the exact user question; no retry or alt
 export is allowed. The existing LoRA-export question is also pending. There are no
 active pods. Recorded compute remains $37.800385 of $50 and today's recorded compute
 remains $2.110134. Keep-awake owner 16580 and supervisor 19564 were reverified alive
-at 11:02 Eastern. No Instagram/account work, production promotion, merge, or deployment.
+at 11:12 Eastern. No Instagram/account work, production promotion, merge, or deployment.
 Experimental executor `af7b07bc` is accepted after 23 parent and 23 independent
 checks. It retains exact reviews, revalidates/stages only declared training files,
 binds the canonical Ops accounting context, prevents admission replay and verifies
@@ -96,5 +96,5 @@ exists. A separate one-observation training diagnostic is a research option; the
 current 20-row contract has not been lowered to force acceptance of drifting inputs.
 An existing local SDXL trainer was found at `C:/Users/danie/tools/lora-trainer`, with
 a clean pinned sd-scripts checkout and CUDA support. A separate one-observation
-planner and CPU dataset-parser preflight are under review. No CPU preflight or GPU
+planner and CPU dataset-parser preflight are accepted after 12 parent and 12 independent tests. The actual one-image plan is staged and the installed base model hash verified. No CPU preflight or GPU
 training probe has run yet; the unrelated trial-persona scripts/data are not reused.

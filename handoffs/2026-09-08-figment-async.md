@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 12:29 UTC / 08:29 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 15:17 UTC / 11:17 Eastern. See the latest dated section below. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -561,3 +561,32 @@ Timestampfinishesgalleryv5audit plusminimalREADME/image-production/architectures
 Keepawakealive11:02Eastern, owner16580/supervisor19564. No pods/holds; arc37.800385,
 daily2.110134; nativebillingunknown. Both exactexportquestions unanswered/no retries.
 Continueasync; no checkpoint/productionapproval/Instagram/deploy/merge.
+
+## 15:17 UTC: one-observation planner accepted and actual plan staged
+
+Studio29551ed1 pushed; prior56df161f accepts gallery v5 audit and book status fixes.
+Planner/CPU parser/TOML/tests/doc passed12 parent and12 independent checks. Frozen:
+planner3fe3f1be0567da14b1be477724cc8a7ff8820e603a9e8efa1116f00b9296b094;
+CPU a0196da2f40848722d06edf012d147186eb68d9c6801324c660e614f37eca3aa;
+TOML9ab856aa4fa90234915d4d49c3b3ddbcf3a1d8cb417fb2b62bd2e33bfb960119.
+Root actual planner completed exit0, streamed/verified6,938,065,488-byte RealVis
+checkpoint SHA6a35a7855770ae9820a3c931d4964c3817b6d9e3c6f9c4dabb5b3a94e5643b80.
+Private STUDIO/_private/local-lora-single-observation-20260908-v1 contains exactly
+one originalg01 JPEG/caption/template and manifest, frozen canonical plan hash
+ e9de0980ae27f8fb1e98398a685f81a18bdb6dd27e70d07ec4dff38d2aac75ea.
+No CPU parser or training yet. Hub prepares a minimal one-use root CPU execution
+helper with fresh owned environment/logs and180s bound; parent reviews/runs next.
+CPU parser verifies currentg01/stagedtemplate and clean pinned sd-scripts before
+imports; freezes caption/persona snapshot, future GPU executor revalidates persona.
+
+Protocol found both required CLIP tokenizer snapshots locally and writes bounded
+file hashes/minimal isolated cache proposal. No tokenizer load/download/model/CUDA.
+Timestamp writes <=10step local GPU fit-probe design only. GPU probe needs separate
+bounded runner/review/admission; current plan gpu_fit_probe_allowed remains false.
+One observation means one source, not new independent views from repeated training.
+
+PR179 body refreshed through accepted gallery/local image/planner state. Parent
+viewed v5 desktop and independently passed12 planner tests0.62s. Keepawake verified
+11:12:56Eastern owner16580/supervisor19564 alive. No pods/holds, arc37.800385,
+daily2.110134, native billing unknown. Exact export questions still unanswered;
+no retry/alternate export. Continue async.
