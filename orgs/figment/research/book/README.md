@@ -23,9 +23,13 @@ single-`g01` curation and evidence for at least 20 exact training rows. The
 executor defaults to local preparation or a harness dry-run; live execution
 also needs a fixed parent admission and current revalidation. Neither component
 writes an operator acceptance, checkpoint selection, QA stamp, or production
-plan; production loaders reject the separate schema. The current gallery
-diagnostics are all training-ineligible, so there is no 20-row accepted
-first-generation dataset, admission, or live experimental training.
+plan; production loaders reject the separate schema. A separately admitted,
+one-observation V2 availability probe has now completed ten local fit steps
+and written one non-promotable checkpoint. It had no samples, quality review,
+checkpoint acceptance, or promotion, and does not change the 20-row gate or
+make the current gallery eligible. There remains no accepted 20-row
+first-generation dataset or production training. See the [local LoRA fit runtime
+audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
 
 The [canonical-seed audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md), accepted at
 `83c00054`, leaves `g01` provisional. It found that `g07` has more detected

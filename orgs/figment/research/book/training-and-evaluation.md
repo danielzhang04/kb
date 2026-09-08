@@ -25,8 +25,11 @@ caption, and 896×512 effective bucket under a no-device CUDA mask; the separate
 local-only tokenizer load resolved both SDXL CLIP tokenizers to 19 tokens for
 the fixed availability-probe `CAPTION_PROBE`, not the 330-byte training-caption
 content. The [local training preflight audit](../../../../docs/figment/2026-09-08-local-training-preflight-audit.md)
-records hashes and the preserved V1/V2 failures. These are readiness checks
-only: no GPU fit, model-weight load, checkpoint, sample, or export occurred.
+records the readiness inputs. A separately admitted V2 availability probe then
+completed the bounded ten-step GPU fit and saved one checkpoint; V1 remains
+preserved as the prior CP1252 startup failure. The V2 record has no sample,
+quality evaluation, acceptance, or export, and cannot select a checkpoint. See
+the [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
 
 The separately accepted `f6b5096d` compiler and `af7b07bc` executor keep the
 same lineage boundary outside production `load_plan`. The executor defaults to
@@ -57,7 +60,10 @@ also says its default CLIP image processor center-crops non-square images and
 describes a scale tradeoff between diversity and prompt consistency. That makes
 the present non-square `g01` conditioning and any crop protocol part of the
 experimental condition, not additional identity evidence. The one-observation
-planner and its CPU/tokenizer checks are implemented, but the GPU fit diagnostic
-remains unrun. This does not relax the accepted 20-row compiler or executor.
+planner and its CPU/tokenizer checks are implemented, and one separately
+admitted ten-step GPU availability fit has completed. This does not relax the
+accepted 20-row compiler or executor, and it supplies no visual or
+checkpoint-quality decision. The [runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md)
+preserves the bounded evidence and its limits.
 
 For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The historical four original generated candidates are retained as failed or unreviewed experiment evidence only. The current gallery contains six candidates after two rejected local-Comfy diagnostics; none is eligible training data, and no current training output follows from the compiler or its positive synthetic fixtures.
