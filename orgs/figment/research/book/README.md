@@ -62,6 +62,19 @@ and [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audi
 Exact Google/g01 export and LoRA export remain blocked, production acceptance
 remains an operator decision, and Instagram work remains deferred.
 
+## Reference-conditioned infrastructure checkpoint
+
+The separate C3 prompt-profile study stopped after both base-image reviews rejected its framing, turn and identity fit. The next experiment uses `g01` pixels directly through OmniGen2. Its planner, shared runtime, resource observer, admission validator and controller are built and reviewed. All three model files and the real local evidence were verified; a simulated two-row controller run passed its tests. Actual generation is waiting for the available-RAM floor, so no OmniGen2 image result or accepted training input is claimed.
+
+| Capability | Current evidence | Remaining condition |
+|---|---|---|
+| Reference-conditioned local execution | Reviewed controller, fixed graphs, verified weights and resource checks | Fresh resource preflight and one real two-image run |
+| Consistent training inputs | Source lineage and curation controls built | A diverse reviewed set that preserves the chosen adult identity |
+| Training and still production | Actual finite checkpoints and diagnostic renders | Identity and intended age fit, beyond runtime success |
+| Consistent video | Earlier coherent clip diagnostics | Accepted still identity, requested motion and cross-shot checks |
+
+See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admission-review.md) and the [image-production chapter](image-production.md). A good research comparator would still require resolution of upstream commercial licensing before a production choice.
+
 ## Governing rules
 
 1. Freeze persona, references, prompt, seed, model, node, and checkpoint in a manifest before a run.
