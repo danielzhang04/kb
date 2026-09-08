@@ -31,10 +31,12 @@ The accepted single-seed curation compiler now freezes an input request, the ful
 
 The current four generated candidates remain unavailable as training data. The offline private refusal probe copied their bytes and provenance without edits: wardrobe-only, small-head-turn, and E01 were rejected because `training_eligible` is false. The frontal black-tee record also says false, but failed an earlier first-generation-role check. None produced a dataset, approval, or plan. This establishes a refusal path, not positive data quality: there is still no accepted multi-view, independently reviewed, visually identity-consistent training set.
 
-The accepted experimental compiler at `f6b5096d` preserves this boundary. It
-requires an exact current curation, 20 or more reviewed rows including `g01`
-and 19 distinct first-generation derivatives, and agent evidence that remains
-explicitly non-promotable. It emits only a fresh private planning record;
-there is no experimental executor, operator dataset acceptance, production
-training plan, checkpoint decision, or LoRA export. The compiler therefore
-does not turn the absent 20-row set into a pending training run.
+The accepted experimental compiler at `f6b5096d` and executor at `af7b07bc`
+preserve this boundary. They require an exact current curation, 20 or more
+reviewed rows including `g01` and 19 distinct first-generation derivatives,
+and evidence that remains explicitly non-promotable. The executor defaults to
+private offline preparation or a harness dry-run; its explicit live path also
+needs a separately fixed parent admission, current cost revalidation, and
+staged-inventory verification. There is no eligible 20-row dataset, admission,
+or live experimental training. Neither component writes an operator dataset
+acceptance, production training plan, checkpoint decision, or LoRA export.

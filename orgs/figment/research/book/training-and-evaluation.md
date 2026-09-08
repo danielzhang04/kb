@@ -19,13 +19,35 @@ The legacy raw-only identity command has `torch`, `torchvision`, `facenet_pytorc
 
 The accepted curation path now provides a train-first-compatible draft boundary without selecting data or running training. It materializes only retained snapshots, validates the finished draft before its atomic publication, and requires the existing explicit dataset acceptance before train-first staging. Staging carries the curation record and exact snapshot inventory beside the numbered images and captions, so a changed retained source, provenance, caption, or mapping makes a later acceptance stale. Final acceptance verification reported 37 curation/freshness tests and nine train-first tests after the boundary repairs. The earlier 109-test Python curation, builder, lineage and train-first regression predates those final curation repairs; both results establish integrity and refusal behavior, not image quality or an eligible dataset.
 
-The separately accepted `f6b5096d` experimental compiler takes the same
-lineage boundary further only as an offline plan compiler. Its distinct schema
-is rejected by production `load_plan`; it has no provider call, subprocess,
-checkpoint-selection, QA-stamp, approval writer, or executor. It requires a
-private fresh output and rechecks current curation before publication, but no
-current input set satisfies its 20-row requirement. A future plan from this
-compiler would still be diagnostic and non-promotable, not a production
-acceptance or an authorization to export a LoRA.
+The separately accepted `f6b5096d` compiler and `af7b07bc` executor keep the
+same lineage boundary outside production `load_plan`. The executor defaults to
+offline preparation; a harness dry-run uses the existing manifest contract,
+while an explicit live call needs a fixed parent admission, fresh accounting,
+exact staged inventory, and verified artifact receipt. Its 23 focused tests
+passed independently and in the parent review, but those fixtures used
+synthetic 20-row evidence. No current input set satisfies the 20-row
+requirement, and no live experimental training has occurred. Any future
+execution remains diagnostic and non-promotable, not a production acceptance
+or authorization to export a LoRA.
+
+### Future option: one-observation diagnostic
+
+The current 20-row rule is a deliberately conservative Figment recipe, not a
+claim that personalization scientifically requires 20 independent views.
+[Diffusers' DreamBooth guide](https://huggingface.co/docs/diffusers/training/dreambooth)
+describes subject adaptation from a few images and warns that it is easy to
+overfit. Its prior-preservation class samples preserve class diversity; they
+are not extra target-identity positives. A future, separately designed
+one-observation LoRA diagnostic could therefore use only the canonical `g01`,
+with a new schema, bounded training recipe, held-out review plan, and the same
+non-promotable admission and receipt controls. It would not make crops or
+repeats into independent views.
+
+The [IP-Adapter best-practice note](https://github.com/tencent-ailab/IP-Adapter)
+also says its default CLIP image processor center-crops non-square images and
+describes a scale tradeoff between diversity and prompt consistency. That makes
+the present non-square `g01` conditioning and any crop protocol part of the
+experimental condition, not additional identity evidence. This option is not
+implemented and does not relax the accepted 20-row compiler or executor.
 
 For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The four actual generated candidates are retained as failed or unreviewed experiment evidence only; no current training output follows from the compiler or its positive synthetic fixtures.
