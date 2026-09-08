@@ -7,6 +7,8 @@ kept behind an explicit flag for a separately admitted, local-only run.
 from __future__ import annotations
 
 import argparse
+import ctypes
+from ctypes import wintypes
 import hashlib
 import importlib.util
 import io
@@ -22,8 +24,9 @@ import threading
 import urllib.error
 import urllib.request
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 SCHEMA = "figment/local-comfy-input@1"
 COMFY_ROOT = Path(r"C:\Users\danie\tools\ComfyUI")
@@ -62,6 +65,26 @@ MODELS = {
 }
 MAX_IMAGE_BYTES = 8 * 1024 * 1024
 HEX = re.compile(r"^[0-9a-f]{64}$")
+TH32CS_SNAPPROCESS = 0x00000002
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+PROCESS_TERMINATE = 0x0001
+SYNCHRONIZE = 0x00100000
+WAIT_OBJECT_0 = 0
+WAIT_TIMEOUT = 258
+STILL_ACTIVE = 259
+ERROR_ACCESS_DENIED = 5
+ERROR_INVALID_PARAMETER = 87
+
+
+@dataclass(frozen=True)
+class ProcessIdentity:
+    pid: int
+    creation_filetime: int
+    parent_pid: int | None
+
+    def record(self) -> dict[str, int | None]:
+        return {"pid": self.pid, "creation_filetime": self.creation_filetime,
+                "parent_pid": self.parent_pid}
 
 class LocalComfyError(RuntimeError):
     pass
@@ -278,18 +301,171 @@ def _listener_pid() -> int | None:
                 return None
     return None
 
-def _require_owned_listener(process: Any) -> None:
-    if process.poll() is not None or _listener_pid() != process.pid:
-        raise LocalComfyError("local listener is not owned by this ComfyUI process")
+def _process_parents() -> dict[int, int]:
+    """Read parent PIDs through Toolhelp only; never select a process by name."""
+    if os.name != "nt":
+        raise LocalComfyError("owned process tracking requires Windows")
+    class PROCESSENTRY32W(ctypes.Structure):
+        _fields_ = [("dwSize", wintypes.DWORD), ("cntUsage", wintypes.DWORD),
+                    ("th32ProcessID", wintypes.DWORD), ("th32DefaultHeapID", ctypes.c_size_t),
+                    ("th32ModuleID", wintypes.DWORD), ("cntThreads", wintypes.DWORD),
+                    ("th32ParentProcessID", wintypes.DWORD), ("pcPriClassBase", wintypes.LONG),
+                    ("dwFlags", wintypes.DWORD), ("szExeFile", wintypes.WCHAR * 260)]
+    kernel32 = _kernel32()
+    snapshot = kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0)
+    invalid = ctypes.c_void_p(-1).value
+    if snapshot == invalid:
+        raise LocalComfyError("cannot snapshot local process metadata")
+    try:
+        entry = PROCESSENTRY32W()
+        entry.dwSize = ctypes.sizeof(PROCESSENTRY32W)
+        if not kernel32.Process32FirstW(snapshot, ctypes.byref(entry)):
+            raise LocalComfyError("cannot read local process metadata")
+        parents: dict[int, int] = {}
+        while True:
+            parents[int(entry.th32ProcessID)] = int(entry.th32ParentProcessID)
+            if not kernel32.Process32NextW(snapshot, ctypes.byref(entry)):
+                break
+        return parents
+    finally:
+        kernel32.CloseHandle(snapshot)
 
-def _wait_for_owned_listener(process: Any, deadline: float) -> None:
+
+def _kernel32() -> Any:
+    """Return typed Win32 calls so 64-bit HANDLE values are never truncated."""
+    if os.name != "nt":
+        raise LocalComfyError("owned process tracking requires Windows")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateToolhelp32Snapshot.argtypes = [wintypes.DWORD, wintypes.DWORD]
+    kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
+    kernel32.Process32FirstW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+    kernel32.Process32FirstW.restype = wintypes.BOOL
+    kernel32.Process32NextW.argtypes = [wintypes.HANDLE, ctypes.c_void_p]
+    kernel32.Process32NextW.restype = wintypes.BOOL
+    kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.GetProcessTimes.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.FILETIME),
+                                         ctypes.POINTER(wintypes.FILETIME), ctypes.POINTER(wintypes.FILETIME),
+                                         ctypes.POINTER(wintypes.FILETIME)]
+    kernel32.GetProcessTimes.restype = wintypes.BOOL
+    kernel32.GetExitCodeProcess.argtypes = [wintypes.HANDLE, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.GetExitCodeProcess.restype = wintypes.BOOL
+    kernel32.TerminateProcess.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    kernel32.TerminateProcess.restype = wintypes.BOOL
+    kernel32.WaitForSingleObject.argtypes = [wintypes.HANDLE, wintypes.DWORD]
+    kernel32.WaitForSingleObject.restype = wintypes.DWORD
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    kernel32.CloseHandle.restype = wintypes.BOOL
+    return kernel32
+
+
+def _identity_from_handle(handle: Any, pid: int, parent_pid: int | None) -> ProcessIdentity | None:
+    kernel32 = _kernel32()
+    exit_code = wintypes.DWORD()
+    if not kernel32.GetExitCodeProcess(handle, ctypes.byref(exit_code)):
+        raise LocalComfyError("cannot read owned process state")
+    if exit_code.value != STILL_ACTIVE:
+        return None
+    created = wintypes.FILETIME()
+    exited = wintypes.FILETIME()
+    kernel = wintypes.FILETIME()
+    user = wintypes.FILETIME()
+    if not kernel32.GetProcessTimes(handle, ctypes.byref(created), ctypes.byref(exited),
+                                    ctypes.byref(kernel), ctypes.byref(user)):
+        raise LocalComfyError("cannot read owned process creation time")
+    stamp = int(created.dwLowDateTime) | (int(created.dwHighDateTime) << 32)
+    return ProcessIdentity(pid=pid, creation_filetime=stamp, parent_pid=parent_pid)
+
+
+def _process_identity(pid: int, parent_pid: int | None = None) -> ProcessIdentity | None:
+    if os.name != "nt":
+        raise LocalComfyError("owned process tracking requires Windows")
+    kernel32 = _kernel32()
+    handle = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not handle:
+        error = ctypes.get_last_error()
+        if error == ERROR_INVALID_PARAMETER:
+            return None
+        if error == ERROR_ACCESS_DENIED:
+            raise LocalComfyError("cannot inspect owned process identity")
+        raise LocalComfyError("cannot open owned process identity")
+    try:
+        return _identity_from_handle(handle, pid, parent_pid)
+    finally:
+        kernel32.CloseHandle(handle)
+
+def _discover_owned_processes(wrapper: ProcessIdentity,
+                              tracked: dict[int, ProcessIdentity]) -> dict[int, ProcessIdentity]:
+    """Extend an exact wrapper descendant set without acting on unrelated PIDs."""
+    current_wrapper = _process_identity(wrapper.pid, wrapper.parent_pid)
+    if current_wrapper != wrapper:
+        raise LocalComfyError("ComfyUI wrapper identity changed or exited")
+    parents = _process_parents()
+    owned: dict[int, ProcessIdentity] = {wrapper.pid: wrapper}
+    for pid, identity in tracked.items():
+        try:
+            current = _process_identity(pid, identity.parent_pid)
+        except LocalComfyError as exc:
+            exc.unreadable_pid = pid
+            raise
+        if current is not None:
+            if current != identity:
+                raise LocalComfyError("owned process PID was reused")
+            owned[pid] = identity
+    pending = list(owned)
+    while pending:
+        parent = pending.pop()
+        for pid, parent_pid in parents.items():
+            if parent_pid != parent or pid in owned:
+                continue
+            try:
+                identity = _process_identity(pid, parent_pid)
+            except LocalComfyError as exc:
+                exc.unreadable_pid = pid
+                raise
+            if identity is None:
+                continue
+            if identity.creation_filetime < wrapper.creation_filetime:
+                # A stale orphan can retain a recycled parent PID in Toolhelp.
+                # It is foreign to this exact wrapper and must never be tracked
+                # or terminated merely because its numeric parent matches.
+                continue
+            owned[pid] = identity
+            pending.append(pid)
+    return owned
+
+def _require_owned_listener(wrapper: ProcessIdentity,
+                            tracked: dict[int, ProcessIdentity]) -> dict[int, ProcessIdentity]:
+    owned = _discover_owned_processes(wrapper, tracked)
+    listener = _listener_pid()
+    identity = owned.get(listener) if listener is not None else None
+    if identity is None or _process_identity(identity.pid, identity.parent_pid) != identity:
+        raise LocalComfyError("local listener is not owned by this ComfyUI process")
+    return owned
+
+def _wait_for_owned_listener(wrapper: ProcessIdentity, deadline: float,
+                             tracked: dict[int, ProcessIdentity] | None = None,
+                             on_discovery: Callable[[dict[int, ProcessIdentity]], None] | None = None
+                             ) -> dict[int, ProcessIdentity]:
+    """Update the caller-owned record before readiness can fail or the wrapper exits."""
+    if tracked is None:
+        tracked = {}
+    tracked[wrapper.pid] = wrapper
     while time.monotonic() < deadline:
         try:
-            _require_owned_listener(process)
-            return
+            discovered = _discover_owned_processes(wrapper, tracked)
+            tracked.clear()
+            tracked.update(discovered)
+            if on_discovery is not None:
+                on_discovery(tracked)
+            listener = _listener_pid()
+            identity = tracked.get(listener) if listener is not None else None
+            if identity is not None and _process_identity(identity.pid, identity.parent_pid) == identity:
+                return tracked
         except LocalComfyError:
-            if process.poll() is not None:
+            if _process_identity(wrapper.pid, wrapper.parent_pid) != wrapper:
                 raise LocalComfyError("owned ComfyUI process exited before listener readiness")
+            raise
         time.sleep(0.25)
     raise LocalComfyError("owned ComfyUI listener did not become ready before deadline")
 
@@ -357,22 +533,138 @@ def _bounded_stderr(process: Any, path: Path) -> tuple[Any | None, Any | None]:
             if remaining:
                 kept = chunk[:remaining]
                 handle.write(kept)
+                handle.flush()
                 remaining -= len(kept)
-        handle.flush()
     thread = threading.Thread(target=pump, daemon=True)
     thread.start()
     return thread, handle
 
-def _teardown(process: Any) -> dict[str, Any]:
-    process.terminate()
+def _terminate_identity(identity: ProcessIdentity) -> dict[str, Any]:
+    """Terminate one previously recorded identity, refusing PID reuse."""
+    current = _process_identity(identity.pid, identity.parent_pid)
+    if current is None:
+        return {**identity.record(), "state": "already-exited"}
+    if current != identity:
+        raise LocalComfyError("refusing to terminate a reused PID")
+    kernel32 = _kernel32()
+    rights = PROCESS_TERMINATE | SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION
+    handle = kernel32.OpenProcess(rights, False, identity.pid)
+    if not handle:
+        raise LocalComfyError("cannot open owned process for teardown")
     try:
-        process.wait(timeout=15)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait(timeout=10)
-    if process.poll() is None:
-        raise LocalComfyError("owned ComfyUI process did not terminate")
-    return {"pid": process.pid, "verified_stopped": True, "returncode": process.poll()}
+        if _identity_from_handle(handle, identity.pid, identity.parent_pid) != identity:
+            raise LocalComfyError("owned process identity changed before teardown")
+        if not kernel32.TerminateProcess(handle, 1):
+            raise LocalComfyError("cannot terminate owned process")
+        state = kernel32.WaitForSingleObject(handle, 15_000)
+        if state != WAIT_OBJECT_0:
+            raise LocalComfyError("owned process did not terminate within bound")
+    finally:
+        kernel32.CloseHandle(handle)
+    if _process_identity(identity.pid, identity.parent_pid) is not None:
+        raise LocalComfyError("owned process remained live after teardown")
+    return {**identity.record(), "state": "terminated"}
+
+def _held_wrapper_identity(process: Any, wrapper: ProcessIdentity) -> ProcessIdentity:
+    """Use Popen's retained handle to prevent a PID-reuse tree termination."""
+    handle = getattr(process, "_handle", None)
+    try:
+        native_handle = int(handle)
+    except (TypeError, ValueError) as exc:
+        raise LocalComfyError("launched wrapper handle is unavailable for teardown") from exc
+    current = _identity_from_handle(native_handle, wrapper.pid, wrapper.parent_pid)
+    if current != wrapper:
+        raise LocalComfyError("launched wrapper identity changed before tree teardown")
+    return current
+
+
+def _terminate_held_wrapper(process: Any, wrapper: ProcessIdentity) -> dict[str, Any]:
+    """Terminate exactly Popen's still-live wrapper handle, never a PID tree."""
+    handle = getattr(process, "_handle", None)
+    _held_wrapper_identity(process, wrapper)
+    kernel32 = _kernel32()
+    if not kernel32.TerminateProcess(handle, 1):
+        raise LocalComfyError("cannot terminate held ComfyUI wrapper")
+    if kernel32.WaitForSingleObject(handle, 15_000) != WAIT_OBJECT_0:
+        raise LocalComfyError("held ComfyUI wrapper did not terminate within bound")
+    return _verified_absent_record(wrapper)
+
+
+def _verified_absent_record(identity: ProcessIdentity) -> dict[str, Any]:
+    if _process_identity(identity.pid, identity.parent_pid) is not None:
+        raise LocalComfyError("owned process remained live after teardown")
+    return {**identity.record(), "state": "verified-absent"}
+
+
+def _teardown(wrapper: ProcessIdentity, tracked: dict[int, ProcessIdentity],
+              process: Any) -> dict[str, Any]:
+    """Stop only recorded wrapper descendants, deepest children first."""
+    discovery_error: LocalComfyError | None = None
+    try:
+        owned = _discover_owned_processes(wrapper, tracked)
+    except LocalComfyError as exc:
+        discovery_error = exc
+        owned = {wrapper.pid: wrapper, **tracked}
+    wrapper_absent_before_cleanup = False
+    if discovery_error is not None:
+        wrapper_absent_before_cleanup = _process_identity(wrapper.pid, wrapper.parent_pid) is None
+    parent_snapshot_error = False
+    try:
+        parents = _process_parents()
+    except LocalComfyError:
+        parents = {}
+        parent_snapshot_error = True
+    depth: dict[int, int] = {wrapper.pid: 0}
+    pending = [wrapper.pid]
+    while pending:
+        parent = pending.pop()
+        for pid, identity in owned.items():
+            if parents.get(pid) == parent:
+                depth[pid] = depth[parent] + 1
+                pending.append(pid)
+    ordered = sorted(owned.values(), key=lambda item: depth.get(item.pid, 0), reverse=True)
+    stopped: list[dict[str, Any]] = []
+    errors: list[str] = []
+    uncertain = discovery_error is not None or parent_snapshot_error
+    unreadable_pid = getattr(discovery_error, "unreadable_pid", None)
+    unresolved: list[dict[str, Any]] = []
+    if isinstance(unreadable_pid, int) and unreadable_pid > 0:
+        unresolved.append({"pid": unreadable_pid, "error_class": type(discovery_error).__name__})
+    for identity in ordered:
+        if identity.pid == unreadable_pid:
+            continue
+        try:
+            if identity == wrapper and uncertain and _process_identity(wrapper.pid, wrapper.parent_pid) is not None:
+                stopped.append(_terminate_held_wrapper(process, wrapper))
+            else:
+                stopped.append(_terminate_identity(identity))
+        except LocalComfyError as exc:
+            errors.append(type(exc).__name__)
+    verified = not uncertain and not errors and not unresolved
+    if (discovery_error is not None and not parent_snapshot_error and wrapper_absent_before_cleanup
+            and not errors and not unresolved and all(
+            _process_identity(identity.pid, identity.parent_pid) is None for identity in ordered)):
+        # The wrapper had already exited and every retained identity is absent;
+        # there is no live PID to terminate or a basis to claim an orphan.
+        verified = True
+    return {"wrapper": wrapper.record(), "owned_processes": stopped,
+            "discovery_error": type(discovery_error).__name__ if discovery_error else None,
+            "unresolved_processes": unresolved,
+            "parent_snapshot_error": parent_snapshot_error, "teardown_errors": errors,
+            "verified_stopped": verified}
+
+
+def _record_owned_processes(journal: dict[str, Any], wrapper: ProcessIdentity,
+                            owned: dict[int, ProcessIdentity]) -> None:
+    journal["wrapper"] = wrapper.record()
+    journal["owned_processes"] = [owned[pid].record() for pid in sorted(owned)]
+
+
+def _database_url(root: Path) -> str:
+    """Keep ComfyUI's SQLite database out of its shared installation user directory."""
+    database = root / "user" / "comfyui.db"
+    return "sqlite:///" + database.as_posix()
+
 
 def execute(repo_root: Path, run_root: Path) -> dict[str, Any]:
     """Explicit local-only execution; intentionally never called by the default CLI."""
@@ -396,24 +688,36 @@ def execute(repo_root: Path, run_root: Path) -> dict[str, Any]:
     _write_json(root / "journal.json", journal)
     if not COMFY_PYTHON.is_file():
         raise LocalComfyError("installed ComfyUI virtualenv python is unavailable")
-    command = [str(COMFY_PYTHON), "main.py", "--listen", "127.0.0.1", "--port", str(PORT), "--input-directory", str(root / "input"), "--output-directory", str(root / "output"), "--temp-directory", str(root / "temp"), "--user-directory", str(root / "user"), "--disable-api-nodes", "--disable-all-custom-nodes", "--whitelist-custom-nodes", "ComfyUI_IPAdapter_plus", "--disable-auto-launch"]
+    database_url = _database_url(root)
+    command = [str(COMFY_PYTHON), "main.py", "--listen", "127.0.0.1", "--port", str(PORT), "--input-directory", str(root / "input"), "--output-directory", str(root / "output"), "--temp-directory", str(root / "temp"), "--user-directory", str(root / "user"), "--database-url", database_url, "--disable-api-nodes", "--disable-all-custom-nodes", "--whitelist-custom-nodes", "ComfyUI_IPAdapter_plus", "--disable-auto-launch"]
     process = None
+    wrapper: ProcessIdentity | None = None
+    owned: dict[int, ProcessIdentity] = {}
     stderr_thread = stderr_handle = None
     completed: dict[str, Any] | None = None
     prompt_id: str | None = None
     failure: Exception | None = None
-    teardown: dict[str, Any] = {"pid": None, "verified_stopped": False}
+    teardown: dict[str, Any] = {"wrapper": None, "owned_processes": [], "verified_stopped": False}
     try:
         process = subprocess.Popen(command, cwd=COMFY_ROOT, shell=False, env=_isolated_environment(root), stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         stderr_thread, stderr_handle = _bounded_stderr(process, root / "startup.stderr.log")
-        journal.update({"status": "started", "child_pid": process.pid})
+        wrapper = _process_identity(process.pid)
+        if wrapper is None:
+            raise LocalComfyError("cannot read launched ComfyUI wrapper identity")
+        journal.update({"status": "started", "database_url": database_url})
+        _record_owned_processes(journal, wrapper, {wrapper.pid: wrapper})
         _write_json(root / "journal.json", journal)
         deadline = time.monotonic() + POLL_SECONDS
-        _wait_for_owned_listener(process, deadline)
+        def record_discovery(known: dict[int, ProcessIdentity]) -> None:
+            _record_owned_processes(journal, wrapper, known)
+            _write_json(root / "journal.json", journal)
+        owned = _wait_for_owned_listener(wrapper, deadline, owned, record_discovery)
         opener = _loopback_opener()
         marker = root / "dispatch-attempt.json"
         marker.write_text(json.dumps({"schema": SCHEMA, "manifest_sha256": manifest_sha, "attempt": 1}) + "\n", encoding="utf-8")
-        _require_owned_listener(process)
+        owned = _require_owned_listener(wrapper, owned)
+        _record_owned_processes(journal, wrapper, owned)
+        _write_json(root / "journal.json", journal)
         queued = _local_json(opener, "POST", "/prompt", {"prompt": manifest["workflow"]["api_prompt"], "client_id": uuid.uuid4().hex})
         candidate = queued.get("prompt_id")
         if not isinstance(candidate, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", candidate):
@@ -422,7 +726,9 @@ def execute(repo_root: Path, run_root: Path) -> dict[str, Any]:
         journal.update({"status": "queued", "prompt_id": prompt_id})
         _write_json(root / "journal.json", journal)
         while time.monotonic() < deadline:
-            _require_owned_listener(process)
+            owned = _require_owned_listener(wrapper, owned)
+            _record_owned_processes(journal, wrapper, owned)
+            _write_json(root / "journal.json", journal)
             completed = _completed_output(_local_json(opener, "GET", f"/history/{prompt_id}"), prompt_id, root / "output")
             if completed is not None:
                 break
@@ -433,11 +739,14 @@ def execute(repo_root: Path, run_root: Path) -> dict[str, Any]:
         failure = exc
         raise
     finally:
-        if process is not None:
+        if wrapper is not None:
             try:
-                teardown = _teardown(process)
+                teardown = _teardown(wrapper, owned, process)
+                if not teardown["verified_stopped"] and failure is None:
+                    failure = LocalComfyError("owned ComfyUI teardown was not fully verified")
             except Exception as teardown_error:
-                teardown = {"pid": process.pid, "verified_stopped": False, "error_class": type(teardown_error).__name__}
+                teardown = {"wrapper": wrapper.record(), "owned_processes": [], "verified_stopped": False,
+                            "error_class": type(teardown_error).__name__}
                 if failure is None:
                     failure = teardown_error
         if stderr_thread is not None:

@@ -32,9 +32,18 @@ isolated input/output/temp/user/home/cache directories, permits only the
 installed IP-Adapter plugin, creates one pre-POST dispatch marker, submits one
 graph, and stops only its own verified process. The receipt is written only
 after that teardown. It is not run by this builder's tests or default command.
+If Windows denies inspection of a discovered descendant, the run fails and its
+journal records that unresolved PID; it does not claim the unknown process was
+stopped or create a completed receipt.
 
 The first admitted startup reached ComfyUI import and exited before listener
 readiness because TorchInductor had no cache path under the isolated environment.
 The launcher now supplies an owned `TORCHINDUCTOR_CACHE_DIR`. The bounded v2
 `torch._dynamo` import probe passed without starting a server; its receipt is
 under `_private/figment-local-comfy-importprobe-20260908-v2/`.
+
+A later admitted startup reached ComfyUI's `Starting server` message and was
+stopped before any graph POST. It exposed the venv redirector child and a shared
+installation SQLite database path; the next launcher revision records the exact
+owned process tree and passes an owned private `--database-url`. It is pending
+fresh review and has not produced a diagnostic image.

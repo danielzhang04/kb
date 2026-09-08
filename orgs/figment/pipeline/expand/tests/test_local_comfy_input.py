@@ -2,8 +2,12 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
+import socket
 import subprocess
 import sys
+import time
+import uuid
 from pathlib import Path
 
 import pytest
@@ -50,6 +54,42 @@ def local(tmp_path, monkeypatch):
     monkeypatch.setattr(module, "git_head", lambda _: module.COMFY_COMMIT if _ == comfy else module.NODE_COMMIT)
     monkeypatch.setattr(module, "git_clean", lambda _: True)
     return module, source.parents[5]
+
+
+def stub_owned_execution(module, monkeypatch, process):
+    """Keep execute tests focused on their transport/receipt condition, not Win32."""
+    wrapper = module.ProcessIdentity(process.pid, 100, None)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
+    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda got, _deadline, *_: {got.pid: got})
+    monkeypatch.setattr(module, "_require_owned_listener", lambda got, known: {got.pid: got})
+    def teardown(got, known, *_):
+        process.returncode = 0
+        return {"wrapper": got.record(), "owned_processes": [], "verified_stopped": True}
+    monkeypatch.setattr(module, "_teardown", teardown)
+    return wrapper
+
+
+def cleanup_owned_fixture(module, root: Path) -> None:
+    """Remove only this test's direct private child without following reparses."""
+    if (root.parent != module.WORKSPACE_PRIVATE_ROOT or not root.name.startswith("figment-owned-loopback-fixture-")
+            or module._is_reparse(root)):
+        raise AssertionError("unsafe fixture cleanup root")
+    for current, directories, filenames in os.walk(root, topdown=False, followlinks=False):
+        directory = Path(current)
+        if module._is_reparse(directory):
+            raise AssertionError("fixture cleanup encountered reparse directory")
+        for name in filenames:
+            entry = directory / name
+            if module._is_reparse(entry):
+                raise AssertionError("fixture cleanup encountered reparse file")
+            entry.unlink()
+        for name in directories:
+            entry = directory / name
+            if module._is_reparse(entry):
+                raise AssertionError("fixture cleanup encountered reparse child")
+            entry.rmdir()
+    root.rmdir()
 
 
 def test_offline_manifest_binds_source_pins_prompt_and_one_image(local):
@@ -115,9 +155,10 @@ def test_execute_command_is_loopback_isolated_and_whitelisted(local, tmp_path, m
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
-    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: None)
     monkeypatch.setattr(module.subprocess, "Popen", lambda args, **kwargs: (calls.append((args, kwargs)) or Process()))
+    process = Process()
+    monkeypatch.setattr(module.subprocess, "Popen", lambda args, **kwargs: (calls.append((args, kwargs)) or process))
+    stub_owned_execution(module, monkeypatch, process)
     monkeypatch.setattr(module, "_local_json", lambda *_a, **_k: (_ for _ in ()).throw(module.urllib.error.URLError("not-ready")))
     monkeypatch.setattr(module.time, "monotonic", iter((0, 601)).__next__)
     with pytest.raises(module.urllib.error.URLError):
@@ -129,7 +170,9 @@ def test_execute_command_is_loopback_isolated_and_whitelisted(local, tmp_path, m
     assert kwargs["env"]["TORCH_HOME"].endswith("torch") and kwargs["env"]["TORCHINDUCTOR_CACHE_DIR"].endswith("inductor") and kwargs["env"]["XDG_CACHE_HOME"].endswith("xdg")
     assert kwargs["creationflags"] == getattr(module.subprocess, "CREATE_NO_WINDOW", 0)
     assert args[args.index("--listen") + 1] == "127.0.0.1"
-    assert {"--input-directory", "--output-directory", "--temp-directory", "--user-directory", "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch"} <= set(args)
+    assert {"--input-directory", "--output-directory", "--temp-directory", "--user-directory", "--database-url", "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch"} <= set(args)
+    assert args[args.index("--database-url") + 1].startswith("sqlite:///")
+    assert args[args.index("--database-url") + 1].endswith("/user/comfyui.db")
     assert args[args.index("--whitelist-custom-nodes") + 1] == "ComfyUI_IPAdapter_plus"
     assert (run / "input" / "g01.jpg").read_bytes() == b"canonical-g01"
 
@@ -159,14 +202,187 @@ def test_loopback_opener_disables_proxies_and_redirects(local):
 
 def test_foreign_listener_is_never_treated_as_owned(local, monkeypatch):
     module, _ = local
-    class Process:
-        pid = 1234
-        def poll(self): return None
+    wrapper = module.ProcessIdentity(1234, 100, None)
     monkeypatch.setattr(module, "_listener_pid", lambda: 9876)
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda _wrapper, known: known)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
     monkeypatch.setattr(module.time, "monotonic", iter((0, 601)).__next__)
     monkeypatch.setattr(module.time, "sleep", lambda _: None)
     with pytest.raises(module.LocalComfyError, match="owned ComfyUI listener"):
-        module._wait_for_owned_listener(Process(), 600)
+        module._wait_for_owned_listener(wrapper, 600)
+
+
+def test_listener_wait_keeps_discovered_descendant_before_readiness(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    child = module.ProcessIdentity(2345, 101, 1234)
+    seen = []
+    def discover(_wrapper, known):
+        seen.append(dict(known))
+        return {wrapper.pid: wrapper, child.pid: child}
+    monkeypatch.setattr(module, "_discover_owned_processes", discover)
+    monkeypatch.setattr(module, "_listener_pid", lambda: None)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else child if pid == child.pid else None)
+    monkeypatch.setattr(module.time, "monotonic", iter((0, 1, 601)).__next__)
+    monkeypatch.setattr(module.time, "sleep", lambda _: None)
+    with pytest.raises(module.LocalComfyError, match="did not become ready"):
+        module._wait_for_owned_listener(wrapper, 600)
+    assert child.pid not in seen[0]
+    assert child.pid in seen[1]
+
+
+def test_predated_parent_pid_collision_is_ignored_as_foreign(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    stale = module.ProcessIdentity(2345, 99, wrapper.pid)
+    fresh = module.ProcessIdentity(3456, 101, wrapper.pid)
+    monkeypatch.setattr(module, "_process_parents", lambda: {stale.pid: wrapper.pid, fresh.pid: wrapper.pid})
+    def identity(pid, parent_pid=None):
+        if pid == wrapper.pid:
+            return wrapper
+        if pid == stale.pid:
+            return stale
+        if pid == fresh.pid:
+            return fresh
+        return None
+    monkeypatch.setattr(module, "_process_identity", identity)
+    owned = module._discover_owned_processes(wrapper, {})
+    assert owned == {wrapper.pid: wrapper, fresh.pid: fresh}
+    monkeypatch.setattr(module, "_listener_pid", lambda: stale.pid)
+    with pytest.raises(module.LocalComfyError, match="not owned"):
+        module._require_owned_listener(wrapper, owned)
+
+
+def test_execute_startup_failure_preserves_discovered_child_for_teardown(local, tmp_path, monkeypatch):
+    module, repo = local
+    run = tmp_path / "_private" / "figment-local-comfy-startup-child"; run.parent.mkdir()
+    class Process:
+        pid = 1234
+    process = Process()
+    wrapper = module.ProcessIdentity(process.pid, 100, None)
+    child = module.ProcessIdentity(2345, 101, process.pid)
+    test_python = module.COMFY_ROOT / "venv" / "Scripts" / "python.exe"
+    test_python.parent.mkdir(parents=True); test_python.write_bytes(b"python")
+    captured = {}
+    monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
+    monkeypatch.setattr(module, "_port_available", lambda: None)
+    monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(module, "_bounded_stderr", lambda *_: (None, None))
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else child if pid == child.pid else None)
+    def readiness(got, _deadline, known, record):
+        known.update({got.pid: got, child.pid: child})
+        record(known)
+        raise module.LocalComfyError("owned ComfyUI process exited before listener readiness")
+    monkeypatch.setattr(module, "_wait_for_owned_listener", readiness)
+    def teardown(got, known, *_):
+        captured.update({"wrapper": got, "known": dict(known)})
+        return {"wrapper": got.record(), "owned_processes": [], "verified_stopped": True}
+    monkeypatch.setattr(module, "_teardown", teardown)
+    with pytest.raises(module.LocalComfyError, match="exited before listener"):
+        module.execute(repo, run)
+    assert captured["wrapper"] == wrapper
+    assert captured["known"] == {wrapper.pid: wrapper, child.pid: child}
+    journal = json.loads((run / "journal.json").read_text())
+    assert child.record() in journal["owned_processes"]
+
+
+def test_execute_refuses_uninspectable_descendant_and_tears_down_known_wrapper(local, tmp_path, monkeypatch):
+    module, repo = local
+    run = tmp_path / "_private" / "figment-local-comfy-uninspectable-child"; run.parent.mkdir()
+    class Process:
+        pid = 1234
+    process = Process()
+    wrapper = module.ProcessIdentity(process.pid, 100, None)
+    test_python = module.COMFY_ROOT / "venv" / "Scripts" / "python.exe"
+    test_python.parent.mkdir(parents=True); test_python.write_bytes(b"python")
+    captured = {}
+    monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
+    monkeypatch.setattr(module, "_port_available", lambda: None)
+    monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    monkeypatch.setattr(module, "_bounded_stderr", lambda *_: (None, None))
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_:
+                        (_ for _ in ()).throw(module.LocalComfyError("cannot inspect owned process identity")))
+    def teardown(got, known, *_):
+        captured.update({"wrapper": got, "known": dict(known)})
+        return {"wrapper": got.record(), "owned_processes": [], "discovery_error": "LocalComfyError",
+                "verified_stopped": False}
+    monkeypatch.setattr(module, "_teardown", teardown)
+    with pytest.raises(module.LocalComfyError, match="cannot inspect owned process identity"):
+        module.execute(repo, run)
+    assert captured == {"wrapper": wrapper, "known": {wrapper.pid: wrapper}}
+    journal = json.loads((run / "journal.json").read_text())
+    assert journal["status"] == "failed" and journal["teardown"]["verified_stopped"] is False
+
+
+def test_teardown_allows_naturally_exited_wrapper_when_all_retained_identities_are_absent(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    child = module.ProcessIdentity(2345, 101, wrapper.pid)
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_:
+                        (_ for _ in ()).throw(module.LocalComfyError("wrapper exited")))
+    monkeypatch.setattr(module, "_process_identity", lambda *_: None)
+    monkeypatch.setattr(module, "_process_parents", lambda: {})
+    monkeypatch.setattr(module, "_terminate_identity", lambda identity:
+                        {**identity.record(), "state": "already-exited"})
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper, child.pid: child}, object())
+    assert teardown["verified_stopped"] is True
+    assert teardown["discovery_error"] == "LocalComfyError"
+
+
+def test_new_unreadable_descendant_is_preserved_in_unverified_teardown_record(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    new_child_pid = 2345
+    def refuse_discovery(_wrapper, _tracked):
+        error = module.LocalComfyError("cannot inspect owned process identity")
+        error.unreadable_pid = new_child_pid
+        raise error
+    monkeypatch.setattr(module, "_discover_owned_processes", refuse_discovery)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
+    monkeypatch.setattr(module, "_process_parents", lambda: {})
+    monkeypatch.setattr(module, "_terminate_held_wrapper", lambda _process, identity:
+                        {**identity.record(), "state": "terminated"})
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper}, object())
+    assert teardown["verified_stopped"] is False
+    assert teardown["unresolved_processes"] == [{"pid": new_child_pid, "error_class": "LocalComfyError"}]
+
+
+def test_naturally_exited_wrapper_does_not_override_new_unreadable_descendant(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    error = module.LocalComfyError("cannot inspect owned process identity")
+    error.unreadable_pid = 2345
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_: (_ for _ in ()).throw(error))
+    monkeypatch.setattr(module, "_process_identity", lambda *_: None)
+    monkeypatch.setattr(module, "_process_parents", lambda: {})
+    monkeypatch.setattr(module, "_terminate_identity", lambda identity:
+                        {**identity.record(), "state": "already-exited"})
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper}, object())
+    assert teardown["verified_stopped"] is False
+    assert teardown["unresolved_processes"] == [{"pid": 2345, "error_class": "LocalComfyError"}]
+
+
+def test_naturally_exited_wrapper_does_not_override_parent_snapshot_failure(local, monkeypatch):
+    module, _ = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_:
+                        (_ for _ in ()).throw(module.LocalComfyError("wrapper exited")))
+    monkeypatch.setattr(module, "_process_identity", lambda *_: None)
+    monkeypatch.setattr(module, "_process_parents", lambda:
+                        (_ for _ in ()).throw(module.LocalComfyError("snapshot unavailable")))
+    monkeypatch.setattr(module, "_terminate_identity", lambda identity:
+                        {**identity.record(), "state": "already-exited"})
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper}, object())
+    assert teardown["verified_stopped"] is False
+    assert teardown["parent_snapshot_error"] is True
 
 
 def test_completed_output_refuses_wrong_dimensions(local, tmp_path):
@@ -194,9 +410,8 @@ def test_ambiguous_post_has_one_attempt_marker_and_no_retry(local, tmp_path, mon
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
-    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: None)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    stub_owned_execution(module, monkeypatch, process)
     def ambiguous(*args):
         seen.append(args[1:3]); raise module.urllib.error.URLError("response lost")
     monkeypatch.setattr(module, "_local_json", ambiguous)
@@ -223,9 +438,8 @@ def test_completed_receipt_is_written_after_owned_teardown(local, tmp_path, monk
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
-    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: None)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    stub_owned_execution(module, monkeypatch, process)
     def response(_opener, method, endpoint, _payload=None):
         requests.append((method, endpoint))
         if method == "POST": return {"prompt_id": "p"}
@@ -237,6 +451,7 @@ def test_completed_receipt_is_written_after_owned_teardown(local, tmp_path, monk
     assert requests == [("POST", "/prompt"), ("GET", "/history/p")]
     assert receipt["output"]["dimensions"] == [1024, 1024]
     assert saved["teardown"]["verified_stopped"] is True and process.returncode == 0
+    assert saved["teardown"]["wrapper"] == {"pid": 1234, "creation_filetime": 100, "parent_pid": None}
     assert (run / "manifest.json").is_file()
 
 
@@ -255,9 +470,14 @@ def test_listener_rebind_after_readiness_refuses_before_post(local, tmp_path, mo
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
     monkeypatch.setattr(module, "_listener_pid", lambda: 9999)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    wrapper = module.ProcessIdentity(process.pid, 100, None)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
+    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda got, _deadline, *_: {got.pid: got})
+    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: (_ for _ in ()).throw(module.LocalComfyError("local listener is not owned by this ComfyUI process")))
+    monkeypatch.setattr(module, "_teardown", lambda got, known, *_: (setattr(process, "returncode", 0) or {"wrapper": got.record(), "owned_processes": [], "verified_stopped": True}))
     monkeypatch.setattr(module, "_local_json", lambda *_a, **_k: requests.append(_a))
     with pytest.raises(module.LocalComfyError, match="not owned"):
         module.execute(repo, run)
@@ -279,9 +499,8 @@ def test_post_queue_failure_records_sanitized_teardown(local, tmp_path, monkeypa
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
-    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: None)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    stub_owned_execution(module, monkeypatch, process)
     calls = iter(({"prompt_id": "p"}, module.LocalComfyError("history malformed")))
     def response(*_args):
         value = next(calls)
@@ -308,10 +527,15 @@ def test_teardown_failure_writes_failed_journal_without_receipt(local, tmp_path,
     monkeypatch.setattr(module, "COMFY_PYTHON", test_python)
     monkeypatch.setattr(module, "_port_available", lambda: None)
     monkeypatch.setattr(module, "_workspace_private_root", lambda _: run.parent)
-    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda *_: None)
-    monkeypatch.setattr(module, "_require_owned_listener", lambda *_: None)
     monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: Process())
-    monkeypatch.setattr(module, "_teardown", lambda _: (_ for _ in ()).throw(module.LocalComfyError("teardown failed")))
+    process = Process()
+    monkeypatch.setattr(module.subprocess, "Popen", lambda *_a, **_k: process)
+    wrapper = module.ProcessIdentity(process.pid, 100, None)
+    monkeypatch.setattr(module, "_process_identity", lambda pid, parent_pid=None:
+                        wrapper if pid == wrapper.pid else None)
+    monkeypatch.setattr(module, "_wait_for_owned_listener", lambda got, _deadline, *_: {got.pid: got})
+    monkeypatch.setattr(module, "_require_owned_listener", lambda got, known: {got.pid: got})
+    monkeypatch.setattr(module, "_teardown", lambda *_: (_ for _ in ()).throw(module.LocalComfyError("teardown failed")))
     def response(_opener, method, _endpoint, _payload=None):
         if method == "POST": return {"prompt_id": "p"}
         Image.new("RGB", (1024, 1024), "black").save(run / "output" / "done.png")
@@ -323,3 +547,133 @@ def test_teardown_failure_writes_failed_journal_without_receipt(local, tmp_path,
     assert journal["status"] == "failed"
     assert journal["teardown"]["verified_stopped"] is False
     assert not (run / "receipt.json").exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Toolhelp process identity tracking is Windows-only")
+def test_real_venv_redirector_tracks_listener_and_tears_down_all_owned_processes(monkeypatch):
+    """Exercise the real venv redirector, without starting ComfyUI or submitting a job."""
+    module = load_module()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setattr(module, "PORT", port)
+    root = module.WORKSPACE_PRIVATE_ROOT / f"figment-owned-loopback-fixture-{uuid.uuid4().hex}"
+    root.mkdir()
+    for name in ("temp", "user", "home"):
+        (root / name).mkdir()
+    server = root / "tiny_loopback.py"
+    server.write_text(
+        "from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
+        "import json, sys\n"
+        "class Handler(BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        body = b'{\\\"ok\\\":true}'\n"
+        "        self.send_response(200)\n"
+        "        self.send_header('Content-Type', 'application/json')\n"
+        "        self.send_header('Content-Length', str(len(body)))\n"
+        "        self.end_headers()\n"
+        "        self.wfile.write(body)\n"
+        "    def log_message(self, *args): pass\n"
+        "ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\n",
+        encoding="utf-8",
+    )
+    process = None
+    wrapper = None
+    owned = {}
+    cleaned = False
+    try:
+        process = subprocess.Popen([str(module.COMFY_PYTHON), str(server), str(port)], shell=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   env=module._isolated_environment(root),
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        deadline = time.monotonic() + 60
+        while wrapper is None and time.monotonic() < deadline:
+            wrapper = module._process_identity(process.pid)
+            time.sleep(0.05)
+        assert wrapper is not None
+        owned = module._wait_for_owned_listener(wrapper, deadline)
+        listener = module._listener_pid()
+        assert listener is not None and listener in owned
+        assert listener != wrapper.pid, "fixture must exercise the venv redirector child"
+        assert module._local_json(module._loopback_opener(), "GET", "/health") == {"ok": True}
+        teardown = module._teardown(wrapper, owned, process)
+        assert teardown["verified_stopped"] is True, teardown
+        assert all(module._process_identity(item["pid"], item["parent_pid"]) is None
+                   for item in teardown["owned_processes"])
+        assert module._listener_pid() is None
+        process = None
+        cleaned = True
+    finally:
+        if process is not None and wrapper is not None:
+            module._teardown(wrapper, owned, process)
+        elif process is not None:
+            process.terminate()
+            process.wait(timeout=15)
+        if cleaned:
+            cleanup_owned_fixture(module, root)
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Toolhelp process identity tracking is Windows-only")
+def test_real_listener_discovery_refusal_stops_known_identities_and_marks_unverified(monkeypatch):
+    """Inject a discovery inspection refusal after a real redirector owns the listener."""
+    module = load_module()
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        port = probe.getsockname()[1]
+    monkeypatch.setattr(module, "PORT", port)
+    root = module.WORKSPACE_PRIVATE_ROOT / f"figment-owned-loopback-fixture-{uuid.uuid4().hex}"
+    root.mkdir()
+    for name in ("temp", "user", "home"):
+        (root / name).mkdir()
+    server = root / "tiny_loopback.py"
+    server.write_text(
+        "from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer\n"
+        "import sys\n"
+        "class Handler(BaseHTTPRequestHandler):\n"
+        "    def do_GET(self):\n"
+        "        body = b'{\\\"ok\\\":true}'\n"
+        "        self.send_response(200); self.send_header('Content-Length', str(len(body)))\n"
+        "        self.end_headers(); self.wfile.write(body)\n"
+        "    def log_message(self, *args): pass\n"
+        "ThreadingHTTPServer(('127.0.0.1', int(sys.argv[1])), Handler).serve_forever()\n",
+        encoding="utf-8",
+    )
+    process = None
+    wrapper = None
+    owned = {}
+    cleaned = False
+    try:
+        process = subprocess.Popen([str(module.COMFY_PYTHON), str(server), str(port)], shell=False,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+                                   env=module._isolated_environment(root),
+                                   creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        deadline = time.monotonic() + 60
+        while wrapper is None and time.monotonic() < deadline:
+            wrapper = module._process_identity(process.pid)
+            time.sleep(0.05)
+        assert wrapper is not None
+        owned = module._wait_for_owned_listener(wrapper, deadline)
+        listener = module._listener_pid()
+        assert listener is not None and listener in owned
+        denial = module.LocalComfyError("cannot inspect owned process identity")
+        denial.unreadable_pid = listener
+        monkeypatch.setattr(module, "_discover_owned_processes", lambda *_: (_ for _ in ()).throw(denial))
+        teardown = module._teardown(wrapper, owned, process)
+        assert teardown["verified_stopped"] is False
+        assert teardown["discovery_error"] == "LocalComfyError"
+        assert teardown["unresolved_processes"] == [{"pid": listener, "error_class": "LocalComfyError"}]
+        assert all(module._process_identity(item["pid"], item["parent_pid"]) is None
+                   for item in teardown["owned_processes"])
+        cleanup = module._terminate_identity(owned[listener])
+        assert cleanup["state"] in {"terminated", "already-exited"}
+        assert module._listener_pid() is None
+        process = None
+        cleaned = True
+    finally:
+        if process is not None and wrapper is not None:
+            module._teardown(wrapper, owned, process)
+        elif process is not None:
+            process.terminate()
+            process.wait(timeout=15)
+        if cleaned:
+            cleanup_owned_fixture(module, root)
