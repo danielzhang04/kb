@@ -1,7 +1,7 @@
 """CPU-only ``sd-scripts`` dataset/config parser for a frozen local g01 plan.
 
 Run this only with the fixed local trainer virtual environment after a plan has
-been reviewed.  It deliberately sets ``CUDA_VISIBLE_DEVICES`` empty and stops
+been reviewed.  It deliberately sets ``CUDA_VISIBLE_DEVICES=-1`` and stops
 after sd-scripts has parsed the DreamBooth dataset.  ``sdxl_train_network``
 transitively imports torch, so this is not a claim that torch is absent; the
 preflight asserts CUDA was never initialized and never constructs a trainer,
@@ -27,7 +27,10 @@ MAX_PLAN_BYTES = 32 * 1024
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_DIAGNOSTIC_CHARS = 384
 OFFLINE_ENV = {
-    "CUDA_VISIBLE_DEVICES": "",
+    # PyTorch's documented no-device sentinel. The companion NVML availability
+    # check keeps ``is_available`` aligned with the masked device count.
+    "CUDA_VISIBLE_DEVICES": "-1",
+    "PYTORCH_NVML_BASED_CUDA_CHECK": "1",
     "HF_HUB_OFFLINE": "1",
     "TRANSFORMERS_OFFLINE": "1",
     "DIFFUSERS_OFFLINE": "1",
@@ -67,6 +70,22 @@ def _raise_sd_scripts_rejection(error: BaseException) -> None:
         "sd-scripts rejected the fixed CPU dataset/config; cause="
         + _bounded_exception_chain(error)
     ) from error
+
+
+def _assert_cpu_torch_state(torch: Any) -> dict[str, Any]:
+    """Require the masking contract before and after availability inspection."""
+    if os.environ.get("CUDA_VISIBLE_DEVICES") != "-1" or os.environ.get("PYTORCH_NVML_BASED_CUDA_CHECK") != "1":
+        raise CpuPreflightError("CPU parser CUDA masking environment is not fixed")
+    if torch.cuda.is_initialized():
+        raise CpuPreflightError("CUDA was already initialized before CPU parsing")
+    available = torch.cuda.is_available()
+    count = torch.cuda.device_count()
+    if available or count != 0:
+        raise CpuPreflightError("CPU parser CUDA mask did not hide every device")
+    if torch.cuda.is_initialized():
+        raise CpuPreflightError("CPU parsing initialized CUDA during availability inspection")
+    return {"cuda_visible_devices": "-1", "cuda_available": False, "cuda_device_count": 0,
+            "cuda_initialized": False}
 
 
 def _load_planner() -> Any:
@@ -246,8 +265,7 @@ def parse_cpu_preflight(plan_path: Path, *, private_root: Path | None = None) ->
         import sdxl_train_network  # type: ignore
         import torch
 
-        if torch.cuda.is_initialized():
-            raise CpuPreflightError("CUDA was already initialized before CPU parsing")
+        cuda_state = _assert_cpu_torch_state(torch)
 
         original_argv = sys.argv
         sys.argv = [
@@ -269,8 +287,7 @@ def parse_cpu_preflight(plan_path: Path, *, private_root: Path | None = None) ->
         group.set_current_strategies()
         count = len(group)
         datasets = group.datasets
-        if torch.cuda.is_initialized():
-            raise CpuPreflightError("CPU parsing initialized CUDA")
+        cuda_state = _assert_cpu_torch_state(torch)
     except Exception as exc:
         _raise_sd_scripts_rejection(exc)
     finally:
@@ -287,9 +304,8 @@ def parse_cpu_preflight(plan_path: Path, *, private_root: Path | None = None) ->
     return {
         "schema": "figment/local-single-observation-cpu-preflight@1",
         "plan_sha256": plan["frozen_sha256"],
-        "cuda_visible_devices": "",
+        **cuda_state,
         "offline_environment": sorted(OFFLINE_ENV),
-        "cuda_initialized": False,
         "observations": count,
         "unique_source_images": len(datasets[0].image_data),
         "repeat_count": 1,

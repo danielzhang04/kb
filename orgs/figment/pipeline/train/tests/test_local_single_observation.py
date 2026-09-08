@@ -218,6 +218,36 @@ def test_cpu_preflight_preserves_a_bounded_redacted_sd_scripts_cause():
     assert "not-retained" not in str(secret.value)
 
 
+def test_cpu_preflight_requires_the_documented_no_device_mask_before_and_after_probe(monkeypatch):
+    class Cuda:
+        def __init__(self):
+            self.initialized_checks = 0
+
+        def is_initialized(self):
+            self.initialized_checks += 1
+            return False
+
+        @staticmethod
+        def is_available():
+            return False
+
+        @staticmethod
+        def device_count():
+            return 0
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "-1")
+    monkeypatch.setenv("PYTORCH_NVML_BASED_CUDA_CHECK", "1")
+    cuda = Cuda()
+    state = preflight._assert_cpu_torch_state(SimpleNamespace(cuda=cuda))
+    assert state == {"cuda_visible_devices": "-1", "cuda_available": False,
+                     "cuda_device_count": 0, "cuda_initialized": False}
+    assert cuda.initialized_checks == 2
+    with pytest.raises(preflight.CpuPreflightError, match="hide every device"):
+        preflight._assert_cpu_torch_state(SimpleNamespace(cuda=SimpleNamespace(
+            is_initialized=lambda: False, is_available=lambda: True, device_count=lambda: 0,
+        )))
+
+
 def test_cpu_preflight_rejects_mutated_plan_and_extra_dataset_member_before_sd_scripts_import(tmp_path, monkeypatch):
     personas, private = fixture_inputs(tmp_path, monkeypatch)
     plan = planner.build_plan(Path("probe"), personas_root=personas, private_root=private)

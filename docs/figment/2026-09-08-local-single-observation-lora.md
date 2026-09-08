@@ -71,15 +71,21 @@ C:\Users\danie\tools\lora-trainer\venv\Scripts\python.exe `
   --plan <fresh-private-plan>\local-single-observation-plan.json
 ```
 
-The parser sets `CUDA_VISIBLE_DEVICES` empty plus Hugging Face, Transformers,
-and Diffusers offline flags, verifies the exact staged JPEG/caption/template
-inventory and hashes, and asks the pinned sd-scripts DreamBooth parser to
-resolve the one observation. `sdxl_train_network` does
-transitively import torch, so this is not described as a torch-free action. It
-asserts that CUDA was not initialized before or after parsing and does not load
-model weights, construct an Accelerator, train, save a checkpoint, or export a
-sample. Its JSON result reports the resolved one-image count, repeat count,
-target resolution, actual bucket list, and caption.
+The parser sets PyTorch's documented no-device sentinel
+`CUDA_VISIBLE_DEVICES=-1`, `PYTORCH_NVML_BASED_CUDA_CHECK=1`, and Hugging Face,
+Transformers, and Diffusers offline flags. The installed torch implementation
+uses the NVML-aware availability path for that flag; the isolated mask probe
+reported availability `false`, device count `0`, and no CUDA initialization.
+The parser verifies the exact staged JPEG/caption/template inventory and hashes,
+then asks the pinned sd-scripts DreamBooth parser to resolve the one observation.
+`sdxl_train_network` does transitively import torch, so this is not described as
+a torch-free action. It asserts the masked state before and after availability
+inspection and after parsing; it does not load model weights, construct an
+Accelerator, train, save a checkpoint, or export a sample. Its schema-@1 JSON
+result explicitly records `cuda_visible_devices: "-1"`, `cuda_available: false`,
+`cuda_device_count: 0`, plus the resolved one-image count, repeat count, target
+resolution, actual bucket list, and caption. Future admission must require those
+exact CPU-mask fields.
 
 A CPU parser pass proves only that the frozen local dataset/config layout is
 parseable under those offline flags. It does not prove every tokenizer/cache
