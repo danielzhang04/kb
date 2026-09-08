@@ -132,6 +132,12 @@ export interface GitWorktreeAdapterOptions {
   worktreeRoot: string;
   /** Immutable server-selected commit, never a browser-selected ref. */
   baseCommit: string;
+  /**
+   * Optional synchronous admission check for forward worktree provisioning and inspection effects.
+   * Omitted by all current callers, preserving the existing always-admitted behavior. `remove` is
+   * deliberately excluded: it remains the distinct cleanup path for an already-owned worktree.
+   */
+  assertForwardAdmission?: () => void;
   runner?: GitCommandRunner;
   maxChangedFiles?: number;
   maxChangedFileBytes?: number;
@@ -330,6 +336,7 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
   const runner = options.runner ?? createLocalGitCommandRunner();
   const maxChangedFiles = options.maxChangedFiles ?? 1_024;
   const maxChangedFileBytes = options.maxChangedFileBytes ?? 16 * 1024 * 1024;
+  const assertForwardAdmission = options.assertForwardAdmission ?? (() => {});
   requireSafeInteger(maxChangedFiles, 'maxChangedFiles', 1);
   requireSafeInteger(maxChangedFileBytes, 'maxChangedFileBytes', 1);
   // [C-S4] The server-owned worktree root is NEVER created here. On the VM it is `/var/lib/kb-shell/worktrees`,
@@ -344,6 +351,7 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
   /** Lazily materialize the empty hooks dir — first git invocation only, never at construction. */
   const ensureHooksDir = (): void => {
     if (hooksDirReady) return;
+    assertForwardAdmission();
     mkdirSync(hooksPath, { recursive: true, mode: 0o700 });
     hooksDirReady = true;
   };
@@ -352,13 +360,25 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
   // MAX_PATH (260) and `git worktree add` fails "Filename too long". A no-op off Windows. Not a gate.
   const prefix = ['-c', 'protocol.allow=never', '-c', 'core.longpaths=true', '-c', `core.hooksPath=${hooksPath}`, '--literal-pathspecs'] as const;
 
+  const runForwardGit = async (
+    args: readonly string[],
+    cwd: string,
+    label: string,
+  ): Promise<GitCommandResult> => {
+    assertForwardAdmission();
+    return runGit(runner, prefix, args, cwd, label);
+  };
+
   const verify = async (path: string): Promise<void> => {
-    const top = await runGit(runner, prefix, ['rev-parse', '--show-toplevel'], path, 'worktree verification');
+    const top = await runForwardGit(['rev-parse', '--show-toplevel'], path, 'worktree verification');
+    assertForwardAdmission();
     if (normalizedExistingPath(top.stdout.toString('utf8').trim()) !== normalizedExistingPath(path)) {
       throw new ExecutionAdapterError('existing path is not the planned worktree root');
     }
-    const repoCommon = await runGit(runner, prefix, ['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot, 'repository identity');
-    const treeCommon = await runGit(runner, prefix, ['rev-parse', '--path-format=absolute', '--git-common-dir'], path, 'worktree identity');
+    const repoCommon = await runForwardGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], repoRoot, 'repository identity');
+    assertForwardAdmission();
+    const treeCommon = await runForwardGit(['rev-parse', '--path-format=absolute', '--git-common-dir'], path, 'worktree identity');
+    assertForwardAdmission();
     if (normalizedExistingPath(repoCommon.stdout.toString('utf8').trim()) !== normalizedExistingPath(treeCommon.stdout.toString('utf8').trim())) {
       throw new ExecutionAdapterError('existing worktree belongs to a different repository');
     }
@@ -377,15 +397,19 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
       ensureHooksDir();
       if (existsSync(path)) {
         if (!lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree path is not a directory');
+        assertForwardAdmission();
         chmodWorktreeComponents(worktreeRoot, path);
         await verify(path);
-        const existing = await runGit(runner, prefix, ['rev-parse', 'HEAD'], path, 'attempt base verification');
+        const existing = await runForwardGit(['rev-parse', 'HEAD'], path, 'attempt base verification');
+        assertForwardAdmission();
         if (existing.stdout.toString('utf8').trim() !== baseCommit) {
           throw new ExecutionAdapterError('existing attempt worktree has a different committed lineage base');
         }
         return;
       }
+      assertForwardAdmission();
       mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+      assertForwardAdmission();
       chmodWorktreeComponents(worktreeRoot, dirname(path));
       // C2: with sparseReadScope AND a non-empty sparse set, materialize only those repo-relative paths
       // (effectiveRead ∪ writeScope). The write-scope paths MUST be included so the worker can write and
@@ -402,15 +426,18 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
         ? normalizeSparsePaths(input.sparsePaths ?? options.resolveSparsePaths?.(input))
         : [];
       if (sparsePaths.length > 0) {
-        await runGit(runner, prefix, ['worktree', 'add', '--no-checkout', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        await runForwardGit(['worktree', 'add', '--no-checkout', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        assertForwardAdmission();
         if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
         // `init --no-cone` takes a literal path list (not cone patterns), matching arbitrary repo roots.
-        await runGit(runner, prefix, ['sparse-checkout', 'init', '--no-cone'], path, 'sparse-checkout init');
-        await runGit(runner, prefix, ['sparse-checkout', 'set', ...sparsePaths], path, 'sparse-checkout set');
-        await runGit(runner, prefix, ['checkout'], path, 'sparse worktree checkout');
+        await runForwardGit(['sparse-checkout', 'init', '--no-cone'], path, 'sparse-checkout init');
+        await runForwardGit(['sparse-checkout', 'set', ...sparsePaths], path, 'sparse-checkout set');
+        await runForwardGit(['checkout'], path, 'sparse worktree checkout');
+        assertForwardAdmission();
         chmodWorktreeComponents(worktreeRoot, path);
       } else {
-        await runGit(runner, prefix, ['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        await runForwardGit(['worktree', 'add', '--detach', path, baseCommit], repoRoot, 'worktree creation');
+        assertForwardAdmission();
         if (!existsSync(path)) throw new ExecutionAdapterError('git did not create the planned worktree');
         chmodWorktreeComponents(worktreeRoot, path);
       }
@@ -420,15 +447,15 @@ export function createGitWorktreeAdapter(options: GitWorktreeAdapterOptions): Gi
     async inspect(input) {
       requireOperationKey(input.operationKey);
       const path = expectedAttemptPath(worktreeRoot, input.runRef, input.path);
+      assertForwardAdmission();
       if (!existsSync(path) || !lstatSync(path).isDirectory()) throw new ExecutionAdapterError('planned worktree is unavailable');
       await verify(path);
-      const status = await runGit(
-        runner,
-        prefix,
+      const status = await runForwardGit(
         ['status', '--porcelain=v1', '-z', '--untracked-files=all', '--ignore-submodules=all'],
         path,
         'changed-file inspection',
       );
+      assertForwardAdmission();
       const paths = parseStatus(status.stdout, maxChangedFiles);
       const changed: WorkerArtifactResult[] = [];
       for (const repoPath of paths) {
