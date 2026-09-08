@@ -124,6 +124,40 @@ describe('FigmentWorkspace', () => {
     render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
   });
 
+  it('shows two separate stopped prompt-profile reviews and keeps the recorded gaze disagreement', async () => {
+    const observations = (gaze: string) => ({ realism: 'recorded realism', resemblance_to_g01: 'recorded resemblance', pose: gaze, apparent_adulthood: 'recorded adulthood', apparent_age_fit: 'recorded age', clothing: 'recorded clothing', defects: 'recorded defects' });
+    const profileGallery = { status: 'recorded' as const, stage: 'profile-base' as const, historical: true as const, notPromotable: true as const, conditioning: 'no-pixel-reference-conditioning' as const, selectedCheckpoint: null, rows: [481516234, 90210].map((seed, index) => ({ seed, asset: { assetId: `profile-base-${seed}`, sha256: 'c'.repeat(64), bytes: 90, width: 1024, height: 1024 }, reviews: { root: { disposition: 'stop' as const, reason: 'root stop reason', observations: observations(index === 1 ? 'gaze toward camera' : 'recorded pose') }, independent: { disposition: 'stop' as const, reason: 'independent stop reason', observations: observations(index === 1 ? 'gaze away from camera' : 'recorded pose') } } })) };
+    const originalCreate = URL.createObjectURL; const originalRevoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:profile') }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    try {
+      const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response({ ...projection, diagnostic: { status: 'not-configured' }, profileGallery }) : url.endsWith('90210?sha256=' + 'c'.repeat(64)) ? response('', 409) : response('png', 200)) as unknown as typeof fetch;
+      render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
+      await screen.findByRole('img', { name: 'Prompt-profile diagnostic seed 481516234' });
+      expect(screen.getByText('Prompt-profile diagnostic')).toBeTruthy();
+      expect(screen.getByText('Both reviews stopped this prompt-profile test. No adapter comparison followed.')).toBeTruthy();
+      expect(screen.getAllByText('Root review — stop')).toHaveLength(2); expect(screen.getAllByText('Independent review — stop')).toHaveLength(2);
+      expect(screen.getAllByText('root stop reason')).toHaveLength(2); expect(screen.getAllByText('independent stop reason')).toHaveLength(2);
+      expect(screen.getByText('gaze toward camera')).toBeTruthy(); expect(screen.getByText('gaze away from camera')).toBeTruthy();
+      expect(screen.queryByText('Matched diagnostic pairs')).toBeNull(); expect(screen.queryByText('No diagnostic assets are available for review.')).toBeNull();
+      await screen.findByText('A recorded prompt-profile image could not be read.');
+      await screen.findByText('Recorded image unavailable.');
+      const assetCalls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => String(url).includes('/profile-gallery-assets/'));
+      expect(assetCalls).toHaveLength(2); expect(assetCalls.every(([, init]) => (init as RequestInit | undefined)?.method === undefined)).toBe(true);
+      expect(fetchImpl).toHaveBeenCalledWith('/api/figment/profile-gallery-assets/profile-base-481516234?sha256=' + 'c'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
+    } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
+  });
+
+  it('rejects malformed prompt-profile evidence while accepting an older absent field', async () => {
+    const older = vi.fn(() => response(projection)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={older} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
+    expect(screen.queryByText('Prompt-profile diagnostic')).toBeNull(); cleanup();
+    const base = { status: 'recorded', stage: 'profile-base', historical: true, notPromotable: true, conditioning: 'no-pixel-reference-conditioning', selectedCheckpoint: null };
+    for (const profileGallery of [{ ...base, rows: [] }, { ...base, selectedCheckpoint: 'step-20', rows: [] }]) {
+      const malformed = vi.fn(() => response({ ...projection, profileGallery })) as unknown as typeof fetch;
+      render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.'); cleanup();
+    }
+  });
+
   it('requests only the fixed offline tester preview and labels its limits', async () => {
     const preview = { schema: 'figment/plan-preview@1', offlinePreview: true, notPromotable: true, creator: 'creator-001', stage: 'tester', runCount: 1, declaredCeilingUsd: 2.5, manifestSha256: 'a'.repeat(64) };
     const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response(preview)) as unknown as typeof fetch;

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -97,6 +97,13 @@ describe('Figment read projection', () => {
     expect(projection.localTraining).toEqual({ status: 'not-configured' });
     expect(projection.localTrainingResults).toEqual({ status: 'not-configured' });
     expect(projection.matchedGallery).toEqual({ status: 'not-configured' });
+    expect(projection.profileGallery).toEqual({ status: 'not-configured' });
+  });
+
+  it('keeps the profile-gallery root optional and fails closed when its evidence is missing', async () => {
+    const paths = await fixture();
+    expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, undefined, undefined, null).profileGallery).toEqual({ status: 'not-configured' });
+    expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, undefined, undefined, paths.diagnostic).profileGallery).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
   });
 
   it('keeps completed-run roots optional and fails closed when their configured shape is malformed', async () => {
@@ -158,7 +165,7 @@ describe('Figment read projection', () => {
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
       if (path === '/api/figment') handler = candidate;
-      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name' || path === '/api/figment/matched-gallery-assets/:assetId').toBe(true);
+      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name' || path === '/api/figment/matched-gallery-assets/:assetId' || path === '/api/figment/profile-gallery-assets/:assetId').toBe(true);
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();
@@ -210,6 +217,33 @@ describe('Figment read projection', () => {
     expect((await app.inject({ method: 'GET', url: '/api/figment/matched-gallery-assets/../receipt.json?sha256=' + 'a'.repeat(64) })).statusCode).toBe(404);
     expect((await app.inject({ method: 'GET', url: '/api/figment/matched-gallery-assets/base-481516234?sha256=' + 'a'.repeat(64) })).statusCode).toBe(409);
     await app.close();
+  });
+
+  it('keeps the profile-gallery asset route opaque, stale without evidence, and PNG-only when served', async () => {
+    const paths = await fixture(); const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo, profileGalleryRoot: paths.diagnostic }); await app.ready();
+    const sha = 'a'.repeat(64);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/../receipt.json?sha256=' + sha })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/base-481516234?sha256=' + sha })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-1?sha256=' + sha })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-481516234?sha256=' + 'A'.repeat(64) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-481516234' })).statusCode).toBe(404);
+    // Valid selector, but the configured root holds no verifiable C3 evidence: stale, never a file read.
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-481516234?sha256=' + sha })).statusCode).toBe(409);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-90210?sha256=' + sha })).statusCode).toBe(409);
+    await app.close();
+    const unconfigured = Fastify(); registerFigmentRead(unconfigured, { repoRoot: paths.repo }); await unconfigured.ready();
+    expect((await unconfigured.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-481516234?sha256=' + sha })).statusCode).toBe(409);
+    await unconfigured.close();
+    // Header contract on a served asset, with the pinned reader mocked; the real evidence pins are exercised by the root's private smoke.
+    vi.resetModules();
+    vi.doMock('./profileGallery.ts', () => ({ collectProfileGallery: () => ({ status: 'recorded' }), readProfileGalleryAsset: () => png() }));
+    try {
+      const { registerFigmentRead: registerMocked } = await import('./routes.ts');
+      const mocked = Fastify(); registerMocked(mocked, { repoRoot: paths.repo, profileGalleryRoot: paths.diagnostic }); await mocked.ready();
+      const response = await mocked.inject({ method: 'GET', url: '/api/figment/profile-gallery-assets/profile-base-90210?sha256=' + sha });
+      expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toContain('image/png'); expect(response.headers['x-content-type-options']).toBe('nosniff'); expect(response.headers['cache-control']).toBe('no-store'); expect(response.rawPayload).toEqual(png());
+      await mocked.close();
+    } finally { vi.doUnmock('./profileGallery.ts'); vi.resetModules(); }
   });
 
   it('truncates after exactly 128 receipt-listed PNGs and refuses oversized assets', async () => {

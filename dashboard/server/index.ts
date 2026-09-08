@@ -137,6 +137,8 @@ export interface BuildAppOptions {
   figmentLocalTrainingResultRoots?: FigmentLocalTrainingResultRoots | null;
   /** Fixed private roots for the historical base/current-20 matched diagnostic pair gallery. */
   figmentMatchedGalleryRoots?: FigmentMatchedGalleryRoots | null;
+  /** Fixed private root for the historical C3 prompt-profile diagnostic (two profile-base images). */
+  figmentProfileGalleryRoot?: string | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -312,6 +314,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       localTrainingEvidence: configuredLocalTraining,
       localTrainingResultRoots: configuredLocalTrainingResults,
       matchedGalleryRoots: configuredMatchedGallery,
+      profileGalleryRoot: options.figmentProfileGalleryRoot ?? process.env.DASHBOARD_FIGMENT_PROFILE_BASE_ROOT ?? null,
     });
     registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });

@@ -1,0 +1,44 @@
+{
+  "disposition": "stop",
+  "human_qa": false,
+  "not_promotable": true,
+  "reason": "Both seeds miss the framing (head-and-shoulders/face crop, no elbows or below-waist), both miss the image-left turn, and both lose direct camera gaze (eyes raised up/off-lens); seed 481516234 also fails garment spec with a white graphic tee bearing garbled lettering.",
+  "receipt_sha256": "26e2396b3247730f9124386beb32198fba12930b85fddd18297165e27b7bd44c",
+  "record_provenance": {
+    "responding_model": "claude-opus-5",
+    "root_text_redaction": "Removed appearance-based ethnicity labels from the two resemblance fields. Disposition and all other observations preserved; raw provider result retained separately.",
+    "source_result_sha256": "5fa432318cb7836451f6abb953c84cd1b9bc8289e26dc5b849b37b1bfcaa86a1",
+    "syntax_repair": "Appended the missing outer-object closing brace."
+  },
+  "reviewer_role": "independent",
+  "rows": [
+    {
+      "observations": {
+        "apparent_adulthood": "Clearly and unambiguously an adult woman, no ambiguity.",
+        "apparent_age_fit": "Reads noticeably older than the target early-twenties range, closer to mid-thirties.",
+        "clothing": "Wrong garment \u2014 a white crew-neck graphic tee with garbled pseudo-text lettering instead of the specified plain opaque black crew-neck.",
+        "defects": "No anatomy duplication or material distortion; the only defect is nonsense typography on the shirt and mismatched background/lighting.",
+        "pose": "Framing is a tight head-and-upper-chest crop with no elbows and no below-waist visibility (fail); the head is roughly centered-right with a slight right/upward tilt rather than turned image-left (fail); gaze is directed up and off-lens rather than into camera (fail).",
+        "realism": "Clean studio-style photographic render with plausible skin texture and hair strands, though lighting is flat grey rather than warm daylight.",
+        "resemblance_to_g01": "Low resemblance: light irises, narrow face and heavy dark brows differ from the reference dark brown eyes and rounder jaw."
+      },
+      "output_sha256": "4235253ac57bbc22ef1d697fa453f938b38de5ba3946d5f2c8a433fbe91be1e1",
+      "seed": 481516234
+    },
+    {
+      "observations": {
+        "apparent_adulthood": "Unambiguously adult, mature facial structure and proportions.",
+        "apparent_age_fit": "Appears older than the target, roughly early-to-mid thirties rather than around twenty-one.",
+        "clothing": "Black top is present and opaque but is a sleeveless scoop-neck tank, not the specified crew-neck T-shirt.",
+        "defects": "No duplication or gross anatomical error; neck/collarbone rendering is slightly elongated and the hair part is off-center rather than center-parted.",
+        "pose": "Framing is an extreme head-and-neck close-up with shoulders barely included, no elbows, no space above the head and nothing near the waist (fail); the head is tilted back and slightly right, not turned image-left (fail); eyes look upward past the lens, so direct camera gaze is absent (fail).",
+        "realism": "Convincing high-resolution portrait realism with fine skin and hair detail, slightly retouched/editorial in finish.",
+        "resemblance_to_g01": "Low resemblance: angular face with long side-swept hair; brow, nose and lip shape differ from g01, though the eye color is dark brown."
+      },
+      "output_sha256": "00aa9673edb2a9ae6aed1084fcbf977795420f41bbe197d51a649e25dd177ace",
+      "seed": 90210
+    }
+  ],
+  "schema": "figment/local-lora-profile-pair-review@1",
+  "stage": "profile-base"
+}

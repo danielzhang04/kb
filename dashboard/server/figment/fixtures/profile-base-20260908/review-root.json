@@ -1,0 +1,38 @@
+{
+  "disposition": "stop",
+  "human_qa": false,
+  "not_promotable": true,
+  "reason": "Both seeds miss head-to-below-waist framing and both lack the requested image-left turn; the predetermined base-composition stop applies. No profile-current20 pair.",
+  "receipt_sha256": "26e2396b3247730f9124386beb32198fba12930b85fddd18297165e27b7bd44c",
+  "reviewer_role": "root",
+  "rows": [
+    {
+      "observations": {
+        "apparent_adulthood": "Unambiguously adult presentation.",
+        "apparent_age_fit": "Reads older than the intended about-21 adult reference; no exact age inference.",
+        "clothing": "Opaque white printed crew-neck T-shirt rather than the requested plain black one; coverage intact.",
+        "defects": "Wrong shirt color, invented text, wrong crop and turn; no duplicate subject or material visible anatomy failure.",
+        "pose": "Chest-up crop without waist or elbows; head turns image-right rather than image-left; gaze is toward image-right rather than camera.",
+        "realism": "Photographic skin and hair with polished cosmetic styling; invented T-shirt lettering is a visible defect.",
+        "resemblance_to_g01": "Weak resemblance: side-parted swept hair, light irises, strongly arched brows, angular face and magenta lipstick differ from g01."
+      },
+      "output_sha256": "4235253ac57bbc22ef1d697fa453f938b38de5ba3946d5f2c8a433fbe91be1e1",
+      "seed": 481516234
+    },
+    {
+      "observations": {
+        "apparent_adulthood": "Unambiguously adult presentation.",
+        "apparent_age_fit": "Adult appearance reads older than the intended about-21 reference; no exact age inference.",
+        "clothing": "Opaque black sleeveless scoop-neck top rather than the requested crew-neck T-shirt; coverage intact.",
+        "defects": "Missing required framing and turn, wrong shirt shape; no duplicated subject or material visible anatomy failure.",
+        "pose": "Tight head-and-chest crop clips the top of the hair; waist and elbows absent; mostly frontal head with tilt and direct camera gaze rather than the requested image-left turn.",
+        "realism": "Photographic close portrait with visible skin texture and polished makeup.",
+        "resemblance_to_g01": "Weak resemblance despite black hair and brown eyes: wider rounded eyes, heavier arched brows, longer angular face and vivid magenta lipstick differ from g01."
+      },
+      "output_sha256": "00aa9673edb2a9ae6aed1084fcbf977795420f41bbe197d51a649e25dd177ace",
+      "seed": 90210
+    }
+  ],
+  "schema": "figment/local-lora-profile-pair-review@1",
+  "stage": "profile-base"
+}

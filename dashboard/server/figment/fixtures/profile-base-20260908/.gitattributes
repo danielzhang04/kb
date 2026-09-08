@@ -1,0 +1,2 @@
+# Historical records are hashed as raw bytes.
+*.json -text

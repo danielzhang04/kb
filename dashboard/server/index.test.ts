@@ -436,6 +436,7 @@ describe('server', () => {
     '/api/index', '/api/inbox', '/api/home', '/api/health', '/api/routing', '/api/figment',
     '/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/figment/matched-gallery-assets/base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000',
+    '/api/figment/profile-gallery-assets/profile-base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000',
     '/api/agents', '/api/agents/system-workers', '/api/agents/example',
     '/api/schedules',
@@ -448,6 +449,13 @@ describe('server', () => {
     app = matrixApp();
     const response = await app.inject({ method: 'GET', url, headers: matrixHeaders });
     expect(response.statusCode).toBe(401);
+  });
+
+  it('protects profile-gallery reads with the existing origin guard', async () => {
+    app = matrixApp();
+    const url = '/api/figment/profile-gallery-assets/profile-base-481516234?sha256=' + '0'.repeat(64);
+    const response = await app.inject({ method: 'GET', url, headers: { ...sessionHeaders(), origin: 'https://wrong.example' } });
+    expect(response.statusCode).toBe(403);
   });
 
   it.each([
@@ -497,6 +505,7 @@ describe('server', () => {
       figmentLocalTrainingEvidence: { cpuPreflight: 'missing-cpu', tokenizerLaunch: 'missing-launch', plan: 'missing-plan', tokenizerLoad: 'missing-tokenizer' },
       figmentLocalTrainingResultRoots: { tenStep: { run: 'missing-ten-run', plan: 'missing-ten-plan', admissionParent: 'missing-ten-admission' }, currentQuality: { run: 'missing-current-run', plan: 'missing-current-plan', admissionParent: 'missing-current-admission', cpu: 'missing-current-cpu' } },
       figmentMatchedGalleryRoots: { base: 'missing-matched-base', current20: 'missing-matched-current' },
+      figmentProfileGalleryRoot: 'missing-profile-base',
     });
     expect((await app.inject({ method: 'GET', url: '/api/figment', headers: matrixHeaders })).statusCode).toBe(401);
     const response = await app.inject({ method: 'GET', url: '/api/figment', headers: sessionHeaders() });
@@ -514,6 +523,7 @@ describe('server', () => {
     ['/api/kb/file?path=docs/x.md', 404], ['/api/kb/history?path=docs/x.md', 200],
     ['/api/figment/diagnostic-assets/proof.png?sha256=0000000000000000000000000000000000000000000000000000000000000000', 404],
     ['/api/figment/matched-gallery-assets/base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
+    ['/api/figment/profile-gallery-assets/profile-base-481516234?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/figment/reference-assets/creator-001/g01.jpg?sha256=0000000000000000000000000000000000000000000000000000000000000000', 409],
     ['/api/agents/example', 404], ['/api/workflows/example', 404],
     ['/api/control/runs/example', 404], ['/api/control/runs/example/events', 404],
