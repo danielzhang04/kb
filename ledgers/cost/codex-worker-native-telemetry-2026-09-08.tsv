@@ -40,3 +40,11 @@ native-runtime telemetry unavailable; numeric compute tracked separately		not-ex
 native-runtime telemetry unavailable; final stale-card correction recheck		not-exposed		gpt-5.6-terra	not-exposed	figment-final-record-superseded-instructions-recheck	not-exposed
 native-runtime telemetry unavailable; documentation only, no GPU		not-exposed		gpt-5.6-luna	not-exposed	figment-operator-feedback-report-update	not-exposed
 native-runtime telemetry unavailable; documentation only, no GPU		not-exposed		gpt-5.6-luna	not-exposed	figment-tester-prompt-age-mismatch-record	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-async-capability-gap-map	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-async-runtime-audit	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-research-book-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-persona-heldout-protocol-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-api-build	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-terra	not-exposed	figment-protocol-independent-review	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-anchor-consistency-audit	not-exposed
+native-runtime telemetry unavailable; no new GPU in async phase yet		not-exposed		gpt-5.6-luna	not-exposed	figment-research-book-claim-correction	not-exposed

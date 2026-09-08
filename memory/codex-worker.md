@@ -554,3 +554,13 @@ Signal to recognize: a hard-coded tester prompt duplicates fields already presen
 the persona specification. Adult/clothing compliance, realism, identity fidelity and
 intended age are separate judgments; passing one cannot stand in for the others.
 The wording mismatch is observed, while its contribution to the result remains unproven.
+
+## 2026-09-08 - Keep-awake status must include live ownership
+
+An armed power-state file remained after both old lease owners and the supervisor
+were dead. Next time overnight work is requested, I will verify owner PID/start identity,
+supervisor liveness and actual power-arm evidence rather than trusting armed:true.
+Signal to recognize: status reports armed but alive:false for the supervisor/leases.
+The existing Acquire path reconciled stale settings and restored a live supervised lease.
+An awake laptop does not itself provide an agent sequencer; the active native session
+and a detached runner are different capabilities and must be reported separately.
