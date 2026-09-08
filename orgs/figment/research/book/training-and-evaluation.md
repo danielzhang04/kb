@@ -42,6 +42,8 @@ eligibility decision. The higher current ladder is stopped pending protocol
 analysis; no current-50/current-final or concise admission has been issued.
 See the [training results hub review](../../../../docs/figment/2026-09-08-training-results-hub-review.md).
 
+Latest status, 2026-09-08: the separate C3 prompt-profile calibration, not the C2 higher-stage ladder, completed its two-PNG `profile-base` stage and stopped under the predeclared base-composition rule. Both reviews record missing framing and turn and weak `g01` resemblance at base, so no profile-current-20 pair was admitted and the study is terminal. This does not reopen current-50, current-final100, or a concise admission; the completed current-caption 100-step fit remains a runtime capability only, with no quality promotion. The next branch is a separately planned local OmniGen2 reference-conditioned research probe: weights downloaded and verified, planner under review, no images or runtime record yet, Qwen3B commercial rights unclear, and no claim that reference conditioning wins. See the [profile-base runtime audit](../../../../docs/figment/2026-09-08-local-profile-base-runtime-audit.md).
+
 The separately accepted `f6b5096d` compiler and `af7b07bc` executor keep the
 same lineage boundary outside production `load_plan`. The executor defaults to
 offline preparation; a harness dry-run uses the existing manifest contract,
