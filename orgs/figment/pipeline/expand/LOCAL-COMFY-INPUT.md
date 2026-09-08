@@ -56,3 +56,9 @@ completed the V3 baseline with verified owned teardown and one local image. Its
 independent visual review rejected that image as a training input for reference
 drift, extra portrait faces in the background, and wardrobe/composition drift;
 the completion does not establish identity quality.
+
+The later face-crop condition produced one local file but its launcher journal
+failed closed because teardown could not verify the venv redirector wrapper.
+The preserved recovery observation recorded all three tracked PIDs absent and
+no listener; it is not a completed receipt, does not make the image eligible for
+training, and was not retried.

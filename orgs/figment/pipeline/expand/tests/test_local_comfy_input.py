@@ -518,6 +518,44 @@ def test_wait_terminated_handle_tolerates_transient_metadata_reopen_error(local,
     assert module._wait_terminated_record(identity)["state"] == "terminated-wait-verified"
 
 
+def test_teardown_recovers_when_wrapper_exits_between_check_and_pid_termination(local, monkeypatch):
+    """A signalled retained Popen handle is exact proof for the original wrapper."""
+    module, _repo = local
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    process = object()
+    exited = {**wrapper.record(), "state": "terminated-wait-verified"}
+    checks = iter((None, exited))
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_: {wrapper.pid: wrapper})
+    monkeypatch.setattr(module, "_process_parents", lambda: {})
+    monkeypatch.setattr(module, "_held_wrapper_exit_record", lambda *_: next(checks))
+    monkeypatch.setattr(module, "_terminate_identity", lambda _:
+                        (_ for _ in ()).throw(module.LocalComfyError("cannot inspect owned process identity")))
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper}, process)
+    assert teardown["verified_stopped"] is True
+    assert teardown["owned_processes"] == [exited]
+    assert teardown["teardown_errors"] == []
+    assert teardown["teardown_error_details"] == []
+
+
+def test_teardown_persists_finite_stage_and_code_for_a_termination_error(local, monkeypatch):
+    module, _repo = local
+    child = module.ProcessIdentity(2345, 101, 1234)
+    wrapper = module.ProcessIdentity(1234, 100, None)
+    monkeypatch.setattr(module, "_discover_owned_processes", lambda *_:
+                        {wrapper.pid: wrapper, child.pid: child})
+    monkeypatch.setattr(module, "_process_parents", lambda: {child.pid: wrapper.pid})
+    monkeypatch.setattr(module, "_held_wrapper_exit_record", lambda *_: None)
+    def refuse(identity):
+        if identity == child:
+            raise module.LocalComfyError("cannot terminate owned process")
+        return {**identity.record(), "state": "terminated"}
+    monkeypatch.setattr(module, "_terminate_identity", refuse)
+    teardown = module._teardown(wrapper, {wrapper.pid: wrapper, child.pid: child}, object())
+    assert teardown["verified_stopped"] is False
+    assert teardown["teardown_error_details"] == [
+        {"stage": "descendant-termination", "pid": child.pid, "code": "termination-rejected"}]
+
+
 def test_listener_rebind_after_readiness_refuses_before_post(local, tmp_path, monkeypatch):
     module, repo = local
     run = tmp_path / "_private" / "figment-local-comfy-rebind"; run.parent.mkdir()

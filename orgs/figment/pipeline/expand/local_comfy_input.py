@@ -619,6 +619,26 @@ def _terminate_held_wrapper(process: Any, wrapper: ProcessIdentity) -> dict[str,
     return _wait_terminated_record(wrapper)
 
 
+def _held_wrapper_exit_record(process: Any, wrapper: ProcessIdentity) -> dict[str, Any] | None:
+    """Return exact-handle exit proof when the redirector has already exited.
+
+    A venv launcher can leave its child server alive while the Popen wrapper exits
+    naturally during child-first teardown.  The retained Popen handle identifies
+    that original wrapper even if its PID becomes available for reuse; it is the
+    only safe way to recognize this particular natural exit.
+    """
+    handle = getattr(process, "_handle", None)
+    if handle is None:
+        return None
+    kernel32 = _kernel32()
+    state = kernel32.WaitForSingleObject(handle, 0)
+    if state == WAIT_OBJECT_0:
+        return _wait_terminated_record(wrapper)
+    if state == WAIT_TIMEOUT:
+        return None
+    raise LocalComfyError("cannot query held ComfyUI wrapper exit state")
+
+
 def _wait_terminated_record(identity: ProcessIdentity) -> dict[str, Any]:
     """A waited exact handle proves exit even if a later metadata reopen races cleanup."""
     try:
@@ -634,6 +654,31 @@ def _verified_absent_record(identity: ProcessIdentity) -> dict[str, Any]:
     if _process_identity(identity.pid, identity.parent_pid) is not None:
         raise LocalComfyError("owned process remained live after teardown")
     return {**identity.record(), "state": "verified-absent"}
+
+
+def _teardown_error_detail(stage: str, identity: ProcessIdentity,
+                           exc: LocalComfyError) -> dict[str, Any]:
+    """Persist a finite diagnosis without copying runtime text into the journal."""
+    message = str(exc)
+    codes = {
+        "cannot inspect owned process identity": "identity-inspection-unavailable",
+        "cannot open owned process identity": "identity-open-failed",
+        "cannot read owned process state": "identity-state-unavailable",
+        "cannot read owned process creation time": "identity-creation-unavailable",
+        "owned process remained live after teardown": "process-still-live",
+        "refusing to terminate a reused PID": "pid-reused",
+        "cannot open owned process for teardown": "termination-handle-unavailable",
+        "owned process identity changed before teardown": "identity-changed",
+        "cannot terminate owned process": "termination-rejected",
+        "owned process did not terminate within bound": "termination-timeout",
+        "launched wrapper handle is unavailable for teardown": "wrapper-handle-unavailable",
+        "launched wrapper identity changed before tree teardown": "wrapper-identity-changed",
+        "cannot terminate held ComfyUI wrapper": "wrapper-termination-rejected",
+        "held ComfyUI wrapper did not terminate within bound": "wrapper-termination-timeout",
+        "cannot query held ComfyUI wrapper exit state": "wrapper-exit-state-unavailable",
+    }
+    return {"stage": stage, "pid": identity.pid,
+            "code": codes.get(message, "local-comfy-error")}
 
 
 def _teardown(wrapper: ProcessIdentity, tracked: dict[int, ProcessIdentity],
@@ -665,6 +710,7 @@ def _teardown(wrapper: ProcessIdentity, tracked: dict[int, ProcessIdentity],
     ordered = sorted(owned.values(), key=lambda item: depth.get(item.pid, 0), reverse=True)
     stopped: list[dict[str, Any]] = []
     errors: list[str] = []
+    error_details: list[dict[str, Any]] = []
     uncertain = discovery_error is not None or parent_snapshot_error
     unreadable_pid = getattr(discovery_error, "unreadable_pid", None)
     unresolved: list[dict[str, Any]] = []
@@ -674,12 +720,36 @@ def _teardown(wrapper: ProcessIdentity, tracked: dict[int, ProcessIdentity],
         if identity.pid == unreadable_pid:
             continue
         try:
+            if identity == wrapper:
+                naturally_exited = _held_wrapper_exit_record(process, wrapper)
+                if naturally_exited is not None:
+                    stopped.append(naturally_exited)
+                    continue
             if identity == wrapper and uncertain and _process_identity(wrapper.pid, wrapper.parent_pid) is not None:
                 stopped.append(_terminate_held_wrapper(process, wrapper))
             else:
                 stopped.append(_terminate_identity(identity))
         except LocalComfyError as exc:
-            errors.append(type(exc).__name__)
+            if identity == wrapper:
+                # The exact retained handle can become signalled between the
+                # initial check and a normal PID-based termination attempt.
+                try:
+                    naturally_exited = _held_wrapper_exit_record(process, wrapper)
+                except LocalComfyError as recovery_exc:
+                    errors.append(type(recovery_exc).__name__)
+                    error_details.append(_teardown_error_detail(
+                        "wrapper-exit-recovery", identity, recovery_exc))
+                else:
+                    if naturally_exited is not None:
+                        stopped.append(naturally_exited)
+                        continue
+                    errors.append(type(exc).__name__)
+                    error_details.append(_teardown_error_detail(
+                        "wrapper-termination", identity, exc))
+            else:
+                errors.append(type(exc).__name__)
+                error_details.append(_teardown_error_detail(
+                    "descendant-termination", identity, exc))
     verified = not uncertain and not errors and not unresolved
     if (discovery_error is not None and not parent_snapshot_error and wrapper_absent_before_cleanup
             and not errors and not unresolved and all(
@@ -691,6 +761,7 @@ def _teardown(wrapper: ProcessIdentity, tracked: dict[int, ProcessIdentity],
             "discovery_error": type(discovery_error).__name__ if discovery_error else None,
             "unresolved_processes": unresolved,
             "parent_snapshot_error": parent_snapshot_error, "teardown_errors": errors,
+            "teardown_error_details": error_details,
             "verified_stopped": verified}
 
 
