@@ -10,6 +10,7 @@ import calendar
 import copy
 import csv
 import hashlib
+import importlib.util
 import io
 import json
 import logging
@@ -31,6 +32,25 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 from urllib.parse import quote
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
+
+
+def _load_adjacent_recovery_module() -> Any:
+    """Load recovery next to this file when this runner is importlib-loaded."""
+    path = Path(__file__).with_name("recovery.py")
+    name = f"{__name__}._pod_recovery"
+    existing = sys.modules.get(name)
+    if existing is not None:
+        return existing
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:  # pragma: no cover - local file is required.
+        raise ImportError(f"cannot load recovery helper at {path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+pod_recovery = _load_adjacent_recovery_module()
 
 try:
     import requests
@@ -3619,10 +3639,9 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 "upload chunk plan: %s -> %d parts (chunk_bytes=%d, bytes=%d)",
                 item.remote_name, parts, item.chunk_bytes, item.size_bytes,
             )
-    ledger_target = (
-        out_dir / "dry-run-ledger"
-        if dry_run and ledger_dir is None else configured_ledger_dir(ledger_dir)
-    )
+    # A dry run must never append its deterministic `dry-run-pod` placeholder to a
+    # supplied real ledger.  It has no billable transaction to reconcile.
+    ledger_target = out_dir / "dry-run-ledger" if dry_run else configured_ledger_dir(ledger_dir)
     logger.info("cost ledger directory: %s", ledger_target)
     # Capture the operating day once for this create transaction. Every provisional and
     # settled row from the invocation reuses it even if teardown crosses local midnight.
@@ -3706,6 +3725,11 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
     current_cost_for_ledger = 0.0
     placement_needs_close = False
     placement_error: BaseException | None = None
+    recovery_journal_path: Path | None = None
+    try:
+        run_directory_lock = pod_recovery.acquire_run_directory_lock(out_dir / "run.json")
+    except pod_recovery.RecoveryError as exc:
+        raise HarnessError(f"could not reserve a fresh run directory before pod create: {exc}") from exc
 
     def retain_finalization_failure(label: str, secondary: BaseException) -> None:
         nonlocal caught
@@ -3743,6 +3767,30 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                         "full-run estimate exceeds the arc cap"
                     )
             payload = create_payload(manifest, manifest_path)
+            # This write is intentionally immediately before the create request.  If
+            # the desktop dies during POST, a surviving host has one narrow name,
+            # manifest digest, receipt path, and budget-bound attempt to reconcile.
+            try:
+                manifest_digest = (
+                    pod_recovery.manifest_sha256(manifest_path)
+                    if manifest_path.is_file()
+                    else hashlib.sha256(
+                        json.dumps(manifest, sort_keys=True, default=str).encode("utf-8")
+                    ).hexdigest()
+                )
+                recovery_journal_path = pod_recovery.create_intent(
+                    receipt_path=out_dir / "run.json",
+                    manifest_path=manifest_path,
+                    manifest_digest=manifest_digest,
+                    pod_name=str(payload["name"]),
+                    max_minutes=max_minutes,
+                    max_usd=max_usd,
+                    created_utc=utc_now(),
+                )
+                result.setdefault("recovery_journals", []).append(str(recovery_journal_path))
+                logger.info("durable recovery intent: %s", recovery_journal_path)
+            except pod_recovery.RecoveryError as exc:
+                raise HarnessError(f"could not persist recovery intent before pod create: {exc}") from exc
             current_placement_started = (
                 started if placement_attempt == 1 else time.monotonic()
             )
@@ -3751,6 +3799,10 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             def record_acquired(
                     pod_id: str, _pod: dict[str, Any] | None,
                     *, attempt: int = placement_attempt) -> None:
+                # PodLease records pod_id before calling this callback, so an atomic
+                # journal failure still leaves its in-memory owner able to teardown.
+                assert recovery_journal_path is not None
+                pod_recovery.record_acquired(recovery_journal_path, pod_id, _pod)
                 result["pod_id"] = pod_id
                 cost_path = upsert_cost_row(
                     ledger_target,
@@ -3806,6 +3858,18 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             lease.close()
             _pod_id, _pod_name, verified = lease.snapshot()
             current_placement_record["termination_verified"] = verified
+            try:
+                assert recovery_journal_path is not None
+                pod_recovery.record_terminal(
+                    recovery_journal_path,
+                    absence_verified=verified,
+                    status="avoided-placement-terminated",
+                    error_code=(None if verified else "avoided-placement-unverified"),
+                )
+            except BaseException as exc:
+                raise HarnessError(
+                    "could not durably finalize avoided placement before recreation"
+                ) from exc
             placement_elapsed = time.monotonic() - current_placement_started
             placement_cost, placement_basis = settled_cost_estimate(
                 elapsed_seconds=placement_elapsed,
@@ -4272,6 +4336,22 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             write_json(out_dir / "run.json", result, redactor)
         except BaseException as secondary:
             retain_finalization_failure("run.json write", secondary)
+        if recovery_journal_path is not None:
+            try:
+                pod_recovery.record_terminal(
+                    recovery_journal_path,
+                    absence_verified=bool(result.get("termination_verified")),
+                    status=(
+                        "run-finished" if result.get("termination_verified")
+                        else "run-termination-unverified"
+                    ),
+                    error_code=(
+                        "run-termination-unverified"
+                        if not result.get("termination_verified") else None
+                    ),
+                )
+            except BaseException as secondary:
+                retain_finalization_failure("recovery journal finalization", secondary)
         if images_manifest:
             try:
                 write_json(out_dir / "manifest.json", {"images": images_manifest}, redactor)
@@ -4290,6 +4370,10 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
                 logger.info("cost row: %s", cost_path)
             except BaseException as secondary:
                 retain_finalization_failure("cost ledger write", secondary)
+        try:
+            run_directory_lock.release()
+        except BaseException as secondary:
+            retain_finalization_failure("recovery run-directory lock release", secondary)
     if caught is None and not result["termination_verified"]:
         caught = PodStillRunning(f"POD STILL RUNNING {result['pod_id'] or 'UNKNOWN'}")
     if caught:
@@ -4360,6 +4444,30 @@ def command_terminate(args: argparse.Namespace) -> int:
         return 0
     except BaseException as exc:
         raise attach_lease_status(exc, lease)
+    finally:
+        session.close()
+
+
+def command_recover(args: argparse.Namespace) -> int:
+    """One-shot reconciliation of exactly one durable recovery journal."""
+    try:
+        session, redactor = build_authenticated_session()
+    except KeyError as exc:
+        raise HarnessError("RUNPOD_API_KEY is required for live commands") from exc
+    set_active_redactor(redactor)
+    logger = build_logger(redactor)
+    try:
+        try:
+            document = pod_recovery.reconcile(
+                args.journal.resolve(), RunPodAPI(session), logger, PodLease,
+                sleep=time.sleep,
+            )
+        except pod_recovery.RecoveryError as exc:
+            raise HarnessError(f"RECOVERY REFUSED: {exc}") from exc
+        if not document.get("absence_verified"):
+            raise PodStillRunning("POD STILL RUNNING; recovery did not verify absence")
+        logger.info("recovery verified absence for journal %s", args.journal)
+        return 0
     finally:
         session.close()
 
@@ -4471,6 +4579,14 @@ def build_parser() -> argparse.ArgumentParser:
     terminate = sub.add_parser("terminate", help="terminate a pod and verify it is absent")
     terminate.add_argument("--pod-id", required=True)
     terminate.set_defaults(func=command_terminate)
+    recover = sub.add_parser(
+        "recover", help="one-shot terminate-and-verify for one durable recovery journal",
+    )
+    recover.add_argument(
+        "--journal", required=True, type=Path,
+        help="one run directory recovery-<pod-name>.json journal; no account-wide scan is performed",
+    )
+    recover.set_defaults(func=command_recover)
     status = sub.add_parser("status", help="list pods and their billing status")
     status.add_argument(
         "--ledger-dir", type=Path,
