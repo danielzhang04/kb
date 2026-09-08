@@ -23,8 +23,8 @@ single-`g01` curation and evidence for at least 20 exact training rows. The
 executor defaults to local preparation or a harness dry-run; live execution
 also needs a fixed parent admission and current revalidation. Neither component
 writes an operator acceptance, checkpoint selection, QA stamp, or production
-plan; production loaders reject the separate schema. The four currently
-recorded generated inputs remain unavailable, so there is no 20-row accepted
+plan; production loaders reject the separate schema. The current gallery
+diagnostics are all training-ineligible, so there is no 20-row accepted
 first-generation dataset, admission, or live experimental training.
 
 The [canonical-seed audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md), accepted at
@@ -39,8 +39,11 @@ executor at `41449404` completed one bounded V3 loopback diagnostic after the
 earlier startup failures: it wrote one hash-bound 1024-square PNG and verified
 all owned processes stopped. The result was visually rejected as a same-person
 candidate, so runtime completion did not create a training input, approval, or
-export. The next local crop-conditioning experiment is under final review; see
-the [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audit.md).
+export. A later crop diagnostic preserved an output but failed closed at
+teardown; a subsequent simple-portrait diagnostic completed and was also
+rejected. See the [crop review](../../../../docs/figment/2026-09-08-local-crop-diagnostic-review.md),
+[simple-portrait review](../../../../docs/figment/2026-09-08-local-simple-portrait-review.md),
+and [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audit.md).
 Exact Google/g01 export and LoRA export remain blocked, production acceptance
 remains an operator decision, and Instagram work remains deferred.
 
