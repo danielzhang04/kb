@@ -1,3 +1,43 @@
+# Final independent C delivery disposition - 2026-09-08
+
+**TECHNICALLY READY - bounded C delivery port only.** Root reviewed the
+corrected adapter and focused tests independently of its builder. The two
+concrete early-exit findings below are closed. Skipped required EOF now refuses
+before acknowledgement; exit/cancellation between opening frames poisons local
+authority before the common refusal/result path, preserving the write-intent
+and PTY ambiguity. Explicit number narrowing makes both runtime revision checks
+valid under strict TypeScript. No remaining blocking finding in this C scope.
+
+Root verification after the final C edit:
+
+- Exact native/no-cache/serial adapter + vertical command: **103/103 passed**,
+  two files, 12.38s total (10.70s tests).
+- Full dashboard `npm.cmd run typecheck`: **PASS** at this checkpoint. A1/D1
+  remain active independent edits, so this is not their final acceptance gate.
+- Root-owned independent early-exit probes: **2/2 passed**, 93 unrelated cases
+  skipped, 854ms total, after their original 2/2 red result. Both regressions
+  are now preserved in the real adapter suite; temporary review copy removed.
+- Path-limited `git diff --check`: **PASS**; only line-ending advisories.
+
+Reviewed trust boundaries: creator-only durable claims, exact declaration and
+encoded prompt binding, one admitted PTY CAS, observed/ambiguous transition
+refusal, owned cleanup, partial delivery/EOF, and generation admission on opening
+and subsequent instruction writes. The real C0 store backs all ordinary claim
+fixtures; real registry vertical tests cover persistent binding and observer
+non-adoption. Deprecated drain remains type-compatible but is never invoked;
+missing claim port refuses before effects. Cross-adapter terminal adoption is
+intentionally unavailable under the approved staging decision.
+
+Scope: attemptSessionAdapter.ts, attemptSessionAdapter.test.ts,
+attemptVertical.integration.test.ts, implementation report, and this review.
+A0/C0/schema behavior remains previously accepted. B must still wire the real
+claim port/lifetime and prove actual Lock behavior; no activation, full Phase0,
+Linux/browser, merge or production readiness follows from this verdict. This is
+an independent technical review, not a formal inspector grade. Requested Terra
+builder model and actual responding/cost telemetry remain distinguished.
+
+---
+
 # Current independent C delivery review - 2026-09-08
 
 **REQUEST CHANGES.** The user renewed the earlier bounded correction in the

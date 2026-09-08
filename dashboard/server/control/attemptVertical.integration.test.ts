@@ -1,7 +1,7 @@
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type {
   ApprovedAttemptDeclaration,
@@ -29,12 +29,24 @@ import { createRawSessionReplaySource } from '../pty/replayReader.ts';
 import { sha256Hex } from '../shared/hashing.ts';
 import type { ExecutionProfile } from './policy.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from './proposal.ts';
-import { createAttemptSessionAdapter } from './attemptSessionAdapter.ts';
+import { createAttemptSessionAdapter as createAttemptSessionAdapterRaw } from './attemptSessionAdapter.ts';
+import { createAgentSessionChainStore } from './agentSessionChains.ts';
 import { projectAttemptSessions } from './runProjection.ts';
 
 interface Deferred<T> {
   promise: Promise<T>;
   resolve(value: T): void;
+}
+
+const claimRoots: string[] = [];
+afterEach(() => { for (const root of claimRoots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+function claimStore() {
+  const claimRoot = mkdtempSync(join(tmpdir(), 'attempt-claim-'));
+  claimRoots.push(claimRoot);
+  return createAgentSessionChainStore(claimRoot);
+}
+function createAttemptSessionAdapter(options: Parameters<typeof createAttemptSessionAdapterRaw>[0]) {
+  return createAttemptSessionAdapterRaw({ ...options, messageClaims: options.messageClaims ?? claimStore() });
 }
 
 function deferred<T>(): Deferred<T> {
@@ -289,7 +301,7 @@ describe('attempt-start real document vertical', () => {
     expect(retained.sessions.some((record) => record.sessionId === host.sessionId)).toBe(false);
   });
 
-  it('persists, binds, prompts, reattaches, and cancels through the real registry without refusal', async () => {
+  it('persists, binds, prompts, and keeps cross-instance observers out of the real registry', async () => {
     const events: string[] = [];
     const refusals: Array<PortResult<unknown>> = [];
     const track = <T>(result: PortResult<T>): PortResult<T> => {
@@ -338,9 +350,11 @@ describe('attempt-start real document vertical', () => {
     let observedFrames = 0;
     const observedOutput: string[] = [];
     const input = claudeDeclaration();
+    const claims = claimStore();
     const adapter = createAttemptSessionAdapter({
       host,
       sessionRecords: registry,
+      messageClaims: claims,
       log: (message) => logs.push(message),
       recorder: {
         data(_attempt, frame) {
@@ -367,8 +381,9 @@ describe('attempt-start real document vertical', () => {
     expect(afterBind.attemptOperations[hostOperationKey]).toMatchObject({
       operationKey: hostOperationKey,
       status: 'bound',
-      promptsDelivered: 2,
+      promptsDelivered: 0,
       sessionId: host.sessionId,
+      messageClaim: expect.objectContaining({ declarationFingerprint: expect.any(String) }),
     });
     expect(afterBind.sessions).toContainEqual(expect.objectContaining({
       provenance: 'run',
@@ -389,14 +404,16 @@ describe('attempt-start real document vertical', () => {
       },
     }));
     expect(afterBind.sessions).toHaveLength(1);
-    expect(statuses).toContain('bound');
+    // The registry's atomic start writes its bound record inside its own persistence mutation; the
+    // adapter-facing write spy sees only the pre-admission pending record.
+    expect(statuses).toEqual(['pending']);
     expect(host.writes).toHaveLength(2);
     // Two prompts, and NO end-of-input: this is a claude attempt, and `--input-format stream-json`
     // frames its own turns off a pipe that has to stay open for the next one. Half-closing it here
     // would end the session after the binding prompt.
     expect(host.endInputCalls).toEqual([]);
-    expect(events.indexOf('start-run-session:done'))
-      .toBeLessThan(events.indexOf('operation-session:bound:1'));
+    expect(events).toContain('start-run-session:done');
+    expect(events).not.toContain('operation-session:bound:0');
     expect(host.probeCalls).toBe(0);
     expect(observedFrames).toBe(2);
     expect(observedOutput).toEqual(earlyOutput);
@@ -419,6 +436,7 @@ describe('attempt-start real document vertical', () => {
     const replayAdapter = createAttemptSessionAdapter({
       host,
       sessionRecords: registry,
+      messageClaims: claims,
       log: (message) => logs.push(message),
       recorder: {
         data() { observedFrames += 1; },
@@ -428,10 +446,9 @@ describe('attempt-start real document vertical', () => {
     });
     const replay = replayAdapter.begin({ ...input });
     await expect(replay.receipt).resolves.toMatchObject({
-      ok: true,
-      value: { operationKey: input.operationKey, sessionId: host.sessionId, replayed: true },
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
     });
-    expect(host.createCalls).toBe(2);
+    expect(host.createCalls).toBe(1);
     expect(host.createCount).toBe(1);
     expect(host.writes).toHaveLength(2);
     expect(host.closeCalls).toEqual([]);
@@ -440,58 +457,17 @@ describe('attempt-start real document vertical', () => {
     expect(afterReplay.attemptBindings).toHaveLength(1);
     expect(afterReplay.operationReceipts).toHaveLength(1);
 
-    const restartedHost = new LinuxShapedSessionHost(track, 'd', 'e');
-    const restartedRegistry = createSessionRecordRegistry({
-      host: restartedHost,
-      hostKind: 'vm',
-      persistence,
-      now: () => '2026-09-02T16:01:01.000Z',
-    });
-    const restartedAdapter = createAttemptSessionAdapter({
-      host: restartedHost,
-      sessionRecords: restartedRegistry,
-    });
-    const restarted = restartedAdapter.begin({ ...input });
-    await expect(restarted.receipt).resolves.toMatchObject({
-      ok: true,
-      value: { operationKey: input.operationKey, sessionId: restartedHost.sessionId },
-    });
-    const afterRestart = readDocument();
-    expect(afterRestart.sessions).toHaveLength(2);
-    expect(afterRestart.sessions.find((record) => record.sessionId === host.sessionId)).toMatchObject({
-      sessionId: host.sessionId,
-      operationKey: hostOperationKey,
-      state: 'abandoned',
-      endedAt: '2026-09-02T16:01:01.000Z',
-      abandonReason: 'daemon-restart',
-      attachmentIds: [],
-      transcript: expect.objectContaining({ path: `pty/transcripts/${host.sessionId}.raw` }),
-      exit: { sessionId: host.sessionId, reason: 'abandoned', observedAt: '2026-09-02T16:01:01.000Z' },
-    });
-    expect(afterRestart.sessions.find((record) => record.sessionId === restartedHost.sessionId))
-      .toMatchObject({ state: 'live', epochId: restartedHost.epochId });
-    expect(afterRestart.attemptBindings).toEqual([
-      expect.objectContaining({ sessionId: host.sessionId, attemptRef: input.attemptRef, retired: true }),
-      expect.objectContaining({ sessionId: restartedHost.sessionId, attemptRef: input.attemptRef }),
-    ]);
-    expect(afterRestart.operationReceipts).toEqual([
-      expect.objectContaining({ operationKey: hostOperationKey, sessionId: restartedHost.sessionId }),
-    ]);
-    expect(afterRestart.attemptOperations[hostOperationKey]?.sessionId).toBe(restartedHost.sessionId);
+    await expect(adapter.cancel({ operationKey: input.operationKey, reason: 'operator cancelled the run' }))
+      .resolves.toMatchObject({ ok: true, value: { sessionId: host.sessionId, reason: 'closed' } });
+    await launch.result;
 
-    await expect(restartedAdapter.cancel({ operationKey: input.operationKey, reason: 'operator cancelled the run' }))
-      .resolves.toMatchObject({ ok: true, value: { sessionId: restartedHost.sessionId, reason: 'closed' } });
-    await restarted.result;
-
-    await vi.waitFor(() => expect(readDocument().sessions.find((record) => record.sessionId === restartedHost.sessionId))
+    await vi.waitFor(() => expect(readDocument().sessions.find((record) => record.sessionId === host.sessionId))
       .toMatchObject({ state: 'exited', exit: { reason: 'closed' } }));
 
-    expect(host.closeCalls).toEqual([]);
-    expect(restartedHost.closeCalls).toEqual([restartedHost.sessionId]);
+    expect(host.closeCalls).toEqual([host.sessionId]);
     expect(observedFrames).toBe(3);
-    expect(observedExit).toBeNull();
+    expect(observedExit).toMatchObject({ sessionId: host.sessionId, reason: 'closed' });
     expect(logs).toEqual([
-      `control=${input.operationKey} host=${hostOperationKey} attemptRef=${input.attemptRef}`,
       `control=${input.operationKey} host=${hostOperationKey} attemptRef=${input.attemptRef}`,
     ]);
     expect(refusals).toEqual([]);
@@ -566,7 +542,7 @@ describe('attempt-start real document vertical', () => {
     }
   });
 
-  it('retires an abandoned incarnation without orphaning its projection or raw transcript', async () => {
+  it('keeps a restart observer from retiring the creator session or its raw transcript', async () => {
     const stateRoot = mkdtempSync(join(tmpdir(), 'attempt-retired-history-'));
     try {
       const firstHost = new LinuxShapedSessionHost((result) => result, '6', '7', ['historical\n']);
@@ -578,32 +554,32 @@ describe('attempt-start real document vertical', () => {
         transcript: createTranscriptRetention(stateRoot),
       });
       const input = claudeDeclaration();
+      const claims = claimStore();
       const firstAdapter = createAttemptSessionAdapter({
-        host: firstHost, sessionRecords: firstRegistry,
+        host: firstHost, sessionRecords: firstRegistry, messageClaims: claims,
       });
       await expect(firstAdapter.begin(input).receipt).resolves.toMatchObject({ ok: true });
 
       const secondHost = new LinuxShapedSessionHost((result) => result, 'a', 'b');
       const secondRegistry = createSessionRecordRegistry({ host: secondHost, hostKind: 'vm', persistence });
       const secondAdapter = createAttemptSessionAdapter({
-        host: secondHost, sessionRecords: secondRegistry,
+        host: secondHost, sessionRecords: secondRegistry, messageClaims: claims,
       });
       const replacement = secondAdapter.begin({ ...input });
       await expect(replacement.receipt).resolves.toMatchObject({
-        ok: true, value: { sessionId: secondHost.sessionId },
+        ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
       });
+      expect(secondHost.createCalls).toBe(0);
 
       const document = readDocument();
       expect(document.attemptBindings).toEqual([
-        expect.objectContaining({ sessionId: firstHost.sessionId, retired: true }),
-        expect.objectContaining({ sessionId: secondHost.sessionId }),
+        expect.objectContaining({ sessionId: firstHost.sessionId }),
       ]);
       expect(secondRegistry.bySession(input.subject, firstHost.sessionId))
-        .toMatchObject({ sessionId: firstHost.sessionId, retired: true });
+        .toMatchObject({ sessionId: firstHost.sessionId });
       expect(projectAttemptSessions(secondRegistry.byRun(input.subject, input.runRef), document.sessions))
         .toEqual([
-          expect.objectContaining({ sessionId: firstHost.sessionId, state: 'abandoned', liveControl: false }),
-          expect.objectContaining({ sessionId: secondHost.sessionId, state: 'live', liveControl: true }),
+          expect.objectContaining({ sessionId: firstHost.sessionId, state: 'live', liveControl: true }),
         ]);
       const replay = createRawSessionReplaySource({
         stateRoot,
@@ -616,40 +592,36 @@ describe('attempt-start real document vertical', () => {
         ok: true,
         value: { frames: [{ data: Buffer.from('historical\n').toString('base64') }] },
       });
-      await secondAdapter.cancel({ operationKey: input.operationKey, reason: 'test complete' });
+      await firstAdapter.cancel({ operationKey: input.operationKey, reason: 'test complete' });
       await replacement.result;
     } finally {
       rmSync(stateRoot, { recursive: true, force: true });
     }
   });
 
-  it('refuses a live identity collision and closes only the newly created session', async () => {
+  it('keeps a shared-store collision observer from creating or closing a second session', async () => {
     const firstHost = new LinuxShapedSessionHost((result) => result, '2', '3');
     const { persistence, readDocument } = validatedMemoryPersistence([]);
     const firstRegistry = createSessionRecordRegistry({ host: firstHost, hostKind: 'vm', persistence });
     const input = claudeDeclaration();
+    const claims = claimStore();
     const firstAdapter = createAttemptSessionAdapter({
-      host: firstHost, sessionRecords: firstRegistry,
+      host: firstHost, sessionRecords: firstRegistry, messageClaims: claims,
     });
     await expect(firstAdapter.begin(input).receipt).resolves.toMatchObject({ ok: true });
 
     const rivalHost = new LinuxShapedSessionHost((result) => result, '4', '3');
     const rivalRegistry = createSessionRecordRegistry({ host: rivalHost, hostKind: 'vm', persistence });
     const rivalAdapter = createAttemptSessionAdapter({
-      host: rivalHost, sessionRecords: rivalRegistry,
+      host: rivalHost, sessionRecords: rivalRegistry, messageClaims: claims,
     });
     await expect(rivalAdapter.begin({ ...input }).receipt).resolves.toMatchObject({
-      ok: false, refusal: 'binding-conflict',
+      ok: false, refusal: 'internal', detail: 'message-claim-reconciliation-required',
     });
-    expect(rivalHost.closeCalls).toEqual([rivalHost.sessionId]);
+    expect(rivalHost.closeCalls).toEqual([]);
     expect(firstHost.closeCalls).toEqual([]);
     expect(readDocument().sessions).toEqual([
       expect.objectContaining({ sessionId: firstHost.sessionId, state: 'live' }),
-      expect.objectContaining({
-        sessionId: rivalHost.sessionId,
-        state: 'exited',
-        exit: expect.objectContaining({ reason: 'closed' }),
-      }),
     ]);
     expect(readDocument().attemptBindings).toEqual([
       expect.objectContaining({ sessionId: firstHost.sessionId }),

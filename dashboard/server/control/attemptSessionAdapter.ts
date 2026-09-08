@@ -1,4 +1,5 @@
 import { sha256Hex } from '../shared/hashing.ts';
+import type { AgentSessionChainStore, MessageClaim } from './agentSessionChains.ts';
 import {
   boundSummary,
   DEFAULT_MAX_OUTPUT_BYTES,
@@ -100,6 +101,11 @@ export interface AttemptSessionAdapterOptions {
    * next attempt for the same (run, agent), and prepended in chain order to that attempt's own prompt.
    */
   drainMessages?: (runRef: string, agentId: string) => Promise<readonly string[]>;
+  /** The sole durable authority for queued-message delivery. B wires the active chain store last. */
+  messageClaims?: Pick<AgentSessionChainStore, 'claimMessages' | 'bindPromptFingerprint'
+    | 'admitPtyBind' | 'markPtyBound' | 'recordWriteIntent' | 'ackClaim' | 'releasePrewrite'>;
+  /** Optional generation fence supplied by B; a withdrawn adapter cannot issue another forward effect. */
+  assertForwardAdmission?: () => void;
   repoRoot?: string;
   timeoutMs?: number;
   maxOutputBytes?: number;
@@ -153,7 +159,15 @@ interface ActiveAttempt {
   /** Last durable snapshot this instance observed. Never trusted for terminal decisions without a CAS. */
   record: AttemptOperationRecord | null;
   internalFailure: string | null;
+  claim: ClaimContext | null;
+  claimOwnership: 'none' | 'creator' | 'observer' | 'poisoned';
   instructionResults: Map<string, { fingerprint: string; promise: Promise<boolean> }>;
+}
+
+interface ClaimContext {
+  claim: MessageClaim;
+  creatorHandle: string;
+  promptFingerprint: string | null;
 }
 
 function deferred<T>(): Deferred<T> {
@@ -547,6 +561,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
   const pendingRecord = (
     input: ApprovedAttemptDeclaration,
     fingerprint: string,
+    messageClaim: AttemptOperationRecord['messageClaim'],
   ): AttemptOperationRecord => {
     const createdAt = new Date().toISOString();
     return {
@@ -556,7 +571,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       promptsDelivered: 0,
       sessionId: null,
       attemptRef: input.attemptRef,
-      messageClaim: null,
+      messageClaim,
       receipt: {
         operationKey: input.operationKey, requestHash: fingerprint, status: 'pending',
         sessionId: null, attemptRef: input.attemptRef, refusal: null, createdAt, settledAt: null,
@@ -565,6 +580,172 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       updatedAt: createdAt,
     };
   };
+
+  const reconciliationRequired = <T>(): PortResult<T> =>
+    refuse('internal', 'message-claim-reconciliation-required');
+
+  const sameStrings = (left: readonly string[], right: readonly string[]): boolean =>
+    left.length === right.length && left.every((value, index) => value === right[index]);
+
+  const isQueuedMessage = (value: unknown): value is MessageClaim['messages'][number] =>
+    typeof value === 'object' && value !== null
+    && Object.keys(value).length === 4
+    && typeof (value as { messageRef?: unknown }).messageRef === 'string'
+    && typeof (value as { text?: unknown }).text === 'string'
+    && typeof (value as { queuedAt?: unknown }).queuedAt === 'string'
+    && Number.isSafeInteger((value as { ordinal?: unknown }).ordinal);
+
+  const sameMessages = (
+    left: readonly MessageClaim['messages'][number][],
+    right: readonly MessageClaim['messages'][number][],
+  ): boolean => left.length === right.length && left.every((value, index) =>
+    value.messageRef === right[index]?.messageRef
+      && value.text === right[index]?.text
+      && value.queuedAt === right[index]?.queuedAt
+      && value.ordinal === right[index]?.ordinal);
+
+  /** Claim-port fulfillments are untrusted at this boundary. A malformed success is ambiguous, not a
+   * harmless type error: the AtomicJson mutation may already have committed before a wrapper fulfilled
+   * with the wrong value. */
+  const isClaimShape = (value: unknown): value is MessageClaim => {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Record<string, unknown>;
+    const keys = [
+      'claimRef', 'operationKey', 'declarationFingerprint', 'agentId', 'messageRefs', 'messages',
+      'promptFingerprint', 'ptyOperationRevision', 'state', 'revision', 'claimedAt', 'updatedAt',
+    ];
+    if (Object.keys(candidate).length !== keys.length || !keys.every((key) => Object.hasOwn(candidate, key))) return false;
+    return typeof candidate.claimRef === 'string'
+      && typeof candidate.operationKey === 'string'
+      && typeof candidate.declarationFingerprint === 'string' && /^[a-f0-9]{64}$/.test(candidate.declarationFingerprint)
+      && typeof candidate.agentId === 'string'
+      && Array.isArray(candidate.messageRefs) && candidate.messageRefs.every((item) => typeof item === 'string')
+      && Array.isArray(candidate.messages) && candidate.messages.every(isQueuedMessage)
+      && (candidate.promptFingerprint === null
+        || (typeof candidate.promptFingerprint === 'string' && /^[a-f0-9]{64}$/.test(candidate.promptFingerprint)))
+      && (candidate.ptyOperationRevision === null || (typeof candidate.ptyOperationRevision === 'number'
+        && Number.isSafeInteger(candidate.ptyOperationRevision) && candidate.ptyOperationRevision >= 0))
+      && (candidate.state === 'claimed' || candidate.state === 'prompt-bound' || candidate.state === 'pty-bind-admitted'
+        || candidate.state === 'pty-bound' || candidate.state === 'write-intent' || candidate.state === 'acknowledged'
+        || candidate.state === 'released')
+      && typeof candidate.revision === 'number' && Number.isSafeInteger(candidate.revision) && candidate.revision >= 1
+      && typeof candidate.claimedAt === 'string' && typeof candidate.updatedAt === 'string';
+  };
+
+  const validClaimTransition = (
+    value: unknown,
+    previous: MessageClaim,
+    state: MessageClaim['state'],
+    prompt: string | null,
+    ptyRevision: number | null,
+    clearMessages = false,
+  ): value is MessageClaim => isClaimShape(value)
+    && value.claimRef === previous.claimRef
+    && value.operationKey === previous.operationKey
+    && value.declarationFingerprint === previous.declarationFingerprint
+    && value.agentId === previous.agentId
+    && sameStrings(value.messageRefs, previous.messageRefs)
+    && sameMessages(value.messages, clearMessages ? [] : previous.messages)
+    && value.promptFingerprint === prompt
+    && value.ptyOperationRevision === ptyRevision
+    && value.state === state
+    && value.revision === previous.revision + 1;
+
+  const validCreatedClaim = (
+    value: unknown,
+    agentId: string,
+    operationKey: string,
+    declarationFingerprint: string,
+  ): value is { disposition: 'created'; claim: MessageClaim; creatorHandle: string } => {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Record<string, unknown>;
+    return Object.keys(candidate).length === 3
+      && candidate.disposition === 'created'
+      && typeof candidate.creatorHandle === 'string' && candidate.creatorHandle.length >= 16 && candidate.creatorHandle.length <= 128
+      && isClaimShape(candidate.claim)
+      && candidate.claim.operationKey === operationKey
+      && candidate.claim.agentId === agentId
+      && candidate.claim.declarationFingerprint === declarationFingerprint
+      && candidate.claim.state === 'claimed'
+      && candidate.claim.promptFingerprint === null
+      && candidate.claim.ptyOperationRevision === null;
+  };
+
+  const validObservedClaim = (
+    value: unknown,
+    agentId: string,
+    operationKey: string,
+    declarationFingerprint: string,
+  ): value is { disposition: 'observed'; claim: MessageClaim } => {
+    if (typeof value !== 'object' || value === null) return false;
+    const candidate = value as Record<string, unknown>;
+    return Object.keys(candidate).length === 2
+      && candidate.disposition === 'observed'
+      && isClaimShape(candidate.claim)
+      && candidate.claim.operationKey === operationKey
+      && candidate.claim.agentId === agentId
+      && candidate.claim.declarationFingerprint === declarationFingerprint;
+  };
+
+  const claimCas = (attempt: ActiveAttempt, promptFingerprint = attempt.claim?.promptFingerprint): {
+    runRef: string; agentId: string; operationKey: string; claimRef: string;
+    declarationFingerprint: string; promptFingerprint: string | null; creatorHandle: string; expectedRevision: number;
+  } | null => {
+    const context = attempt.claim;
+    if (!context) return null;
+    return {
+      runRef: attempt.input.runRef, agentId: context.claim.agentId, operationKey: hostKey(attempt.input.operationKey),
+      claimRef: context.claim.claimRef, declarationFingerprint: context.claim.declarationFingerprint,
+      promptFingerprint: promptFingerprint ?? null, creatorHandle: context.creatorHandle,
+      expectedRevision: context.claim.revision,
+    };
+  };
+
+  const applyClaimTransition = async (
+    attempt: ActiveAttempt,
+    invoke: (input: NonNullable<ReturnType<typeof claimCas>>) => Promise<unknown>,
+    state: MessageClaim['state'],
+    promptFingerprint: string | null,
+    ptyRevision: number | null,
+    clearMessages = false,
+  ): Promise<MessageClaim | null> => {
+    const previous = attempt.claim?.claim;
+    const cas = claimCas(attempt, promptFingerprint);
+    if (attempt.claimOwnership !== 'creator' || !previous || !cas) return null;
+    let transitioned: unknown;
+    try {
+      transitioned = await invoke(cas);
+    } catch {
+      attempt.claimOwnership = 'poisoned';
+      return null;
+    }
+    if (!validClaimTransition(transitioned, previous, state, promptFingerprint, ptyRevision, clearMessages)) {
+      attempt.claimOwnership = 'poisoned';
+      return null;
+    }
+    attempt.claim = { ...attempt.claim!, claim: transitioned, promptFingerprint };
+    return transitioned;
+  };
+
+  const releaseOwnedClaim = async (attempt: ActiveAttempt): Promise<boolean> => {
+    const claims = options.messageClaims;
+    const previous = attempt.claim?.claim;
+    if (attempt.claimOwnership !== 'creator' || !claims || !previous) return false;
+    const released = await applyClaimTransition(
+      attempt,
+      (cas) => claims.releasePrewrite(cas),
+      'released',
+      previous.promptFingerprint,
+      previous.ptyOperationRevision,
+      true,
+    );
+    return released !== null;
+  };
+
+  const promptFingerprint = (claim: MessageClaim, prompts: readonly Uint8Array[]): string => sha256Hex(JSON.stringify({
+    messageRefs: claim.messageRefs,
+    prompts: prompts.map((prompt) => Buffer.from(prompt).toString('base64')),
+  }));
 
   const nextRecord = (
     current: AttemptOperationRecord,
@@ -644,7 +825,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     status: Extract<AttemptOperationStatus, 'failed' | 'cancelled' | 'completed'>,
     refusalCode: HostRefusalCode | null,
   ): Promise<void> => {
-    if (attempt.record === null) return;
+    if (attempt.record === null || attempt.claimOwnership === 'poisoned') return;
     if (TERMINAL_STATUSES.has(attempt.record.status)) return;
     // A terminal CAS loss means someone else already settled the operation; either way it is finished.
     await casRecord(attempt, (current) => nextRecord(current, { status, refusal: refusalCode }));
@@ -697,17 +878,6 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       if (written.refusal !== 'binding-conflict') return written;
     }
     return refuse('internal', 'durable attempt operation changed too many times');
-  };
-
-  const terminalRefusal = (record: AttemptOperationRecord): PortResult<AttemptStartReceipt> | null => {
-    if (record.status === 'cancelled') return refuse('cancelled', 'attempt operation was durably cancelled');
-    if (record.status === 'failed') {
-      return refuse(record.receipt?.refusal ?? 'internal', 'attempt operation previously failed');
-    }
-    if (record.status === 'completed') {
-      return refuse('binding-conflict', 'attempt operation already completed');
-    }
-    return null;
   };
 
   const cancellationRefusal = async (attempt: ActiveAttempt): Promise<PortResult<AttemptStartReceipt> | null> => {
@@ -772,13 +942,31 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     if (!receipt.ok || attempt.settled || attempt.cancelled || attempt.exited) return false;
     attempt.framesWritten += attempt.input.profile.runtime === 'claude' ? 1 : 0;
     let written: PortResult<{ accepted: number }>;
-    try { written = await options.host.write(receipt.value.sessionId, data); } catch (error) {
+    try {
+      options.assertForwardAdmission?.();
+    } catch {
+      attempt.claimOwnership = 'poisoned';
+      if (attempt.input.profile.runtime === 'claude') attempt.framesWritten -= 1;
+      await closeAttempt(attempt, receipt.value.sessionId);
+      return false;
+    }
+    try {
+      written = await options.host.write(receipt.value.sessionId, data);
+    } catch (error) {
       attempt.internalFailure = error instanceof Error ? error.message : String(error);
       if (attempt.input.profile.runtime === 'claude') attempt.framesWritten -= 1;
       await closeAttempt(attempt, receipt.value.sessionId);
       return false;
     }
-    if (!written.ok || written.value.accepted !== data.byteLength) {
+    try {
+      options.assertForwardAdmission?.();
+    } catch {
+      attempt.claimOwnership = 'poisoned';
+      if (attempt.input.profile.runtime === 'claude') attempt.framesWritten -= 1;
+      await closeAttempt(attempt, receipt.value.sessionId);
+      return false;
+    }
+    if (!written.ok || !written.value || written.value.accepted !== data.byteLength) {
       if (attempt.input.profile.runtime === 'claude') attempt.framesWritten -= 1;
       return false;
     }
@@ -829,12 +1017,8 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     if (draining) {
       return refusedLaunch(input.profile.runtime, refuse('unavailable', 'attempt session adapter is draining'));
     }
-    let prepared: PreparedAttempt;
-    try { prepared = prepareAttempt(input, options); } catch (error) {
-      return refusedLaunch(input.profile.runtime, refuse(
-        'invalid-request', error instanceof Error ? error.message : String(error),
-      ));
-    }
+    let prepared!: PreparedAttempt;
+    const agentId = attemptAgentId(input);
 
     const chunks: Uint8Array[] = [];
     const exit = deferred<ObservedExit>();
@@ -894,7 +1078,6 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       },
     };
     const hostOperationKey = hostKey(input.operationKey);
-    options.log?.(`control=${input.operationKey} host=${hostOperationKey} attemptRef=${input.attemptRef}`);
 
     let receiptPromise!: Promise<PortResult<AttemptStartReceipt>>;
     let resultPromise!: Promise<WorkerExecutionResult>;
@@ -907,7 +1090,7 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       fingerprint: requestFingerprint,
       order: order += 1,
       launch,
-      prepared,
+      prepared: undefined as unknown as PreparedAttempt,
       runStart: null,
       runStartReady: deferred<StartRunSessionReceipt | null>(),
       readTranscript: () => transcript,
@@ -934,6 +1117,8 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       cancelPromise: null,
       record: null,
       internalFailure: null,
+      claim: null,
+      claimOwnership: 'none',
       instructionResults: new Map(),
     };
     attempts.set(input.operationKey, attempt);
@@ -942,91 +1127,166 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
     const failAfterStart = async (
       receiptResult: PortResult<AttemptStartReceipt>,
     ): Promise<PortResult<AttemptStartReceipt>> => {
-      const cancelledRollback = !receiptResult.ok && receiptResult.refusal === 'cancelled';
-      await settleRecord(
-        attempt,
-        cancelledRollback ? 'cancelled' : 'failed',
-        receiptResult.ok ? null : receiptResult.refusal,
-      );
+      // Before write-intent the sole creator can still prove a release.  Once any claim mutation is
+      // ambiguous, or write-intent won, the PTY might have received bytes: close only.  In particular
+      // do not turn an uncertain delivery into a terminal PTY receipt by retrying a record settlement.
+      let definitelyReleased = attempt.claim?.claim?.state === 'released';
+      if (!definitelyReleased && attempt.claimOwnership === 'creator'
+        && attempt.claim?.claim?.state === 'pty-bound') {
+        definitelyReleased = await releaseOwnedClaim(attempt);
+      }
+      if (definitelyReleased && attempt.claimOwnership !== 'poisoned') {
+        const cancelledRollback = !receiptResult.ok && receiptResult.refusal === 'cancelled';
+        await settleRecord(attempt, cancelledRollback ? 'cancelled' : 'failed',
+          receiptResult.ok ? null : receiptResult.refusal);
+      }
       if (!attempt.sessionId) return receiptResult;
       const closed = await closeAttempt(attempt, attempt.sessionId);
       return closed.ok ? receiptResult : refuse('internal', closed.detail ?? `session close refused: ${closed.refusal}`);
     };
 
     receiptPromise = (async (): Promise<PortResult<AttemptStartReceipt>> => {
-      // ---- PHASE 0: drain the durable operator queue into THIS attempt's opening prompt. ----
-      // `agentMessages.deliver` answers `queued` when no worker frame could be written; this is the only
-      // place that promise is honoured. It runs before the write-ahead reservation so the reserved prompt
-      // count already covers the augmented sequence, and it drains exactly once per attempt (a duplicate
-      // `begin` for the same operationKey returns the memoised launch above and never reaches here).
-      if (options.drainMessages) {
-        let queued: readonly string[] = [];
-        try { queued = await options.drainMessages(input.runRef, prepared.agentId); } catch {
-          // An unavailable chain document must not sink the attempt; the messages stay queued.
-          queued = [];
+      // `drainMessages` remains only as a temporary construction compatibility option for B. It is
+      // deliberately never invoked: destructive drain has no durable recovery path.
+      const claims = options.messageClaims;
+      if (!claims) { attempt.runStartReady.resolve(null); return refuse('unavailable', 'message claim delivery is unbound'); }
+      let createdClaim: MessageClaim;
+      let claimed: unknown;
+      try {
+        options.assertForwardAdmission?.();
+        claimed = await claims.claimMessages(input.runRef, agentId, hostOperationKey, requestFingerprint);
+        if (validObservedClaim(claimed, agentId, hostOperationKey, requestFingerprint)) {
+          attempt.claimOwnership = 'observer';
+          attempt.runStartReady.resolve(null);
+          return reconciliationRequired();
         }
-        if (queued.length > 0) {
-          try { prepared.prompts = prepareAttempt(input, options, queued).prompts; } catch {
-            /* an unrepresentable message set falls back to the approved prompt sequence */
-          }
-        }
+      } catch {
+        attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
       }
-      // ---- WRITE-AHEAD PHASE 1: the durable intent lands BEFORE any session can exist. ----
+      if (!validCreatedClaim(claimed, agentId, hostOperationKey, requestFingerprint)) {
+        attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      createdClaim = claimed.claim;
+      attempt.claim = { claim: createdClaim, creatorHandle: claimed.creatorHandle, promptFingerprint: null };
+      attempt.claimOwnership = 'creator';
+      options.log?.(`control=${input.operationKey} host=${hostOperationKey} attemptRef=${input.attemptRef}`);
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        await releaseOwnedClaim(attempt);
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      try {
+        prepared = prepareAttempt(input, options, createdClaim.messages.map((message) => message.text));
+        attempt.prepared = prepared;
+      } catch (error) {
+        if (!await releaseOwnedClaim(attempt)) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+        attempt.runStartReady.resolve(null);
+        return refuse('invalid-request', error instanceof Error ? error.message : 'attempt prompt preparation refused');
+      }
+      const boundPromptFingerprint = promptFingerprint(createdClaim, prepared.prompts);
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      const bound = await applyClaimTransition(
+        attempt,
+        (cas) => claims.bindPromptFingerprint({ ...cas, promptFingerprint: boundPromptFingerprint }),
+        'prompt-bound',
+        boundPromptFingerprint,
+        null,
+      );
+      if (!bound) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      // ---- PTY preflight and one admitted write-ahead CAS. ----
       const read = await readRecord(input.operationKey);
-      if (!read.ok) { attempt.runStartReady.resolve(null); return read; }
+      if (!read.ok) {
+        if (!await releaseOwnedClaim(attempt)) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+        attempt.runStartReady.resolve(null); return read;
+      }
       if (read.value !== null) {
-        // Terminal status is decided before declaration identity: a blind `cancel()` tombstone carries no
-        // `requestHash` to compare, and a cancelled key must refuse as cancelled, not as a conflict.
-        const settled = terminalRefusal(read.value);
-        if (settled) { attempt.runStartReady.resolve(null); return settled; }
-        if (read.value.requestHash !== requestFingerprint) {
-          attempt.runStartReady.resolve(null);
-          return refuse('binding-conflict', 'operationKey already names a different approved attempt declaration');
-        }
-        attempt.record = read.value;
-      } else {
-        const created = await writeRecord(input.operationKey, pendingRecord(input, requestFingerprint), null);
-        if (created.ok) attempt.record = created.value;
-        else if (created.refusal === 'binding-conflict') {
-          // Another instance owns this key. Adopt and resume ITS record; never create a rival session and
-          // never close the session this instance did not create.
-          const adopted = await readRecord(input.operationKey);
-          if (!adopted.ok) { attempt.runStartReady.resolve(null); return adopted; }
-          if (adopted.value === null) {
-            attempt.runStartReady.resolve(null);
-            return refuse('internal', 'durable attempt operation disappeared after a create conflict');
-          }
-          const settled = terminalRefusal(adopted.value);
-          if (settled) { attempt.runStartReady.resolve(null); return settled; }
-          if (adopted.value.requestHash !== requestFingerprint) {
-            attempt.runStartReady.resolve(null);
-            return refuse('binding-conflict', 'operationKey already names a different approved attempt declaration');
-          }
-          // Losing the create CAS means the winner is running RIGHT NOW, not that it crashed: its own
-          // `begin` is between the same two await boundaries this one is. Resuming its prompt sequence
-          // would put two instances on one live session, interleaving prompts out of order and both
-          // CASing `bound`. Only a record whose approved prompt sequence is already fully delivered is
-          // safe to adopt; anything mid-flight refuses to the loser and lets the winner finish.
-          if (adopted.value.promptsDelivered !== prepared.prompts.length) {
-            attempt.runStartReady.resolve(null);
-            return refuse(
-              'binding-conflict',
-              'another instance is still delivering the approved prompt sequence for this operationKey',
-            );
-          }
-          attempt.record = adopted.value;
-        } else {
-          attempt.runStartReady.resolve(null);
-          return created;
-        }
+        if (!await releaseOwnedClaim(attempt)) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+        attempt.runStartReady.resolve(null);
+        return refuse('binding-conflict', 'existing PTY attempt operation cannot adopt a message claim');
+      }
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      const admitted = await applyClaimTransition(
+        attempt,
+        (cas) => claims.admitPtyBind({ ...cas, promptFingerprint: boundPromptFingerprint }),
+        'pty-bind-admitted',
+        boundPromptFingerprint,
+        null,
+      );
+      if (!admitted) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
+      const binding = attempt.claim!.claim;
+      const created = await writeRecord(input.operationKey, pendingRecord(input, requestFingerprint, {
+        claimRef: binding.claimRef, declarationFingerprint: binding.declarationFingerprint, promptFingerprint: boundPromptFingerprint,
+      }), null);
+      if (!created.ok || created.value.messageClaim?.claimRef !== binding.claimRef
+        || created.value.messageClaim.declarationFingerprint !== binding.declarationFingerprint
+        || created.value.messageClaim.promptFingerprint !== boundPromptFingerprint) {
+        attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null); return reconciliationRequired();
+      }
+      attempt.record = created.value;
+      const ptyBound = await applyClaimTransition(
+        attempt,
+        (cas) => claims.markPtyBound({ ...cas, promptFingerprint: boundPromptFingerprint,
+          ptyOperationRevision: created.value.revision }),
+        'pty-bound',
+        boundPromptFingerprint,
+        created.value.revision,
+      );
+      if (!ptyBound) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
       }
       if (attempt.cancelled || attempt.record?.status === 'cancelled') {
+        await releaseOwnedClaim(attempt);
         attempt.runStartReady.resolve(null);
         return refuse('cancelled', 'attempt was cancelled before its session was created');
       }
 
       // ---- PHASE 1: the registry creates and atomically binds the run session. ----
       let started: PortResult<StartRunSessionReceipt>;
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        attempt.runStartReady.resolve(null);
+        return reconciliationRequired();
+      }
       try {
         started = await options.sessionRecords.startRunSession({
           operator: input.subject,
@@ -1043,10 +1303,12 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
           sink,
         });
       } catch (error) {
+        attempt.claimOwnership = 'poisoned';
         attempt.runStartReady.resolve(null);
-        return internal(error);
+        return reconciliationRequired();
       }
       if (!started.ok) {
+        if (!await releaseOwnedClaim(attempt)) { attempt.runStartReady.resolve(null); return reconciliationRequired(); }
         attempt.runStartReady.resolve(null);
         return started;
       }
@@ -1061,6 +1323,11 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
         attempt.exited = true;
         exit.resolve(observedExitFailure(started.value.sessionId, 'abandoned'));
       });
+      try { options.assertForwardAdmission?.(); } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        await closeAttempt(attempt, started.value.sessionId);
+        return reconciliationRequired();
+      }
       const refreshed = await readRecord(input.operationKey);
       if (!refreshed.ok || refreshed.value === null) {
         return failAfterStart(refreshed.ok
@@ -1072,57 +1339,48 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       if (cancelledAfterStart) return failAfterStart(cancelledAfterStart);
       if (attempt.exited) return failAfterStart(refuse('internal', 'session exited before approved prompt delivery'));
 
-      // ---- WRITE-AHEAD PHASE 2: reserve prompt i durably BEFORE its bytes leave this process. ----
-      // Ordering per prompt: CAS(promptsDelivered = current + 1) -> host.write(prompt). A crash between
-      // the CAS and the write loses at most that one prompt; a crash after the write can never re-send it
-      // because the reservation is already durable. The closure reads `current.promptsDelivered` so a CAS
-      // retry after a conflict re-applies the increment on the winner's counter instead of regressing it.
-      if ((attempt.record?.promptsDelivered ?? 0) > prepared.prompts.length) {
-        return failAfterStart(refuse('internal', 'durable prompt progress exceeds the approved declaration'));
+      // The chain's write-intent is the sole delivery admission. The old per-prompt PTY reservation is
+      // deliberately not consulted or advanced: it would be a second delivery authority.
+      try {
+        options.assertForwardAdmission?.();
+      } catch {
+        if (!await releaseOwnedClaim(attempt)) attempt.claimOwnership = 'poisoned';
+        return failAfterStart(reconciliationRequired());
       }
-      // Whether THIS instance wrote the final approved prompt. Only the instance that delivered it may
-      // end the input: an adopted replay (the `binding-conflict` branch above, whose record already
-      // shows every prompt delivered) writes no bytes and must not send an end-input the winner has
-      // already sent - the broker refuses a repeat, which would turn a legitimate replay into a failed
-      // start. The cost is the same at-most-once loss the prompt reservation already carries: a crash
-      // between the last write and the end-input strands that child until the attempt timer, rather
-      // than risking a duplicate.
-      let deliveredFinalPrompt = false;
-      for (;;) {
-        const delivered = attempt.record?.promptsDelivered ?? 0;
-        if (delivered >= prepared.prompts.length) break;
-        const cancelledBeforePrompt = await cancellationRefusal(attempt);
-        if (cancelledBeforePrompt) return failAfterStart(cancelledBeforePrompt);
-        if (attempt.exited) return failAfterStart(refuse('internal', 'session exited before approved prompt delivery'));
-        const prompt = prepared.prompts[delivered];
-        const reserved = await casRecord(attempt, (current) => nextRecord(current, {
-          promptsDelivered: current.promptsDelivered + 1,
-        }));
-        if (!reserved.ok) return failAfterStart(reserved);
-        if (reserved.value.promptsDelivered !== delivered + 1) {
-          return failAfterStart(refuse('binding-conflict', 'another instance advanced the approved prompt sequence'));
+      try {
+        const intent = await applyClaimTransition(
+          attempt,
+          (cas) => claims.recordWriteIntent({ ...cas, promptFingerprint: boundPromptFingerprint }),
+          'write-intent',
+          boundPromptFingerprint,
+          attempt.claim?.claim.ptyOperationRevision ?? null,
+        );
+        if (!intent) return failAfterStart(reconciliationRequired());
+        options.assertForwardAdmission?.();
+      } catch { attempt.claimOwnership = 'poisoned'; return failAfterStart(reconciliationRequired()); }
+      for (const prompt of prepared.prompts) {
+        if (attempt.cancelled || attempt.exited) {
+          // Once write intent exists, an exit/cancellation between opening frames is ambiguous.  The
+          // PTY may have accepted the prior frame, so only close; never release or terminalize it.
+          attempt.claimOwnership = 'poisoned';
+          return failAfterStart(reconciliationRequired());
         }
         attempt.framesWritten += input.profile.runtime === 'claude' ? 1 : 0;
         let written: PortResult<{ accepted: number }>;
-        try { written = await options.host.write(started.value.sessionId, prompt); } catch (error) {
+        try {
+          options.assertForwardAdmission?.();
+          written = await options.host.write(started.value.sessionId, prompt);
+          options.assertForwardAdmission?.();
+        } catch (error) {
+          attempt.claimOwnership = 'poisoned';
           if (input.profile.runtime === 'claude') attempt.framesWritten -= 1;
-          return failAfterStart(internal(error));
+          return failAfterStart(reconciliationRequired());
         }
-        const cancelledAfterWrite = await cancellationRefusal(attempt);
-        if (cancelledAfterWrite) return failAfterStart(cancelledAfterWrite);
-        if (!written.ok || written.value.accepted !== prompt.byteLength) {
+        if (!written.ok || !written.value || written.value.accepted !== prompt.byteLength) {
+          attempt.claimOwnership = 'poisoned';
           if (input.profile.runtime === 'claude') attempt.framesWritten -= 1;
-          return failAfterStart(written.ok
-            ? refuse('internal', 'host accepted only part of the approved prompt')
-            : written);
+          return failAfterStart(reconciliationRequired());
         }
-        // An exit observed once the LAST approved prompt has been accepted is the attempt running, not a
-        // start failure: every byte the declaration approved is already in the session. Only an exit with
-        // prompts still undelivered aborts the start.
-        if (attempt.exited && (attempt.record?.promptsDelivered ?? 0) < prepared.prompts.length) {
-          return failAfterStart(refuse('internal', 'session exited during approved prompt delivery'));
-        }
-        deliveredFinalPrompt = (attempt.record?.promptsDelivered ?? 0) >= prepared.prompts.length;
       }
       // ---- END OF INPUT, for the recipes whose CLI reads stdin until EOF. ----
       // `codex exec -` (and `exec resume <ref> -`) will not start a turn until stdin CLOSES, so this is
@@ -1130,13 +1388,44 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
       // the attempt timeout, and a refusal here fails the start exactly as a refused prompt write does.
       // Claude's stream-json reader frames its own turns and needs the pipe HELD OPEN for the next one,
       // so its recipes never reach this call.
-      if (deliveredFinalPrompt && recipeEndsInputOnEof(prepared.recipe) && !attempt.exited && !attempt.cancelled) {
-        let ended: PortResult<{ ended: true }>;
-        try { ended = await options.host.endInput(started.value.sessionId); } catch (error) {
-          return failAfterStart(internal(error));
-        }
-        if (!ended.ok) return failAfterStart(ended);
+      if (recipeEndsInputOnEof(prepared.recipe) && (attempt.exited || attempt.cancelled)) {
+        // The prompt itself is not a completed Codex delivery until EOF was accepted.  An exit after
+        // the only prompt must not turn a skipped EOF into an acknowledged claim.
+        attempt.claimOwnership = 'poisoned';
+        return failAfterStart(reconciliationRequired());
       }
+      if (recipeEndsInputOnEof(prepared.recipe)) {
+        let ended: PortResult<{ ended: true }>;
+        try {
+          options.assertForwardAdmission?.();
+          ended = await options.host.endInput(started.value.sessionId);
+          options.assertForwardAdmission?.();
+        } catch (error) {
+          attempt.claimOwnership = 'poisoned';
+          return failAfterStart(reconciliationRequired());
+        }
+        if (!ended.ok || !ended.value || ended.value.ended !== true) {
+          attempt.claimOwnership = 'poisoned';
+          return failAfterStart(reconciliationRequired());
+        }
+        if (attempt.exited || attempt.cancelled) {
+          attempt.claimOwnership = 'poisoned';
+          return failAfterStart(reconciliationRequired());
+        }
+      }
+      if (attempt.cancelled) {
+        attempt.claimOwnership = 'poisoned';
+        return failAfterStart(reconciliationRequired());
+      }
+      const acknowledged = await applyClaimTransition(
+        attempt,
+        (cas) => claims.ackClaim({ ...cas, promptFingerprint: boundPromptFingerprint }),
+        'acknowledged',
+        boundPromptFingerprint,
+        attempt.claim?.claim.ptyOperationRevision ?? null,
+        true,
+      );
+      if (!acknowledged) return failAfterStart(reconciliationRequired());
       attempt.openingPromptsWritten = true;
       const cancelledBeforeReceipt = await cancellationRefusal(attempt);
       if (cancelledBeforeReceipt) return failAfterStart(cancelledBeforeReceipt);
@@ -1231,21 +1520,39 @@ export function createAttemptSessionAdapter(options: AttemptSessionAdapterOption
 
   return {
     begin,
-    /**
-     * Cancellation is keyed by `operationKey` and durable: the tombstone is CAS-written whether or not
-     * this instance owns the attempt, so an attempt begun on another instance (or begun later) sees the
-     * tombstone and refuses.
-     */
+    /** Only the live creator can release a prewrite claim; observers never acquire its handle. */
     async cancel(input) {
       const attempt = attempts.get(input.operationKey) ?? null;
       if (attempt === null) {
-        const cancelled = await durablyCancel(input.operationKey, null);
-        if (!cancelled.ok) return cancelled;
-        return { ok: true, value: observedExitFailure(cancelled.value.sessionId ?? UNKNOWN_SESSION_ID, 'abandoned') };
+        // A foreign adapter has no creator handle. A blind PTY tombstone cannot restore the claim and
+        // would strand operator text, so it is observer-only rather than a second delivery authority.
+        return reconciliationRequired();
       }
       if (attempt.cancelPromise) return attempt.cancelPromise;
       attempt.cancelled = true;
       attempt.cancelPromise = (async () => {
+        if (attempt.claimOwnership !== 'creator') {
+          if (attempt.runStart) await closeAttempt(attempt, attempt.runStart.sessionId);
+          return reconciliationRequired();
+        }
+        let released = false;
+        if (attempt.claim?.claim.state === 'claimed' || attempt.claim?.claim.state === 'prompt-bound'
+          || attempt.claim?.claim.state === 'pty-bound') {
+          released = await releaseOwnedClaim(attempt);
+          if (!released) {
+            if (attempt.runStart) await closeAttempt(attempt, attempt.runStart.sessionId);
+            return reconciliationRequired();
+          }
+        }
+        if (attempt.claim?.claim.state === 'pty-bind-admitted') {
+          attempt.claimOwnership = 'poisoned';
+          if (attempt.runStart) await closeAttempt(attempt, attempt.runStart.sessionId);
+          return reconciliationRequired();
+        }
+        if (released || attempt.claim?.claim.state === 'write-intent') {
+          if (attempt.runStart) return closeAttempt(attempt, attempt.runStart.sessionId);
+          return { ok: true as const, value: observedExitFailure(attempt.sessionId ?? UNKNOWN_SESSION_ID, 'abandoned') };
+        }
         const cancelled = await durablyCancel(input.operationKey, attempt);
         if (!cancelled.ok) return cancelled;
         const runStart = await attempt.runStartReady.promise;
