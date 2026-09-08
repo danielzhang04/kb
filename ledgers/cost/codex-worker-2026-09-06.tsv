@@ -1,0 +1,24 @@
+model	requested_model	responding_model	step	usd	telemetry_status
+unverified	inherited	unavailable	kb-platform-audit:boss-orchestration-verification-synthesis		unmetered-native-session; incomplete cost total, not zero-cost
+unverified	gpt-5.6-sol	unavailable	kb-platform-audit:execution-investigation		unmetered-native-delegation
+unverified	gpt-5.6-sol	unavailable	kb-platform-audit:supporting-subsystems		unmetered-native-delegation
+unverified	gpt-5.6-sol	unavailable	kb-platform-audit:execution-evidence-corrections		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:operations-investigation		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:prior-art-comparison		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:surface-coverage-inventory		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:research-accuracy-corrections		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:overhaul-plan		unmetered-native-delegation
+unverified	gpt-5.6-sol	unavailable	kb-platform-audit:fresh-adversarial-review		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-audit:plan-adversarial-revisions		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-audit:adversarial-rechecks		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-prebuild:boss-source-synthesis-and-design		unmetered-native-session
+unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:implementation-sequence		unmetered-native-delegation
+unverified	gpt-5.6-terra	unavailable	kb-platform-prebuild:dashboard-journeys		unmetered-native-delegation
+unverified	gpt-5.6-sol	unavailable	kb-platform-prebuild:adversarial-review-and-recheck		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-phase0:boss-planning-review-test-environment		unmetered-native-session; incomplete cost total, not zero-cost
+unverified	gpt-5.6-terra	unavailable	kb-platform-phase0:drain-plan-build-falsey-revision		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:reporter-plan-build		unmetered-native-continuations-grouped
+unverified	inherited	unavailable	kb-platform-phase0:diagnostics-plan-build		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:independent-code-security-review		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:generation-plan-and-one-revision		unmetered-native-continuations-grouped
+unverified	gpt-5.6-sol	unavailable	kb-platform-phase0:generation-plan-review-and-one-recheck		unmetered-native-continuations-grouped

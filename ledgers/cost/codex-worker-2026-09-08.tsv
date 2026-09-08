@@ -1,0 +1,44 @@
+model	requested_model	responding_model	step	telemetry_status	usd
+unverified	unknown	unavailable	kb-vm-overhaul:unaffected-linux-363-gate	selected unaffected Linux evidence; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:integration-plan-review	active inert proposal review; unknown cost	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:fixture-correction	requested Terra-high; responding unavailable; verification pending	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-repair	requested Terra-high; responding unavailable; review pending	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:current-cycle-coordination	requested Terra-high; responding unavailable; coordination only	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:renewed-independent-review	requested Sol-high; responding unavailable; result pending	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:linux-harness	requested Sol-high; responding unavailable; all-399 Linux result pending	unknown
+unverified	gpt-5.6-terra+gpt-5.6-sol	unavailable	kb-vm-overhaul:bounded-cycle-final-result	fixture 399/Linux, Windows 47, mutation proof, and independent artifact recheck technically ready; plan REQUEST CHANGES; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:plan-ownership-builder	requested Sol-high different-builder plan-only correction; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-independent-review	requested Terra-high independent plan review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-coordination	requested Terra-high coordination/root cross-check; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol+gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-ownership-final-verdict	different-builder plan correction, independent Terra review, and root cross-check technically ready; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C0-claim-store-builder	requested Sol integration_plan_review C0; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-builder	requested Terra fixture_correction D0; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:A0-neutral-interface-builder	requested Terra-high A0 builder; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A0-neutral-interface-review	requested Sol-high A0 independent review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-review-and-correction	requested Terra-high; review and correction evidence recorded; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D0-admission-final-review	requested Terra-high; ready 45/45 evidence recorded; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C0-root-verification	requested Sol-high port; root verified typecheck and focused tests; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-schema-dispatch	requested Terra-high C1 schema/migration builder; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D1-ledger-design-review	requested Terra-high design/review; same finding paused pending user decision; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-independent-review	requested Sol-high against frozen C1 bytes; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-schema-final-verdict	independent final 230 tests and typecheck passed; schema published 5a480e5c; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-builder-dispatch	creator-only adapter delivery and focused tests; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-review-preflight	independent adversarial delivery probes; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-coordination-readonly	stale-state synthesis discarded by root; no file edits; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-correction-paused	same malformed-fulfillment scenario failed twice; no further C repair before user approval; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:C1-delivery-interim-review	confirmed malformed fulfillment is not a falsey rejection; separate probes required; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-engine-grant-preflight	read-only independent next-stage plan; C and D1 pauses retained; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:A1-resume-seam-preflight	read-only independent boundary and cleanup inspection; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-renewed-correction	user renewed bounded correction; separate 93 and 8 passes, combined and independent pending; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-renewed-design-review	fresh independent design technically ready, root released bounded implementation; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-four-file-build	corrected plan accepted; root baseline104 and typecheck passed; implementation dispatched; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-implementation-dispatch	reviewed checkpoint receipt parser pinned-day scope; no real ledger publication; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-final	root review found two early-exit bugs, corrected; independent103 typecheck diffcheck PASS; commit1f0084ef; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:B-integration-preflight	plan-only next wiring and blackbox tests; build waits for accepted A1/D1; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:managed-cancellation-acceptance	root17 and typecheck PASS, fc5e7100; now independent D1 review; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-frozen-and-linux-toolchain	builder174 native11 Python typecheck PASS; isolated pinned toolchain preparation; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-expanded-matrix	lastfull121 PASS; real composition and operator cancel tracking regression active; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-correction-accepted	three red/green corruption regressions; builder177 root18+11 typecheck;647f4746; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:D1-independent-closure-A1-review	both D1 findings closed; A1 source review active; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:Linux-runner-expansion	exactpins enforced; named suite and same-shell evidence; syntax only; responding model and cost unavailable	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:Linux-pins-and-C-fixtures	isolated tooling independently verified; direct C fixture correction and browser preflight; responding model and cost unavailable	unknown

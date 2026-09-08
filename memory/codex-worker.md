@@ -320,6 +320,37 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 
 # codex-worker
 
+## 2026-09-07 — KB VM-overhaul context recovery
+
+- The source resume worktree is `codex/kb-vm-overhaul-resume-20260907` at
+  `9512f79f`; it contains the three reviewed containment fixes and the
+  corrected/reviewed dormant Slice 1A plan. The two dirty implementation files
+  are `adapters.ts` and `spendGrantProvision.ts`; `adapters.test.ts` was added
+  in this wave. Keep this separate from the coordination proposal worktree.
+- The Slice 1A builder completed the four-file diff with 47 focused tests and
+  typecheck passing. Initial ESM spy instrumentation failed and was corrected;
+  independent adapter review on sol/high is pending.
+- The Lock preference and full-overhaul versus recovery-first scope are still
+  unanswered. A local proposal must keep Phase 0 incomplete, avoid minting
+  approval, avoid enabling dashboard dispatch, omit a terminal
+  `execution-controller`, and avoid treating isolated VM/readiness evidence as
+  deployment authorization.
+- Native task assignments record requested models (adapter/VM
+  `gpt-5.6-terra` high; context recovery `gpt-5.6-luna` high) while
+  responding-model telemetry is unavailable. Use unknown/unverified cost fields
+  rather than asserting zero spend or fabricating a grade.
+
+## 2026-09-08 — KB VM-overhaul checkpoint
+
+- A clean source WIP at `1ba6d038` and current HEAD `246b342f` preserve the
+  four-file Slice 1A result and drafted remaining-integration work order.
+- The fresh unaffected Linux gate passed 363 selected tests plus typecheck and
+  native Vite build from archive SHA-256
+  `8e4fd59ea86183199a7ad64a4d8bf09be2d4b39e69b2d847c3a0a6c854ae4613`; it
+  intentionally excluded the paused adapter fixture and is not full acceptance.
+- A fresh sol/high integration-plan review is active as an inert proposal task;
+  keep the paused Linux fixture retry bounded to one user-directed cycle.
+
 ## 2026-08-11 — Task A2, codex image engine
 
 - A single `p4_probe.py --sandbox read-only` attempt exited in 34.1 seconds with certificate and
@@ -441,3 +472,155 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+## Prove production composition, not just component behavior (2026-09-06)
+
+### Context
+- A platform audit found tested placement and learning libraries whose production entry points never supplied the required dependencies or invoked the producers.
+
+### Root Cause / Core Insight
+- A passing test with injected dependencies proves the component contract, not the deployed composition. Migration review also missed sidecar stores until it traced persistence beyond the main document.
+
+### The Pattern (transferable)
+- Next time I see a feature described as complete because its unit suite passes, I will trace the deployed start point through producer, authority, effect, receipt, and visible result, and enumerate every durable store on that path.
+- Signal to recognize: registrations are conditional on test-only overrides, production registries start empty, or a migration map accounts only for the headline database.
+- Design follow-on: an honest `unavailable` UI state cannot satisfy a required feature's completion gate. Next time all capabilities are required, I will keep the unavailable state as intermediate evidence and require the real producer-to-receipt journey before closing its phase.
+
+## Reproduce scheduling order before grading a race (2026-09-06)
+
+### Context
+- A review initially called an asynchronous drain a high-severity Windows race; checking the real promise chain showed its snapshot normally completes before another HTTP turn can intervene.
+
+### Root Cause / Core Insight
+- An arbitrarily delayed fake can demonstrate missing fencing without proving that the claimed production trigger is reachable.
+
+### The Pattern (transferable)
+- Next time I see a race inferred from an unawaited promise, I will trace actual yield points and runtime ordering, then distinguish a reachable repro from a design risk requiring a different transport or failure condition.
+- Signal to recognize: the proof requires a fake delay that the real implementation does not have, or conflates microtasks with the next event-loop turn.
+
+## Failure state is not the truthiness of its payload (2026-09-06)
+
+### Context
+- A drain barrier's first draft retained a rejection value and tested it for truthiness to refuse replacement execution.
+
+### Root Cause / Core Insight
+- JavaScript permits throwing or rejecting with undefined, null, false, zero, or an empty string; a failed operation can therefore carry a falsey payload. The control state must be explicit and independent of diagnostic data.
+
+### The Pattern (transferable)
+- Next time a fail-closed guard retains an error, I will use a boolean or discriminated lifecycle state and test both synchronous throws and asynchronous rejections with falsey values.
+- Signal to recognize: admission or retry code branches on the truthiness of an unknown error object. Passing normal Error-based tests does not establish the safety invariant.
+
+## Capture actual filesystem baselines before checking permission invariants (2026-09-08)
+
+### Context
+- A Linux fixture requested mkdir mode 0700, but a setgid parent produced actual
+  mode 02700. The fixture's hard-coded expected mode failed before it could test
+  the intended post-add mutation boundary.
+
+### Root Cause / Core Insight
+- Requested creation modes are not necessarily final filesystem modes. A test
+  that protects against a later chmod must capture the actual baseline at the
+  boundary, then compare the final mode to that baseline.
+
+### The Pattern (transferable)
+- Next time a filesystem fixture asserts a mode across an asynchronous boundary,
+  I will capture the stat result immediately after the fixture creates the path,
+  before resolving the held operation. I will retain a separate assertion that a
+  prohibited production mode differs from that baseline.
+- The correction itself is not mutation proof. Do not claim the guard is
+  effective until an independent red-on-mutation check has failed in every
+  required fixture variant.
+
+### Outcome
+- HrOmLA confirmed the guard in both full and sparse variants: deliberate
+  post-add chmod produced two failures against 02770 versus the captured 02700,
+  while the exact restored source passed. Keep source-diff review and mutation
+  proof separate.
+- Independent Sol recheck then verified archive/overlay, the 399-test gate,
+  typecheck/build, mutant/restored counts and modes, checksums, and unchanged
+  source. This fixture evidence does not resolve separate ownership defects in
+  the paused plan.
+
+## Preserve completed evidence when a bounded review cycle reopens (2026-09-08)
+
+- A renewed plan-only correction authorization changes the active task sequence,
+  not the outcome of a prior fixture gate. Keep the completed card historical,
+  retain its exact evidence as frozen context, and make the new builder, fresh
+  reviewer, and root checkpoint explicit without creating runnable micro-cards.
+- Record requested model intent and unavailable response/cost telemetry as
+  ledger facts. Do not infer a passed review, a source change, or a new fixture
+  run before the independent outcome arrives.
+
+## Make durable state authority explicit in an ownership plan (2026-09-08)
+
+- A plan must assign state authority to the persistence migration, constructors,
+  durable CAS handle, and active-generation registry. Naming a future component
+  in prose is not an ownership boundary.
+- When a CAS outcome may have landed, automated recovery cannot safely transfer
+  the original owner's release or replay authority. Preserve the receipt for
+  reconciliation and prove a same-chain creator handle before any release or
+  write-intent action.
+
+## Prepare a disjoint-port review from the pre-builder baseline (2026-09-08)
+
+- Record each builder's exact file/test ownership before its diff arrives. For a
+  durable claim store, review input validation, atomic mutation, drain/release
+  semantics, and cross-store behavior; for canonical admission, review every
+  forward-effect assertion and journal-state transition.
+- Do not run a competing test or call a port ready while its assigned worktree
+  is still changing. Capture the baseline, then review the final diff and the
+  builder's focused evidence as separate facts.
+
+## Treat successful return projections as lifecycle effects (2026-09-08)
+
+- A pre-call admission assertion permits an issued asynchronous effect, but it
+  does not authorize code after that await. Check post-await journal promotion,
+  returned bases, and public success values separately; a no-card path can skip
+  the publisher guard entirely.
+
+## Fence outer continuations and test ambiguous landed writes (2026-09-08)
+
+- An inner async post-await admission check does not protect a later outer
+  continuation that creates a new intent or directory. Hold the real awaited
+  seam, withdraw after it resolves, and assert the actual next mutation did not
+  occur.
+- To test a possibly landed JSON mutation, delegate to the real atomic document
+  and throw a falsey value *after* its write completes. A mock that discards the
+  successful result only tests a normal failed mutation, not the ambiguous
+  boundary that must stop delivery.
+- Preserve the exact focused command in the evidence and handoff:
+  `npm.cmd test -- --configLoader native --no-cache --maxWorkers=1 --no-file-parallelism server/control/agentSessionChains.test.ts`.
+
+## Assert observable failure channels at boot (2026-09-08)
+
+- An empty registry result may be a swallowed read failure. A real legacy boot
+  regression must also reject its warning channel, then prove the migrated
+  bytes and preserved backup. Schema acceptance is separate from delivery.
+
+## Distinguish malformed fulfillment from falsey rejection (2026-09-08)
+
+- A wrapper that mutates and returns undefined tests a malformed success value.
+  It does not test an ambiguous rejection after a landed write. Use an actual
+  throw undefined after the real transition for the latter, and name each fault
+  precisely. Validate a transition result before accepting further authority.
+
+## 2026-09-08 - renewed async authority and phase progression
+
+A later explicit user continuation directive can renew a previously paused
+bounded correction. Update tasklist, wake decision and handoff immediately;
+retaining stale "await approval" text strands authorized work. Preserve failure
+history separately. A native Windows thread execution-state helper provides a
+bounded keep-awake request without changing global power policy; verify API
+success plus live heartbeat/PID, not an assumed app setting. A1/C/D1 file scopes
+are independent; B alone waits for all accepted ports.
+
+C delivery review lesson: a close-only failure helper is insufficient when an
+outer result handler later performs terminal settlement. Test the final durable
+record after awaiting both receipt and result. Required EOF must be proven
+complete before acknowledgement even if the process exits after its last write.
+Two fresh early-exit probes caught these gaps after a 101-test builder pass;
+correction and root103/typecheck passed at source1f0084ef.
+
+2026-09-08 async review: A fulfilled PortResult promise can still refuse cleanup. The cancellation controller must validate the result before the engine can treat close as proof and remove an owned worktree; preserve falsey first failures while always attempting registered cleanup. Managed pair independently17/typecheck PASS at fc5e7100. A1/D1/B and final Linux gates remain pending.
+
+2026-09-08 D1 review: Keep candidate receipt fields local until a sidecar is proven; returning required after mutating an intent postimage can persist an invalid document through the transaction final save. Strict recovery parsing also needs lexical CSV/decimal validation, not Number equality alone. Three red/green probes closed these findings; D1 accepted647f4746. Exact isolated Linux tooling is verified; final integrated run remains pending.

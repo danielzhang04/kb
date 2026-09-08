@@ -1,0 +1,10 @@
+model	requested_model	responding_model	step	telemetry_status	usd
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:adapter-build-initial	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:adapter-build-repair	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:adapter-review-initial	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:adapter-review-recheck	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:vm-readiness-audit	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:vm-readiness-harness	native telemetry unavailable; unknown cost	unknown
+unverified	unknown	unavailable	kb-vm-overhaul:root-orchestration	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-luna	unavailable	kb-vm-overhaul:context-recovery	native telemetry unavailable; unknown cost	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:adapter-review-linux-mode-evidence	Linux fixture mismatch evidence; not a grade; native telemetry unavailable	unknown
