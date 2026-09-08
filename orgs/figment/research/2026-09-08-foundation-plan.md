@@ -51,8 +51,29 @@ the live attempt then exposed a provider timestamp format missing from fixtures.
 That narrow correction is independently accepted at `88a1da1a` with 319 tests.
 
 Draft code PR: https://github.com/danielzhang04/kb/pull/178. The active canonical
-handoff and bounded recovery continuation are in draft ops PR #175. The initial live tester startup failed safely and was terminated; a single
-corrected attempt is running under the original experiment ceiling. See
-`2026-09-08-live-tester.md` for current operational evidence. Technical foundation
-review is complete; checkpoint quality remains unproven. No merge, deployment, or
-publication occurred.
+handoff and bounded recovery continuation are in draft ops PR #175. The initial live
+tester startup failed safely and was terminated; the single corrected attempt completed
+under the original experiment ceiling. See `2026-09-08-live-tester.md` for the measured
+operational evidence. Technical foundation review is complete; checkpoint quality remains
+unproven. No merge, deployment, or publication occurred.
+
+The corrected tester receipt records all five jobs succeeded, finished at
+`2026-09-08T07:19:23Z` after `4371.929s`, and was terminated with absence verified.
+Cost estimate using the observed READY hourly rate was `$1.323723`; together with the first attempt's `$0.001087`,
+the two-attempt harness estimate is `$1.324810`, with resulting current arc total
+`$37.015061`; these are harness estimates, not invoice charges. Independent
+parent verification recorded both pod IDs absent and zero active pods at
+`2026-09-08 07:20:47.868959 UTC`. The five original-resolution PNGs were visually
+inspected by the parent Codex agent (`codex-worker`) as unambiguously adult and fully
+clothed, with no quarantine.
+The diagnostic produced no operator QA stamp, checkpoint ruling, promotion, held-out
+control scoring, or driver-bound lineage. The parent's qualitative judgment was weak
+intended-character resemblance across all five; later steps appeared closer in hair and
+lips qualitatively, but that is not a proven improvement. The operator's checkpoint
+decision remains pending. The latest wiring review found no concrete trigger, LoRA-strength, or
+checkpoint-step error; raw-to-turbo template parity is intentional and is not proven to
+explain the quality result.
+
+Next step: obtain an operator checkpoint review and a defined driver-bound held-out
+comparison before any further paid run or promotion. Use the retry evidence to optimize
+and measure the transfer path before considering another run; do not auto-rerun.
