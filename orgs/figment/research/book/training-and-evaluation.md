@@ -31,6 +31,19 @@ preserved as the prior CP1252 startup failure. The V2 record has no sample,
 quality evaluation, acceptance, or export, and cannot select a checkpoint. See
 the [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
 
+The separate quality recipe has completed branch-specific CPU preflights for
+current and concise captions. Its separately admitted current-caption GPU fit
+then completed the fixed 100-step horizon and retained ten periodic checkpoints
+and a final step-100 checkpoint. That is runtime evidence only: no images were
+generated, no quality assessment or acceptance occurred, and the artifacts are
+not promoted or exportable. Concise has not received a GPU fit. Any later
+current comparison can progress through base, current step 20, current step
+50, and current final step 100, with review of each pair before progression.
+Only after the current comparison may a concise GPU fit and concise step-50
+pair be considered; the concise fit keeps the same 100-step horizon. The [local quality fit runtime
+audit](../../../../docs/figment/2026-09-08-local-quality-fit-runtime-audit.md)
+records the current receipt and bounded checkpoint observation.
+
 The separately accepted `f6b5096d` compiler and `af7b07bc` executor keep the
 same lineage boundary outside production `load_plan`. The executor defaults to
 offline preparation; a harness dry-run uses the existing manifest contract,
@@ -64,6 +77,9 @@ planner and its CPU/tokenizer checks are implemented, and one separately
 admitted ten-step GPU availability fit has completed. This does not relax the
 accepted 20-row compiler or executor, and it supplies no visual or
 checkpoint-quality decision. The [runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md)
-preserves the bounded evidence and its limits.
+preserves the bounded evidence and its limits. The separate current-caption
+quality fit completed its 100-step runtime schedule after current and concise
+CPU preflights, but produced no image or quality evidence; concise has not
+received a GPU fit. It likewise does not relax the 20-row boundary.
 
 For evaluation, a held-out derivative of `g01` can test consistency within this single fictional identity lineage, but it cannot establish independence from the training seed. A separate accepted reference set is still required for independent identity evaluation. The historical four original generated candidates are retained as failed or unreviewed experiment evidence only. The current gallery contains six candidates after two rejected local-Comfy diagnostics; none is eligible training data, and no current training output follows from the compiler or its positive synthetic fixtures.

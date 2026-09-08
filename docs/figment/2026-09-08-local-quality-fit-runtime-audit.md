@@ -1,0 +1,9 @@
+# Local quality fit runtime audit — 2026-09-08
+
+The separately admitted **current-caption** local quality fit completed: receipt raw SHA-256 `d0f162618f51b6eae4dd4a814947fd1b32768b8c0abb5fdf0c739a3742fb9847`, exit 0, 217.629 seconds, with no log truncation and verified teardown. It binds current plan raw/canonical `9f2246e727d992aab12ffdc1f256dde17487887b1dd108cbe5dc7fa770441b58` / `7cbc717c23100fb2d3542126babe01971f28fc3133674a1133bac9c6f2e24df5`, CPU receipt `adf88bf630773f65e4c42976b4b2ea326c103020fd23ca5670588369e20d11c7`, quality launcher `e32a348fd0330538597b6a619583acdd3b060c8d3255989181af6ac414396fdf`, and runtime `7d6629299b1ec97593b2074ea14b3ef0897aae743966fbea2b609c3032bb8af0`.
+
+It produced exactly eleven F16 safetensors checkpoints, each 170,540,948 bytes: periodic step 20 `fc3222248dd317270f975f34828f5376751114584d443eebeae0112deb3e473f`, step 50 `bda6b6f2180028b2fa3777315405772aab8868a552fc7f332ef150fd88317de2`, periodic step 100 `064e6787c59535a8c4d549fd35ae94bf95e8acf4c32f68e2f6f5a8a91c1eaff7`, and final 100 `f3e2fbdc04ff923a3feaf0873ddb8624701067ac53d8877daddb651ed2b3736c`. The periodic and final 100 files have equal metadata step values but different byte hashes; this audit makes no claim that their weights are identical.
+
+Root's bounded NumPy/mmap audit (`root-checkpoint-audit.json`, raw SHA-256 `0832fef84eda073c481ee5401cddc93e34ca64e0e1e914ad4dc1d3d38fd99ad0`) verified all 11 × 2,166 F16 tensors, 936,271,622 elements, and 1,875,950,428 bytes at 17:40:49 UTC. Root also observed PIDs 30292, 36476, 33580, and 41964 absent after teardown and GPU 0 at 0 MiB; no peak-memory metric was recorded.
+
+This is local runtime-completion evidence only. It contains no generated images, human or automated quality assessment, promotion, checkpoint acceptance, source-eligibility change, or concise-caption GPU admission. The current fit remains non-promotable.
