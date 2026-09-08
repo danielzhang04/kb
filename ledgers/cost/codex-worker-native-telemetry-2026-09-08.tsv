@@ -106,3 +106,4 @@ native-runtime telemetry unavailable; provider accounting separate		not-exposed	
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-fit-v2-complete-hub-accepted-quality-phase-a	not-exposed
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-quality-phase-a-accepted-plans-staged-runtime-hub-audits	not-exposed
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-quality-cpu-complete-current100-fit-running-c1-accepted	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-current100-complete-finite-audit-c2-request-changes	not-exposed

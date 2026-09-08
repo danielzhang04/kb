@@ -1,6 +1,6 @@
 # Figment async handoff - 2026-09-08
 
-Current at 13:35 Eastern; noon checkpoint retained below.
+Current at 13:55 Eastern; noon checkpoint retained below.
 This is the canonical resumable handoff for the active Figment async run.
 It replaces the prior append-only timeline at this path.
 Read cited audits and private receipts for historical detail rather than reconstructing it here.
@@ -207,16 +207,27 @@ Verify teardown and process absence before writing a completed receipt.
 Never kill a process merely because it shares a port or executable name.
 ## Required reading on resume
 
-### Active execution, 17:35 UTC
+### Current execution evidence, 17:55 UTC
 
-CURRENT100-step quality GPU fit is IN FLIGHT in root exec session18816.
-STUDIO/_private/figment-local-quality-fit-current-20260908-v1 contains the
-run;10/20 checkpoints were observed already. Never restart or overwrite it.
-Root separately observed wrapper30292/trainer33580/launcher41964 during the run;
-bind receipt creation identities before interpreting future PID presence.
-Deadline20min. All existing train/CPU/Comfy/tokenizer sources are FROZEN until exit.
-Next: poll existing session, inspect authoritative receipt/failure, verify teardown,
-audit exact11 checkpoint inventory and finite weights, then matched current20 images.
+CURRENT100-step quality GPU fit completed in 217.629 seconds, exit0. Session18816
+is closed; never poll, restart or overwrite it. STUDIO/_private/
+figment-local-quality-fit-current-20260908-v1 holds the authoritative receipt:
+d0f162618f51b6eae4dd4a814947fd1b32768b8c0abb5fdf0c739a3742fb9847.
+All eleven checkpoints are170,540,948 bytes each. Root's bounded NumPy/mmap audit
+checked23,826 F16 tensors /936,271,622 elements, all finite, exact file layouts.
+root-checkpoint-audit.json raw SHA256 is
+0832fef84eda073c481ee5401cddc93e34ca64e0e1e914ad4dc1d3d38fd99ad0.
+Auditor SOURCE hash is3aa48a3439baa90bd561a6864c66c733b0843e17a65b6ecc6b9b89bf685ac1f0;
+do not confuse source with result. Teardown verified; root observed all four known
+PIDs30292/36476/33580/41964 absent and GPU0 using0MiB after completion.
+Selected current20 fc3222248dd317270f975f34828f5376751114584d443eebeae0112deb3e473f;
+current50 bda6b6f2180028b2fa3777315405772aab8868a552fc7f332ef150fd88317de2;
+FINAL100 f3e2fbdc04ff923a3feaf0873ddb8624701067ac53d8877daddb651ed2b3736c.
+Periodic100 is a separate file; do not substitute it for final100.
+No matched quality images, checkpoint acceptance or concise GPU run exist.
+Next: repair/review C2, admit base pair only, inspect with root and independent
+reviewer, then current20 pair with fixed per-seed base images and review bindings.
+Keepawake was armed with owner16580 and supervisor19564 alive at13:55Eastern.
 
 Phase B committed4323772f, CPU audit c2c88c1e. Quality executor e32a348fd0330538597b6a619583acdd3b060c8d3255989181af6ac414396fdf;
 shared runtime7d6629299b1ec97593b2074ea14b3ef0897aae743966fbea2b609c3032bb8af0;
@@ -257,10 +268,14 @@ Current workers: figment_training_hub_plan solely builds NEW C2 pair runtime/tes
 and updates matched design; it MUST reuse immutableComfy2997 lowlevel helpers,
 never refactor that bound source. Eachstage uses a fresh owned2-image server session,
 with robust bounded stderr and exactadapters/outputs, no generation byworker.
-figment_fit_repair prepares private audit-figment-quality-checkpoints-20260908.py
-for root execution ONLY AFTERcompletedGPUreceipt, NumPyfiniteaudit11files/noTorch.
-figment_fit_independent_review completed CPU/admissionaudit and is available for
-new explicit followup_task when a concrete review candidate is ready.
+figment_fit_repair independently reviewed C2 B1F658 and requested changes: real
+review-byte provenance, durable pair receipts/base PNG binding, strict SF layout,
+bounded copies/reads and Windows reparse checks, pumper-start failure handling.
+Root added pinned actual Comfy/base validation and a single600s pair deadline.
+The author is repairing that finite list; no C2 admission or generation yet.
+figment_fit_independent_review owns actual100-step runtime audit and book update.
+Root found the draft audit used auditor-source hash as result hash; correction
+and independent actual receipt-byte checks are in progress before acceptance.
 No provider actions, reservations, exports, acceptance or production changes.
 
 ### Latest accepted boundary, 17:13 UTC

@@ -1,6 +1,6 @@
 # Figment current state
 
-Updated 2026-09-08 17:35 UTC / 13:35 Eastern. Async work continues after the
+Updated 2026-09-08 17:55 UTC / 13:55 Eastern. Async work continues after the
 8 AM checkpoint. Instagram integration is deferred. The canonical
 [handoff](../../handoffs/2026-09-08-figment-async.md) contains the resume load list.
 
@@ -49,9 +49,12 @@ Both actual quality CPU checks completed: current6.986s and concise5.809s,
 exit0, one image/896x512 bucket, CUDA hidden, teardown verified. The private
 wrapper passed8 author/root tests; the CPU runtime audit is committed.
 Shared GPU execution passed20 root/independent tests plus the extracted-runtime
-admission regression. CURRENT100-step fit is now IN FLIGHT in root session18816,
-STUDIOprivate/figment-local-quality-fit-current-20260908-v1. Its10/20 checkpoints
-were observed. Do not restart or alter any bound code during execution.
+admission regression. CURRENT100-step fit completed217.629s, exit0, teardown
+verified. All11 checkpoint files passed root bounded layout/hash/finite audit:
+23,826 F16 tensors,936,271,622 elements. Root observed all known run PIDs absent
+and GPU0 at0MiB after completion. No generated quality images exist yet.
+C2 matched-image runner is undergoing finite repairs from independent review:
+review/receipt/base-image binding, safe bounded checkpoint staging and cleanup.
 No concise GPU run/admission exists yet. The original20/50/100
 evaluation is preserved using eleven explicitly declared periodic/final files.
 The historical preparation view is accepted at614b6e40; it does not infer absence
