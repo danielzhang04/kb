@@ -454,6 +454,10 @@ asset bootstrap and verify the byte policy before accepting a local green suite.
 Signal to recognize: a test requires untracked files or passes only in the author's
 worktree while semantic Git diffs remain empty. Keep missing-input failures separate
 from product-behavior failures; never refresh a hash merely to silence the guard.
+The implementation repair narrowly tracked synthetic fixtures and LF-pinned identity
+specs; parent verification from a fresh Windows checkout passed all eight creator-002
+acceptance tests. Creator-001 exposed the same byte-policy issue, resolved with its
+exact Git blob rather than a new declared hash.
 
 ## 2026-09-08 — Research conclusions need current code and calibrated evidence
 
@@ -466,3 +470,34 @@ known defect while later regression tests say fixed, or a universal method-rejec
 claim rests on a small trial and a proxy score. Separate historical causes, current
 defects and untested causal hypotheses in the handoff so repeated summaries do not
 turn tentative explanations into architectural facts.
+
+## 2026-09-08 — Verify the configured client before declaring connectivity blocked
+
+The default Python lacked requests, and a standard-library RunPod probe returned
+403. The already-installed Python 3.13 client used by the historical harness connected
+with the same ambient environment and verified pod absence plus billing history.
+Next time an operator reports working peer terminals, I will trace executable and
+client setup before treating one probe as account-wide evidence or asking for a key.
+Signal to recognize: historical commands name a different runtime from the current
+shell default. Runtime/package discovery and existing client use do not require
+opening credential stores.
+
+## 2026-09-08 — Bind the incoming decision, not just the resulting receipt
+
+An approval receipt can hash current images correctly while still accepting an old
+ruling sheet after those images were replaced and regraded with unchanged IDs.
+Next time a workflow persists human decisions, I will carry the reviewed subject
+digest into the incoming decision and reject replay against a different revision.
+Signal to recognize: an output approval has a content hash, but its input contains
+only stable IDs and a reviewer name. Recomputing the input digest during apply would
+relabel the old decision rather than prove what the operator actually reviewed.
+
+## 2026-09-08 — Admission scope must match the resource that can be overwritten
+
+Changing recovery.json to a unique per-attempt filename preserved the old journal
+but did not protect the shared output folder or run.json from another paid attempt.
+Next time a retry creates a fresh identity, I will test two different identities
+against the same durable output boundary, including concurrent requests and
+malformed prior state. Signal to recognize: collision tests reuse one identifier
+while production generates a different one on every invocation. Preserving history,
+refusing duplicate execution, and verifying cleanup are separate requirements.
