@@ -98,7 +98,7 @@ describe('FigmentWorkspace', () => {
       const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response({ ...projection, generatedInputs }) : response('png', 200)) as unknown as typeof fetch;
       const view = render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
       await screen.findByRole('img', { name: 'Generated input experiment g01-e01-shoulders-up-v1.png' });
-      expect(screen.getByText(/Generated on:\s*2026-09-08/)).toBeTruthy(); expect(screen.getByText(/Recorded review declaration \(identity\):\s*independent review pending/)).toBeTruthy();
+      expect(screen.getByText(/Generated on:\s*2026-09-08/)).toBeTruthy(); expect(screen.getByText('Recorded observations')).toBeTruthy(); expect(screen.getByText((_, element) => element?.tagName === 'DD' && element.textContent === 'Identity: independent review pending')).toBeTruthy(); expect(screen.getByText((_, element) => element?.tagName === 'DD' && element.textContent === 'Clothing: opaque black top')).toBeTruthy(); expect(screen.getByText('Source and hashes')).toBeTruthy();
       expect(fetchImpl).toHaveBeenCalledWith('/api/figment/generated-input-assets/g01-e01-shoulders-up-v1.png?sha256=' + 'c'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
       view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:generated');
     } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
