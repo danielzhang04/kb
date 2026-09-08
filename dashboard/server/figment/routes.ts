@@ -9,6 +9,7 @@ import { closeSync, fstatSync, lstatSync, openSync, opendirSync, readFileSync, r
 import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { collectDeclaredReferences, isDeclaredReference, isOpaqueReferenceTarget, readDeclaredReference } from './references.ts';
+import { collectGeneratedInputs, readGeneratedInput } from './generatedInputs.ts';
 
 const RECORD_NAMES = new Set(['plan.json', 'driver-plan.json', 'run.json', 'gate.json', 'accepted-checkpoint.json']);
 const MAX_RECORDS = 256;
@@ -52,6 +53,7 @@ export interface FigmentProjection {
   plans: { items: Array<{ path: string; creator: string; variant: string | null; stages: Array<{ name: string; runCount: number; declaredCeilingUsd: number | null }>; declaredCeilingUsd: number }>; truncated: boolean };
   research: { available: boolean; artifacts: Array<{ area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string }>; truncated: boolean };
   references: { items: Array<{ creator: string; name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; truncated: boolean };
+  generatedInputs: { available: boolean; items: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; sourceReference: string; sourceSha256: string; generatedOn: string | null; reviewStatus: string; visualReview: Record<string, string> }>; truncated: boolean };
   diagnostic: DiagnosticProjection;
   warnings: string[];
 }
@@ -402,17 +404,17 @@ function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticPr
   return root === null ? { status: 'unavailable', reason: 'unsafe-configured-root' } : diagnosticProjection(root);
 }
 
-export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null): FigmentProjection {
+export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null, generatedInputRoot?: string | null): FigmentProjection {
   const warnings: string[] = [];
   const root = openRoot(join(repoRoot, 'orgs', 'figment'));
-  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: readDiagnostic(diagnosticRoot), warnings };
   const collected = collectRecords(root, warnings);
   const creators = collectCreators(root);
-  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), generatedInputs: collectGeneratedInputs(repoRoot, generatedInputRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
 }
 
-export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null }): void {
-  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot));
+export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null; generatedInputRoot?: string | null }): void {
+  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot, options.generatedInputRoot));
   app.get('/api/figment/reference-assets/:creator/:name', async (request, reply) => {
     const { creator, name } = request.params as { creator?: unknown; name?: unknown };
     const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
@@ -440,5 +442,12 @@ export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: s
       if (loaded === null || loaded.bytes.length !== expected.bytes || info === null || createHash('sha256').update(loaded.bytes).digest('hex') !== sha256) return reply.code(409).send({ error: 'stale-diagnostic-asset' });
       return reply.header('content-type', 'image/png').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded.bytes);
     } catch { return reply.code(409).send({ error: 'stale-diagnostic-asset' }); }
+  });
+  app.get('/api/figment/generated-input-assets/:name', async (request, reply) => {
+    const { name } = request.params as { name?: unknown }; const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
+    if (typeof name !== 'string' || typeof sha256 !== 'string' || !SHA256.test(sha256)) return reply.code(404).send({ error: 'not-found' });
+    const loaded = readGeneratedInput(options.repoRoot, options.generatedInputRoot, name, sha256);
+    if (loaded === null) return reply.code(409).send({ error: 'stale-generated-input' });
+    return reply.header('content-type', 'image/png').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded.bytes);
   });
 }

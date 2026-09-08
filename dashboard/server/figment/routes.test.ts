@@ -149,7 +149,7 @@ describe('Figment read projection', () => {
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
       if (path === '/api/figment') handler = candidate;
-      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name').toBe(true);
+      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name').toBe(true);
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();

@@ -128,6 +128,7 @@ export interface BuildAppOptions {
   traceRoot?: string | null;
   /** Optional fixed private diagnostic directory. The Figment read route never accepts a client path. */
   figmentDiagnosticRoot?: string | null;
+  figmentGeneratedInputRoot?: string | null;
   spawn?: VibeSpawner;
   /** The platform PTY host, injected UNGATED: `makeSurfaceContext` wraps it in the fleet-preamble gate
    *  exactly as it wraps the real one, so a fixture exercises the production gate rather than bypassing it. */
@@ -271,6 +272,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     registerFigmentRead(scope, {
       repoRoot,
       diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
+      generatedInputRoot: options.figmentGeneratedInputRoot ?? process.env.DASHBOARD_FIGMENT_GENERATED_INPUT_ROOT ?? null,
     });
     registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });

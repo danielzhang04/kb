@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FigmentWorkspace } from './FigmentWorkspace';
 
-const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
+const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
 
 afterEach(cleanup);
@@ -87,6 +87,20 @@ describe('FigmentWorkspace', () => {
       expect(screen.getByText(/do not associate a diagnostic with this creator/)).toBeTruthy(); expect((screen.getByLabelText('Selected reference creator') as HTMLSelectElement).value).toBe('creator-a');
       expect(fetchImpl).toHaveBeenCalledWith('/api/figment/reference-assets/creator-a/g01.jpg?sha256=' + 'b'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
       view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:reference');
+    } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
+  });
+
+  it('shows dated generated-input observations and cleans their object URL', async () => {
+    const originalCreate = URL.createObjectURL; const originalRevoke = URL.revokeObjectURL;
+    Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:generated') }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    try {
+      const generatedInputs = { available: true, truncated: false, items: [{ name: 'g01-e01-shoulders-up-v1.png', bytes: 90, sha256: 'c'.repeat(64), width: 1697, height: 927, sourceReference: 'anchors/g01.jpg', sourceSha256: 'd'.repeat(64), generatedOn: '2026-09-08', reviewStatus: 'experimental-unreviewed', visualReview: { identity: 'independent review pending', clothing: 'opaque black top' } }] };
+      const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response({ ...projection, generatedInputs }) : response('png', 200)) as unknown as typeof fetch;
+      const view = render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
+      await screen.findByRole('img', { name: 'Generated input experiment g01-e01-shoulders-up-v1.png' });
+      expect(screen.getByText(/Generated on:\s*2026-09-08/)).toBeTruthy(); expect(screen.getByText(/Recorded review declaration \(identity\):\s*independent review pending/)).toBeTruthy();
+      expect(fetchImpl).toHaveBeenCalledWith('/api/figment/generated-input-assets/g01-e01-shoulders-up-v1.png?sha256=' + 'c'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
+      view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:generated');
     } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
   });
 

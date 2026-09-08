@@ -21,9 +21,11 @@ do not rewrite the dataset. The retained snapshots are the evidence later
 approval hashes; changing or removing one makes `lineage.dataset_subject` fail,
 so an existing dataset approval becomes stale. The compiler writes no
 `dataset-approval.json`, invokes no plan or runner, and remains below the
-existing explicit `figment_train.py accept-dataset` boundary. The current three
-experimental derivatives are refused because their provenance marks
-`training_eligible: false`.
+existing explicit `figment_train.py accept-dataset` boundary. The current four
+generated candidates are refused: wardrobe-only, small-head-turn, and E01 have
+`training_eligible: false`; the frontal black-tee record also has false but
+fails the earlier first-generation-role check. The actual refusal probe below
+records those four outcomes without creating a dataset, plan, or approval.
 
 The existing builder consumes the retained source snapshots, never the mutable
 staging paths after copying. `dataset_curation.json` records each train entry's
