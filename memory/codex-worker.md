@@ -509,3 +509,34 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ### The Pattern (transferable)
 - Next time a fail-closed guard retains an error, I will use a boolean or discriminated lifecycle state and test both synchronous throws and asynchronous rejections with falsey values.
 - Signal to recognize: admission or retry code branches on the truthiness of an unknown error object. Passing normal Error-based tests does not establish the safety invariant.
+
+## Capture actual filesystem baselines before checking permission invariants (2026-09-08)
+
+### Context
+- A Linux fixture requested mkdir mode 0700, but a setgid parent produced actual
+  mode 02700. The fixture's hard-coded expected mode failed before it could test
+  the intended post-add mutation boundary.
+
+### Root Cause / Core Insight
+- Requested creation modes are not necessarily final filesystem modes. A test
+  that protects against a later chmod must capture the actual baseline at the
+  boundary, then compare the final mode to that baseline.
+
+### The Pattern (transferable)
+- Next time a filesystem fixture asserts a mode across an asynchronous boundary,
+  I will capture the stat result immediately after the fixture creates the path,
+  before resolving the held operation. I will retain a separate assertion that a
+  prohibited production mode differs from that baseline.
+- The correction itself is not mutation proof. Do not claim the guard is
+  effective until an independent red-on-mutation check has failed in every
+  required fixture variant.
+
+### Outcome
+- HrOmLA confirmed the guard in both full and sparse variants: deliberate
+  post-add chmod produced two failures against 02770 versus the captured 02700,
+  while the exact restored source passed. Keep source-diff review and mutation
+  proof separate.
+- Independent Sol recheck then verified archive/overlay, the 399-test gate,
+  typecheck/build, mutant/restored counts and modes, checksums, and unchanged
+  source. This fixture evidence does not resolve separate ownership defects in
+  the paused plan.

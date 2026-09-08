@@ -1,3 +1,9 @@
 model	requested_model	responding_model	step	telemetry_status	usd
 unverified	unknown	unavailable	kb-vm-overhaul:unaffected-linux-363-gate	selected unaffected Linux evidence; unknown cost	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:integration-plan-review	active inert proposal review; unknown cost	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:fixture-correction	requested Terra-high; responding unavailable; verification pending	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:plan-repair	requested Terra-high; responding unavailable; review pending	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:current-cycle-coordination	requested Terra-high; responding unavailable; coordination only	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:renewed-independent-review	requested Sol-high; responding unavailable; result pending	unknown
+unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:linux-harness	requested Sol-high; responding unavailable; all-399 Linux result pending	unknown
+unverified	gpt-5.6-terra+gpt-5.6-sol	unavailable	kb-vm-overhaul:bounded-cycle-final-result	fixture 399/Linux, Windows 47, mutation proof, and independent artifact recheck technically ready; plan REQUEST CHANGES; unknown cost	unknown
