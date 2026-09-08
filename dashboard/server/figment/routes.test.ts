@@ -94,6 +94,7 @@ describe('Figment read projection', () => {
     ]));
     expect(projection.diagnostic).toMatchObject({ status: 'diagnostic-not-promotable', podId: 'fixture-pod', artifacts: [{ name: 'proof.png', width: 4, height: 3, sha256: digest(png()) }], artifactsTruncated: false });
     expect(projection.references).toMatchObject({ truncated: false, items: [{ creator: 'creator-a', name: 'g01.jpg', width: 4, height: 3 }] });
+    expect(projection.localTraining).toEqual({ status: 'not-configured' });
   });
 
   it('marks changed gate subjects and checkpoint hashes stale', async () => {

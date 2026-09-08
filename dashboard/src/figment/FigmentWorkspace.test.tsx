@@ -47,6 +47,26 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Declared ceiling: $1.25')).toBeTruthy();
   });
 
+  it('shows historical preparation without claiming GPU or quality evidence', async () => {
+    const localTraining = { status: 'recorded' as const, historical: true as const, preparation: { source: 'anchors/g01.jpg' as const, originalObservations: 1 as const, repeatCount: 1 as const, targetResolution: [768, 768] as [number, number], effectiveBucket: [896, 512] as [number, number], cpuCudaMasked: true as const, cpuVerifiedTeardown: true as const, tokenizerLoads: [{ id: 'openai/clip-vit-large-patch14', probeTokenCount: 19 }, { id: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k', probeTokenCount: 19 }] } };
+    const fetchImpl = vi.fn(() => response({ ...projection, localTraining })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
+    expect(screen.getByText('Recorded local preparation')).toBeTruthy();
+    expect(screen.getByText('GPU training')).toBeTruthy();
+    expect(screen.getAllByText('Not reported by these receipts.')).toHaveLength(2);
+    expect(screen.getByText(/availability probe, not a training-caption count/)).toBeTruthy();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it('normalizes an older hub response and rejects malformed local-training evidence', async () => {
+    const oldHub = vi.fn(() => response(projection)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={oldHub} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
+    expect(screen.getByText('No local training evidence source is configured.')).toBeTruthy(); cleanup();
+    const malformed = vi.fn(() => response({ ...projection, localTraining: { status: 'recorded', historical: false } })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={malformed} />); await screen.findByText('Figment records are unavailable.');
+  });
+
   it('requests only the fixed offline tester preview and labels its limits', async () => {
     const preview = { schema: 'figment/plan-preview@1', offlinePreview: true, notPromotable: true, creator: 'creator-001', stage: 'tester', runCount: 1, declaredCeilingUsd: 2.5, manifestSha256: 'a'.repeat(64) };
     const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response(preview)) as unknown as typeof fetch;

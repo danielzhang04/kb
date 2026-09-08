@@ -490,6 +490,16 @@ describe('server', () => {
     expect(response.json()).toMatchObject({ error: 'forbidden', reason: 'origin-not-allowed' });
   });
 
+  it('threads fixed local-training receipt roots through the guarded Figment read route', async () => {
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      figmentLocalTrainingEvidence: { cpuPreflight: 'missing-cpu', tokenizerLaunch: 'missing-launch', plan: 'missing-plan', tokenizerLoad: 'missing-tokenizer' },
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/figment', headers: sessionHeaders() });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({ localTraining: { status: 'unavailable', reason: 'evidence-unavailable' } });
+  });
+
   it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
     app = matrixApp();
     const method = url.includes('/auth/') ? 'POST' : 'GET';

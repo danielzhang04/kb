@@ -4,12 +4,13 @@ import './figment.css';
 
 type ReviewState = 'unreviewed' | 'stale' | 'approved' | 'unknown';
 type MachineGateState = 'current' | 'stale' | null;
-type Tab = 'creators' | 'assets' | 'plans' | 'records' | 'research';
+type Tab = 'creators' | 'assets' | 'plans' | 'training' | 'records' | 'research';
 interface RecordRow { path: string; type: string; creator: string | null; reviewState: ReviewState; machineGateState: MachineGateState; schema: string | null; }
 interface ResearchArtifact { area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string; }
 interface TesterPreview { schema: 'figment/plan-preview@1'; offlinePreview: true; notPromotable: true; creator: 'creator-001'; stage: 'tester'; runCount: number; declaredCeilingUsd: number; manifestSha256: string; }
 interface DeclaredReference { creator: string; name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string; }
 interface GeneratedInput { name: string; bytes: number; sha256: string; width: number; height: number; sourceReference: string; sourceSha256: string; generatedOn: string | null; reviewStatus: string; visualReview: Record<string, string>; }
+type LocalTraining = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; preparation: { source: 'anchors/g01.jpg'; originalObservations: 1; repeatCount: 1; targetResolution: [number, number]; effectiveBucket: [number, number]; cpuCudaMasked: true; cpuVerifiedTeardown: true; tokenizerLoads: Array<{ id: string; probeTokenCount: number }> } };
 interface Projection {
   schema: 'figment/hub@1'; available: boolean;
   creators: Array<{ id: string; persona: 'valid' | 'malformed'; loraTier: string | null; loraTrigger: string | null; accountTiers: string[] }>;
@@ -18,6 +19,7 @@ interface Projection {
   research: { available: boolean; artifacts: ResearchArtifact[]; truncated: boolean };
   references: { items: DeclaredReference[]; truncated: boolean };
   generatedInputs: { available: boolean; items: GeneratedInput[]; truncated: boolean };
+  localTraining: LocalTraining;
   diagnostic: { status: 'not-configured' } | { status: 'unavailable'; reason: string } | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; artifactsTruncated: boolean };
 }
 
@@ -29,6 +31,23 @@ const finite = (value: unknown): value is number => typeof value === 'number' &&
 const bounded = (value: unknown): value is unknown[] => Array.isArray(value) && value.length <= 512;
 const safeArtifactName = (name: string): boolean => /^[A-Za-z0-9][A-Za-z0-9._ -]{0,180}$/.test(name) && name !== '.' && name !== '..' && !name.includes('..');
 const sha256 = (value: unknown): value is string => typeof value === 'string' && /^[a-f0-9]{64}$/.test(value);
+const pair = (value: unknown): value is [number, number] => Array.isArray(value) && value.length === 2 && finite(value[0]) && value[0] > 0 && finite(value[1]) && value[1] > 0;
+
+function localTraining(value: unknown): LocalTraining | null {
+  // Older @1 hubs did not have this optional historical projection.
+  if (value === undefined) return { status: 'not-configured' };
+  if (!object(value)) return null;
+  if (value.status === 'not-configured') return { status: 'not-configured' };
+  if (value.status === 'unavailable' && value.reason === 'evidence-unavailable') return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const preparation = object(value.preparation) ? value.preparation : null;
+  if (value.status !== 'recorded' || value.historical !== true || preparation === null || preparation.source !== 'anchors/g01.jpg' || preparation.originalObservations !== 1 || preparation.repeatCount !== 1 || !pair(preparation.targetResolution) || !pair(preparation.effectiveBucket) || preparation.cpuCudaMasked !== true || preparation.cpuVerifiedTeardown !== true || !Array.isArray(preparation.tokenizerLoads) || preparation.tokenizerLoads.length !== 2) return null;
+  const seen = new Set<string>();
+  for (const row of preparation.tokenizerLoads) {
+    if (!object(row) || (row.id !== 'openai/clip-vit-large-patch14' && row.id !== 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k') || seen.has(row.id) || row.probeTokenCount !== 19) return null;
+    seen.add(row.id);
+  }
+  return value as unknown as LocalTraining;
+}
 
 function valid(value: unknown): Projection | null {
   if (!object(value) || value.schema !== 'figment/hub@1' || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.references) || !bounded(value.references.items) || typeof value.references.truncated !== 'boolean' || !object(value.generatedInputs) || typeof value.generatedInputs.available !== 'boolean' || !bounded(value.generatedInputs.items) || typeof value.generatedInputs.truncated !== 'boolean' || !object(value.diagnostic)) return null;
@@ -40,7 +59,8 @@ function valid(value: unknown): Projection | null {
   if (!value.generatedInputs.items.every((row) => object(row) && string(row.name) && safeArtifactName(row.name) && finite(row.bytes) && sha256(row.sha256) && finite(row.width) && finite(row.height) && string(row.sourceReference) && sha256(row.sourceSha256) && nullableString(row.generatedOn) && string(row.reviewStatus) && object(row.visualReview) && Object.values(row.visualReview).every(string))) return null;
   const d = value.diagnostic;
   if (!(d.status === 'not-configured' || d.status === 'unavailable' && string(d.reason) || d.status === 'diagnostic-not-promotable' && (typeof d.dryRun === 'boolean' || d.dryRun === null) && nullableString(d.podId) && typeof d.artifactsTruncated === 'boolean' && bounded(d.artifacts) && d.artifacts.every((row) => object(row) && string(row.name) && safeArtifactName(row.name) && finite(row.bytes) && sha256(row.sha256) && finite(row.width) && finite(row.height) && string(row.modifiedAt) && Number.isFinite(Date.parse(row.modifiedAt))))) return null;
-  return value as unknown as Projection;
+  const training = localTraining(value.localTraining);
+  return training === null ? null : { ...value, localTraining: training } as unknown as Projection;
 }
 
 function validTesterPreview(value: unknown): TesterPreview | null {
@@ -161,6 +181,13 @@ function Assets({ diagnostic, references, generatedInputs, token, fetchImpl }: {
   return <><DeclaredReferences references={references} token={token} fetchImpl={fetchImpl} /><GeneratedInputs generated={generatedInputs} token={token} fetchImpl={fetchImpl} /><DiagnosticAssets diagnostic={diagnostic} token={token} fetchImpl={fetchImpl} /></>;
 }
 
+function TrainingReadiness({ training }: { training: LocalTraining }): React.JSX.Element {
+  if (training.status === 'not-configured') return <section className="figment__references"><h2>Training readiness</h2><p className="figment__empty">No local training evidence source is configured.</p></section>;
+  if (training.status === 'unavailable') return <section className="figment__references"><h2>Training readiness</h2><p className="figment__empty">Configured local training evidence could not be verified.</p></section>;
+  const { preparation } = training;
+  return <section aria-label="Training readiness"><p className="figment__inert">Historical local preparation evidence. It does not state current training eligibility.</p><div className="figment__grid"><article className="figment__card"><h2>Recorded local preparation</h2><p>CPU dataset parsing completed for {preparation.originalObservations} original observation and {preparation.repeatCount} repeat. CUDA was masked and the owned process stopped.</p><dl><dt>Target</dt><dd>{preparation.targetResolution[0]} × {preparation.targetResolution[1]}</dd><dt>Effective bucket</dt><dd>{preparation.effectiveBucket[0]} × {preparation.effectiveBucket[1]}</dd><dt>Source</dt><dd>{preparation.source}</dd></dl></article><article className="figment__card"><h2>Local tokenizer preparation</h2><p>{preparation.tokenizerLoads.length} local-only tokenizer inventories loaded. The recorded 19-token result is an availability probe, not a training-caption count.</p></article><article className="figment__card"><h2>GPU training</h2><p>Not reported by these receipts.</p></article><article className="figment__card"><h2>Quality review</h2><p>Not reported by these receipts.</p></article></div></section>;
+}
+
 function Research({ research, token, fetchImpl }: { research: Projection['research']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
   const [article, setArticle] = useState<{ path: string; content: string | null }>({ path: '', content: null });
   const [error, setError] = useState<string | null>(null);
@@ -207,5 +234,5 @@ export function FigmentWorkspace({ token, fetchImpl = fetch }: { token?: string;
   useEffect(() => { let live = true; setError(false); setProjection(null); void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => { if (!response.ok) throw new Error('figment unavailable'); const decoded = valid(await response.json()); if (!decoded) throw new Error('invalid figment projection'); if (live) setProjection(decoded); }).catch(() => { if (live) setError(true); }); return () => { live = false; }; }, [fetchImpl, refresh, token]);
   if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={() => setRefresh((v) => v + 1)}>Retry</button> : null}</main>;
   if (!projection.available) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p className="figment__empty">The Figment project records are unavailable.</p></main>;
-  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
+  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
 }
