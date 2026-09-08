@@ -1,0 +1,23 @@
+accounting_status	input_tokens	model	output_tokens	requested_model	responding_model	step	usd_status
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		runtime-default	not-exposed	figment-architecture-orchestrator	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-code-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-reference-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-loop-audit	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-synthesis-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		runtime-default	not-exposed	figment-foundation-orchestrator	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-portability	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-lineage	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-foundation-review-round1	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-tester-prepare	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-review-fixes	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-lineage-test-adapt	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-foundation-review-round2	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-local-fixes	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-lineage-independent-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-review-documentation	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-foundation-handoff-refresh	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-sol	not-exposed	figment-recovery-authorized-final-review	not-exposed
+native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	not-exposed	figment-live-local-preflight	not-exposed
+native-runtime-telemetry-unavailable; recovery offline review		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-review-capacity-fallback	not-exposed
+native-runtime-telemetry-unavailable; exact daily guard check		not-exposed		gpt-5.6-luna	not-exposed	figment-live-exact-budget-preflight	not-exposed
