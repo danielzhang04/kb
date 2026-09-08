@@ -100,3 +100,4 @@ native-runtime telemetry unavailable; provider accounting separate		not-exposed	
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-one-observation-planner-accepted-actual-staging	not-exposed
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-cpu-import-diagnosis-and-tokenizer-preparation	not-exposed
 native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-real-cpu-and-tokenizer-preflights-pass-gpu-review	not-exposed
+native-runtime telemetry unavailable; provider accounting separate		not-exposed		gpt-5.6-terra	not-exposed	figment-noon-checkpoint-quality-protocol-and-fresh-fit-repair	not-exposed

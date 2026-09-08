@@ -611,3 +611,6 @@ adopters against actual historical manifest shapes before relying on synthetic f
 
 ### 2026-09-08: Verify device masking empirically before weakening a preflight
 A Windows CUDA build reported availability true but device count zero with an empty visible-device setting; the real trainer parser then failed in an optional model dependency. A tiny isolated probe of documented CUDA_VISIBLE_DEVICES=-1 plus PYTORCH_NVML_BASED_CUDA_CHECK=1 produced false/zero/uninitialized, and the unchanged real parser then passed. Keep raw failures and distinguish inferred import call sites from traced causes. Test supported environment controls before replacing upstream parsing with a weaker local imitation; preserve actionable bounded exception causes. Evidence: Figment training-preflight audit and handoff15:43UTC.
+
+### 2026-09-08: Feedback delivery is not worker activation
+A completed worker received queued repair messages but remained idle, delaying the GPU executor. Check status after a final response and use followup_task to activate work; send_message alone does not restart an idle worker. Assign one writer and one reviewer explicitly, and use a fresh bounded worker when an old thread returns acknowledgments instead of implementation. Root corrected the dispatch and preserved the rejected code boundary; no unreviewed GPU run occurred.
