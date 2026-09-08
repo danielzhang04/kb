@@ -1,41 +1,46 @@
-# Figment current state
+﻿# Figment current state
 
-Updated2026-09-08 12:29 UTC. The8 AM Eastern checkpoint is a report; work continues.
+Updated 2026-09-08 12:43 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `3084d1cc`, pushed to draftPR179
-stacked on foundationPR178. Research book, authenticated studio, actual offline plan
-preview, reference and diagnostic gallery, image/video diagnostics and local raw
-identity observations are built, tested and independently reviewed.
+Studio branch `codex/figment-studio-20260908`, head `3084d1cc`, is pushed to draft
+PR179, stacked on foundation PR178. The research book, authenticated studio, actual
+offline plan preview, reference/diagnostic galleries, local raw identity observer,
+and single-seed curation compiler are built, tested and independently reviewed.
 
-No active RunPod. Head-turn V3 finished11:42:17 UTC:81 PNGs,1280x704,624.513s,
-estimated0.189089. Parent provider GET confirms absence/list0; all81 sources decoded
-and hashed. Assembly/extraction passed; independent all81-frame review and parent sample review found
-a stable clip but no unambiguous requested turn-and-return motion. V2 was visually coherent for
-small motion; V1 had severe colored distortion and failed visual review. Neither
-outcome establishes production identity, realism or exact apparent-age acceptance.
-Recorded compute arc37.800385/50, daily2.110134/10, no outstanding reservations.
+Identity quality remains unresolved. g01 is the provisional canonical seed; g02/g07
+are declared comparators. Four generated inputs remain experimental and excluded
+from training. The curation compiler passed final 37 curation/lineage checks plus
+9 train-first checks, and refused all four real inputs without publishing a dataset
+or creating approval/plan records. Earlier 109 Python regression checks preceded the
+last boundary repairs. No new trainable dataset has been accepted.
 
-Native raw observer V1 yielded no face for all ten large paired portraits. A fixed
-640 detector-only probe and primary model documentation supported a versioned
-preprocessing correction. New explicit schema@2 passed34 parent and independent tests;
-the actual19-input V2 batch completed with all candidates/anchors detected; independent and parent
-receipt/table audits passed; result is committed. Native V1 evidence remains immutable.
-Raw similarities are uncalibrated observations, never automatic quality approval.
+Native raw observer V1 could not detect faces in the ten large paired portraits.
+The separately versioned fixed-640 detector path passed 34 parent/independent tests;
+its actual 19-input batch detected all candidates and anchors. Receipts and tables
+were audited. Raw similarity is uncalibrated evidence, never automatic acceptance.
+E01's additional receipt is separate; the original batches remain unchanged.
 
-Next: audit actual V2 observations and all81 head-turn frames, then build missing
-single-seed curation/provenance/leakage infrastructure from the worker design. g01 is
-provisional canonical; g02/g07 are comparators. Generated variants remain experimental.
+Video V1 had severe distortion and failed visual review. V2 was coherent for small
+motion. V3 produced a stable 81-frame, 1280x704 clip but did not unambiguously perform
+the requested head turn and return. All frames/artifacts were verified and reviewed.
+These diagnostics do not establish production identity or apparent-age acceptance.
 
-Exact LoRA upload for the frozen full-look prompt comparison still awaits the user's
-answer after automatic approval rejection. No retry or alternate export. Other work
-continues. Keep-awake owner16580 and supervisor19564 were alive at07:59 Eastern.
-No Instagram/account work, production promotion, merge or deployment has occurred.
+No active RunPod. Recorded compute arc is $37.800385 of $50; today's recorded compute
+is $2.110134. The studio runner retains its stricter $10 daily configuration (the ops
+checkout currently says $30). No outstanding numeric reservation. Native-agent and
+built-in image-generation billing is unknown where the runtime does not expose it.
 
-8 AM report delivered; work continues. Single-seed curation compiler is being built and
-reviewed. Next generated input is a frozen g01-only shoulders-up framing experiment.
+Current work: a Figment-only Gemini comparison adapter is undergoing repair and
+independent review. One read-only model metadata GET succeeded; no Gemini generation
+has run. A proposed $4.60 conservative reservation fits the arc and stricter daily
+limits but has not been written. Root admission, final review and an exact held row
+are required before the sole generation request. This is within the user's standing
+paid-compute/Gemini authorization, not a new inferred human gate. In parallel, a
+generated-input gallery is being implemented with source hashes and dated review
+declarations; its code is not yet accepted.
 
-Single-seed compiler accepted3084d1cc after final46parentchecks and4realinputrefusals.
-Geminiambientkeyworksforread-onlymetadata. A Figment-only one-attempt adapter is being
-built/reviewed; no generation or numericreservation yet. Proposed4.60reserve fits
-current37.800385/50 arc and2.110134/10 daily totals. Exactprivateartifacts inhandoff.
+The exact existing-LoRA upload still awaits the user's answer after automatic
+approval review rejected it. No retry or alternate export. Other work continues.
+Keep-awake owner 16580 and supervisor 19564 were alive at 08:35 Eastern, with the
+lease armed. No Instagram/account work, production promotion, merge or deployment.
