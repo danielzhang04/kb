@@ -32,16 +32,15 @@ first-generation dataset or production training. See the [local LoRA fit runtime
 audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
 
 Separate branch-specific CPU preflights completed for the current and concise
-quality recipes. A fresh admission then completed the current-caption quality
-fit's fixed 100-step horizon and retained the ten periodic checkpoints plus a
-final step-100 checkpoint. It produced no images or quality evidence, and no
-checkpoint was accepted, promoted, or made exportable. The concise branch has
-only completed CPU preflight, not GPU fitting. The fixed current comparison can
-progress through base, current step 20, current step 50, and current final step
-100, with review of each pair before progression. Only after that current
-comparison may a concise GPU fit and its concise step-50 pair be considered;
-the concise fit keeps the same 100-step horizon. See the [local quality fit
-runtime audit](../../../../docs/figment/2026-09-08-local-quality-fit-runtime-audit.md).
+quality recipes, and the current-caption quality fit completed its fixed
+100-step horizon. The first matched current step-20 pair then completed with
+two fixed seeds. Its root diagnostic review recorded `continue`; the
+independent diagnostic review recorded `stop` because both outputs remained
+closer to their matched base faces than `g01` and repeated the eyes-away pose
+miss. Neither is human QA, acceptance, promotion, or a quality pass. The
+predeclared higher current ladder is stopped while the disagreement and next
+protocol are analyzed; no higher current-stage or concise admission has been
+issued. See the [training results hub review](../../../../docs/figment/2026-09-08-training-results-hub-review.md).
 
 The [canonical-seed audit](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md), accepted at
 `83c00054`, leaves `g01` provisional. It found that `g07` has more detected

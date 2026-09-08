@@ -10,7 +10,7 @@ Budgeting has two layers: the configured daily limit and the experiment's arc ca
 |---|---|---|
 | Package evidence | Modules supply an anchor-to-output workflow chain and checkpoint comparison tools. | They do not establish a hosted creator controller, durable approval ledger or account-management API. |
 | Current code | Approval lineage, recovery, receipts, hashes, bounded execution, authenticated galleries, the accepted generated-input gallery, the actual offline plan preview, and a separately admitted experimental executor are implemented and reviewed. | No production deployment, hub generation control, eligible experimental dataset, or quality-selected training output is proven. |
-| Live proof | The corrected retry completed, all five jobs succeeded, and both pods were absent afterward. The later paired diagnostic completed ten image jobs under a non-promotable protocol. A separately admitted local V2 availability fit completed ten steps, and a distinct current-caption quality fit completed its fixed 100-step schedule with eleven retained checkpoints. | Lifecycle and bounded execution do not resolve visual disagreement, prove output quality, or promote a checkpoint. |
+| Live proof | The corrected retry completed, all five jobs succeeded, and both pods were absent afterward. The later paired diagnostic completed ten image jobs under a non-promotable protocol. A separately admitted local V2 availability fit completed ten steps, a distinct current-caption quality fit completed its fixed 100-step schedule, and the first matched current step-20 pair completed. | Lifecycle and bounded execution do not resolve visual disagreement, prove output quality, or promote a checkpoint. |
 | Hypothesis | A visible state machine will reduce accidental reruns and stale approvals. | Needs operator use and review. |
 
 Decisions: keep lifecycle states explicit (`planned`, `running`, `ready`, `uploaded`, `generated`, `reviewed`, `accepted`, `rejected`, `teardown-verified`), attach evidence to each transition, and let only a human promote. Next tests: fresh-checkout recovery, stale-decision invalidation, and a two-person review of a held-out comparison. The hub should expose source dates, limitations, cost estimate, and provenance beside every decision.
@@ -19,16 +19,15 @@ The hub's asset projections use fixed server-owned roots, bounded traversal and 
 
 The 20-row experimental executor still requires eligible data. A separate fresh V2 admission supported the distinct ten-step local availability fit. It bound the one-observation plan, current staged hashes, CPU/tokenizer receipts, and UTF-8 launcher; it wrote one non-promotable checkpoint with no samples, quality review, acceptance, or promotion. The [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md) records the receipt and lifecycle evidence. It does not make the existing gallery eligible or add a hub training action.
 
-The distinct quality recipe has completed current and concise CPU preflights,
-then a separately admitted current-caption 100-step fit. Its eleven checkpoints
-are retained as non-promotable runtime artifacts only: there are no generated
-images, quality findings, acceptance, export, or promotion. Concise has not
-received GPU fitting. The fixed current comparison may progress through base,
-current step 20, current step 50, and current final step 100, with review of
-each pair before progression. A concise GPU fit and concise step-50 pair may
-be considered only after that current comparison; the concise fit keeps the
-same 100-step horizon. The [local quality fit runtime
-audit](../../../../docs/figment/2026-09-08-local-quality-fit-runtime-audit.md)
-records the bounded current result.
+The distinct quality recipe completed current and concise CPU preflights, then
+a separately admitted current-caption 100-step fit. Its eleven checkpoints are
+non-promotable runtime artifacts. The first matched current step-20 pair
+completed, but the root diagnostic review recorded `continue` and the
+independent diagnostic review recorded `stop`. That disagreement does not
+establish successful output quality, human QA, acceptance, export, or promotion. The
+higher current ladder is stopped pending next-protocol analysis; no higher
+current stage or concise admission has been issued. The [training results hub
+review](../../../../docs/figment/2026-09-08-training-results-hub-review.md)
+records the historical hub display separately from the runtime evidence.
 
 The accepted generated-input gallery specified in [the hub plan](../../../../docs/figment/2026-09-08-generated-input-hub-plan.md) displays declared provenance and recorded visual-review observations next to the provisional `g01` source, while omitting operator-approval data and all actions. Its bounded provenance projection was accepted in `7f158b08`; its readability update was accepted in `c264d74f`. It shows immutable record snapshots, which may predate later independent review, and does not make any current gallery diagnostic eligible. The system still has no accepted, diverse source set to train or independently evaluate.
