@@ -63,6 +63,11 @@ class FakeC1:
 
 
 class Stream:
+    closed = False
+
+    def close(self):
+        self.closed = True
+
     def __init__(self): self.done = False
     def read(self, _count):
         if self.done: return b""

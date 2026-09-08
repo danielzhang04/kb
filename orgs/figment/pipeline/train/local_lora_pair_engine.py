@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import os
 import re
 import stat
@@ -15,13 +16,58 @@ import threading
 import time
 import uuid
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, Protocol
 
 
 ErrorFactory = Callable[[str], Exception]
 SafeExisting = Callable[[Path, Path, str], Path]
 Reparse = Callable[[Path], bool]
-FileHash = Callable[[Path, int | None], tuple[str, int]]
+
+
+class FileHash(Protocol):
+    def __call__(self, path: Path, maximum: int | None, *, allow_empty: bool = False) -> tuple[str, int]: ...
+
+
+EXTRA_FLAGS = frozenset({"--input-directory", "--models-directory", "--reserve-vram", "--database-url"})
+MAX_OBSERVER_RECORD = 8 * 1024 * 1024  # encoded UTF-8 bytes; bounds a full sample timeseries
+
+
+def validate_extra_arguments(extra_arguments: Any, error: ErrorFactory) -> tuple[str, ...]:
+    """Admit only closed flag/value pairs; the controller closes the values themselves."""
+    if not isinstance(extra_arguments, tuple) or len(extra_arguments) % 2:
+        raise error("extra Comfy arguments must be closed flag/value pairs")
+    seen: set[str] = set()
+    for flag, value in zip(extra_arguments[::2], extra_arguments[1::2]):
+        if not isinstance(flag, str) or flag not in EXTRA_FLAGS or flag in seen:
+            raise error("extra Comfy argument flag is not allowed")
+        if not isinstance(value, str) or not value.strip() or value.startswith("-"):
+            raise error("extra Comfy argument value is invalid")
+        seen.add(flag)
+    return extra_arguments
+
+
+def validate_seconds(value: Any, label: str, error: ErrorFactory) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        raise error(f"{label} must be a positive finite number of seconds")
+    return float(value)
+
+
+def observer_summary(observer: Any, started: bool) -> tuple[dict[str, Any], BaseException | None]:
+    """Return a JSON-safe bounded observer record, or an unavailable indicator plus the error."""
+    if not started:
+        return {"status": "unavailable", "reason": "not-started"}, None
+    try:
+        value = observer.record()
+        if not isinstance(value, dict):
+            raise TypeError("resource observer record must be a dict")
+        encoded = json.dumps(value, sort_keys=True, allow_nan=False).encode("utf-8")
+        if len(encoded) > MAX_OBSERVER_RECORD:
+            raise ValueError("resource observer record exceeds its bound")
+        return json.loads(encoded), None
+    except BaseException as exc:
+        return {"status": "unavailable", "error_class": type(exc).__name__}, exc
 
 
 class Pumper:
@@ -170,11 +216,17 @@ def copy_stream(source: Path, target: Path, expected: str, *, maximum: int, sour
         raise error("adapter changed while copied")
 
 
-def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_private: Path, studio_private: Path, source: Path | None, verify_staged: Callable[[Path], dict[str, Any]], verify_before_success: Callable[[], None], receipt_inputs: Callable[[dict[str, Any]], dict[str, Any]], sha: Callable[[bytes], str], safe_existing: SafeExisting, reparse: Reparse, file_hash: FileHash, error: ErrorFactory, pumper_factory: Callable[[Any, Path], Any], schema: str, maximum_lora: int, maximum_stderr: int, maximum_png: int, maximum_output_entries: int, deadline_seconds: float) -> dict[str, Any]:
+def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_private: Path, studio_private: Path, source: Path | None, verify_staged: Callable[[Path], dict[str, Any]], verify_before_success: Callable[[], None], receipt_inputs: Callable[[dict[str, Any]], dict[str, Any]], sha: Callable[[bytes], str], safe_existing: SafeExisting, reparse: Reparse, file_hash: FileHash, error: ErrorFactory, pumper_factory: Callable[[Any, Path], Any], schema: str, maximum_lora: int, maximum_stderr: int, maximum_png: int, maximum_output_entries: int, deadline_seconds: float, extra_arguments: tuple[str, ...] = (), prepare_root: Callable[[Path], Any] | None = None, completed_output: Callable[[Any, str, Path], Any] | None = None, observer: Any | None = None, readiness_seconds: float | None = None, row_seconds: float | None = None) -> dict[str, Any]:
     """Launch exactly two validated rows under one owned-process deadline.
 
     The controller has already closed all policy inputs. This function only
     performs lifecycle, bounded-I/O, output, and durable-record mechanics.
+
+    The optional extension parameters exist for comparators that need closed
+    extra Comfy flags, extra staged directories, a different history decoder,
+    a read-only resource observer, or tighter readiness/row deadlines. The
+    observer only ever sees process identities (never the Popen object) and
+    never terminates anything; this function is the sole owner of teardown.
     """
     stage = evidence.get("stage")
     rows = evidence.get("rows")
@@ -185,6 +237,12 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
         raise error("pair engine has no selected adapter source")
     if source is not None and checkpoint is None:
         raise error("pair engine has an unexpected adapter source")
+    extra_arguments = validate_extra_arguments(extra_arguments, error)
+    readiness_seconds = validate_seconds(readiness_seconds, "readiness deadline", error)
+    row_seconds = validate_seconds(row_seconds, "row deadline", error)
+    if (prepare_root is not None and not callable(prepare_root)) or (completed_output is not None and not callable(completed_output)):
+        raise error("pair engine extension callbacks must be callable")
+    decode_output = helper._completed_output if completed_output is None else completed_output
     if root.exists() or root.parent != main_private or not main_private.is_dir():
         raise error("matched output root must be fresh and fixed")
     root.mkdir()
@@ -203,6 +261,18 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
     deadline = time.monotonic() + deadline_seconds
     failure: BaseException | None = None
     secondary_failures: list[str] = []
+    observer_started = False
+    resource_observer: dict[str, Any] | None = None
+
+    def observe() -> None:
+        if observer is not None:
+            observer.update_owned(dict(tracked))
+            observer.check()
+
+    def on_discovery(discovered: dict[int, Any]) -> None:
+        observer.update_owned(dict(discovered))
+        observer.check()
+
     try:
         if checkpoint is not None:
             staged = loras / checkpoint["filename"]
@@ -211,17 +281,32 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
             if copied["sha256"] != checkpoint["sha256"]:
                 raise error("staged adapter hash changed")
         runtime_output_bound(output, staged, maximum_entries=maximum_output_entries, maximum_png=maximum_png, root=main_private, safe_existing=safe_existing, reparse=reparse, error=error)
+        if prepare_root is not None:
+            prepare_root(root)
         if time.monotonic() >= deadline:
             raise error("matched run exceeded its one deadline before launch")
         helper._port_available()
-        command = [str(helper.COMFY_PYTHON), "-X", "utf8", "main.py", "--listen", "127.0.0.1", "--port", str(helper.PORT), "--output-directory", str(output), "--temp-directory", str(temp), "--user-directory", str(user), "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch"]
-        process = subprocess.Popen(command, cwd=helper.COMFY_ROOT, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=helper._isolated_environment(root), creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+        command = [str(helper.COMFY_PYTHON), "-X", "utf8", "main.py", "--listen", "127.0.0.1", "--port", str(helper.PORT), "--output-directory", str(output), "--temp-directory", str(temp), "--user-directory", str(user), "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch", *extra_arguments]
+        environment = helper._isolated_environment(root)
+        if time.monotonic() >= deadline:
+            raise error("matched run exceeded its one deadline before launch")
+        process = subprocess.Popen(command, cwd=helper.COMFY_ROOT, shell=False, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, env=environment, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
         wrapper = helper._process_identity(process.pid)
         if wrapper is None:
             raise error("cannot identify owned Comfy wrapper")
+        tracked = {wrapper.pid: wrapper}
         pumper = pumper_factory(process.stderr, stderr_path)
         pumper.start()
-        tracked = helper._wait_for_owned_listener(wrapper, deadline, {wrapper.pid: wrapper})
+        if observer is not None:
+            observer_started = True
+            observer.start(wrapper)
+            observer.check()
+        readiness_deadline = deadline if readiness_seconds is None else min(deadline, time.monotonic() + readiness_seconds)
+        if observer is None:
+            tracked = helper._wait_for_owned_listener(wrapper, readiness_deadline, tracked)
+        else:
+            tracked = helper._wait_for_owned_listener(wrapper, readiness_deadline, tracked, on_discovery=on_discovery)
+        observe()
         opener = helper._loopback_opener()
         for row in rows:
             if time.monotonic() >= deadline:
@@ -233,28 +318,50 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
             with marker.open("xb") as handle:
                 handle.write(json.dumps({"stage": stage, "row_id": row["id"], "graph_sha256": sha(json.dumps(row["graph"], sort_keys=True, separators=(",", ":")).encode())}, sort_keys=True).encode())
             tracked = helper._require_owned_listener(wrapper, tracked)
+            observe()
+            now = time.monotonic()
+            if now >= deadline:
+                raise error("matched run exceeded its one deadline before dispatch")
+            row_deadline = deadline if row_seconds is None else min(deadline, now + row_seconds)
             queued = helper._local_json(opener, "POST", "/prompt", {"prompt": row["graph"], "client_id": uuid.uuid4().hex})
+            if time.monotonic() >= row_deadline:
+                raise error("matched prompt dispatch exceeded its row deadline")
             prompt_id = queued.get("prompt_id")
             if not isinstance(prompt_id, str) or not re.fullmatch(r"[A-Za-z0-9_-]{1,128}", prompt_id):
                 raise error("local prompt id is invalid")
             completed = None
-            while time.monotonic() < deadline:
+            while time.monotonic() < row_deadline:
                 if pumper.error is not None or pumper.truncated:
                     raise error("Comfy stderr journal failed while polling")
                 runtime_output_bound(output, staged, maximum_entries=maximum_output_entries, maximum_png=maximum_png, root=main_private, safe_existing=safe_existing, reparse=reparse, error=error)
                 tracked = helper._require_owned_listener(wrapper, tracked)
-                completed = helper._completed_output(helper._local_json(opener, "GET", f"/history/{prompt_id}"), prompt_id, output)
+                observe()
+                completed = decode_output(helper._local_json(opener, "GET", f"/history/{prompt_id}"), prompt_id, output)
+                observe()
                 if completed is not None:
+                    if time.monotonic() >= row_deadline:
+                        raise error("matched prompt did not complete before its row deadline")
                     break
                 time.sleep(0.5)
             if completed is None:
                 raise error("matched prompt did not complete")
+            observe()
             results.append({"row_id": row["id"], "seed": row["seed"], "prompt_id": prompt_id, "output": completed})
+        observe()
         if len(results) != 2 or len({entry["output"]["sha256"] for entry in results}) != 2:
             raise error("matched pair output inventory is invalid")
     except BaseException as exc:
         failure = exc
     finally:
+        if observer_started:
+            for step in (observer.finish, observer.check):
+                try:
+                    step()
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+                    else:
+                        secondary_failures.append(type(exc).__name__)
         try:
             if wrapper is not None:
                 teardown = helper._teardown(wrapper, tracked, process)
@@ -279,12 +386,37 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
                 failure = exc
             else:
                 secondary_failures.append(type(exc).__name__)
+        stderr_stream = getattr(process, "stderr", None) if process is not None else None
+        if stderr_stream is not None:
+            if pumper is None or not pumper.thread.is_alive():
+                try:
+                    stderr_stream.close()
+                    stderr_closed = bool(getattr(stderr_stream, "closed", True))
+                    if not stderr_closed:
+                        raise error("Comfy stderr pipe did not close")
+                except BaseException as exc:
+                    if failure is None:
+                        failure = exc
+                    else:
+                        secondary_failures.append(type(exc).__name__)
+            else:
+                secondary_failures.append("stderr-close-skipped-reader-alive")
+        if observer is not None:
+            resource_observer, record_error = observer_summary(observer, observer_started)
+            if record_error is not None:
+                if failure is None:
+                    failure = record_error
+                else:
+                    secondary_failures.append(type(record_error).__name__)
+    extension = {} if observer is None else {"resource_observer": resource_observer}
+    final_stderr_sha: str | None = None
     if failure is None:
         try:
             if teardown.get("verified_stopped") is not True:
                 raise error("owned Comfy teardown was not verified")
             exact_output_inventory(output, results, staged, maximum_entries=maximum_output_entries, maximum_png=maximum_png, root=main_private, safe_existing=safe_existing, reparse=reparse, file_hash=file_hash, error=error)
             verify_before_success()
+            final_stderr_sha = file_hash(stderr_path, maximum_stderr, allow_empty=True)[0]
         except BaseException as exc:
             failure = exc
     if failure is not None:
@@ -294,7 +426,8 @@ def execute_pair(evidence: dict[str, Any], helper: Any, *, root: Path, main_priv
         except BaseException as exc:
             stderr_sha = None
             secondary_failures.append(type(exc).__name__)
-        record(root, "failure.json", {"schema": schema, "status": "failed", "not_promotable": True, "stage": stage, "inputs": receipt_inputs(evidence), "failure_class": type(failure).__name__, "failure_message": str(failure)[:256], "teardown": teardown, "rows": results, "stderr_sha256": stderr_sha, "stderr_complete": pumper is None or (pumper.started and pumper.error is None and not pumper.truncated and not pumper.thread.is_alive()), "secondary_failure_classes": secondary_failures})
+        record(root, "failure.json", {"schema": schema, "status": "failed", "not_promotable": True, "stage": stage, "inputs": receipt_inputs(evidence), "failure_class": type(failure).__name__, "failure_message": str(failure)[:256], "teardown": teardown, "rows": results, "stderr_sha256": stderr_sha, "stderr_complete": pumper is None or (pumper.started and pumper.error is None and not pumper.truncated and not pumper.thread.is_alive()), "secondary_failure_classes": secondary_failures, **extension})
         raise failure
-    record(root, "receipt.json", {"schema": schema, "status": "complete", "not_promotable": True, "stage": stage, "inputs": receipt_inputs(evidence), "rows": results, "lora_application": application, "teardown": teardown, "stderr_sha256": file_hash(stderr_path, maximum_stderr, allow_empty=True)[0], "deadline_seconds": deadline_seconds})
-    return {"schema": schema, "status": "complete", "not_promotable": True, "stage": stage, "inputs": receipt_inputs(evidence), "rows": results, "lora_application": application, "teardown": teardown, "stderr_sha256": file_hash(stderr_path, maximum_stderr, allow_empty=True)[0], "deadline_seconds": deadline_seconds}
+    receipt = {"schema": schema, "status": "complete", "not_promotable": True, "stage": stage, "inputs": receipt_inputs(evidence), "rows": results, "lora_application": application, "teardown": teardown, "stderr_sha256": final_stderr_sha, "deadline_seconds": deadline_seconds, **extension}
+    record(root, "receipt.json", receipt)
+    return dict(receipt)
