@@ -126,7 +126,7 @@ def test_execute_command_is_loopback_isolated_and_whitelisted(local, tmp_path, m
     assert kwargs["shell"] is False and kwargs["cwd"] == module.COMFY_ROOT
     assert args[0] == str(module.COMFY_ROOT / "venv" / "Scripts" / "python.exe")
     assert kwargs["env"]["HF_HUB_OFFLINE"] == "1" and kwargs["env"]["PYTHONDONTWRITEBYTECODE"] == "1"
-    assert kwargs["env"]["TORCH_HOME"].endswith("torch") and kwargs["env"]["XDG_CACHE_HOME"].endswith("xdg")
+    assert kwargs["env"]["TORCH_HOME"].endswith("torch") and kwargs["env"]["TORCHINDUCTOR_CACHE_DIR"].endswith("inductor") and kwargs["env"]["XDG_CACHE_HOME"].endswith("xdg")
     assert kwargs["creationflags"] == getattr(module.subprocess, "CREATE_NO_WINDOW", 0)
     assert args[args.index("--listen") + 1] == "127.0.0.1"
     assert {"--input-directory", "--output-directory", "--temp-directory", "--user-directory", "--disable-api-nodes", "--disable-all-custom-nodes", "--disable-auto-launch"} <= set(args)

@@ -342,7 +342,7 @@ def _isolated_environment(root: Path) -> dict[str, str]:
     env = {name: os.environ[name] for name in names if name in os.environ}
     cache = root / "cache"
     cache.mkdir()
-    env.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "TEMP": str(root / "temp"), "TMP": str(root / "temp"), "HOME": str(root / "home"), "USERPROFILE": str(root / "home"), "LOCALAPPDATA": str(cache), "APPDATA": str(cache), "HF_HOME": str(cache / "hf"), "TRANSFORMERS_CACHE": str(cache / "transformers"), "TORCH_HOME": str(cache / "torch"), "XDG_CACHE_HOME": str(cache / "xdg")})
+    env.update({"PYTHONDONTWRITEBYTECODE": "1", "PYTHONNOUSERSITE": "1", "HF_HUB_OFFLINE": "1", "TRANSFORMERS_OFFLINE": "1", "TEMP": str(root / "temp"), "TMP": str(root / "temp"), "HOME": str(root / "home"), "USERPROFILE": str(root / "home"), "LOCALAPPDATA": str(cache), "APPDATA": str(cache), "HF_HOME": str(cache / "hf"), "TRANSFORMERS_CACHE": str(cache / "transformers"), "TORCH_HOME": str(cache / "torch"), "TORCHINDUCTOR_CACHE_DIR": str(cache / "inductor"), "XDG_CACHE_HOME": str(cache / "xdg")})
     return env
 
 def _bounded_stderr(process: Any, path: Path) -> tuple[Any | None, Any | None]:

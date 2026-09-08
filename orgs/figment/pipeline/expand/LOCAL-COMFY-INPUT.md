@@ -32,3 +32,9 @@ isolated input/output/temp/user/home/cache directories, permits only the
 installed IP-Adapter plugin, creates one pre-POST dispatch marker, submits one
 graph, and stops only its own verified process. The receipt is written only
 after that teardown. It is not run by this builder's tests or default command.
+
+The first admitted startup reached ComfyUI import and exited before listener
+readiness because TorchInductor had no cache path under the isolated environment.
+The launcher now supplies an owned `TORCHINDUCTOR_CACHE_DIR`. The bounded v2
+`torch._dynamo` import probe passed without starting a server; its receipt is
+under `_private/figment-local-comfy-importprobe-20260908-v2/`.
