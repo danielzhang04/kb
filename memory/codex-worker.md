@@ -596,3 +596,15 @@ identity as well as PID, and verify descendant teardown. Also inspect effective
 database migration paths: an explicit user directory did not suppress Comfy's
 legacy shared-database backup attempt. Mocked lifecycle tests and an import probe
 do not establish process-tree or state-directory isolation.
+
+## 2026-09-08 - Preserve useful output when shutdown reporting fails
+
+A local image was generated and hash-verified, but the Windows venv wrapper exited
+between child teardown and a PID metadata query. The original failed journal lacked
+an exact error stage; a later independent absence check belonged in a separate
+recovery observation, not a rewritten completion receipt. Keep those facts distinct.
+A verified raster and frozen graph can still support a qualified image comparison;
+do not repeat generation merely to replace a reporting failure with a green receipt.
+For future wrappers, consult the exact retained process handle before and after a
+wrapper-only termination error, and preserve bounded stage/error codes. Also test
+adopters against actual historical manifest shapes before relying on synthetic fixtures.

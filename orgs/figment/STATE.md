@@ -1,16 +1,17 @@
 # Figment current state
 
-Updated 2026-09-08 14:41 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
+Updated 2026-09-08 15:04 UTC. The 8 AM Eastern checkpoint was delivered; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `57e2cad7`, is pushed to draft
+Studio branch `codex/figment-studio-20260908`, head `23466fff`, is pushed to draft
 PR179, stacked on foundation PR178. The research book, authenticated studio, actual
 offline plan preview, reference/diagnostic galleries, local raw identity observer,
 and single-seed curation compiler are built, tested and independently reviewed.
 
 Identity quality remains unresolved. g01 is the provisional canonical seed; g02/g07
-are declared comparators. Four generated inputs remain experimental and excluded
-from training. The curation compiler passed final 37 curation/lineage checks plus
+are declared comparators. Six gallery diagnostics remain experimental and excluded
+from training; the failed-launcher crop output is preserved separately. The curation
+compiler passed final 37 curation/lineage checks plus
 9 train-first checks, and refused all four real inputs without publishing a dataset
 or creating approval/plan records. Earlier 109 Python regression checks preceded the
 last boundary repairs. No new trainable dataset has been accepted.
@@ -69,8 +70,16 @@ exists. Root separately verified wrapper13288 and children640/41660 absent, with
 port8190 refusing connection; recovery evidence preserves the failed journal. Both
 visual reviewers rejected altered identity/clothing and another background portrait.
 The observer detected two faces and withheld similarities. Crop framing alone did
-not fix these failures. A wrapper natural-exit reporting repair is under review;
-the next image hypothesis changes only the positive/negative prompt profile.
+not fix these failures. Wrapper natural-exit repair `77a1ccbe` passed 35 parent and
+35 independent checks. Prompt profile `bd173214` passed 36 parent combined checks
+and 31 independent runner checks; its actual run completed and stopped all owned
+processes. This output removed the framed background portrait and the observer found
+one face, but both visual reviews found resemblance and wardrobe insufficient.
+Raw cosine to g01 is 0.577951, uncalibrated and never an acceptance threshold.
+The complete evidence is in the local simple-portrait review. Completed baseline and
+simple-portrait images were imported with reviewed rejected-only adopter `23466fff`.
+The owned gallery fixture now shows six generated records/19 loaded images on desktop
+and mobile without overflow; its production authentication was not exercised by this fixture.
 There is no external provider charge for the local attempt; native billing is unknown.
 
 The Figment-only Gemini comparison adapter remains accepted in `56226790`, but its
@@ -78,10 +87,14 @@ actual Google export is blocked pending the exact user question; no retry or alt
 export is allowed. The existing LoRA-export question is also pending. There are no
 active pods. Recorded compute remains $37.800385 of $50 and today's recorded compute
 remains $2.110134. Keep-awake owner 16580 and supervisor 19564 were reverified alive
-at 10:34 Eastern. No Instagram/account work, production promotion, merge, or deployment.
+at 11:02 Eastern. No Instagram/account work, production promotion, merge, or deployment.
 Experimental executor `af7b07bc` is accepted after 23 parent and 23 independent
 checks. It retains exact reviews, revalidates/stages only declared training files,
 binds the canonical Ops accounting context, prevents admission replay and verifies
 exact returned checkpoint inventory. No eligible real dataset or live training run
 exists. A separate one-observation training diagnostic is a research option; the
 current 20-row contract has not been lowered to force acceptance of drifting inputs.
+An existing local SDXL trainer was found at `C:/Users/danie/tools/lora-trainer`, with
+a clean pinned sd-scripts checkout and CUDA support. A separate one-observation
+planner and CPU dataset-parser preflight are under review. No CPU preflight or GPU
+training probe has run yet; the unrelated trial-persona scripts/data are not reused.

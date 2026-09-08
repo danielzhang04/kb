@@ -511,3 +511,53 @@ must remain refused by this completedreceiptadopter. Timestampwritesnewcropactua
 NoownedRunPods/numericholds; arc37.800385/daily2.110134 unchanged. ExactGoogleg01 and
 LoRAexports unanswered/no retries. Keepawakealive10:34Eastern. Continueasync; training
 capability/single-observationdesign follows currentimagefixes, not20-rowpadding.
+
+## 15:04 UTC: simple portrait completed; six-record gallery; local LoRA next
+
+Studio23466fff pushed. Accepted77a1ccbe wrappernaturalexitrepair35parent+35independent;
+bd173214 promptprofile36parentcombined+31independentrunner. Actual local simpleportrait
+main_private/figment-local-comfy-simple-portrait-20260908-v1 COMPLETED session23405exit0,
+no remaininggeneration. Manifest7bad7f10091acfa0604d8aab05b2a5726c469bb8799ae77d487ac7764c3a5d05,
+receipt/journal97b968517a444fed7945e7ef6bd50c1472a9f94696996ef69e2abfe1b7c3aeae,
+output06c468272f74c9c52b8f8b161ae0df467c8bd5451e1a15463f3b156b2e3c618b,
+1180068B1024square. Prompt879e5755-12dd-4be8-972a-7e83a7e0506f,34.90sactualgraph.
+Allwrapper3084/children36904,37352terminated; rootindependentlyverifiedabsent/nolistener.
+Originalcroprunfailure remains unchanged. Prompt-onlygraphcomparison differed6/7text,
+samecrop5d6045...f27c/seed481516234/.65/24steps/models. Plainwall/no framedportrait;
+root+timestampstillrejectsameperson/wardrobe. Rawfixed640facecount1;g01.5779512293389373,
+g02.6144644004467416,g07.4878149143602172,unthresholded. ObserverSHA
+f8345d03f0731fafad3a5118c0ea5808c21040cab9da14a9667f6def1d930c82.
+Acceptedreviewdocs d9814206 crop;23466fff simpleportraitdocSHA
+a04e8dff055b004a54d8887f15d7ed03986173ad0ec99046080125baf83a15d5.
+
+Adopterccfa7d57 passed12parent+12independent, actualV3legacyshapepreflight. Its
+fixed640generalization23466fff passed16parent+16independent, notqualitygate. Rootactual
+imports into main_private/figment-single-seed-20260908:
+- g01-local-comfy-baseline-v3.png same3d6e...fb8d8, provenance42806a36a71214409c20c3be47caa0cbd78796f584c6d764b7e2a964b06c18e1.
+- g01-local-comfy-simple-portrait-v1.png same06c468...c618b, provenancecad8020f5eff246ce8a2b300a85fba6516db1415715b98806fae5d68e6a5636e.
+Requests fixed main_private/figment-local-comfy-generated-input-requests-20260908:
+baseline-v3-rejected.json6c996259...8545;simple-portrait-v1-rejected.json
+461b51f8ffeea35a4720938e7758973a8feff08f5adc5c1b39d6f58134e4c923. Both rejected/trainingfalse.
+Failedcropcannotentercompletedreceiptadopter. Owned5419fixtureAPI+binaryhashverified.
+Galleryv5sixgenerated/19images,2columnsdesktop1mobile/nooverflow, independentlyviewed;
+screens main_private/ignored_private/figment-gallery-preview-20260908/screenshots:
+desktop a4e093eecd03cf50987098b9640fa2cbf1a95bdaef5aebba50c881f23cce5727;
+mobile417c0f82e46ff5dd7c37654f9a3b88e2f62c42a2d2f85493043d4c024afe788e.
+Timestampclearedownedbrowsermetricsaftercapture. FixtureisNOTproductionauthproof.
+
+Next main work: existing C:/Users/danie/tools/lora-trainer/sd-scripts clean
+37a1cbbc5725ed2a3575506e7bd2001c9908ac92 Apache2; venvPython3.12.8,
+torch2.11.0+cu128,8GiB4070Laptop,accelerate1.6,diffusers.32.1,transformers4.54.1,
+safetensors.4.5,bitsandbytes.50.2,xformers.0.35. RealVis6a35...b80/licensepreviouslyverified.
+Do not reuse trialpersona config/script hardlink-rebuild routines or media.
+Hubbuilds train/local_single_observation.py/.toml/_cpu_preflight.py/tests/doc; protocol
+independentlyreviews. Fixed10stepGPUfitrecipefuture, finalcheckpointonly, CPUparser
+first afterreview. NoactualCPUpreflight/training/modelinitialization yet. Parentcaught
+wrongHERE.parents4 and whole6.9GBread_bytes; authorfixes parents3/streamhash/boundedreads.
+CPUparser maytransitivelyimportTorch; assertCUDAuninitialized, no model/accelerator/
+trainingconstruction; offlineenvironmentrequired. Tokenizercacheavailabilitynotproved.
+Timestampfinishesgalleryv5audit plusminimalREADME/image-production/architecturestatus.
+
+Keepawakealive11:02Eastern, owner16580/supervisor19564. No pods/holds; arc37.800385,
+daily2.110134; nativebillingunknown. Both exactexportquestions unanswered/no retries.
+Continueasync; no checkpoint/productionapproval/Instagram/deploy/merge.
