@@ -60,3 +60,9 @@ native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exp
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-combined-manifest-build-and-independent-admission	not-exposed
 native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local-hub-preview-and-independent-input-review	not-exposed
 built-in imagegen billing telemetry unavailable; GPU ledger separate		not-exposed		not-exposed	not-exposed	figment-loaded-imagegen-g01-wardrobe-only-study	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-paired-output-and-23-image-independent-audit	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-frame-extractor-build-adversarial-review-and-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-hub-reader-build-review-and-race-repair	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-native81frame-video-compiler-build-review-and-admission	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-full-persona-look-diagnostic-design-and-structural-dryrun	not-exposed
+native-runtime billing/model telemetry unavailable; GPU ledger separate		not-exposed		gpt-5.6-terra	not-exposed	figment-local81frame-assembly-build	not-exposed
