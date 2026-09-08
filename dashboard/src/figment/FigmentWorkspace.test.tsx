@@ -43,8 +43,19 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.')).toBeTruthy();
     expect(screen.getByText('runs/a/driver-plan.json')).toBeTruthy();
     expect(screen.getByText(/train/)).toBeTruthy();
-    expect(screen.getByText(/tester/)).toBeTruthy();
+    expect(screen.getAllByText(/tester/).length).toBeGreaterThan(0);
     expect(screen.getByText('Declared ceiling: $1.25')).toBeTruthy();
+  });
+
+  it('requests only the fixed offline tester preview and labels its limits', async () => {
+    const preview = { schema: 'figment/plan-preview@1', offlinePreview: true, notPromotable: true, creator: 'creator-001', stage: 'tester', runCount: 1, declaredCeilingUsd: 2.5, manifestSha256: 'a'.repeat(64) };
+    const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response(preview)) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    expect(screen.getByText(/cannot run a pod, create an approval, or promote a checkpoint/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Preview tester plan' }));
+    await screen.findByText(/creator-001.*tester.*declared \$2\.50/);
+    expect(fetchImpl).toHaveBeenCalledWith('/api/figment/plan-preview/tester', { method: 'POST', headers: { authorization: 'Bearer session' } });
   });
 
   it('fetches only listed diagnostic PNG assets with their projection hash', async () => {

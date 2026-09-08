@@ -474,11 +474,19 @@ describe('server', () => {
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
   it.each([
     '/api/schedules', '/api/schedules/example/arm', '/api/control/human-requests/example/respond/challenge',
+    '/api/figment/plan-preview/tester',
   ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
     expect(response.statusCode, `${url} should be gated, not missing`).not.toBe(404);
     expect(response.statusCode).toBe(401);
+  });
+
+  it('rejects the offline Figment preview at the origin guard before its planner can run', async () => {
+    app = matrixApp();
+    const response = await app.inject({ method: 'POST', url: '/api/figment/plan-preview/tester', headers: { ...sessionHeaders(), origin: 'https://wrong.example' } });
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toMatchObject({ error: 'forbidden', reason: 'origin-not-allowed' });
   });
 
   it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {

@@ -16,6 +16,7 @@ import { registerHealthRoutes } from './health/routes.ts';
 import { createHomeRoutePorts, registerHomeRoutes, createActivationReader } from './home/routes.ts';
 import { registerTraceRead } from './trace/routes.ts';
 import { registerFigmentRead } from './figment/routes.ts';
+import { registerFigmentTesterPreview } from './figment/planPreview.ts';
 import { registerBrainSearch } from './brain/routes.ts';
 import { registerHub } from './hub/index.ts';
 import { createBus, wireControlStoreTick } from './hub/bus.ts';
@@ -271,6 +272,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       repoRoot,
       diagnosticRoot: options.figmentDiagnosticRoot ?? process.env.DASHBOARD_FIGMENT_DIAGNOSTIC_ROOT ?? null,
     });
+    registerFigmentTesterPreview(scope, { repoRoot });
     registerBrainSearch(scope, { repoRoot });
     registerWorkflows(scope, surfaceCtx);
     // P6 W6.1 [P6-C20]: v1 READS join the existing read scope, under the same originPlugin +
