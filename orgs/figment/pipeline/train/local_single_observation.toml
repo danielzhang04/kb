@@ -1,0 +1,48 @@
+# Fixed local-only fit-probe recipe for exactly one original g01 observation.
+# This is consumed only after the separate CPU preflight; it does not authorize
+# training, checkpoint acceptance, image sampling, or export.
+
+mixed_precision = "bf16"
+save_precision = "fp16"
+gradient_checkpointing = true
+sdpa = true
+cache_latents = true
+cache_latents_to_disk = true
+cache_text_encoder_outputs = true
+cache_text_encoder_outputs_to_disk = true
+network_train_unet_only = true
+max_data_loader_n_workers = 0
+persistent_data_loader_workers = false
+vae_batch_size = 1
+
+enable_bucket = true
+resolution = "768,768"
+min_bucket_reso = 512
+max_bucket_reso = 1024
+bucket_reso_steps = 64
+bucket_no_upscale = true
+
+train_batch_size = 1
+gradient_accumulation_steps = 1
+max_train_steps = 10
+seed = 481516234
+
+network_module = "networks.lora"
+network_dim = 32
+network_alpha = 16
+optimizer_type = "AdamW8bit"
+learning_rate = 1e-4
+lr_scheduler = "cosine"
+lr_warmup_steps = 0
+
+caption_extension = ".txt"
+shuffle_caption = false
+keep_tokens = 1
+max_token_length = 225
+clip_skip = 2
+min_snr_gamma = 5.0
+
+save_model_as = "safetensors"
+save_state = false
+sample_every_n_steps = 0
+log_with = "tensorboard"
