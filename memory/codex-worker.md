@@ -564,3 +564,24 @@ Signal to recognize: status reports armed but alive:false for the supervisor/lea
 The existing Acquire path reconciled stale settings and restored a live supervised lease.
 An awake laptop does not itself provide an agent sequencer; the active native session
 and a detached runner are different capabilities and must be reported separately.
+
+## 2026-09-08 - Check detector input scale before interpreting unavailable identity values
+
+All ten large paired portraits returned no face under native YuNet input, although
+faces were visibly clear. The pinned model documentation describes a smaller trained
+face scale; one uniform max-edge640 detector-only probe restored availability without
+changing confidence thresholds. Next time clear faces all become unavailable, I will
+inspect preprocessing and model input assumptions before drawing identity conclusions.
+Preserve original receipts, version the preprocessing, apply it identically to every
+candidate and reference, and map coordinates to the original recognizer pixels. Raw
+similarity remains uncalibrated even after detection works; a visually rejected image
+can still yield a high similarity value.
+
+## 2026-09-08 - An idle worker needs a new turn, not just a queued message
+
+A follow-up review stayed idle because send_message delivered context without starting
+a completed worker. Next time a delegated task has no progress, I will inspect worker
+status and use followup_task for an idle agent. Use send_message only to steer an active
+turn. Signal to recognize: a completed status persists after a new task was queued;
+waiting longer does not itself activate the worker. This is separate from keep-awake:
+a live machine and a pending mailbox do not prove work is executing.
