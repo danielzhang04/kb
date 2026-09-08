@@ -1,9 +1,9 @@
 # Figment current state
 
-Updated2026-09-08 11:50 UTC. The8 AM Eastern checkpoint is a report; work continues.
+Updated2026-09-08 12:02 UTC. The8 AM Eastern checkpoint is a report; work continues.
 Instagram is deferred. [Canonical handoff](../../handoffs/2026-09-08-figment-async.md).
 
-Studio branch `codex/figment-studio-20260908`, head `93217b61`, pushed to draftPR179
+Studio branch `codex/figment-studio-20260908`, head `a6d8283f`, pushed to draftPR179
 stacked on foundationPR178. Research book, authenticated studio, actual offline plan
 preview, reference and diagnostic gallery, image/video diagnostics and local raw
 identity observations are built, tested and independently reviewed.
@@ -19,8 +19,8 @@ Recorded compute arc37.800385/50, daily2.110134/10, no outstanding reservations.
 Native raw observer V1 yielded no face for all ten large paired portraits. A fixed
 640 detector-only probe and primary model documentation supported a versioned
 preprocessing correction. New explicit schema@2 passed34 parent and independent tests;
-the actual19-input V2 batch completed with all candidates/anchors detected; independent
-receipt/table audit is in progress. Native V1 evidence remains immutable.
+the actual19-input V2 batch completed with all candidates/anchors detected; independent and parent
+receipt/table audits passed; result is committed. Native V1 evidence remains immutable.
 Raw similarities are uncalibrated observations, never automatic quality approval.
 
 Next: audit actual V2 observations and all81 head-turn frames, then build missing
@@ -29,5 +29,8 @@ provisional canonical; g02/g07 are comparators. Generated variants remain experi
 
 Exact LoRA upload for the frozen full-look prompt comparison still awaits the user's
 answer after automatic approval rejection. No retry or alternate export. Other work
-continues. Keep-awake owner16580 and supervisor19564 were alive at07:46 Eastern.
+continues. Keep-awake owner16580 and supervisor19564 were alive at07:59 Eastern.
 No Instagram/account work, production promotion, merge or deployment has occurred.
+
+8 AM report delivered; work continues. Single-seed curation compiler is being built and
+reviewed. Next generated input is a frozen g01-only shoulders-up framing experiment.

@@ -1,6 +1,6 @@
 # Figment async handoff ? 2026-09-08
 
-Active as of 11:50 UTC / 07:50 Eastern. **8 AM Eastern (12:00 UTC) is a report,
+Active as of 12:02 UTC / 08:02 Eastern. **8 AM Eastern (12:00 UTC) is a report,
 not a stop. Keep working and keep-awake afterward.** Instagram integration is deferred.
 
 ## Authority and success criteria
@@ -64,7 +64,7 @@ No pod or numeric reservation was created for this blocked experiment.
 
 ## Accepted work and actual evidence
 
-Studio branch **codex/figment-studio-20260908**, head **93217b61 pushed**, draftPR179:
+Studio branch **codex/figment-studio-20260908**, head **a6d8283f pushed**, draftPR179:
 https://github.com/danielzhang04/kb/pull/179, stacked on foundationPR178/head37d580d9.
 
 -03e52227: persona-derived diagnostic age/canonical reference protocol;55parent tests.
@@ -151,7 +151,7 @@ runtime, while actual observations use the pinned observer venv.
 
 - figment_protocol_review: V2 actual19-input batch complete, aggregate
   56c6e76c40ad25f5954522316630dc71542403b7778530eceb04f6d14cd5873c. All19 and allanchors
-  exactlyone detection with uniformfixed640; independent audit pending. Now designs
+  exactlyone detection with uniformfixed640; independent and parent audit PASS, committeda6d8283f. Now designs
   actionable6-8input single-g01 expansion slate, no generation yet.
 - figment_timestamp_fix: independent actualV2 receipt/table audit, then narrow video
   book wording fix to distinguish V1 failure from V2/V3 stability and unmetV3motion.
@@ -163,12 +163,12 @@ runtime, while actual observations use the pinned observer venv.
 Root supervises evidence/accounting, independently reviews actual observations and V3,
 then builds the next useful dataset unit. Exact LoRA upload question still pending;
 no alternate export or retry. Use followup_task to activate idle workers: send_message
-queues a message but does not start their next turn. 8 AM checkpoint remains a report.
+queues a message but does not start their next turn. 8 AM checkpoint was delivered at12:00 UTC. Work continues.
 
 ## Runtime, previews and coordination
 
 Keep-awake label codex-figment-async-20260908: owner16580, supervisor19564, both alive,
-AC armed, lastverified07:46Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
+AC armed, lastverified07:59Eastern;16h safetycap. Script scripts/keep_awake.ps1 -Status.
 External Codex CLI reports notloggedin; native parent/workers are execution lane, no
 promised detached restart after parentdeath. Do not open auth stores or stop for this.
 
@@ -196,3 +196,25 @@ docs/figment/2026-09-08-async-build-plan.md, current visual/experiment reports,
 orgs/figment/research/book/README.md, livev2journal/log/receipt, and worker messages.
 Skills already applied: loop-design, dispatch, save-session/growth-log, code/security
 review, imagegen and browser. Nativebrowser unavailable; isolatedheadlessfixtureused.
+
+## 8 AM report and next input
+
+The user-facing8 AM checkpoint was delivered at12:00 UTC: keep-awake live, book/hub/
+observer reviewed, stable native-resolution video with motion request unmet, resemblance/
+apparent-age quality unresolved, RunPod estimate37.800385/50 and zero livepods. Continue.
+
+Expansion plan corrected after independent review caught a near-duplicate small turn
+and incorrect single-factor claims. E01 is a shoulders-up reframing of original g01,
+with original head pose/room/light/intact opaque black top retained. This contributes
+framing coverage only; it is not an independent reference or view. Remaining slate
+rows are explicitly multi-factor coverage, not causal comparisons. Frozen request:
+_private/figment-single-seed-20260908/g01-e01-shoulders-up-v1.request.json,
+prompt SHAb1d305daa9c21f3ee4a0b9cbda9241b5ef5258aed5431058ecb743b411fe54df.
+Final independent prompt/plan recheck is pending before built-in imagegen execution.
+No native billing estimate is exposed; record as unknown, not zero.
+
+Single-seed curation implementation is in progress in curate_single_seed.py,
+lineage.py and figment_train.py with focused tests and SINGLE-SEED-CURATION.md.
+Protocol worker reviews its boundary design and will independently review frozen code.
+Do not commit these moving files before review. Timestamp worker handles E01 input
+review. Root supervises next generation and retains all source/provenance evidence.
