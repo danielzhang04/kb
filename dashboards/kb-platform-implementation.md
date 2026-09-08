@@ -25,7 +25,7 @@ retain their separate human gates.
 2. **Fixture evidence — RETAINED / FROZEN.** Linux 399, Windows 47, and the
    full/sparse mutation proof are prior evidence, not tests rerun in this wave.
 3. **C0 claim store — DONE / READY.** Source head
-   `36f76379c422aa1133f5421fe6258dd254e9d35e` includes C0. Root independently
+   `1f0084ef` includes C0. Root independently
    verified typecheck and 18/18 focused claim-store tests in 1.18 s.
 4. **D0 canonical admission — DONE / READY.** The bounded correction is at
    `57aebea0`; its focused suite passed 45/45 in 2.64 s and includes the held
@@ -33,8 +33,9 @@ retain their separate human gates.
 5. **C1 schema/migration: DONE / READY.** Committed and pushed as `5a480e5c`.
    Final independent review passed all 230 tests in seven scoped files,
    dashboard typecheck, and diff checking. Both minor diagnostic findings closed.
-   **C1 delivery: BUILD / FINAL GATE.** Terra reports 93/93 adapter tests and
-   8/8 vertical tests separately; combined gate and independent review remain.
+   **C1 delivery: DONE / READY.** Committed/pushed as `1f0084ef`. Root
+   independently passed 103/103 focused tests, full typecheck and diffcheck.
+   Two early-exit review probes first failed, then passed after correction.
 6. **D1 ledger design: READY; implementation ACTIVE.** Sol's corrected design
    passed a separate fresh review. The exact candidate proof and checkpoint
    before publication close the historical recovery finding.
@@ -42,7 +43,7 @@ retain their separate human gates.
    verified the pre-edit baseline: 104/104 tests across two files, full typecheck.
    The four-file window includes the strict grant outcome and resumable tokenless
    interruption; it is independent of C/D1. Production acceptance is still pending.
-8. **B generation integration: WAITING on accepted A/C/D ports.** Then run full
+8. **B generation integration: PREFLIGHT ACTIVE; build waits for accepted A1/D1.** Then run full
    integration/fault gates, independent review, and required production gates.
 
 The user's 2026-09-08 overnight directive renewed both bounded correction cycles and requested one consolidated implementation merge, async continuation, and phase-by-phase progression. C delivery has resumed. D1 design is independently TECHNICALLY READY and its implementation is released. A1 engine/grant preflight is accepted and its four-file implementation is released. Historical twice-failed scenarios remain recorded; they are no longer unanswered approval blockers.
@@ -55,8 +56,8 @@ This is a scoped helper, not a changed global power plan or verified app setting
 ## Current evidence and boundaries
 
 PR176 targets main at source head
-`36f76379c422aa1133f5421fe6258dd254e9d35e`; it records accepted A0, C0, D0, and C1 schema.
-C1 delivery and the released A1/D1 implementation are uncommitted WIP.
+`1f0084ef`; it records accepted A0, C0, D0, and C1 schema.
+C1 delivery is accepted; the released A1/D1 implementation is uncommitted WIP.
 The older Slice 1A checkout remains untouched. Coordination is based on
 `9713208aaa2a7b84e38c409a29d162c1817cb34b` for PR177.
 

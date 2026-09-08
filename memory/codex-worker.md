@@ -613,3 +613,10 @@ history separately. A native Windows thread execution-state helper provides a
 bounded keep-awake request without changing global power policy; verify API
 success plus live heartbeat/PID, not an assumed app setting. A1/C/D1 file scopes
 are independent; B alone waits for all accepted ports.
+
+C delivery review lesson: a close-only failure helper is insufficient when an
+outer result handler later performs terminal settlement. Test the final durable
+record after awaiting both receipt and result. Required EOF must be proven
+complete before acknowledgement even if the process exits after its last write.
+Two fresh early-exit probes caught these gaps after a 101-test builder pass;
+correction and root103/typecheck passed at source1f0084ef.

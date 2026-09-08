@@ -8,7 +8,8 @@ The user's 2026-09-08 overnight directive renewed both bounded correction cycles
   5a480e5c passed independent 230 tests / seven files, full typecheck and diffcheck.
 - A1 corrected plan accepted; root pre-edit engine/grant 104/104 and typecheck PASS.
 - D1 corrected design passed fresh independent Sol review, design only.
-- C builder reports separate adapter93/93 and vertical8/8; not acceptance yet.
+- C delivery accepted/pushed `1f0084ef`: root independent103/103 + full
+  typecheck + diffcheck PASS; two early-exit probes first red then green.
 - Scoped Windows keep-awake helper PID31648 active with fresh heartbeat, expires
   approximately 19:19 UTC. Root `_private/overnight-awake-20260908.json` is status;
   creating the matching `.stop` file ends it. Native API succeeded; no global
@@ -35,10 +36,10 @@ probe remains failed systemd / HTTP502 and PR173 open; no fresh health claim.
 
 | Scope | Status | Owner |
 | --- | --- | --- |
-| C adapter, adapter test, vertical test, delivery DRAFT | WIP final gate | c1_schema_build, Terra-high requested |
+| C adapter, adapter test, vertical test, delivery DRAFT | DONE accepted 1f0084ef | root independent review |
 | execution.ts/test, spendGrantProvision.ts/test, A1 DRAFT | WIP building | c1_schema_review, Sol-high requested |
 | D1 atomic document/checkpoint, queue bridge/receipt, Python day, Plane-A parser and roster test, D1 DRAFT | WIP building | integration_plan_review, Sol-high requested |
-| B activation/adapters/routes integration | TODO after accepted ports | unassigned |
+| B integration preflight DRAFT | WIP plan only; build waits for A1/D1 | c1_schema_build, Terra-high requested |
 | tasklist, STATE, parent card, wake decision, this handoff | current checkpoint | root |
 
 SOURCE: C:/Users/danie/kb/_private/codex-worktrees/kb-vm-overhaul-resume-20260907,
@@ -49,8 +50,8 @@ telemetry unavailable. No formal grade, merge, deployment or phase completion.
 
 ## Exact next step
 
-Receive C's combined gate and freeze, independently review its actual code;
-monitor A1/D1 nonoverlapping builds. Then accept proven ports and dispatch B.
+Review B preflight and monitor A1/D1 nonoverlapping builds. C is accepted;
+independently review remaining frozen ports, then dispatch B implementation.
 Complete Phase0 gates before advancing each remaining phase sequentially.
 
 ## Load list
@@ -70,3 +71,6 @@ Complete Phase0 gates before advancing each remaining phase sequentially.
 - Source `orgs/kb-ops/output/2026-09-06-platform-phase0/a1-engine-grant-preflight-20260908.md`
 - Source `orgs/kb-ops/output/2026-09-06-platform-phase0/a1-engine-grant-preflight-review-20260908.md`
 - Source `orgs/kb-ops/output/2026-09-06-platform-phase0/d1-ledger-design-20260908.md`
+
+- Source `orgs/kb-ops/output/2026-09-06-platform-phase0/c1-delivery-review-20260908.md`
+- Source `orgs/kb-ops/output/2026-09-06-platform-phase0/b-integration-preflight-20260908.md` when frozen

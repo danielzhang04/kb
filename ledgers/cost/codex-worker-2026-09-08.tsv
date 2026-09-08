@@ -33,3 +33,5 @@ unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-renewed-correction	user r
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-renewed-design-review	fresh independent design technically ready, root released bounded implementation; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:A1-four-file-build	corrected plan accepted; root baseline104 and typecheck passed; implementation dispatched; responding model and cost unavailable	unknown
 unverified	gpt-5.6-sol	unavailable	kb-vm-overhaul:D1-implementation-dispatch	reviewed checkpoint receipt parser pinned-day scope; no real ledger publication; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:C1-delivery-final	root review found two early-exit bugs, corrected; independent103 typecheck diffcheck PASS; commit1f0084ef; responding model and cost unavailable	unknown
+unverified	gpt-5.6-terra	unavailable	kb-vm-overhaul:B-integration-preflight	plan-only next wiring and blackbox tests; build waits for accepted A1/D1; responding model and cost unavailable	unknown

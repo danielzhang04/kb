@@ -8,10 +8,11 @@ _Updated: 2026-09-08 (async continuation; C delivery, A1, D1 active)_
   pass. Most implementation accumulates in PR176 for one consolidated merge;
   coordination follows PR177 to ops under worker routing rules.
 - A0, C0, D0, and C1 schema are accepted. Source checkpoint is
-  `36f76379c422aa1133f5421fe6258dd254e9d35e`, including C1 schema `5a480e5c`.
+  `1f0084ef`, including C1 schema `5a480e5c`.
   Independent schema gate: 230 tests / seven files, full typecheck, diffcheck.
-- C delivery resumed under renewed user authorization. Builder reports separate
-  93/93 adapter and 8/8 vertical passes; combined gate and independent review remain.
+- C delivery is accepted and pushed at `1f0084ef`. Root independently passed
+  103/103 focused tests, full typecheck, diffcheck, and two early-exit red/green
+  probes. B integration preflight is now active; B production waits for A1/D1.
 - D1 design passed independent review. Sol now owns receipt/checkpoint, pinned
   ledger day and writer parsing implementation in the reviewed bounded scope.
 - A1 engine/grant corrected preflight is accepted. Sol owns the atomic four-file
@@ -27,7 +28,7 @@ The user's 2026-09-08 overnight directive renewed both bounded correction cycles
 
 ## Next
 
-Finish and independently review C, A1, and D1; integrate B only after accepted
+Finish and independently review A1 and D1; integrate B only after accepted
 ports; run phase-level fault/integration and environment gates. Continue the
 remaining phases sequentially under the user's authorization. Signed production
 and explicit runtime-selection decisions remain gates at their actual position.
