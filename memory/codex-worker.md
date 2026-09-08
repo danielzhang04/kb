@@ -512,3 +512,34 @@ upload, I will stage only the approved inventory and recheck the exact staged en
 immediately before execution. Signal to recognize: validation enumerates selected
 manifest rows while execution walks an entire directory. Check the bytes that cross
 the boundary, including metadata, rather than inferring upload safety from approval.
+
+## 2026-09-08 - Persist resource identity before optional metadata
+
+The actual provider returned a Go UTC timestamp absent from the offline fixtures,
+so optional parsing failed before the acquired pod ID reached durable storage.
+Next time a create callback receives a resource ID, I will persist the ID first and
+normalize optional metadata afterward, while still requiring fresh ownership evidence
+before recovery deletion. Signal to recognize: an acquired resource exists in the
+receipt but its recovery journal has a null ID. Exact observed-format fixtures caught
+this gap; a permissive timestamp parser would have weakened recovery instead.
+
+## 2026-09-08 - Unknown billing telemetry needs a metadata schema
+
+Blank USD values in native-worker telemetry made the real compute budget reader fail
+closed, even though those rows contained no numeric expense. Next time runtime billing
+is unavailable, I will record that uncertainty in a distinct metadata shard with no
+numeric USD column and keep the ordinary cost-shard name free for actual charges.
+Signal to recognize: accounting instrumentation blocks admission because unknown
+amounts are encoded as malformed numeric values. Preserve every actual expense;
+unknown is not zero, and provider observations must not double-book run estimates.
+
+## 2026-09-08 - Readiness and transfer dominate small GPU diagnostics
+
+The corrected five-image run spent roughly 26 minutes starting and 44 minutes uploading,
+while its five job records totaled under three minutes. Next time a small GPU run looks
+stalled, I will inspect separate control-plane, service-health, transfer and job phases
+before treating desiredStatus=RUNNING as application readiness. Signal to recognize:
+provider says RUNNING while the proxy is unavailable or the harness is still uploading.
+The authenticated v2 pod-log SSE endpoint supplied redacted startup evidence when no
+browser was available; use the configured client and never persist credential-bearing
+lines. Improve measured transfer/caching behavior before simply buying faster compute.

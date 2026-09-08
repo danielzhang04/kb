@@ -1,0 +1,75 @@
+{
+  "schema": "figment/diagnostic-audit@1",
+  "run_kind": "standalone diagnostic; no driver-bound promotion evidence",
+  "manifest_sha256": "35f23c56b249bca2b93d0719da6d87f6eb4e96f709d4aecb7a2c7968e6ab0e91",
+  "source_commit": "88a1da1a",
+  "pod_id": "g2x0j52cicqvll",
+  "started_utc": "2026-09-08T06:06:31+00:00",
+  "finished_utc": "2026-09-08T07:19:23+00:00",
+  "elapsed_seconds": 4371.929,
+  "termination_verified": true,
+  "estimated_run_usd": 1.323723,
+  "estimated_experiment_usd": "1.324810",
+  "estimated_arc_usd": "37.015061",
+  "provider_invoice_charge": "not reconciled for these two attempts",
+  "parent_absence_check": {
+    "checked_utc": "2026-09-08T07:20:47.868959+00:00",
+    "absence_verified": {
+      "68xfk68u0ods8l": true,
+      "g2x0j52cicqvll": true
+    },
+    "provider_pod_count": 0,
+    "active_pod_count": 0
+  },
+  "receipt_sha256": "dd623b534a6007e9be5ef3da6f5cae3fe5ff80778db5d2961d6e155843490c8b",
+  "images": [
+    {
+      "file": "c001-tensor-tester-000000250.png",
+      "bytes": 2971832,
+      "sha256": "9880ed00f09d6c40549bcf935f32925807dfb0ad0244b59d7945784a9f6813ab",
+      "checkpoint_step": 250,
+      "width": 1448,
+      "height": 2176
+    },
+    {
+      "file": "c001-tensor-tester-000000500.png",
+      "bytes": 3087656,
+      "sha256": "71d53cd990df431907847897f5033df5ccd0f830b055ccff6f9b9df8a21647df",
+      "checkpoint_step": 500,
+      "width": 1448,
+      "height": 2176
+    },
+    {
+      "file": "c001-tensor-tester-000000750.png",
+      "bytes": 3302559,
+      "sha256": "7cc991c8d89cc14dd1f7eaf4812dd2278ff7b6a686c712bbcde6593c1e346187",
+      "checkpoint_step": 750,
+      "width": 1448,
+      "height": 2176
+    },
+    {
+      "file": "c001-tensor-tester-000001000.png",
+      "bytes": 3185794,
+      "sha256": "0e2ed76f5038cfa5656f657a3d5cbfe079814df23ff3b08371e23b28d4df0495",
+      "checkpoint_step": 1000,
+      "width": 1448,
+      "height": 2176
+    },
+    {
+      "file": "c001-tensor-tester-final.png",
+      "bytes": 3021790,
+      "sha256": "e48622df4da6034d9327ba2557063120a14acffe9fe0472adbd2884f252f47d2",
+      "checkpoint_step": 1250,
+      "width": 1448,
+      "height": 2176
+    }
+  ],
+  "visual_review": {
+    "reviewer": "codex-worker",
+    "method": "all five raw PNGs viewed at original resolution",
+    "adult_and_clothed": "pass",
+    "qualitative_identity": "weak resemblance to intended creator; no candidate selected",
+    "operator_ruling": "not performed",
+    "promotion_eligible": false
+  }
+}

@@ -22,3 +22,19 @@ native-runtime-telemetry-unavailable; no new GPU job		not-exposed		gpt-5.6-luna	
 native-runtime-telemetry-unavailable; recovery offline review		not-exposed		gpt-5.6-terra	not-exposed	figment-recovery-final-review-capacity-fallback	not-exposed
 native-runtime-telemetry-unavailable; exact daily guard check		not-exposed		gpt-5.6-luna	not-exposed	figment-live-exact-budget-preflight	not-exposed
 native-runtime-telemetry-unavailable; parser fix after terminated live attempt		not-exposed		gpt-5.6-terra	not-exposed	figment-observed-provider-timestamp-fix	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-observed-timestamp-independent-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-live-report-readability	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-active-pod-handoff-refresh	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-startup-phase-diagnostic	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-historical-run-timing	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-transfer-retry-budget-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-next-studio-slice-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-diagnostic-vs-driver-provenance-followup	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-live-upload-report-refresh	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-existing-board-preparation	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-diagnostic-board-build-verification	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-active-lora-wiring-readonly-review	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-final-diagnostic-report-capture	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-luna	not-exposed	figment-final-report-attribution-correction	not-exposed
+native-runtime telemetry unavailable; numeric compute tracked separately		not-exposed		gpt-5.6-terra	not-exposed	figment-final-record-consistency-review	not-exposed
+native-runtime telemetry unavailable; final stale-card correction recheck		not-exposed		gpt-5.6-terra	not-exposed	figment-final-record-superseded-instructions-recheck	not-exposed
