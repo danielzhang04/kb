@@ -60,3 +60,30 @@ records the durable acquired pod ID and verified absence. If the book is revised
 that live lifecycle evidence from the parser's regression-test coverage rather than treating
 either as a quality or promotion proof. No other concrete book error was found in this read-only
 check.
+
+## Small head-turn / charcoal-tee candidate
+
+Viewed the canonical `creator-001/anchors/g01.jpg` and
+`C:/Users/danie/kb/_private/figment-single-seed-20260908/g01-small-head-turn-charcoal-tee-v1.png`
+at original resolution. The candidate's SHA-256 recomputed to
+`55e60a741ff1e4be78cccde7a807ca8ff9e261cd4b3ab1131bb3060b38961dcb`, which matches the adjacent
+`g01-small-head-turn-charcoal-tee-v1.provenance.json`. That record names `anchors/g01.jpg` as the
+sole source, records its source hash, and records an experimental-unreviewed, training-ineligible
+status. This observation neither accepts nor rejects the candidate for training.
+
+- **Identity geometry:** the long center-parted dark hair, brow/eyelid treatment, nose bridge,
+  lips, jaw taper, earrings, and bedroom scene provide substantial resemblance cues. The candidate
+  has a more squarely open eye expression, fuller lower cheeks, and a subtly broader jaw/lower-face
+  read than the anchor. A single visual comparison cannot establish identity preservation.
+- **Realism:** ordinary room geometry, fabric texture, flyaway hairs, pores, and directional
+  daylight remain credible. The candidate has smoother cheek and under-eye transitions and a more
+  uniformly polished face treatment than the anchor; that is a visual observation, not a quality
+  score.
+- **Adult presentation and clothing:** it presents as an adult woman, with no exact-age claim.
+  The charcoal crew-neck T-shirt is opaque, intact, and covers the torso and shoulders.
+- **Pose:** a small three-quarter head turn is visible while the shoulders remain near-square. The
+  requested approximate angle and stated direction are not measured, so the comparison only
+  confirms a visible small pose change.
+
+The provenance prompt is therefore broadly reflected in the visible wardrobe and pose change, but
+its self-described preservation outcome is not independently established by that prompt or record.
