@@ -1,6 +1,6 @@
 # Figment async handoff - 2026-09-08
 
-Current at 12:00 Eastern.
+Current at 13:20 Eastern; noon checkpoint retained below.
 This is the canonical resumable handoff for the active Figment async run.
 It replaces the prior append-only timeline at this path.
 Read cited audits and private receipts for historical detail rather than reconstructing it here.
@@ -48,7 +48,7 @@ Studio worktree:
 `C:\Users\danie\kb\_private\codex-worktrees\figment-studio-20260908`
 Studio branch:
 `codex/figment-studio-20260908`
-Studio head is `614b6e40`, pushed.
+Studio head is `784822ae`, pushed; PR179 body refreshed through local fit and hub.
 Studio draft PR:
 https://github.com/danielzhang04/kb/pull/179
 PR179 is stacked on foundation PR178, whose accepted head is `37d580d9`.
@@ -66,6 +66,8 @@ Root updates Figment STATE and the working card separately.
 The main checkout at `C:\Users\danie\kb` is an unrelated dirty branch. Never checkout, clean, reset, or broadly stage it.
 Studio STATE is normalization-only and `.test-tmp` is local test residue; inspect targeted changes and never blanket-stage the studio worktree.
 ## Keep-awake ownership
+
+Last verified 13:06 Eastern: armed true, both owner and supervisor alive.
 
 Keep-awake label:
 `codex-figment-async-20260908`
@@ -204,6 +206,51 @@ Verify ownership before loopback requests or result publication.
 Verify teardown and process absence before writing a completed receipt.
 Never kill a process merely because it shares a port or executable name.
 ## Required reading on resume
+
+### Latest accepted boundary, 17:20 UTC
+
+Runtime audit/book committed aa4cb02c. Mobile navigation correction and visual audit
+committed a4897d09. Root viewed the V2 mobile capture: all six tabs in two rows,
+four unclipped cards; configured width390, innerWidth390, clientWidth/scrollWidth375
+(vertical scrollbar15px). Original mobile check compared expanded innerWidth453
+and falsely claimed viewport fit; its conclusion is withdrawn, old evidence preserved.
+
+Quality Phase A accepted784822ae after16 root tests,16 independent tests and an
+actual fixed-venv -I -B helper import probe without Torch. Plan SHA22965674bbe9f97205c6f631e1c39316c6709c4b6f5c40ac429e7393e9f68525;
+CPU SHA9fa05358432cfecb4ccd6fdca000b2f9e8fc9ec8f0c3f2d812e8599d5268a96f;
+TOML3a29713ac392a6ebdbb844abc161e8f50378f33aa3407a00b4d9e614ba3affcf.
+Root rejected earlier coarse recipe validation and relative helper import before
+any parser run; final code validates complete TOML semantics, exact parent/leaf
+inventory, branch output name, current pins, checked absolute helper import,
+bounded exception causes, and effective buckets. Old accepted CPU helper243179
+and original planner3fe3 remain unchanged.
+
+Actual plans were staged under STUDIO/_private:
+- figment-local-quality-current-plan-20260908-v1/local-quality-plan.json:
+  raw9f2246e727d992aab12ffdc1f256dde17487887b1dd108cbe5dc7fa770441b58,
+  canonical7cbc717c23100fb2d3542126babe01971f28fc3133674a1133bac9c6f2e24df5.
+- figment-local-quality-concise-plan-20260908-v1/local-quality-plan.json:
+  raw4fbbefbbdb9bf4883454be65e197716f559e29192843a2a4376c2c29790fb8d0,
+  canonical7a1f69fbf282fd0c7e874abf3d8ed45c7762d504cc7ee88d8c5efa19f785ce49.
+Both actual planners exited0 after approximately6s and rehashed the local base
+model. Exactly one original g01 observation each, different captions, identical
+100-step recipe. No actual quality CPU/GPU execution yet at this checkpoint.
+
+Current sole-writer assignments:
+- figment_fit_repair: Phase B shared non-policy GPU helper extraction plus new
+  quality executor/tests; preserve ten-step policy/regressions. No GPU execution.
+- figment_fit_independent_review: explicitly reassigned as private CPU wrapper
+  author, MAIN/_private/run-figment-local-quality-cpu-preflight-20260908.py;
+  root must independently review before launching. Reuse checked CPUV3 helper,
+  closed current/concise roots,180s/offlineCUDA-1/NVML1/fixedvenvUTF8/ownedteardown.
+- figment_training_hub_plan: Phase C1 offline matched-inference graph/matrix
+  module/tests/design only. No accepted Comfyhelper edits while its2997 hash is
+  bound by CPU/GPU work. Root rejected changed predeclared pose/prompt and an
+  all-ten-at-once design: retain exact experimental prompt and review successive
+  two-seed pairs before higher checkpoints/concise training. At most10images.
+
+No new provider actions or denials; pending exact exports remain unanswered.
+Keep awake and async work continue; no human gate is required for these local steps.
 
 Read these in order.
 1. From the intended checkout, run `& C:\Users\danie\AppData\Local\Programs\Python\Python313\python.exe scripts\preamble.py`.

@@ -614,3 +614,9 @@ A Windows CUDA build reported availability true but device count zero with an em
 
 ### 2026-09-08: Feedback delivery is not worker activation
 A completed worker received queued repair messages but remained idle, delaying the GPU executor. Check status after a final response and use followup_task to activate work; send_message alone does not restart an idle worker. Assign one writer and one reviewer explicitly, and use a fresh bounded worker when an old thread returns acknowledgments instead of implementation. Root corrected the dispatch and preserved the rejected code boundary; no unreviewed GPU run occurred.
+
+### 2026-09-08: Verify effective viewport and exact parser launch shape
+A mobile overflow test compared scrollWidth with an already expanded innerWidth, falsely passing a453px layout configured at390px. Compare scrollWidth with clientWidth and independently verify configured versus effective viewport widths. The wrapped navigation then passed at390px and was visually reviewed. A new CPU helper also used a relative sibling import that would fail under the intended isolated -I launch; load by checked absolute path and exercise that exact interpreter shape. These are runtime-contract checks, not reasons to weaken the intended isolation.
+
+### 2026-09-08: A self-hash and coarse recipe map do not validate semantics
+Recomputing a five-field recipe projection could not detect changed learning rate or rank in a TOML file. Validate the complete parsed recipe against the declared fixed configuration, and check the dataset parent that the real trainer scans as well as its selected leaf. Keep raw receipt hash failures explicit: a null canonical-hash sentinel must be rejected before nullable wrapper comparisons. Windows trainer output also needs explicit UTF-8 when its normal status messages include non-ASCII text; the accepted ten-step V2 run proved that correction.
