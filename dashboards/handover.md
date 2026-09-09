@@ -1,35 +1,27 @@
 # System Handover
-_Generated: 2026-09-08 06:20 UTC_
+_Generated: 2026-09-09T06:19 UTC_
 
-**What happened overnight.** The nightly dispatcher ran cleanly: preamble passed, the skills
-mirror check (`sync_skills --check`) was in sync, and one `nightly-review` cadence card was
-dispatched and executed. Spending stayed under the $30/day ceiling — yesterday's ledger shows
-~$19.40, but $15.97 of that is a flagged WORST-CASE RunPod orphan estimate ("verify RunPod
-billing"), so the real figure is likely well below it; $0.00 so far today. Dashboards were
-regenerated from live queue, ledger, and project state.
+**What happened overnight.** The nightly cloud dispatcher ran cleanly: the preamble passed
+(no STOP file, no API key in the agent environment, budget under the $30/day ceiling with $0
+spent — everything is subscription-billed), the skills mirror check reported no drift, and both
+dashboards were regenerated. One cadence card was dispatched and executed (`6aa0fa13`).
 
 **What is waiting on you.**
-1. **One approval (T3):** figment GATE A eye-gate (`65d8f246-8a461521`) — the blind seven-axis
-   board needs your rules before curation to 40 can proceed.
-2. **atlas** — the omni-interface remediation diff (>400 lines) is built and re-reviewed on
-   `codex/atlas-enhancements-20260820`; the project contract holds it for your review before commit.
-3. **faceless-youtube** — the `bricks-fresh` run is paused at the P6B gate (18/25 slots), and the
-   Variant D trial (25/25 verified) needs your keep / edit / iterate / revert decision.
-4. **prospecting** — the live Snov run on 30 NYC VC firms is awaiting your judgment; P8 batch 2
-   and later phases sit behind their own gates.
-5. **RunPod billing check** — worth confirming the actual cost of pod `hvtovmusbx6a1t` against
-   the worst-case $15.97 estimate ledgered yesterday.
+1. **figment GATE A eye-gate** (`65d8f246`, T3) — a blind board of creator-001 expansion-03 needs
+   your ruling on seven axes before any curation, training, or posting can proceed. This is the
+   one item actively blocking work.
+2. **atlas** omni-interface remediation diff (>400 lines) needs your review before it can be
+   committed — see `handoffs/2026-08-20-atlas-omni-remediation-review.md`.
+3. **faceless-youtube** bricks Variant D (25/25 verified) needs your keep / edit / iterate /
+   revert call at the P6B gate.
+4. **prospecting** has several live gates queued (P2 Snov judging, P8 batch 2).
 
-**Housekeeping (all already tracked — nothing new).** The daemon-dir mirror check ran via the
-documented workaround (the check tool lives on `main`, not `ops`) and found only one recurring
-ops-only extra, `orgs/kb-ops/workflows/acceptance-run.md`, already covered by card
-`6a605ebb-d86dff79`. A desktop `sync_daemon_dirs.py --sync --prune` from the dashboard-ops worktree
-is owed, along with a decision to mirror the check tool onto `ops`. Two carried working cards also
-sit for the desk: `6a6bc3dd-5494006b` is halted (terminal, needs a human walk-back), and
-`d126c410-9bc54280` is a long-running figment job whose frontmatter has a cosmetic unquoted-colon
-YAML issue. No new wake-me cards were filed this run.
+**What the system will do unattended.** Only the nightly dispatcher runs on its own; it dispatches
+and executes coordination cadences and regenerates these dashboards. No project pipeline advances
+without you — every substantive gate above is human-held by design.
 
-**What the system will do unattended.** Nothing new spins up on its own — the self-lint cadence is
-dormant and launches are manual. The next nightly dispatcher run will dispatch the following
-cadence card, refresh these dashboards, and re-file any of the above that remains open. No
-credentials are handled and no money is spent without your gates.
+**Two housekeeping notes.** `scripts/sync_daemon_dirs.py` is still missing from the `ops` branch
+(present on `main`); the daemon-dir mirror shows one ops-only file drift. Both facts are already
+recorded in open wake-me cards from Aug 15 and Aug 30 — a desktop restore of the script and a
+`--sync` are owed. Also, a `halted` codex card (`6a6bc3dd`) is lingering in `working/` and should
+be swept to `done/`. Neither blocks anything.

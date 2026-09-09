@@ -779,3 +779,16 @@
 - Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
   card, so no 4b verification needed this run.
 - Silent run appropriate (nothing new broke; all pending items already carry wake/decision cards).
+
+## 2026-09-09 nightly run (cloud, Opus)
+- Clean run: preamble PASS, sync_skills --check in sync (no drift), dashboards regenerated,
+  card 6aa0fa13-619a4e0f (cadence:nightly-review) executed and set done.
+- STEP-2B unchanged: sync_daemon_dirs.py still absent on ops (present on main); ran via main's
+  copy in refs-fallback mode -> exit 1, same single ops-only extra orgs/kb-ops/workflows/acceptance-run.md.
+  IDENTICAL to prior runs; already carded (wake-2026-08-15-missing + wake-2026-08-30-drift, both
+  still open). Held the lesson: did NOT file a duplicate — recorded in the health line/handover instead.
+- Queue by state (dir count): inbox 52, working 2 (6a6bc3dd halted-terminal lingering; d126c410
+  figment long-running boss/terminal card), done 1578, approvals 1.
+- Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
+  card, so no step-4b verification needed this run.
+- Silent run appropriate: nothing new broke; every pending item already carries a wake/decision card.
