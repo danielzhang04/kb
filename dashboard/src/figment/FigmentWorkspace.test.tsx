@@ -47,6 +47,21 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Declared ceiling: $1.25')).toBeTruthy();
   });
 
+  it('shows terminal cloud execution separately from a quality disposition', async () => {
+    const cloudExperiment = { status: 'recorded' as const, execution: 'failed' as const, liveness: null, maxMinutes: 60, maxUsd: null, preflightEstimateUsd: 1.3, estimatedActualUsd: 0.019366, startedUtc: '2026-09-09T07:33:27+00:00', finishedUtc: '2026-09-09T07:34:21+00:00', terminationVerified: true, outputCount: 0, quality: 'not-reviewed' as const, failure: 'bootstrap' as const };
+    const fetchImpl = vi.fn(() => response({ ...projection, cloudExperiment })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' }));
+    expect(screen.getByText('Reference-cloud experiment')).toBeTruthy();
+    expect(screen.getByText(/Execution stopped during bootstrap/)).toBeTruthy();
+    expect(screen.getByText('Preflight estimate')).toBeTruthy();
+    expect(screen.getByText('$1.30')).toBeTruthy();
+    expect(screen.getByText('Spend ceiling')).toBeTruthy();
+    expect(screen.getAllByText('not recorded').length).toBeGreaterThan(0);
+    expect(screen.getByText('Not reviewed; no accepted or rejected result is claimed.')).toBeTruthy();
+    expect(screen.queryByText('must-not-project')).toBeNull();
+  });
+
   it('shows historical preparation without claiming GPU or quality evidence', async () => {
     const localTraining = { status: 'recorded' as const, historical: true as const, preparation: { source: 'anchors/g01.jpg' as const, originalObservations: 1 as const, repeatCount: 1 as const, targetResolution: [768, 768] as [number, number], effectiveBucket: [896, 512] as [number, number], cpuCudaMasked: true as const, cpuVerifiedTeardown: true as const, tokenizerLoads: [{ id: 'openai/clip-vit-large-patch14', probeTokenCount: 19 }, { id: 'laion/CLIP-ViT-bigG-14-laion2B-39B-b160k', probeTokenCount: 19 }] } };
     const fetchImpl = vi.fn(() => response({ ...projection, localTraining })) as unknown as typeof fetch;

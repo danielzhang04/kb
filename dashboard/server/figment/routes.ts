@@ -13,6 +13,7 @@ import { collectGeneratedInputs, readGeneratedInput } from './generatedInputs.ts
 import { collectLocalTrainingReadiness, collectLocalTrainingResults, type FigmentLocalTrainingEvidenceRoots, type FigmentLocalTrainingResultRoots, type LocalTrainingProjection, type LocalTrainingResultsProjection } from './localTraining.ts';
 import { collectMatchedGallery, readMatchedGalleryAsset, type FigmentMatchedGalleryRoots, type MatchedGalleryProjection } from './matchedGallery.ts';
 import { collectProfileGallery, readProfileGalleryAsset, type ProfileGalleryProjection } from './profileGallery.ts';
+import { collectCloudExperiment, type CloudExperimentProjection } from './cloudExperiment.ts';
 
 const RECORD_NAMES = new Set(['plan.json', 'driver-plan.json', 'run.json', 'gate.json', 'accepted-checkpoint.json']);
 const MAX_RECORDS = 256;
@@ -62,6 +63,8 @@ export interface FigmentProjection {
   matchedGallery: MatchedGalleryProjection;
   /** Historical C3 prompt-profile diagnostic; optional for older @1 consumers. */
   profileGallery: ProfileGalleryProjection;
+  /** Sanitized lifecycle only; quality disposition is deliberately separate. */
+  cloudExperiment: CloudExperimentProjection;
   diagnostic: DiagnosticProjection;
   warnings: string[];
 }
@@ -412,17 +415,19 @@ function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticPr
   return root === null ? { status: 'unavailable', reason: 'unsafe-configured-root' } : diagnosticProjection(root);
 }
 
-export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null, generatedInputRoot?: string | null, localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null, localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null, matchedGalleryRoots?: FigmentMatchedGalleryRoots | null, profileGalleryRoot?: string | null): FigmentProjection {
+export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null, generatedInputRoot?: string | null, localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null, localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null, matchedGalleryRoots?: FigmentMatchedGalleryRoots | null, profileGalleryRoot?: string | null, cloudExperimentRoot?: string | null): FigmentProjection {
   const warnings: string[] = [];
   const root = openRoot(join(repoRoot, 'orgs', 'figment'));
-  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
   const collected = collectRecords(root, warnings);
   const creators = collectCreators(root);
-  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), generatedInputs: collectGeneratedInputs(repoRoot, generatedInputRoot), localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), generatedInputs: collectGeneratedInputs(repoRoot, generatedInputRoot), localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
 }
 
-export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null; generatedInputRoot?: string | null; localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null; localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null; matchedGalleryRoots?: FigmentMatchedGalleryRoots | null; profileGalleryRoot?: string | null }): void {
-  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot, options.generatedInputRoot, options.localTrainingEvidence, options.localTrainingResultRoots, options.matchedGalleryRoots, options.profileGalleryRoot));
+export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null; generatedInputRoot?: string | null; localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null; localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null; matchedGalleryRoots?: FigmentMatchedGalleryRoots | null; profileGalleryRoot?: string | null; cloudExperimentRoot?: string | null }): void {
+  // This fixed root is configuration only; clients cannot supply or select it.
+  const cloudExperimentRoot = options.cloudExperimentRoot ?? process.env.DASHBOARD_FIGMENT_CLOUD_EXPERIMENT_ROOT ?? null;
+  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot, options.generatedInputRoot, options.localTrainingEvidence, options.localTrainingResultRoots, options.matchedGalleryRoots, options.profileGalleryRoot, cloudExperimentRoot));
   app.get('/api/figment/reference-assets/:creator/:name', async (request, reply) => {
     const { creator, name } = request.params as { creator?: unknown; name?: unknown };
     const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
