@@ -5,6 +5,26 @@ job receipts preserve the detailed history. Latest user: the rest is async, run 
 
 ## Exact next step
 
+LATEST09:08UTC: ALL OWNED VM JOBS CLEANED, no active VM. Final caller VMdd7baf47 READY no findings,
+reportf5a5b37925ddb30497f8ce2edaafc3b115af2c7af25f1040773cfff3adab27f5; started09:03:13,
+finished09:04:17, collected/cleaned and exact absence verified. Root220 combined P8/fill/service/
+QA/campaign/HTTP tests passed74.63s. Source core accepted. Root separately found new proved count(*)
+counts two email rows as two people; gate_repair released to change ONLY count DISTINCT person plus
+one regression, then finalfreeze. No producer/evidence changes allowed after acceptance.
+UI fully accepted by root after tiny final delta: actual bundled JS5passes, workerHTTP13passes.
+New campaign/blank selection synchronously clear scoped panels; stale creation success/error guard.
+
+REAL-COPY TRIAL HAS RUN. Existing private run_trial.py --source-accepted on accepted producer:
+2candidates,0revisions,2qa_failed,evidence_identity_source_mismatch:2,0QAcontexts,0externalops.
+Private counts-result.json saved. Only trial copy migrated; no live-original writes or data export.
+Real-data success remains blocked on current-role source bindings. Do not claim real drafts exist.
+
+remote_protocol found no sanctioned T0->T1 campaign policy transition. Initial user scope is draft
+review before later sending graduation; root narrowed joined acceptance to real supported T0
+FakeGmail DRAFT path, no fabricated tier update. Separate T1 fixture tests do not prove whole-flow
+sending. Worker checks supported activation/enrollment methods and reports concrete seams first.
+
+
 LATEST08:50UTC: no owned VM jobs active. UI6126fbef collected/cleaned, exact dir/mount/3units absent;
 report599f40e967837fc99a927778cd748152170bd23e58e6a4314b7ac6ff70622246 REQUEST CHANGES only
 campaignForm old POST completion after New campaign/navigation. Native vm_review resumes same2files
