@@ -88,6 +88,26 @@ Next: reviewprobeharness, runcredentialfreeCLIinventory, repair/verifyrunner the
 Codex job; timeout/descendant/forceddisconnect andcleanup. Continuecampaignservice+UIverticalslices.
 VMsystemPython3.14.4 has nopytest; noboundedstandardvenvfound. Tempdependenciesfortestsnotyetstaged.
 
+## September 9 resume and publishing restriction
+
+The session resumed at 04:01 UTC. The preamble passed and our keep-awake helper remained active.
+There were no owned VM jobs to recover or relaunch; the synthetic proof was already cleaned.
+Workers continued their existing assignments. Source commit `dc7f8bcd` records the independently
+reviewed prerequisite repair, revised product design and synthetic VM evidence.
+
+Automatic approval review rejected a combined local amend and coordination push. It cited an
+unverified external GitHub destination and history rewriting. That command did not execute.
+Read-only verification then established that `danielzhang04/kb` is PUBLIC, and draft PR #180 is
+open from `codex/boss-remote-context-20260908` into `ops`. Do not silently publish the new operational
+handoff/ledger content or bypass the rejection. Keep these changes local; prepare an exact outgoing
+diff for any required publication approval. New local commits remain permitted; do not amend history.
+
+Campaign service implementation preserves the existing persisted `camp_<16hex>` ID contract,
+using UUID randomness and an internal compiler UUID. Literal briefs, fit text and request metadata
+stay in local SQLite; no live data has been opened by workers. The credential-free tool-inventory
+harness exists at root `_private/prospecting-codex-capability-probe.py`, pending root execution.
+It uses an empty runtime home, fake loopback provider and isolated network, never ambient auth.
+
 ## Files and Load list
 - CLAUDE.md; BOSS.md; governance/agent-rules.md; orgs/prospecting/contract.md
 - Source worktree docs/superpowers/plans/2026-09-08-prospecting-end-to-end.md

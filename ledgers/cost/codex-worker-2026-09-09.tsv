@@ -1,0 +1,5 @@
+actual_cost	list_price_estimate_usd	requested_model	responding_model	status	task	ts	usd
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed independent runner review; request changes	vm_review	2026-09-09T04:00:54.632665+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	gate_repair followup implementation active	campaign-create-resume	2026-09-09T04:00:54.634251+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	remote_protocol followup active	vm-runner-review-fixes	2026-09-09T04:00:54.641660+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	vm_review followup harness active	codex-capability-probe	2026-09-09T04:00:54.648682+00:00	0
