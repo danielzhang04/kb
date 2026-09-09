@@ -43,3 +43,9 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	proposal rejected; cleane
 unknown; ambient subscription		gpt-5.6-sol	unavailable	accepted rootintegration45tests; cleaned absenceverified	review-form-delta-eb78a098	2026-09-09T07:52:28.559033+00:00	0
 unknown; ambient subscription		gpt-6-astra	unavailable	running bounded VMjob	evidence-binding-final-9ce1c4a0	2026-09-09T07:52:28.559033+00:00	0
 unknown; ambient subscription		gpt-5.6-luna	unavailable	running bounded VMjob	form-compatibility-review-335be294	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	READY; collected cleaned absenceverified	form-compatibility-review-335be294	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-6-astra	unavailable	failed unsupported CLI version; collected cleaned absenceverified	evidence-binding-final-9ce1c4a0	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	WIPapplied; diagnosticfail; collected cleaned absenceverified	evidence-binding-supported-84368076	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	accepted rootcorrections committed; cleaned absenceverified	review-app-access-docs-37f2ebe6	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	partial outofscope proposal unapplied; cleaned absenceverified	evidence-integration-fix-0c7072d7	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native repair active; userinformed	gate_repair-native-resumed	2026-09-09T08:11:05.204690+00:00	0
