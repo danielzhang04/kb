@@ -1,0 +1,95 @@
+# Train-first v2 post-train readiness — 2026-09-09
+
+Status: the local joins are ready, while identity quality remains unknown. Train-first v2
+is active under pod `lsns75h3zrd7pb` (`figment-bakeoff-20260909-201233-9b2a10`), acquired
+at 20:12:33 UTC. A read-only observation at 20:25 UTC found bootstrap completed at 20:20:39
+and the training log at step 15 of 1,250. This proves training started; it is not checkpoint,
+completion, final-cost, or teardown evidence.
+
+## Exact post-train order
+
+1. Wait for the v2 train command to exit. Accept mechanical completion only from the
+   plan-bound `run.json`, five expected checkpoint files and hashes, a final cost row, and
+   teardown with pod absence verified. Never replay v1 or v2 to fill missing evidence.
+2. Re-read the canonical ledger through the existing harness. The tester plan is capped at
+   `$2.50` and 115 minutes, but the train and tester maximums together exceed the September 9
+   `$10` daily limit. Run tester only if the fresh actual-spend check admits it. The immutable
+   v2 command is:
+
+   ```powershell
+   & $py orgs/figment/pipeline/figment_train.py run `
+     --creator creator-001 --stage tester `
+     --plan 'C:/Users/danie/kb/_private/figment-builtin-train-first-20260909-v2/plan.json'
+   ```
+
+3. Require the tester receipt to contain five original PNGs, one for each of steps 250, 500,
+   750, 1000, and final 1250, plus verified teardown and final cost. Completion does not rank
+   or accept a checkpoint.
+4. A live tester grade requires a future request covering the exact g01 and tester-candidate
+   transfers to the connected Codex account. Only after that request is authorized, build
+   the tester grade explicitly with the user-selected backend:
+
+   ```powershell
+   & $py orgs/figment/pipeline/figment_train.py grade `
+     --creator creator-001 --stage tester `
+     --plan 'C:/Users/danie/kb/_private/figment-builtin-train-first-20260909-v2/plan.json' `
+     --judge-backend codex-diagnostic
+   ```
+
+   The currently pending Codex question covers one 120-second g01-self-comparison call only.
+   It does not authorize tester images, a complete grade, or later gen images. Do not
+   substitute the default Claude backend or `--skip-judge`. The Codex diagnostic uses
+   canonical g01 only, records image hashes and its result envelope, and deliberately leaves
+   the automatic gate failed as
+   `unavailable: judge`; it does not apply the historical Sonnet thresholds.
+5. Review all five original tester PNGs against g01 for same-person identity, realistic skin
+   and anatomy, clearly adult/about-21 presentation, clothing integrity, and pairwise
+   consistency. Quality is not predictable from training completion or local tests. A kept
+   checkpoint requires a complete attributed ruling and a concrete `gate_override`, then:
+
+   ```powershell
+   & $py orgs/figment/pipeline/figment_train.py apply-rulings `
+     --creator creator-001 --stage tester `
+     --plan 'C:/Users/danie/kb/_private/figment-builtin-train-first-20260909-v2/plan.json' `
+     --rulings '<ACTUAL_TESTER_RULINGS_JSON>' --checkpoint-step <KEPT_STEP>
+   ```
+
+   The existing command verifies the current evaluation-subject hash, retained candidate,
+   training and tester receipts, checkpoint bytes, and teardown before writing checkpoint
+   lineage. No keep means no checkpoint selection.
+6. Only a selected current checkpoint can produce a fresh `gen` plan. Use a new empty plan
+   root and the canonical ledger; run, Codex-grade under separately applicable image-transfer
+   permission, review originals, and apply rulings. The selected still must appear in the
+   current `approved-list.json` before the approved-still video adapter can consume it.
+
+## Evidence already established
+
+- V2 plan SHA-256 is
+  `920125ce7e543c95b62d3d808675ebbc5b419fcb2da4e55d6f853518b8343ec3`.
+  Its reviewed v1-to-v2 change is limited to fresh paths/timestamp/generator evidence and the
+  failed-host exclusion on the train manifest.
+- The train manifest selects exactly 42 files and 42,036,431 bytes: 20 PNGs, 20 captions,
+  `training.json`, and `_dataset.ready`. Dataset and approval bytes match v1.
+- Isolated Python 3.13 harness dry runs passed for the exact v2 train and tester manifests,
+  including five fake checkpoints, five fake tester outputs, recovery journals, and verified
+  fake teardown. This proves command shape and harness joins, not provider or model behavior.
+- The Codex diagnostic integration received a 123-test independent pass. A focused current
+  check of backend selection plus the real train-first-to-gen and approved-gen-to-video fixture
+  joins passed four tests. These are offline fixture results; no live Codex diagnostic has run.
+
+## Video compiler status after an approved still
+
+The compiler previously emitted only 512×288, the spatial profile used by the visually
+rejected historical V1 clip. A bounded local implementation now reuses the same pinned native
+workflow and model pins with two finite profiles: receipt diagnostics retain their 512×288
+default, while approved-gen manifests default to and require 1280×704. The profile,
+dimensions, effective workflow digest, and output name are bound together. Twenty-four
+focused tests and the 48-test full video suite passed, including the real approved-gen lineage
+join and a native-profile harness dry run with 81 fake outputs and verified teardown.
+Independent source review returned READY with no findings. This
+local evidence does not establish video quality or authorize a video launch.
+
+Mechanically, tonight can complete receipt verification, tester execution if the fresh budget
+admits it, and preparation of original-resolution review material. Identity, age presentation,
+realism, checkpoint selection, held-out still quality, and temporal quality remain empirical
+results. No production LoRA, still, or video is claimed here.

@@ -71,13 +71,21 @@ runbook does not grant either.
   --creator $creator --stage tester --plan "$planRoot/plan.json"
 
 & $py orgs/figment/pipeline/figment_train.py grade `
-  --creator $creator --stage tester --plan "$planRoot/plan.json"
+  --creator $creator --stage tester --plan "$planRoot/plan.json" `
+  --judge-backend codex-diagnostic
 ```
 
 `grade` writes the board and a rulings template under
 `<PLAN_ROOT>/grade/tester/`. A later `apply-rulings` consumes a real completed
 review document. It can select only an actually kept tester candidate; use the
 produced checkpoint step, not a placeholder:
+
+The user-selected Codex path requires the explicit backend argument shown above. Its
+offline contracts are tested, but a real invocation also sends the canonical g01 bytes to
+the connected Codex account. Do not execute it until that exact transfer and account use are
+authorized. A valid Codex diagnostic remains `unavailable: judge`; it never applies the
+historical Sonnet thresholds or creates an automatic gate pass. Any bounded research keep
+still requires the existing attributed `gate_override` evidence.
 
 ```powershell
 & $py orgs/figment/pipeline/figment_train.py apply-rulings `
@@ -114,7 +122,8 @@ $genRoot = '<FRESH_EMPTY_GEN_PLAN_ROOT>'
   --creator $creator --stage gen --plan "$genRoot/plan.json"
 
 & $py orgs/figment/pipeline/figment_train.py grade `
-  --creator $creator --stage gen --plan "$genRoot/plan.json"
+  --creator $creator --stage gen --plan "$genRoot/plan.json" `
+  --judge-backend codex-diagnostic
 
 & $py orgs/figment/pipeline/figment_train.py apply-rulings `
   --creator $creator --stage gen --plan "$genRoot/plan.json" `
@@ -143,6 +152,7 @@ are root-relative paths; `--out` must be in the approved image’s directory.
   --persona 'orgs/figment/personas/creator-001/persona.yaml' `
   --approved-gen-plan '<GEN_PLAN_ROOT_RELATIVE_TO_REPOSITORY_ROOT>/plan.json' `
   --approved-gen-image-id '<APPROVED_GEN_IMAGE_ID>' `
+  --resolution-profile native-1280x704 `
   --action '<SHORT_CLOTHED_MOTION_TEXT>' `
   --out '<APPROVED_GEN_IMAGE_DIRECTORY_RELATIVE_TO_REPOSITORY_ROOT>/video-manifest.json'
 ```
