@@ -2,8 +2,8 @@
 
 ## Context
 User assigned this boss to finish prospecting: outreach ask -> qualified leads -> cleaning/fit ->
-polished local UI -> evidence-backed drafts -> reviewed campaigns/scheduling/results. Actual Claude
-Opus/Fable workers, adversarial reviews and tests throughout. Main changes consolidate into one
+polished local UI -> evidence-backed drafts -> reviewed campaigns/scheduling/results. All NEW workers
+are Codex with model depth chosen by assignment; adversarial reviews and tests throughout. Main changes consolidate into one
 session-end PR. Remote work must be isolated, monitored, recoverable and cleaned after collection.
 
 ## Current state / what worked
@@ -29,17 +29,24 @@ succeeded. Do not treat the broad attempt as reviewed. Sandbox Python 3.12 lacks
 existing user Python313 runtime for small desktop-specific checks. Sparse checkout initially missed
 .githooks/pre-commit; materializing the tracked file restored recorded-gate verification.
 
-## Questions pending / exact next step
-Collect the six UI questions already presented before dependent setup or product commitments:
-1. Use cases: general networking with NYC first vs NYC-only vs sales.
-2. Sending: per-batch approval vs drafts-only vs campaign-policy approval.
-3. Temporary remote workspace/recovery retention until acknowledged collection; required for
-   disconnect survival. No response yet, so do not infer approval from elapsed time.
-4. UI: local prospecting app linked from dashboard vs main integration vs boss choice.
-5. First real acceptance ask, qualified-contact target, geography, budget and deadline.
-6. Offline: development workers only vs live prospecting/sending too.
-Then revise the plan, establish/prove remote lifecycle with independent review, and implement the
-first gate-contract repair slice using real gate evidence. No code fixes have been made yet.
+## Confirmed scope / exact next step
+All six questions answered: industry chats and jobs; draft review/feedback first with separate
+explicit drafting/sending graduation; agents on VM and records local; standalone small polished
+prospecting app linked from kb project; use prior Recruiting.xlsx and VC List.xlsx as examples;
+keep desktop awake all session, reconnect to existing jobs after network recovery. Temporary
+source-only recovery state is allowed until collection and cleanup. No PII on VM.
+Read-only workbook category/header synthesis lives root _private/prospecting-reference-synthesis-20260908;
+originals unchanged. These are historical examples, not current campaign preferences. Google Sheets
+not inspected. Desktop keep-awake PID12044, root _private/prospecting-awake-20260908.json and
+matching .stop sentinel, 12-hour bounded lease; renew if needed and stop only our helper at close.
+VM Codex0.152.0 authenticated ChatGPT; native binary under kb-shell .local/lib/node_modules/@openai/
+codex/node_modules/@openai/codex-linux-x64/vendor/x86_64-unknown-linux-musl/bin/codex.
+Final pre-steering Claude builder timed out220s with no accepted code. Do not relaunch Claude.
+Native Codex bootstrap agents: gate_repair Sol, remote_protocol Sol, vm_runner Astra. Model override
+is requested model; actual response id unavailable from native tool so do not fabricate verification.
+Nested Codex sandbox failed namespace creation inside working outer bwrap; do not change global
+VM security. Prove tool-disabled runtime and synthetic lifecycle first, then enable only verified
+capabilities. Current plan is authoritative; agents may have uncommitted changes in own source tree.
 
 ## Boundaries and untried work
 Existing prospecting contract forbids all real PII and message content in VM sinks. Live SQLite,
@@ -49,6 +56,37 @@ No detached worker setup, offline recovery, tool-capability parity, or cleanup l
 Remote systemd-run and bwrap exist. Literal zero system/provider logs cannot be guaranteed.
 No new PR; existing orientation ops draft #180 predates the clarified no-small-PR preference.
 Coordination changes staged on its own codex branch; no direct ops/main push.
+
+## Latest checkpoint (23:50 UTC)
+
+Synthetic remote lifecycle passed: job51194c542db64d0a81a2e39e4c7e1f82 ran23:45:49-23:46:09UTC
+after launchSSH exited; freshSSH observedsuccess+emptycgroup; two collections returned identical
+hash. Cleanup and independentabsencecheck verified exactroot, mount andall3transientunits absent.
+Receipt root_private/dev-jobs/synthetic-recovery-20260908/receipt.json records cleaned state.
+Source evidence: orgs/prospecting/output/2026-09-08-remote-worker-proof.md. No currentownedVMjob.
+This was syntheticnoauth/nonetwork, not actualCodex, forcednetworkloss orVMrebootproof.
+
+Application gate repair is independently READY:29focused+12adjacent tests andrealP1-P4prerequisites
+pass. P4 initialmismatch was two sparseomitted skills/imported directories; materialized original
+trackedbytes, no manifestchanges. Files p5_contracts.py/test_p5_contracts.py uncommitted inownsource.
+Historical P5/P6/P8 gate hashes now stale bydesign; noagent reblessing allowed.
+
+New files dev_jobs.py/dev_vm.py andtests are notyetaccepted. Independentreviews found sensitive.env
+pathfiltering/rootancestor gaps invalidator and runnerpreamble/status/staging/receipt/stateissues.
+Active nativeCodex work split (allshareownsourcebranch):
+- gate_repair (Sol): campaigncreation/resume service, new schema_p9.sql only, synthetic tests;
+  report CLIintegrationchoices before changingcompiler/wiring; previousgaterepair independentlyreviewed.
+- remote_protocol (Sol): fix2validatorfindings then5VMrunnerfindings. Own dev_jobs+dev_vm tests/docs.
+- vm_review (Sol): credentialfreeCLItoolinventoryprobe harness atroot_private/prospecting-codex-capability-probe.py;
+  noSSH fromworker. It independentlyreviewedrunner andwillrereviewfixes. PriorAstra vm_runner thread
+  completed; cannotreopen whilethreadlimitfull, soSol tookoverboundedrepairs.
+
+Root has revisedproductdesign docs/superpowers/specs/2026-09-08-prospecting-review-flow.md:
+Campaigns/People/Drafts/Schedule/Activity; sharedtypeddesktopservice, distinctcampaigns, localfeedback,
+immutablerevisions, editorialready distinctfromsendapproval. Designneedsindependentreview beforeUIbuild.
+Next: reviewprobeharness, runcredentialfreeCLIinventory, repair/verifyrunner thenactualtool-disabled
+Codex job; timeout/descendant/forceddisconnect andcleanup. Continuecampaignservice+UIverticalslices.
+VMsystemPython3.14.4 has nopytest; noboundedstandardvenvfound. Tempdependenciesfortestsnotyetstaged.
 
 ## Files and Load list
 - CLAUDE.md; BOSS.md; governance/agent-rules.md; orgs/prospecting/contract.md

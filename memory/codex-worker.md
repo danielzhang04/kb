@@ -456,3 +456,9 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - WORKED: all historical hashes matched, but a real gate invocation plus actual workflow prerequisite call exposed a JSON-versus-marker mismatch hidden by fixtures that invented both sides. Validate the real contract before trusting a large test count.
 - FAILED then corrected: a broad tool-disabled remote review timed out; a two-file Opus question completed quickly. Python seen inside the sandbox differed from the existing user runtime. Sparse checkout omitted a gate-bound hook. Separate these infrastructure gaps from product failures.
 - REMAINS: prospecting scope/offline-retention choices and detached worker lifecycle. Non-persistence proved absence of one session transcript, not zero provider/system bookkeeping or complete tool parity.
+
+## 2026-09-08 - Runtime isolation must be measured
+
+- WORKED: actual VM CLI help/login status established Codex0.152.0 presence without auth-object access; synthetic outer bwrap succeeds.
+- FAILED: nested Codex sandbox cannot create its namespace. Read-only auth mounts prevent writes but do not prevent model shell reads; keep shell disabled until effective denial is verified. Never change global VM security to make a worker fit.
+- REMAINS: detached synthetic lifecycle proof, tool-disabled Codex proof, product integration/UI. User answered all scope questions and switched every new subagent to Codex.
