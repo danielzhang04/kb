@@ -1,0 +1,9 @@
+# Built-in train-first v2 launcher review — 2026-09-09
+
+**Verdict: READY.** No remaining findings in the repaired one-shot launcher. The initial frozen version retained the v1 launch-directory path, which would have failed closed because that directory already exists. The author changed only that suffix; this review covers repaired helper SHA-256 `a87b6d2aee866ee470f75964b5c14096957a7685bd92e1bbd66fe80bb4630295`.
+
+The helper pins fresh plan SHA-256 `920125ce7e543c95b62d3d808675ebbc5b419fcb2da4e55d6f853518b8343ec3`, train manifest `5cfa3b28e7d7cd54a821cf3fd540358049fa25ebca3eb6c556ffe7c796128d36`, dataset approval `96b2c5b470aab05af35dbc189cf8db666e9e205f24bb757816991c20b71a2505`, harness `1171547dc9b8abfb9251e08ae53effc50c4dbe60359bdc40a720bae7dbe23f48`, and normal CLI `43f21a2f3bfe32565eb6b9fe094f20ae44d5e4e410c67a28a715eb4165a8d736` at Studio `64e152260bde6a0f45dd80e1c22956f1eb5e8794`. It binds `$7.61`, 351 minutes, one placement attempt, and exact exclusion of `wx25nhzztsdt`. Fresh v2 launch, stage-state, and stage-output paths are absent. The prior receipt is terminal with verified teardown and zero uploads, jobs, and artifacts; PID 60208 is absent.
+
+Offline checks passed for the helper hash, Python AST parsing, exactly one detached `Popen`, absence of the stale v1 launch path, pinned JSON shapes, and fresh destinations. Existing harness budget readers returned arc `$39.826760/$50` and daily `$2.026375/$10`; the ceiling fits both. The helper retains baseline validation and performs an authenticated zero-pod inventory immediately before creation, failing closed on any existing pod. That live inventory check was inspected but not executed during this review.
+
+Scope excluded launcher execution, provider calls, the pending live Codex smoke, new plan generation, and training/tester quality. Standing authorization governs the eventual bounded attempt; this review adds no approval claim.
