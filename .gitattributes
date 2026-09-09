@@ -58,3 +58,5 @@
 # Preserve their reviewed bytes across Windows and Linux checkouts.
 /docs/figment/2026-09-09-omnigen2-cloud-result.md text eol=lf
 /docs/figment/2026-09-09-omnigen2-pair-independent-review.md text eol=lf
+/docs/figment/2026-09-09-qwen-reference-cloud-result.md text eol=lf
+/docs/figment/2026-09-09-qwen-reference-pair-independent-review.md text eol=lf

@@ -28,7 +28,11 @@ $creator = 'creator-001'
 $dataset = '<REVIEWED_DATASET_DIR>'
 $planRoot = '<PLAN_ROOT>'
 $ledger = 'C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost'
+$env:DASHBOARD_FIGMENT_CLOUD_PAIR_BUNDLE = 'qwen-reference-v1'
+$env:DASHBOARD_FIGMENT_CLOUD_PAIR_ROOT = 'C:/Users/danie/kb/_private/figment-qwen-reference-run-20260909-v1'
 ```
+
+For the historical Omni pair, omit the bundle selector (default `omnigen2-v3`) and use its matching run root. The selector is allowlisted; unsupported values fail closed in the read-only gallery.
 
 ## Dataset acceptance and train-first plan
 

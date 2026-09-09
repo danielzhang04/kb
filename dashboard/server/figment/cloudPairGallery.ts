@@ -3,7 +3,11 @@ import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
-const DESCRIPTOR = 'docs/figment/2026-09-09-omnigen2-cloud-pair-gallery.json';
+const BUNDLES = {
+  'omnigen2-v3': 'docs/figment/2026-09-09-omnigen2-cloud-pair-gallery.json',
+  'qwen-reference-v1': 'docs/figment/2026-09-09-qwen-reference-cloud-pair-gallery.json',
+} as const;
+export type CloudPairBundle = keyof typeof BUNDLES;
 const MAX_JSON = 256 * 1024;
 const MAX_DOC = 256 * 1024;
 const MAX_IMAGE = 8 * 1024 * 1024;
@@ -130,11 +134,17 @@ function png(data: Buffer, width: unknown, height: unknown): boolean {
     && data.readUInt32BE(16) === width && data.readUInt32BE(20) === height;
 }
 
-function evidence(repoRootValue: string, runRootValue: string): Evidence | null {
+function bundleDescriptor(bundle?: string): string | null {
+  const selected = bundle ?? process.env.DASHBOARD_FIGMENT_CLOUD_PAIR_BUNDLE ?? 'omnigen2-v3';
+  return Object.hasOwn(BUNDLES, selected) ? BUNDLES[selected as CloudPairBundle] : null;
+}
+
+function evidence(repoRootValue: string, runRootValue: string, bundle?: string): Evidence | null {
   const repoRoot = root(repoRootValue);
   const runRoot = root(runRootValue);
   if (repoRoot === null || runRoot === null) return null;
-  const descriptorPath = file(repoRoot, DESCRIPTOR);
+  const descriptorName = bundleDescriptor(bundle);
+  const descriptorPath = descriptorName === null ? null : file(repoRoot, descriptorName);
   const runPath = file(runRoot, 'run.json');
   const descriptorRaw = descriptorPath === null ? null : bounded(descriptorPath, MAX_JSON);
   const runRaw = runPath === null ? null : bounded(runPath, MAX_JSON);
@@ -201,17 +211,17 @@ function evidence(repoRootValue: string, runRootValue: string): Evidence | null 
   return { runRoot, rows, files, experimentId: descriptor.experiment_id, modelFamily: descriptor.model_family };
 }
 
-export function collectCloudPairGallery(repoRoot: string, runRoot?: string | null): CloudPairGalleryProjection {
+export function collectCloudPairGallery(repoRoot: string, runRoot?: string | null, bundle?: string): CloudPairGalleryProjection {
   if (runRoot == null) return { status: 'not-configured' };
-  const found = evidence(repoRoot, runRoot);
+  const found = evidence(repoRoot, runRoot, bundle);
   return found === null
     ? { status: 'unavailable', reason: 'evidence-unavailable' }
     : { status: 'recorded', experimentId: found.experimentId, modelFamily: found.modelFamily, notPromotable: true, trainingEligible: false, rows: found.rows };
 }
 
-export function readCloudPairGalleryAsset(repoRoot: string, runRoot: string | null | undefined, assetId: string, expectedSha256: string): Buffer | null {
+export function readCloudPairGalleryAsset(repoRoot: string, runRoot: string | null | undefined, assetId: string, expectedSha256: string, bundle?: string): Buffer | null {
   if (runRoot == null || !SHA.test(expectedSha256)) return null;
-  const found = evidence(repoRoot, runRoot);
+  const found = evidence(repoRoot, runRoot, bundle);
   if (found === null) return null;
   const index = found.rows.findIndex((row) => row.asset.assetId === assetId && row.asset.sha256 === expectedSha256);
   if (index < 0) return null;
