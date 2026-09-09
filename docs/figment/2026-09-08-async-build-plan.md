@@ -25,7 +25,22 @@ checkpoint, not termination. Continue afterward while useful authorized work rem
   daily harness guard as well. No new paid job starts without a frozen manifest, current
   ledger reconciliation, reserved worst-case cost, fresh output and tested teardown.
 
-## Current execution priorities — 2026-09-08
+## Current execution priorities — 2026-09-09
+
+The 2026-09-08 priorities below are historical planning context. The completed bounded research
+train-first run now has one original tester active under its immutable plan; no tester originals,
+quality ruling, selected checkpoint, held-out still, video, or production acceptance exists.
+
+1. Let the sole tester finish, record its receipt and verified teardown, and do not duplicate it.
+2. Produce the existing plan-bound local-research board from the real tester originals. Its automatic
+   rows remain false and `unavailable: judge`; review requires actual attributed research rulings
+   and explicit overrides, without an external image judge.
+3. If a valid checkpoint is selected through that evidence, run fresh held-out generation, then use
+   the existing approved-still adapter for a video manifest and temporal review.
+4. Project the resulting bounded lifecycle and review evidence in the local hub. The reviewed hub
+   mechanics do not make the pipeline deployed or its images quality-accepted.
+
+## Historical execution priorities — 2026-09-08
 
 1. Run the one bounded local ComfyUI smoke with its corrected isolated cache, then record the actual result. A failed smoke is evidence, not a reason to retry automatically.
 2. Consider a hash-bound `g01` crop only if that smoke and its original-resolution review identify framing as a material limitation; preserve the original and use a controlled comparison.

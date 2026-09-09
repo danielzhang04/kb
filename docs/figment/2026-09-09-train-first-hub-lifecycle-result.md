@@ -11,5 +11,23 @@ Verification on the review worktree:
 - `npm.cmd test -- --run server/figment/cloudExperiment.test.ts src/figment/FigmentWorkspace.test.tsx server/figment/routes.test.ts`: 57 tests passed.
 - `npm.cmd run typecheck`: passed.
 - Read-only collection of the exact v2 plan SHA `920125ce7e543c95b62d3d808675ebbc5b419fcb2da4e55d6f853518b8343ec3` returned `train/running`, the 351-minute and $7.61 bounds, and liveness `unknown`. This was a local projection probe, not a provider request.
+- A second local collector probe at 22:56 UTC returned `recorded/tester/running`, the 115-minute and $2.50 bounds, liveness `unknown`, quality `not-reviewed`, and zero outputs. This confirms the current tester record joins the same pinned plan schema; it was not a provider request or browser test.
+
+## Proposed local preview
+
+The normal server entry reaches this projection: `dashboard/server/index.ts` registers `registerFigmentRead` inside the authenticated read scope, and `dashboard/server/figment/routes.ts` resolves the train-first root and SHA from environment variables when explicit route options are absent. The proposed isolated binding is:
+
+- `DASHBOARD_FIGMENT_TRAIN_FIRST_ROOT=C:\Users\danie\kb\_private\figment-builtin-train-first-20260909-v2`
+- `DASHBOARD_FIGMENT_TRAIN_FIRST_PLAN_SHA256=920125ce7e543c95b62d3d808675ebbc5b419fcb2da4e55d6f853518b8343ec3`
+- `DASHBOARD_PORT=4418`
+- `DASHBOARD_STATE_ROOT=C:\Users\danie\kb\_private\figment-hub-preview-state-20260909-v1`
+- `DASHBOARD_AUTH_MODE=win32-desktop`
+- `DASHBOARD_RP_ORIGIN=http://localhost:4418`
+- `DASHBOARD_EXECUTION_ACTIVATED=0`
+- `DASHBOARD_HUMAN_REQUEST_SWEEP_INTERVAL_MS=0`
+
+Port 4418 was observed free, and the review-worktree build contains the new UI. This remains a proposed fresh loopback preview; no server or browser was launched.
+
+A presence-only environment check found `DASHBOARD_WEBAUTHN_CREDENTIALS` absent and `DASHBOARD_SESSION_SECRET` present; neither value was read or printed. Because `/api/figment` requires a session, the session secret alone does not establish an authenticated browser session. A fresh-port browser preview therefore remains unverified until the normal registered WebAuthn configuration is available. No credential store was read, no token was minted, and no authentication fixture or bypass was created.
 
 No deployment, provider call, approval mutation, or quality decision was performed.

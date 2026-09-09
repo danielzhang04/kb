@@ -1,10 +1,10 @@
 # Train-first v2 post-train readiness — 2026-09-09
 
-Status: the local joins are ready, while identity quality remains unknown. Train-first v2
-is active under pod `lsns75h3zrd7pb` (`figment-bakeoff-20260909-201233-9b2a10`), acquired
-at 20:12:33 UTC. A read-only observation at 20:25 UTC found bootstrap completed at 20:20:39
-and the training log at step 15 of 1,250. This proves training started; it is not checkpoint,
-completion, final-cost, or teardown evidence.
+Status update, 2026-09-09 22:42 UTC: train-first v2 completed at 22:37:53 UTC with its
+receipt, five checkpoint hashes, and verified pod absence. The original tester CLI then
+launched under the immutable v2 plan as PID `45324`, with one `$2.50`/115-minute placement
+preflighted against the canonical ledger. Tester mechanics are active; there are no tester
+originals, quality rulings, selected checkpoint, held-out still, or video result yet.
 
 ## Exact post-train order
 
