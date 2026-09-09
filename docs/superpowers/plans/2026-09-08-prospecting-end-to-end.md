@@ -129,8 +129,9 @@ the real integrated path; synthetic tests alone do not establish live readiness.
   - Run representative live acceptance only with the chosen local ask and explicit provider/send scope.
   - Acceptance: measured evidence, zero unresolved blocking findings, and user review of the real flow.
 
-- [ ] 6. Session delivery
-  - Condense main changes into one main PR. No per-small-task PRs; coordination uses existing
+- [x] 6. Session delivery
+  - Delivered in draft main PR https://github.com/danielzhang04/kb/pull/181; implementation
+    commit b7365db5. Condense main changes into one main PR. No per-small-task PRs; coordination uses existing
     authorized access path, respecting enforced branch protection.
   - Update project current state, task card, memory and canonical handoff with exact resume steps.
   - Collect and validate remote outputs, clean only owned leases/processes/artifacts, verify absence.
@@ -157,8 +158,9 @@ rebless MANIFEST.sha256 files. External sending and human-only approvals remain 
 ## Context checkpoint
 
 Bounded source implementation and synthetic T0 acceptance are complete. Consolidated delivery is
-prepared on the main-based source branch, with final publication and session handoff bookkeeping
-remaining. Real source verification, browser acceptance and the existing human evaluation refresh
+published in one draft main PR181 on the main-based source branch. The canonical local handoff,
+project state and assigned task card record the remaining acceptance work. All 32 VM jobs are
+cleaned; completed test scratch is removed and the session keep-awake lease is stopped at closeout. Real source verification, browser acceptance and the existing human evaluation refresh
 remain open. The operational STATE/gate records are intentionally separate from the public source
 PR and must be supplied through the trusted operational path. No deployment or sending promotion
 is authorized by a source/test pass.
