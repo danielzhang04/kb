@@ -14,6 +14,7 @@ import os
 import shutil
 import stat
 import sys
+from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -28,7 +29,7 @@ from orgs.figment.pipeline.expand import local_omnigen2_inference as frozen
 
 SCHEMA = "figment/omnigen2-cloud-preparation@1"
 COMFY_ROOT = "/workspace/ComfyUI"
-PAYLOAD_NAME = "figment-omnigen2-cloud-preparation-20260909-v2"
+PAYLOAD_NAME = "figment-omnigen2-cloud-preparation-20260909-v3"
 REFERENCE_RELATIVE_PATH = Path("orgs/figment/personas/creator-001/anchors/g01.jpg")
 STAGED_REFERENCE_RELATIVE_PATH = Path("payload/g01.jpg")
 # This image and the L40S class occur in the successful tensor-pod record.  The
@@ -112,6 +113,10 @@ def minimum_runtime_minutes(manifest: dict[str, Any]) -> float:
 def build_manifest() -> dict[str, Any]:
     """Return a pure-data manifest with the frozen planner's model and graph pins."""
     planner_manifest = frozen.build_manifest()
+    workflow = deepcopy(planner_manifest["runs"][0]["graph"])
+    # The pinned Comfy schema requires this input even though its UI default is 1.
+    # Keep the historical local planner immutable and record this adapter explicitly.
+    workflow[frozen.N_SCALE]["inputs"]["resolution_steps"] = 1
     models = []
     destinations = {
         "diffusion": f"{COMFY_ROOT}/models/diffusion_models",
@@ -142,6 +147,10 @@ def build_manifest() -> dict[str, Any]:
             "reference_upload_destination": "input/omnigen2/g01.jpg",
             "model_payload_bytes": frozen.MODEL_PAYLOAD_BYTES,
             "model_payload_human": "15.78 GB (decimal)",
+            "source_graph_sha256": planner_manifest["runs"][0]["graph_sha256"],
+            "adapter_graph_sha256": frozen.sha256_of(workflow),
+            "graph_adaptations": [{"node_id": frozen.N_SCALE, "input": "resolution_steps", "value": 1,
+                                   "reason": "required by the pinned Comfy ImageScaleToTotalPixels schema"}],
         },
         "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE", "requested_vram_gb": 48},
         "image": KNOWN_IMAGE,
@@ -166,7 +175,7 @@ def build_manifest() -> dict[str, Any]:
         "models": models,
         "uploads": [{"files": [STAGED_REFERENCE_RELATIVE_PATH.as_posix()], "subfolder": "omnigen2", "type": "input", "overwrite": True}],
         "seed_fields": ["seed", "noise_seed"],
-        "workflow": planner_manifest["runs"][0]["graph"],
+        "workflow": workflow,
         "jobs": [
             {"seed": seed, "output_name": f"omnigen2-g01-seed-{seed}", "expected_images": 1,
              "substitutions": [{"node_id": frozen.N_LOAD, "field": "image", "value": "omnigen2/g01.jpg"}]}

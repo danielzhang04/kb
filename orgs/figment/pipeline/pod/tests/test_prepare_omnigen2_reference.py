@@ -30,7 +30,11 @@ def test_manifest_has_exact_frozen_models_graphs_and_one_reference_pair():
     assert [model["sha256"] for model in manifest["models"]] == [
         frozen_manifest["models"][kind]["sha256"] for kind in ("diffusion", "clip", "vae")
     ]
-    assert manifest["workflow"] == prep.frozen.graph(prep.frozen.SEEDS[0])
+    expected_graph = prep.frozen.graph(prep.frozen.SEEDS[0])
+    expected_graph[prep.frozen.N_SCALE]["inputs"]["resolution_steps"] = 1
+    assert manifest["workflow"] == expected_graph
+    assert "resolution_steps" not in prep.frozen.graph(prep.frozen.SEEDS[0])[prep.frozen.N_SCALE]["inputs"]
+    assert manifest["provenance"]["adapter_graph_sha256"] == prep.frozen.sha256_of(expected_graph)
     assert [job["seed"] for job in manifest["jobs"]] == list(prep.frozen.SEEDS)
     assert manifest["jobs"][0]["substitutions"] == [{"node_id": prep.frozen.N_LOAD, "field": "image", "value": "omnigen2/g01.jpg"}]
     assert "custom_nodes" not in manifest and all("lora" not in json.dumps(model).lower() for model in manifest["models"])

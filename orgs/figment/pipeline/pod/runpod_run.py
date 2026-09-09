@@ -125,6 +125,17 @@ HEARTBEAT_DIAGNOSTIC_LOG_MIN_INTERVAL_SECONDS = 60.0
 DEFAULT_SEED_FIELDS = ("seed", "noise_seed")
 COMFY_PORT = 8188
 COMFY_OUTPUT_DIR = "/workspace/output"
+COMFY_PROMPT_ERROR_BODY_MAX_BYTES = 64 * 1024
+COMFY_PROMPT_ERROR_SUMMARY_MAX_CHARS = 1024
+COMFY_PROMPT_ERROR_NODE_MAX = 8
+COMFY_PROMPT_ERROR_TYPES = {
+    "required_input_missing",
+    "value_not_in_list",
+    "return_type_mismatch",
+    "invalid_input_type",
+    "exception_during_validation",
+    "exception_during_inner_validation",
+}
 BOOTSTRAP_LOG_EVERY_POLLS = 5
 BOOTSTRAP_LOG_TAIL_LINES = 20
 OPS_LEDGER_DIR = Path("C:/Users/danie/kb-worktrees/dashboard-ops/ledgers/cost")
@@ -3214,11 +3225,60 @@ class ComfyClient:
             timeout=REQUEST_TIMEOUT,
         )
         if not 200 <= response.status_code < 300:
-            raise HarnessError(f"ComfyUI POST /prompt returned HTTP {response.status_code}")
+            prefix = f"ComfyUI POST /prompt returned HTTP {response.status_code}"
+            diagnostic = self._prompt_error_diagnostic(response, workflow)
+            raise HarnessError(f"{prefix} diagnostic={diagnostic}" if diagnostic else prefix)
         prompt_id = response.json().get("prompt_id")
         if not prompt_id:
             raise HarnessError("ComfyUI did not return prompt_id")
         return str(prompt_id)
+
+    @staticmethod
+    def _prompt_error_diagnostic(response: Any, workflow: dict[str, Any]) -> str:
+        """Return bounded validation codes without reflecting server-provided detail."""
+        try:
+            body = bytes(response.content)
+            if len(body) > COMFY_PROMPT_ERROR_BODY_MAX_BYTES:
+                return ""
+            payload = json.loads(body.decode("utf-8"))
+            node_errors = payload.get("node_errors") if isinstance(payload, dict) else None
+            if not isinstance(node_errors, dict):
+                return ""
+            submitted = {str(node_id): node for node_id, node in workflow.items()}
+            nodes: list[dict[str, Any]] = []
+            for node_id, node_error in node_errors.items():
+                node_key = str(node_id)
+                workflow_node = submitted.get(node_key)
+                if not isinstance(workflow_node, dict) or not isinstance(node_error, dict):
+                    continue
+                class_type = workflow_node.get("class_type")
+                errors = node_error.get("errors")
+                if not isinstance(class_type, str) or not isinstance(errors, list):
+                    continue
+                error_types = sorted({
+                    error.get("type")
+                    for error in errors
+                    if isinstance(error, dict)
+                    and error.get("type") in COMFY_PROMPT_ERROR_TYPES
+                })
+                if not error_types:
+                    continue
+                candidate = nodes + [{
+                    "node_id": node_key,
+                    "class_type": class_type,
+                    "error_types": error_types,
+                }]
+                summary = json.dumps({"node_errors": candidate}, separators=(",", ":"))
+                if len(summary) > COMFY_PROMPT_ERROR_SUMMARY_MAX_CHARS:
+                    break
+                nodes = candidate
+                if len(nodes) >= COMFY_PROMPT_ERROR_NODE_MAX:
+                    break
+            if nodes:
+                return json.dumps({"node_errors": nodes}, separators=(",", ":"))
+        except (AttributeError, TypeError, ValueError, UnicodeError, RecursionError):
+            pass
+        return ""
 
     def wait_outputs(
         self, prompt_id: str, timeout: float, watchdog: Watchdog,
