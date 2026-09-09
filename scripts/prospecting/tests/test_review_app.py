@@ -545,7 +545,10 @@ def test_bundled_interface_has_five_views_and_no_external_assets() -> None:
     assert "/api/people/select" not in html
     assert "No messages are scheduled" in html
     assert "Saved edit history" in html
-    assert '<select id="conversationAsk"><option value="informational_call">Informational call</option></select>' in html
+    assert re.search(
+        r'<select id="conversationAsk">\s*<option value="informational_call">Informational call</option>\s*</select>',
+        html,
+    )
     assert '<input id="minutes" type="number" min="10" max="20" value="15" required>' in html
     assert "ask_type_unsupported" in html and "ask_minutes_unsupported" in html
     assert "I confirm this source shows" in html

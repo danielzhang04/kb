@@ -40,6 +40,12 @@ from scripts.prospecting.manager.campaigns import (
     CampaignService,
     DraftingSettings,
 )
+from scripts.prospecting.pipeline_service import (
+    PipelineError,
+    PipelineService,
+    PipelineStartRequest,
+    ScopeSpec,
+)
 from scripts.prospecting.review_service import (
     EditDraftRequest,
     EditorialRequest,
@@ -133,6 +139,14 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
         return {"title": "Create your first campaign", "detail": "Save a local brief to establish its durable identity.", "label": "Campaign setup"}
     if "campaign" not in snapshot:
         return {"title": "Choose a campaign", "detail": "Every count and review state is scoped to one campaign.", "label": "Campaign required"}
+    pipeline = snapshot.get("pipeline")
+    if isinstance(pipeline, dict) and pipeline.get("state") == "input_pending":
+        missing = pipeline.get("pending_fields") or []
+        return {"title": "Complete the research brief", "detail": "Research has not started. Complete the remaining inputs before an adapter can be considered.", "label": f"{len(missing)} inputs needed"}
+    if isinstance(pipeline, dict) and pipeline.get("state") == "awaiting_research_adapter":
+        return {"title": "Brief saved; research is not connected yet", "detail": "The local intake is durable. No research is running.", "label": "Awaiting adapter"}
+    if isinstance(pipeline, dict) and pipeline.get("state") == "unavailable":
+        return {"title": "Pipeline status unavailable", "detail": "Campaign review remains available. Refresh after the local pipeline record is repaired.", "label": "Needs attention"}
     drafts = snapshot["drafts"]
     people = snapshot["people"]
     pending = [item for item in drafts if item.get("candidate_state") in {"pending_qa", "qa_failed"}]
@@ -167,6 +181,7 @@ class ReviewHTTPServer(HTTPServer):
         campaigns: CampaignService,
         html: str,
         *,
+        pipeline: object | None = None,
         feedback: object | None = None,
         control: object | None = None,
         monotonic: Callable[[], float] = time.monotonic,
@@ -177,6 +192,7 @@ class ReviewHTTPServer(HTTPServer):
         self.feedback = review if feedback is None else feedback
         self.control = _DisabledControl() if control is None else control
         self.campaigns = campaigns
+        self.pipeline = pipeline
         self.html_template = html
         self.monotonic = monotonic
         self.bootstrap_deadline = monotonic() + BOOTSTRAP_SECONDS
@@ -360,6 +376,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "mailboxes": list(self.server.review.list_mailboxes()),
             "people": [], "drafts": [], "feedback": [], "schedule": [], "activity": [],
             "control": None,
+            "pipeline": None,
+            "unmet_inputs": [],
         }
         campaign_id = query.get("campaign_id", [""])[0]
         if campaign_id:
@@ -386,6 +404,20 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     "enabled": False, "campaign_id": campaign_id,
                     "code": "control_status_unavailable",
                 }
+            if self.server.pipeline is not None:
+                try:
+                    pipeline = self.server.pipeline.get_latest_projection(campaign_id)
+                except PipelineError as error:
+                    pipeline = None
+                    if str(error) != "invalid_campaign_id":
+                        snapshot["pipeline"] = {
+                            "state": "unavailable", "code": str(error),
+                            "pending_fields": [],
+                        }
+                if pipeline is not None:
+                    safe_pipeline = _jsonable(pipeline)
+                    snapshot["pipeline"] = safe_pipeline
+                    snapshot["unmet_inputs"] = safe_pipeline.get("pending_fields", [])
         snapshot["next_action"] = _next_action(snapshot)
         self._json(HTTPStatus.OK, snapshot)
 
@@ -475,6 +507,41 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self.server.review.prepare_drafts(value["campaign_id"], value["step"]),
                 )
                 return
+            if path == "/api/pipeline/start":
+                value = _require_object(
+                    payload,
+                    {
+                        "request_id", "campaign_id", "as_of_date", "funding_stage_min",
+                        "funding_stage_max", "funding_window_years",
+                        "funding_stage_interpretation", "geography", "sector",
+                        "requested_companies", "requested_people_per_company", "role_families",
+                    },
+                    {"original_specification", "outreach_goal"},
+                )
+                if self.server.pipeline is None or not isinstance(value["role_families"], list):
+                    raise ValueError("request_schema")
+                scopes: dict[str, ScopeSpec] = {}
+                for field in ("geography", "sector"):
+                    scope = _require_object(value[field], {"mode"}, {"values"})
+                    if "values" in scope and not isinstance(scope["values"], list):
+                        raise ValueError("request_schema")
+                    scopes[field] = ScopeSpec(scope["mode"], tuple(scope.get("values", [])))
+                request = PipelineStartRequest(
+                    request_id=value["request_id"], campaign_id=value["campaign_id"],
+                    as_of_date=value["as_of_date"], funding_stage_min=value["funding_stage_min"],
+                    funding_stage_max=value["funding_stage_max"],
+                    funding_window_years=value["funding_window_years"],
+                    funding_stage_interpretation=value["funding_stage_interpretation"],
+                    geography=scopes["geography"], sector=scopes["sector"],
+                    requested_companies=value["requested_companies"],
+                    requested_people_per_company=value["requested_people_per_company"],
+                    role_families=tuple(value["role_families"]),
+                    original_specification=value.get("original_specification", ""),
+                    outreach_goal=value.get("outreach_goal", ""),
+                )
+                result = self.server.pipeline.start_or_resume(request)
+                self._json(HTTPStatus.OK if result.replayed else HTTPStatus.CREATED, result)
+                return
             if path == "/api/people/verify-source":
                 value = _require_object(payload, {
                     "request_id", "campaign_id", "person_id", "expected_observation_id",
@@ -540,7 +607,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, self.server.review.set_editorial_ready(EditorialRequest(**value)))
                 return
             self._error(HTTPStatus.NOT_FOUND, "route_missing")
-        except (CampaignError, ControlError, ControlReviewError, FeedbackError, ReviewError) as error:
+        except (CampaignError, ControlError, ControlReviewError, FeedbackError, PipelineError, ReviewError) as error:
             code = str(error) if str(error) else "request_invalid"
             status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
             self._error(status, code)
@@ -558,6 +625,7 @@ def create_server(
     html_path: Path = HTML_PATH,
     feedback: object | None = None,
     control: object | None = None,
+    pipeline: object | None = None,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> ReviewHTTPServer:
     html = html_path.read_text(encoding="utf-8")
@@ -568,15 +636,20 @@ def create_server(
             raise ValueError("feedback_store_mismatch")
         if isinstance(control, ControlReviewAdapter) and control.connection is not review.connection:
             raise ValueError("control_store_mismatch")
+        if isinstance(pipeline, PipelineService) and pipeline.connection is not review.connection:
+            raise ValueError("pipeline_store_mismatch")
     feedback_owner = FeedbackService(review.connection) if feedback is None and isinstance(
         review, ReviewService
     ) else review if feedback is None else feedback
     control_owner = ControlReviewAdapter(review.connection) if control is None and isinstance(
         review, ReviewService
     ) else control
+    pipeline_owner = PipelineService(review.connection) if pipeline is None and isinstance(
+        review, ReviewService
+    ) else pipeline
     return ReviewHTTPServer(
         (HOST, port), review, campaigns, html, feedback=feedback_owner,
-        control=control_owner, monotonic=monotonic,
+        control=control_owner, pipeline=pipeline_owner, monotonic=monotonic,
     )
 
 

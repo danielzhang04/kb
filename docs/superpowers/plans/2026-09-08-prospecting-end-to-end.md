@@ -1,10 +1,12 @@
 # Prospecting end-to-end implementation task list
 
 Status: bounded implementation slices, synthetic T0 acceptance and the synthetic status-only VM
-control lifecycle proof passed. The local source-import and opaque-control backends and companion
-UI are implemented. Visual and real-data end-to-end acceptance remain pending. Boss: Codex; builders and reviewers:
+control lifecycle proof passed. Bounded components and synthetic paths are implemented, but actual
+intake, research, generation, humanizer, and independent-inspector wiring remain unfinished. Visual
+and real-data end-to-end acceptance remain pending. Boss: Codex; builders and reviewers:
 Codex workers, selected by assignment complexity. Delivery branch is
-`codex/prospecting-session-20260909`, consolidated from accepted source checkpoint 5175f408. No merge, live-send, provider-spend or deployment authorization
+`codex/prospecting-session-20260909`; latest local source is `53b29992`. PR181 published checkpoint
+`8c1c30`; further publication is held. No merge, live-send, provider-spend or deployment authorization
 is inferred from this implementation request. User expressly authorized remote development,
 isolation/monitoring/cleanup setup, iterative implementation, adversarial reviews and tests.
 
@@ -41,7 +43,9 @@ the real integrated path; synthetic tests alone do not establish live readiness.
   synthetic control proof driver passes nine local tests, and its first isolated VM lifecycle used
   the shipped `run_once`, recovered a simulated lost acknowledgement, collected an identical result
   hash, and verified exact root/unit absence after cleanup. This was not a physical laptop-close test
-  or a live campaign operation. No browser was available for visual acceptance.
+  or a live campaign operation. Chrome DevTools browser access now verifies navigation, reload,
+  keyboard interaction, and responsive measurements. Screenshot capture still times out, so visual
+  acceptance remains incomplete.
 - The broad inherited suite initially had eight failures. Stale runtime/test contracts were
   repaired and retested. Direct desktop Python 3.13 contains Datasette and now uses its actual
   interpreter path; an earlier nested launcher failure did not establish a missing dependency.
@@ -141,13 +145,15 @@ the real integrated path; synthetic tests alone do not establish live readiness.
   - Resolve desktop/VM/offline boundaries and ownership with the parallel dashboard workstream.
   - Acceptance: source-grounded plan and adversarial review; user selects material UX/authority choices.
 
-- [x] 4. Implement bounded vertical slices
+- [ ] 4. Implement bounded vertical slices
   - First: campaign input/persistence and workflow wiring, multi-campaign isolation and resume.
   - Next: fit-first discovery, cleaning/dedupe, verified-email substitution, budget/shortfall visibility.
   - Next: evidence-backed personalization, editable/reviewable revisions and exact approval binding.
   - Next: configured cadence, scheduling, suppression/replies, idempotent execution and clear states.
   - Build corresponding UI alongside each proven application slice, with meaningful source links.
   - Every slice: builder -> independent reviewer -> repair -> focused tests -> boss integration.
+  - Prior bounded components and synthetic paths are implemented. Actual intake, research, generation,
+    humanizer, and independent-inspector wiring remain incomplete.
   - Acceptance: behavior-specific regression tests; no weakened assertions or reblessed eval manifests.
 
 - [ ] 5. End-to-end acceptance
@@ -160,10 +166,12 @@ the real integrated path; synthetic tests alone do not establish live readiness.
     source provenance, clear blocked reason and next action; no implementation clutter in user flows.
   - Run representative live acceptance only with the chosen local ask and explicit provider/send scope.
   - Acceptance: measured evidence, zero unresolved blocking findings, and user review of the real flow.
+  - Prior baseline affected tests are complete; pilot-specific integration tests remain pending.
 
-- [x] 6. Session delivery
-  - Delivered in draft main PR https://github.com/danielzhang04/kb/pull/181; implementation
-    commit b7365db5. Condense main changes into one main PR. No per-small-task PRs; coordination uses existing
+- [ ] 6. Session delivery
+  - PR181 published checkpoint `8c1c30` is a delivery checkpoint, not full completion. Further
+    publication is held while the startup-pilot phase is integrated. Condense main changes into one
+    main PR. No per-small-task PRs; coordination uses existing
     authorized access path, respecting enforced branch protection.
   - Update project current state, task card, memory and canonical handoff with exact resume steps.
   - Collect and validate remote outputs, clean only owned leases/processes/artifacts, verify absence.
@@ -184,6 +192,8 @@ rebless MANIFEST.sha256 files. External sending and human-only approvals remain 
 - `handoffs/2026-09-07-prospecting-p8-live-tested.md` on ops (historical pickup)
 - `orgs/prospecting/runbook-p8.md`, `orgs/prospecting/doctrine.md`, `orgs/prospecting/deployment.md`
 - `docs/superpowers/specs/2026-09-04-prospecting-p7ui-amendment.md` on original boss checkout
+- `docs/superpowers/plans/2026-09-09-prospecting-startup-pilot.md` (active phase)
+- `docs/superpowers/specs/2026-09-09-prospecting-skill-pipeline.md` (active skill proposal)
 - `scripts/prospecting/run_workflow.py`, `manager/`, `affinity/`, `campaigner/`
 
 ## Context checkpoint
@@ -221,12 +231,14 @@ Continue on the same delivery branch and PR; leave other dashboard/VM production
 - [ ] Update the same PR, task state, handoff and owned-resource cleanup evidence.
 
 Current execution split: native Codex workers inspect/edit local source; VM Codex workers receive
-only validated source/skills for isolated reviews. Browser inventory is empty and Chrome is
-unavailable; user has been asked to connect a browser while implementation continues.
+only validated source/skills for isolated reviews. Chrome DevTools access is available for navigation,
+reload, keyboard interaction, and responsive measurements; screenshot capture still times out.
 
 Checkpoint: runtime interpreter selection, manager recovery/checkpoints, P12 control source, P13
 audited local source import and P14 manual feedback fulfillment are implemented and have focused
 verification. The manager still parks when no independent inspector is available and no eval is
 blessed by that parked path. The synthetic status-only P12 VM proof passed and the source-upload and
-control-panel UI source is integrated. Browser acceptance and real local evidence/drafts remain open. Completed VM jobs are collected and
+control-panel UI source is integrated. Startup-pilot intake, research, generation, humanizer, and
+independent-inspector wiring remain open; browser screenshot acceptance and real local evidence/drafts
+also remain open. Completed VM jobs are collected and
 cleaned with exact absence verified. This is ongoing work, not acceptance.

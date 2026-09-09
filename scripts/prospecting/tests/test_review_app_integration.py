@@ -324,6 +324,53 @@ def test_prepare_drafts_http_runs_the_real_p8_owner_in_the_selected_store(
     connection.close()
 
 
+def test_pipeline_brief_is_saved_locally_without_launching_research(tmp_path: Path) -> None:
+    path = tmp_path / "pipeline-review.sqlite"
+    _seed_profile(path)
+    app = _start(path, (CAMPAIGNS[0],))
+    cookie, csrf = _bootstrap(app)
+    try:
+        status, result = _post(app, "/api/campaigns", {
+            "request_id": str(uuid.UUID(int=3001)), "brief_text": BRIEF,
+            "sender_profile_id": PROFILE, "mailbox_id": "mailbox-001",
+        }, cookie, csrf)
+        assert (status, result) == (201, {"campaign_id": CAMPAIGNS[0], "created": True})
+        intake = {
+            "request_id": str(uuid.UUID(int=3002)), "campaign_id": CAMPAIGNS[0],
+            "as_of_date": "2026-09-09", "funding_stage_min": "series_a",
+            "funding_stage_max": "series_c", "funding_window_years": 3,
+            "funding_stage_interpretation": "latest_known",
+            "geography": {"mode": "specific", "values": ["new_york"]},
+            "sector": {"mode": "any", "values": []}, "requested_companies": 20,
+            "requested_people_per_company": 2, "role_families": ["operations", "investing"],
+            "original_specification": "Keep this user-provided context private.",
+            "outreach_goal": "Discuss an AI-related coffee chat.",
+        }
+        status, _headers, raw = _request(
+            app, "POST", "/api/pipeline/start", intake, cookie=cookie,
+        )
+        assert status == 403 and json.loads(raw) == {"error": "csrf_invalid"}
+        status, saved = _post(app, "/api/pipeline/start", intake, cookie, csrf)
+        assert status == 201
+        assert saved["state"] == "awaiting_research_adapter"
+        assert saved["next_stage"] == "research"
+        status, replayed = _post(app, "/api/pipeline/start", intake, cookie, csrf)
+        assert status == 200 and replayed["replayed"] is True
+        status, _headers, raw = _request(
+            app, "GET", f"/api/review?campaign_id={CAMPAIGNS[0]}", cookie=cookie,
+        )
+        snapshot = json.loads(raw)
+        assert status == 200
+        assert snapshot["pipeline"]["state"] == "awaiting_research_adapter"
+        assert snapshot["unmet_inputs"] == []
+        assert snapshot["next_action"]["title"] == "Brief saved; research is not connected yet"
+        assert snapshot["pipeline"]["requested_companies"] == 20
+        assert snapshot["pipeline"]["requested_people_per_company"] == 2
+        assert snapshot["pipeline"]["outreach_goal"] == intake["outreach_goal"]
+    finally:
+        app.stop()
+
+
 def test_feedback_http_links_only_the_authentic_human_edit_and_persists(tmp_path: Path) -> None:
     from scripts.prospecting.tests.test_feedback_service import _database
 

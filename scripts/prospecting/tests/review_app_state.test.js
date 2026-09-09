@@ -405,3 +405,26 @@ test("control action sends only the selected opaque request and reports acknowle
   assert.match(panel, /due/);
   assert.doesNotMatch(panel, /Confirm result receipt/);
 });
+
+test("research brief retries keep the request identity and drafts stay campaign-scoped", () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  app.evaluate(`state.campaign="A"; Object.assign($("asOfDate"),{value:"2026-09-09"});
+    Object.assign($("fundingStageMin"),{value:"series_a"}); Object.assign($("fundingStageMax"),{value:"series_c"});
+    Object.assign($("fundingWindowYears"),{value:"3"}); Object.assign($("stageInterpretation"),{value:"latest_known"});
+    Object.assign($("geoMode"),{value:"unknown"}); Object.assign($("sectorMode"),{value:"unknown"});
+    Object.assign($("companyCount"),{value:"20"}); Object.assign($("peoplePerCompany"),{value:"2"});
+    Object.assign($("roleFamilies"),{value:"operations"}); Object.assign($("outreachGoal"),{value:"A goal"}); captureResearchBrief();
+    globalThis.firstSave=saveResearchBrief("A",state.researchDrafts.A.value)`);
+  const first = app.requests.shift();
+  assert.equal(first.url, "/api/pipeline/start");
+  const firstPayload = JSON.parse(first.init.body);
+  app.evaluate('globalThis.retrySave=saveResearchBrief("A",state.researchDrafts.A.value)');
+  const retry = app.requests.shift();
+  const retryPayload = JSON.parse(retry.init.body);
+  assert.equal(retryPayload.request_id, firstPayload.request_id, "unchanged retry retains identity");
+  app.evaluate('state.campaign="B"; hydrateResearchBrief(null); $("outreachGoal").value="B goal"; captureResearchBrief(); state.campaign="A"; hydrateResearchBrief(null)');
+  assert.equal(app.document.getElementById("outreachGoal").value, "A goal");
+  app.evaluate('state.campaign="B"; hydrateResearchBrief(null)');
+  assert.equal(app.document.getElementById("outreachGoal").value, "B goal");
+});
