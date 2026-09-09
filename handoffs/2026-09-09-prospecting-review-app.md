@@ -3,6 +3,27 @@
 Active session; user directed the remainder to run asynchronously through the full plan.
 This file is the current checkpoint. Earlier commits and private receipts preserve history.
 
+## Active final review checkpoint - 10:04 UTC
+
+ONE ACTIVE VM JOB: staging-boundary-final-review-20260909,
+id9420afc590c44139a124fccb0fafefb9, started10:03:42UTC,420s deadline+3600s collection lease,
+requestedgpt-5.6-sol. Receipt root_private/dev-jobs/staging-boundary-final-review-20260909/receipt.json.
+15explicit source/synthetic/skill inputs249336bytes; reportoutput only. Monitor/collect/validate/
+cleanup thenexactdir,mount,3unitabsence. Do not relaunch. Prior31jobsalreadycleaned/absent.
+
+DELIVERY guard3files FROZEN:47tests passed29.57s,0sourceclassifierfindings,bothrepresentative
+manifest/SSHscannerchecks0. Newnodeid authorization index-only,exact2sentineltestshapes,7manifestpaths,
+parsedtestsvaluesonly; runtimePIIguard unchanged. ExistingT1fixture requiredPHONE-only typedentity-ID
+masking underits exactpath;EMAILstilloriginal,negativeproductionlocalparttestadded. No manifestbytes
+changed. RootSSHsuffix/unknownnodeIDfindings repaired beforefreeze;VMreviews currentbytes.
+Remote_protocol docs12files FROZEN,0planclassifier,EOF-onlydraftcardchanges. vm_reviewstillfinishing
+24testmigrationandtests. Root approved remainingnegativephonesnormalize toreserved202555 range
+preservingrejectionsemantics/explicitIDs; numericUUIDs useUUIDconstructor andopaqueIDs useclear
+numericformatting preserving runtimevalues. No stringobfuscation or test/guardexemption.
+RootASTaudit all24files preserved testfunctionnames andassertcounts. Finalfullstagecheckpending.
+Skill/mirrorcheckgreen aftergeneratingonlyignoredkit/.rendered artifacts. Rootcompleted4private
+pytestbasetemps cleaned with exactcontainmentchecks. No UIserver or liveoperations.
+
 ## Goal and boundaries
 
 Industry chats and jobs: outreach brief -> qualified leads and evidence -> personalized draft
