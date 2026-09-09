@@ -1,9 +1,12 @@
-# OmniGen2 cloud preparation (offline only)
+# OmniGen2 cloud preparation and execution history
 
-This packet makes the frozen local OmniGen2 single-reference probe reviewable as a
-RunPod-harness manifest. It does not launch a pod, call a provider, upload an input,
-export a LoRA, or contact Gemini. It remains research-only, non-promotable, and has
-no authorization to export an output.
+This packet originally made the frozen local OmniGen2 single-reference probe reviewable as a
+RunPod-harness manifest. The preparation itself was offline and remains research-only and
+non-promotable. The user subsequently authorized the exact g01-to-owned-RunPod transfer; V1
+and V2 are terminated historical failures. V3 completed two images with verified termination
+at 08:16:25 UTC, but both visual reviews rejected expansion. See the
+[final result](2026-09-09-omnigen2-cloud-result.md). No LoRA export, Gemini transfer,
+external publication, or production promotion is authorized by this packet.
 
 `pod/prepare_omnigen2_reference.py` defaults to printing canonical manifest JSON and
 performs no filesystem or network I/O. Its explicit `--prepare` mode copies the
@@ -16,7 +19,7 @@ existing payload, symlink, junction/reparse-point payload, or symlink/junction/r
 component in the destination-root ancestry before it creates or copies anything. It never
 reuses or overwrites a prior review payload.
 
-## Exact parity
+## Graph pin parity and the current one-field adapter
 
 The source graph remains the frozen planner
 `pipeline/expand/local_omnigen2_inference.py`: one `LoadImage` input, 768 by 768,
@@ -38,6 +41,16 @@ the exact-byte g01 copy: source
 `payload/g01.jpg`, and uploaded by the harness to `input/omnigen2/g01.jpg` only after
 a separately authorized live run.
 
+V1 used the original archive assumption and failed before g01 upload. V2 corrected the immutable
+ComfyUI commit archive and completed bootstrap, model downloads, readiness, and g01 upload, then
+received HTTP 400. A later pinned-source audit diagnosed omitted node 17 `resolution_steps`; the
+server response body was not retained. V3 uses
+an explicit immutable commit archive and adds only `resolution_steps: 1` at node 17; its
+provenance records both the frozen source graph and adapted graph. This is pin/intent parity,
+not literal byte-identical Windows-to-Linux graph parity. V3 manifest SHA-256 is
+`5419590e7624a39c297f8d3761897257fd73cab6c29117d69badf1323ebac611`; the v3 g01 upload remains
+737,366 bytes with SHA-256 `e2f5cca280b7753a0d0d562c7f23f2ee0ea5322e9a82b2ac75f76397227536ed`.
+
 ## Cloud envelope and limits
 
 The manifest requests one SECURE NVIDIA L40S class pod (48 GB requested VRAM), matching
@@ -48,10 +61,12 @@ job, and 5 teardown minutes. The existing compatibility-job formula produces the
 60-minute minimum exactly. There is no automatic retry or second placement.
 
 The historic L40S rate in `train/tensor-pins.yaml` is $1.30/hour, so the prepared
-60-minute ceiling is $1.30, below the recorded remaining $12.199615. This is only a
-conservative estimate, not a claim of current RunPod price or availability. A root
-review must obtain the current ledger, rate, availability, and card approval before
-any live command; this preparation does not establish any of them.
+60-minute ceiling is $1.30. Before V3, the recorded arc total was $37.922815 of $50.
+V1 cost $0.019366 after 53.63 seconds with no uploads; V2 cost $0.103064 after 340.394
+seconds, with observed READY rate $1.09/hour, successful bootstrap/models/g01 upload, and zero
+jobs/images. Both terminations were verified. At 08:09 UTC V3’s provider record showed 188 GB
+RAM, 16 vCPU, $1.09/hour, and ComfyUI proxy 502; it has no final receipt or completed-cost claim
+here. These facts are not a current price or availability quote.
 
 The requested 48 GB is VRAM, chosen to avoid the local host's system-RAM pressure.
 System RAM and VRAM are different resources. This does not claim that 12 GiB is a
@@ -64,9 +79,10 @@ remote post-upload g01 SHA-256 or to the graph hash ComfyUI actually queues. Tho
 missing acceptance checks; this packet does not weaken the harness or fabricate their
 results.
 
-## Before a cloud launch
+## Future cloud launches
 
-Root must independently review the generated private payload and then confirm all of:
+The V3 launch already satisfied its specific user authorization and is one-shot. Any future
+cloud launch must independently confirm all of:
 
 1. the existing local wait has not produced the first result, avoiding a duplicate cloud run;
 2. a T2 live-pod card includes this manifest, one pair, one placement, `--max-minutes 60`,

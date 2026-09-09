@@ -53,3 +53,8 @@
 /orgs/figment/personas/*/identity-spec.md text eol=lf
 # Figment personas bind this shared register spec by its raw SHA-256 too.
 /orgs/figment/pipeline/look-spec-v2.md text eol=lf
+
+# The cloud-pair gallery binds these review documents by raw SHA-256.
+# Preserve their reviewed bytes across Windows and Linux checkouts.
+/docs/figment/2026-09-09-omnigen2-cloud-result.md text eol=lf
+/docs/figment/2026-09-09-omnigen2-pair-independent-review.md text eol=lf

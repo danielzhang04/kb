@@ -15,9 +15,11 @@ The live checkpoint ladder completed five jobs at 250, 500, 750, 1000, and final
 
 The later paired final-LoRA versus no-LoRA diagnostic completed five fixed seed pairs under one corrected prompt. One independent visual audit found a clear arm-level identity split and candidate resemblance cues to `g01`; the parent review found `g01` resemblance insufficient and the intended about-21 presentation unestablished. That disagreement is preserved as unresolved, not converted into a pass. The pair is evidence about this LoRA condition and prompt family only; it did not promote a checkpoint or isolate prompt wording. See the [paired diagnostic review](../../../../docs/figment/2026-09-08-paired-diagnostic-review.md).
 
-## Current implementation status — 2026-09-08
+## Current implementation status — 2026-09-09
 
-The accepted experimental compiler at `f6b5096d` and executor at `af7b07bc`
+As of 2026-09-09, the verified delivery path is persona/curation → accepted 20+ row dataset → train-first → tester ruling and accepted checkpoint → held-out `gen` stills. The focused [CLI integration verification](../../../../docs/figment/2026-09-09-cli-integration-verification.md) passed 50 tests. It supplies contract evidence only: there is still no accepted identity dataset, production LoRA, or consistent still set. A six-row varied pilot comes before any 20+ row acceptance.
+
+The historical experimental compiler at `f6b5096d` and executor at `af7b07bc`
 can prepare a private, non-promotable diagnostic only after a current,
 single-`g01` curation and evidence for at least 20 exact training rows. The
 executor defaults to local preparation or a harness dry-run; live execution
@@ -64,16 +66,18 @@ remains an operator decision, and Instagram work remains deferred.
 
 ## Reference-conditioned infrastructure checkpoint
 
-The separate C3 prompt-profile study stopped after both base-image reviews rejected its framing, turn and identity fit. The next experiment uses `g01` pixels directly through OmniGen2. Its planner, shared runtime, resource observer, admission validator and controller are built and reviewed. All three model files and the real local evidence were verified; a simulated two-row controller run passed its tests. Actual generation is waiting for the available-RAM floor, so no OmniGen2 image result or accepted training input is claimed.
+The C3 prompt-profile study stopped after both base-image reviews rejected its framing, turn, and identity fit. The OmniGen2 planner, shared runtime, resource observer, admission validator, and controller remain reviewed research infrastructure. The earlier local RAM-floor watches are closed historical readiness evidence with zero executions. Cloud V1 failed during archive bootstrap. V2 completed bootstrap, model download, and `g01` upload before HTTP 400; its body was lost, while pinned-source inspection separately identified missing `resolution_steps`. Both pods were terminated. V3 completed at 08:16:25 UTC with two files, verified termination, and a $0.325452 estimate under the $1.30/60-minute bound. Root and independent original-resolution reviews both stopped before the six-row pilot: smoothing and geometry drift persisted, neither image delivered the requested turn, crops were tight, and seed 481516234 missed the crew-neck. Both remained clothed adult images without quarantine failure, but neither is training-eligible. See the [independent review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md) and [launch packet](../../../../docs/figment/2026-09-09-reference-pair-launch-packet.md).
 
 | Capability | Current evidence | Remaining condition |
 |---|---|---|
-| Reference-conditioned local execution | Reviewed controller, fixed graphs, verified weights and resource checks | Fresh resource preflight and one real two-image run |
+| Reference-conditioned execution | Reviewed controller, fixed graphs, verified weights, and one completed two-file cloud run | Both reviews stopped before the six-row pilot; no training-eligible image |
 | Consistent training inputs | Source lineage and curation controls built | A diverse reviewed set that preserves the chosen adult identity |
 | Training and still production | Actual finite checkpoints and diagnostic renders | Identity and intended age fit, beyond runtime success |
 | Consistent video | Earlier coherent clip diagnostics | Accepted still identity, requested motion and cross-shot checks |
 
-See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admission-review.md) and the [image-production chapter](image-production.md). A good research comparator would still require resolution of upstream commercial licensing before a production choice.
+See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admission-review.md), [cloud preparation](../../../../docs/figment/2026-09-09-omnigen2-cloud-preparation.md), and the [image-production chapter](image-production.md). OmniGen2's 3B Qwen-derived encoder remains a research-only comparator with no production clearance. The Qwen-Image-Edit-2511 candidate instead records Apache-2.0 component metadata for its pinned 7B encoder and model stack; that metadata is not production licence clearance.
+
+The Qwen single-reference official-conditioning adapter is offline READY after independent pinned-source graph/schema review, exact public model-pin metadata, fresh contained g01 staging, and an existing-harness dry run. Its source aspect path is 1392x752, not a claimed square output. The proposed live pair has not run and has no cost: exact connected-account permission remains asynchronously pending after automatic-review blocks. It does not alter the stopped Omni result or establish identity quality. See the [Qwen preparation record](../../../../docs/figment/2026-09-09-qwen-reference-cloud-preparation.md).
 
 ## Governing rules
 
@@ -92,4 +96,4 @@ See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admi
 - [Content research](content-research.md): evidence-led topics and measurable experiments.
 - [Architecture and operations](architecture-and-operations.md): hub, manifests, ledgers, and gates.
 
-The package map is documented in [r14](../r14-10sorlabs-package.md); its derived training, generation, motion, and fidelity analyses are in [r15b training](../r15b-training.md), [r15b generation](../r15b-generation.md), [r15b edit and motion](../r15b-edit-motion.md), and [r25](../r25-why-they-can-and-we-cant.md). Those reports include locally inspected graph JSONs and recovered chapter evidence. Current code and live evidence are dated 2026-09-08; package evidence still does not prove output quality or licensing for every asset.
+The package map is documented in [r14](../r14-10sorlabs-package.md); its derived training, generation, motion, and fidelity analyses are in [r15b training](../r15b-training.md), [r15b generation](../r15b-generation.md), [r15b edit and motion](../r15b-edit-motion.md), and [r25](../r25-why-they-can-and-we-cant.md). Those reports include locally inspected graph JSONs and recovered chapter evidence. Current status is dated 2026-09-09; package evidence still does not prove output quality or licensing for every asset.
