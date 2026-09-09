@@ -5,6 +5,17 @@ job receipts preserve the detailed history. Latest user: the rest is async, run 
 
 ## Exact next step
 
+LATEST08:45UTC: producer review d7a1baed REQUEST CHANGES, collected/cleaned and exact absence
+verified. Report8e367ed3b9dac4e25f389b671342c6ae160183177422edea330057c1586cfca8. Root169 combined
+producer/fill/service/QA tests passed56.48s. Gate_repair resumed narrowly: board-only follow-up
+signal IDs and fill_fit.py caller canonical-fact compatibility, with test_affinity_fill_fit.py
+allowed. Do not blindly turn missing unused draft facts into substitutions; trace P8-B actual gate.
+UI repair now FROZEN (HTML + new tests/review_app_state.test.js), root actual JS3passed.
+ACTIVE VM ui-state-final-rereview-20260909 id6126fbef16f4417a8d03a86632563690 started08:44:52UTC,
+420second deadline+3600collection. Exact root _private/dev-jobs/<name>/receipt.json. Recover this
+job; earlier active provenance statement below is historical. No real-copy trial yet.
+
+
 Monitor and collect the existing provenance-final-review-20260909 VM job, validate its report,
 clean its exact owned resources, then verify absence. Do not relaunch it. Finish the native UI
 state repair and independently re-review it. Root combined producer/service/QA tests are running.
