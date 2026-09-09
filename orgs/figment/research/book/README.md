@@ -17,7 +17,7 @@ The later paired final-LoRA versus no-LoRA diagnostic completed five fixed seed 
 
 ## Current implementation status — 2026-09-09
 
-As of 2026-09-09, the verified delivery path is persona/curation → accepted 20+ row dataset → train-first → tester ruling and accepted checkpoint → held-out `gen` stills. The focused [CLI integration verification](../../../../docs/figment/2026-09-09-cli-integration-verification.md) passed 50 tests. It supplies contract evidence only: there is still no accepted identity dataset, production LoRA, or consistent still set. The six-row varied pilot is complete; its promising research result comes before, and does not replace, 20+ row acceptance.
+As of 2026-09-09, the verified delivery path is persona/curation → accepted 20+ row dataset → train-first → tester ruling and accepted checkpoint → held-out `gen` stills. The built-in direct-`g01` expansion completed all 21 derivatives; root accepted 20 train rows and two retained eval rows for bounded research at 18:14:35 UTC, and materialization verification passed. The fresh train-first plan is SHA-256 `9c82f6dd64500f1ac46144cf882261990353e0659773c95c3617649fbe6ece7c`; its independent plan review and 42-upload dry run are READY. The user approved the exact `$7.61`/351-minute payload. The current train bootstrap is owned by pod `iu3uzm2swvup3l` (`figment-bakeoff-20260909-183826-e7284e`), recovered at 18:38:26 UTC; read-only status saw its container `RUNNING` at 18:41 UTC. This is bootstrap, not a training-step result. No final receipt, checkpoint, tester output, or final cost claim exists. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md). The focused [CLI integration verification](../../../../docs/figment/2026-09-09-cli-integration-verification.md) passed 50 tests. It supplies contract evidence only: there is no accepted production LoRA or consistent still set.
 
 The historical experimental compiler at `f6b5096d` and executor at `af7b07bc`
 can prepare a private, non-promotable diagnostic only after a current,
@@ -29,9 +29,7 @@ plan; production loaders reject the separate schema. A separately admitted,
 one-observation V2 availability probe has now completed ten local fit steps
 and written one non-promotable checkpoint. It had no samples, quality review,
 checkpoint acceptance, or promotion, and does not change the 20-row gate or
-make the current gallery eligible. There remains no accepted 20-row
-first-generation dataset or production training. See the [local LoRA fit runtime
-audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
+make the current gallery eligible. The accepted 20-row built-in set is bounded research evidence, not production training. See the [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
 
 Separate branch-specific CPU preflights completed for the current and concise
 quality recipes, and the current-caption quality fit completed its fixed
@@ -73,15 +71,15 @@ The C3 prompt-profile study stopped after both base-image reviews rejected its f
 | Capability | Current evidence | Remaining condition |
 |---|---|---|
 | Reference-conditioned execution | Reviewed controller, fixed graphs, verified weights, and one completed two-file cloud run | Both reviews stopped before the six-row pilot; no training-eligible image |
-| Consistent training inputs | Source lineage and curation controls built | A diverse reviewed set that preserves the chosen adult identity |
-| Training and still production | Actual finite checkpoints and diagnostic renders | Identity and intended age fit, beyond runtime success |
+| Consistent training inputs | Accepted bounded 20-train/2-eval first-generation set and verified materialization | Production dependency clearance and broader identity evidence |
+| Training and still production | Fresh train-first plan and dry run; owned pod is in bootstrap | Final receipt, tester, identity, and intended-age evidence beyond runtime success |
 | Consistent video | Earlier coherent clip diagnostics | Accepted still identity, requested motion and cross-shot checks |
 
 See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admission-review.md), [cloud preparation](../../../../docs/figment/2026-09-09-omnigen2-cloud-preparation.md), and the [image-production chapter](image-production.md). OmniGen2's 3B Qwen-derived encoder remains a research-only comparator with no production clearance. The Qwen-Image-Edit-2511 candidate instead records Apache-2.0 component metadata for its pinned 7B encoder and model stack; that metadata is not production licence clearance.
 
 The Qwen single-reference official-conditioning experiment completed two 1392×752 outputs at 16:48:42 UTC for an estimated $0.530662. Termination was verified and root's read-only inventory returned zero pods at 16:50:06 UTC; the reconciled arc is $38.778929/$50 and the daily provider estimate is $0.978544. Root and independent reviews both recorded STOP before expansion. See the [root result](../../../../docs/figment/2026-09-09-qwen-reference-cloud-result.md) and [independent review](../../../../docs/figment/2026-09-09-qwen-reference-pair-independent-review.md).
 
-The completed built-in six-image direct-g01 pilot is independently [promising for a 20-plus-image research set](../../../../docs/figment/2026-09-09-builtin-pilot-independent-review.md). Every slot used g01 directly; generated outputs are not chained. g01 and pilot 01, 02, 04, and 05 are train candidates, while pilot 03 and 06 are reserved evaluation candidates. Fifteen more direct-g01 train candidates are planned to make 20. These are candidate partitions only: none is dataset-promoted or trained. The six raw YuNet/SFace records are unthresholded diagnostic observations, not an identity verdict, ranking, gate, or approval. No built-in tool model identity, token usage, or incremental billing is exposed. The next path is candidate curation and dataset acceptance, then the existing train/test/held-out `gen`/video sequence.
+The built-in direct-`g01` expansion completed all 21 first-generation derivatives; no generated output is chained as an input. Its accepted bounded research curation has 20 train rows and pilot 03/06 retained as eval-only rows. The 21 raw YuNet/SFace identity observations (six pilot and 15 expansion) remain unthresholded diagnostics, not an identity verdict, ranking, or production approval. Current train bootstrap is owned by pod `iu3uzm2swvup3l` (`figment-bakeoff-20260909-183826-e7284e`), whose container was `RUNNING` at 18:41 UTC; no final receipt, training result, checkpoint, or quality result exists. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md) and [independent plan review](../../../../docs/figment/2026-09-09-builtin-train-plan-independent-review.md).
 
 The Qwen component metadata is collected in the [component licence evidence](../../../../docs/figment/2026-09-09-qwen-component-license-evidence.md); production dependency clearance remains separate.
 

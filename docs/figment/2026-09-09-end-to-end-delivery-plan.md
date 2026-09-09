@@ -2,7 +2,7 @@
 
 ## Decision
 
-Current disposition, September 9: the Omni and Qwen cloud pairs completed, verified teardown, and both received root and independent STOP dispositions before expansion. Qwen finished at 16:48:42 UTC for an estimated $0.530662; zero pods were observed at 16:50:06 UTC, the arc is $38.778929/$50, and the daily provider estimate is $0.978544. The six-image built-in direct-g01 pilot is complete; the independent Sol review found it promising for a 20-plus-image research set. No built-in model identity, token usage, or incremental billing is exposed, and no image is dataset-promoted or trained. The approved-still video join is committed at `37820079`, with actual approval-to-manifest-to-upload integration and 18 distinct passing tests. See [Qwen result](2026-09-09-qwen-reference-cloud-result.md), [Qwen independent review](2026-09-09-qwen-reference-pair-independent-review.md), [pilot root review](2026-09-09-builtin-pilot-root-review.md), and [pilot independent review](2026-09-09-builtin-pilot-independent-review.md).
+Current disposition, September 9: the Omni and Qwen cloud pairs completed, verified teardown, and both received root and independent STOP dispositions before expansion. Qwen finished at 16:48:42 UTC for an estimated $0.530662; zero pods were observed at 16:50:06 UTC, the arc is $38.778929/$50, and the daily provider estimate is $0.978544. The built-in direct-`g01` expansion completed all 21 derivatives. Root accepted 20 train rows and two retained eval rows for bounded research at 18:14:35 UTC; materialization verification passed. The fresh train-first plan is SHA-256 `9c82f6dd64500f1ac46144cf882261990353e0659773c95c3617649fbe6ece7c`, and its independent plan review and 42-upload harness dry run are READY. The final one-shot launcher is also READY at SHA-256 `86530deca2cd878484139d4809b97626df64eb72b319acc955b7c622194f73e7`. The user specifically approved the exact 20-image/caption, $7.61, 351-minute research payload. Current train bootstrap is owned by pod `iu3uzm2swvup3l` (`figment-bakeoff-20260909-183826-e7284e`), recovered at 18:38:26 UTC; read-only status saw its container `RUNNING` at 18:41 UTC. This is bootstrap, not a training-step result. No final receipt, checkpoint, tester output, held-out still, production promotion, or final cost claim exists. See the [curation result](2026-09-09-builtin-dataset-curation-result.md) and [independent plan review](2026-09-09-builtin-train-plan-independent-review.md).
 
 The generated-input gallery is complete at `adcf4591` and independently READY: 124 affected tests, typecheck, and an actual original-route probe passed. The production dashboard build also passed. This is local verification only, with no screenshot, deployment, or accepted-identity claim. The explicit canonical-ledger planner fix is reviewed in [ledger-plan binding review](2026-09-09-ledger-plan-binding-review.md) (73 tests, 167.86 seconds); it is no longer a work-in-progress item.
 
@@ -23,9 +23,9 @@ proof of that criterion.
 | Capability | Built / locally verified | Live-proven | Quality accepted |
 | --- | --- | --- | --- |
 | Persona, pins, bounded pod harness, plan/run/grade/ruling/gate CLI | Yes; `pipeline/figment_train.py` and its tests | Several historical train/tester runs | No production lineage |
-| Identity gate and human lineage binding | Yes; fail-closed numeric and human records | Used on prior materials | No current candidate passes the user criterion |
-| Reference-conditioned routes | OmniGen2 and Qwen cloud pairs are complete and rejected for expansion; built-in six-image direct-g01 pilot is complete and promising for research curation | Omni V1/V2 failed; V3 completed with two rejected files. Qwen completed two files for $0.530662 with verified teardown and both reviews STOP. Built-in pilot completed six files. | No |
-| Training and checkpoint tester | Train-first/train/tester manifests and provenance checks | Historical runs completed | No checkpoint selected; prior LoRA was judged older/inconsistent |
+| Identity gate and lineage binding | Yes; fail-closed records and bounded research curation | Current 20-train/2-eval built-in set was materialized and verified | Dataset-only research acceptance; no production identity claim |
+| Reference-conditioned routes | OmniGen2 and Qwen cloud pairs are complete and rejected for expansion; built-in direct-`g01` expansion and curation are complete | Omni V1/V2 failed; V3 and Qwen completed rejected pairs with verified teardown. Built-in path completed 21 generated originals. | Bounded research dataset only |
+| Training and checkpoint tester | Two-stage train-first plan, manifests, pins, provenance checks, and tester path | Historical runs completed; owned pod `iu3uzm2swvup3l` is in bootstrap and has no final receipt | No current checkpoint selected; prior LoRA was judged older/inconsistent |
 | Held-out stills | `gen` is planned and gradeable in the existing CLI | No accepted source checkpoint for a new held-out run | No |
 | Video | Native Wan compiler, assembly/extraction, and reviewed approved-still adapter; 18 distinct focused tests include actual approval-to-upload integration | V1, V2, and V3 clips completed; V2/V3 were stable in their inspected conditions | No production identity/temporal acceptance |
 | Hub | Existing galleries have historical desktop/mobile QA; cloud lifecycle and generated-input gallery are complete | Cloud lifecycle 147-test slice, then 29 post-review tests; gallery 124 affected tests, typecheck, actual original-route probe, and production build passed | No accepted production lineage to display yet |
@@ -83,27 +83,13 @@ evidence for a new hypothesis or ruling.
 
 The Omni and Qwen g01 cloud pairs completed, and both root and independent reviews stopped each before expansion. The completed built-in six-image pilot used g01 directly for every slot rather than chaining generated images. Its root and independent Sol reviews found a consistent, promising research hypothesis, without promoting an image into a dataset.
 
-The six rows vary pose, framing, light, and clothed wardrobe while holding the
-identity hypothesis. Pilot 03 and 06 are reserved evaluation candidates. g01 and
-pilot 01, 02, 04, and 05 are the initial five train candidates; fifteen more
-direct-g01 train candidates are planned to make 20. This partition is not an
-accepted dataset or a training launch.
+The candidate inventory now has g01 plus 21 first-generation direct-`g01` derivatives. Pilot 03 and 06 remain eval-only; the accepted bounded research set contains 20 train rows and two retained eval rows. Materialization preserved original evidence and produced 20 RGB-equivalent numbered trainer PNG/caption pairs. This is not a training result or a production identity claim.
 
 ### Phase 1 — turn accepted identity evidence into a curated dataset
 
-Use the existing `figment_train.py` review/ruling model rather than treating an output folder
-as a dataset. Curate the next inventory as 20 train candidates and two reserved evaluation
-candidates, then require captioned, hash-bound dataset approval before training. Keep the two
-reserved evaluation images completely out of trainer media. The completed raw YuNet/SFace
-records are unthresholded diagnostic observations only; they do not rank, accept, or reject a
-candidate. Before any production dataset admission, clear every model and
-dependency licence: OmniGen2's 3B Qwen-derived encoder remains research-only,
-while Qwen's pinned 7B Apache-metadata stack needs separate production clearance.
-See [component licence evidence](2026-09-09-qwen-component-license-evidence.md) for the pinned record.
+The existing `figment_train.py` review/ruling model has now materialized the hash-bound 20-train/2-eval set. Eval rows stay out of trainer media. The 21 raw YuNet/SFace identity observations (six pilot and 15 expansion) remain unthresholded diagnostics, not an identity verdict. The accepted dataset is limited to one bounded research LoRA trial; it does not clear production dependencies, production identity, or publication. OmniGen2's 3B Qwen-derived encoder remains research-only, while Qwen's pinned 7B Apache-metadata stack still needs separate production clearance. See [component licence evidence](2026-09-09-qwen-component-license-evidence.md).
 
-Acceptance is not a target count. It is a set whose individual image bytes, caption sidecars,
-and seven-axis human rulings remain current. A near-copy of g01 may help establish identity
-but is insufficient dataset diversity.
+The fresh train-first plan is locally reviewed and its harness dry run passed. The owned pod `iu3uzm2swvup3l` is in bootstrap; read-only status saw its container `RUNNING` at 18:41 UTC. Do not hand-edit or replay the plan. No current result exists until the harness writes a final receipt.
 
 ### Phase 2 — train, test, and select a checkpoint
 
@@ -167,11 +153,11 @@ C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe -m pytest orgs
 
 ## Ranked next three work orders
 
-1. **Curate the candidate inventory.** Keep g01 and pilot 01, 02, 04, and 05 as initial train candidates; reserve 03 and 06 for evaluation; add 15 direct-g01 train candidates. None is accepted or trained yet. Tool model identity and incremental billing remain not exposed.
+1. **Monitor the active bounded train.** The exact approved payload launched through the normal CLI after a same-user visibility repair. Wait for recorded pod, final receipt, teardown, and ledger evidence; do not start a second launch or replay the immutable plan.
 
-2. **Candidate inventory to a curated dataset.** Review originals and captions, then record the actual research dataset decision through the existing acceptance path. Production dependency clearance remains separate; the rejected Omni and Qwen outputs are excluded from this built-in candidate set. The [component licence evidence](2026-09-09-qwen-component-license-evidence.md) records those cloud comparators' limits.
+2. **Existing train/test/gen/video path.** After a successful bounded train, use the existing tester, selected-checkpoint, fresh held-out `gen`, and approved-still video sequence. A training completion does not select a checkpoint or establish quality.
 
-3. **Existing train/test/gen/video path.** Use the tested train-first, tester, fresh held-out `gen`, and approved-still video adapter sequence only after an accepted dataset and selected checkpoint exist. The gallery and bridge work are complete, not next-step work.
+3. **Production evidence remains separate.** The bounded dataset and any research checkpoint do not clear component licences, identity consistency, about-21 appearance, still quality, or temporal quality. The gallery and bridge work are complete, not next-step work.
 
 ## Review and test cadence
 
@@ -182,6 +168,6 @@ code review for path boundaries, lineage, and stale-state handling; (5) repair a
 separate and requires the existing cost/card/harness checks. A human visual acceptance is
 separate again.
 
-The historical Omni and Qwen cloud runs are complete and terminated; the two earlier Qwen automatic-review blocks remain historical. The exact Qwen test executed and received STOP reviews. The active work is local candidate curation after the completed built-in pilot, with no RunPod pod or new provider-ledger cost. No code or plan may claim dataset or production quality that does not exist.
+The historical Omni and Qwen cloud runs are complete and terminated. Earlier automatic-review blocks are historical. The built-in research dataset and fresh train-first plan now exist. The normal CLI train child launched after the historical local approval-file visibility failure was repaired; recovery recorded owned pod `iu3uzm2swvup3l` at 18:38:26 UTC and read-only status saw its container `RUNNING` at 18:41 UTC. It remains bootstrap, not a completed training result. No code or plan may claim a completed run, checkpoint, still, video, production quality, or final new provider-ledger cost that does not exist.
 
 Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.
