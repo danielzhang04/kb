@@ -20,3 +20,10 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	completed; twoHIGHsaccept
 unknown; ambient subscription		gpt-5.6-sol	unavailable	VM active preserveexistingregressions	cadence-tests-repair-0a6acb59	2026-09-09T05:05:27.640982+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	nativegate_repair active	workflow-real-bridge-repair	2026-09-09T05:05:27.640982+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	nativeremote_protocol active	pending-edit-optimistic-replacement	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	timed out; no output applied; collected and cleanup absence verified	cadence-tests-repair-0a6acb59	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed advisory; fixes accepted; cleanup absence verified	workflow-bridge-rereview-8ad64e84	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	UI READY; cadence calendar repair requested; cleanup absence verified	ui-cadence-review-896d3e6a	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM independent source review active	qa-context-review-26aaae71	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review found three medium projection defects; repairs active	p10-independent-review	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol frozen; 112 combined checks passed	p11-owner-layer	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review completed one real-service restart and scope test	review-http-integration	2026-09-09T05:31:23.484120+00:00	0

@@ -2,6 +2,21 @@
 
 Active work; this replaces the September 8 end-to-end handoff. Do not restart the baseline.
 
+## Latest checkpoint (supersedes status details below)
+
+- Source HEAD remains 9b22fd34; all current slices are local work in progress, no new publication.
+- Root combined HTTP/service/campaign/cadence verification: 110 passed, one non-product pytest cache permission warning. Original cadence test function names preserved; none deleted.
+- UI source-only independent review READY/PASS. Browser tools returned apps=[] and browsers=[]; user was asked asynchronously to connect a browser. No visual acceptance claim. Owned synthetic server PID7384 was stopped after its bootstrap expired. Fixture SQLite stays local at root _private/prospecting-review-ui.sqlite; restart the app and open within 60 seconds once a browser is available.
+- New test_review_app_integration.py exercises actual HTTP/services/SQLite, two new campaigns, scope, two pending edits, retry, feedback and two server restarts. Builder reports 1 passed. No live data.
+- Cadence independent review found one medium defect: fixed 2026 holidays mishandle a follow-up crossing 2027. gate_repair is analyzing the smallest calendar repair; 61 focused plus 61 adjacent checks passed before that change.
+- CLI rereview fixes: outbox preflight before campaign mutation and point-of-use job directory/reparse checks. Builder reports 20 focused plus 38 adjacent. Root accepted those corrections; stale deterministic job-file recovery after an orchestrator crash still needs adjudication. Same-user malicious SQLite pathname replacement is explicitly outside the local trust model.
+- P10 independent review found pending-candidate approval inheritance, inaccessible saved corrections after a new canonical revision, and schedule revision/person/step mismatch. remote_protocol owns repairs. Accepted no-schema-change CandidateHistoryView projection keeps old subject/body accessible; stale tokens still fail. vm_review owns UI display and HTTP integration test.
+- P11 owner layer is frozen: schema_p11.sql, review_qa.py/test_review_qa.py, personalizer/cli.py/test_personalizer_cli.py. Builder reports 112 combined tests. P3 revision and binding context use one SAVEPOINT. P10 consumer wiring waits for independent owner-layer review; legacy revisions still stay pending QA.
+- Existing affinity/templates_v2.py::draft_campaign may provide the smallest real first-draft path, because it already consumes selected P8 candidates and calls actual QA/build_revision. gate_repair must analyze eligibility/fit/contact/evidence guards before proposing another P8-to-P2 bridge. P8 QA-context persistence is deferred until this decision.
+- Current active VM job: qa-context-review-20260909, ID26aaae71ce2c469c89e20e4101ca74ad, started05:29:11UTC, deadline420s plus collection3600s. Receipt root _private/dev-jobs/qa-context-review-20260909/receipt.json. Recover by status, collect on success or collect-failure on terminal failure, then cleanup and independently verify absence. No other owned VM job is active.
+- Prior workflow rereview8ad64e84 and UI/cadence review896d3e6a were collected, cleaned and independently checked: exact directory/mount absent and all three units not-found/inactive. UI/cadence review hash3839b080d76cac33996ec7522c78b0e77513ebfa7060bdcec59c781fa713387a.
+- Keep-awake PID12044 is active. No live DB mutation, actual prospect draft generation, sending, provider-spend or main PR yet. Public-repository publication hold remains in force.
+
 ## Goal and user decisions
 
 Finish a slim flow from industry-chat/job-outreach brief to qualified leads, personalized draft
