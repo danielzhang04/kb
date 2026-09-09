@@ -471,3 +471,9 @@ PII, race and transaction tests with a much smaller suite. Reject lost coverage 
 bounded correction. Separately, a native CLI process file-size limit can kill startup before any
 log; reproduce with credential-free controlled limits. systemd active/exited can legitimately have
 an empty ControlGroup, so terminal ownership/recovery tests must use real observed tuples.
+
+## 2026-09-09 ? Prospecting provenance and selection boundaries
+
+- An equal content hash does not prove an old revision was produced from newly supplied QA bindings. New revisions record context atomically; retries require existing equal context and refuse legacy backfill.
+- A custom database selection must bind dependent sender profiles/anchors, stage directories and child environment to that same context. Correct source DB selection alone did not prevent wrong-root execution.
+- Reuse a real drafting owner before adding a qualification bridge. Empty predicate outcomes would have manufactured eligibility; preserve a truthful P8-selected state until target predicates are actually evaluated.

@@ -27,3 +27,8 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	VM independent source rev
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review found three medium projection defects; repairs active	p10-independent-review	2026-09-09T05:31:23.484120+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol frozen; 112 combined checks passed	p11-owner-layer	2026-09-09T05:31:23.484120+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review completed one real-service restart and scope test	review-http-integration	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed; legacy provenance correction accepted; cleanup absence verified	qa-context-review-26aaae71	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	completed; proposals base-verified and root corrected; committed; cleanup absence verified	workflow-docs-fd9fd846	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair implementation active	direct-p8-first-draft	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol implementation active	review-qa-preparer-integration	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review implementation active	review-ui-history-preparer	2026-09-09T05:55:32.555005+00:00	0
