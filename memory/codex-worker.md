@@ -507,3 +507,16 @@ an empty ControlGroup, so terminal ownership/recovery tests must use real observ
 
 - Serialize scratch cleanup after nested pytest collection finishes; parent-directory discovery can race sibling deletion. Repeat the affected suite after a confirmed cleanup race, and preserve the original result honestly.
 - Match scratch cleanup to its creating Windows security context; validate exact roots and contained reparse targets before unlinking. Do not solve local ownership differences by changing ACLs.
+
+## 2026-09-09 - Reuse the user-mandated browser through the packaged MCP path
+
+- When acceptance requires the user's already-open Chrome, use Chrome DevTools MCP's supported
+  `--autoConnect` path. A direct `/json/version` probe can return404 even while the packaged MCP
+  discovers and attaches correctly; do not replace it with a headless browser, isolated profile or
+  OS-level input tool.
+- Drain stderr continuously for a long-lived stdio MCP child and close the owned SDK transport.
+  Successful navigation and form interaction do not establish visual acceptance when screenshots
+  time out.
+- The canonical bootstrap is a one-use unauthenticated redirect that sets the session cookie,
+  followed by an authenticated root load. Test unauthenticated retry, authenticated retry, root
+  reload and expiry as distinct states.

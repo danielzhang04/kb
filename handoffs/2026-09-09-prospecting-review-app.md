@@ -2,26 +2,27 @@
 
 **Topic:** Industry chats and job outreach, from a user brief through qualified leads and
 source-backed drafts to local review, feedback and separately approved scheduling.
-Implementation is committed locally; publication and real end-to-end acceptance remain open.
+Implementation is published in the existing draft PR; real end-to-end acceptance remains open.
 This current handoff replaces the superseded checkpoints; Git history retains them.
 
 ## Current state
 
 - Delivery worktree: `C:/Users/danie/kb/_private/codex-worktrees/prospecting-session-20260909`.
-  Branch `codex/prospecting-session-20260909`, clean commit
-  `8c1c30a5765b71aeaeae0be2267746eaf7f8f041`. Resumed delta: 41 files, 7133 additions,
-  247 deletions; total source scope versus main: 369 paths.
-- Existing draft PR181: https://github.com/danielzhang04/kb/pull/181, still at `f049aa66`.
-  Automatic approval review rejected the attempted fast-forward push and body update because
-  exact destination/payload trust and authorization were not established. No remote mutation.
-  Do not bypass the rejection. Request explicit approval for this commit and prepared PR body.
+  Branch `codex/prospecting-session-20260909`, clean local head
+  `53b29992c542dfd209f0fb6107e88bcd94ed83e0`. Its four-file browser/bootstrap follow-up has
+  37 additions and14 deletions; total source scope versus main remains369 paths.
+- Draft PR181: https://github.com/danielzhang04/kb/pull/181, open against `main` with verified head
+  `8c1c30a5765b71aeaeae0be2267746eaf7f8f041`; its reviewed body is updated. The earlier automatic
+  approval rejection was resolved by the user's explicit authorization for this exact publication.
+  Publishing local head `53b29992c542dfd209f0fb6107e88bcd94ed83e0` was later rejected pending
+  explicit authorization for that exact payload and destination. PR181 remains unchanged.
 - Coordination worktree: `C:/Users/danie/kb/_private/codex-worktrees/boss-remote-context-20260908`.
   Branch `codex/boss-remote-context-20260908`. These records stay local; earlier operational
   publication was separately rejected for destination/sensitivity/history-rewrite concerns.
 - All 40 source-only VM jobs and the separate synthetic control proof were collected, validated,
   cleaned and checked for exact owned-resource absence. No active VM job or standing service.
 - Root's four final pytest scratch directories are absent. Owned test/server process count is zero.
-  Keep-awake PID26244 exited; its receipt says active=false. Preserve the worker's explicitly
+  Keep-awake PID9300 exited; its receipt says active=false. Preserve the worker's explicitly
   retained local failure evidence `_private/pytest-vm-review-delivery-0909` and durable receipts.
 
 ## What worked, with evidence
@@ -54,6 +55,14 @@ This current handoff replaces the superseded checkpoints; Git history retains th
 - Final 16-file integration run: 260 passed, one nested collection failure in103.64s because a
   worker removed an already-completed scratch directory concurrently. After cleanup finished,
   the entire affected gate suite passed10 in12.05s. No source change was needed for the rerun.
+- The already-open regular Chrome process (PID28724, non-headless Chrome152) was reached through
+  cached Chrome DevTools MCP1.8.0 using its bundled SDK over owned stdio with `--autoConnect` and
+  drained stderr. Canonical root/reload, all five sections and headings, campaign selection/filtering,
+  Subject/Message names, keyboard focus to a draft row, and unsaved A/B/A state passed. Five narrow
+  views had matching client/scroll widths except Schedule at434px; desktop kept two columns without
+  overflow. Screenshot calls timed out, so screenshot-based visual acceptance remains open.
+- The bootstrap redirect/session fix was independently reviewed READY; root ran20 HTTP tests green
+  in12.07s. Independent HTML review was READY and8 JavaScript tests passed in185.8734ms.
 
 ## What did not work, and why
 
@@ -62,8 +71,9 @@ This current handoff replaces the superseded checkpoints; Git history retains th
   mismatch remains. No evaluation manifest was reblessed and no score was manufactured.
 - The default py -3 resolves Python3.12 without Datasette. Use the explicit installed Python313
   executable below; changing the registry or installing dependencies was unnecessary.
-- Browser inventory was empty and Chrome unavailable. Browser visual/keyboard acceptance remains
-  untested. Do not claim screenshot review or use an unsupported automation workaround.
+- Chrome DevTools MCP screenshot calls timed out. Full visual and screenshot acceptance remain
+  unverified despite successful interaction in the mandated existing Chrome. Do not substitute
+  headless, an isolated profile or CUA evidence.
 - The real non-sending local-copy trial has2 candidates,0 drafts and2 identity-source mismatches.
   Missing name/current-role proof remains blocking. No original records changed or external
   operation occurred. Real source statements require the user's human confirmation.
@@ -74,7 +84,7 @@ This current handoff replaces the superseded checkpoints; Git history retains th
 
 ## Not tried / remaining gates
 
-Real evidence confirmation and draft wording review; browser visual/keyboard acceptance;
+Real evidence confirmation and draft wording review; full browser visual acceptance;
 independent inspector integration; human manifest/score refresh; live or paid providers;
 approval-tier graduation, Gmail sending and production deployment. The main KB dashboard is
 owned by another terminal. This source supplies a trusted adapter seam and local project link;
@@ -86,18 +96,17 @@ cannot be guaranteed absent; cleanup guarantees cover the owned job resources.
 
 | Files | Status | Notes |
 | --- | --- | --- |
-| Delivery scripts/prospecting/, new schemas P12-P14, source fixture and plan/runbook | DONE locally | Commit8c1c30a5; existing PR update awaits approval |
+| Delivery scripts/prospecting/, new schemas P12-P14, source fixture and plan/runbook | PUBLISHED PR + CLEAN LOCAL FOLLOW-UP | PR181 head8c1c30a5; local head53b29992 awaits exact approval |
 | orgs/prospecting/STATE.md, task card, memory and cost ledger | DONE locally | Coordination publication held |
 | Private receipts, source-scope JSON and PR body | DONE | Local review/recovery evidence |
 | Real trial store and original prospect records | Acceptance pending | Source proof unresolved; no resumed-turn mutation |
 
 ## Exact next step
 
-Obtain approval to push source commit8c1c30a5 to the existing prospecting branch and update PR181
-using `_private/prospecting-session-delivery-20260909/pr-body-resumed.md`. Then connect a browser,
-confirm real source evidence through the supported UI, and rerun the non-sending copy trial before
-reviewing draft wording. Provision its intended sibling sender-anchors.json; do not use an ambient
-fallback or bypass identity QA. Leave send, deployment and human-owned gates unchanged.
+Approve publishing local head `53b29992c542dfd209f0fb6107e88bcd94ed83e0` to the same PR181
+branch, then confirm real source evidence and rerun the non-sending copy trial. The owned tab closed,
+MCP detached, Node REPL exited, server PID13240 stopped, and keep-awake PID9300 exited with its
+receipt inactive. Chrome PID28724 was preserved. Final pytest scratch absence is verified.
 
 Runtime: `C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe`.
 From the delivery worktree run that executable with
