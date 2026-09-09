@@ -2,9 +2,13 @@
 
 The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
 
+The generated-input gallery is now complete at `adcf4591` and independently READY. Its 124 affected tests, typecheck, and actual original-route probe passed; the dashboard production build also passed. No screenshot or deployment was performed, and the display does not establish accepted identity or output quality.
+
 Every run has an immutable manifest, an intent, an acquired resource ID, a receipt, output hashes, and a teardown record. The recovery path must persist the acquired ID before optional provider metadata parsing, refuse foreign or ambiguous resources, and verify absence independently. The timestamp correction's regression checks establish parser behavior. Separately, the completed retry followed that repair; its journal recorded the acquired ID and its teardown verified absence. The code/tests establish error-path behavior, while the successful retry supplies only live lifecycle evidence in [the live report](../2026-09-08-live-tester.md).
 
 Budgeting has two layers: the configured daily limit and the experiment's arc cap. Numeric ledger rows are summed; missing native telemetry is represented by a metadata shard without a `usd` column so the harness skips it, while the unknown amount remains explicitly unknown. Blank numeric fields are invalid. Estimates are labeled as estimates and reconciled separately from invoices.
+
+The planner now resolves and freezes the canonical ledger path in each plan and its harness argv through the shared harness resolver. The [ledger-plan binding review](../../../../docs/figment/2026-09-09-ledger-plan-binding-review.md) recorded 73 passing tests in 167.86 seconds; it covers explicit canonical selection and prevents a new plan from silently using the stale worktree ledger. Existing plans remain immutable and are not hand-edited or migrated.
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
@@ -41,3 +45,5 @@ Admission preparation enforces 12 GiB available physical RAM, 32 GiB commit head
 The accepted generated-input gallery specified in [the hub plan](../../../../docs/figment/2026-09-08-generated-input-hub-plan.md) displays declared provenance and recorded visual-review observations next to the provisional `g01` source, while omitting operator-approval data and all actions. Its bounded provenance projection was accepted in `7f158b08`; its readability update was accepted in `c264d74f`. It shows immutable record snapshots, which may predate later independent review, and does not make any current gallery diagnostic eligible. The system still has no accepted, diverse source set to train or independently evaluate.
 
 The separate [prompt-profile gallery](../../../../docs/figment/2026-09-08-profile-gallery-review.md) now displays the terminal C3 study with its two original images, both STOP reviews and the recorded gaze disagreement. It shares the authenticated read scope. Its JSON projection omits internal record fields, while original PNGs retain the generation metadata needed for provenance. Reviewed evidence display remains separate from live controls and quality acceptance.
+
+Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.

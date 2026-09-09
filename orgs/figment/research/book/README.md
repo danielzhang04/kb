@@ -64,6 +64,8 @@ and [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audi
 Exact Google/g01 export and LoRA export remain blocked, production acceptance
 remains an operator decision, and Instagram work remains deferred.
 
+The generated-input gallery is complete at `adcf4591` and independently READY: its 124 affected tests, typecheck, and an actual original-route probe passed. The dashboard production build also passed. These are local implementation checks, with no screenshot, deployment, or quality-acceptance claim. The existing operator runbook's train-first-to-fresh-`gen` bridge is correct and tested at `ea5d2038`; no new bridge is needed. The later ledger-plan binding review covers the explicit canonical-ledger path used by both planning entry points ([review](../../../../docs/figment/2026-09-09-ledger-plan-binding-review.md): 73 tests in 167.86 seconds).
+
 ## Reference-conditioned infrastructure checkpoint
 
 The C3 prompt-profile study stopped after both base-image reviews rejected its framing, turn, and identity fit. The OmniGen2 planner, shared runtime, resource observer, admission validator, and controller remain reviewed research infrastructure. The earlier local RAM-floor watches are closed historical readiness evidence with zero executions. Cloud V1 failed during archive bootstrap. V2 completed bootstrap, model download, and `g01` upload before HTTP 400; its body was lost, while pinned-source inspection separately identified missing `resolution_steps`. Both pods were terminated. V3 completed at 08:16:25 UTC with two files, verified termination, and a $0.325452 estimate under the $1.30/60-minute bound. Root and independent original-resolution reviews both stopped before the six-row pilot: smoothing and geometry drift persisted, neither image delivered the requested turn, crops were tight, and seed 481516234 missed the crew-neck. Both remained clothed adult images without quarantine failure, but neither is training-eligible. See the [independent review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md) and [launch packet](../../../../docs/figment/2026-09-09-reference-pair-launch-packet.md).
@@ -78,6 +80,8 @@ The C3 prompt-profile study stopped after both base-image reviews rejected its f
 See [runtime validation](../../../../docs/figment/2026-09-08-local-omnigen2-admission-review.md), [cloud preparation](../../../../docs/figment/2026-09-09-omnigen2-cloud-preparation.md), and the [image-production chapter](image-production.md). OmniGen2's 3B Qwen-derived encoder remains a research-only comparator with no production clearance. The Qwen-Image-Edit-2511 candidate instead records Apache-2.0 component metadata for its pinned 7B encoder and model stack; that metadata is not production licence clearance.
 
 The Qwen single-reference official-conditioning adapter is offline READY after independent pinned-source graph/schema review, exact public model-pin metadata, fresh contained g01 staging, and an existing-harness dry run. Its source aspect path is 1392x752, not a claimed square output. The proposed live pair has not run and has no cost: exact connected-account permission remains asynchronously pending after automatic-review blocks. It does not alter the stopped Omni result or establish identity quality. See the [Qwen preparation record](../../../../docs/figment/2026-09-09-qwen-reference-cloud-preparation.md).
+
+The Qwen component metadata is collected in the [component licence evidence](../../../../docs/figment/2026-09-09-qwen-component-license-evidence.md); production dependency clearance remains separate.
 
 ## Governing rules
 
@@ -97,3 +101,5 @@ The Qwen single-reference official-conditioning adapter is offline READY after i
 - [Architecture and operations](architecture-and-operations.md): hub, manifests, ledgers, and gates.
 
 The package map is documented in [r14](../r14-10sorlabs-package.md); its derived training, generation, motion, and fidelity analyses are in [r15b training](../r15b-training.md), [r15b generation](../r15b-generation.md), [r15b edit and motion](../r15b-edit-motion.md), and [r25](../r25-why-they-can-and-we-cant.md). Those reports include locally inspected graph JSONs and recovered chapter evidence. Current status is dated 2026-09-09; package evidence still does not prove output quality or licensing for every asset.
+
+Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.

@@ -4,6 +4,8 @@
 
 Current disposition, September 9: the Omni pair completed and both visual reviewers rejected expansion. Cloud execution and the status UI are locally verified. The next quality experiment is an independently reviewed, offline-READY Qwen official-conditioning hypothesis; its reference assembly differs from prior failed Qwen graphs. Its exact connected-account launch approval is asynchronously pending after automatic-review blocks, so it has not run and has no cost. The approved-still video join is committed at `37820079`, with actual approval-to-manifest-to-upload integration and 18 distinct passing tests across the focused commands. See [cloud result](2026-09-09-omnigen2-cloud-result.md), [fallback source audit](2026-09-09-reference-model-fallback-readiness.md), and [Qwen preparation](2026-09-09-qwen-reference-cloud-preparation.md).
 
+The generated-input gallery is complete at `adcf4591` and independently READY: 124 affected tests, typecheck, and an actual original-route probe passed. The production dashboard build also passed. This is local verification only, with no screenshot, deployment, or accepted-identity claim. The explicit canonical-ledger planner fix is reviewed in [ledger-plan binding review](2026-09-09-ledger-plan-binding-review.md) (73 tests, 167.86 seconds); it is no longer a work-in-progress item.
+
 Build the smallest complete creator-001 path around the existing `figment_train.py`
 contract, then make an approved still output the entry point to video and the existing
 hub. Do not build another orchestrator. The system has a tested still-image planner/runner,
@@ -26,7 +28,7 @@ proof of that criterion.
 | Training and checkpoint tester | Train-first/train/tester manifests and provenance checks | Historical runs completed | No checkpoint selected; prior LoRA was judged older/inconsistent |
 | Held-out stills | `gen` is planned and gradeable in the existing CLI | No accepted source checkpoint for a new held-out run | No |
 | Video | Native Wan compiler, assembly/extraction, and reviewed approved-still adapter; 18 distinct focused tests include actual approval-to-upload integration | V1, V2, and V3 clips completed; V2/V3 were stable in their inspected conditions | No production identity/temporal acceptance |
-| Hub | Existing galleries have historical desktop/mobile QA; cloud lifecycle is committed; actual cloud-pair gallery is undergoing final review | Cloud lifecycle 147-test slice, then 29 post-review tests and typecheck; actual completed receipts project correctly | No accepted production lineage to display yet |
+| Hub | Existing galleries have historical desktop/mobile QA; cloud lifecycle and generated-input gallery are complete | Cloud lifecycle 147-test slice, then 29 post-review tests; gallery 124 affected tests, typecheck, actual original-route probe, and production build passed | No accepted production lineage to display yet |
 
 Sources: `orgs/figment/pipeline/README.md`, `orgs/figment/research/book/README.md`,
 `docs/figment/2026-09-08-video-integration.md`, and
@@ -93,6 +95,7 @@ captioned, hash-bound dataset with explicit dataset approval. Keep a held-out pr
 completely out of training. Before any production dataset admission, clear every model and
 dependency licence: OmniGen2's 3B Qwen-derived encoder remains research-only,
 while Qwen's pinned 7B Apache-metadata stack needs separate production clearance.
+See [component licence evidence](2026-09-09-qwen-component-license-evidence.md) for the pinned record.
 
 Acceptance is not a target count. It is a set whose individual image bytes, caption sidecars,
 and seven-axis human rulings remain current. A near-copy of g01 may help establish identity
@@ -136,6 +139,8 @@ tests. Instagram is deferred after the hub work.
 
 ## CLI decision after code review
 
+The existing [operator runbook](2026-09-09-operator-runbook.md) is correct for the tested `ea5d2038` train-first-to-fresh-`gen` join; do not add a new bridge.
+
 Do **not** add `intake-reference-pair` now. `figment_train.py` already has the relevant
 dataset-lineage checks, `accept-dataset`, `train-first`, and `held-out-diagnostic`; its
 dataset approval accepts curation evidence and its train-first path verifies current media,
@@ -158,11 +163,11 @@ C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe -m pytest orgs
 
 ## Ranked next three work orders
 
-1. **Official Qwen conditioning pair, once account permission resolves.** The one-reference, two-seed adapter is already source-reviewed, staged, and harness-dry-run verified. Preserve the stopped Omni evidence and run no provider action while authorization is pending. Any eventual pair is research-only; only promising reviewed outputs justify a six-row varied pilot.
+1. **Official Qwen conditioning pair, once exact account approval resolves.** The single-reference, two-seed adapter is source-reviewed, staged, and harness-dry-run verified. It has no pod or cost. Review any actual pair before continuation.
 
-2. **Expose current research and lineage in the existing gallery.** The approved-still video join is complete at `37820079`; do not reopen it as a next-step adapter task. Extend the existing hub gallery projections to make rejected Omni research, pending Qwen preparation, and any future accepted lineage legible without exposing private paths, raw prompts, or credentials. Gallery status is evidence display, not quality acceptance.
+2. **Varied pilot to curated dataset.** A promising reviewed pair can justify the six-row varied pilot, then a captioned 20+ set only after production dependency clearance. The [component licence evidence](2026-09-09-qwen-component-license-evidence.md) distinguishes current metadata from that clearance.
 
-3. **License-clear curated dataset to checkpoint test.** Distinguish the OmniGen2 3B Qwen-derived research-only encoder from Qwen's pinned 7B Apache-metadata stack, then complete production licence/dependency clearance before growing a successful varied pilot into a captioned20+ set and running the existing training/tester path. The cloud hub passed its147-test batch,29 focused tests after review repairs, type checking, and real-receipt projection. Accepted identity data remains the production dependency.
+3. **Existing train/test/gen/video path.** Use the tested train-first, tester, fresh held-out `gen`, and approved-still video adapter sequence only after an accepted dataset and selected checkpoint exist. The gallery and bridge work are complete, not next-step work.
 
 ## Review and test cadence
 
@@ -174,3 +179,5 @@ separate and requires the existing cost/card/harness checks. A human visual acce
 separate again.
 
 The historical Omni g01 transfer completed. The new Qwen launch remains blocked by automatic approval review pending the exact account/payload answer. Unaffected infrastructure work continues. No code or plan may claim a quality result that does not exist.
+
+Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.
