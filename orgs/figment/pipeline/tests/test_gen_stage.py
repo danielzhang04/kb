@@ -48,6 +48,9 @@ _set_training = anchor_stage_test._set_training
 load_json = anchor_stage_test.load_json
 video = load_module("figment_gen_test_video_manifest", PIPELINE / "video" / "video_manifest.py")
 pod_runner = load_module("figment_gen_test_pod_runner", POD_RUNNER)
+train_first_test = load_module(
+    "figment_gen_test_train_first", PIPELINE / "tests" / "test_figment_train.py",
+)
 
 
 BANNED = (
@@ -264,6 +267,94 @@ def test_gen_stage_requires_a_chosen_checkpoint_and_uploads_only_that_file(comma
         capture_output=True, text=True,
     )
     assert r.returncode == 0, r.stderr
+
+
+def test_train_first_tester_selection_stages_current_checkpoint_in_fresh_gen_plan(command, tmp_path, monkeypatch):
+    """Exercise the real config-bound train-first -> fresh-gen lineage join.
+
+    The fixture writes only local receipt/image evidence; selection, persistence,
+    external-source validation, and checkpoint staging all use production helpers.
+    """
+    personas = tmp_path / "personas"
+    _synthetic_persona(personas)
+    dataset = train_first_test._prebuilt_dataset_dir(
+        tmp_path / "accepted-20", command=command,
+    )
+    train_first_root = tmp_path / "train-first"
+    plan = command.build_train_first_plan(
+        "creator-002", dataset, train_first_root,
+        personas_root=personas, skip_pin_verify=True,
+    )
+    train_run = plan["stages"]["train"]["runs"][0]
+    train_manifest = load_json(train_first_root / train_run["manifest"])
+    train_out = train_first_root / train_run["out"]
+    train_out.mkdir(parents=True)
+    artifacts = []
+    for index, row in enumerate(train_manifest["artifacts"]):
+        artifact = train_out / row["local"]
+        artifact.write_bytes(f"train-first checkpoint {index}".encode("utf-8"))
+        artifacts.append({"remote": row["remote"], "bytes": artifact.stat().st_size})
+    (train_out / "run.json").write_text(json.dumps({
+        "error": None, "dry_run": False, "termination_verified": True,
+        "artifacts": artifacts,
+    }), encoding="utf-8")
+
+    tester_run = plan["stages"]["tester"]["runs"][0]
+    tester_manifest = load_json(train_first_root / tester_run["manifest"])
+    chosen_step = plan["training"]["save_every"]
+    filename = f"creator002krea2_{chosen_step:09d}.safetensors"
+    candidate = next(
+        job for job in tester_manifest["jobs"]
+        if any(item.get("field") == "lora_name" and item.get("value") == filename
+               for item in job.get("substitutions", []))
+    )
+    anchor_stage_test._fake_stage_outputs(train_first_root, plan, "tester")
+    tester_out = train_first_root / tester_run["out"]
+    (tester_out / "run.json").write_text(json.dumps({
+        "error": None, "dry_run": False, "termination_verified": True,
+        "jobs": [{"output_name": job["output_name"], "files": [{"bytes": 10}]}
+                 for job in tester_manifest["jobs"]],
+    }), encoding="utf-8")
+    checkpoint_inputs = command._tester_checkpoint_inputs(plan, train_first_root, tester_run)
+    (train_first_root / "stage.json").write_text(json.dumps({
+        "schema": "figment/train-stage@1", "creator": "creator-002",
+        "plan_sha256": command._sha256(train_first_root / "plan.json"),
+        "status": "complete:tester", "completed_stages": ["train", "tester"],
+        "runs": {train_run["manifest"]: {"status": "complete"},
+                 tester_run["manifest"]: {"status": "complete", "checkpoint_inputs": checkpoint_inputs}},
+    }), encoding="utf-8")
+    gate_module = command._identity_gate_module()
+    monkeypatch.setattr(
+        gate_module, "score_cells_for_stage", train_first_test._fake_score_cells_for_stage,
+    )
+    grade = command.build_grade("creator-002", "tester", train_first_root / "plan.json", skip_judge=True)
+    rulings = load_json(Path(grade["rulings_template"]))
+    for row in rulings["rulings"]:
+        row.update(anchor_stage_test._axes(), decision="keep" if row["image_id"] == candidate["output_name"] else "cull")
+        if row["image_id"] == candidate["output_name"]:
+            row["gate_override"] = "fixture: no real face in synthetic image"
+    rulings.update({"decided_by": "operator-fixture", "decided_at": "2026-09-09T00:00:00Z"})
+    rulings_path = train_first_root / "tester-rulings.json"
+    rulings_path.write_text(json.dumps(rulings), encoding="utf-8")
+    selected = command.apply_rulings(
+        "creator-002", "tester", train_first_root / "plan.json", rulings_path,
+        checkpoint_step=chosen_step,
+    )
+
+    gen_root = tmp_path / "fresh-gen"
+    gen_plan = command.build_plan(
+        "creator-002", "gen", gen_root, personas_root=personas, skip_pin_verify=True,
+    )
+    staged = gen_root / "train" / "runs" / "accepted-checkpoint" / filename
+    source_checkpoint = train_out / filename
+    accepted = load_json(Path(selected["accepted_checkpoint"]))
+    assert accepted["source_plan"] == str((train_first_root / "plan.json").resolve())
+    assert accepted["source_plan"] != str((gen_root / "plan.json").resolve())
+    assert staged.is_file()
+    assert hashlib.sha256(staged.read_bytes()).hexdigest() == hashlib.sha256(source_checkpoint.read_bytes()).hexdigest()
+    assert gen_plan["training"]["chosen_checkpoint_sha256"] == hashlib.sha256(source_checkpoint.read_bytes()).hexdigest()
+    gen_manifest = load_json(gen_root / gen_plan["stages"]["gen"]["runs"][0]["manifest"])
+    assert gen_manifest["uploads"][0]["files"] == [f"accepted-checkpoint/{filename}"]
 
 
 def test_gen_prompt_is_trigger_prefixed_for_every_persona_not_only_dop(command, tmp_path):

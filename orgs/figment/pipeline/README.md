@@ -28,6 +28,10 @@ rulings; `smoke` and `train` are not (no per-cell ruling makes sense for either 
 
 ## The one command
 
+For the current train-first operator path, its real output-relative locations,
+fresh external-source `gen` plan, and approved-still video handoff, see the
+[operator runbook](../../../docs/figment/2026-09-09-operator-runbook.md).
+
 Full chain for creator-001 (matches `figment_train.py`'s own `build_parser`, and
 `train/FIGMENT-TRAIN.md`):
 
