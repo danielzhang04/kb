@@ -3,7 +3,31 @@
 Active session; user directed the remainder to run asynchronously through the full plan.
 This file is the current checkpoint. Earlier commits and private receipts preserve history.
 
-## Active final review checkpoint - 10:04 UTC
+## Latest acceptance checkpoint - 10:09 UTC
+
+NO ACTIVE VM JOBS. All32ownedjobs collected/cleaned/exactabsence verified. Final9420afc5 ran10:03:42-
+10:04:43UTC, report28ec897b9a5fbedd6f3d296b58926c7ca54a0b435262092564d650644f8ca87e. Foundreal
+blocking inheritedJSONduplicatekeybug: validatorjson.loads discards earlierunsafe duplicatevalue,
+allowlistedrawbytes thenexempted. Otherstagingnodeid/T1/SSH/runtimeboundaries acceptedstatic.
+vm_review ACTIVE nowONLYpii_guard.py+test_pii_guard.py: rejectduplicateobjectkeys atall depths,
+rawstagedtop/nested/nodeidnegative tests;nootherscope/index/manifests. Independentreviewafterfreeze.
+
+Legacyfixture26files FROZEN:24tests+legacyJSON+loader,0classifierfindings,compileclean,282focusedpassed.
+Broaderexact24path suite357passed8failures: deployment bridge signaturecontractmissingnew3kwargs;
+2cadencetestsobsoletehelperexpecting removedraw--ask SSHcommands; staleP6manifest inventory;
+2gateartifactcopytests missing intentionallyexcludedSTATE plusnestedtestfailure; Datasette unavailable.
+Gate_repair ACTIVE READONLY investigates first3failure repairs; noautopatch/restoringunsafeSSH.
+Rootforwardedexacttestnames. Do notautomaticallyclassifyall8as unrelatedorforcegreen withskip/manifest
+reblessing. P6runtimecontracttuple mayneedactualnewargs; cadenceassertions mustretainrefire/cap behavior
+usingcurrentactualowner. Remaining4contextfailuresknownoperational/environmentprereqs.
+
+All352approvedsourcepaths NOWSTAGED ondeliverybranch, scope.json/paths.nul refreshed,12operational
+paths excluded. Exactfull352stagedPIIcheck exit0 BEFORE duplicate-keyfix. Root48guard+joinedtests
+passed27.46s BEFOREduplicate-keyfix;rootexec28675/89070complete. No pendingtestsession. Sourceold
+5175f408stillclean, delivery352uncommitted. Sourcegrammar/testmigration preservesfunction/assertcounts.
+No publication yet. Publicdestination/access reverified githubrepoADMIN. All32VMjobsabsent; noUIserver.
+
+## Prior checkpoint - 10:04 UTC
 
 ONE ACTIVE VM JOB: staging-boundary-final-review-20260909,
 id9420afc590c44139a124fccb0fafefb9, started10:03:42UTC,420s deadline+3600s collection lease,
