@@ -479,3 +479,12 @@ an empty ControlGroup, so terminal ownership/recovery tests must use real observ
 - Reuse a real drafting owner before adding a qualification bridge. Empty predicate outcomes would have manufactured eligibility; preserve a truthful P8-selected state until target predicates are actually evaluated.
 
 - Source-only VM JSON edit artifacts reduce full-file rewrite churn, but their output manifest protects the artifact path, not the eventual source targets. Verify target input hashes and unique old-text anchors separately before applying. Empty output or exit0 is not implementation acceptance.
+
+## 2026-09-09 - Prospecting delivery closeout
+
+- Consolidate from the merge-base source delta onto current main; a two-dot snapshot diff can reverse unrelated newer main work. Verify exact outgoing paths after hooks, exclude operational history, and scan complete staged files rather than only edited hunks.
+- JSON allowlist validation must reject duplicate decoded keys at every depth; ordinary json.loads can discard unsafe earlier values that are still present in the raw exempted fixture. Exercise the actual staged hook with adversarial fixtures.
+- Joined tests through real application owners expose identifier and adapter contract mismatches that mocked handoffs miss. Confirm actual adapter registration before accepting a review finding based on a default handler.
+- Keep real source-proof failures intact. Name/title/company cooccurrence does not establish current-role provenance; synthetic end-to-end acceptance cannot replace real draft and browser review.
+- Native worker send_message does not wake a completed agent; followup_task does. VM source-only review and local tool-enabled editing have different capabilities. Report that split honestly.
+- Delivery PR181 is draft. Resume current canonical prospecting handoff for real evidence/browser/human gate work; no active VM job remains.

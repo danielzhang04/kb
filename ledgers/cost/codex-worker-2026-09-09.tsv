@@ -76,3 +76,10 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	VMfinal staging boundary 
 unknown; ambient subscription		gpt-5.6-sol	unavailable	collectedcleanedabsent; duplicateJSONkeys finding	staging-boundary-final-review-9420afc5-result	2026-09-09T10:11:41.223626+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	narrowall-depth duplicateJSONfixture rejection	vm_review-native-duplicate-json	2026-09-09T10:11:41.223626+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	readonly3deploymentintegrationfailure adjudication	gate_repair-native-deployment-audit	2026-09-09T10:11:41.223626+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	exact bridge signature and local cadence harness; final 7 checks passed	gate_repair-native-deployment-fix	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent duplicate JSON review READY	remote_protocol-native-duplicate-review	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent deployment review; flag gap repaired	remote_protocol-native-deployment-review	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source plan and PR claims audited; wording corrected	remote_protocol-native-final-claims	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		unavailable	unavailable	352 source paths verified; normal commit and draft main PR181	boss-native-source-delivery	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup	gate_repair-native-closeout	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup; failure evidence retained	vm_review-native-closeout	2026-09-09T10:30:15.389437+00:00	0

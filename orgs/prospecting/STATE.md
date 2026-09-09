@@ -1,27 +1,32 @@
 # Prospecting - STATE
 
-_Updated: 2026-09-09; local coordination draft, not yet published._
+_Updated: 2026-09-09; local coordination draft, not published._
 
 ## Now
-Accepted local source is committed at5175f408 on codex/prospecting-e2e-20260908. Campaign persistence,
-workflow/cadence, authentic immutable QA, evidence-backed draft preparation and standalone review UI
-are implemented. Root220combined checks passed before final small fixes; root54contract/execution
-and final46guard/fill/joined plus5bundledJS passed. Joined synthetic T0 reaches one FakeGmail draft,
-retry deduplication and replystop. All31ownedVMjobs collected/cleaned and exactabsence verified.
-A real local-copy trial processed2candidates, created0drafts and blockedboth for missing source
-identity evidence, without externalcalls or originalstore mutation.
+Source delivery is in one draft main PR: https://github.com/danielzhang04/kb/pull/181.
+Implementation commit b7365db5 on codex/prospecting-session-20260909 consolidates 352 reviewed
+source/development paths; operational state, gate results and live records are excluded.
+Campaign persistence, evidence-backed drafts, immutable edits/feedback and the local review UI
+are implemented. Synthetic integrated T0 creates one FakeGmail draft, retries without duplication
+and stops follow-up after a reply. Full staged PII, whitespace and skill-mirror checks passed.
+Focused verification includes 282 fixture/runtime, 50 guard, 24 deployment, 21 bridge/workflow,
+5 actual JavaScript checks; final independent deployment regressions: 7 passed.
+All 32 owned VM jobs were collected, cleaned and exact absence verified. No active VM job.
+A real local-copy trial selected two candidates, created no drafts and blocked both for missing
+source identity evidence, with no external calls or original-store mutation.
 
 ## Next
-Finish inherited synthetic-fixture/staging reconciliation on isolated main-based delivery branch
-codex/prospecting-session-20260909. Currentreview25files passedstaging; consolidatedsource349paths
-plusnewfixtures require independentguardreview and fullstagecheck. Prepare one mainPR excluding
-operationalrecords. Canonicalhandoff namesexactworktrees/owners. No liveGmail/providercalls.
+Connect a browser, verify current-role source bindings through the local evidence path, rerun
+the local non-sending copy trial and review actual drafts. Visual/keyboard acceptance remains
+open. No live Gmail or paid provider calls, deployment, merge or sending graduation performed.
 
 ## Remaining acceptance
-Visual/keyboardreview needs an availablebrowser. Currentrealrole sourcebindings need verification.
-Historicalevaluationrefresh is humanowned; no manifests reblessed. No sanctionedT0-to-T1transition.
-Managerinspector/SSHsavedrequestresolver parkunavailable. Source-onlyVMjobs do not inherit desktop
-files/tools/connectors. Earlier operationalpush rejectedbyautoapprovalreview; no laterpublication.
+Human-owned P6 inventory refresh and trusted operational STATE are prerequisites; optional
+Datasette is absent. Five inherited test failures remain in these categories. No evaluation
+manifests reblessed. T0-to-T1 transition is not implemented; independent inspector and SSH saved
+request resolver park unavailable. Source-only VM workers do not inherit desktop tools/connectors.
+Updated coordination records remain local after an earlier operational push approval rejection;
+the separately reviewed source-only publication succeeded. Main dashboard belongs to another terminal.
 
 ## Resume
-Read handoffs/2026-09-09-prospecting-review-app.md and sourceplan. LocalPII remainsinSQLite/snapshots.
+Read handoffs/2026-09-09-prospecting-review-app.md and the source plan. Live records stay local.
