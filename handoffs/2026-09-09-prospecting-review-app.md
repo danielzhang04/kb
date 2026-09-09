@@ -1,207 +1,145 @@
 # Prospecting review app handoff - 2026-09-09
 
-Active work. This checkpoint replaces accumulated earlier status notes; prior commits and private
-job receipts preserve the detailed history. Latest user: the rest is async, run through the plan.
-
-## Exact next step
-
-LATEST joined T0 proof: supported activation exists via synthetic verified human campaign_policy
-approval + cli.apply_override approved->active. Actual enroll/release/FakeGmail owners exist.
-New test reached actual release and found production mismatch: build_revision emits UUIDv4 IDs,
-but store.validate_exec_request accepts only rev_<16hex>. Root authorized remote_protocol narrow
-store.py revision-only UUIDv4 compatibility + focused store validator tests and joined test. Keep
-legacy typed rev IDs, all other IDs/ownership/hash validation unchanged. No raw SQL promotion or
-T0->T1 transition invented. New test not accepted yet (1fail proves mismatch).
-vm_review now does bounded PII staging diagnosis/design ONLY; no edits without root acceptance.
-Do not ignore the guard or treat synthetic false positives as a passing check. Core/UI files are
-frozen; gate_repair only distinct-person count regression. No active VM jobs (all30cleaned).
-
-
-LATEST09:08UTC: ALL OWNED VM JOBS CLEANED, no active VM. Final caller VMdd7baf47 READY no findings,
-reportf5a5b37925ddb30497f8ce2edaafc3b115af2c7af25f1040773cfff3adab27f5; started09:03:13,
-finished09:04:17, collected/cleaned and exact absence verified. Root220 combined P8/fill/service/
-QA/campaign/HTTP tests passed74.63s. Source core accepted. Root separately found new proved count(*)
-counts two email rows as two people; gate_repair released to change ONLY count DISTINCT person plus
-one regression, then finalfreeze. No producer/evidence changes allowed after acceptance.
-UI fully accepted by root after tiny final delta: actual bundled JS5passes, workerHTTP13passes.
-New campaign/blank selection synchronously clear scoped panels; stale creation success/error guard.
-
-REAL-COPY TRIAL HAS RUN. Existing private run_trial.py --source-accepted on accepted producer:
-2candidates,0revisions,2qa_failed,evidence_identity_source_mismatch:2,0QAcontexts,0externalops.
-Private counts-result.json saved. Only trial copy migrated; no live-original writes or data export.
-Real-data success remains blocked on current-role source bindings. Do not claim real drafts exist.
-
-remote_protocol found no sanctioned T0->T1 campaign policy transition. Initial user scope is draft
-review before later sending graduation; root narrowed joined acceptance to real supported T0
-FakeGmail DRAFT path, no fabricated tier update. Separate T1 fixture tests do not prove whole-flow
-sending. Worker checks supported activation/enrollment methods and reports concrete seams first.
-
-
-LATEST08:50UTC: no owned VM jobs active. UI6126fbef collected/cleaned, exact dir/mount/3units absent;
-report599f40e967837fc99a927778cd748152170bd23e58e6a4314b7ac6ff70622246 REQUEST CHANGES only
-campaignForm old POST completion after New campaign/navigation. Native vm_review resumes same2files
-for guarded success/error settlement and actual deferred tests; all other UI paths/docs accepted.
-Gate repair confirmed actual P8-B requires at least ONE resolving HTTPS strong/medium evidence per
-non-substituted fill row. Root authorized canonical per-slot resolution, zero-proof substitution
-and truthful evidence_unresolved firm shortfall; optional missing facts must not reject proven rows.
-remote_protocol resumed for independent synthetic whole-pipeline acceptance ONLY new
-scripts/prospecting/tests/test_review_pipeline_acceptance.py. Reuse actual campaign/P8/review/
-approval/scheduler/FakeGmail owners; no fabricated P2 bridge/live approvals. Author now, final run
-after gate freeze. This closes integrated acceptance beyond isolated UI and send-boundary tests.
-
-
-LATEST08:45UTC: producer review d7a1baed REQUEST CHANGES, collected/cleaned and exact absence
-verified. Report8e367ed3b9dac4e25f389b671342c6ae160183177422edea330057c1586cfca8. Root169 combined
-producer/fill/service/QA tests passed56.48s. Gate_repair resumed narrowly: board-only follow-up
-signal IDs and fill_fit.py caller canonical-fact compatibility, with test_affinity_fill_fit.py
-allowed. Do not blindly turn missing unused draft facts into substitutions; trace P8-B actual gate.
-UI repair now FROZEN (HTML + new tests/review_app_state.test.js), root actual JS3passed.
-ACTIVE VM ui-state-final-rereview-20260909 id6126fbef16f4417a8d03a86632563690 started08:44:52UTC,
-420second deadline+3600collection. Exact root _private/dev-jobs/<name>/receipt.json. Recover this
-job; earlier active provenance statement below is historical. No real-copy trial yet.
-
-
-Monitor and collect the existing provenance-final-review-20260909 VM job, validate its report,
-clean its exact owned resources, then verify absence. Do not relaunch it. Finish the native UI
-state repair and independently re-review it. Root combined producer/service/QA tests are running.
-Do not run the real-copy trial until producer independent acceptance and synthetic green.
+Active session; user directed the remainder to run asynchronously through the full plan.
+This file is the current checkpoint. Earlier commits and private receipts preserve history.
 
 ## Goal and boundaries
 
-Industry chats and job outreach: brief -> leads/evidence -> actual draft review and local feedback
--> explicit approved sending plan. A small standalone local app complements the separate main KB
-dashboard. Review first; drafting and sending autonomy are separate and never self-promote.
-All new workers are Codex. User authorized reversible implementation, remote isolation, monitoring,
-recovery, local testing and cleanup. No sending or paid vendor calls. Every Gmail send needs the
-human T3 approval. No production VM or other dashboard changes.
+Industry chats and jobs: outreach brief -> qualified leads and evidence -> personalized draft
+review and feedback -> separately approved scheduling. Small standalone local app; the other
+terminal owns the main KB dashboard. Local records and draft content stay on desktop. No live
+sends, paid vendor calls, automatic approval or T0-to-T1 graduation. Source-only VM workers do
+not inherit desktop files, tools or connectors. No production VM changes or credential copying.
 
-Read CLAUDE.md, BOSS.md, governance/agent-rules.md and project contract. Run preamble before tasks.
-Identity is codex-worker / codex-worker@agents.local. Source on own branch; coordination reaches
-ops through its protected PR path, never direct pushes. No governance, applied migration or
-MANIFEST.sha256 edits/reblessing. PII remains desktop-local SQLite/snapshots/dedicated browser:
-never source, argv, stdout, logs, cards, ledgers or VM. Only explicit source/synthetic allowlists
-reach workers; desktop tools/connectors/accounts do not transfer implicitly.
+Read CLAUDE.md, BOSS.md, governance/agent-rules.md and project contract; preamble before tasks.
+Identity codex-worker / codex-worker@agents.local. All new workers Codex. Coordination only via
+protected PR path, never direct ops/main push. No governance, applied migration or MANIFEST.sha256
+edits/reblessing. PII never enters Git, argv, stdout, logs, cards, ledgers or VM sinks.
 
-## Current workers and files
+## Next steps and exact ownership
 
-- gate_repair: FROZEN, completed. Owns affinity/evidence_bridge.py, templates_v2.py and their two
-  tests. 111 focused passes, adjacent fill/score11 passes; no score.py/schema changes. Exact selected
-  current company, normalized signal-linked facts, separate current/prior claims, legacy snapshot
-  compatibility/conflict refusal, required slots only, token-bounded excerpts, safe clamps and
-  immutable evidence/P11 retry rules. Real missing provenance deliberately blocks.
-- vm_review: native Codex focused repair ACTIVE. Owns review_app.html and UI tests. HTTP service
-  remains frozen. Implements async campaign generation guards, scoped completion refresh, preserved
-  unsaved editor/feedback values, payload-aware retry IDs and honest blocked-preparation summary.
-  Latest11 focused HTTP checks and JS syntax pass; actual bundled-JS deferred-response tests and
-  final integration/freeze still pending. Root authorized existing local file/test access after
-  tool-disabled VM coding proposals repeatedly failed; do not claim these native workers run on VM.
-- remote_protocol: completed/frozen. ReviewService/P10 uses authentic StoredReviewQa/P11, atomic
-  immutable edits and lineage, no legacy context backfill, exact approval/schedule projection,
-  historical edit access, typed step0 prepare adapter and closed error codes.
+1. vm_review ACTIVE: exact synthetic fixture migration and focused PII guard regression. One new
+   allowlisted JSON file, existing validation unchanged. No blanket test exemption or VM detector
+   weakening. Full staged files must pass; inherited guard self-tests may need fixture reconciliation.
+2. remote_protocol ACTIVE READ-ONLY: clean consolidated source delivery audit against origin/main,
+   exclude inherited memory/coordination and inspect full-main-diff guard/dependency implications.
+   Also verify final VM review's wrong-handler finding against actual campaigner wiring.
+3. gate_repair ACTIVE DOCS ONLY: update source plan and acceptance report. Producer/count source
+   frozen. Count(DISTINCT selected.person_id) fix plus duplicate-contact regression:17passed.
+4. Root accept final small deltas, run affected checks, commit source through normal hooks and an
+   explicit branch PII staging check. Prepare one consolidated main PR with exact reviewed source
+   scope. Finish coordination/handoff and stop session keep-awake only when actually ending.
 
-## Worktrees and accepted commits
+No VM jobs are active. All31owned jobs collected/cleaned and exact absence verified.
+Root exec51118 completed54tests; no test session awaiting collection at this checkpoint.
 
-- Main C:/Users/danie/kb remains claude/boss-2026-09-02. Preserve unrelated work; never switch/clean.
+## Worktrees
+
+- Main C:/Users/danie/kb remains claude/boss-2026-09-02; preserve unrelated work, never switch/clean.
 - Source C:/Users/danie/kb/_private/codex-worktrees/prospecting-e2e-20260908,
-  branch codex/prospecting-e2e-20260908, HEAD44865973. Sparse worktree; normal hooks remain active.
-  Commits: dc7f8bcd prerequisites;07a89391 VM protocol;08726aba VM regression;9b22fd34 campaigns/P9;
-  3ebcd431 workflow/outbox/cadence;5bd88306 runbook;efa5f9e2 P11 QA;44865973 app access docs.
-  Uncommitted: frozen producer4files, form compatibility campaigns.py/test_campaigns.py,
-  app.py/html/service.py/P10 and their tests. Root corrected runbook bootstrap wording after44865973:
-  actual app prints root URL, redirects first visit to /bootstrap within60sec; NO token in URL.
+  branch codex/prospecting-e2e-20260908, HEAD44865973. Sparse checkout.
 - Coordination C:/Users/danie/kb/_private/codex-worktrees/boss-remote-context-20260908,
   branch codex/boss-remote-context-20260908. Pull/rebase origin ops immediately before writes.
-- Original C:/Users/danie/kb-worktrees/prospecting-p8 at52067386 on claude/prospecting-p8,
-  tracked clean plus3pre-existing untracked docs; preserve.
+- Original C:/Users/danie/kb-worktrees/prospecting-p8, branch claude/prospecting-p8 at52067386;
+  tracked clean plus3old untracked documents; preserve.
 
-## Active VM lease and recovery
+Accepted source commits include prerequisites dc7f8bcd, VM protocol07a89391/08726aba,
+campaigns/P9 9b22fd34, workflow/cadence3ebcd431, runbook5bd88306, P11 QAefa5f9e2,
+access docs44865973. Uncommitted accepted source: provenance/fill/templates plus tests,
+campaign form compatibility, app HTML/Python, ReviewService/P10, UUID validator and joined test.
+Runbook uncommitted correction: app prints root URL, first visit redirects /bootstrap within60s;
+NO URL token. Session lasts8h. Current fixture/doc changes still active; wait for freezes.
 
-ACTIVE provenance-final-review-20260909, id d7a1baedcd544af88de44e1f15839f03, requested gpt-5.6-sol,
-started08:40:10UTC;600second deadline plus3600second collection lease. Receipt:
-C:/Users/danie/kb/_private/dev-jobs/provenance-final-review-20260909/receipt.json.
-33explicit source/synthetic inputs. Output report orgs/prospecting/output/2026-09-09-provenance-final-review.md.
-Actual responding model unavailable; subscription cost unknown, ledger0 is placeholder not free.
-Initial prepare used nonexistent fill.py/test_affinity_fill.py and failed locally before any VM
-mutation; corrected actual names fill_fit.py/test_affinity_fill_fit.py. Do not repeat bad names.
+## Accepted implementation and verification
 
-From source: python -m scripts.prospecting.dev_vm status|collect|collect-failure|cleanup <receipt>.
-Use SSH escalation when needed. Collect/validate before cleanup, then independently verify exact
-/var/tmp/kb-prospecting-ID directory and output mount absent and service/lease.timer/lease.service
-not-found/inactive. Recover existing job by receipt; no blind relaunch. Before this job all27owned
-receipts were cleaned and no unreconciled jobs remained. Latest UI review37655373 was collected,
-cleaned and absence verified (report9cfdbab41f34fefe94c811d8fec2dec737dc4ec78453f47108a614be8bc70e3d).
-It found wrong-campaign response and unsaved typing loss; root accepted, native UI worker repairs.
+- P8 facts bind selected current company, normalized signal-linked rows and actual observed text.
+  Non-first school/prior/path facts supported; current/prior assertions separated. Required slots
+  only; board/portfolio followup signals included; token-bound names avoid substring matches.
+  Fill rows need at least one fresh validated strong/medium HTTPS signal; stale IDs do not count.
+  Zero-proof candidates substituted and evidence_unresolved shortfalls reported. Weak fact gates
+  remain intact. Per-candidate SAVEPOINT protects revisions/evidence/P11; no legacy QA backfill.
+- ReviewService/HTTP: authentic stored QA, immutable edits/lineage/feedback, exact approval and
+  schedule projections, historical access, custom-store scoped anchors, typed step0 preparation.
+- UI: campaign request generations guard stale loads/create responses, scoped refresh, immediate
+  empty/newcampaign clearing, unsaved edit/feedback version preservation and payload-aware retries.
+  Root5tests execute actual bundled JS using DOM/fetch doubles; worker13HTTP/integration passed.
+  These are not visual/browser QA. No browser connection available, no server currently active.
+- Root220combined producer/fill/service/QA/campaign/HTTP passed74.63s before tiny final count fix.
+  Builder final count suite17passed3.60s. Root54contracts/release/executor passed9.58s after UUID fix.
+  Earlier89campaign guard/inbound/reply/approval/T1 safety tests passed; earlier115P11 tests passed.
+- Revision builder produces canonical UUIDv4, previous request validator accepted only typedrev.
+  Narrow helper now allows canonical lowercase RFC4122UUIDv4 or existing rev_<16hex> only for
+  revision_id. Other payload/ownership/hash/approval validation unchanged. Builder32contracts,
+  1joinedT0,22adjacentpassed. Store64passed with1environmentfailure:Datasette launcher unavailable.
+- Joined T0 test uses actual CampaignService, drafting, stored edit/feedback, synthetic verified
+  human approval, CLI activation, enrollment, build_live_service, release and Executor+FakeGmail.
+  One draft, retry no duplicate, inbound reply stops/cancels followup, zero gmail_send rows.
+  Lead selection/evidence are seeded synthetic inputs for an unconstrained manual brief; this
+  does not establish live mining or general P8-to-P2 qualification. No T0-to-T1 owner exists.
+- Workflow/outbox/cadence preserve saved two touches, exact local context, no raw ask argv,
+  exclusive/reparse-safe recovery. SSH saved-request resolver and inspector unavailable park
+  explicitly. No fabricated successful gate or qualification bridge.
 
-VM uses existing Codex0.152, systemd/bwrap tmpfs, 2GB/200percent CPU and bounded output limits,
-RO explicit source, no tool/connector inheritance and no production writes. gpt-6-astra failed
-because it requires newer CLI; no upgrade. Sol/Luna work. Source-only coding was unreliable;
-failed proposals are private artifacts, not accepted patches. Tool-disabled workers cannot test.
-Artifact-only output manifests do not protect eventual source targets: independently check every
-source input hash, edit allowlist, unique anchor and preserved test inventory before applying.
-No claim of literal zero system/provider logs, VM reboot persistence or unlimited offline recovery.
+## Final VM review adjudication
 
-## Verification evidence and remaining acceptance
+Latest revision-id-final-review-20260909 id57f1df1bfb3c4d9bb1190253fc54afed ran09:21:57-09:22:57UTC,
+requestedSol. Collected report hash a1f0682667f2bbd6e5b30904b2cfdb40aab13266d369ffb896cffa3f80bcb1a4.
+Input-validation analysis accepted the helper; finding claims campaign UUID reaches reply_revision
+handler. Root source inspection shows campaigner/wiring.py attach_campaigner explicitly replaces
+that adapter with campaign revision hash + unique delivery resolution. Actual joined test passed;
+remote_protocol confirming real service wiring before root closes context-omission finding.
+Job cleaned; exact directory/mount/3units absent. Prior final provenance reviewerdd7baf47 READY,
+reportf5a5b37925ddb30497f8ce2edaafc3b115af2c7af25f1040773cfff3adab27f5, also cleaned/absent.
 
-- gate producer111 focused; adjacent fill/score11. Root combined producer, fill_fit, service and
-  review_qa currently running in exec session41658 (do not claim final count yet).
-- Earlier root45 campaigns/app/actualHTTP tests green, independent form review335be294 READY.
-- Earlier root89 campaigner guards, inbound, replies, approval integration and T1 release green.
-- Earlier root115 P11 owner QA/personalizer/revision tests, core VM review09784090 READY.
-- Workflow/outbox/cadence accepted: exact local context, no raw ask argv, saved two-touch policy,
-  exclusive/reparse-safe outbox recovery, SSH saved-request resolver explicitly unavailable,
-  inspector unavailable parks truthfully. No fabricated P8-to-P2 qualification bridge.
-- Actual HTTP synthetic tests cover2campaigns, restart, immutable edits/feedback and P8 prepare.
-- Browser connection unavailable (getState empty; iab/chrome creation both failed). No UI server
-  active; no visual acceptance. Do not blindly retry without changed connection or use an alternate
-  browser automation tool. Pure Node JS unit tests are permitted; they are not visual QA.
-- Historical gate manifests are stale after edits and require human-owned refresh, never rebless.
+## Real local-copy trial - completed, blocked safely
 
-## Desktop trial (REAL PII - never print/copy to worker)
+Private C:/Users/danie/kb/_private/prospecting-first-draft-acceptance-20260909/store.sqlite.
+run_trial.py --source-accepted ran only on COPY with network disabled. counts-result.json:
+2candidates,0revisions,2qa_failed,evidence_identity_source_mismatch:2,0QAcontexts,0externalops.
+Original store read-only verification:0revisions,no review_candidate or P11context tables.
+Six cached snapshots were copied only locally after SHA/size/path checks. No observations rewritten.
+Current-role source bindings require verification; named/title/company cooccurrence is not proof.
+Never relax provenance to manufacture successful drafts. No real messages exist for human review yet.
+Harness used original anchors in memory only. Custom app store requires its own sibling anchors;
+the trial has none copied, so app preparation would correctly block. No ambient fallback.
 
-Private copy: C:/Users/danie/kb/_private/prospecting-first-draft-acceptance-20260909/store.sqlite.
-SQLite original was read-only backed up; copy quick_check okay,0revisions, unmodified before trial.
-Opaque campaign camp_3147b42db58c4c15 has1approved fit,95affinity,2selected unsubstituted people,
-current employment/contact and complete sender/ask fields. Missing resolvable direct current-role
-source pointers is a real data prerequisite: expect evidence_identity_source_mismatch per candidate.
-Legacy observation.source resolves42person observations, but current-role binding remains missing.
-6existing selected-person/company snapshots copied only locally with exact SHA/size/path checks.
-Named-block/title/company co-occurrence is NOT semantic verification; no observations rewritten.
+## VM lifecycle and recovery
 
-Root harness run_trial.py in same private trial directory is prepared, NOTRUN. After producer
-independent acceptance use actualPython313 with --source-accepted. It loads original sender anchors
-in memory only, opens/migrates COPYONLY, blocks network, emits/saves counts and fixed codes only to
-counts-result.json. Unknown codes bucket safely. Do not loosen facts to manufacture a real draft.
-App custom store uses only sibling sender-anchors.json; trial has no copied anchors, so UI prepare
-would correctly block. Never silently use ambient anchors for a custom store.
+Private receipts: C:/Users/danie/kb/_private/dev-jobs/<job>/receipt.json. From source use
+python -m scripts.prospecting.dev_vm status|collect|collect-failure|cleanup <receipt>.
+Recover existing ID; never blind relaunch. Collect/hash local outputs before exact cleanup, then
+verify /var/tmp/kb-prospecting-ID, output mount and service/lease.timer/lease.service absent.
+Existing Codex0.152/systemd/bwrap, RO explicit source, tmpfs output/private HOME,2GB/200percent CPU,
+bounded deadline and collection lease. Tool-disabled VM coding was unreliable; native Codex workers
+performed local source edits/tests while VM workers reviewed source. No desktop inference claim.
+Astra required newer CLI; no upgrade. Actual response model unavailable, subscription cost unknown;
+ledger0 placeholders do not mean free. No guarantee of zero system/provider logs, reboot recovery,
+unlimited offline retention or laptop-lid behavior. Production services/files unchanged.
 
-## Publication and final delivery
+## Publication and PII staging
 
-Origin is PUBLIC https://github.com/danielzhang04/kb.git. Earlier combined amend+push was rejected
-before execution by automatic approval review for unverified sensitive external destination and
-history rewrite. No subsequent push/amend. Do not bypass; prepare exact final diff first and ask
-only if action remains blocked. Existing draft PR180 targets ops; no main PR yet.
+PUBLIC origin https://github.com/danielzhang04/kb.git. Earlier combined amend+push rejected before
+execution by automatic approval review for unverified sensitive destination/history rewrite.
+No subsequent push/amend. Do not bypass. Prepare exact source-only diff before a normal publication
+attempt; report any remaining auto-review block explicitly. Draft coordination PR180 targets ops;
+no main PR yet. No operational context should be blindly included in public source delivery.
 
-Committed comparison against origin/main has350files including inherited P1-P8. Private delivery
-scope draft C:/Users/danie/kb/_private/prospecting-session-delivery-20260909/{scope.json,pr-body.md}
-includes349committed paths, excludes inherited memory/claude-boss.md coordination. Refresh after
-freeze and prepare one consolidated source change set. Nothing published. Local databases,
-snapshots, receipts and operational handoffs stay outside source PR.
+origin/main...sourceHEAD has350committed paths including inherited P1-P8 and memory/claude-boss.md.
+Private delivery scope/pr-body drafts under _private/prospecting-session-delivery-20260909 need
+refresh;349source paths proposed excluding memory. Prefer a clean source tree delta without
+inherited operational history; dependency/staging audit active. Private scan metadata under
+_private/prospecting-outgoing-scan-20260909.json:192candidate lines42files, mainly reserved.test
+fixtures, intentional guard cases and hash/date/SSH falsepositives. Never print candidate PII.
+Current24file stage guard and entiremain diff are separate checks. Actual hooksPath points to main
+.githooks without branch PII call; explicitly run branch guard rather than rely on hook mismatch.
 
-Private paths-only scan report prospecting-outgoing-scan-20260909.json found192candidate lines in42
-files; most are reserved synthetic .test emails, PII scanner tests or hash/date false positives.
-Other code matches are VM SSH address and synthetic RFC Message-ID .local tokens; inherited memory
-must stay outside source delivery. Active hook path is main C:/Users/danie/kb/.githooks; do not
-claim branch PII staged guard passes: it flags literal reserved .test addresses in new and old tests.
-Separate those reproducible synthetic findings from actual private-data findings; no guard bypass.
+## Keep awake / runtime
 
-## Keep awake and cleanup
-
-Root helper PID12044, _private/prospecting-awake-20260908.py/.json,12hour lease expires1788952318.889
-(about11:11UTC). Fresh heartbeat, low CPU. Stop via its exact .stop file only at actual session end;
-no global power/lid promises or other terminals' helpers. Source worker test temp dirs are owned by
-gate_repair and should be cleaned at freeze with native PowerShell exact containment validation.
-Use existing Python C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe for tests;
-default Python312 lacks tzdata. No installs. No live sends/vendor calls/production VM changes.
+Owned helperPID12044, root_private/prospecting-awake-20260908.py/.json,12h lease expires
+1788952318.889 (~11:11UTC). Fresh heartbeat and low CPU. Stop via exact .stop file at session end.
+No other terminal helpers/power settings touched. Python313 executable:
+C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe (pytest/tzdata available).
+Default312 lacks tzdata. No installs. Test temporary directories are private, owned cleanup only.
 
 ## Load list
 
@@ -209,6 +147,5 @@ default Python312 lacks tzdata. No installs. No live sends/vendor calls/producti
 - orgs/prospecting/{contract.md,_index.md,STATE.md,runbook-p8.md,deployment.md}
 - docs/superpowers/plans/2026-09-08-prospecting-end-to-end.md
 - docs/superpowers/specs/2026-09-08-prospecting-review-flow.md
-- queue/working/01K4KB00000000000000000002.md (assigned owner codex-worker)
-- This handoff and handoffs/2026-09-08-kb-boss-remote-execution.md
-- code-review/security-review/save-session skills, exact active receipt above
+- queue/working/01K4KB00000000000000000002.md
+- this handoff, handoffs/2026-09-08-kb-boss-remote-execution.md and exact private receipts as needed
