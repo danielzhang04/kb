@@ -24,6 +24,7 @@ from .bio import (
 )
 from .bio_adapter import _snapshot_dir, register_bio_adapter
 from .linkedin import backfill_person, needs_linkedin, parse_profile_background
+from .source_review import import_operator_page, read_operator_page
 from scripts.prospecting.linkedin_lane import LinkedInAssistedLane, LinkedInBudget
 from scripts.prospecting import browser_guard
 from scripts.prospecting.browser_guard import next_delay
@@ -455,8 +456,8 @@ def research_run(
             seen_people.add(person_id)
             if _PERSON_ID_RE.fullmatch(person_id) is None or _COMPANY_ID_RE.fullmatch(company_id) is None:
                 continue
-            operator_page = linkedin_pages_dir / f"{person_id}.txt"
-            if not operator_page.is_file():
+            supplied_body = read_operator_page(linkedin_pages_dir, person_id)
+            if supplied_body is None:
                 continue
             state_row = connection.execute(
                 "SELECT bio_state,bio_pages,linkedin_state,linkedin_loads FROM person_research_state "
@@ -475,10 +476,13 @@ def research_run(
                 reasons["linkedin_cap_reached"] += 1
                 connection.commit()
                 continue
-            supplied_facts = parse_profile_background(
-                operator_page.read_text(encoding="utf-8", errors="replace"), anchors,
+            supplied_text = supplied_body.decode("utf-8", errors="replace")
+            supplied_facts = parse_profile_background(supplied_text, anchors)
+            snapshot_id = import_operator_page(
+                connection, person_id=person_id, company_id=company_id,
+                source_url=str(row["linkedin_url"] or ""), body=supplied_body, now=now,
             )
-            persist_bio_facts(connection, person_id, f"operator:{person_id}", supplied_facts, stamp)
+            persist_bio_facts(connection, person_id, snapshot_id, supplied_facts, stamp)
             _set_state(connection, person_id, campaign_id, bio_state=bio_state, bio_pages=bio_pages,
                        linkedin_state="loaded", linkedin_loads=prior_loads + 1,
                        reason="linkedin_operator_supplied", stamp=stamp)

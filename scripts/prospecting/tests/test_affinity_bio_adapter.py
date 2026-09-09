@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 
 import pytest
@@ -23,6 +24,9 @@ from scripts.prospecting.store import ExecRequest, insert_exec_request, open_sto
 FIXTURES = Path(__file__).resolve().parents[3] / "orgs" / "prospecting" / "fixtures" / "affinity"
 NOW = datetime(2099, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
 ANCHORS = load_anchors(FIXTURES / "sender-anchors-synthetic.json")
+SOURCE_REVIEW = json.loads(
+    (FIXTURES.parent / "source-review-synthetic.json").read_text(encoding="utf-8")
+)
 
 
 class _FrozenDatetime(datetime):
@@ -187,8 +191,9 @@ def _seeded_campaign(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
         ("cmp_0000000000000001", "Alpha Ventures", "https://alpha.test/", "manual", "alpha"),
     )
     connection.execute(
-        "INSERT INTO person(person_id,first_name,full_name,source_lane,dedupe_key) VALUES(?,?,?,?,?)",
-        ("per_0000000000000001", "Morgan", "Morgan Example", "manual", "morgan"),
+        "INSERT INTO person(person_id,first_name,full_name,linkedin_url,source_lane,dedupe_key) VALUES(?,?,?,?,?,?)",
+        ("per_0000000000000001", "Morgan", "Morgan Example", SOURCE_REVIEW["operator_profile_url"],
+         "manual", "morgan"),
     )
     connection.execute(
         "INSERT INTO source_observation(observation_id,entity_type,entity_id,field,value,source,retrieved_at,confidence) VALUES(?,?,?,?,?,?,?,?)",
@@ -396,7 +401,8 @@ def test_research_loads_operator_supplied_linkedin_text_without_a_lane(tmp_path,
     person_id = "per_0000000000000001"
     (pages / f"{person_id}.txt").write_text(
         "<p>Experience</p><p>Analyst</p><p>Meridian Bank</p><p>Jan 2012 - Dec 2016</p>"
-        "<p>Education</p><p>Newtown University</p><p>BBA</p><p>2010 - 2014</p>",
+        "<p>Education</p><p>Newtown University</p><p>BBA</p><p>2010 - 2014</p>"
+        f"<p>{SOURCE_REVIEW['identity_excerpt']}</p>",
         encoding="utf-8",
     )
     (pages / "per_ffffffffffffffff.txt").write_text("stranger", encoding="utf-8")
@@ -423,6 +429,14 @@ def test_research_loads_operator_supplied_linkedin_text_without_a_lane(tmp_path,
     assert connection.execute(
         "SELECT count(*) FROM exec_request WHERE request_id LIKE '%linkedin%'"
     ).fetchone()[0] == 0
+    snapshot = connection.execute(
+        "SELECT snapshot_id,body_ref FROM source_snapshot WHERE allowlist_version='operator-local-v1'"
+    ).fetchone()
+    assert snapshot is not None and (tmp_path / "snapshots" / snapshot["body_ref"]).is_file()
+    assert connection.execute(
+        "SELECT count(*) FROM source_observation WHERE field='source_review_candidate' AND snapshot_id=?",
+        (snapshot["snapshot_id"],),
+    ).fetchone()[0] == 1
 
 
 def test_operator_linkedin_pages_respect_the_run_cap(tmp_path, monkeypatch) -> None:

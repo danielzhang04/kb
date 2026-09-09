@@ -1,7 +1,8 @@
 # Prospecting end-to-end implementation task list
 
-Status: bounded implementation slices complete and synthetic T0 acceptance passed; visual and
-real-data end-to-end acceptance remain pending. Boss: Codex; builders and reviewers:
+Status: bounded implementation slices, synthetic T0 acceptance and the synthetic status-only VM
+control lifecycle proof passed. The local source-import and opaque-control backends and companion
+UI are implemented. Visual and real-data end-to-end acceptance remain pending. Boss: Codex; builders and reviewers:
 Codex workers, selected by assignment complexity. Delivery branch is
 `codex/prospecting-session-20260909`, consolidated from accepted source checkpoint 5175f408. No merge, live-send, provider-spend or deployment authorization
 is inferred from this implementation request. User expressly authorized remote development,
@@ -25,31 +26,57 @@ the real integrated path; synthetic tests alone do not establish live readiness.
 
 ## Verified current state
 
-- The main-based delivery branch is `codex/prospecting-session-20260909`: 352 source/development
-  paths, excluding 12 operational paths (coordination state, gate-result records and dated reports).
-  The merge-base delta applied cleanly and did not overlap newer main changes.
+- The main-based delivery branch is `codex/prospecting-session-20260909`, published as draft PR181.
+  Operational coordination state, gate-result records and dated private reports remain outside the
+  source delivery. The merge-base delta applied cleanly and did not overlap newer main changes.
 - Campaign creation, source-backed drafting, immutable edits/feedback and the standalone review UI
   are implemented. The joined synthetic T0 flow reaches one FakeGmail draft through the actual
   application owners, retries without duplication and stops follow-up after a reply. Lead selection
   and evidence are seeded fixtures; this is not live-mining or sending-graduation acceptance.
 - The real local-copy trial processed two selected candidates, created zero drafts and returned
   `evidence_identity_source_mismatch` for both, without external calls or original-store mutation.
-- Validation includes 282 focused legacy-fixture/runtime checks, 50 staging-guard checks, 24 current
-  deployment checks, 21 adjacent bridge/workflow checks, and 5 actual bundled-JavaScript checks.
-  The three repaired deployment checks and four forbidden-flag regressions also passed independently in the final worktree. Earlier
-  review integration and the joined T0 test passed; no browser was available for visual acceptance.
-- The broad inherited suite initially had eight failures. Three stale runtime/test contracts were
-  repaired and retested. Remaining failures concern the human-owned P6 manifest inventory, missing
-  operational STATE in this source-only checkout (including nested gate tests), and the optional
-  Datasette launcher dependency. These are recorded limits, not passing checks.
+- Validation includes the focused legacy-fixture/runtime, staging-guard, deployment,
+  bridge/workflow, review integration, joined T0 and bundled-JavaScript checks recorded with the
+  accepted slices. Resumed manager recovery and control-protocol checks also pass. The private
+  synthetic control proof driver passes nine local tests, and its first isolated VM lifecycle used
+  the shipped `run_once`, recovered a simulated lost acknowledgement, collected an identical result
+  hash, and verified exact root/unit absence after cleanup. This was not a physical laptop-close test
+  or a live campaign operation. No browser was available for visual acceptance.
+- The broad inherited suite initially had eight failures. Stale runtime/test contracts were
+  repaired and retested. Direct desktop Python 3.13 contains Datasette and now uses its actual
+  interpreter path; an earlier nested launcher failure did not establish a missing dependency.
+  The uppercase P6 gate still fails on six stale recorded test node IDs, artifact hash and committed
+  allowlist drift, plus the missing independent score. It stops before tests or record writes and
+  reports no runtime mismatch. These human-owned inventory/score items and source-only checkout
+  tests that require operational STATE remain separate gates rather than passing checks.
 - Exact validated fixtures replace inline synthetic data; staging-only metadata and SSH recognition
   leave runtime VM PII checks intact. Independent review found a duplicate-JSON-key bypass; the
   parser now rejects duplicate keys at every depth, with staged regressions and independent review.
-- All 32 bounded VM jobs were collected and cleaned with exact absence verified. Native workers
+- All completed bounded VM review/development jobs were collected and cleaned with exact absence verified. Native workers
   used local source/test access; VM jobs were source-only work. No desktop connector parity,
   production VM change, live send, provider spend or manifest reblessing is claimed.
-- The VM workflow saved-request resolver and independent inspector remain unavailable and park
-  explicitly. New campaigns remain T0; a sanctioned T0-to-T1 transition is not implemented.
+- The `run_workflow` SSH saved-request resolver and independent inspector remain unavailable and
+  park explicitly. P12 is a separate, desktop-pulled control protocol for `status` and `queue_due`:
+  grants are short-lived, T0, campaign/policy/operation-bound and disabled until a local user
+  activates them. Its synthetic status-only VM spool/reconnect/cleanup proof passed. New campaigns
+  remain T0; a sanctioned T0-to-T1 transition is not implemented.
+- P12 read-only status never infers VM acknowledgement from a local terminal receipt and reports it
+  as unverified. An explicit process action can report confirmed acknowledgement for that response.
+  Retrying the exact request uses its validated stored result and may reclaim only that matching
+  expired claim to complete delivery; it never reruns the desktop operation. A later read-only
+  refresh is unverified again because it does not contact the VM.
+- The local review server defaults control to disabled. Its integration seam accepts only a trusted,
+  preconstructed control adapter; browser requests cannot supply an SSH host, path or transport
+  configuration. A future main-kb UI owner may construct and pass that adapter from reviewed local
+  configuration without adding those fields to the browser boundary or a standing VM service.
+- P13 accepts a selected campaign/person source only through a local audited import: the user
+  supplies an HTTPS source URL and a local body of at most 2 MiB. Import creates an unconfirmed
+  candidate; a separate explicit human action must attest the current-company source role before
+  it can support drafting. It performs no fetch, accepts no uploaded path, and never auto-attests.
+- P14 permits a separate explicit local action to fulfill a feedback request after an authentic
+  successful edit of the current revision, preserving deterministic QA and lineage. Saving the edit
+  alone does not fulfill feedback. It does not provide an automated feedback rewriter or invent a
+  passing revision when the saved QA context is unavailable.
 
 ## Confirmed user direction (2026-09-08)
 
@@ -80,6 +107,9 @@ the real integrated path; synthetic tests alone do not establish live readiness.
 - Existing prospecting contract prohibits PII in ANY VM sink. Live SQLite, browser, research,
   draft bodies, contacts, Gmail/vendor capability stay local. Use synthetic `.test` fixtures remotely.
 - Local typed executor performs authorized live operations. No direct agent Gmail/vendor access.
+- The P12 controller runs on the local desktop and pulls opaque work from a bounded VM spool. A
+  sleeping or unavailable desktop cannot execute that work; the VM can retain it only for the
+  owned lease. This is not a bidirectional service or tool/connector parity.
 - No persistent installs/services, dashboard code changes, credential copying or modifications to
   existing VM code for worker provisioning. Isolated temporary resources only, with explicit leases.
 - No claims of literal zero logging: owned workspace/session artifacts can be scoped and removed;
@@ -121,7 +151,9 @@ the real integrated path; synthetic tests alone do not establish live readiness.
   - Acceptance: behavior-specific regression tests; no weakened assertions or reblessed eval manifests.
 
 - [ ] 5. End-to-end acceptance
-  - Synthetic whole-flow run through the real application/UI, including two campaigns and restart.
+  - The joined synthetic T0 owner path through campaign, draft, review, cadence and FakeGmail draft
+    is complete. A whole-flow run through the actual browser UI, including two campaigns and restart,
+    remains pending.
   - Verify retry without duplicate sends/credits, reply/DNC/bounce stops, expired approval,
     changed revision, denied send windows and missed schedules without a catch-up burst.
   - Visual/keyboard review at desktop widths; useful links, useful empty/loading/error states,
@@ -153,14 +185,48 @@ rebless MANIFEST.sha256 files. External sending and human-only approvals remain 
 - `orgs/prospecting/runbook-p8.md`, `orgs/prospecting/doctrine.md`, `orgs/prospecting/deployment.md`
 - `docs/superpowers/specs/2026-09-04-prospecting-p7ui-amendment.md` on original boss checkout
 - `scripts/prospecting/run_workflow.py`, `manager/`, `affinity/`, `campaigner/`
-- Current local worker receipts under root `_private/prospecting-context-review-20260908/`
 
 ## Context checkpoint
 
-Bounded source implementation and synthetic T0 acceptance are complete. Consolidated delivery is
-published in one draft main PR181 on the main-based source branch. The canonical local handoff,
-project state and assigned task card record the remaining acceptance work. All 32 VM jobs are
-cleaned; completed test scratch is removed and the session keep-awake lease is stopped at closeout. Real source verification, browser acceptance and the existing human evaluation refresh
-remain open. The operational STATE/gate records are intentionally separate from the public source
-PR and must be supplied through the trusted operational path. No deployment or sending promotion
-is authorized by a source/test pass.
+The accepted initial source delivery and resumed implementation remain on the main-based delivery
+branch for an update to draft PR181. The canonical local handoff, project state and assigned task
+card own current coordination. All 40 source-only VM jobs and the separate synthetic control proof
+have been collected and cleaned with exact owned-resource absence verified. The desktop keep-awake
+lease remains active until the actual session ends. Browser acceptance, real desktop-local evidence
+and drafts, independent-inspector integration, the human evaluation refresh and every live mining or
+sending gate remain open. Operational STATE/gate records stay outside the public source PR and must
+travel through the trusted operational path. No deployment or sending promotion is authorized by a
+source/test pass.
+
+## Resumed task list - 2026-09-09
+
+Source delivery in PR181 is a checkpoint, not completion of the user's end-to-end goal.
+Continue on the same delivery branch and PR; leave other dashboard/VM production code alone.
+
+- [x] Reload handoff, project rules, assigned card, branch and actual parked entrypoints.
+- [x] Repair runtime selection and nested Windows test harness; 11 focused checks passed.
+- [x] Implement the local audited source-evidence import, attestation, direct correction service and
+  companion UI without weakening provenance; browser acceptance remains pending.
+- [ ] Implement and independently review the missing independent-inspection integration.
+- [x] Implement and independently review the P12 desktop-pulled `status`/`queue_due` source
+  protocol with disabled-by-default grants and atomic local receipts.
+- [x] Run the reviewed synthetic status-only VM spool lifecycle proof, including lost-ack reconciliation,
+  hash collection and exact cleanup.
+- [x] Integrate the exact configured control status/process action into the prospecting companion;
+  it remains disabled when no trusted server-side adapter is configured.
+- [x] Complete bounded manual feedback fulfillment as a separate action after a successful current
+  edit with authentic QA and lineage. Automated feedback rewriting remains outside this slice.
+- [ ] Verify real local drafts and visual/keyboard behavior when browser access is available.
+- [ ] Run affected integrated checks; preserve human-only eval and sending approval boundaries.
+- [ ] Update the same PR, task state, handoff and owned-resource cleanup evidence.
+
+Current execution split: native Codex workers inspect/edit local source; VM Codex workers receive
+only validated source/skills for isolated reviews. Browser inventory is empty and Chrome is
+unavailable; user has been asked to connect a browser while implementation continues.
+
+Checkpoint: runtime interpreter selection, manager recovery/checkpoints, P12 control source, P13
+audited local source import and P14 manual feedback fulfillment are implemented and have focused
+verification. The manager still parks when no independent inspector is available and no eval is
+blessed by that parked path. The synthetic status-only P12 VM proof passed and the source-upload and
+control-panel UI source is integrated. Browser acceptance and real local evidence/drafts remain open. Completed VM jobs are collected and
+cleaned with exact absence verified. This is ongoing work, not acceptance.

@@ -14,6 +14,7 @@ import tempfile
 import uuid
 
 from scripts.prospecting.manager.bridge import DesktopBridge
+from scripts.prospecting.manager.bindings import command_digest, stage_execution_key
 from scripts.prospecting.manager.campaigns import (
     MAX_BRIEF_BYTES,
     CampaignService,
@@ -22,7 +23,11 @@ from scripts.prospecting.manager.campaigns import (
 from scripts.prospecting.manager.compile_ask import FIT_PREFIXES
 from scripts.prospecting.manager.jobs import StageJob, write_card
 from scripts.prospecting.manager.p5_contracts import verify_prerequisites
-from scripts.prospecting.manager.runner import ManagerRunner
+from scripts.prospecting.manager.runner import (
+    ALLOWED_RESULT,
+    INSPECTION_PASS_SCORE,
+    ManagerRunner,
+)
 from scripts.prospecting.manager.workflows import load_workflow
 from scripts.prospecting.pii_guard import assert_vm_safe
 from scripts.prospecting.store import migrate, open_store
@@ -443,10 +448,23 @@ def main(argv=None, compile_ref=None, bridge=None, prerequisites=None) -> int:
         mode = "ssh" if args.ssh else "local"
         bridge_calls = list(getattr(active_bridge, "workflow_call_records", ()))
 
+        def invoke_bound(agent, payload):
+            payload["command_digest"] = command_digest(payload)
+            outcome = active_bridge.invoke(agent, payload, mode, host=args.host)
+            summary = outcome.summary
+            if outcome.code == "ok" and (
+                not isinstance(summary, dict)
+                or set(summary) != ALLOWED_RESULT
+                or summary.get("stage_id") != payload["stage_id"]
+                or summary.get("attempt") != payload["attempt"]
+                or summary.get("execution_key") != payload["execution_key"]
+                or summary.get("command_digest") != payload["command_digest"]
+            ):
+                raise RuntimeError("result_binding_conflict")
+            return outcome
+
         def turn(stage, attempt, job):
-            execution_key = __import__("hashlib").sha256(
-                f"{job.workflow}|{stage.id}|{attempt}".encode("utf-8")
-            ).hexdigest()
+            execution_key = stage_execution_key(workflow, job, stage, attempt)
             payload = {
                 "operation": stage.operation,
                 "stage_id": stage.id,
@@ -464,7 +482,7 @@ def main(argv=None, compile_ref=None, bridge=None, prerequisites=None) -> int:
                 "hashes": list(job.input_hashes),
                 "counts": dict(job.counts),
             }
-            outcome = active_bridge.invoke(CLI[stage.agent], payload, mode, host=args.host)
+            outcome = invoke_bound(CLI[stage.agent], payload)
             bridge_calls.append({
                 "entrypoint": CLI[stage.agent],
                 "exit_code": outcome.exit_code,
@@ -473,23 +491,32 @@ def main(argv=None, compile_ref=None, bridge=None, prerequisites=None) -> int:
             })
             active_bridge.workflow_call_records = bridge_calls
             if outcome.code != "ok":
-                raise RuntimeError(outcome.code)
+                return {
+                    "stage_id": stage.id,
+                    "state": "failed",
+                    "ids": [],
+                    "counts": {},
+                    "hashes": [],
+                    "failure_codes": {"adapter_recovery_required": 1},
+                    "attempt": attempt,
+                    "execution_key": execution_key,
+                    "command_digest": payload["command_digest"],
+                }
             return outcome.summary
 
-        def inspect(stage, prior):
-            execution_key = __import__("hashlib").sha256(
-                f"{prior['stage_id']}|{stage.id}|{prior['attempt']}".encode("utf-8")
-            ).hexdigest()
+        def inspect(stage, prior, job, attempt):
+            execution_key = stage_execution_key(workflow, job, stage, attempt)
             payload = {
-                "operation": "grade", "stage_id": stage.id, "attempt": 1,
-                "run_id": "inspect-" + prior["stage_id"], "execution_key": execution_key,
-                "policy_id": compiled["policy_id"], "policy_hash": compiled["policy_hash"],
+                "operation": "grade", "stage_id": stage.id, "attempt": attempt,
+                "run_id": job.workflow, "execution_key": execution_key,
+                "policy_id": job.policy_id, "policy_hash": job.policy_hash,
                 "campaign_id": compiled["campaign_id"], "sender_profile_id": compiled["sender_profile_id"],
                 "lanes": list(compiled["target_policy"].get("lane_plan", ["manual"])),
                 "model_response": compiled["model_response"], "output": compiled["output"],
-                "ids": list(prior["ids"]), "hashes": list(prior["hashes"]), "counts": dict(prior["counts"]),
+                "ids": list(job.input_ids), "hashes": list(job.input_hashes),
+                "counts": dict(job.counts),
             }
-            outcome = active_bridge.invoke("inspector", payload, mode, host=args.host)
+            outcome = invoke_bound("inspector", payload)
             if outcome.code != "ok":
                 raise RuntimeError("inspector_unavailable")
             if outcome.summary.get("failure_codes", {}).get("inspector_unavailable"):
@@ -497,7 +524,12 @@ def main(argv=None, compile_ref=None, bridge=None, prerequisites=None) -> int:
             grade = outcome.summary.get("counts", {}).get("grade")
             if type(grade) is not int or not 0 <= grade <= 100:
                 raise RuntimeError("inspector_failed")
-            return {"decision": "pass" if grade >= 90 else "park", "grade": grade}
+            return {
+                "decision": "pass" if grade >= INSPECTION_PASS_SCORE else "park",
+                "grade": grade,
+                "execution_key": execution_key,
+                "command_digest": payload["command_digest"],
+            }
 
         report = ManagerRunner(workflow, args.outbox, turn, inspect).run(
             "run-" + _job_campaign_id(compiled["campaign_id"]),

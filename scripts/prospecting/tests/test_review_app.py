@@ -10,8 +10,18 @@ import threading
 import pytest
 
 import scripts.prospecting.review_app as review_app
+from scripts.prospecting.control_desktop import ControlError
+from scripts.prospecting.control_review import (
+    ControlReviewAdapter,
+    ControlReviewError,
+    ControlReviewStatus,
+)
+from scripts.prospecting.feedback_service import FeedbackView, FulfillFeedbackRequest
+from scripts.prospecting.feedback_service import FeedbackService
 from scripts.prospecting.review_app import (
     MAX_JSON_BYTES,
+    MAX_SOURCE_BYTES,
+    MAX_SOURCE_UPLOAD_JSON_BYTES,
     SESSION_SECONDS,
     _draft_preparer,
     _selected_store_context,
@@ -22,11 +32,14 @@ from scripts.prospecting.review_service import (
     CampaignView,
     DraftView,
     FeedbackRequest,
+    ImportIdentitySourceRequest,
     PersonView,
     PrepareDraftsResult,
     ScheduleView,
     SenderProfileView,
+    ReviewService,
 )
+from scripts.prospecting.tests.p6_support import migrated_t1_store
 
 
 CAMPAIGN = "camp_1111111111111111"
@@ -99,6 +112,15 @@ class FakeReview:
             25, 6, 2, "missing", None,
         ),)
 
+    def list_feedback(self, campaign_id):
+        self._record("feedback_list", campaign_id)
+        return (FeedbackView(
+            "fb_1111111111111111", campaign_id, "per_1111111111111111", "Taylor Example",
+            "rev_original_11111111", "Original subject", "Original synthetic body", "tone",
+            ("warmer",), "Please soften this.", "2026-09-09T04:00:00Z", "ready_to_record",
+            "unavailable", "rev_1111111111111111", "A short hello", "Synthetic body", None,
+        ),)
+
     def list_activity(self, campaign_id):
         self._record("activity", campaign_id)
         return (ActivityView("evt_1111111111111111", "2026-09-09T04:00:00Z",
@@ -112,9 +134,21 @@ class FakeReview:
         self._record("prepare", (campaign_id, step))
         return PrepareDraftsResult(campaign_id, step, 3, 2, 0, 1, 1, (("evidence_missing", 1),))
 
+    def verify_current_role_source(self, request):
+        self._record("verify_source", request)
+        return Result(state="source_confirmed")
+
+    def import_current_role_source(self, request):
+        self._record("import_source", request)
+        return Result(state="source_available")
+
     def request_feedback(self, request):
         self._record("feedback", request)
         return Result(state="pending")
+
+    def fulfill(self, request):
+        self._record("fulfill_feedback", request)
+        return Result(state="fulfilled")
 
     def set_editorial_ready(self, request):
         self._record("ready", request)
@@ -128,6 +162,31 @@ class FakeCampaigns:
     def create(self, **value):
         self.seen.append(value)
         return Result()
+
+
+class FakeControl:
+    def __init__(self) -> None:
+        self.seen: list[tuple[str, str]] = []
+        self.status_error: Exception | None = None
+        self.process_error: Exception | None = None
+
+    def status(self, campaign_id):
+        if self.status_error is not None:
+            raise self.status_error
+        return ControlReviewStatus(
+            True, campaign_id, "ctlreq_" + "4" * 32, "ctl_" + "1" * 32,
+            "status", "active", None, "not_applicable", "ready", {},
+        )
+
+    def process(self, campaign_id, configured_request_id):
+        if self.process_error is not None:
+            raise self.process_error
+        self.seen.append((campaign_id, configured_request_id))
+        return ControlReviewStatus(
+            True, campaign_id, configured_request_id, "ctl_" + "1" * 32,
+            "status", "active", "succeeded", "confirmed", "status",
+            {"due": 2, "paused": 0},
+        )
 
 
 @pytest.fixture
@@ -192,11 +251,121 @@ def test_snapshot_is_campaign_scoped_and_calls_all_five_read_owners(app) -> None
     assert value["drafts"][0]["subject"] == "A short hello"
     assert value["drafts"][0]["evidence"] == []
     assert value["drafts"][0]["candidate_history"] == []
+    assert value["feedback"][0]["state"] == "ready_to_record"
     assert value["schedule"][0]["approval_state"] == "missing"
     assert value["activity"][0]["reason"] == "pending_qa"
+    assert value["control"]["code"] == "disabled"
     assert value["mailboxes"] == ["mailbox-001"]
-    for method in ("campaign", "people", "drafts", "schedule", "activity"):
+    for method in ("campaign", "people", "drafts", "feedback_list", "schedule", "activity"):
         assert (method, CAMPAIGN) in review.seen
+
+
+def test_control_status_and_process_are_scoped_typed_and_csrf_guarded() -> None:
+    review, campaigns, control = FakeReview(), FakeCampaigns(), FakeControl()
+    server = create_server(review, campaigns, port=0, control=control)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}",
+            headers={"Cookie": cookie},
+        )
+        value = json.loads(raw)
+        assert status == 200
+        assert value["control"]["configured_request_id"] == "ctlreq_" + "4" * 32
+        assert value["control"]["code"] == "ready"
+
+        payload = json.dumps({
+            "campaign_id": CAMPAIGN,
+            "configured_request_id": "ctlreq_" + "4" * 32,
+        }).encode()
+        assert request(
+            server, "POST", "/api/control/process", body=payload,
+            headers={"Cookie": cookie, "Content-Type": "application/json"},
+        )[0] == 403
+        status, _headers, raw = request(
+            server, "POST", "/api/control/process", body=payload,
+            headers={
+                "Cookie": cookie, "Content-Type": "application/json",
+                "X-CSRF-Token": csrf,
+            },
+        )
+        assert status == 200
+        assert json.loads(raw)["remote_acknowledgement"] == "confirmed"
+        assert control.seen == [(CAMPAIGN, "ctlreq_" + "4" * 32)]
+
+        invalid = json.dumps({
+            "campaign_id": CAMPAIGN,
+            "configured_request_id": "ctlreq_" + "4" * 32,
+            "host": "forbidden",
+        }).encode()
+        assert request(
+            server, "POST", "/api/control/process", body=invalid,
+            headers={
+                "Cookie": cookie, "Content-Type": "application/json",
+                "X-CSRF-Token": csrf,
+            },
+        )[0] == 422
+        assert len(control.seen) == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_control_failures_stay_inside_control_surface() -> None:
+    review, campaigns, control = FakeReview(), FakeCampaigns(), FakeControl()
+    control.status_error = RuntimeError("private transport detail")
+    server = create_server(review, campaigns, port=0, control=control)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}",
+            headers={"Cookie": cookie},
+        )
+        value = json.loads(raw)
+        assert status == 200 and value["campaign"]["campaign_id"] == CAMPAIGN
+        assert value["control"] == {
+            "enabled": False, "campaign_id": CAMPAIGN,
+            "code": "control_status_unavailable",
+        }
+
+        control.process_error = ControlError("transport_failed")
+        payload = json.dumps({
+            "campaign_id": CAMPAIGN,
+            "configured_request_id": "ctlreq_" + "4" * 32,
+        }).encode()
+        status, _headers, raw = request(
+            server, "POST", "/api/control/process", body=payload,
+            headers={
+                "Cookie": cookie, "Content-Type": "application/json",
+                "X-CSRF-Token": csrf,
+            },
+        )
+        assert status == 422 and json.loads(raw) == {"error": "transport_failed"}
+        assert b"private transport detail" not in raw
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_real_composed_services_must_share_the_selected_store(tmp_path) -> None:
+    selected = migrated_t1_store(tmp_path / "selected.sqlite", tier="T0")
+    other = migrated_t1_store(tmp_path / "other.sqlite", tier="T0")
+    review = ReviewService(selected.connection)
+
+    with pytest.raises(ValueError, match="^feedback_store_mismatch$"):
+        create_server(
+            review, FakeCampaigns(), feedback=FeedbackService(other.connection),
+        )
+    with pytest.raises(ValueError, match="^control_store_mismatch$"):
+        create_server(
+            review, FakeCampaigns(), control=ControlReviewAdapter(other.connection),
+        )
 
 
 def test_exact_host_session_csrf_and_body_bound_precede_mutation(app) -> None:
@@ -243,6 +412,52 @@ def test_feedback_converts_json_tags_to_typed_tuple(app) -> None:
     assert isinstance(sent, FeedbackRequest) and sent.tags == ("warmer",)
 
 
+def test_feedback_fulfillment_is_explicit_typed_and_csrf_guarded(app) -> None:
+    server, review, _campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    payload = json.dumps({
+        "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "campaign_id": CAMPAIGN,
+        "feedback_id": "fb_1111111111111111",
+        "expected_child_revision_id": "rev_1111111111111111",
+    }).encode()
+    assert request(server, "POST", "/api/feedback/fulfill", body=payload, headers={
+        "Cookie": cookie, "Content-Type": "application/json",
+    })[0] == 403
+    status, _headers, _body = request(
+        server, "POST", "/api/feedback/fulfill", body=payload,
+        headers={"Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf},
+    )
+    assert status == 200
+    sent = next(value for name, value in review.seen if name == "fulfill_feedback")
+    assert isinstance(sent, FulfillFeedbackRequest)
+    assert sent.expected_child_revision_id == "rev_1111111111111111"
+
+
+def test_source_upload_has_closed_shape_csrf_and_route_only_body_cap(app) -> None:
+    server, review, _campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    headers = {
+        "Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf,
+    }
+    body = "\n" * MAX_SOURCE_BYTES
+    payload = json.dumps({
+        "campaign_id": CAMPAIGN, "person_id": "per_1111111111111111",
+        "source_url": "https://profile.example.test/source", "body": body,
+    }).encode()
+    status, _headers, _body = request(
+        server, "POST", "/api/people/import-source", body=payload, headers=headers,
+    )
+    assert status == 200
+    assert len(payload) > 2 * MAX_SOURCE_BYTES
+    sent = next(value for name, value in review.seen if name == "import_source")
+    assert isinstance(sent, ImportIdentitySourceRequest) and sent.body == body
+    assert request(
+        server, "POST", "/api/people/import-source", body=b"",
+        headers={**headers, "Content-Length": str(MAX_SOURCE_UPLOAD_JSON_BYTES + 1)},
+    )[0] == 413
+
+
 def test_edit_forwards_the_expected_candidate_token(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, csrf, _headers, _body = bootstrap(server)
@@ -281,6 +496,29 @@ def test_prepare_drafts_accepts_only_campaign_and_literal_step_zero(app) -> None
     assert [name for name, _value in review.seen].count("prepare") == 1
 
 
+def test_current_role_source_post_requires_closed_attestation_shape(app) -> None:
+    server, review, _campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    payload = {
+        "request_id": "00000000-0000-4000-8000-000000000011",
+        "campaign_id": CAMPAIGN, "person_id": "per_1111111111111111",
+        "expected_observation_id": "obs_old", "observation_id": "obs_new", "attested": True,
+    }
+    status, _headers, raw = request(
+        server, "POST", "/api/people/verify-source", body=json.dumps(payload).encode(),
+        headers={"Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf},
+    )
+    assert status == 200 and json.loads(raw)["state"] == "source_confirmed"
+    sent = next(value for name, value in review.seen if name == "verify_source")
+    assert sent.attested is True and sent.observation_id == "obs_new"
+    payload["path"] = "forbidden"
+    status, _headers, raw = request(
+        server, "POST", "/api/people/verify-source", body=json.dumps(payload).encode(),
+        headers={"Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf},
+    )
+    assert status == 422 and json.loads(raw) == {"error": "request_schema"}
+
+
 def test_raw_service_failures_are_replaced_by_a_fixed_error(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, _csrf, _headers, _body = bootstrap(server)
@@ -303,6 +541,8 @@ def test_bundled_interface_has_five_views_and_no_external_assets() -> None:
     assert '<select id="conversationAsk"><option value="informational_call">Informational call</option></select>' in html
     assert '<input id="minutes" type="number" min="10" max="20" value="15" required>' in html
     assert "ask_type_unsupported" in html and "ask_minutes_unsupported" in html
+    assert "I confirm this source shows" in html
+    assert "/api/people/verify-source" in html
 
 
 def test_custom_store_context_never_uses_ambient_anchor_directory(

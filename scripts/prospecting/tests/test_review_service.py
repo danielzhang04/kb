@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime, timezone
+from hashlib import sha256
 from pathlib import Path
 import sqlite3
 from types import MappingProxyType
@@ -11,6 +13,7 @@ import uuid
 import pytest
 
 from scripts.prospecting.affinity.templates_v2 import DraftError, DraftSummary, draft_campaign
+from scripts.prospecting.affinity.source_review import import_operator_page, verify_snapshot
 from scripts.prospecting.personalizer.qa import QaPolicy, QaResult, SlotBinding
 from scripts.prospecting.personalizer.revision import RevisionInput, build_revision
 from scripts.prospecting.review_service import (
@@ -18,8 +21,10 @@ from scripts.prospecting.review_service import (
     EditDraftRequest,
     EditorialRequest,
     FeedbackRequest,
+    ImportIdentitySourceRequest,
     ReviewError,
     ReviewService,
+    VerifyIdentitySourceRequest,
 )
 from scripts.prospecting.review_qa import (
     ReviewQaUnavailable,
@@ -36,6 +41,10 @@ REVIEW_FIXTURE = json.loads(
     (Path(__file__).parents[3] / "orgs" / "prospecting" / "fixtures" / "review-synthetic.json")
     .read_text(encoding="utf-8")
 )["review_service"]
+SOURCE_REVIEW = json.loads(
+    (Path(__file__).parents[3] / "orgs" / "prospecting" / "fixtures" / "source-review-synthetic.json")
+    .read_text(encoding="utf-8")
+)
 
 
 def request_id(index: int) -> str:
@@ -202,6 +211,23 @@ def insert_approval(
 
 def test_people_projection_is_campaign_scoped_and_uses_latest_owner_state(database) -> None:
     _path, connection, _ids = database
+    connection.execute("UPDATE contact_point SET state='invalid' WHERE contact_id='contact-a'")
+    connection.execute(
+        """INSERT INTO contact_point(contact_id,person_id,employer_company_id,email,provider,
+               adapter_version,retrieved_at,verified_at,state,confidence,bounce_history)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        ("contact-z-other", "person-a", "cmp_" + "b" * 16, SOURCE_REVIEW["other_contact_email"],
+         "manual", "fixture", "2099-01-01T00:00:00Z", "2099-01-01T00:00:00Z", "valid", 1.0, 0),
+    )
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("source-z-other", "employment", "person-a", "seed", "{}", "fixture", NOW, NOW, 1.0, None),
+    )
+    connection.execute(
+        "INSERT INTO employment VALUES(?,?,?,?,?,?,?,?)",
+        ("emp-z-other", "person-a", "cmp_" + "b" * 16, "Other role", "2099-01-01", None,
+         "source-z-other", 1.0),
+    )
     connection.execute(
         """INSERT INTO contact_point(
                contact_id,person_id,employer_company_id,email,provider,adapter_version,
@@ -212,6 +238,10 @@ def test_people_projection_is_campaign_scoped_and_uses_latest_owner_state(databa
     )
     people = {item.person_id: item for item in ReviewService(connection, now=lambda: NOW).list_people("campaign-a")}
     assert people["person-a"].state == "selected"
+    assert (people["person-a"].company, people["person-a"].contact_id) == (
+        "Example A LLC", "contact-a",
+    )
+    assert people["person-a"].contact_state == "invalid"
     assert people["person-b"].state == "qualified"
     assert people["person-b"].contact_state == "invalid"
     assert people["person-c"].state == "contactable"
@@ -222,6 +252,185 @@ def test_people_projection_is_campaign_scoped_and_uses_latest_owner_state(databa
     assert ReviewService(connection).get_person("campaign-b", "person-a").eligibility_state == "ineligible"
     with pytest.raises(ReviewError, match="person_missing"):
         ReviewService(connection).get_person("campaign-b", "person-c")
+
+
+def insert_legacy_identity_proof(
+    connection: sqlite3.Connection, root: Path, *, include_name: bool = True,
+    expires_at: str = "2099-01-01T00:00:00Z",
+) -> Path:
+    body = SOURCE_REVIEW["service_identity_excerpt"].encode()
+    body_path = root / "legacy-identity.body"
+    root.mkdir(exist_ok=True)
+    body_path.write_bytes(body)
+    connection.execute(
+        "INSERT INTO source_snapshot VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("snapshot-legacy-identity", "person-a", SOURCE_REVIEW["source_url"], "example.test", NOW,
+         "text/html", sha256(body).hexdigest(), "fixture-v1", body_path.name,
+         expires_at, expires_at),
+    )
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("source-legacy-role", "person", "person-a", "current_employer",
+         json.dumps({"excerpt": SOURCE_REVIEW["service_identity_excerpt"]}),
+         "snapshot-legacy-identity", NOW, NOW, 1.0, "snapshot-legacy-identity"),
+    )
+    if include_name:
+        connection.execute(
+            "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+            ("source-legacy-name", "person", "person-a", "name",
+             json.dumps({"excerpt": SOURCE_REVIEW["service_identity_excerpt"]}),
+             "snapshot-legacy-identity", NOW, NOW, 1.0, "snapshot-legacy-identity"),
+        )
+    connection.execute(
+        "UPDATE employment SET source_observation_id='source-legacy-role' WHERE employment_id='emp_a'"
+    )
+    connection.commit()
+    return body_path
+
+
+def test_current_role_source_requires_attestation_and_is_audited_idempotent_cas(database) -> None:
+    _path, connection, _ids = database
+    connection.execute(
+        "INSERT INTO source_snapshot VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("snapshot-review", "person-a", SOURCE_REVIEW["source_url"], "example.test", NOW,
+         "text/html", "d" * 64, "fixture-v1", "snapshot-review.body",
+         "2099-01-01T00:00:00Z", "2099-02-01T00:00:00Z"),
+    )
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("source-review", "person", "person-a", "current_employer",
+         json.dumps({"excerpt": SOURCE_REVIEW["service_identity_excerpt"]}),
+         "snapshot-review", NOW, NOW, 1.0, "snapshot-review"),
+    )
+    proofs = []
+    service = ReviewService(connection, now=lambda: NOW, source_verifier=proofs.append)
+    person = service.get_person("campaign-a", "person-a")
+    assert person.identity_source_state == "confirmation_required"
+    assert person.company == "Example A LLC" and person.title == "Example Lead"
+    assert [item.observation_id for item in person.identity_sources] == ["source-review"]
+    failing = ReviewService(
+        connection, now=lambda: NOW,
+        source_verifier=lambda _proof: (_ for _ in ()).throw(ValueError("synthetic")),
+    )
+    with pytest.raises(ReviewError, match="source_verification_failed"):
+        failing.verify_current_role_source(VerifyIdentitySourceRequest(
+            request_id(699), "campaign-a", "person-a", "source_a", "source-review", True,
+        ))
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT source_observation_id FROM employment WHERE employment_id='emp_a'"
+    ).fetchone()[0] == "source_a"
+    request = VerifyIdentitySourceRequest(
+        request_id(700), "campaign-a", "person-a", "source_a", "source-review", True,
+    )
+    first = service.verify_current_role_source(request)
+    assert first.state == "source_confirmed" and first.replayed is False
+    assert service.verify_current_role_source(request).replayed is True
+    assert len(proofs) == 1
+    saved_role = connection.execute(
+        "SELECT source_observation_id FROM employment WHERE employment_id='emp_a'"
+    ).fetchone()[0]
+    assert saved_role.startswith("identity_role_")
+    assert connection.execute(
+        "SELECT count(*) FROM source_observation WHERE observation_id LIKE 'identity_name_%'"
+    ).fetchone()[0] == 1
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 1
+    with pytest.raises(ReviewError, match="request_conflict"):
+        service.verify_current_role_source(VerifyIdentitySourceRequest(
+            request_id(700), "campaign-a", "person-a", "source_a", "source_a", True,
+        ))
+    with pytest.raises(ReviewError, match="source_conflict"):
+        service.verify_current_role_source(VerifyIdentitySourceRequest(
+            request_id(701), "campaign-a", "person-a", "source_a", "source-review", True,
+        ))
+    with pytest.raises(ReviewError, match="source_attestation_required"):
+        service.verify_current_role_source(VerifyIdentitySourceRequest(
+            request_id(702), "campaign-a", "person-a", "source-review", "source-review", False,
+        ))
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 1
+
+
+def test_local_source_import_is_selected_scoped_retriable_and_never_autoattests(database) -> None:
+    path, connection, _ids = database
+    importer = lambda person_id, company_id, source_url, body: import_operator_page(
+        connection, person_id=person_id, company_id=company_id,
+        source_url=source_url, body=body,
+        now=datetime(2026, 9, 9, 12, tzinfo=timezone.utc),
+    )
+    service = ReviewService(connection, now=lambda: NOW, source_importer=importer)
+    request = ImportIdentitySourceRequest(
+        "campaign-a", "person-a", SOURCE_REVIEW["source_url"],
+        SOURCE_REVIEW["service_identity_excerpt"],
+    )
+    prior = connection.execute(
+        "SELECT source_observation_id FROM employment WHERE employment_id='emp_a'"
+    ).fetchone()[0]
+    first = service.import_current_role_source(request)
+    retry = service.import_current_role_source(request)
+    assert first.snapshot_id == retry.snapshot_id and first.state == "source_available"
+    assert connection.execute(
+        "SELECT count(*) FROM source_snapshot WHERE allowlist_version='operator-local-v1'"
+    ).fetchone()[0] == 1
+    assert connection.execute(
+        "SELECT source_observation_id FROM employment WHERE employment_id='emp_a'"
+    ).fetchone()[0] == prior
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 0
+    person = service.get_person("campaign-a", "person-a")
+    assert person.identity_source_state == "confirmation_required"
+    assert [source.snapshot_id for source in person.identity_sources] == [first.snapshot_id]
+    with pytest.raises(ReviewError, match="^identity_scope_missing$"):
+        service.import_current_role_source(ImportIdentitySourceRequest(
+            "campaign-b", "person-b", SOURCE_REVIEW["source_url"],
+            SOURCE_REVIEW["service_identity_excerpt"],
+        ))
+    with pytest.raises(ReviewError, match="^source_body_too_large$"):
+        service.import_current_role_source(ImportIdentitySourceRequest(
+            "campaign-a", "person-a", SOURCE_REVIEW["source_url"], "x" * (2 * 1024 * 1024 + 1),
+        ))
+    assert len(list((path.parent / "snapshots").glob("*.body"))) == 1
+
+
+def test_legacy_current_role_needs_name_proof_before_it_is_source_ready(database) -> None:
+    path, connection, _ids = database
+    root = path.parent / "snapshots"
+    insert_legacy_identity_proof(connection, root, include_name=False)
+    service = ReviewService(
+        connection, now=lambda: NOW,
+        source_verifier=lambda proof: verify_snapshot(
+            root, proof, now=datetime(2026, 9, 9, 12, tzinfo=timezone.utc),
+        ),
+    )
+    assert service.get_person("campaign-a", "person-a").identity_source_state == "confirmation_required"
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("source-legacy-name", "person", "person-a", "name",
+         json.dumps({"excerpt": SOURCE_REVIEW["service_identity_excerpt"]}),
+         "snapshot-legacy-identity", NOW, NOW, 1.0, "snapshot-legacy-identity"),
+    )
+    connection.commit()
+    assert service.get_person("campaign-a", "person-a").identity_source_state == "source_ready"
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("failure", ["expired", "tampered"])
+def test_unusable_current_identity_snapshot_is_not_source_ready(database, failure: str) -> None:
+    path, connection, _ids = database
+    root = path.parent / "snapshots"
+    body_path = insert_legacy_identity_proof(
+        connection, root,
+        expires_at="2026-09-08T12:00:00Z" if failure == "expired" else "2099-01-01T00:00:00Z",
+    )
+    if failure == "tampered":
+        body_path.write_bytes(body_path.read_bytes() + b" changed")
+    service = ReviewService(
+        connection, now=lambda: NOW,
+        source_verifier=lambda proof: verify_snapshot(
+            root, proof, now=datetime(2026, 9, 9, 12, tzinfo=timezone.utc),
+        ),
+    )
+    person = service.get_person("campaign-a", "person-a")
+    assert person.identity_source_state == "confirmation_required"
+    assert all(not source.is_current for source in person.identity_sources)
 
 
 def test_campaign_and_draft_projections_do_not_mix_campaigns(database) -> None:

@@ -16,7 +16,7 @@ PROFILE_ID = "22222222-2222-4222-8222-222222222222"
 REQUEST_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 
 
-def envelope(stage_id, attempt=1, **counts):
+def envelope(stage_id, attempt=1, execution_key="a" * 64, command_digest="b" * 64, **counts):
     return {
         "stage_id": stage_id,
         "state": "complete",
@@ -25,6 +25,8 @@ def envelope(stage_id, attempt=1, **counts):
         "hashes": ["a" * 64],
         "failure_codes": {},
         "attempt": attempt,
+        "execution_key": execution_key,
+        "command_digest": command_digest,
     }
 
 
@@ -36,10 +38,16 @@ class Bridge:
         self.calls.append((agent, payload, mode))
         if agent == "inspector":
             return BridgeResult(
-                0, "ok", envelope(payload["stage_id"], grade=self.grade)
+                0, "ok", envelope(
+                    payload["stage_id"], payload["attempt"], payload["execution_key"],
+                    payload["command_digest"], grade=self.grade,
+                )
             )
         return BridgeResult(
-            0, "ok", envelope(payload["stage_id"], people=1)
+            0, "ok", envelope(
+                payload["stage_id"], payload["attempt"], payload["execution_key"],
+                payload["command_digest"], people=1,
+            )
         )
 
 
@@ -136,10 +144,57 @@ def test_inspect_stages_use_the_same_adapter(
 
 
 def test_missing_or_low_inspector_grade_parks(tmp_path: Path, capsys) -> None:
-    bridge = Bridge(89)
+    bridge = Bridge(94)
     args = _local_create_args(tmp_path, "list-only")
     assert main(args, **kwargs(tmp_path, bridge)) == 0
     assert json.loads(capsys.readouterr().out)["state"] == "parked"
+
+
+@pytest.mark.parametrize("field", ("execution_key", "command_digest"))
+def test_swapped_desktop_result_binding_parks_before_checkpoint_advance(
+    tmp_path: Path, capsys, field: str
+) -> None:
+    class SwappedBridge(Bridge):
+        def invoke(self, agent, payload, mode, host=None):
+            outcome = super().invoke(agent, payload, mode, host)
+            return BridgeResult(
+                outcome.exit_code, outcome.code,
+                {**outcome.summary, field: "f" * 64},
+            )
+
+    assert main(
+        _local_create_args(tmp_path, "list-only"),
+        **kwargs(tmp_path, SwappedBridge()),
+    ) == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "parked"
+
+
+@pytest.mark.parametrize(
+    "bridge_code",
+    ("timeout", "output_overflow", "failed", "failed_output_redacted"),
+)
+def test_uncertain_bridge_failure_parks_without_replaying_stage(
+    tmp_path: Path, capsys, bridge_code: str
+) -> None:
+    class UncertainBridge(Bridge):
+        def invoke(self, agent, payload, mode, host=None):
+            self.calls.append((agent, payload, mode))
+            return BridgeResult(-1, bridge_code, {})
+
+    bridge = UncertainBridge()
+    args = _local_create_args(tmp_path, "list-only")
+
+    assert main(args, **kwargs(tmp_path, bridge)) == 0
+
+    result = json.loads(capsys.readouterr().out)
+    checkpoint = json.loads(
+        next((tmp_path / "outbox").glob("*-checkpoint.json")).read_text()
+    )
+    assert result["state"] == "parked"
+    assert result["cards"] == 1
+    assert result["retries"] == 0
+    assert len(bridge.calls) == 1
+    assert checkpoint["reason"] == "desktop_recovery_required"
 
 
 def test_injected_dry_run_keeps_plan_behavior_without_creating_a_store(

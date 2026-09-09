@@ -17,7 +17,15 @@ import sqlite3
 import uuid
 
 from scripts.prospecting.personalizer.qa import QaResult
+from scripts.prospecting.affinity.evidence_bridge import resolve_slot_facts
+from scripts.prospecting.affinity.score import Affinity
 from scripts.prospecting.affinity.templates_v2 import DraftError, DraftSummary
+from scripts.prospecting.affinity.source_review import (
+    MAX_SOURCE_BYTES,
+    SnapshotProof,
+    contains_identity,
+    identity_excerpt,
+)
 from scripts.prospecting.personalizer.revision import (
     RevisionInput,
     build_revision,
@@ -42,7 +50,7 @@ _PREPARE_BLOCKERS = frozenset({
     "sender_anchors_missing", "sender_profile_invalid", "approved_fit_spec_missing",
     "approved_fit_spec_invalid", "campaign_not_draft", "copy_profile_missing",
     "copy_profile_invalid", "intent_unsupported", "ask_type_unsupported",
-    "ask_minutes_unsupported",
+    "ask_minutes_unsupported", "evidence_identity_source_mismatch",
 })
 
 
@@ -88,6 +96,20 @@ class PersonView:
     contact_state: str | None
     selected: bool
     state: str
+    identity_source_state: str = "not_selected"
+    identity_sources: tuple["IdentitySourceView", ...] = ()
+    current_observation_id: str | None = None
+
+
+@dataclass(frozen=True)
+class IdentitySourceView:
+    observation_id: str
+    snapshot_id: str
+    source_url: str
+    excerpt: str
+    retrieved_at: str
+    expires_at: str
+    is_current: bool
 
 
 @dataclass(frozen=True)
@@ -254,6 +276,41 @@ class PrepareDraftsResult:
     failure_codes: tuple[tuple[str, int], ...]
 
 
+@dataclass(frozen=True)
+class VerifyIdentitySourceRequest:
+    request_id: str
+    campaign_id: str
+    person_id: str
+    expected_observation_id: str
+    observation_id: str
+    attested: bool
+
+
+@dataclass(frozen=True)
+class VerifyIdentitySourceResult:
+    request_id: str
+    person_id: str
+    observation_id: str
+    state: str
+    replayed: bool
+
+
+@dataclass(frozen=True)
+class ImportIdentitySourceRequest:
+    campaign_id: str
+    person_id: str
+    source_url: str
+    body: str
+
+
+@dataclass(frozen=True)
+class ImportIdentitySourceResult:
+    campaign_id: str
+    person_id: str
+    snapshot_id: str
+    state: str
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -383,6 +440,8 @@ class ReviewService:
         now: Callable[[], str] = utc_now,
         qa_adapter: Callable[[CandidateRevision], ReviewQaDecision] | None = None,
         prepare_adapter: Callable[[str, int], DraftSummary] | None = None,
+        source_verifier: Callable[[SnapshotProof], None] | None = None,
+        source_importer: Callable[[str, str, str, bytes], str] | None = None,
     ) -> None:
         self.connection = connection
         self.connection.row_factory = sqlite3.Row
@@ -391,6 +450,241 @@ class ReviewService:
             connection, now=lambda: _utc_time(self.now())
         )
         self.prepare_adapter = prepare_adapter
+        self.source_verifier = source_verifier
+        self.source_importer = source_importer
+
+    def _identity_scope(self, campaign_id: str, person_id: str) -> sqlite3.Row:
+        row = self.connection.execute(
+            """SELECT fp.campaign_id,fp.person_id,fp.company_id,e.employment_id,e.title,e.source_observation_id,
+                      p.first_name,p.full_name,c.name AS company_name
+                 FROM fill_person AS fp
+                 JOIN person AS p ON p.person_id=fp.person_id
+                 JOIN company AS c ON c.company_id=fp.company_id
+                 JOIN employment AS e ON e.person_id=fp.person_id
+                    AND e.company_id=fp.company_id AND e.valid_to IS NULL
+                WHERE fp.campaign_id=? AND fp.person_id=? AND fp.substituted=0
+                ORDER BY e.employment_id""", (campaign_id, person_id),
+        ).fetchall()
+        if len(row) != 1:
+            raise ReviewError("identity_scope_missing")
+        return row[0]
+
+    @staticmethod
+    def _source_excerpt(value: object) -> str:
+        try:
+            parsed = json.loads(str(value))
+        except (TypeError, json.JSONDecodeError):
+            return ""
+        if isinstance(parsed, Mapping) and type(parsed.get("excerpt")) is str:
+            return " ".join(parsed["excerpt"].split())[:240]
+        return " ".join(parsed.split())[:240] if type(parsed) is str else ""
+
+    def _identity_sources(self, campaign_id: str, person_id: str) -> tuple[IdentitySourceView, ...]:
+        scope = self._identity_scope(campaign_id, person_id)
+        ready = self._identity_source_ready(scope)
+        rows = self.connection.execute(
+            """SELECT o.observation_id,o.value,o.entity_type,o.entity_id,o.field,o.snapshot_id,
+                      s.entity_id AS snapshot_entity_id,s.source_url,s.retrieved_at,s.expires_at
+                 FROM source_observation AS o JOIN source_snapshot AS s ON s.snapshot_id=o.snapshot_id
+                WHERE o.field IN ('employment','employer','current_employer','source_review_candidate')
+                  AND o.entity_type='person' AND o.entity_id=? AND s.entity_id=?
+                ORDER BY s.retrieved_at DESC,o.observation_id""",
+            (person_id, person_id),
+        ).fetchall()
+        result = []
+        for row in rows:
+            excerpt = self._source_excerpt(row["value"])
+            if not contains_identity(
+                excerpt, str(scope["full_name"]), str(scope["company_name"]), str(scope["title"]),
+            ):
+                continue
+            result.append(IdentitySourceView(
+                str(row["observation_id"]), str(row["snapshot_id"]), str(row["source_url"]),
+                excerpt, str(row["retrieved_at"]), str(row["expires_at"]),
+                ready and str(row["observation_id"]) == str(scope["source_observation_id"]),
+            ))
+        return tuple(result)
+
+    def _usable_projection_source(self, source: object) -> bool:
+        if self.source_verifier is None:
+            return False
+        snapshot = self.connection.execute(
+            "SELECT * FROM source_snapshot WHERE snapshot_id=?", (source.snapshot_id,),
+        ).fetchone()
+        if snapshot is None:
+            return False
+        try:
+            self.source_verifier(SnapshotProof(
+                str(snapshot["snapshot_id"]), str(snapshot["body_ref"]),
+                str(snapshot["content_sha256"]), str(snapshot["expires_at"]), source.excerpt,
+            ))
+        except Exception:
+            return False
+        return bool(source.excerpt)
+
+    def _identity_source_ready(self, scope: sqlite3.Row) -> bool:
+        try:
+            facts = resolve_slot_facts(
+                self.connection, str(scope["person_id"]),
+                Affinity(str(scope["person_id"]), str(scope["campaign_id"]), 0, (), "projection"),
+                str(scope["company_id"]), required_slots=("first_name", "company", "role"),
+            )
+            role = facts.sources["role"]
+            name = facts.sources["first_name"]
+        except (KeyError, ValueError):
+            return False
+        if role.observation_id != str(scope["source_observation_id"]):
+            return False
+        role_snapshot = self.connection.execute(
+            "SELECT allowlist_version FROM source_snapshot WHERE snapshot_id=?", (role.snapshot_id,),
+        ).fetchone()
+        if role_snapshot is None:
+            return False
+        if role_snapshot["allowlist_version"] == "operator-local-v1":
+            review = self.connection.execute(
+                """SELECT name_observation_id FROM identity_source_review
+                     WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
+                       AND observation_id=? AND snapshot_id=?
+                     ORDER BY created_at DESC,request_id DESC LIMIT 1""",
+                (scope["campaign_id"], scope["person_id"], scope["company_id"],
+                 scope["employment_id"], scope["source_observation_id"],
+                 role.snapshot_id),
+            ).fetchone()
+            if (
+                review is None or str(review["name_observation_id"]) != name.observation_id
+                or name.snapshot_id != role.snapshot_id
+            ):
+                return False
+        return self._usable_projection_source(role) and self._usable_projection_source(name)
+
+    def verify_current_role_source(self, request: VerifyIdentitySourceRequest) -> VerifyIdentitySourceResult:
+        request_id = _request_id(request.request_id)
+        campaign_id = _safe_id(request.campaign_id, "invalid_campaign_id")
+        person_id = _safe_id(request.person_id, "invalid_person_id")
+        expected = _safe_id(request.expected_observation_id, "invalid_observation_id")
+        observation_id = _safe_id(request.observation_id, "invalid_observation_id")
+        if request.attested is not True:
+            raise ReviewError("source_attestation_required")
+        payload = {"campaign_id": campaign_id, "person_id": person_id,
+                   "expected_observation_id": expected, "observation_id": observation_id,
+                   "attested": True}
+        digest = _digest("identity_source", payload)
+        replay = self.connection.execute(
+            "SELECT request_hash,person_id,observation_id FROM identity_source_review WHERE request_id=?",
+            (request_id,),
+        ).fetchone()
+        if replay is not None:
+            if replay["request_hash"] != digest:
+                raise ReviewError("request_conflict")
+            return VerifyIdentitySourceResult(request_id, str(replay["person_id"]),
+                                              str(replay["observation_id"]), "source_confirmed", True)
+        if self.source_verifier is None:
+            raise ReviewError("source_verification_unavailable")
+        if self.connection.in_transaction:
+            raise ReviewError("transaction_active")
+        self.connection.execute("BEGIN IMMEDIATE")
+        try:
+            scope = self._identity_scope(campaign_id, person_id)
+            if str(scope["source_observation_id"]) != expected:
+                raise ReviewError("source_conflict")
+            sources = {item.observation_id: item for item in self._identity_sources(campaign_id, person_id)}
+            source = sources.get(observation_id)
+            if source is None:
+                raise ReviewError("source_candidate_missing")
+            snapshot = self.connection.execute(
+                "SELECT body_ref,content_sha256 FROM source_snapshot WHERE snapshot_id=?",
+                (source.snapshot_id,),
+            ).fetchone()
+            if snapshot is None:
+                raise ReviewError("source_candidate_missing")
+            try:
+                self.source_verifier(SnapshotProof(
+                    source.snapshot_id, str(snapshot["body_ref"]), str(snapshot["content_sha256"]),
+                    source.expires_at, source.excerpt,
+                ))
+            except Exception:
+                raise ReviewError("source_verification_failed") from None
+            role_observation_id = _derived_id("identity_role", request_id)
+            name_observation_id = _derived_id("identity_name", request_id)
+            observation_value = json.dumps(
+                {"excerpt": source.excerpt}, sort_keys=True, separators=(",", ":"),
+            )
+            for new_id, field in (
+                (role_observation_id, "current_employer"), (name_observation_id, "name"),
+            ):
+                self.connection.execute(
+                    """INSERT INTO source_observation(observation_id,entity_type,entity_id,field,value,
+                           source,seen_at,retrieved_at,confidence,snapshot_id)
+                       VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                    (new_id, "person", person_id, field, observation_value, source.snapshot_id,
+                     source.retrieved_at, self.now(), 1.0, source.snapshot_id),
+                )
+            changed = self.connection.execute(
+                "UPDATE employment SET source_observation_id=? WHERE employment_id=? AND source_observation_id=?",
+                (role_observation_id, scope["employment_id"], expected),
+            ).rowcount
+            if changed != 1:
+                raise ReviewError("source_conflict")
+            self.connection.execute(
+                """INSERT INTO identity_source_review(request_id,request_hash,campaign_id,person_id,
+                       company_id,employment_id,prior_observation_id,candidate_observation_id,
+                       observation_id,name_observation_id,snapshot_id,attested,created_at)
+                   VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (request_id, digest, campaign_id, person_id, scope["company_id"], scope["employment_id"],
+                 expected, observation_id, role_observation_id, name_observation_id,
+                 source.snapshot_id, 1, self.now()),
+            )
+            self.connection.commit()
+        except BaseException:
+            self.connection.rollback()
+            raise
+        return VerifyIdentitySourceResult(request_id, person_id, role_observation_id, "source_confirmed", False)
+
+    def import_current_role_source(
+        self, request: ImportIdentitySourceRequest,
+    ) -> ImportIdentitySourceResult:
+        if not isinstance(request, ImportIdentitySourceRequest):
+            raise ReviewError("invalid_source_import_request")
+        campaign_id = _safe_id(request.campaign_id, "invalid_campaign_id")
+        person_id = _safe_id(request.person_id, "invalid_person_id")
+        if type(request.source_url) is not str:
+            raise ReviewError("invalid_source_url")
+        try:
+            request.source_url.encode("utf-8")
+        except UnicodeError:
+            raise ReviewError("invalid_source_url") from None
+        if type(request.body) is not str or not request.body:
+            raise ReviewError("invalid_source_body")
+        try:
+            body = request.body.encode("utf-8")
+        except UnicodeError:
+            raise ReviewError("invalid_source_body") from None
+        if len(body) > MAX_SOURCE_BYTES:
+            raise ReviewError("source_body_too_large")
+        scope = self._identity_scope(campaign_id, person_id)
+        if identity_excerpt(
+            request.body, str(scope["full_name"]), str(scope["company_name"]), str(scope["title"]),
+        ) is None:
+            raise ReviewError("source_identity_not_found")
+        if self.source_importer is None:
+            raise ReviewError("source_import_unavailable")
+        try:
+            snapshot_id = self.source_importer(
+                person_id, str(scope["company_id"]), request.source_url, body,
+            )
+        except ValueError as error:
+            code = error.args[0] if len(error.args) == 1 else None
+            allowed = {
+                "operator_source_invalid", "operator_source_transaction_active",
+                "operator_source_busy", "operator_source_store_invalid",
+                "operator_source_store_cap",
+            }
+            raise ReviewError(code if type(code) is str and code in allowed else "source_import_failed") from None
+        except Exception:
+            raise ReviewError("source_import_failed") from None
+        if type(snapshot_id) is not str or _SAFE_ID.fullmatch(snapshot_id) is None:
+            raise ReviewError("source_import_failed")
+        return ImportIdentitySourceResult(campaign_id, person_id, snapshot_id, "source_available")
 
     def prepare_drafts(self, campaign_id: str, step: int = 0) -> PrepareDraftsResult:
         campaign_id = _safe_id(campaign_id, "invalid_campaign_id")
@@ -481,11 +775,15 @@ class ReviewService:
             item.candidate_state in {"pending_qa", "qa_failed"}
             or item.approval_state != "approved"
             for item in drafts
-        ) + sum(item.approval_state != "approved" for item in schedule)
+        ) + sum(item.approval_state != "approved" for item in schedule) + sum(
+            item.selected and item.identity_source_state != "source_ready" for item in people
+        )
         if row["status"] == "paused":
             next_action = "resume_campaign"
         elif not people:
             next_action = "discover_people"
+        elif any(item.selected and item.identity_source_state != "source_ready" for item in people):
+            next_action = "review_sources"
         elif not drafts:
             next_action = "prepare_drafts"
         elif any(item.candidate_state in {"pending_qa", "qa_failed"} for item in drafts):
@@ -539,9 +837,38 @@ class ReviewService:
         result = []
         for row in rows:
             selected = bool(row["selected"])
+            title = None if row["title"] is None else str(row["title"])
+            company = None if row["company"] is None else str(row["company"])
+            sources: tuple[IdentitySourceView, ...] = ()
+            current_observation_id = None
+            identity_source_state = "not_selected"
+            contact_id = None if row["contact_id"] is None else str(row["contact_id"])
+            email = None if row["email"] is None else str(row["email"])
+            contact_state = None if row["contact_state"] is None else str(row["contact_state"])
+            if selected:
+                try:
+                    scope = self._identity_scope(campaign_id, str(row["person_id"]))
+                    title, company = str(scope["title"]), str(scope["company_name"])
+                    current_observation_id = str(scope["source_observation_id"])
+                    contact = self.connection.execute(
+                        """SELECT contact_id,email,state FROM contact_point
+                            WHERE person_id=? AND employer_company_id=?
+                            ORDER BY COALESCE(verified_at,retrieved_at,'') DESC,contact_id DESC LIMIT 1""",
+                        (row["person_id"], scope["company_id"]),
+                    ).fetchone()
+                    contact_id = None if contact is None else str(contact["contact_id"])
+                    email = None if contact is None else str(contact["email"])
+                    contact_state = None if contact is None else str(contact["state"])
+                    sources = self._identity_sources(campaign_id, str(row["person_id"]))
+                    identity_source_state = (
+                        "source_ready" if any(item.is_current for item in sources)
+                        else "confirmation_required" if sources else "source_missing"
+                    )
+                except ReviewError:
+                    identity_source_state = "source_missing"
             if selected:
                 state = "selected"
-            elif row["contact_state"] == "valid" and row["eligibility_state"] != "ineligible":
+            elif contact_state == "valid" and row["eligibility_state"] != "ineligible":
                 state = "contactable"
             elif row["eligibility_state"] == "eligible":
                 state = "qualified"
@@ -549,15 +876,13 @@ class ReviewService:
                 state = "discovered"
             result.append(PersonView(
                 person_id=str(row["person_id"]), full_name=str(row["full_name"]),
-                title=None if row["title"] is None else str(row["title"]),
-                company=None if row["company"] is None else str(row["company"]),
+                title=title, company=company,
                 linkedin_url=None if row["linkedin_url"] is None else str(row["linkedin_url"]),
                 fit_score=None if row["fit_score"] is None else int(row["fit_score"]),
                 eligibility_state=None if row["eligibility_state"] is None else str(row["eligibility_state"]),
-                contact_id=None if row["contact_id"] is None else str(row["contact_id"]),
-                email=None if row["email"] is None else str(row["email"]),
-                contact_state=None if row["contact_state"] is None else str(row["contact_state"]),
-                selected=selected, state=state,
+                contact_id=contact_id, email=email, contact_state=contact_state,
+                selected=selected, state=state, identity_source_state=identity_source_state,
+                identity_sources=sources, current_observation_id=current_observation_id,
             ))
         return tuple(result)
 

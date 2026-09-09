@@ -250,8 +250,9 @@ class LocalCampaignerTransport:
         ]
         self.calls.append(argv)
 
-        def run_campaigner(child_argv, **child_kwargs):
+        def launch_campaigner(child_argv, **child_kwargs):
             assert child_kwargs["env"]["KB_PROSPECTING_NO_NETWORK"] == "1"
+            assert child_kwargs["shell"] is False
             assert child_argv[:3] == [
                 sys.executable, "-m", "scripts.prospecting.campaigner.cli",
             ]
@@ -259,18 +260,18 @@ class LocalCampaignerTransport:
             exit_code = campaigner_cli.main(
                 child_argv[3:], service=self.service, emit=output.append,
             )
-            return SimpleNamespace(
-                returncode=exit_code, stdout="".join(output), stderr="",
+            return LocalDesktopProcess(
+                child_argv, "".join(output), exit_code,
             )
 
-        original_run = desktop_stage.subprocess.run
-        desktop_stage.subprocess.run = run_campaigner
+        original_popen = desktop_stage.subprocess.Popen
+        desktop_stage.subprocess.Popen = launch_campaigner
         output = StringIO()
         try:
             with redirect_stdout(output):
                 exit_code = desktop_stage.main(argv[4:])
         finally:
-            desktop_stage.subprocess.run = original_run
+            desktop_stage.subprocess.Popen = original_popen
         return LocalDesktopProcess(argv, output.getvalue(), exit_code)
 
 

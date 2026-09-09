@@ -1,0 +1,14 @@
+{
+  "operator_profile_url": "https://profile.example.test/operator",
+  "identity_excerpt": "Morgan Example is an Investor at Alpha Ventures.",
+  "service_identity_excerpt": "Synthetic Person A is an Example Lead at Example A LLC.",
+  "source_url": "https://source.example.test/current-role",
+  "first_name": "Morgan",
+  "full_name": "Morgan Example",
+  "company": "Alpha Ventures",
+  "title": "Investor",
+  "second_company": "Beta Labs",
+  "second_title": "Operating Partner",
+  "second_identity_excerpt": "Morgan Example is an Operating Partner at Beta Labs.",
+  "other_contact_email": "other@source-review.test"
+}

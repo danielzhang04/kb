@@ -19,6 +19,22 @@ from urllib.parse import parse_qs, urlsplit
 
 from scripts.prospecting.affinity.anchors import load_anchors
 from scripts.prospecting.affinity.templates_v2 import DraftError, draft_campaign
+from scripts.prospecting.affinity.source_review import (
+    MAX_SOURCE_BYTES,
+    import_operator_page,
+    verify_snapshot,
+)
+from scripts.prospecting.control_desktop import ControlError
+from scripts.prospecting.control_review import (
+    ControlReviewAdapter,
+    ControlReviewError,
+    ControlReviewStatus,
+)
+from scripts.prospecting.feedback_service import (
+    FeedbackError,
+    FeedbackService,
+    FulfillFeedbackRequest,
+)
 from scripts.prospecting.manager.campaigns import (
     CampaignError,
     CampaignService,
@@ -28,14 +44,17 @@ from scripts.prospecting.review_service import (
     EditDraftRequest,
     EditorialRequest,
     FeedbackRequest,
+    ImportIdentitySourceRequest,
     ReviewError,
     ReviewService,
+    VerifyIdentitySourceRequest,
 )
 from scripts.prospecting.store import open_store, resolve_store_path
 
 
 HOST = "127.0.0.1"
 MAX_JSON_BYTES = 72 * 1024
+MAX_SOURCE_UPLOAD_JSON_BYTES = 6 * MAX_SOURCE_BYTES + 64 * 1024
 SESSION_SECONDS = 8 * 60 * 60
 BOOTSTRAP_SECONDS = 60
 REQUEST_SECONDS = 5
@@ -80,6 +99,16 @@ def _draft_preparer(connection: object, anchors_file: Path) -> Callable[[str, in
     return prepare
 
 
+def _source_importer(connection: object) -> Callable[[str, str, str, bytes], str]:
+    def import_source(person_id: str, company_id: str, source_url: str, body: bytes) -> str:
+        return import_operator_page(
+            connection, person_id=person_id, company_id=company_id,
+            source_url=source_url, body=body, now=datetime.now(timezone.utc),
+        )
+
+    return import_source
+
+
 def _jsonable(value: object) -> object:
     if is_dataclass(value) and not isinstance(value, type):
         return {key: _jsonable(item) for key, item in asdict(value).items()}
@@ -117,6 +146,17 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
     return {"title": "Inspect the sending plan", "detail": "Schedule and approval state remain read-only here.", "label": "Review plan"}
 
 
+class _DisabledControl:
+    def status(self, campaign_id: str) -> ControlReviewStatus:
+        return ControlReviewStatus(
+            False, campaign_id, None, None, None, None, None,
+            "not_applicable", "disabled", {},
+        )
+
+    def process(self, _campaign_id: str, _request_id: str) -> ControlReviewStatus:
+        raise ControlReviewError("control_unavailable")
+
+
 class ReviewHTTPServer(HTTPServer):
     """One-process server with a one-use bootstrap and one expiring session."""
 
@@ -127,11 +167,15 @@ class ReviewHTTPServer(HTTPServer):
         campaigns: CampaignService,
         html: str,
         *,
+        feedback: object | None = None,
+        control: object | None = None,
         monotonic: Callable[[], float] = time.monotonic,
     ) -> None:
         if address[0] != HOST:
             raise ValueError("loopback_required")
         self.review = review
+        self.feedback = review if feedback is None else feedback
+        self.control = _DisabledControl() if control is None else control
         self.campaigns = campaigns
         self.html_template = html
         self.monotonic = monotonic
@@ -302,7 +346,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "campaigns": campaigns,
             "sender_profiles": [_jsonable(item) for item in self.server.review.list_sender_profiles()],
             "mailboxes": list(self.server.review.list_mailboxes()),
-            "people": [], "drafts": [], "schedule": [], "activity": [],
+            "people": [], "drafts": [], "feedback": [], "schedule": [], "activity": [],
+            "control": None,
         }
         campaign_id = query.get("campaign_id", [""])[0]
         if campaign_id:
@@ -313,13 +358,26 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 campaign=_jsonable(self.server.review.get_campaign(campaign_id)),
                 people=[_jsonable(item) for item in self.server.review.list_people(campaign_id)],
                 drafts=[_jsonable(item) for item in self.server.review.list_drafts(campaign_id)],
+                feedback=[_jsonable(item) for item in self.server.feedback.list_feedback(campaign_id)],
                 schedule=[_jsonable(item) for item in self.server.review.list_schedule(campaign_id)],
                 activity=[_jsonable(item) for item in self.server.review.list_activity(campaign_id)],
             )
+            try:
+                snapshot["control"] = _jsonable(self.server.control.status(campaign_id))
+            except (ControlReviewError, ControlError) as error:
+                snapshot["control"] = {
+                    "enabled": False, "campaign_id": campaign_id,
+                    "code": str(error) or "control_status_unavailable",
+                }
+            except Exception:
+                snapshot["control"] = {
+                    "enabled": False, "campaign_id": campaign_id,
+                    "code": "control_status_unavailable",
+                }
         snapshot["next_action"] = _next_action(snapshot)
         self._json(HTTPStatus.OK, snapshot)
 
-    def _read_json(self) -> object:
+    def _read_json(self, *, max_bytes: int = MAX_JSON_BYTES) -> object:
         lengths = self.headers.get_all("Content-Length", failobj=[])
         transfers = self.headers.get_all("Transfer-Encoding", failobj=[])
         expects = self.headers.get_all("Expect", failobj=[])
@@ -331,7 +389,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
         length = int(lengths[0])
         if length <= 0:
             raise ValueError("request_framing")
-        if length > MAX_JSON_BYTES:
+        if length > max_bytes:
             raise OverflowError("request_too_large")
         raw = self.rfile.read(length)
         if len(raw) != length:
@@ -366,7 +424,12 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
                 return
             try:
-                payload = self._read_json()
+                payload = self._read_json(
+                    max_bytes=(
+                        MAX_SOURCE_UPLOAD_JSON_BYTES
+                        if target[0] == "/api/people/import-source" else MAX_JSON_BYTES
+                    )
+                )
             except OverflowError:
                 self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large")
                 return
@@ -400,6 +463,25 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self.server.review.prepare_drafts(value["campaign_id"], value["step"]),
                 )
                 return
+            if path == "/api/people/verify-source":
+                value = _require_object(payload, {
+                    "request_id", "campaign_id", "person_id", "expected_observation_id",
+                    "observation_id", "attested",
+                })
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.review.verify_current_role_source(VerifyIdentitySourceRequest(**value)),
+                )
+                return
+            if path == "/api/people/import-source":
+                value = _require_object(
+                    payload, {"campaign_id", "person_id", "source_url", "body"},
+                )
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.review.import_current_role_source(ImportIdentitySourceRequest(**value)),
+                )
+                return
             if path == "/api/drafts/edit":
                 value = _require_object(
                     payload,
@@ -420,14 +502,35 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 )
                 self._json(HTTPStatus.ACCEPTED, self.server.review.request_feedback(request))
                 return
+            if path == "/api/feedback/fulfill":
+                value = _require_object(
+                    payload,
+                    {"request_id", "campaign_id", "feedback_id", "expected_child_revision_id"},
+                )
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.feedback.fulfill(FulfillFeedbackRequest(**value)),
+                )
+                return
+            if path == "/api/control/process":
+                value = _require_object(
+                    payload, {"campaign_id", "configured_request_id"},
+                )
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.control.process(
+                        value["campaign_id"], value["configured_request_id"],
+                    ),
+                )
+                return
             if path == "/api/drafts/ready":
                 value = _require_object(payload, {"request_id", "campaign_id", "expected_revision_id", "ready"})
                 self._json(HTTPStatus.OK, self.server.review.set_editorial_ready(EditorialRequest(**value)))
                 return
             self._error(HTTPStatus.NOT_FOUND, "route_missing")
-        except (CampaignError, ReviewError) as error:
+        except (CampaignError, ControlError, ControlReviewError, FeedbackError, ReviewError) as error:
             code = str(error) if str(error) else "request_invalid"
-            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "feedback_already_requested", "transaction_active"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
             self._error(status, code)
         except (ValueError, TypeError):
             self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "request_schema")
@@ -441,12 +544,28 @@ def create_server(
     *,
     port: int = 0,
     html_path: Path = HTML_PATH,
+    feedback: object | None = None,
+    control: object | None = None,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> ReviewHTTPServer:
     html = html_path.read_text(encoding="utf-8")
     if "{{CSRF_TOKEN}}" not in html:
         raise ValueError("html_csrf_marker_missing")
-    return ReviewHTTPServer((HOST, port), review, campaigns, html, monotonic=monotonic)
+    if isinstance(review, ReviewService):
+        if isinstance(feedback, FeedbackService) and feedback.connection is not review.connection:
+            raise ValueError("feedback_store_mismatch")
+        if isinstance(control, ControlReviewAdapter) and control.connection is not review.connection:
+            raise ValueError("control_store_mismatch")
+    feedback_owner = FeedbackService(review.connection) if feedback is None and isinstance(
+        review, ReviewService
+    ) else review if feedback is None else feedback
+    control_owner = ControlReviewAdapter(review.connection) if control is None and isinstance(
+        review, ReviewService
+    ) else control
+    return ReviewHTTPServer(
+        (HOST, port), review, campaigns, html, feedback=feedback_owner,
+        control=control_owner, monotonic=monotonic,
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -463,9 +582,14 @@ def main(argv: list[str] | None = None) -> int:
             ReviewService(
                 connection,
                 prepare_adapter=_draft_preparer(connection, anchors_file),
+                source_verifier=lambda proof: verify_snapshot(
+                    database.parent / "snapshots", proof, now=datetime.now(timezone.utc),
+                ),
+                source_importer=_source_importer(connection),
             ),
             CampaignService(connection),
             port=args.port,
+            feedback=FeedbackService(connection),
         )
     except OSError:
         connection.close()

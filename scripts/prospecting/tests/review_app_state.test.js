@@ -79,7 +79,7 @@ function snapshot(campaign, subject = "Server subject", body = "Server body") {
   const campaigns = ["A", "B"].map(id => ({campaign_id: id, intent: `campaign_${id}`, status: "draft", next_action: "review_drafts"}));
   return {
     campaigns, sender_profiles: [], mailboxes: [], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
-    people: [], schedule: [], activity: [], next_action: {},
+    people: [], schedule: [], activity: [], control: null, next_action: {},
     drafts: campaign ? [{campaign_id: campaign, person_id: `person-${campaign}`, full_name: `Person ${campaign}`, revision_id: `rev-${campaign}`,
       step: 0, subject, body, evidence: [], candidate_id: null, candidate_subject: null, candidate_body: null,
       candidate_state: null, qa_failure_codes: [], candidate_history: [], editorial_state: "review_required",
@@ -291,4 +291,117 @@ test("New campaign and a blank picker synchronously clear campaign projections",
   assert.match(afterBlank.document.getElementById("draftList").innerHTML, /No drafts yet/);
   afterBlank.reply(pending, snapshot(null));
   await tick(); await tick();
+});
+
+test("feedback remains visible on its child and fulfillment uses the projected revision", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.feedback = [{
+    feedback_id: "feedback-A", campaign_id: "A", person_id: "person-A",
+    original_revision_id: "rev-original-A", original_subject: "Original <subject>",
+    original_body: "Original body", disposition: "tone", tags: ["warmer"],
+    feedback_text: "Use a warmer opening.", requested_at: "2026-09-09T04:00:00Z",
+    state: "ready_to_record", automated_rewrite_state: "unavailable",
+    eligible_revision_id: "rev-A", eligible_subject: "Server subject",
+    eligible_body: "Server body", fulfilled_at: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.feedbackLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.feedbackLoad;
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /No automated rewrite is running/);
+  assert.match(detail, /Use a warmer opening/);
+  assert.match(detail, /Original &lt;subject&gt;/);
+  assert.match(detail, /Record correction fulfilled/);
+
+  app.document.emit("click", {closest: () => ({dataset: {
+    fulfillFeedback: "feedback-A", feedbackChild: "rev-A",
+  }})});
+  const fulfill = app.requests.shift();
+  assert.equal(fulfill.url, "/api/feedback/fulfill");
+  const payload = JSON.parse(fulfill.init.body);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.feedback_id, "feedback-A");
+  assert.equal(payload.expected_child_revision_id, "rev-A");
+  assert.match(payload.request_id, /^[0-9a-f-]{36}$/);
+  app.reply(fulfill, {state: "fulfilled", child_revision_id: "rev-A"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  value.feedback[0].state = "fulfilled";
+  value.feedback[0].fulfilled_at = "2026-09-09T05:00:00Z";
+  app.reply(reload, value);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("draftDetail").innerHTML, /Correction recorded/);
+});
+
+test("saved source upload sends only the selected URL and local bytes before confirmation", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.people = [{
+    person_id: "person-A", full_name: "Person A", title: "Principal", company: "Example A",
+    linkedin_url: "https://profile.example.test/a", selected: true, state: "selected",
+    identity_source_state: "source_missing", identity_sources: [], current_observation_id: "obs-prior",
+  }];
+  app.evaluate('state.campaign="A"; globalThis.sourceLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.sourceLoad;
+  const sourceUrl = app.document.getElementById("sourceUrl");
+  const sourceFile = app.document.getElementById("sourceFile");
+  sourceUrl.value = "https://profile.example.test/saved";
+  sourceFile.files = [{size: 37, name: "private-local-file.html", async text() {
+    return "Person A is Principal at Example A";
+  }}];
+  app.document.emit("click", {closest: () => ({dataset: {importSource: "person-A"}})});
+  await tick(); await tick();
+  const upload = app.requests.shift();
+  assert.equal(upload.url, "/api/people/import-source");
+  const payload = JSON.parse(upload.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), ["body", "campaign_id", "person_id", "source_url"]);
+  assert.equal(payload.body, "Person A is Principal at Example A");
+  assert.equal(JSON.stringify(payload).includes("private-local-file.html"), false);
+  app.reply(upload, {campaign_id: "A", person_id: "person-A", snapshot_id: "snapshot-A", state: "source_available"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  value.people[0].identity_source_state = "confirmation_required";
+  value.people[0].identity_sources = [{observation_id: "source-A", excerpt: payload.body,
+    source_url: payload.source_url, retrieved_at: "2026-09-09T04:00:00Z"}];
+  app.reply(reload, value);
+  await tick(); await tick();
+  const detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(detail, /Confirm current role source/);
+  assert.match(detail, /I confirm this source shows Person A/);
+});
+
+test("control action sends only the selected opaque request and reports acknowledgement", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.control = {
+    enabled: true, campaign_id: "A", configured_request_id: "ctlreq_fixture",
+    control_ref: "ctl_fixture", operation: "status", grant_state: "active",
+    receipt_state: null, remote_acknowledgement: "not_applicable", code: "ready", counts: {},
+  };
+  app.evaluate('state.campaign="A"; globalThis.controlLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.controlLoad;
+  assert.match(app.document.getElementById("controlPanel").innerHTML, /Check campaign status/);
+
+  app.evaluate('globalThis.controlRun=processControl("ctlreq_fixture")');
+  const process = app.requests.shift();
+  assert.equal(process.url, "/api/control/process");
+  assert.deepEqual(JSON.parse(process.init.body), {
+    campaign_id: "A", configured_request_id: "ctlreq_fixture",
+  });
+  app.reply(process, {...value.control, receipt_state: "succeeded",
+    remote_acknowledgement: "confirmed", code: "status", counts: {due: 2}});
+  await app.context.controlRun;
+  const panel = app.document.getElementById("controlPanel").innerHTML;
+  assert.match(panel, /succeeded/);
+  assert.match(panel, /due/);
+  assert.doesNotMatch(panel, /Confirm result receipt/);
 });

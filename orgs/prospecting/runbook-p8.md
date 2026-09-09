@@ -12,6 +12,37 @@ required output paths. There is no literal raw `--ask` process argument. SSH is 
 `ssh_saved_request_resolver_unavailable` before side effects; no SSH workflow or agent/connector
 parity is advertised.
 
+P12 does not replace that refused `run_workflow` path. It is a separate, desktop-pulled control
+protocol for two bounded operations: counts-only `status` and local `queue_due`. A grant binds one
+campaign, its current policy hash, approval tier T0, one operation and an expiry. Grant creation is
+an explicit local action and starts disabled; campaign creation/import never activates it. The local
+user must activate that exact grant before a request can produce an effect.
+
+The VM spool contains opaque references, hashes, timestamps, operation names and counts only. The
+desktop controller pulls a matching request and commits authority checks, `queue_due` effects and
+the terminal local receipt in one SQLite transaction. A lost acknowledgement can replay the same
+terminal receipt without repeating the local effect. The spool lives only under an owned lease; it
+is not a public service or a persistent VM deployment. If the desktop is asleep, disconnected or
+closed, the VM cannot access desktop data or perform the operation and can retain the request only
+until that lease expires. `queue_due` can create only the existing T0 `gmail_draft` execution
+requests; P12 does not call Gmail or send. It has no inbound operation, model call, general command
+or tool/connector parity. The first isolated synthetic status-only proof used the shipped
+`run_once`, recovered a simulated lost acknowledgement, collected an identical result hash, and
+verified exact root/unit absence after cleanup. It did not test a physical laptop close or execute a
+live campaign operation, so it does not establish a live control channel.
+
+The companion's read-only status labels remote acknowledgement as unverified, even when a terminal
+local result exists, because that view does not contact the VM. Only the response from an explicit
+process action may report confirmed acknowledgement. An exact same-request retry uses the validated
+stored result and, when necessary, reclaims only that matching expired claim to complete delivery;
+it does not run the desktop operation again. A later read-only refresh returns to unverified rather
+than inferring remote state.
+
+The Activity control panel displays `No control request configured` unless the server receives a
+trusted preconstructed adapter. When configured, it can inspect and explicitly process one exact
+request binding. Its POST body contains only the campaign ID and configured request ID. It cannot
+accept transport settings, create or activate a grant, run a background loop or send a message.
+
 ## Local review app access
 
 Start the dedicated loopback review app with an explicit local store:
@@ -37,6 +68,25 @@ preparation at step 0, subject to the approved fit, current contact, and availab
 Users can create a human edit, submit feedback, and mark a draft editorially ready. Schedule and
 Activity are projections only. The app does not self-send, graduate approval, or claim an agent
 launch. Drafting QA checks only saved bindings; it does not verify every human claim.
+
+The audited local source-import backend accepts a source only for the selected campaign and person.
+It requires an HTTPS source URL and a local response body no larger than 2 MiB, then creates an
+unconfirmed candidate through the existing owned importer. A separate explicit human action must
+attest that candidate as the current-company source before it can support drafting. Import does not
+fetch the URL, accept a filesystem path or auto-attest a source. Exact retries are idempotent. Keep
+the source body inside the desktop-local boundary and never copy it to a VM.
+
+In People, enter the HTTPS source URL, choose the saved local HTML or text file, and select
+`Add source for review`. After the candidate excerpt appears, check the sentence confirming the
+person, role and company, then select `Confirm current role source`. Return to Campaign and select
+`Prepare first drafts`. These are separate actions; uploading a page does not confirm it.
+
+A feedback request can be fulfilled manually only after saving an edit against the current
+revision. The edit must pass the real stored-context QA path and create immutable revision lineage;
+a separate explicit local action then binds fulfillment to that result. Saving the edit alone does
+not fulfill feedback. A new revision does not inherit editorial readiness or send approval. There
+is no automated feedback rewriter; unavailable QA context remains pending/blocked rather than
+creating a synthetic passing revision.
 
 Development Codex workers receive explicitly selected source files on the VM. Desktop data,
 skills and connectors are not automatically available to them. The primary ask remains a 10–20 minute informational call.
@@ -70,8 +120,22 @@ uses the parser's saved bindings and remains subject to the existing human gates
 for P8. P8 therefore does not claim deployment preflight registration. A human must account for the
 P8 gate separately.
 
-If an inspector is unavailable, the manager parks the work with the fixed unavailable outcome. It
-does not fabricate an independent inspector grade or treat an unavailable inspector as a pass.
+Manager recovery uses bound child-resource checkpoints and resumes the same saved work. If an
+inspector is unavailable, the manager parks the work with the fixed unavailable outcome. It does
+not fabricate an independent inspector grade, bless an eval or treat an unavailable inspector as a
+pass.
 
-The main source still requires a human historical manifest refresh, and live readiness is not
-established here.
+Before calling the resumed implementation ready, complete this operator checklist. The reviewed
+synthetic P12 status lifecycle, lost-ack recovery, hash collection and exact cleanup are already
+recorded; the remaining work is:
+
+- Perform visual and keyboard acceptance of the integrated source-upload and control-panel UI in an
+  available browser.
+- Import and review real desktop-local evidence, prepare actual local drafts, and inspect each
+  source link and blocked reason without moving data to Git, logs or a VM.
+- Keep live mining, provider calls, Gmail sending and T0-to-T1 graduation disabled until their
+  existing explicit human approvals and release gates are satisfied.
+- Refresh any human-owned historical manifest through its established human gate; source tests do
+  not bless it.
+
+Live readiness is not established here.

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import http.client
 import json
 from pathlib import Path
@@ -15,7 +16,8 @@ import uuid
 from scripts.prospecting.manager.campaigns import CampaignService
 from scripts.prospecting.personalizer.qa import QaResult
 from scripts.prospecting.personalizer.revision import RevisionInput, build_revision
-from scripts.prospecting.review_app import _draft_preparer, create_server
+from scripts.prospecting.review_app import _draft_preparer, _source_importer, create_server
+from scripts.prospecting.affinity.source_review import verify_snapshot
 from scripts.prospecting.review_service import ReviewService
 from scripts.prospecting.store import open_store
 
@@ -24,6 +26,10 @@ NOW = "2026-09-09T12:00:00Z"
 PROFILE = "22222222-2222-4222-8222-222222222222"
 CAMPAIGNS = ("camp_1111111111111111", "camp_2222222222222222")
 BRIEF = "intent:networking lane:manual industry:software people-count:2"
+SOURCE_REVIEW = json.loads(
+    (Path(__file__).parents[3] / "orgs" / "prospecting" / "fixtures" / "source-review-synthetic.json")
+    .read_text(encoding="utf-8")
+)
 
 
 @dataclass
@@ -52,8 +58,17 @@ def _start(
             connection, campaign_id_factory=lambda: next(values), now=lambda: NOW
         )
         prepare = _draft_preparer(connection, path.parent / "sender-anchors.json") if production_prepare else None
+        verifier = (
+            (lambda proof: verify_snapshot(
+                path.parent / "snapshots", proof,
+                now=datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+            )) if production_prepare else None
+        )
         server = create_server(
-            ReviewService(connection, now=lambda: NOW, prepare_adapter=prepare), campaigns
+            ReviewService(connection, now=lambda: NOW, prepare_adapter=prepare,
+                          source_verifier=verifier,
+                          source_importer=_source_importer(connection) if production_prepare else None),
+            campaigns,
         )
         ready.put(server)
         try:
@@ -232,6 +247,17 @@ def test_prepare_drafts_http_runs_the_real_p8_owner_in_the_selected_store(
     from scripts.prospecting.tests.test_affinity_templates_v2 import NOW as P8_NOW, _draft_ready_fixture
 
     connection, _person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    scope = connection.execute(
+        """SELECT fp.person_id,fp.company_id,p.full_name,c.name,e.title,e.employment_id,
+                  e.source_observation_id
+             FROM fill_person AS fp JOIN person AS p ON p.person_id=fp.person_id
+             JOIN company AS c ON c.company_id=fp.company_id
+             JOIN employment AS e ON e.person_id=fp.person_id AND e.company_id=fp.company_id
+                AND e.valid_to IS NULL
+            WHERE fp.campaign_id=? AND fp.substituted=0""", (campaign_id,),
+    ).fetchone()
+    body = " ".join((scope["full_name"], "is", scope["title"], "at", scope["name"])).encode()
+    connection.commit()
     connection.close()
     fixture = Path(__file__).parents[3] / "orgs/prospecting/fixtures/affinity/sender-anchors-synthetic.json"
     shutil.copyfile(fixture, tmp_path / "sender-anchors.json")
@@ -245,11 +271,37 @@ def test_prepare_drafts_http_runs_the_real_p8_owner_in_the_selected_store(
     app = _start(tmp_path / "store.sqlite", production_prepare=True)
     cookie, csrf = _bootstrap(app)
     try:
+        status, imported = _post(
+            app, "/api/people/import-source", {
+                "campaign_id": campaign_id, "person_id": scope["person_id"],
+                "source_url": SOURCE_REVIEW["source_url"], "body": body.decode(),
+            }, cookie, csrf,
+        )
+        assert status == 200 and imported["state"] == "source_available"
+        status, _headers, raw = _request(
+            app, "GET", f"/api/review?campaign_id={campaign_id}", cookie=cookie,
+        )
+        before_confirmation = json.loads(raw)
+        assert status == 200
+        person = before_confirmation["people"][0]
+        assert person["identity_source_state"] == "confirmation_required"
+        assert person["current_observation_id"] == scope["source_observation_id"]
+        assert len(person["identity_sources"]) == 1
+        candidate_observation_id = person["identity_sources"][0]["observation_id"]
+        status, result = _post(
+            app, "/api/people/verify-source", {
+                "request_id": str(uuid.UUID(int=900)), "campaign_id": campaign_id,
+                "person_id": scope["person_id"],
+                "expected_observation_id": scope["source_observation_id"],
+                "observation_id": candidate_observation_id, "attested": True,
+            }, cookie, csrf,
+        )
+        assert status == 200 and result["state"] == "source_confirmed"
         status, result = _post(
             app, "/api/drafts/prepare", {"campaign_id": campaign_id, "step": 0}, cookie, csrf
         )
         assert status == 200
-        assert result["candidates"] == 1 and result["revisions_created"] == 1
+        assert result["candidates"] == 1 and result["revisions_created"] == 1, result
         status, _headers, raw = _request(
             app, "GET", f"/api/review?campaign_id={campaign_id}", cookie=cookie
         )
@@ -263,4 +315,64 @@ def test_prepare_drafts_http_runs_the_real_p8_owner_in_the_selected_store(
     connection = open_store(tmp_path / "store.sqlite")
     assert connection.execute("SELECT count(*) FROM revision").fetchone()[0] == 1
     assert connection.execute("SELECT count(*) FROM revision_qa_context").fetchone()[0] == 1
+    assert connection.execute("SELECT count(*) FROM identity_source_review").fetchone()[0] == 1
+    assert connection.execute("SELECT count(*) FROM exec_request").fetchone()[0] == 0
+    connection.close()
+
+
+def test_feedback_http_links_only_the_authentic_human_edit_and_persists(tmp_path: Path) -> None:
+    from scripts.prospecting.tests.test_feedback_service import _database
+
+    path = tmp_path / "feedback-http.sqlite"
+    connection, original, _other = _database(path)
+    connection.close()
+    feedback_request = {
+        "request_id": str(uuid.UUID(int=1000)), "campaign_id": "campaign-a",
+        "expected_revision_id": original, "disposition": "tone", "tags": ["warmer"],
+        "text": "Use a warmer opening.",
+    }
+    app = _start(path)
+    cookie, csrf = _bootstrap(app)
+    try:
+        status, feedback = _post(app, "/api/drafts/feedback", feedback_request, cookie, csrf)
+        assert status == 202 and feedback["state"] == "pending"
+        status, edit = _post(app, "/api/drafts/edit", {
+            "request_id": str(uuid.UUID(int=1001)), "campaign_id": "campaign-a",
+            "expected_revision_id": original, "subject": "Revised synthetic subject",
+            "body": (
+                "Hello. Built Example Product. This human edit keeps the same synthetic evidence. "
+                "Would you have 15 minutes for an informational conversation?"
+            ),
+        }, cookie, csrf)
+        assert status == 200 and edit["state"] == "revision_created"
+        status, _headers, raw = _request(
+            app, "GET", "/api/review?campaign_id=campaign-a", cookie=cookie,
+        )
+        snapshot = json.loads(raw)
+        assert status == 200 and snapshot["feedback"][0]["state"] == "ready_to_record"
+        assert snapshot["feedback"][0]["original_revision_id"] == original
+        assert snapshot["feedback"][0]["eligible_revision_id"] == edit["revision_id"]
+        status, result = _post(app, "/api/feedback/fulfill", {
+            "request_id": str(uuid.UUID(int=1002)), "campaign_id": "campaign-a",
+            "feedback_id": feedback["feedback_id"],
+            "expected_child_revision_id": edit["revision_id"],
+        }, cookie, csrf)
+        assert status == 200 and result["state"] == "fulfilled"
+    finally:
+        app.stop()
+
+    app = _start(path)
+    cookie, _csrf = _bootstrap(app)
+    try:
+        status, _headers, raw = _request(
+            app, "GET", "/api/review?campaign_id=campaign-a", cookie=cookie,
+        )
+        assert status == 200 and json.loads(raw)["feedback"][0]["state"] == "fulfilled"
+    finally:
+        app.stop()
+    connection = open_store(path)
+    assert connection.execute("SELECT count(*) FROM draft_feedback_outcome").fetchone()[0] == 1
+    assert connection.execute("SELECT count(*) FROM approval").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM delivery").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM exec_request").fetchone()[0] == 0
     connection.close()

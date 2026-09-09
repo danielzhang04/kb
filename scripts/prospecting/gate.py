@@ -419,10 +419,7 @@ def run_tests(root: Path, nodeids: tuple[str, ...]) -> GateRun:
 
 def resolve_runtime() -> tuple[Path, str]:
     environment = {**os.environ, "KB_PROSPECTING_NO_NETWORK": "1"}
-    resolved = subprocess.run(
-        ["py", "-3", "-c", "import sys;print(sys.executable)"],
-        env=environment, text=True, capture_output=True, check=True,
-    ).stdout.strip()
+    resolved = sys.executable
     if not resolved:
         raise RuntimeError("host interpreter did not resolve")
     interpreter = Path(resolved)

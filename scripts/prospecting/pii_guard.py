@@ -100,6 +100,7 @@ FIXTURE_ALLOWLIST = frozenset({
     "orgs/prospecting/fixtures/conflicting-providers.json",
     "orgs/prospecting/fixtures/job-change.json",
     "orgs/prospecting/fixtures/review-synthetic.json",
+    "orgs/prospecting/fixtures/source-review-synthetic.json",
     "orgs/prospecting/fixtures/legacy-synthetic.json",
     T1_SYNTHETIC_FIXTURE,
     "orgs/prospecting/fixtures/vendor/snov/email-search-complete.json",

@@ -1231,6 +1231,8 @@ def test_24_launcher_script_serves_readonly(tmp_path: Path) -> None:
             str(database),
             "-Port",
             str(port),
+            "-PythonExecutable",
+            sys.executable,
         ],
         env=environment,
         creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,

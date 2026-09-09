@@ -6,10 +6,11 @@ import hashlib
 import json
 import os
 from pathlib import Path
-from queue import Empty, Queue
+from queue import Empty, Full, Queue
 import re
 import stat
 import subprocess
+import sys
 from threading import Event, Thread
 from time import monotonic
 from typing import Callable
@@ -42,15 +43,32 @@ class BridgeResult:
     code: str
     summary: dict
 
-def read_bounded_output(proc: subprocess.Popen, timeout: int, on_chunk=None) -> tuple[str, str] | None:
+def read_bounded_output(
+    proc: subprocess.Popen, timeout: int, on_chunk=None,
+    cancel: Callable[[], None] | None = None,
+) -> tuple[str, str] | None:
     queue: Queue[tuple[str, str | None]] = Queue(maxsize=2); stop = Event()
+    cancelled = False
+    def cancel_once() -> None:
+        nonlocal cancelled
+        if not cancelled:
+            cancelled = True
+            (cancel or proc.kill)()
+    def publish(item):
+        while not stop.is_set():
+            try:
+                queue.put(item, timeout=0.05)
+                return
+            except Full:
+                continue
     def pump(name, stream):
         try:
             while not stop.is_set():
                 text = stream.read(8192)
                 if not text: break
-                queue.put((name, text))
-        finally: queue.put((name, None))
+                publish((name, text))
+        finally:
+            publish((name, None))
     threads = [Thread(target=pump, args=(name, stream), daemon=True) for name, stream in (("stdout", proc.stdout), ("stderr", proc.stderr))]
     for thread in threads: thread.start()
     result = {"stdout": [], "stderr": []}; total = closed = 0; overflow = False; deadline = monotonic() + timeout
@@ -63,11 +81,25 @@ def read_bounded_output(proc: subprocess.Popen, timeout: int, on_chunk=None) -> 
             if text is None: closed += 1; continue
             if on_chunk: on_chunk(name, text)
             total += len(text.encode())
-            if total > OUTPUT_LIMIT: overflow = True
+            if total > OUTPUT_LIMIT:
+                overflow = True
+                cancel_once()
             elif not overflow: result[name].append(text)
         proc.wait(timeout=max(0, deadline - monotonic()))
         return None if overflow else ("".join(result["stdout"]), "".join(result["stderr"]))
-    finally: stop.set()
+    except BaseException:
+        cancel_once()
+        raise
+    finally:
+        stop.set()
+        for stream in (proc.stdout, proc.stderr):
+            try:
+                stream.close()
+            except (OSError, ValueError):
+                pass
+        join_deadline = monotonic() + 0.5
+        for thread in threads:
+            thread.join(timeout=max(0, join_deadline - monotonic()))
 
 def terminate_windows_tree(pid: int) -> None:
     subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, shell=False)
@@ -181,6 +213,11 @@ class DesktopBridge:
             path.unlink(missing_ok=True)
             raise
         module, remote, remote_pid = ENTRYPOINTS[agent_cli]["module"], None, None
+        selected_result: BridgeResult | None = None
+        def selected(value: BridgeResult) -> BridgeResult:
+            nonlocal selected_result
+            selected_result = value
+            return value
         try:
             if mode == "local": argv = ["py", "-3", "-m", module, *self._command(agent_cli, job, str(path))]
             else:
@@ -198,27 +235,43 @@ class DesktopBridge:
                 if mode == "ssh" and name == "stdout" and remote_pid is None:
                     chunks.append(text); line, found, _ = "".join(chunks).partition("\n")
                     if found and line.strip().isdigit(): remote_pid = int(line.strip())
-            try: output = read_bounded_output(proc, timeout, pid_reader)
+            def cancel_output() -> None:
+                self.terminate_tree(proc.pid)
+                if mode == "ssh":
+                    self.remote_terminate_tree(host, remote_pid, key)
+            try:
+                output = read_bounded_output(
+                    proc, timeout, pid_reader, cancel=cancel_output
+                )
             except (subprocess.TimeoutExpired, TimeoutError):
-                self.terminate_tree(proc.pid)
-                if mode == "ssh": self.remote_terminate_tree(host, remote_pid, key)
-                if output_rejected: return BridgeResult(-1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}})
-                return BridgeResult(-1, "timeout", {})
+                if output_rejected: return selected(BridgeResult(-1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}}))
+                return selected(BridgeResult(-1, "timeout", {}))
             if output is None:
-                self.terminate_tree(proc.pid)
-                if mode == "ssh": self.remote_terminate_tree(host, remote_pid, key)
-                if output_rejected: return BridgeResult(-1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}})
-                return BridgeResult(-1, "output_overflow", {})
+                if output_rejected: return selected(BridgeResult(-1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}}))
+                return selected(BridgeResult(-1, "output_overflow", {}))
             stdout, stderr = output
             try: self._safe({"stdout": stdout, "stderr": stderr}, "process_results")
-            except Exception: return BridgeResult(proc.returncode or -1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}})
+            except Exception: return selected(BridgeResult(proc.returncode or -1, "failed_output_redacted", {"counts": {"failed_output_redacted": 1}}))
             if mode == "ssh":
                 line, found, stdout = stdout.partition("\n")
                 if not found or not line.strip().isdigit() or remote_pid != int(line.strip()): raise ValueError("invalid_remote_pid")
-            if proc.returncode != 0: return BridgeResult(proc.returncode, "failed", {})
+            if proc.returncode != 0: return selected(BridgeResult(proc.returncode, "failed", {}))
             value, end = json.JSONDecoder().raw_decode(stdout)
             if stdout[end:].strip() or not isinstance(value, dict): raise ValueError("invalid_desktop_result")
-            self._safe(value, "process_results"); return BridgeResult(0, "ok", value)
+            self._safe(value, "process_results"); return selected(BridgeResult(0, "ok", value))
         finally:
-            if remote is not None: self.cleanup(host, remote, min(timeout, 30))
-            elif path.exists(): path.unlink()
+            primary_error = sys.exc_info()[0] is not None
+            cleanup_failed = False
+            if remote is not None:
+                try:
+                    self.cleanup(host, remote, min(timeout, 30))
+                except Exception:
+                    cleanup_failed = True
+            try:
+                path.unlink(missing_ok=True)
+            except OSError:
+                cleanup_failed = True
+            if cleanup_failed and not primary_error and (
+                selected_result is None or selected_result.code == "ok"
+            ):
+                raise RuntimeError("bridge_cleanup_failed")

@@ -83,7 +83,13 @@ def _copy_manifest_artifacts(tmp_path: Path, manifest: dict[str, object]) -> Non
         source = REPO_ROOT / str(relative)
         destination = tmp_path / str(relative)
         destination.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(source, destination)
+        if str(relative).replace("\\", "/") == "orgs/prospecting/STATE.md":
+            destination.write_text(
+                "# TEST-ONLY INERT STATE\n\nSynthetic placeholder for hermetic gate tests.\n",
+                encoding="utf-8",
+            )
+        else:
+            shutil.copy2(source, destination)
     copied_manifest = tmp_path / "scripts" / "prospecting" / "gate_manifest.json"
     manifest_data = load_manifest(copied_manifest)
     artifacts = tuple(str(item) for item in manifest_data["artifacts"])
@@ -193,6 +199,8 @@ def test_54_gate_run_of_this_suite_matches_a_direct_subprocess_run(tmp_path: Pat
 
     result_file = tmp_path / "nested-gate.json"
     runner = tmp_path / "test_nested_gate.py"
+    inner_basetemp = (tmp_path / "inner-gate-pytest").resolve().as_posix()
+    pytest_addopts = f'--basetemp "{inner_basetemp}"'
     runner.write_text(
         "import json\n"
         "import os\n"
@@ -200,7 +208,7 @@ def test_54_gate_run_of_this_suite_matches_a_direct_subprocess_run(tmp_path: Pat
         "from scripts.prospecting.gate import run_tests\n\n"
         "def test_nested_gate():\n"
         "    os.environ['KB_PROSPECTING_NESTED_GATE_PROBE'] = '1'\n"
-        f"    os.environ['PYTEST_ADDOPTS'] = {f'--basetemp {tmp_path / 'inner-gate-pytest'}'!r}\n"
+        f"    os.environ['PYTEST_ADDOPTS'] = {pytest_addopts!r}\n"
         f"    run = run_tests(Path({str(REPO_ROOT)!r}), ({str(Path(__file__))!r},))\n"
         f"    Path({str(result_file)!r}).write_text(json.dumps({{'passed': run.passed}}), encoding='utf-8')\n",
         encoding="utf-8",
