@@ -2,6 +2,14 @@
 
 Active work; this replaces the September 8 end-to-end handoff. Do not restart the baseline.
 
+## Async continuation checkpoint
+
+- User explicitly instructed: rest is async, run through the full plan. Continue autonomously; sending and public publication limits remain unchanged.
+- Native implementation slices are FROZEN. Authors report144 combined service/P8/HTTP integration passes; actual P8 fixture produces1revision+1immutableQA context. No new native assignments; subsequent source-only builders/reviewers use the rented vCPU.
+- Independent first-draft VM review cdfe6926efb94823bf7a8efd31e866c9 found HIGH source/display mismatch across concurrent employers and non-first matched history/school; MEDIUM form asks/minutes incompatible with producer. Report hash d7f29a2674cbc7149414b41cba911bbe19cfb3800e0ee18286d4ce310c71bcce. Collected locally; cleanup and exact directory/mount/three-unit absence verified. Do not run real draft trial before repair/review.
+- TWO ACTIVE VM jobs: evidence-binding-repair-20260909 (1321cddfbb7c4d2a9895e3d37d8dbaf2, requestedSol, started07:34:04UTC) owns templates_v2/evidence_bridge and their2tests; review-form-compatibility-20260909 (1222a0c6bf55482ebcaa6259da3e4e18, requestedLuna, started07:34:08UTC) owns review_app.py/html/test_review_app.py. Receipts under root _private/dev-jobs/<name>/receipt.json. Each600sec job deadline and3600sec collection lease. Recover by status, never blind relaunch; validate outputs/base/test inventory before apply, collect then cleanup, verify exact absence. Source snapshots now include actual v2 .txt templates.
+- Keep-awakePID12044 verified active with fresh heartbeat and low CPU, expiry1788952318.889. Browser connection still unavailable; no new retries without changed surface. No live originals touched, no sends/vendor/model use for prospects.
+
 ## Core acceptance update
 
 - Source HEAD efa5f9e2: P11 owner layer committed after root115passed (review_qa, personalizer_cli, revision and QA suites). Five accepted files may be reused by P8; no legacy metadata backfill.

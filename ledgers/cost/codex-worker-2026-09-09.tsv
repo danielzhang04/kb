@@ -33,3 +33,6 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair implem
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol implementation active	review-qa-preparer-integration	2026-09-09T05:55:32.555005+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review implementation active	review-ui-history-preparer	2026-09-09T05:55:32.555005+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	completed READY; collected and cleanup absence verified	review-service-core-09784090	2026-09-09T06:18:11.995140+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	NOT READY two findings; collected cleaned absence verified	first-draft-integration-cdfe6926	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	running on VM; bounded lease	evidence-binding-repair-1321cddf	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	running on VM; bounded lease	review-form-compatibility-1222a0c6	2026-09-09T07:35:09.072860+00:00	0
