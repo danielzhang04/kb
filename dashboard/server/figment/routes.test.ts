@@ -188,7 +188,7 @@ describe('Figment read projection', () => {
     expect(response.statusCode).toBe(200);
     expect(response.headers['content-type']).toContain('image/png');
     expect(response.headers['x-content-type-options']).toBe('nosniff');
-    expect(response.rawPayload).toEqual(png());
+    expect(response.rawPayload.equals(png())).toBe(true);
     const replacement = png(19);
     expect(replacement.length).toBe(asset.bytes);
     await writeFile(join(paths.diagnostic, asset.name), replacement);
