@@ -5,6 +5,19 @@ job receipts preserve the detailed history. Latest user: the rest is async, run 
 
 ## Exact next step
 
+LATEST08:50UTC: no owned VM jobs active. UI6126fbef collected/cleaned, exact dir/mount/3units absent;
+report599f40e967837fc99a927778cd748152170bd23e58e6a4314b7ac6ff70622246 REQUEST CHANGES only
+campaignForm old POST completion after New campaign/navigation. Native vm_review resumes same2files
+for guarded success/error settlement and actual deferred tests; all other UI paths/docs accepted.
+Gate repair confirmed actual P8-B requires at least ONE resolving HTTPS strong/medium evidence per
+non-substituted fill row. Root authorized canonical per-slot resolution, zero-proof substitution
+and truthful evidence_unresolved firm shortfall; optional missing facts must not reject proven rows.
+remote_protocol resumed for independent synthetic whole-pipeline acceptance ONLY new
+scripts/prospecting/tests/test_review_pipeline_acceptance.py. Reuse actual campaign/P8/review/
+approval/scheduler/FakeGmail owners; no fabricated P2 bridge/live approvals. Author now, final run
+after gate freeze. This closes integrated acceptance beyond isolated UI and send-boundary tests.
+
+
 LATEST08:45UTC: producer review d7a1baed REQUEST CHANGES, collected/cleaned and exact absence
 verified. Report8e367ed3b9dac4e25f389b671342c6ae160183177422edea330057c1586cfca8. Root169 combined
 producer/fill/service/QA tests passed56.48s. Gate_repair resumed narrowly: board-only follow-up

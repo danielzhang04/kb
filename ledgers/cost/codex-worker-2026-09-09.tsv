@@ -56,3 +56,6 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	active frozen producer in
 unknown; ambient subscription		gpt-5.6-sol	unavailable	request changes; collected cleaned exact absence verified	provenance-final-review-d7a1baed	2026-09-09T08:46:04.057183+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	active final UI static re-review	ui-state-final-rereview-6126fbef	2026-09-09T08:46:04.057183+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native bounded board and fill caller repair resumed	gate_repair-native-final-caller	2026-09-09T08:46:04.057183+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	one campaign-create completion finding; collected cleaned absence verified	ui-state-final-rereview-6126fbef	2026-09-09T08:50:14.022020+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native final campaign-create state repair	vm_review-native-final-completion	2026-09-09T08:50:14.022020+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native bounded synthetic whole-flow acceptance	remote_protocol-native-acceptance	2026-09-09T08:50:14.022020+00:00	0
