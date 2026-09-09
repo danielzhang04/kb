@@ -14,6 +14,7 @@ import { collectLocalTrainingReadiness, collectLocalTrainingResults, type Figmen
 import { collectMatchedGallery, readMatchedGalleryAsset, type FigmentMatchedGalleryRoots, type MatchedGalleryProjection } from './matchedGallery.ts';
 import { collectProfileGallery, readProfileGalleryAsset, type ProfileGalleryProjection } from './profileGallery.ts';
 import { collectCloudExperiment, type CloudExperimentProjection } from './cloudExperiment.ts';
+import { collectCloudPairGallery, readCloudPairGalleryAsset, type CloudPairGalleryProjection } from './cloudPairGallery.ts';
 
 const RECORD_NAMES = new Set(['plan.json', 'driver-plan.json', 'run.json', 'gate.json', 'accepted-checkpoint.json']);
 const MAX_RECORDS = 256;
@@ -65,6 +66,7 @@ export interface FigmentProjection {
   profileGallery: ProfileGalleryProjection;
   /** Sanitized lifecycle only; quality disposition is deliberately separate. */
   cloudExperiment: CloudExperimentProjection;
+  cloudPairGallery: CloudPairGalleryProjection;
   diagnostic: DiagnosticProjection;
   warnings: string[];
 }
@@ -415,19 +417,20 @@ function readDiagnostic(configuredRoot: string | null | undefined): DiagnosticPr
   return root === null ? { status: 'unavailable', reason: 'unsafe-configured-root' } : diagnosticProjection(root);
 }
 
-export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null, generatedInputRoot?: string | null, localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null, localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null, matchedGalleryRoots?: FigmentMatchedGalleryRoots | null, profileGalleryRoot?: string | null, cloudExperimentRoot?: string | null): FigmentProjection {
+export function buildFigmentProjection(repoRoot: string, diagnosticRoot?: string | null, generatedInputRoot?: string | null, localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null, localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null, matchedGalleryRoots?: FigmentMatchedGalleryRoots | null, profileGalleryRoot?: string | null, cloudExperimentRoot?: string | null, cloudPairRoot?: string | null): FigmentProjection {
   const warnings: string[] = [];
   const root = openRoot(join(repoRoot, 'orgs', 'figment'));
-  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  if (root === null) return { schema: 'figment/hub@1', available: false, creators: [], creatorsTruncated: false, records: [], recordsTruncated: false, plans: { items: [], truncated: false }, research: { available: false, artifacts: [], truncated: false }, references: { items: [], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), cloudPairGallery: collectCloudPairGallery(repoRoot, cloudPairRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
   const collected = collectRecords(root, warnings);
   const creators = collectCreators(root);
-  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), generatedInputs: collectGeneratedInputs(repoRoot, generatedInputRoot), localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
+  return { schema: 'figment/hub@1', available: true, creators: creators.creators, creatorsTruncated: creators.truncated, records: collected.records, recordsTruncated: collected.truncated, plans: collectPlans(root, collected.records, collected.truncated), research: collectResearch(root), references: collectDeclaredReferences(root.path), generatedInputs: collectGeneratedInputs(repoRoot, generatedInputRoot), localTraining: collectLocalTrainingReadiness(localTrainingEvidence), localTrainingResults: collectLocalTrainingResults(localTrainingResultRoots), matchedGallery: collectMatchedGallery(matchedGalleryRoots), profileGallery: collectProfileGallery(profileGalleryRoot), cloudExperiment: collectCloudExperiment(cloudExperimentRoot), cloudPairGallery: collectCloudPairGallery(repoRoot, cloudPairRoot), diagnostic: readDiagnostic(diagnosticRoot), warnings };
 }
 
-export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null; generatedInputRoot?: string | null; localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null; localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null; matchedGalleryRoots?: FigmentMatchedGalleryRoots | null; profileGalleryRoot?: string | null; cloudExperimentRoot?: string | null }): void {
+export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: string; diagnosticRoot?: string | null; generatedInputRoot?: string | null; localTrainingEvidence?: FigmentLocalTrainingEvidenceRoots | null; localTrainingResultRoots?: FigmentLocalTrainingResultRoots | null; matchedGalleryRoots?: FigmentMatchedGalleryRoots | null; profileGalleryRoot?: string | null; cloudExperimentRoot?: string | null; cloudPairRoot?: string | null }): void {
   // This fixed root is configuration only; clients cannot supply or select it.
   const cloudExperimentRoot = options.cloudExperimentRoot ?? process.env.DASHBOARD_FIGMENT_CLOUD_EXPERIMENT_ROOT ?? null;
-  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot, options.generatedInputRoot, options.localTrainingEvidence, options.localTrainingResultRoots, options.matchedGalleryRoots, options.profileGalleryRoot, cloudExperimentRoot));
+  const cloudPairRoot = options.cloudPairRoot ?? process.env.DASHBOARD_FIGMENT_CLOUD_PAIR_ROOT ?? null;
+  app.get('/api/figment', async () => buildFigmentProjection(options.repoRoot, options.diagnosticRoot, options.generatedInputRoot, options.localTrainingEvidence, options.localTrainingResultRoots, options.matchedGalleryRoots, options.profileGalleryRoot, cloudExperimentRoot, cloudPairRoot));
   app.get('/api/figment/reference-assets/:creator/:name', async (request, reply) => {
     const { creator, name } = request.params as { creator?: unknown; name?: unknown };
     const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
@@ -478,6 +481,14 @@ export function registerFigmentRead(app: FastifyInstance, options: { repoRoot: s
     if (collectProfileGallery(options.profileGalleryRoot).status !== 'recorded') return reply.code(409).send({ error: 'stale-profile-gallery' });
     const loaded = readProfileGalleryAsset(options.profileGalleryRoot, assetId, sha256);
     if (loaded === null) return reply.code(409).send({ error: 'stale-profile-gallery' });
+    return reply.header('content-type', 'image/png').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded);
+  });
+  app.get('/api/figment/cloud-pair-assets/:assetId', async (request, reply) => {
+    const { assetId } = request.params as { assetId?: unknown }; const { sha256 } = (request.query ?? {}) as { sha256?: unknown };
+    if (typeof assetId !== 'string' || typeof sha256 !== 'string' || !SHA256.test(sha256) || !/^[A-Za-z0-9._-]{1,160}$/.test(assetId)) return reply.code(404).send({ error: 'not-found' });
+    if (collectCloudPairGallery(options.repoRoot, cloudPairRoot).status !== 'recorded') return reply.code(409).send({ error: 'stale-cloud-pair-gallery' });
+    const loaded = readCloudPairGalleryAsset(options.repoRoot, cloudPairRoot, assetId, sha256);
+    if (loaded === null) return reply.code(409).send({ error: 'stale-cloud-pair-gallery' });
     return reply.header('content-type', 'image/png').header('x-content-type-options', 'nosniff').header('cache-control', 'no-store').send(loaded);
   });
 }

@@ -20,6 +20,8 @@ type ProfileReview = { disposition: 'stop'; reason: string; observations: Matche
 type ProfileRow = { seed: 481516234 | 90210; asset: { assetId: 'profile-base-481516234' | 'profile-base-90210'; sha256: string; bytes: number; width: 1024; height: 1024 }; reviews: { root: ProfileReview; independent: ProfileReview } };
 type ProfileGallery = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; stage: 'profile-base'; historical: true; notPromotable: true; conditioning: 'no-pixel-reference-conditioning'; selectedCheckpoint: null; rows: ProfileRow[] };
 type CloudExperiment = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; execution: 'started-pending-final' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number | null; preflightEstimateUsd: number | null; estimatedActualUsd: number | null; startedUtc: string; finishedUtc: string | null; terminationVerified: boolean | null; outputCount: number; quality: 'not-reviewed'; failure: 'bootstrap' | 'run' | null };
+type CloudPairReview = { disposition: 'stop'; source: string; observations: { identity: string; realism: string; composition: string; clothing: string; safety: string } };
+type CloudPairGallery = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; experimentId: string; modelFamily: string; notPromotable: true; trainingEligible: false; rows: Array<{ seed: number; asset: { assetId: string; sha256: string; bytes: number; width: number; height: number }; reviews: { root: CloudPairReview; independent: CloudPairReview } }> };
 interface Projection {
   schema: 'figment/hub@1'; available: boolean;
   creators: Array<{ id: string; persona: 'valid' | 'malformed'; loraTier: string | null; loraTrigger: string | null; accountTiers: string[] }>;
@@ -33,6 +35,7 @@ interface Projection {
   matchedGallery: MatchedGallery;
   profileGallery: ProfileGallery;
   cloudExperiment: CloudExperiment;
+  cloudPairGallery: CloudPairGallery;
   diagnostic: { status: 'not-configured' } | { status: 'unavailable'; reason: string } | { status: 'diagnostic-not-promotable'; dryRun: boolean | null; podId: string | null; artifacts: Array<{ name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string }>; artifactsTruncated: boolean };
 }
 
@@ -122,6 +125,13 @@ function profileGallery(value: unknown): ProfileGallery | null {
   return value as unknown as ProfileGallery;
 }
 function cloudExperiment(value: unknown): CloudExperiment | null { if (!object(value)) return null; if (value.status === 'not-configured') return value as CloudExperiment; if (value.status === 'unavailable' && value.reason === 'evidence-unavailable') return value as CloudExperiment; return value.status === 'recorded' && (value.execution === 'started-pending-final' || value.execution === 'failed' || value.execution === 'completed') && (value.liveness === null || value.liveness === 'unknown') && finite(value.maxMinutes) && (value.maxUsd === null || finite(value.maxUsd)) && (value.preflightEstimateUsd === null || finite(value.preflightEstimateUsd)) && (value.estimatedActualUsd === null || finite(value.estimatedActualUsd)) && string(value.startedUtc) && (value.finishedUtc === null || string(value.finishedUtc)) && (value.terminationVerified === null || typeof value.terminationVerified === 'boolean') && finite(value.outputCount) && value.outputCount >= 0 && value.quality === 'not-reviewed' && (value.failure === null || value.failure === 'bootstrap' || value.failure === 'run') ? value as CloudExperiment : null; }
+function cloudPairGallery(value: unknown): CloudPairGallery | null {
+  if (!object(value)) return null; if (value.status === 'not-configured') return value as CloudPairGallery; if (value.status === 'unavailable' && value.reason === 'evidence-unavailable') return value as CloudPairGallery;
+  if (value.status !== 'recorded' || !string(value.experimentId) || !string(value.modelFamily) || value.notPromotable !== true || value.trainingEligible !== false || !Array.isArray(value.rows) || value.rows.length !== 2) return null;
+  const fields = ['identity', 'realism', 'composition', 'clothing', 'safety'];
+  for (const row of value.rows) { if (!object(row) || !finite(row.seed) || !object(row.asset) || !string(row.asset.assetId) || !sha256(row.asset.sha256) || !finite(row.asset.bytes) || row.asset.bytes < 1 || row.asset.bytes > 8 * 1024 * 1024 || !finite(row.asset.width) || !finite(row.asset.height) || !object(row.reviews)) return null; for (const role of ['root', 'independent']) { const review = row.reviews[role]; if (!object(review) || review.disposition !== 'stop' || !string(review.source) || !object(review.observations)) return null; const observations = review.observations; if (!fields.every((key) => string(observations[key]))) return null; } }
+  return value as unknown as CloudPairGallery;
+}
 
 function valid(value: unknown): Projection | null {
   if (!object(value) || value.schema !== 'figment/hub@1' || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.references) || !bounded(value.references.items) || typeof value.references.truncated !== 'boolean' || !object(value.generatedInputs) || typeof value.generatedInputs.available !== 'boolean' || !bounded(value.generatedInputs.items) || typeof value.generatedInputs.truncated !== 'boolean' || !object(value.diagnostic)) return null;
@@ -138,7 +148,8 @@ function valid(value: unknown): Projection | null {
   const gallery = matchedGallery(value.matchedGallery);
   const profile = profileGallery(value.profileGallery);
   const cloud = value.cloudExperiment === undefined ? { status: 'not-configured' } : cloudExperiment(value.cloudExperiment);
-  return training === null || results === null || gallery === null || profile === null || cloud === null ? null : { ...value, localTraining: training, localTrainingResults: results, matchedGallery: gallery, profileGallery: profile, cloudExperiment: cloud } as unknown as Projection;
+  const pair = value.cloudPairGallery === undefined ? { status: 'not-configured' } : cloudPairGallery(value.cloudPairGallery);
+  return training === null || results === null || gallery === null || profile === null || cloud === null || pair === null ? null : { ...value, localTraining: training, localTrainingResults: results, matchedGallery: gallery, profileGallery: profile, cloudExperiment: cloud, cloudPairGallery: pair } as unknown as Projection;
 }
 
 function validTesterPreview(value: unknown): TesterPreview | null {
@@ -239,11 +250,90 @@ function CloudExperimentStatus({ experiment }: { experiment: CloudExperiment }):
   if (experiment.status === 'unavailable') return <section className="figment__references"><h2>Reference-cloud experiment</h2><p className="figment__empty">Configured experiment evidence could not be verified.</p></section>;
   const cost = experiment.estimatedActualUsd === null ? 'not recorded' : `$${experiment.estimatedActualUsd.toFixed(6)}`;
   const termination = experiment.terminationVerified === true ? 'termination verified' : experiment.terminationVerified === false ? 'termination not verified' : 'termination not recorded';
-  const outcome = experiment.execution === 'started-pending-final' ? 'Started; final result not recorded.' : experiment.execution === 'failed' ? `Execution stopped during ${experiment.failure === 'bootstrap' ? 'bootstrap' : 'the run'}; no quality result is implied.` : `${experiment.outputCount} output${experiment.outputCount === 1 ? '' : 's'} recorded; quality is not reviewed.`;
+  const outcome = experiment.execution === 'started-pending-final' ? 'Started; final result not recorded.' : experiment.execution === 'failed' ? `Execution stopped during ${experiment.failure === 'bootstrap' ? 'bootstrap' : 'the run'}; no quality result is implied.` : `${experiment.outputCount} output${experiment.outputCount === 1 ? '' : 's'} recorded. Lifecycle evidence only; visual review is recorded separately.`;
   const lifecycle = experiment.execution === 'started-pending-final' ? 'liveness unknown; awaiting final result' : termination;
   const ceiling = experiment.maxUsd === null ? 'not recorded' : `$${experiment.maxUsd.toFixed(2)}`;
   const preflight = experiment.preflightEstimateUsd === null ? 'not recorded' : `$${experiment.preflightEstimateUsd.toFixed(2)}`;
-  return <section className="figment__references" aria-label="Reference cloud experiment"><h2>Reference-cloud experiment</h2><p className="figment__inert">{outcome}</p><dl><dt>Runtime bound</dt><dd>{experiment.maxMinutes} minutes</dd><dt>Spend ceiling</dt><dd>{ceiling}</dd><dt>Preflight estimate</dt><dd>{preflight}</dd><dt>Actual estimate</dt><dd>{cost}</dd><dt>Lifecycle</dt><dd>{lifecycle}</dd><dt>Quality</dt><dd>Not reviewed; no accepted or rejected result is claimed.</dd></dl></section>;
+  return <section className="figment__references" aria-label="Reference cloud experiment"><h2>Reference-cloud experiment</h2><p className="figment__inert">{outcome}</p><dl><dt>Runtime bound</dt><dd>{experiment.maxMinutes} minutes</dd><dt>Spend ceiling</dt><dd>{ceiling}</dd><dt>Preflight estimate</dt><dd>{preflight}</dd><dt>Actual estimate</dt><dd>{cost}</dd><dt>Lifecycle</dt><dd>{lifecycle}</dd><dt>Quality</dt><dd>Lifecycle evidence only; visual review is recorded separately.</dd></dl></section>;
+}
+
+function CloudPairGallery({ gallery, token, fetchImpl }: { gallery: CloudPairGallery; token?: string; fetchImpl: typeof fetch }): React.JSX.Element | null {
+  const [assets, setAssets] = useState<Record<string, string | null>>({});
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    if (gallery.status !== 'recorded') return;
+    let live = true;
+    const controllers: AbortController[] = [];
+    const urls: string[] = [];
+    setAssets({});
+    setError(null);
+    void Promise.all(gallery.rows.map(async ({ asset }) => {
+      const controller = new AbortController();
+      controllers.push(controller);
+      try {
+        const response = await fetchImpl(`/api/figment/cloud-pair-assets/${encodeURIComponent(asset.assetId)}?sha256=${asset.sha256}`, {
+          ...requestOptions(token),
+          signal: controller.signal,
+        });
+        if (!response.ok) throw new Error('A recorded cloud-pair image could not be read.');
+        const url = URL.createObjectURL(await response.blob());
+        if (!live) {
+          URL.revokeObjectURL(url);
+          return;
+        }
+        urls.push(url);
+        setAssets((previous) => ({ ...previous, [asset.assetId]: url }));
+      } catch {
+        if (live && !controller.signal.aborted) {
+          setAssets((previous) => ({ ...previous, [asset.assetId]: null }));
+          setError('A recorded cloud-pair image could not be read.');
+        }
+      }
+    }));
+    return () => {
+      live = false;
+      controllers.forEach((controller) => controller.abort());
+      urls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [gallery, token, fetchImpl]);
+  if (gallery.status === 'not-configured') return null;
+  if (gallery.status === 'unavailable') {
+    return <section className="figment__references"><h2>Cloud reference pair</h2><p className="figment__empty">Configured cloud-pair evidence could not be verified.</p></section>;
+  }
+  const review = (role: 'root' | 'independent', value: CloudPairReview) => (
+    <div className="figment__observation">
+      <strong>{role === 'root' ? 'Root' : 'Independent'} — STOP</strong>
+      <span>{value.observations.identity}</span>
+      <span>{value.observations.realism}</span>
+      <span>{value.observations.composition}</span>
+      <span>{value.observations.clothing}</span>
+      <span>{value.observations.safety}</span>
+    </div>
+  );
+  return (
+    <section className="figment__references" aria-label="Cloud reference pair">
+      <h2>Cloud reference pair — {gallery.modelFamily}</h2>
+      <p className="figment__inert">Both reviews stopped before the six-row pilot. These originals are rejected research evidence: not promotable and not training eligible.</p>
+      {error ? <p className="figment__reader-error" role="alert">{error}</p> : null}
+      <div className="figment__assets figment__generated-assets">
+        {gallery.rows.map((row) => (
+          <figure className="figment__asset figment__generated-asset" key={row.asset.assetId}>
+            {assets[row.asset.assetId]
+              ? <img src={assets[row.asset.assetId] ?? undefined} alt={`Cloud reference pair seed ${row.seed}`} />
+              : assets[row.asset.assetId] === null
+                ? <div className="figment__empty">Recorded image unavailable.</div>
+                : <div className="figment__empty" role="status">Loading recorded image…</div>}
+            <figcaption>
+              <strong>Seed {row.seed}</strong>
+              <span>{row.asset.width}x{row.asset.height}</span>
+              {review('root', row.reviews.root)}
+              {review('independent', row.reviews.independent)}
+            </figcaption>
+          </figure>
+        ))}
+      </div>
+    </section>
+  );
 }
 
 const generatedObservationLabels: Record<string, string> = {
@@ -299,9 +389,9 @@ function ProfileGallery({ gallery, token, fetchImpl }: { gallery: Projection['pr
   return <section className="figment__references" aria-label="Prompt-profile diagnostic"><h2>Prompt-profile diagnostic</h2><p className="figment__inert">Both reviews stopped this prompt-profile test. No adapter comparison followed.</p><p className="figment__inert">Two base images from one prompt profile, without any reference image guiding generation. Each review is recorded separately and neither approves quality or selects a checkpoint.</p>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}<div className="figment__assets figment__generated-assets">{gallery.rows.map((row) => <figure className="figment__asset figment__generated-asset" key={row.asset.assetId}>{assets[row.asset.assetId] ? <img src={assets[row.asset.assetId] ?? undefined} alt={`Prompt-profile diagnostic seed ${row.seed}`} /> : assets[row.asset.assetId] === null ? <div className="figment__empty">Recorded image unavailable.</div> : <div className="figment__empty" role="status">Loading recorded image…</div>}<figcaption><strong>Seed {row.seed}</strong><span>{row.asset.width}x{row.asset.height}</span>{review('root', row.reviews.root)}{review('independent', row.reviews.independent)}</figcaption></figure>)}</div></section>;
 }
 
-function Assets({ diagnostic, references, generatedInputs, matchedGallery, profileGallery, cloudExperiment, token, fetchImpl }: { diagnostic: Projection['diagnostic']; references: Projection['references']; generatedInputs: Projection['generatedInputs']; matchedGallery: Projection['matchedGallery']; profileGallery: Projection['profileGallery']; cloudExperiment: CloudExperiment; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
-  const hideEmptyDiagnostic = (matchedGallery.status === 'recorded' || profileGallery.status === 'recorded') && diagnostic.status !== 'diagnostic-not-promotable';
-  return <><CloudExperimentStatus experiment={cloudExperiment} /><DeclaredReferences references={references} token={token} fetchImpl={fetchImpl} /><GeneratedInputs generated={generatedInputs} token={token} fetchImpl={fetchImpl} /><MatchedGallery gallery={matchedGallery} token={token} fetchImpl={fetchImpl} /><ProfileGallery gallery={profileGallery} token={token} fetchImpl={fetchImpl} />{hideEmptyDiagnostic ? null : <DiagnosticAssets diagnostic={diagnostic} token={token} fetchImpl={fetchImpl} />}</>;
+function Assets({ diagnostic, references, generatedInputs, matchedGallery, profileGallery, cloudExperiment, cloudPairGallery, token, fetchImpl }: { diagnostic: Projection['diagnostic']; references: Projection['references']; generatedInputs: Projection['generatedInputs']; matchedGallery: Projection['matchedGallery']; profileGallery: Projection['profileGallery']; cloudExperiment: CloudExperiment; cloudPairGallery: CloudPairGallery; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
+  const hideEmptyDiagnostic = (matchedGallery.status === 'recorded' || profileGallery.status === 'recorded' || cloudPairGallery.status === 'recorded') && diagnostic.status !== 'diagnostic-not-promotable';
+  return <><CloudExperimentStatus experiment={cloudExperiment} /><CloudPairGallery gallery={cloudPairGallery} token={token} fetchImpl={fetchImpl} /><DeclaredReferences references={references} token={token} fetchImpl={fetchImpl} /><GeneratedInputs generated={generatedInputs} token={token} fetchImpl={fetchImpl} /><MatchedGallery gallery={matchedGallery} token={token} fetchImpl={fetchImpl} /><ProfileGallery gallery={profileGallery} token={token} fetchImpl={fetchImpl} />{hideEmptyDiagnostic ? null : <DiagnosticAssets diagnostic={diagnostic} token={token} fetchImpl={fetchImpl} />}</>;
 }
 
 function TrainingReadiness({ training, results }: { training: LocalTraining; results: LocalTrainingResults }): React.JSX.Element {
@@ -356,5 +446,5 @@ export function FigmentWorkspace({ token, fetchImpl = fetch }: { token?: string;
   useEffect(() => { let live = true; setError(false); setProjection(null); void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => { if (!response.ok) throw new Error('figment unavailable'); const decoded = valid(await response.json()); if (!decoded) throw new Error('invalid figment projection'); if (live) setProjection(decoded); }).catch(() => { if (live) setError(true); }); return () => { live = false; }; }, [fetchImpl, refresh, token]);
   if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={() => setRefresh((v) => v + 1)}>Retry</button> : null}</main>;
   if (!projection.available) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p className="figment__empty">The Figment project records are unavailable.</p></main>;
-  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} matchedGallery={projection.matchedGallery} profileGallery={projection.profileGallery} cloudExperiment={projection.cloudExperiment} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
+  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Read-only project evidence. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} matchedGallery={projection.matchedGallery} profileGallery={projection.profileGallery} cloudExperiment={projection.cloudExperiment} cloudPairGallery={projection.cloudPairGallery} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} /> : tab === 'records' ? <Records rows={projection.records} truncated={projection.recordsTruncated} /> : <Research research={projection.research} token={token} fetchImpl={fetchImpl} />}</section></main>;
 }

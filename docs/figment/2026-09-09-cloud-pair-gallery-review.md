@@ -1,0 +1,11 @@
+# Figment cloud-pair gallery review — 2026-09-09
+
+The management hub now projects the completed OmniGen2 V3 pair in the existing Asset review tab. It shows the two original 768×768 PNGs beside separate root and independent STOP observations. The slice is explicitly non-promotable and not training-eligible.
+
+The JSON projection omits private paths, pod IDs, prompts, uploads, logs, and embedded graph metadata. The authenticated asset route intentionally returns each original PNG byte-for-byte after revalidating the final receipt, descriptor, both review documents, image size, dimensions, and SHA-256. Original PNGs may retain producer-embedded generation metadata; this is an authenticated evidence viewer, not a sanitized media export. The implementation does not strip or re-encode images.
+
+The STOP-only v1 descriptor binds the final V3 receipt, published image hashes, and the stable root and independent review documents. It can describe a later Qwen pair by replacing the one explicitly configured evidence descriptor after that pair has its own final receipt and reviews; it does not support approval or production eligibility.
+
+Dashboard typecheck passed. The initial one-worker batch passed 45 tests across the gallery, route, and workspace files in 72.91 seconds. After review repairs, the exact collector, authentication-matrix, and workspace batch passed 124 tests in 59.88 seconds; the independent rerun passed 124 in 41.24 seconds. A final test-only repair moved the junction assertion outside the permission-error catch; all three reader tests passed afterward. The [independent review](2026-09-09-cloud-pair-gallery-independent-review.md) is READY.
+
+Root's actual route probe served both byte-identical originals with the expected headers and returned 409 for a stale hash. The production build passed with Vite 8.1.5: 129 modules, 11 ignored output files, 816,266 bytes and no build warnings. Evidence is MAIN `_private/figment-cloud-gallery-root-verification-20260909.json` and `_private/figment-dashboard-build-20260909-v1/`. This is a local build, not deployment. Current screenshot QA could not run because the computer-use provider reported no available browser; earlier desktop and mobile checks are historical and are not evidence for this revision.

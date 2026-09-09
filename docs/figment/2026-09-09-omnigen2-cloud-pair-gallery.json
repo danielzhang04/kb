@@ -1,0 +1,78 @@
+{
+  "schema": "figment/cloud-pair-gallery@1",
+  "experiment_id": "omnigen2-v3",
+  "model_family": "OmniGen2",
+  "run_receipt_sha256": "1a439375c21ef78bc2393a3fe99e3b184ac68a9696e368944a21fa35fcb8f8ef",
+  "not_promotable": true,
+  "training_eligible": false,
+  "rows": [
+    {
+      "seed": 481516234,
+      "file": "omnigen2-g01-seed-481516234.png",
+      "sha256": "3bff11b0dbd8bd14af971d8e16e5a230db2b718a58b4af9819ecd9dc05429edc",
+      "bytes": 561315,
+      "width": 768,
+      "height": 768,
+      "reviews": {
+        "root": {
+          "disposition": "stop",
+          "source": "docs/figment/2026-09-09-omnigen2-cloud-result.md",
+          "source_sha256": "6b597e2c2d0dd15ac1f23c4a7a01cdc5053cf4a5f05be62ca38dc94adb8956c8",
+          "observations": {
+            "identity": "Face shape, mouth, and eye appearance drift from g01 and across the pair.",
+            "realism": "Skin is excessively smooth with a strong beauty-rendered appearance.",
+            "composition": "Tight, largely frontal crop misses the requested waist-up turn.",
+            "clothing": "Black low-cut camisole or corset-like neckline misses the plain crew-neck instruction.",
+            "safety": "Clothed adult presentation; no observed garment exposure failure."
+          }
+        },
+        "independent": {
+          "disposition": "stop",
+          "source": "docs/figment/2026-09-09-omnigen2-pair-independent-review.md",
+          "source_sha256": "600397ba373cf333ec93b2bbb4f3ab0e097e3f01c979407ccfa31cc5685b2151",
+          "observations": {
+            "identity": "Broad styling resembles g01, but narrower oval geometry and mouth differ.",
+            "realism": "Heavily smoothed illustrative portrait rather than photographic skin.",
+            "composition": "Largely frontal tight portrait; requested waist-up turn is not visible.",
+            "clothing": "Low-cut camisole or corset-like neckline misses the crew-neck target.",
+            "safety": "Clothed adult presentation with torso covered."
+          }
+        }
+      }
+    },
+    {
+      "seed": 90210,
+      "file": "omnigen2-g01-seed-90210.png",
+      "sha256": "be9f983de5a1318ebb680f856c925ef33a55d31afe235e32122685180568c3b0",
+      "bytes": 625332,
+      "width": 768,
+      "height": 768,
+      "reviews": {
+        "root": {
+          "disposition": "stop",
+          "source": "docs/figment/2026-09-09-omnigen2-cloud-result.md",
+          "source_sha256": "6b597e2c2d0dd15ac1f23c4a7a01cdc5053cf4a5f05be62ca38dc94adb8956c8",
+          "observations": {
+            "identity": "Face shape, mouth, and eye appearance drift from g01 and across the pair.",
+            "realism": "Skin is excessively smooth with a strong beauty-rendered appearance.",
+            "composition": "Tight, largely frontal crop misses the requested waist-up turn.",
+            "clothing": "Closest of the pair to the requested plain black crew-neck top.",
+            "safety": "Clothed adult presentation; no observed garment exposure failure."
+          }
+        },
+        "independent": {
+          "disposition": "stop",
+          "source": "docs/figment/2026-09-09-omnigen2-pair-independent-review.md",
+          "source_sha256": "600397ba373cf333ec93b2bbb4f3ab0e097e3f01c979407ccfa31cc5685b2151",
+          "observations": {
+            "identity": "Rounder face, broader nose, and smile geometry differ from g01 and the other seed.",
+            "realism": "Heavily smoothed illustrative portrait rather than photographic skin.",
+            "composition": "Largely frontal tight portrait; requested waist-up turn is not visible.",
+            "clothing": "Closest to the requested plain black crew-neck top.",
+            "safety": "Clothed adult presentation with torso covered."
+          }
+        }
+      }
+    }
+  ]
+}

@@ -165,7 +165,7 @@ describe('Figment read projection', () => {
     let handler: (() => unknown) | undefined;
     const app = { get: (path: string, candidate: () => unknown) => {
       if (path === '/api/figment') handler = candidate;
-      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name' || path === '/api/figment/matched-gallery-assets/:assetId' || path === '/api/figment/profile-gallery-assets/:assetId').toBe(true);
+      else expect(path === '/api/figment/reference-assets/:creator/:name' || path === '/api/figment/diagnostic-assets/:name' || path === '/api/figment/generated-input-assets/:name' || path === '/api/figment/matched-gallery-assets/:assetId' || path === '/api/figment/profile-gallery-assets/:assetId' || path === '/api/figment/cloud-pair-assets/:assetId').toBe(true);
     } };
     registerFigmentRead(app as never, { repoRoot: paths.repo, diagnosticRoot: paths.diagnostic });
     const response = await handler!();
@@ -244,6 +244,15 @@ describe('Figment read projection', () => {
       expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toContain('image/png'); expect(response.headers['x-content-type-options']).toBe('nosniff'); expect(response.headers['cache-control']).toBe('no-store'); expect(response.rawPayload).toEqual(png());
       await mocked.close();
     } finally { vi.doUnmock('./profileGallery.ts'); vi.resetModules(); }
+  });
+
+  it('keeps the cloud-pair asset route opaque, stale without evidence, and PNG-only when served', async () => {
+    const paths = await fixture(); const sha = 'a'.repeat(64); const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo }); await app.ready();
+    expect((await app.inject({ method: 'GET', url: '/api/figment/cloud-pair-assets/..%2Frun.json?sha256=' + sha })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/cloud-pair-assets/omnigen2-v3-481516234?sha256=' + 'A'.repeat(64) })).statusCode).toBe(404);
+    expect((await app.inject({ method: 'GET', url: '/api/figment/cloud-pair-assets/omnigen2-v3-481516234?sha256=' + sha })).statusCode).toBe(409); await app.close();
+    vi.resetModules(); vi.doMock('./cloudPairGallery.ts', () => ({ collectCloudPairGallery: () => ({ status: 'recorded' }), readCloudPairGalleryAsset: () => png() }));
+    try { const { registerFigmentRead: registerMocked } = await import('./routes.ts'); const mocked = Fastify(); registerMocked(mocked, { repoRoot: paths.repo, cloudPairRoot: paths.diagnostic }); await mocked.ready(); const response = await mocked.inject({ method: 'GET', url: '/api/figment/cloud-pair-assets/omnigen2-v3-481516234?sha256=' + sha }); expect(response.statusCode).toBe(200); expect(response.headers['content-type']).toContain('image/png'); expect(response.headers['x-content-type-options']).toBe('nosniff'); expect(response.headers['cache-control']).toBe('no-store'); expect(response.rawPayload.equals(png())).toBe(true); await mocked.close(); } finally { vi.doUnmock('./cloudPairGallery.ts'); vi.resetModules(); }
   });
 
   it('truncates after exactly 128 receipt-listed PNGs and refuses oversized assets', async () => {

@@ -58,8 +58,16 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('$1.30')).toBeTruthy();
     expect(screen.getByText('Spend ceiling')).toBeTruthy();
     expect(screen.getAllByText('not recorded').length).toBeGreaterThan(0);
-    expect(screen.getByText('Not reviewed; no accepted or rejected result is claimed.')).toBeTruthy();
+    expect(screen.getByText('Lifecycle evidence only; visual review is recorded separately.')).toBeTruthy();
     expect(screen.queryByText('must-not-project')).toBeNull();
+  });
+
+  it('shows two cloud-pair originals with separate STOP reviews and no eligibility claim', async () => {
+    const observations = { identity: 'geometry differs', realism: 'skin is smoothed', composition: 'turn absent', clothing: 'crew-neck inconsistent', safety: 'clothed adult' };
+    const cloudPairGallery = { status: 'recorded' as const, experimentId: 'omnigen2-v3', modelFamily: 'OmniGen2', notPromotable: true as const, trainingEligible: false as const, rows: [481516234, 90210].map((seed) => ({ seed, asset: { assetId: `omnigen2-v3-${seed}`, sha256: 'd'.repeat(64), bytes: 90, width: 768, height: 768 }, reviews: { root: { disposition: 'stop' as const, source: 'docs/figment/root.md', observations }, independent: { disposition: 'stop' as const, source: 'docs/figment/independent.md', observations } } })) };
+    const fetchImpl = vi.fn((input: RequestInfo | URL) => String(input) === '/api/figment' ? response({ ...projection, cloudPairGallery }) : Promise.resolve(new Response(new Blob(['png']), { status: 200 }))) as unknown as typeof fetch;
+    const originalCreate = URL.createObjectURL; const originalRevoke = URL.revokeObjectURL; Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => 'blob:cloud-pair') }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: vi.fn() });
+    try { render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Asset review' })); await screen.findByRole('img', { name: 'Cloud reference pair seed 481516234' }); expect(screen.getByText('Cloud reference pair — OmniGen2')).toBeTruthy(); expect(screen.getAllByText('Root — STOP')).toHaveLength(2); expect(screen.getAllByText('Independent — STOP')).toHaveLength(2); expect(screen.getByText(/not promotable and not training eligible/)).toBeTruthy(); expect(screen.queryByText('No diagnostic assets are available for review.')).toBeNull(); expect(fetchImpl).toHaveBeenCalledWith('/api/figment/cloud-pair-assets/omnigen2-v3-481516234?sha256=' + 'd'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } })); } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
   });
 
   it('shows historical preparation without claiming GPU or quality evidence', async () => {
