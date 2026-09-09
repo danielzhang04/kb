@@ -5,6 +5,18 @@ job receipts preserve the detailed history. Latest user: the rest is async, run 
 
 ## Exact next step
 
+LATEST joined T0 proof: supported activation exists via synthetic verified human campaign_policy
+approval + cli.apply_override approved->active. Actual enroll/release/FakeGmail owners exist.
+New test reached actual release and found production mismatch: build_revision emits UUIDv4 IDs,
+but store.validate_exec_request accepts only rev_<16hex>. Root authorized remote_protocol narrow
+store.py revision-only UUIDv4 compatibility + focused store validator tests and joined test. Keep
+legacy typed rev IDs, all other IDs/ownership/hash validation unchanged. No raw SQL promotion or
+T0->T1 transition invented. New test not accepted yet (1fail proves mismatch).
+vm_review now does bounded PII staging diagnosis/design ONLY; no edits without root acceptance.
+Do not ignore the guard or treat synthetic false positives as a passing check. Core/UI files are
+frozen; gate_repair only distinct-person count regression. No active VM jobs (all30cleaned).
+
+
 LATEST09:08UTC: ALL OWNED VM JOBS CLEANED, no active VM. Final caller VMdd7baf47 READY no findings,
 reportf5a5b37925ddb30497f8ce2edaafc3b115af2c7af25f1040773cfff3adab27f5; started09:03:13,
 finished09:04:17, collected/cleaned and exact absence verified. Root220 combined P8/fill/service/
