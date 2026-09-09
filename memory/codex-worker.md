@@ -488,3 +488,22 @@ an empty ControlGroup, so terminal ownership/recovery tests must use real observ
 - Keep real source-proof failures intact. Name/title/company cooccurrence does not establish current-role provenance; synthetic end-to-end acceptance cannot replace real draft and browser review.
 - Native worker send_message does not wake a completed agent; followup_task does. VM source-only review and local tool-enabled editing have different capabilities. Report that split honestly.
 - Delivery PR181 is draft. Resume current canonical prospecting handoff for real evidence/browser/human gate work; no active VM job remains.
+
+## 2026-09-09 - Separate source completion, remote acknowledgement and semantic retry scope
+
+- A clean local commit is not published evidence. Automatic approval review can reject the exact
+  destination/payload after all source checks pass; record the local SHA and unchanged remote head,
+  then request explicit publication approval instead of retrying or bypassing the gate.
+- A local terminal receipt does not prove the VM received it. Read-only projections must label
+  acknowledgement unverified; only an actual process response can confirm it. Exact retry may resend
+  the stored validated result or reclaim the matching expired claim, but must never rerun the local
+  operation.
+- Content hash, URL and person identity are insufficient dedup keys when the semantic role changes.
+  Bind snapshot reuse to the canonical current company/title excerpt; otherwise preserve the old
+  immutable candidate and create new bounded provenance.
+- Synthetic status/lost-ack cleanup evidence does not establish a physical laptop-close test, live
+  campaign execution, browser acceptance, real source quality, independent inspection, or sending
+  readiness. Keep those gates explicit even when focused and integration suites are green.
+
+- Serialize scratch cleanup after nested pytest collection finishes; parent-directory discovery can race sibling deletion. Repeat the affected suite after a confirmed cleanup race, and preserve the original result honestly.
+- Match scratch cleanup to its creating Windows security context; validate exact roots and contained reparse targets before unlinking. Do not solve local ownership differences by changing ACLs.

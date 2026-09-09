@@ -3,30 +3,36 @@
 _Updated: 2026-09-09; local coordination draft, not published._
 
 ## Now
-Source delivery is in one draft main PR: https://github.com/danielzhang04/kb/pull/181.
-Implementation commit b7365db5 on codex/prospecting-session-20260909 consolidates 352 reviewed
-source/development paths; operational state, gate results and live records are excluded.
-Campaign persistence, evidence-backed drafts, immutable edits/feedback and the local review UI
-are implemented. Synthetic integrated T0 creates one FakeGmail draft, retries without duplication
-and stops follow-up after a reply. Full staged PII, whitespace and skill-mirror checks passed.
-Focused verification includes 282 fixture/runtime, 50 guard, 24 deployment, 21 bridge/workflow,
-5 actual JavaScript checks; final independent deployment regressions: 7 passed.
-All 32 owned VM jobs were collected, cleaned and exact absence verified. No active VM job.
-A real local-copy trial selected two candidates, created no drafts and blocked both for missing
-source identity evidence, with no external calls or original-store mutation.
+
+Resumed source is locally complete and clean at
+`8c1c30a5765b71aeaeae0be2267746eaf7f8f041` on
+`codex/prospecting-session-20260909`. The 41-file resumed delta passed staged PII, diff and skill
+checks. Publication has not occurred: automatic approval review rejected the fast-forward push and
+PR181 body update, no remote state changed, and PR181 remains at `f049aa66`.
+
+The local review app now supports audited source upload, separate human current-role attestation,
+source-backed first drafts, immutable review/edit history, explicit manual feedback fulfillment and
+a disabled-by-default exact control panel. P12 permits only opaque `status` and T0 `queue_due`; it
+does not call Gmail or send. Its synthetic status-only lost-ack/reconnect/cleanup proof passed. All
+40 source VM jobs and that separate proof are cleaned with exact owned-resource absence verified.
+
+## Verified
+
+Manager 90; control 55 plus independent adapter 10; PII/affinity 58; source/feedback/UI builder 127;
+independent upload repair 27; actual JavaScript 8. A final 16-file run passed 260 tests before one
+temporary-directory cleanup race; the complete affected gate suite then passed 10 tests. The
+uppercase P6 precheck stops before tests/writes on stale inventory/hash/allowlist data and a missing
+independent score, with no runtime mismatch.
 
 ## Next
-Connect a browser, verify current-role source bindings through the local evidence path, rerun
-the local non-sending copy trial and review actual drafts. Visual/keyboard acceptance remains
-open. No live Gmail or paid provider calls, deployment, merge or sending graduation performed.
+
+Final scratch cleanup, owned test-process exit and keep-awake shutdown are verified. Obtain approval for
+the exact source push and PR181 update. Then connect a browser, confirm real desktop-local sources,
+rerun the non-sending local draft trial and review actual drafts.
 
 ## Remaining acceptance
-Human-owned P6 inventory refresh and trusted operational STATE are prerequisites; optional
-Datasette is absent. Five inherited test failures remain in these categories. No evaluation
-manifests reblessed. T0-to-T1 transition is not implemented; independent inspector and SSH saved
-request resolver park unavailable. Source-only VM workers do not inherit desktop tools/connectors.
-Updated coordination records remain local after an earlier operational push approval rejection;
-the separately reviewed source-only publication succeeded. Main dashboard belongs to another terminal.
 
-## Resume
-Read handoffs/2026-09-09-prospecting-review-app.md and the source plan. Live records stay local.
+Browser visual/keyboard review, real source confirmation/drafts, independent inspector, human P6
+manifest/score work, live or paid providers, T0-to-T1 graduation, Gmail sending and deployment are
+open. No evaluation manifest was reblessed. Live records stay local; source-only VM workers have no
+desktop tools, connectors, credentials or data. Read the canonical handoff and source plan on resume.

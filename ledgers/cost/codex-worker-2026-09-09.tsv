@@ -83,3 +83,22 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	source plan and PR claims
 unknown; ambient subscription		unavailable	unavailable	352 source paths verified; normal commit and draft main PR181	boss-native-source-delivery	2026-09-09T10:30:15.389437+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup	gate_repair-native-closeout	2026-09-09T10:30:15.389437+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup; failure evidence retained	vm_review-native-closeout	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent inspector integration diagnosis	gate_repair-resume-design	2026-09-09T16:36:27.450548+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	opaque saved request orchestration diagnosis	remote_protocol-resume-design	2026-09-09T16:36:27.450575+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source evidence correction and UI diagnosis	vm_review-resume-design	2026-09-09T16:36:27.450585+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source-only architecture review; deadline480s collection3600s	vm-resumed-control-3a3d79af	2026-09-09T16:45:36.454893+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collected validated cleaned exact absence; boundary findings retained	vm-resumed-control-3a3d79af-result	2026-09-09T16:48:25.423983+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	desktop pull status and T0 queue_due; strict receipts and ephemeral spool	remote_protocol-control-v1-build	2026-09-09T16:48:25.424025+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	canonical manager run command result cache correlation; T2 bar95	gate_repair-binding-build	2026-09-09T16:56:16.091976+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source snapshot import and audited role-verification UI	vm_review-source-review-build	2026-09-09T16:56:16.092009+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	four-file edit proposal;480sdeadline3600scollection	vm-runtime-hermetic-7104dd85	2026-09-09T16:56:16.092021+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collectedcleanedabsent;4exactCRLFanchorededitsvalidatedandapplied	vm-runtime-hermetic-7104dd85-result	2026-09-09T17:06:47.029203+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source-only review;600sdeadline3600scollection;10inputs123941bytes	vm-manager-binding-26d1ef29	2026-09-09T17:25:15.002866+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	review collected/cleaned/exactabsence; REQUEST CHANGES assigned to gate_repair	vm-manager-binding-26d1ef29-result	2026-09-09T17:30:26.086437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	15source/skills149516bytes;600sdeadline3600scollection;collectedcleanedabsent;3findings assigned	vm-control-review-562bb12f	2026-09-09T17:49:48.384509+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	16source/skills313174bytes;600sdeadline3600scollection;collectedcleanedabsent;2findings triaged assigned	vm-evidence-review-7a4ba779	2026-09-09T17:49:48.393716+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	bounded manual fulfillment design accepted; no auto rewriter or model calls	vm_review-feedback-lifecycle	2026-09-09T17:49:48.402938+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collected-cleaned; repairs accepted; responding model unavailable; report sha51ae93e5e91678729fb91827aac9d462b6fcb5dc67d50e04aecad6686f8ddfa8	vm-manager-recovery-ed301828	2026-09-09T18:05:37.684665+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	collected-cleaned; model identity not independently available	feedback-fulfillment-review-20260909 job39 5b7dd61107ba4c1d96e33555facec29a; READY; report sha4c925c1c2b295bab1740251799e5b34e93b1611c07c1aa1682738041508e3010	2026-09-09T18:34:00Z	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	collected-cleaned; responding model unavailable; one bounded recovery repair	control-review-adapter-20260909 job40 45d4c3e6725445c3917f281d24ee9579; report shaf51d2d5e0c906855947b29feec4518f7633cff0de99d52d95b0eb1bf4f448132	2026-09-09T18:54:34Z	0
+unknown; ambient subscription	unknown	Codex; per-task routing	unavailable	local closeout complete; publication blocked; zero is accounting placeholder, not free usage	resumed closeout orchestration and native followups	2026-09-09T19:36:46.485663+00:00	0
