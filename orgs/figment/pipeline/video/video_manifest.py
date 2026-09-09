@@ -9,10 +9,12 @@ from __future__ import annotations
 import argparse
 import copy
 import hashlib
+import importlib.util
 import json
 import os
 import re
 import stat
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -156,6 +158,48 @@ def _load_first_frame(root: Path, receipt_relative: Path, creator: str) -> dict[
     return {"receipt": {"path": receipt_relative.as_posix(), "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest()}, "frame": actual}
 
 
+def _train_module() -> Any:
+    """Load the still-lineage authority once; video never reproduces its rules."""
+    name = "figment_video_approved_gen_authority"
+    if name in sys.modules: return sys.modules[name]
+    path = Path(__file__).parents[1] / "figment_train.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None: raise VideoManifestError("approved gen authority is unavailable")
+    module = importlib.util.module_from_spec(spec); sys.modules[name] = module
+    try: spec.loader.exec_module(module)
+    except Exception as exc: sys.modules.pop(name, None); raise VideoManifestError("approved gen authority is unavailable") from exc
+    return module
+
+
+def _relative_path_record(root: Path, record: dict[str, Any], label: str) -> dict[str, Any]:
+    try:
+        path = Path(record["path"]).resolve(strict=True); relative = path.relative_to(root.resolve())
+        if not isinstance(record.get("sha256"), str) or not SHA256.fullmatch(record["sha256"]): raise ValueError("digest")
+    except (KeyError, TypeError, OSError, ValueError) as exc: raise VideoManifestError(f"approved gen {label} escapes --root") from exc
+    return {"path": relative.as_posix(), "sha256": record["sha256"]}
+
+
+def _relative_record(root: Path, record: dict[str, Any], label: str) -> dict[str, Any]:
+    result = _relative_path_record(root, record, label)
+    path = root / result["path"]
+    try:
+        _read_json(path, f"approved gen {label}")
+        if hashlib.sha256(path.read_bytes()).hexdigest() != result["sha256"]: raise ValueError("changed")
+    except (OSError, ValueError, VideoManifestError) as exc: raise VideoManifestError(f"approved gen {label} changed") from exc
+    return result
+
+
+def _load_approved_gen(root: Path, plan_relative: Path, creator: str, image_id: str) -> dict[str, Any]:
+    plan = _within(root, plan_relative, "approved gen plan")
+    try: authority = _train_module().validate_approved_gen_still(creator, plan, image_id)
+    except Exception as exc: raise VideoManifestError("approved gen lineage is invalid") from exc
+    frame_record = _relative_path_record(root, authority, "image")
+    frame = _hash_file(root, Path(frame_record["path"]), "approved gen frame", MAX_FRAME_BYTES)
+    if frame["bytes"] != authority.get("bytes") or frame["sha256"] != authority.get("sha256"):
+        raise VideoManifestError("approved gen frame changed while preparing video")
+    return {"approved_gen": {"image_id": authority["image_id"], "source_plan": _relative_record(root, authority["source_plan"], "plan"), "approval_lineage": _relative_record(root, authority["approval_lineage"], "approval lineage"), "approved_list": _relative_record(root, authority["approved_list"], "approved list")}, "frame": frame}
+
+
 def _motion(persona: dict[str, Any], action: str) -> tuple[str, str]:
     look = persona.get("identity", {}).get("look") if isinstance(persona.get("identity"), dict) else None
     if not isinstance(look, dict): raise VideoManifestError("persona has no identity.look")
@@ -211,7 +255,7 @@ def _validate_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(workflow)
 
 
-def build_manifest(*, root: Path, persona_path: Path, first_frame_receipt: Path, action: str, out: Path, seed: int = 4815162342) -> dict[str, Any]:
+def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, seed: int = 4815162342, first_frame_receipt: Path | None = None, approved_gen_plan: Path | None = None, approved_gen_image_id: str | None = None) -> dict[str, Any]:
     root = _root(root)
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= MAX_SEED:
         raise VideoManifestError(f"seed must be an integer between 0 and {MAX_SEED}")
@@ -219,7 +263,15 @@ def build_manifest(*, root: Path, persona_path: Path, first_frame_receipt: Path,
     creator = _text(persona.get("id"), "persona.id")
     if not SAFE_NAME.fullmatch(creator): raise VideoManifestError("persona.id must be safe for a harness destination")
     age, prompt = _motion(persona, action)
-    first_frame = _load_first_frame(root, first_frame_receipt, creator)
+    if (first_frame_receipt is None) == (approved_gen_plan is None):
+        raise VideoManifestError("provide exactly one first-frame receipt or approved gen plan")
+    if first_frame_receipt is not None:
+        if approved_gen_image_id is not None: raise VideoManifestError("approved gen image id requires an approved gen plan")
+        first_frame = _load_first_frame(root, first_frame_receipt, creator)
+    else:
+        if not isinstance(approved_gen_image_id, str) or not approved_gen_image_id:
+            raise VideoManifestError("approved gen plan requires an approved gen image id")
+        first_frame = _load_approved_gen(root, approved_gen_plan, creator, approved_gen_image_id)
     out_path = _within(root, out, "output", allow_missing=True)
     if out_path.exists(): raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
     frame_path = Path(first_frame["frame"]["path"])
@@ -242,7 +294,7 @@ def build_manifest(*, root: Path, persona_path: Path, first_frame_receipt: Path,
         "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"}, "price_usd_per_hour": 1.3, "max_minutes": 80, "readiness_timeout_seconds": 2400, "job_timeout_seconds": 1800, "container_disk_gb": 80, "volume_gb": 120, "volume_mount_path": "/workspace", "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
         "comfyui": {"root": "/workspace/ComfyUI", "git_ref": COMFY_COMMIT, "source_url": COMFY_SOURCE, "tarball_url": f"https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/{COMFY_COMMIT}", "replace_non_git_root": False, "port": 8188, "start_command": "python main.py"},
         "models": pins, "seed_fields": ["seed"], "workflow": workflow,
-        "uploads": [{"files": [frame_path.as_posix()], "subfolder": remote_subfolder, "type": "input", "overwrite": False}],
+        "uploads": [{"files": [frame_path.name], "subfolder": remote_subfolder, "type": "input", "overwrite": False}],
         "jobs": [{"seed": seed, "output_name": output_name, "expected_images": 81}],
     }
     return manifest
@@ -262,11 +314,13 @@ def write_manifest(*, root: Path, out: Path, **kwargs: Any) -> dict[str, Any]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", required=True, type=Path); parser.add_argument("--persona", required=True, type=Path)
-    parser.add_argument("--first-frame-input", required=True, type=Path); parser.add_argument("--action", required=True)
+    inputs = parser.add_mutually_exclusive_group(required=True)
+    inputs.add_argument("--first-frame-input", type=Path); inputs.add_argument("--approved-gen-plan", type=Path)
+    parser.add_argument("--approved-gen-image-id"); parser.add_argument("--action", required=True)
     parser.add_argument("--out", required=True, type=Path); parser.add_argument("--seed", type=int, default=4815162342)
     args = parser.parse_args(argv)
     try:
-        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, action=args.action, out=args.out, seed=args.seed)
+        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, approved_gen_plan=args.approved_gen_plan, approved_gen_image_id=args.approved_gen_image_id, action=args.action, out=args.out, seed=args.seed)
     except VideoManifestError as exc: parser.error(str(exc))
     return 0
 

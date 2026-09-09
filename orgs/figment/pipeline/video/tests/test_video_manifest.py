@@ -6,6 +6,7 @@ import json
 import os
 import subprocess
 import sys
+from types import SimpleNamespace
 from pathlib import Path
 
 import pytest
@@ -73,6 +74,17 @@ def test_dry_run_uses_existing_image_contract_for_exactly_81_outputs(tmp_path: P
     assert result.returncode == 0, result.stderr
     paths = sorted((tmp_path / "dry-run").glob("video-creator-test-*.png"))
     assert len(paths) == 81
+
+
+def test_compiles_approved_gen_still_without_changing_diagnostic_route(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    files = fixture(tmp_path); plan = tmp_path / "plan.json"; approval = tmp_path / "approval-lineage.json"; approved = tmp_path / "approved-list.json"
+    for path in (plan, approval, approved): path.write_text("{}", encoding="utf-8")
+    authority = {"image_id": "creator-test-gen-01", "path": str(files["frame"]), "bytes": files["frame"].stat().st_size, "sha256": digest(files["frame"]), "source_plan": {"path": str(plan), "sha256": digest(plan)}, "approval_lineage": {"path": str(approval), "sha256": digest(approval)}, "approved_list": {"path": str(approved), "sha256": digest(approved)}}
+    monkeypatch.setattr(video, "_train_module", lambda: SimpleNamespace(validate_approved_gen_still=lambda *args: authority))
+    manifest = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01", action="walk slowly toward the camera", out=Path("approved-video-manifest.json"), seed=77)
+    assert manifest["not_promotable"] is True
+    assert manifest["provenance"]["first_frame"]["approved_gen"]["image_id"] == "creator-test-gen-01"
+    assert manifest["provenance"]["first_frame"]["frame"]["sha256"] == digest(files["frame"])
 
 
 def test_refuses_stale_claimed_approval_and_unsafe_paths(tmp_path: Path) -> None:

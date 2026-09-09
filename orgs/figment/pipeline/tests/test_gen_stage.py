@@ -9,6 +9,7 @@ there is no package ``__init__.py`` anywhere in this test tree.
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import subprocess
 import sys
@@ -45,6 +46,8 @@ _synthetic_persona = anchor_stage_test._synthetic_persona
 _promoted_persona = anchor_stage_test._promoted_persona
 _set_training = anchor_stage_test._set_training
 load_json = anchor_stage_test.load_json
+video = load_module("figment_gen_test_video_manifest", PIPELINE / "video" / "video_manifest.py")
+pod_runner = load_module("figment_gen_test_pod_runner", POD_RUNNER)
 
 
 BANNED = (
@@ -334,6 +337,53 @@ def test_grade_apply_rulings_and_gate_accept_gen(command, tmp_path):
 
     document = command.command_gate("creator-002", "gen", out / "plan.json")
     assert document["rows"]
+
+
+def test_real_approved_gen_lineage_compiles_nonpromotable_video_and_rejects_stale_evidence(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "approved-gen-video"
+    plan = command.build_plan("creator-002", "gen", out, personas_root=personas, skip_pin_verify=True)
+    anchor_stage_test._fake_stage_outputs(out, plan, "gen")
+    grade = command.build_grade("creator-002", "gen", out / "plan.json", skip_judge=True)
+    rulings = load_json(Path(grade["rulings_template"]))
+    for row in rulings["rulings"]: row.update(anchor_stage_test._axes(), decision="keep")
+    rulings.update({"decided_by": "operator-fixture", "decided_at": "2026-09-09T00:00:00Z"})
+    filled = out / "gen-rulings.json"; filled.write_text(json.dumps(rulings), "utf-8")
+    command.apply_rulings("creator-002", "gen", out / "plan.json", filled)
+    image_id = load_json(out / "grade" / "gen" / "approved-list.json")["images"][0]["image_id"]
+    authority = command.validate_approved_gen_still("creator-002", out / "plan.json", image_id)
+    persona = out / "video-persona.json"
+    persona.write_text(json.dumps({"id": "creator-002", "identity": {"look": {"age_stage": "an adult woman", "clothing": "a fully opaque shirt and jeans"}}}), "utf-8")
+    image_relative = Path(authority["path"]).relative_to(out)
+    manifest = video.build_manifest(root=out, persona_path=Path(persona.name), approved_gen_plan=Path("plan.json"), approved_gen_image_id=image_id, action="walk slowly toward the camera", out=image_relative.parent / "video-manifest.json", seed=77)
+    assert manifest["not_promotable"] is True
+    assert manifest["provenance"]["first_frame"]["approved_gen"]["image_id"] == image_id
+    assert manifest["provenance"]["first_frame"]["frame"]["sha256"] == authority["sha256"]
+    manifest_path = out / image_relative.parent / "video-manifest.json"
+    uploads = pod_runner.expand_manifest_uploads(manifest, manifest_path)
+    assert len(uploads) == 1
+    assert uploads[0].local_path == Path(authority["path"]).resolve()
+    plan_path = out / "plan.json"; original = plan_path.read_text("utf-8"); plan_path.write_text(original + " ", "utf-8")
+    with pytest.raises(command.FigmentTrainError, match="stale"):
+        command.validate_approved_gen_still("creator-002", plan_path, image_id)
+
+
+def test_nested_diagnostic_frame_expands_from_manifest_directory(tmp_path):
+    nested = tmp_path / "nested"; nested.mkdir()
+    persona = tmp_path / "persona.json"
+    persona.write_text(json.dumps({"id": "creator-002", "identity": {"look": {"age_stage": "an adult woman", "clothing": "a fully opaque shirt and jeans"}}}), "utf-8")
+    frame = nested / "frame.png"; frame.write_bytes(b"nested clothed adult diagnostic frame")
+    receipt = nested / "first-frame.json"
+    receipt.write_text(json.dumps({"schema": video.FRAME_SCHEMA, "creator": "creator-002", "first_frame": {"path": "nested/frame.png", "bytes": frame.stat().st_size, "sha256": hashlib.sha256(frame.read_bytes()).hexdigest()}}), "utf-8")
+    manifest_path = nested / "video-manifest.json"
+    manifest = video.build_manifest(root=tmp_path, persona_path=Path(persona.name), first_frame_receipt=Path("nested/first-frame.json"), action="walk slowly toward the camera", out=Path("nested/video-manifest.json"), seed=77)
+
+    uploads = pod_runner.expand_manifest_uploads(manifest, manifest_path)
+    assert manifest["uploads"][0]["files"] == [frame.name]
+    assert len(uploads) == 1
+    assert uploads[0].local_path == frame.resolve()
 
 
 # ---------------------------------------------------------------------------
