@@ -35,7 +35,7 @@ class FakeResourceError(RuntimeError):
 class Harness:
     """Scripted deps. floors: list of bools consumed per sample (True = pass)."""
 
-    def __init__(self, floors, *, healthy=True, admission_present=False, execute=None, guard_fail_at=None, evidence_fail=False):
+    def __init__(self, floors, *, healthy=True, admission_present=False, execute=None, guard_fail_at=None, evidence_fail=False, sample_errors=None):
         self.floors = list(floors)
         self.healthy = healthy if isinstance(healthy, list) else [healthy] * 10_000
         self.present = admission_present
@@ -48,6 +48,7 @@ class Harness:
         self.guard_fail_at = guard_fail_at
         self.evidence_fail = evidence_fail
         self.evidence_calls = 0
+        self.sample_errors = list(sample_errors or [])
         self._execute = execute or self._receipt
 
     @staticmethod
@@ -60,6 +61,10 @@ class Harness:
             raise c.ContinuationError("owner ceased")
 
     def sample(self):
+        if self.sample_errors:
+            error = self.sample_errors.pop(0)
+            if error is not None:
+                raise error
         return {"available_ram_bytes": 1}
 
     def preflight(self, sample, disk):
@@ -135,6 +140,38 @@ def test_keepawake_heartbeats_even_below_floor():
     assert result["status"] == c.STATUS_GENERATED
     heartbeat_rows = [r for r in h.journal if r.get("phase") == "heartbeat"]
     assert len(heartbeat_rows) == 6
+
+
+def test_one_wait_gpu_query_timeout_then_three_fresh_passes_is_tolerated():
+    timeout = FakeResourceError(c.TOLERATED_GPU_QUERY_TIMEOUT)
+    h = Harness([True] * 6, sample_errors=[timeout, None, None, None, None, None, None])
+    result = h.run()
+    assert result["status"] == c.STATUS_GENERATED and result["resource_timeout_count"] == 1
+    assert result["samples"] == 4 and h.executions == 1
+    assert any(row.get("phase") == "tolerated-gpu-query-timeout" for row in h.journal)
+
+
+def test_second_wait_gpu_query_timeout_is_terminal_without_admission():
+    timeout = FakeResourceError(c.TOLERATED_GPU_QUERY_TIMEOUT)
+    h = Harness([True] * 10, sample_errors=[timeout, None, timeout])
+    result = h.run()
+    assert result["status"] == c.STATUS_FAILED and result["resource_timeout_count"] == 1
+    assert not h.written and h.executions == 0
+
+
+def test_preparation_gpu_query_timeout_is_not_tolerated():
+    timeout = FakeResourceError(c.TOLERATED_GPU_QUERY_TIMEOUT)
+    h = Harness([True] * 10, sample_errors=[None, None, None, timeout])
+    result = h.run()
+    assert result["status"] == c.STATUS_FAILED and result["resource_timeout_count"] == 0
+    assert not h.written and h.executions == 0
+
+
+def test_other_resource_error_is_not_whitelisted():
+    h = Harness([True] * 10, sample_errors=[FakeResourceError("gpu query malformed")])
+    result = h.run()
+    assert result["status"] == c.STATUS_FAILED and result["resource_timeout_count"] == 0
+    assert not h.written and h.executions == 0
 
 
 def test_max_samples_ends_wait_without_admission():

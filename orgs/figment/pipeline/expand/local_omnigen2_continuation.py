@@ -34,8 +34,8 @@ MAIN = Path("C:/Users/danie/kb")
 MAIN_PRIVATE = MAIN / "_private"
 STUDIO = MAIN_PRIVATE / "codex-worktrees/figment-studio-20260908"
 STUDIO_PRIVATE = STUDIO / "_private"
-OUTER_ROOT = MAIN_PRIVATE / "figment-omnigen-overnight-continuation-20260908-v1"
-ACTIVATION_PATH = STUDIO_PRIVATE / "figment-omnigen-overnight-activation-20260908-v1" / "activation.json"
+OUTER_ROOT = MAIN_PRIVATE / "figment-omnigen-overnight-continuation-20260909-v1"
+ACTIVATION_PATH = STUDIO_PRIVATE / "figment-omnigen-overnight-activation-20260909-v1" / "activation.json"
 SOURCE_REL = "orgs/figment/pipeline/expand/local_omnigen2_continuation.py"
 SOURCE_PATH = STUDIO / SOURCE_REL
 STOP_PATH = MAIN / "STOP"
@@ -73,6 +73,7 @@ OWNER_KEYS = frozenset({"pid", "creation_filetime", "parent_pid"})
 STATUS_GENERATED = "generated-awaiting-review"
 STATUS_NOT_ADMITTED = "wait-window-ended-not-admitted"
 STATUS_FAILED = "failed"
+TOLERATED_GPU_QUERY_TIMEOUT = "gpu query timed out"
 
 
 class ContinuationError(RuntimeError):
@@ -197,6 +198,8 @@ class Wrapper:
         self.samples = 0
         self.attempts: list[dict[str, Any]] = []
         self.executions = 0
+        self.resource_timeout_count = 0
+        self._tolerated_timeout = False
         self._last_print = None
         self._last_state = None
 
@@ -213,6 +216,7 @@ class Wrapper:
     def _floor(self, phase: str) -> bool:
         """One guarded sample; journal raw before floors. True = floors pass; False = wait."""
         self.d.guard()
+        self._tolerated_timeout = False
         record = {"utc": _utc(), "monotonic": self.d.monotonic(), "phase": phase}
         try:
             sample = self.d.sample()
@@ -223,6 +227,9 @@ class Wrapper:
             record["sample_error"] = {"class": type(exc).__name__, "message": str(exc)[:256]}
             record["outcome"] = "sampler-error"
             self.d.journal(record)
+            if phase == "wait" and isinstance(exc, self.d.resource_error) and str(exc) == TOLERATED_GPU_QUERY_TIMEOUT and self.resource_timeout_count == 0:
+                self._tolerated_timeout = True
+                return False
             raise
         try:
             record["preflight"] = self.d.preflight(sample, disk)
@@ -244,6 +251,10 @@ class Wrapper:
         while self.samples < self.l.max_samples and self.d.monotonic() < deadline:
             self.samples += 1
             ok = self._floor("wait")
+            if self._tolerated_timeout:
+                self.resource_timeout_count += 1
+                self.ready = 0
+                self.d.journal({"utc": _utc(), "monotonic": self.d.monotonic(), "phase": "tolerated-gpu-query-timeout", "outcome": "tolerated", "timeout_count": self.resource_timeout_count})
             beat = self.d.heartbeat()
             healthy = beat.get("healthy") is True
             self.d.journal({"utc": _utc(), "monotonic": self.d.monotonic(), "phase": "heartbeat", "result": beat, "outcome": "healthy" if healthy else "unhealthy"})
@@ -328,6 +339,7 @@ class Wrapper:
         result["samples"] = self.samples
         result["attempts"] = self.attempts
         result["executions"] = self.executions
+        result["resource_timeout_count"] = self.resource_timeout_count
         result["elapsed_seconds"] = self.d.monotonic() - started
         result["utc"] = _utc()
         self._print(result["status"], force=True)
@@ -650,7 +662,7 @@ def apply() -> dict[str, Any]:
         result = Wrapper(deps).run()
         result["activation_sha256"] = activation_sha
     except BaseException as exc:
-        result = {"schema": SCHEMA, "status": STATUS_FAILED, "execution_attempted": False, "not_promotable": True, "errors": [{"class": type(exc).__name__, "message": str(exc)[:512]}], "utc": _utc()}
+        result = {"schema": SCHEMA, "status": STATUS_FAILED, "execution_attempted": False, "not_promotable": True, "resource_timeout_count": 0, "errors": [{"class": type(exc).__name__, "message": str(exc)[:512]}], "utc": _utc()}
     if journal is not None:
         (OUTER_ROOT / "result.json").write_text(json.dumps(result, indent=2, sort_keys=True, allow_nan=False) + "\n", encoding="utf-8")
     return result
