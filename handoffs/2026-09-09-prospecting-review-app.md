@@ -4,6 +4,8 @@ Active work; this replaces the September 8 end-to-end handoff. Do not restart th
 
 ## Current owner and acceptance checkpoint
 
+- Latest08:25UTC: VM37655373 final UI review REQUEST CHANGES, report9cfdbab41f34fefe94c811d8fec2dec737dc4ec78453f47108a614be8bc70e3d. Collected/cleaned, exact directory/mount/3units absent. NO ACTIVE OWNED VM JOB. Root accepted wrong-campaign async response and lost unsaved editor findings; third request-ID claim needs actual CampaignService verification (failed validation may not reserve ID). Existing native vm_review resumed with narrow HTML/UI-state tests scope, no service/backend changes. Gate_repair reports100 focused passes, adding final adversarial provenance regressions before freeze. SourceHEAD44865973 unchanged.
+
 - ACTIVE VM final-ui-state-review-20260909, id37655373029649e6afbf834dbc9f76a8, requested gpt-5.6-sol, started08:21:27UTC. Source-only independent campaign-switch/retry/UI-state review. 420second deadline +3600second collection lease. Receipt at root _private/dev-jobs/final-ui-state-review-20260909/receipt.json. Native gate_repair still owns provenance fix. Earlier no-active statements below are historical. Recover this exact job, collect/validate then clean and verify absence.
 
 - Source HEAD44865973 commits reviewed project_index/runbook access docs (bootstrap exacttokenURL60sec/session8h, selectedstore siblinganchors, informational10-20). Root corrected VM docs mistaken baselink-as-bootstrap and rejected unrelated fillpreconditions change. No publication.
