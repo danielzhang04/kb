@@ -36,6 +36,13 @@ async function addPair(generated: string, image: Buffer, index: number, sourceSh
   await writeFile(join(generated, `${stem}.provenance.json`), JSON.stringify({ schema: 'figment/generated-input-experiment@1', creator: 'creator-001', source: { reference: 'anchors/g01.jpg', sha256: sourceSha }, output: { file: name, sha256: valid ? sha(image) : 'a'.repeat(64), bytes: image.length }, generation: { date: '2026-09-08' }, review: { status: 'experimental-unreviewed' } }));
 }
 
+async function addProducerPair(generated: string, image: Buffer, index: number, sourceSha: string): Promise<string> {
+  const name = `producer-${String(index).padStart(2, '0')}.png`;
+  await writeFile(join(generated, name), image);
+  await writeFile(join(generated, `${name}.provenance.json`), JSON.stringify({ schema: 'figment/generated-input-experiment@1', creator: 'creator-001', source: { reference: 'anchors/g01.jpg', sha256: sourceSha, role: 'sole g01; no prior generated candidate is an input' }, output: { file: name, sha256: sha(image) }, tool: 'image_gen.imagegen', model: 'not-exposed', review: { status: 'research-training-eligible', training_eligible: true }, curation: { split: 'train' } }));
+  return name;
+}
+
 describe('generated input inventory', () => {
   it('projects only a hash-bound declared pair and reads the requested asset at its projected hash', async () => {
     const item = await fixture(); try { const projection = collectGeneratedInputs(item.repo, item.generated); expect(projection).toMatchObject({ available: true, truncated: false, items: [{ name: item.name, sha256: sha(item.image), sourceReference: 'anchors/g01.jpg', reviewStatus: 'experimental-unreviewed' }] }); expect(JSON.stringify(projection)).not.toContain('training_eligible'); expect(readGeneratedInput(item.repo, item.generated, item.name, sha(item.image))?.bytes).toEqual(item.image); await writeFile(join(item.generated, item.name), Buffer.from(item.image).fill(7)); expect(readGeneratedInput(item.repo, item.generated, item.name, sha(item.image))).toBeNull(); } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); } });
@@ -43,19 +50,19 @@ describe('generated input inventory', () => {
   it('rejects a pair whose declared canonical source hash does not equal the live fixed g01', async () => {
     const item = await fixture(); try { const provenance = join(item.generated, 'g01-e01-shoulders-up-v1.provenance.json'); const value = JSON.parse(await (await import('node:fs/promises')).readFile(provenance, 'utf8')); value.source.sha256 = 'a'.repeat(64); await writeFile(provenance, JSON.stringify(value)); expect(collectGeneratedInputs(item.repo, item.generated).items).toEqual([]); } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); } });
 
-  it('distinguishes an invalid seventeenth pair from a valid truncating seventeenth pair', async () => {
+  it('distinguishes an invalid twenty-fifth pair from a valid truncating twenty-fifth pair', async () => {
     const item = await fixture(); try {
-      for (let index = 0; index < 15; index += 1) await addPair(item.generated, item.image, index, sha(item.image));
-      await addPair(item.generated, item.image, 16, sha(item.image), false);
+      await Promise.all(Array.from({ length: 23 }, (_, index) => addPair(item.generated, item.image, index, sha(item.image))));
+      await addPair(item.generated, item.image, 24, sha(item.image), false);
       expect(collectGeneratedInputs(item.repo, item.generated)).toMatchObject({ truncated: false });
-      await addPair(item.generated, item.image, 16, sha(item.image));
+      await addPair(item.generated, item.image, 24, sha(item.image));
       expect(collectGeneratedInputs(item.repo, item.generated)).toMatchObject({ truncated: true });
     } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); }
   });
 
   it('refuses physical overflow for both projection and binary read', async () => {
     const item = await fixture(); try {
-      for (let index = 0; index < 33; index += 1) await writeFile(join(item.generated, `junk-${index}.txt`), 'x');
+      for (let index = 0; index < 49; index += 1) await writeFile(join(item.generated, `junk-${index}.txt`), 'x');
       expect(collectGeneratedInputs(item.repo, item.generated)).toMatchObject({ available: false });
       expect(readGeneratedInput(item.repo, item.generated, item.name, sha(item.image))).toBeNull();
     } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); }
@@ -108,6 +115,33 @@ describe('generated input inventory', () => {
 
   it('accepts the current legacy provenance shape without output bytes', async () => {
     const item = await fixture(); try { const provenance = join(item.generated, 'g01-e01-shoulders-up-v1.provenance.json'); const row = JSON.parse(await (await import('node:fs/promises')).readFile(provenance, 'utf8')); delete row.output.bytes; delete row.output.dimensions; await writeFile(provenance, JSON.stringify(row)); expect(collectGeneratedInputs(item.repo, item.generated).items).toHaveLength(1); } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); }
+  });
+
+  it('projects 21 actual producer-shaped pairs without generation metadata and reads exact bytes', async () => {
+    const item = await fixture(); try {
+      await rm(join(item.generated, item.name)); await rm(join(item.generated, 'g01-e01-shoulders-up-v1.provenance.json'));
+      const names: string[] = [];
+      for (let index = 1; index <= 21; index += 1) names.push(await addProducerPair(item.generated, item.image, index, sha(item.image)));
+      const result = collectGeneratedInputs(item.repo, item.generated);
+      expect(result).toMatchObject({ available: true, truncated: false });
+      expect(result.items).toHaveLength(21);
+      expect(result.items.every((row) => row.generatedOn === null && row.reviewStatus === 'research-training-eligible')).toBe(true);
+      expect(readGeneratedInput(item.repo, item.generated, names[0], sha(item.image))?.bytes).toEqual(item.image);
+      await writeFile(join(item.generated, names[0]), Buffer.from(item.image).fill(3));
+      expect(readGeneratedInput(item.repo, item.generated, names[0], sha(item.image))).toBeNull();
+    } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); }
+  });
+
+  it('rejects ambiguous dual sidecars and malformed supplied generation metadata', async () => {
+    const item = await fixture(); try {
+      await writeFile(join(item.generated, `${item.name}.provenance.json`), await (await import('node:fs/promises')).readFile(join(item.generated, 'g01-e01-shoulders-up-v1.provenance.json')));
+      expect(collectGeneratedInputs(item.repo, item.generated).items).toEqual([]);
+      expect(readGeneratedInput(item.repo, item.generated, item.name, sha(item.image))).toBeNull();
+      await rm(join(item.generated, `${item.name}.provenance.json`));
+      const provenance = join(item.generated, 'g01-e01-shoulders-up-v1.provenance.json'); const row = JSON.parse(await (await import('node:fs/promises')).readFile(provenance, 'utf8')); row.generation = '2026-09-09'; await writeFile(provenance, JSON.stringify(row));
+      expect(collectGeneratedInputs(item.repo, item.generated).items).toEqual([]);
+      expect(readGeneratedInput(item.repo, item.generated, item.name, sha(item.image))).toBeNull();
+    } finally { await rm(join(item.repo, '..'), { recursive: true, force: true }); }
   });
 
 });

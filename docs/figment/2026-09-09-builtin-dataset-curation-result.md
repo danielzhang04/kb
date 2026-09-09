@@ -1,7 +1,9 @@
 # Built-in research dataset curation result
 
-**Date:** 2026-09-09  
-**Scope:** creator-001 bounded research dataset and train-first preparation  
+**Date:** 2026-09-09
+
+**Scope:** creator-001 bounded research dataset and train-first preparation
+
 **Production status:** not approved for production or publication
 
 ## Result
