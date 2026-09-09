@@ -582,6 +582,158 @@ def test_held_out_diagnostic_protocol_uses_a_single_reference_without_a_multi_an
     assert protocol["persona"]["reference_set"] == [protocol["persona"]["canonical_anchor"]]
 
 
+def test_compile_held_out_diagnostic_emits_ten_isolated_harness_jobs_and_dry_runs(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "creator002krea2.safetensors"
+    candidate.write_bytes(b"synthetic held-out checkpoint")
+    protocol_path = tmp_path / "protocol.json"
+    command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, protocol_path, personas_root=personas_root,
+        canonical_anchor="anchors/a01.jpg",
+    )
+
+    out = tmp_path / "compiled"
+    preparation = command.compile_held_out_diagnostic(
+        "creator-002", protocol_path, candidate, out, personas_root=personas_root,
+    )
+    manifest_path = out / preparation["manifest"]["path"]
+    manifest = load_json(manifest_path)
+    assert preparation["schema"] == "figment/held-out-diagnostic-preparation@1"
+    assert preparation["promotion"] == {"allowed": False}
+    assert preparation["minimum_runtime_minutes"] <= manifest["max_minutes"]
+    assert preparation["run"]["ceiling_usd"] == command.manifest_ceiling(manifest)
+    assert preparation["run"]["argv"][preparation["run"]["argv"].index("--max-minutes") + 1] == str(manifest["max_minutes"])
+    staged = out / "inputs" / candidate.name
+    assert staged.read_bytes() == candidate.read_bytes()
+    assert manifest["uploads"][0]["files"] == [f"inputs/{candidate.name}"]
+    assert len(manifest["jobs"]) == 10
+
+    runner = command._pod_runner_module()
+    candidate_jobs = manifest["jobs"][:5]
+    control_jobs = manifest["jobs"][5:]
+    assert [job["seed"] for job in candidate_jobs] == list(command.DIAGNOSTIC_PROTOCOL_SEEDS)
+    assert [job["seed"] for job in control_jobs] == list(command.DIAGNOSTIC_PROTOCOL_SEEDS)
+    for job in candidate_jobs:
+        graph = runner.apply_job(manifest["workflow"], job)
+        assert graph["4"]["inputs"]["strength_model"] == 1.0
+        assert graph["4"]["inputs"]["strength_clip"] == 1.0
+        assert graph["5"]["inputs"]["clip"] == ["4", 1]
+        assert graph["8"]["inputs"]["model"] == ["4", 0]
+    for job in control_jobs:
+        graph = runner.apply_job(manifest["workflow"], job)
+        assert graph["4"]["inputs"]["strength_model"] == 0.0
+        assert graph["4"]["inputs"]["strength_clip"] == 0.0
+        assert graph["5"]["inputs"]["clip"] == ["2", 0]
+        assert graph["8"]["inputs"]["model"] == ["1", 0]
+
+    result = subprocess.run(
+        [sys.executable, str(POD_RUNNER), "run", "--manifest", str(manifest_path),
+         "--out", str(tmp_path / "dry-run"), "--dry-run"],
+        cwd=ROOT, text=True, capture_output=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_compile_held_out_diagnostic_refuses_tampering_stale_anchor_and_existing_output(
+    command, tmp_path,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "creator002krea2.safetensors"
+    candidate.write_bytes(b"synthetic held-out checkpoint")
+    protocol_path = tmp_path / "protocol.json"
+    command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, protocol_path, personas_root=personas_root,
+        canonical_anchor="anchors/a01.jpg",
+    )
+
+    tampered = load_json(protocol_path)
+    tampered["promotion"] = {"allowed": True}
+    tampered_path = tmp_path / "tampered.json"
+    tampered_path.write_text(json.dumps(tampered), encoding="utf-8")
+    with pytest.raises(command.FigmentTrainError, match="non-promotable"):
+        command.compile_held_out_diagnostic(
+            "creator-002", tampered_path, candidate, tmp_path / "tampered-out",
+            personas_root=personas_root,
+        )
+
+    replacement = tmp_path / "replacement.safetensors"
+    replacement.write_bytes(b"different checkpoint")
+    with pytest.raises(command.FigmentTrainError, match="checkpoint or tester pins are stale"):
+        command.compile_held_out_diagnostic(
+            "creator-002", protocol_path, replacement, tmp_path / "wrong-checkpoint-out",
+            personas_root=personas_root,
+        )
+
+    (personas_root / "creator-002" / "anchors" / "a01.jpg").write_bytes(b"changed anchor")
+    with pytest.raises(command.FigmentTrainError, match="reference set is stale"):
+        command.compile_held_out_diagnostic(
+            "creator-002", protocol_path, candidate, tmp_path / "stale-anchor-out",
+            personas_root=personas_root,
+        )
+
+    fresh_personas = tmp_path / "fresh-personas"
+    _synthetic_persona(fresh_personas)
+    fresh_protocol = tmp_path / "fresh-protocol.json"
+    command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, fresh_protocol, personas_root=fresh_personas,
+        canonical_anchor="anchors/a01.jpg",
+    )
+    existing = tmp_path / "existing-out"
+    existing.mkdir()
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.compile_held_out_diagnostic(
+            "creator-002", fresh_protocol, candidate, existing, personas_root=fresh_personas,
+        )
+
+
+def test_compile_held_out_diagnostic_revalidates_after_candidate_snapshot(command, tmp_path, monkeypatch):
+    """A changed checkpoint between initial validation and final publication is refused."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    candidate = tmp_path / "creator002krea2.safetensors"
+    candidate.write_bytes(b"initial candidate")
+    protocol_path = tmp_path / "protocol.json"
+    command.build_held_out_diagnostic_protocol(
+        "creator-002", candidate, protocol_path, personas_root=personas_root,
+        canonical_anchor="anchors/a01.jpg",
+    )
+    original_fingerprint = command._source_fingerprint
+    changed = False
+
+    def fingerprint_then_change(path):
+        nonlocal changed
+        result = original_fingerprint(path)
+        if not changed and Path(path).resolve() == candidate.resolve():
+            candidate.write_bytes(b"changed after snapshot")
+            changed = True
+        return result
+
+    monkeypatch.setattr(command, "_source_fingerprint", fingerprint_then_change)
+    with pytest.raises(command.FigmentTrainError, match="checkpoint or tester pins are stale"):
+        command.compile_held_out_diagnostic(
+            "creator-002", protocol_path, candidate, tmp_path / "racing-out",
+            personas_root=personas_root,
+        )
+    assert changed
+
+
+def test_compile_held_out_diagnostic_cli_subcommand_is_registered(command):
+    parser = command.build_parser()
+    args = parser.parse_args([
+        "compile-held-out-diagnostic", "--creator", "creator-002", "--protocol", "p.json",
+        "--candidate-checkpoint", "c.safetensors", "--out", "compiled", "--ledger-dir", "ledger",
+    ])
+    assert args.command == "compile-held-out-diagnostic"
+    assert args.protocol == Path("p.json")
+    assert args.candidate_checkpoint == Path("c.safetensors")
+    assert args.out == Path("compiled")
+    assert args.ledger_dir == Path("ledger")
+
+
 @pytest.mark.parametrize(
     ("age_stage", "message"),
     [
@@ -804,6 +956,143 @@ def test_dataset_grading_template_round_trip_builds_only_kept_training_images(co
     assert sum(row["review_status"] == "verified" for row in review["images"]) == 30
     assert not any(row["safety_failed"] for row in review["images"])
     assert (out / "train" / "runs" / "creator-002-tensor-dataset" / "training.json").is_file()
+
+
+def _all_cull_rulings(template: dict) -> dict:
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "cull",
+            "identity": "pass",
+            "realism": "pass",
+            "hands": "pass",
+            "lighting": "pass",
+            "adult_read": "pass",
+            "garment_integrity": "pass",
+            "real_person_resemblance": "clear",
+            "why": "fixture all-cull ruling",
+        })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-09T00:00:00Z"})
+    return template
+
+
+def test_apply_rulings_records_an_attributed_all_cull_without_opening_dataset_gate(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="all-cull-dataset")
+    template = _all_cull_rulings(load_json(Path(grade["rulings_template"])))
+    filled = Path(grade["rulings_template"]).with_name("all-cull.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+
+    result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
+    rejection = load_json(Path(result["rejection_lineage"]))
+    evaluation = load_json(Path(grade["gate"]).with_name("evaluation-inputs.json"))
+    review = load_json(Path(result["review_manifest"]))
+    grade_dir = Path(grade["rulings_template"]).parent
+
+    assert rejection["schema"] == command._lineage_module().APPROVAL_SCHEMA
+    assert rejection["decision"] == "rejected"
+    assert rejection["decided_by"] == "operator-fixture"
+    assert rejection["subject"] == evaluation["subject"]
+    assert rejection["subject_sha256"] == evaluation["subject_sha256"]
+    assert rejection["reviewed_subject_sha256"] == evaluation["subject_sha256"]
+    assert rejection["rulings_sha256"] == command._sha256(Path(result["rulings"]))
+    assert all(row["review_status"] == "verified" for row in review["images"])
+    assert not (grade_dir / "approval-lineage.json").exists()
+    assert not (grade_dir / "approved-list.json").exists()
+    assert not (grade_dir / "approved").exists()
+    assert not (plan_file.parent / "train" / "runs" / "creator-002-tensor-dataset").exists()
+    plan, root = command._load_plan("creator-002", plan_file)
+    with pytest.raises(command.FigmentTrainError, match="no current operator approval"):
+        command._load_current_approval(plan, root, "dataset")
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+
+def test_all_cull_cli_reports_rejection_without_a_post_write_error(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="cull-cli")
+    grade_dir = Path(grade["rulings_template"]).parent
+    filled = grade_dir / "all-cull-input.json"
+    filled.write_text(
+        json.dumps(_all_cull_rulings(load_json(Path(grade["rulings_template"])))),
+        encoding="utf-8",
+    )
+    result = subprocess.run(
+        [sys.executable, "-I", "-B", str(MODULE_PATH), "apply-rulings",
+         "--creator", "creator-002", "--stage", "dataset", "--plan", str(plan_file),
+         "--rulings", str(filled)],
+        cwd=ROOT, capture_output=True, text=True, timeout=30,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "rejection lineage:" in result.stdout
+    assert "approved list:" not in result.stdout
+    assert load_json(grade_dir / "rejection-lineage.json")["decision"] == "rejected"
+    assert not (grade_dir / "approval-lineage.json").exists()
+    assert not (grade_dir / "approved-list.json").exists()
+
+
+def test_all_cull_tester_ruling_rejects_checkpoint_selection_before_writing(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / "all-cull-tester"
+    plan = command.build_plan(
+        "creator-002", "tester", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    for run in plan["stages"]["tester"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+    grade = command.build_grade("creator-002", "tester", out / "plan.json")
+    template = _all_cull_rulings(load_json(Path(grade["rulings_template"])))
+    filled = out / "all-cull-tester-rulings.json"
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    grade_dir = Path(grade["rulings_template"]).parent
+
+    with pytest.raises(command.FigmentTrainError, match="rulings approved no images"):
+        command.apply_rulings(
+            "creator-002", "tester", out / "plan.json", filled, checkpoint_step=250,
+        )
+    assert not any((grade_dir / name).exists() for name in (
+        "rulings.json", "review-manifest.json", "rejection-lineage.json",
+        "approved-list.json", "approval-lineage.json", "accepted-checkpoint.json",
+    ))
+
+    result = command.apply_rulings("creator-002", "tester", out / "plan.json", filled)
+    assert Path(result["rejection_lineage"]).is_file()
+    assert not (grade_dir / "accepted-checkpoint.json").exists()
+    loaded_plan, root = command._load_plan("creator-002", out / "plan.json")
+    with pytest.raises(command.FigmentTrainError, match="no current operator approval"):
+        command._load_current_approval(loaded_plan, root, "tester")
+
+
+def test_all_cull_gen_ruling_leaves_the_gen_consumer_gate_closed(command, tmp_path):
+    """Gen must not mistake a rejection record for an approved still lineage."""
+    gen_helpers = load_module(
+        "figment_rejection_gen_helpers", PIPELINE / "tests" / "test_gen_stage.py",
+    )
+    personas_root = tmp_path / "personas"
+    gen_helpers._promoted_persona(personas_root, creator_id="creator-002", steps=3000)
+    gen_helpers._prepare_accepted_checkpoint(command, personas_root, tmp_path)
+    out = tmp_path / "all-cull-gen"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    gen_helpers.anchor_stage_test._fake_stage_outputs(out, plan, "gen")
+    grade = command.build_grade("creator-002", "gen", out / "plan.json", skip_judge=True)
+    filled = out / "all-cull-gen-rulings.json"
+    filled.write_text(
+        json.dumps(_all_cull_rulings(load_json(Path(grade["rulings_template"])))),
+        encoding="utf-8",
+    )
+
+    result = command.apply_rulings("creator-002", "gen", out / "plan.json", filled)
+    grade_dir = Path(grade["rulings_template"]).parent
+    assert Path(result["rejection_lineage"]).is_file()
+    assert not (grade_dir / "approval-lineage.json").exists()
+    assert not (grade_dir / "approved-list.json").exists()
+    with pytest.raises(command.FigmentTrainError, match="approval evidence is incomplete"):
+        command.validate_approved_gen_still(
+            "creator-002", out / "plan.json", load_json(Path(grade["grading_manifest"]))["images"][0]["image_id"],
+        )
 
 
 def test_apply_rulings_fails_closed_when_a_kept_cell_fails_safety(command, tmp_path):

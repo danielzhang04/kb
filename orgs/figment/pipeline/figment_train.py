@@ -995,7 +995,10 @@ def _diagnostic_criteria(age_stage: str) -> list[dict[str, str]]:
 
 def _diagnostic_file_entry(path: Path) -> dict[str, Any]:
     """Return the minimum reproducibility record for one local diagnostic input."""
-    path = Path(path).resolve()
+    original = Path(path)
+    if original.is_symlink():
+        raise FigmentTrainError(f"diagnostic input must not be a symlink: {original}")
+    path = original.resolve()
     if not path.is_file() or path.stat().st_size <= 0:
         raise FigmentTrainError(f"diagnostic input is missing or empty: {path}")
     return {
@@ -1097,6 +1100,246 @@ def build_held_out_diagnostic_protocol(
     }
     _write_frozen_json(out, protocol)
     return protocol
+
+
+HELD_OUT_DIAGNOSTIC_PREPARATION_SCHEMA = "figment/held-out-diagnostic-preparation@1"
+
+
+def _source_fingerprint(path: Path) -> dict[str, Any]:
+    original = Path(path)
+    if original.is_symlink():
+        raise FigmentTrainError(f"diagnostic source must not be a symlink: {original}")
+    path = original.resolve()
+    if not path.is_file() or path.is_symlink():
+        raise FigmentTrainError(f"diagnostic source must be a regular file: {path}")
+    return {"path": str(path), "bytes": path.stat().st_size, "sha256": _sha256(path)}
+
+
+def _assert_source_fingerprint(snapshot: dict[str, Any]) -> None:
+    current = _source_fingerprint(Path(snapshot["path"]))
+    if current != snapshot:
+        raise FigmentTrainError(f"diagnostic source changed during preparation: {snapshot['path']}")
+
+
+def _validated_held_out_diagnostic(
+    creator_id: str,
+    protocol_path: Path,
+    candidate_checkpoint: Path,
+    *,
+    personas_root: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any], list[dict[str, Any]]]:
+    """Load one frozen diagnostic protocol and prove it still matches current local inputs."""
+    protocol = _read_json(protocol_path)
+    if not isinstance(protocol, dict) or protocol.get("schema") != DIAGNOSTIC_PROTOCOL_SCHEMA:
+        raise FigmentTrainError("held-out diagnostic protocol schema is not supported")
+    if protocol.get("creator") != creator_id or protocol.get("promotion") != {"allowed": False}:
+        raise FigmentTrainError("held-out diagnostic must belong to this creator and be non-promotable")
+
+    persona, training, pins = _load_inputs(creator_id, personas_root)
+    persona_path = Path(personas_root) / creator_id / "persona.yaml"
+    persona = dict(persona)
+    persona["_persona_path"] = str(persona_path)
+    expected_prompt = _tester_prompt(persona, training)
+    expected_anchors = []
+    for relative in persona["identity"]["references"]:
+        expected_anchors.append({
+            "reference": relative,
+            **_diagnostic_file_entry(persona_path.parent / relative),
+        })
+    protocol_persona = protocol.get("persona")
+    if not isinstance(protocol_persona, dict):
+        raise FigmentTrainError("held-out diagnostic persona is malformed")
+    if (protocol_persona.get("id") != creator_id
+            or protocol_persona.get("age_stage") != _tester_age_stage(persona)
+            or protocol_persona.get("reference_set") != expected_anchors):
+        raise FigmentTrainError("held-out diagnostic persona or reference set is stale")
+    canonical = protocol_persona.get("canonical_anchor")
+    if not isinstance(canonical, dict) or canonical not in expected_anchors:
+        raise FigmentTrainError("held-out diagnostic canonical anchor is stale or malformed")
+
+    prompts = protocol.get("prompts")
+    expected_prompts = [{
+        "id": "persona-age-portrait-v1",
+        "text": expected_prompt,
+        "age_source": "persona.identity.look.age_stage",
+    }]
+    if prompts != expected_prompts:
+        raise FigmentTrainError("held-out diagnostic prompt is stale or malformed")
+    if protocol.get("seeds") != list(DIAGNOSTIC_PROTOCOL_SEEDS):
+        raise FigmentTrainError("held-out diagnostic seeds are not the fixed protocol seeds")
+    if protocol.get("criteria") != _diagnostic_criteria(_tester_age_stage(persona)):
+        raise FigmentTrainError("held-out diagnostic criteria are stale or malformed")
+
+    candidate_checkpoint = Path(candidate_checkpoint)
+    candidate = _diagnostic_file_entry(candidate_checkpoint)
+    checkpoints = protocol.get("checkpoints")
+    expected_checkpoints = [
+        {"id": "candidate-lora", "kind": "lora", "candidate": candidate},
+        {
+            "id": "base-control-no-lora",
+            "kind": "base-model-no-lora",
+            "models": deepcopy(pins["pins"]["tester"]["models"]),
+        },
+    ]
+    if checkpoints != expected_checkpoints:
+        raise FigmentTrainError("held-out diagnostic checkpoint or tester pins are stale")
+    expected_cells = [
+        {
+            "id": f"{checkpoint['id']}--persona-age-portrait-v1--seed-{seed}",
+            "checkpoint": checkpoint["id"],
+            "prompt": "persona-age-portrait-v1",
+            "seed": seed,
+        }
+        for checkpoint in expected_checkpoints
+        for seed in DIAGNOSTIC_PROTOCOL_SEEDS
+    ]
+    if protocol.get("cells") != expected_cells:
+        raise FigmentTrainError("held-out diagnostic cells are stale or malformed")
+    return protocol, persona, training, pins, expected_cells
+
+
+def compile_held_out_diagnostic(
+    creator_id: str,
+    protocol_path: Path,
+    candidate_checkpoint: Path,
+    out: Path,
+    *,
+    personas_root: Path = PERSONAS_ROOT,
+    ledger_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Compile one frozen ten-cell LoRA/control diagnostic without running it.
+
+    The output is deliberately a native harness manifest plus a non-promotable preparation
+    record, not a train plan, approval, or execution result.  Candidate/control graphs are
+    reconstructed independently per job so control rewires cannot affect a LoRA arm.
+    """
+    raw_out = Path(out)
+    raw_protocol = Path(protocol_path)
+    raw_candidate = Path(candidate_checkpoint)
+    if raw_out.is_symlink() or raw_protocol.is_symlink() or raw_candidate.is_symlink():
+        raise FigmentTrainError("held-out diagnostic inputs and output must not be symlinks")
+    out = raw_out.resolve()
+    protocol_path = raw_protocol.resolve()
+    candidate_checkpoint = raw_candidate.resolve()
+    if out.exists() or raw_out.is_symlink():
+        raise FigmentTrainError(f"refusing to overwrite held-out diagnostic output: {out}")
+    protocol, persona, training, pins, cells = _validated_held_out_diagnostic(
+        creator_id, protocol_path, candidate_checkpoint, personas_root=Path(personas_root),
+    )
+    persona_path = Path(persona["_persona_path"])
+    snapshots = [
+        _source_fingerprint(protocol_path),
+        _source_fingerprint(candidate_checkpoint),
+        _source_fingerprint(persona_path),
+        *[_source_fingerprint(persona_path.parent / relative)
+          for relative in persona["identity"]["references"]],
+        _source_fingerprint(PINS_PATH),
+        _source_fingerprint(Path(__file__)),
+        _source_fingerprint(TESTER_START_PATH),
+    ]
+    # Real personas normally keep mutable training values in a sidecar; compact fixtures
+    # and older personas embed them in persona.yaml, which is already fingerprinted.
+    training_path = persona_path.with_name("training.yaml")
+    if training_path.is_file():
+        snapshots.append(_source_fingerprint(training_path))
+    # A source can change after the first validation but before its snapshot. Re-run the
+    # complete contract after snapshots so the snapshot is bound to the exact candidate,
+    # anchors, prompt, training configuration and pins that the protocol validated.
+    protocol, persona, training, pins, cells = _validated_held_out_diagnostic(
+        creator_id, protocol_path, candidate_checkpoint, personas_root=Path(personas_root),
+    )
+
+    try:
+        out.mkdir(parents=True, exist_ok=False)
+    except FileExistsError as exc:
+        raise FigmentTrainError(f"refusing to overwrite held-out diagnostic output: {out}") from exc
+    staged_dir = out / "inputs"
+    staged_dir.mkdir()
+    staged = staged_dir / candidate_checkpoint.name
+    shutil.copy2(candidate_checkpoint, staged)
+    candidate = _diagnostic_file_entry(candidate_checkpoint)
+    if _diagnostic_file_entry(staged) != candidate:
+        raise FigmentTrainError("staged held-out checkpoint does not match candidate bytes")
+    start_script = out / TESTER_START_PATH.name
+    start_script.write_text(
+        TESTER_START_PATH.read_text(encoding="utf-8")
+        .replace("creator-001", creator_id)
+        .replace("creator001krea2", training["trigger"]),
+        encoding="utf-8",
+    )
+
+    manifest = {
+        **_pod_base(pins, training["pod_class"], "tester"),
+        "models": deepcopy(pins["pins"]["tester"]["models"]),
+        "custom_nodes": deepcopy(pins["pins"]["tester"]["custom_nodes"]),
+        "workflow": _tester_workflow(persona, training),
+        "seed_fields": ["seed", "noise_seed"],
+        "uploads": [{
+            "files": [f"inputs/{candidate_checkpoint.name}"],
+            "subfolder": training["trigger"],
+            "type": "input",
+            "overwrite": True,
+            "chunk_bytes": 16777216,
+        }],
+        "training": {
+            "lora_source_dir": f"/workspace/ComfyUI/input/{training['trigger']}",
+            "start_script_path": "/workspace/start-comfy-lorapath.sh",
+            "start_script_file": TESTER_START_PATH.name,
+        },
+        "jobs": [],
+    }
+    short = _creator_output_code(creator_id)
+    for index, cell in enumerate(cells):
+        is_candidate = cell["checkpoint"] == "candidate-lora"
+        substitutions = [
+            {"node_id": "5", "field": "text", "value": protocol["prompts"][0]["text"]},
+            {"node_id": "4", "field": "lora_name", "value": candidate_checkpoint.name},
+            {"node_id": "4", "field": "strength_model", "value": 1.0 if is_candidate else 0.0},
+            {"node_id": "4", "field": "strength_clip", "value": 1.0 if is_candidate else 0.0},
+        ]
+        if not is_candidate:
+            substitutions.extend([
+                {"node_id": "5", "field": "clip", "value": ["2", 0]},
+                {"node_id": "8", "field": "model", "value": ["1", 0]},
+            ])
+        manifest["jobs"].append({
+            "seed": cell["seed"],
+            "output_name": f"{short}-heldout-{'lora' if is_candidate else 'base'}-{cell['seed']}",
+            "expected_images": 1,
+            **({"wait_for": "_loras.assembled"} if index == 0 else {}),
+            "substitutions": substitutions,
+        })
+    minimum_minutes = math.ceil(_pod_runner_module().minimum_runtime_minutes(manifest))
+    if minimum_minutes > manifest["max_minutes"]:
+        raise FigmentTrainError(
+            "held-out diagnostic exceeds the existing tester runtime cap: "
+            f"minimum={minimum_minutes}, cap={manifest['max_minutes']}"
+        )
+    for snapshot in snapshots:
+        _assert_source_fingerprint(snapshot)
+    protocol, persona, training, pins, cells = _validated_held_out_diagnostic(
+        creator_id, protocol_path, candidate_checkpoint, personas_root=Path(personas_root),
+    )
+    if _diagnostic_file_entry(staged) != candidate:
+        raise FigmentTrainError("staged held-out checkpoint changed during preparation")
+    manifest_path = out / "held-out-diagnostic-manifest.json"
+    _write_frozen_json(manifest_path, manifest)
+    resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
+    run_out = out / "run"
+    planned_run = _planned_run(out, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
+    preparation = {
+        "schema": HELD_OUT_DIAGNOSTIC_PREPARATION_SCHEMA,
+        "creator": creator_id,
+        "promotion": {"allowed": False},
+        "protocol": {"path": str(protocol_path), "sha256": _sha256(protocol_path)},
+        "candidate": candidate,
+        "sources": snapshots,
+        "manifest": {"path": _relative(manifest_path, out), "sha256": _sha256(manifest_path)},
+        "minimum_runtime_minutes": minimum_minutes,
+        "run": planned_run,
+    }
+    _write_frozen_json(out / "preparation.json", preparation)
+    return preparation
 
 
 # ---------------------------------------------------------------------------
@@ -3110,7 +3353,7 @@ def apply_rulings(
     )
     if stage == "anchor":
         keeps = [r for r in normalized["rulings"] if r["decision"] == "keep"]
-        if len(keeps) != 1:
+        if len(keeps) != 1 and any(r["decision"] != "cull" for r in normalized["rulings"]):
             raise FigmentTrainError(
                 f"anchor rulings must keep exactly one candidate, got {len(keeps)}")
 
@@ -3167,8 +3410,41 @@ def apply_rulings(
                     f"kept cell {row['image_id']!r} failed a quality axis"
                 )
             approved_rows.append({"image_id": row["image_id"], "path": row["path"]})
+    rulings_out = grade_dir / "rulings.json"
+    review_out = grade_dir / "review-manifest.json"
+    approved_out = grade_dir / "approved-list.json"
+    approval_out = grade_dir / "approval-lineage.json"
+    rejection_out = grade_dir / "rejection-lineage.json"
+    accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
     if not approved_rows:
-        raise FigmentTrainError("rulings approved no images")
+        if checkpoint_step is not None:
+            raise FigmentTrainError("rulings approved no images")
+        if any(r["decision"] != "cull" for r in normalized["rulings"]):
+            raise FigmentTrainError("rulings approved no images")
+        if any(path.exists() or path.is_symlink() for path in (
+            rulings_out, review_out, approved_out, approval_out, rejection_out,
+            accepted_checkpoint_out,
+        )):
+            raise FigmentTrainError("refusing to overwrite previously applied rulings")
+        _write_json(rulings_out, normalized)
+        _write_json(review_out, review)
+        _write_json(
+            rejection_out,
+            _lineage_module().wrap_subject(
+                _lineage_module().APPROVAL_SCHEMA, evaluation["subject"],
+                creator=creator_id, stage=stage, decision="rejected",
+                decided_by=normalized["decided_by"], decided_at=normalized["decided_at"],
+                rulings_sha256=_sha256(rulings_out),
+                reviewed_subject=evaluation["subject"],
+                reviewed_subject_sha256=evaluation["subject_sha256"],
+                transition={"kind": "none", "requires_replan": False},
+            ),
+        )
+        return {
+            "rulings": str(rulings_out),
+            "review_manifest": str(review_out),
+            "rejection_lineage": str(rejection_out),
+        }
     if stage == "dataset" and len(approved_rows) < 20:
         raise FigmentTrainError(
             f"dataset approved only {len(approved_rows)} images; training requires at least 20"
@@ -3184,14 +3460,11 @@ def apply_rulings(
                 f"checkpoint step {checkpoint_step} was not explicitly kept by the tester rulings"
             )
 
-    rulings_out = grade_dir / "rulings.json"
-    review_out = grade_dir / "review-manifest.json"
-    approved_out = grade_dir / "approved-list.json"
-    approval_out = grade_dir / "approval-lineage.json"
-    accepted_checkpoint_out = grade_dir / "accepted-checkpoint.json"
-    if any(path.exists() for path in (rulings_out, review_out, approved_out, approval_out)):
+    if any(path.exists() or path.is_symlink() for path in (
+        rulings_out, review_out, approved_out, approval_out, rejection_out,
+    )):
         if not (stage == "tester" and checkpoint is not None
-                and not accepted_checkpoint_out.exists()
+                and not (accepted_checkpoint_out.exists() or accepted_checkpoint_out.is_symlink())
                 and rulings_out.is_file() and _read_json(rulings_out) == normalized):
             raise FigmentTrainError("refusing to overwrite previously applied rulings")
         _load_current_approval(plan, root, stage)
@@ -3575,6 +3848,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--canonical-anchor",
         help="exact current persona identity.references entry; required when more than one exists",
     )
+    compile_diagnostic = commands.add_parser(
+        "compile-held-out-diagnostic",
+        help="compile one frozen non-promotable LoRA/control protocol; never runs a pod",
+    )
+    compile_diagnostic.add_argument("--creator", required=True)
+    compile_diagnostic.add_argument("--protocol", required=True, type=Path)
+    compile_diagnostic.add_argument("--candidate-checkpoint", required=True, type=Path)
+    compile_diagnostic.add_argument("--out", required=True, type=Path)
+    compile_diagnostic.add_argument("--ledger-dir", type=Path)
     return parser
 
 
@@ -3636,13 +3918,22 @@ def main(argv: list[str] | None = None) -> int:
                 canonical_anchor=args.canonical_anchor,
             )
             print(f"wrote unscored held-out diagnostic protocol: {args.out.resolve()}")
+        elif args.command == "compile-held-out-diagnostic":
+            result = compile_held_out_diagnostic(
+                args.creator, args.protocol, args.candidate_checkpoint, args.out,
+                ledger_dir=args.ledger_dir,
+            )
+            print(f"wrote non-promotable held-out diagnostic preparation: {args.out.resolve()}")
         else:
             result = apply_rulings(
                 args.creator, args.stage, args.plan, args.rulings,
                 checkpoint_step=args.checkpoint_step,
             )
             print(f"applied rulings: {result['rulings']}")
-            print(f"approved list: {result['approved_list']}")
+            if "rejection_lineage" in result:
+                print(f"rejection lineage: {result['rejection_lineage']}")
+            else:
+                print(f"approved list: {result['approved_list']}")
     except (FigmentTrainError, OSError) as exc:
         print(f"STOP: {exc}", file=sys.stderr)
         return 1
