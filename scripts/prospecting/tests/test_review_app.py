@@ -215,11 +215,15 @@ def request(server, method: str, path: str, *, body: bytes | None = None, header
 
 
 def bootstrap(server):
-    status, headers, body = request(server, "GET", "/bootstrap")
+    status, bootstrap_headers, bootstrap_body = request(server, "GET", "/bootstrap")
+    assert status == 303
+    assert bootstrap_headers["Location"] == "/"
+    assert bootstrap_body == b""
+    cookie = bootstrap_headers["Set-Cookie"].split(";", 1)[0]
+    status, _headers, body = request(server, "GET", "/", headers={"Cookie": cookie})
     assert status == 200
-    cookie = headers["Set-Cookie"].split(";", 1)[0]
     csrf = re.search(rb'<meta name="csrf-token" content="([^"]+)">', body).group(1).decode()
-    return cookie, csrf, headers, body
+    return cookie, csrf, bootstrap_headers, body
 
 
 def test_bootstrap_is_one_use_and_session_expires(app) -> None:
@@ -232,6 +236,9 @@ def test_bootstrap_is_one_use_and_session_expires(app) -> None:
     assert "frame-ancestors 'none'" in headers["Content-Security-Policy"]
     assert b"Prospecting Review" in body
     assert request(server, "GET", "/bootstrap")[0] == 410
+    status, headers, body = request(server, "GET", "/bootstrap", headers={"Cookie": cookie})
+    assert (status, headers["Location"], body) == (303, "/", b"")
+    assert request(server, "GET", "/", headers={"Cookie": cookie})[0] == 200
     assert request(server, "GET", "/", headers={"Cookie": cookie})[0] == 200
     clock[0] += SESSION_SECONDS + 1
     status, _headers, expired = request(server, "GET", "/", headers={"Cookie": cookie})

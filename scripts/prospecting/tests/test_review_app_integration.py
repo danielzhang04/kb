@@ -106,8 +106,12 @@ def _request(app: RunningApp, method: str, path: str, payload: object | None = N
 
 def _bootstrap(app: RunningApp) -> tuple[str, str]:
     status, headers, body = _request(app, "GET", "/bootstrap")
-    assert status == 200
+    assert status == 303
+    assert headers["Location"] == "/"
+    assert body == b""
     cookie = headers["Set-Cookie"].split(";", 1)[0]
+    status, _headers, body = _request(app, "GET", "/", cookie=cookie)
+    assert status == 200
     match = re.search(rb'<meta name="csrf-token" content="([^"]+)">', body)
     assert match is not None
     return cookie, match.group(1).decode("ascii")

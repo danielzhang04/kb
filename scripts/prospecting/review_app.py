@@ -303,14 +303,26 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 if query:
                     self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
                     return
+                if self._authorized():
+                    self._bytes(
+                        HTTPStatus.SEE_OTHER,
+                        b"",
+                        "text/plain; charset=utf-8",
+                        {"Location": "/"},
+                    )
+                    return
                 issued = self.server.bootstrap()
                 if issued is None:
                     self._error(HTTPStatus.GONE, "bootstrap_unavailable")
                     return
-                session, csrf = issued
-                body = self.server.html_template.replace("{{CSRF_TOKEN}}", csrf).encode("utf-8")
+                session, _csrf = issued
                 cookie = f"review_session={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
-                self._bytes(HTTPStatus.OK, body, "text/html; charset=utf-8", {"Set-Cookie": cookie})
+                self._bytes(
+                    HTTPStatus.SEE_OTHER,
+                    b"",
+                    "text/plain; charset=utf-8",
+                    {"Set-Cookie": cookie, "Location": "/"},
+                )
                 return
             if path == "/" and not query:
                 if not self._authorized():
