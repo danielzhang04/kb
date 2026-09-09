@@ -1,28 +1,27 @@
-# prospecting ? STATE
+# Prospecting - STATE
 
 _Updated: 2026-09-09; local coordination draft, not yet published._
 
 ## Now
-Source branch codex/prospecting-e2e-20260908 is at44865973. P1-P8 source, campaign persistence,
-workflow/cadence repairs and P11 authentic immutable QA are present. The local review service and
-HTTP app are implemented and passed focused synthetic integration. Draft provenance repair is
-active; actual first-draft acceptance remains open. Root45 form/app checks and89 campaign safety
-checks passed. Source-only VM execution, bounded recovery and exact owned cleanup are proved.
-A real desktop SQLite copy and local snapshots are prepared; no real draft trial has run yet.
+Accepted local source is committed at5175f408 on codex/prospecting-e2e-20260908. Campaign persistence,
+workflow/cadence, authentic immutable QA, evidence-backed draft preparation and standalone review UI
+are implemented. Root220combined checks passed before final small fixes; root54contract/execution
+and final46guard/fill/joined plus5bundledJS passed. Joined synthetic T0 reaches one FakeGmail draft,
+retry deduplication and replystop. All31ownedVMjobs collected/cleaned and exactabsence verified.
+A real local-copy trial processed2candidates, created0drafts and blockedboth for missing source
+identity evidence, without externalcalls or originalstore mutation.
 
 ## Next
-Finish the existing P8 first-draft path and authenticated local review action, verify stored sender
-identity/ask/evidence, run synthetic then real-copy acceptance, and visually review in a connected
-browser. Keep user draft review first and send approval separate. One consolidated main PR at session
-end; no small PRs for each repair.
+Finish inherited synthetic-fixture/staging reconciliation on isolated main-based delivery branch
+codex/prospecting-session-20260909. Currentreview25files passedstaging; consolidatedsource349paths
+plusnewfixtures require independentguardreview and fullstagecheck. Prepare one mainPR excluding
+operationalrecords. Canonicalhandoff namesexactworktrees/owners. No liveGmail/providercalls.
 
-## Blocked
-Browser connection is unavailable. Historical gate artifacts become stale after source/test edits
-and require the human-owned refresh process; no agent reblessing. Public-repository publication of
-new operational context remains held after automatic approval review rejected an earlier push.
-Manager inspector and SSH saved-request resolver are unavailable and park explicitly. No live send
-or provider-spend authority is inferred.
+## Remaining acceptance
+Visual/keyboardreview needs an availablebrowser. Currentrealrole sourcebindings need verification.
+Historicalevaluationrefresh is humanowned; no manifests reblessed. No sanctionedT0-to-T1transition.
+Managerinspector/SSHsavedrequestresolver parkunavailable. Source-onlyVMjobs do not inherit desktop
+files/tools/connectors. Earlier operationalpush rejectedbyautoapprovalreview; no laterpublication.
 
 ## Resume
-Read handoffs/2026-09-09-prospecting-review-app.md for current worker ownership, receipts, test evidence
-and exact next steps. Real PII remains in desktop-local SQLite; no private records are sent to VM.
+Read handoffs/2026-09-09-prospecting-review-app.md and sourceplan. LocalPII remainsinSQLite/snapshots.

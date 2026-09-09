@@ -18,37 +18,56 @@ edits/reblessing. PII never enters Git, argv, stdout, logs, cards, ledgers or VM
 
 ## Next steps and exact ownership
 
-1. vm_review ACTIVE: exact synthetic fixture migration and focused PII guard regression. One new
-   allowlisted JSON file, existing validation unchanged. No blanket test exemption or VM detector
-   weakening. Full staged files must pass; inherited guard self-tests may need fixture reconciliation.
-2. remote_protocol ACTIVE READ-ONLY: clean consolidated source delivery audit against origin/main,
-   exclude inherited memory/coordination and inspect full-main-diff guard/dependency implications.
-   Also verify final VM review's wrong-handler finding against actual campaigner wiring.
-3. gate_repair ACTIVE DOCS ONLY: update source plan and acceptance report. Producer/count source
-   frozen. Count(DISTINCT selected.person_id) fix plus duplicate-contact regression:17passed.
-4. Root accept final small deltas, run affected checks, commit source through normal hooks and an
-   explicit branch PII staging check. Prepare one consolidated main PR with exact reviewed source
-   scope. Finish coordination/handoff and stop session keep-awake only when actually ending.
+Accepted source is CLEAN at5175f408, codex/prospecting-e2e-20260908. Root final46 guard/fill/joined
+checks and5actualJS passed; exact25staged PII check passed before commit. VM57 wrong-handler finding
+closed by root plus independent read-only review: real build_live_service registers campaign adapter.
+All31VM jobs collected/cleaned/absence verified; no activeVM, no pendingroot test sessions.
 
-No VM jobs are active. All31owned jobs collected/cleaned and exact absence verified.
-Root exec51118 completed54tests; no test session awaiting collection at this checkpoint.
+Consolidated DELIVERY worktree is now active source for final fixture cleanup:
+C:/Users/danie/kb/_private/codex-worktrees/prospecting-session-20260909,
+branch codex/prospecting-session-20260909, base origin/main39197cf5. Root applied mergebasee7064569
+through5175f408 delta via3way; source/main paths havezerooverlap. Do NOT use two-dot459/469paths
+which reverse unrelated newer main changes. Correct3dot source361paths, delivery349 afterexcluding
+memory/claude-boss.md, STATE,7gate-results JSONs and3dated outputreports. Originalsource/privatepatch
+preserve excluded operational records. Current delivery index has349files, uncommitted; ROOT owns
+index. New fixture/guard/doc worker edits are not yet staged. No pushes made.
+
+1. vm_review ACTIVE, DELIVERY ONLY:24 inherited test/support files from exact staged-findings.json,
+   new legacy-synthetic.json and optional synthetic_fixtures.py loader. Move literals preserving
+   values/assertions/pytestIDs, no obfuscation/broad exemption. Own no guard/manifests/implementation.
+2. gate_repair ACTIVE, DELIVERY ONLY:pii_guard.py,test_pii_guard.py,new staging-synthetic-nodeids.json.
+   Add exactvalidated fixture paths for legacy, existingT1/vendorJSON and nodeids. Permit only exact
+   synthetic test-nodeID strings within7known gate manifest paths; do not edit/rebless manifests.
+   Strict validIPv4 SSH token classification only in staged dev_vm.py, runtime assert_vm_safe unchanged.
+   No sourcehost/protocol changes; actual fixedhost CGNAT is infrastructure, not recipient email.
+   Must prove allothermanifest/text/pathvalues blocked and nonreservedfixtures rejected.
+3. remote_protocol ACTIVE, DELIVERY ONLY:neutral fixture references in historicalP1plan flagged
+   examples; trimEOFblanklines only in10draftcampaignerevalcards+operator/__init__.py. No stage/commit.
+   Will independently review concrete guard delta afterfreeze.
+4. Root inspect freezes, independent security review guard, exact349+newfiles staged PII scan,
+   affected tests and mirrorchecks. Normal commit and one main PR after exactsource safety review.
+   Finishcoordination/handoff, stopkeepawake only whenactuallyending.
+
+Actual full359-staged scan found177synthetic/test findings35paths:116email,31phone,10each note/
+excerpt/body. Paths/classes only saved in private delivery/staged-findings.json. The newreview
+25files remainclean. Tests24,gate manifests7,twoJSONfixtures,historicalplan,dev_vm source. No real
+recipient data found or printed. Current-slice green does not imply consolidated-main green.
 
 ## Worktrees
 
 - Main C:/Users/danie/kb remains claude/boss-2026-09-02; preserve unrelated work, never switch/clean.
-- Source C:/Users/danie/kb/_private/codex-worktrees/prospecting-e2e-20260908,
-  branch codex/prospecting-e2e-20260908, HEAD44865973. Sparse checkout.
+- Accepted source C:/Users/danie/kb/_private/codex-worktrees/prospecting-e2e-20260908,
+  branch codex/prospecting-e2e-20260908, CLEAN HEAD5175f408, accepted25files committed.
+- Delivery worktree/branch above is the sole active location for remaining source edits.
 - Coordination C:/Users/danie/kb/_private/codex-worktrees/boss-remote-context-20260908,
   branch codex/boss-remote-context-20260908. Pull/rebase origin ops immediately before writes.
 - Original C:/Users/danie/kb-worktrees/prospecting-p8, branch claude/prospecting-p8 at52067386;
   tracked clean plus3old untracked documents; preserve.
 
-Accepted source commits include prerequisites dc7f8bcd, VM protocol07a89391/08726aba,
-campaigns/P9 9b22fd34, workflow/cadence3ebcd431, runbook5bd88306, P11 QAefa5f9e2,
-access docs44865973. Uncommitted accepted source: provenance/fill/templates plus tests,
-campaign form compatibility, app HTML/Python, ReviewService/P10, UUID validator and joined test.
-Runbook uncommitted correction: app prints root URL, first visit redirects /bootstrap within60s;
-NO URL token. Session lasts8h. Current fixture/doc changes still active; wait for freezes.
+Source commits include dc7f8bcd,07a89391,08726aba,9b22fd34,3ebcd431,5bd88306,efa5f9e2,44865973,
+5175f408. Finalcommit contains authentic provenance/fill/templates, campaign compatibility, UI,
+ReviewService/P10,UUIDrequestcompatibility,joinedacceptance andvalidatedreviewfixtures. App prints
+rootURL; firstvisitredirects/bootstrap within60seconds; noURLtoken;session8hours. No serveractive.
 
 ## Accepted implementation and verification
 
@@ -87,7 +106,7 @@ requestedSol. Collected report hash a1f0682667f2bbd6e5b30904b2cfdb40aab13266d369
 Input-validation analysis accepted the helper; finding claims campaign UUID reaches reply_revision
 handler. Root source inspection shows campaigner/wiring.py attach_campaigner explicitly replaces
 that adapter with campaign revision hash + unique delivery resolution. Actual joined test passed;
-remote_protocol confirming real service wiring before root closes context-omission finding.
+Independent remote_protocol confirmed actual service wiring; root closed the context-omission finding.
 Job cleaned; exact directory/mount/3units absent. Prior final provenance reviewerdd7baf47 READY,
 reportf5a5b37925ddb30497f8ce2edaafc3b115af2c7af25f1040773cfff3adab27f5, also cleaned/absent.
 
@@ -124,10 +143,11 @@ No subsequent push/amend. Do not bypass. Prepare exact source-only diff before a
 attempt; report any remaining auto-review block explicitly. Draft coordination PR180 targets ops;
 no main PR yet. No operational context should be blindly included in public source delivery.
 
-origin/main...sourceHEAD has350committed paths including inherited P1-P8 and memory/claude-boss.md.
-Private delivery scope/pr-body drafts under _private/prospecting-session-delivery-20260909 need
-refresh;349source paths proposed excluding memory. Prefer a clean source tree delta without
-inherited operational history; dependency/staging audit active. Private scan metadata under
+origin/main...sourceHEAD has361committed paths including inherited P1-P8 and memory/claude-boss.md.
+Private delivery scope/pr-body drafts under _private/prospecting-session-delivery-20260909: clean
+mergebase delta applied, scope refresh pending finalnewfixtures;349source paths exclude12operational
+paths. No inherited operational history on delivery branch. Dependency audit complete: runtime chain
+present; trusted gate results/STATE must be supplied operationally, not claimed deployed from source. Private scan metadata under
 _private/prospecting-outgoing-scan-20260909.json:192candidate lines42files, mainly reserved.test
 fixtures, intentional guard cases and hash/date/SSH falsepositives. Never print candidate PII.
 Current24file stage guard and entiremain diff are separate checks. Actual hooksPath points to main
