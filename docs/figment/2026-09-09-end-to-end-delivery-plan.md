@@ -2,7 +2,7 @@
 
 ## Decision
 
-Current disposition, September 9: the Omni pair completed and both visual reviewers rejected expansion. Cloud execution and the status UI are locally verified. The next quality experiment is an independently reviewed, offline-READY Qwen official-conditioning hypothesis; its reference assembly differs from prior failed Qwen graphs. Its exact connected-account launch approval is asynchronously pending after automatic-review blocks, so it has not run and has no cost. The approved-still video join is committed at `37820079`, with actual approval-to-manifest-to-upload integration and 18 distinct passing tests across the focused commands. See [cloud result](2026-09-09-omnigen2-cloud-result.md), [fallback source audit](2026-09-09-reference-model-fallback-readiness.md), and [Qwen preparation](2026-09-09-qwen-reference-cloud-preparation.md).
+Current disposition, September 9: the Omni pair completed and both visual reviewers rejected expansion. Cloud execution and the status UI are locally verified. The next quality experiment is an independently reviewed, offline-READY Qwen official-conditioning hypothesis; its reference assembly differs from prior failed Qwen graphs. After two historical automatic-review blocks, the user explicitly approved the exact connected-account g01 upload for two images within $1.30/60 minutes, and the one-shot launcher started at 16:19:29 UTC. No completion, quality, reconciled cost, or teardown result is yet claimed. The approved-still video join is committed at `37820079`, with actual approval-to-manifest-to-upload integration and 18 distinct passing tests across the focused commands. See [cloud result](2026-09-09-omnigen2-cloud-result.md), [fallback source audit](2026-09-09-reference-model-fallback-readiness.md), and [Qwen launch status](2026-09-09-qwen-reference-launch-status.md).
 
 The generated-input gallery is complete at `adcf4591` and independently READY: 124 affected tests, typecheck, and an actual original-route probe passed. The production dashboard build also passed. This is local verification only, with no screenshot, deployment, or accepted-identity claim. The explicit canonical-ledger planner fix is reviewed in [ledger-plan binding review](2026-09-09-ledger-plan-binding-review.md) (73 tests, 167.86 seconds); it is no longer a work-in-progress item.
 
@@ -24,7 +24,7 @@ proof of that criterion.
 | --- | --- | --- | --- |
 | Persona, pins, bounded pod harness, plan/run/grade/ruling/gate CLI | Yes; `pipeline/figment_train.py` and its tests | Several historical train/tester runs | No production lineage |
 | Identity gate and human lineage binding | Yes; fail-closed numeric and human records | Used on prior materials | No current candidate passes the user criterion |
-| Reference-conditioned routes | OmniGen2 pair is complete and rejected for expansion; Qwen official-conditioner is source-reviewed, offline READY, staged, and dry-run verified | Omni V1 failed at bootstrap ($0.019366); V2 uploaded g01, bootstrapped models, then returned HTTP 400 ($0.103064); a pinned-source audit later diagnosed omitted `resolution_steps`, but the server body was not retained. V3 completed with two rejected research files. Qwen has not run or incurred cost; connected-account authorization is pending. | No |
+| Reference-conditioned routes | OmniGen2 pair is complete and rejected for expansion; Qwen official-conditioner is source-reviewed, offline READY, staged, and launched after explicit approval | Omni V1 failed at bootstrap ($0.019366); V2 uploaded g01, bootstrapped models, then returned HTTP 400 ($0.103064); a pinned-source audit later diagnosed omitted `resolution_steps`, but the server body was not retained. V3 completed with two rejected research files. Qwen launched at 16:19:29 UTC; no final receipt, quality, reconciled cost, or teardown claim exists yet. | No |
 | Training and checkpoint tester | Train-first/train/tester manifests and provenance checks | Historical runs completed | No checkpoint selected; prior LoRA was judged older/inconsistent |
 | Held-out stills | `gen` is planned and gradeable in the existing CLI | No accepted source checkpoint for a new held-out run | No |
 | Video | Native Wan compiler, assembly/extraction, and reviewed approved-still adapter; 18 distinct focused tests include actual approval-to-upload integration | V1, V2, and V3 clips completed; V2/V3 were stable in their inspected conditions | No production identity/temporal acceptance |
@@ -41,7 +41,7 @@ uploads. V2 completed bootstrap, model staging, and g01 upload but stopped on HT
 source as an omitted `resolution_steps` field.
 Both failed pods have verified termination. V3 subsequently completed two images and verified
 termination for $0.325452, bringing the arc to $38.248267. Both quality reviews rejected
-expansion. The prepared Qwen continuation has no execution or cost; see its
+expansion. The approved Qwen continuation has launched but has no final result or reconciled cost; see its
 [current launch status](2026-09-09-qwen-reference-launch-status.md).
 
 ## What to take from the inspirations
@@ -81,7 +81,7 @@ evidence for a new hypothesis or ruling.
 
 ### Phase 0 — two-image pair, then a six-row varied pilot
 
-The Omni g01-to-RunPod transfer completed, but both visual reviews stopped expansion. A separately prepared official Qwen-conditioning pair is offline READY and awaits exact connected-account authorization; no Qwen provider action is implied here. Root assesses any actual outputs against same-person identity, adult-about-21 appearance, realism, and clothing/framing before choosing a six-row varied pilot. A completed research pair does not itself promote images into a dataset.
+The Omni g01-to-RunPod transfer completed, but both visual reviews stopped expansion. The separately prepared official Qwen-conditioning pair launched after exact connected-account authorization. No completion or quality result is implied here. Root assesses any actual outputs against same-person identity, adult-about-21 appearance, realism, and clothing/framing before choosing a six-row varied pilot. A completed research pair does not itself promote images into a dataset.
 
 The six rows vary pose, framing, light, and clothed wardrobe while holding the accepted
 identity hypothesis. Root may stop or continue the bounded research branch from the observed
@@ -163,7 +163,7 @@ C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe -m pytest orgs
 
 ## Ranked next three work orders
 
-1. **Official Qwen conditioning pair, once exact account approval resolves.** The single-reference, two-seed adapter is source-reviewed, staged, and harness-dry-run verified. It has no pod or cost. Review any actual pair before continuation.
+1. **Official Qwen conditioning pair.** The explicitly approved single-reference, two-seed adapter is source-reviewed, staged, harness-dry-run verified, and launched. Await its final receipt and verified teardown, then review any actual pair before continuation.
 
 2. **Varied pilot to curated dataset.** A promising reviewed pair can justify the six-row varied pilot, then a captioned 20+ set only after production dependency clearance. The [component licence evidence](2026-09-09-qwen-component-license-evidence.md) distinguishes current metadata from that clearance.
 
@@ -178,6 +178,6 @@ code review for path boundaries, lineage, and stale-state handling; (5) repair a
 separate and requires the existing cost/card/harness checks. A human visual acceptance is
 separate again.
 
-The historical Omni g01 transfer completed. The new Qwen launch remains blocked by automatic approval review pending the exact account/payload answer. Unaffected infrastructure work continues. No code or plan may claim a quality result that does not exist.
+The historical Omni g01 transfer completed. The new Qwen launch received the exact account/payload approval and started; the two earlier automatic-review blocks remain historical. Await final receipt and verified teardown. No code or plan may claim a quality result that does not exist.
 
 Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.
