@@ -2,6 +2,16 @@
 
 Active work; this replaces the September 8 end-to-end handoff. Do not restart the baseline.
 
+## Core acceptance update
+
+- Source HEAD efa5f9e2: P11 owner layer committed after root115passed (review_qa, personalizer_cli, revision and QA suites). Five accepted files may be reused by P8; no legacy metadata backfill.
+- P10/P11 service core independent VM review READY, no findings. Job097840904f8b43e8bd9aed62b85e331f ran06:05:17-06:06:49UTC, collected hash9489111b30c4074d3e8f5f367859e98d22b35f5145b7405736c0ba51254e3027, cleaned and exact directory/mount/three-unit absence verified. No owned VM job active.
+- User asked whether subagents are on the vCPU. Root answered precisely: VM Codex CLIs perform reviews/docs and some earlier implementation proposals; the three current implementation workers use native session runtime, and tests still run locally. Do not claim all subagents or all tools are on VM. All new workers are Codex. Prefer VM for subsequent source-only assignments after current native slices finish.
+- Browser fallback probes failed too: createBrowserTab iab and chrome both report unavailable. No tab created. Visual gate still open; no further blind browser probing without a changed connection.
+- Core service builder20tests passed; additive evidence projection/prepare wrapper28passed. New EvidenceView is canonical-revision/person scoped. Root asked nullable observed_at remain nullable and normal prepare blockers use a closed known-code set rather than broad prepare_failed or arbitrary exception text.
+- vm_review history UI frozen,7fake-service HTTP tests passed. One prior mixed service/UI run was INCONCLUSIVE because files changed during execution; do not report its24passed/3failed as acceptance. Full integration waits shared dependency freeze. Exact prepare API is being handed to UI owner so wiring can proceed with fake dependency before actual P8 fixture.
+- gate_repair now has direct-P8 producer code in progress and focused tests, including selected sender identity/proof and saved ask_minutes. P8 preflight supports informational_call explicitly; unsupported ask types and incompatible campaign states must block before writes. Real trial remains unexecuted on the prepared local SQLite copy.
+
 ## Latest checkpoint (supersedes status details below)
 
 - User said Continue. All new workers remain Codex, selected by difficulty. No browser is connected; asynchronous browser-enablement question remains open. No visual acceptance claim.

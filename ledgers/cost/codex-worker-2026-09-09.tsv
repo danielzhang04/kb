@@ -32,3 +32,4 @@ unknown; ambient subscription		gpt-5.6-luna	unavailable	completed; proposals bas
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair implementation active	direct-p8-first-draft	2026-09-09T05:55:32.555005+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol implementation active	review-qa-preparer-integration	2026-09-09T05:55:32.555005+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review implementation active	review-ui-history-preparer	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed READY; collected and cleanup absence verified	review-service-core-09784090	2026-09-09T06:18:11.995140+00:00	0
