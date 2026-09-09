@@ -462,3 +462,12 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 - WORKED: actual VM CLI help/login status established Codex0.152.0 presence without auth-object access; synthetic outer bwrap succeeds.
 - FAILED: nested Codex sandbox cannot create its namespace. Read-only auth mounts prevent writes but do not prevent model shell reads; keep shell disabled until effective denial is verified. Never change global VM security to make a worker fit.
 - REMAINS: detached synthetic lifecycle proof, tool-disabled Codex proof, product integration/UI. User answered all scope questions and switched every new subagent to Codex.
+
+
+### 2026-09-09 ? Remote proposals need coverage and runtime checks
+A successful CLI exit and valid file hash do not establish an acceptable patch. Compare existing
+regression inventory before applying full-file model output: a cadence worker silently replaced
+PII, race and transaction tests with a much smaller suite. Reject lost coverage and request a
+bounded correction. Separately, a native CLI process file-size limit can kill startup before any
+log; reproduce with credential-free controlled limits. systemd active/exited can legitimately have
+an empty ControlGroup, so terminal ownership/recovery tests must use real observed tuples.
