@@ -27,6 +27,7 @@ $py = 'C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe'
 $creator = 'creator-001'
 $dataset = '<REVIEWED_DATASET_DIR>'
 $planRoot = '<PLAN_ROOT>'
+$ledger = 'C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost'
 ```
 
 ## Dataset acceptance and train-first plan
@@ -41,13 +42,19 @@ times, or rulings.
   --decided-by '<ACTUAL_DECIDER>' --decided-at '<ACTUAL_ISO_8601_TIME>'
 
 & $py orgs/figment/pipeline/figment_train.py train-first `
-  --creator $creator --dataset-dir $dataset --out $planRoot
+  --creator $creator --dataset-dir $dataset --out $planRoot --ledger-dir $ledger
 ```
 
 Do not use `--skip-pin-verify` for a real path. Read the generated train budget
 from the command output and `<PLAN_ROOT>/plan.json`; it is plan-derived, not a
 fixed quoted price. The plan’s recorded harness argv supplies the actual
 manifest paths, output paths, ledger directory, arc cap, and per-stage ceilings.
+The planner resolves that directory to an absolute path and freezes it in the
+plan and every harness argv. Use the reconciled canonical ledger above: the
+managed OPS fallback currently has no Figment baseline, so a live harness
+correctly fails closed there. Do not reset the arc or use an empty-ledger override.
+Existing plans are not migrated; create a fresh plan with this explicit ledger
+instead of hand-editing or replaying a plan bound to a stale worktree ledger.
 
 ## Training and tester selection
 
@@ -100,7 +107,7 @@ hand.
 $genRoot = '<FRESH_EMPTY_GEN_PLAN_ROOT>'
 
 & $py orgs/figment/pipeline/figment_train.py plan `
-  --creator $creator --stage gen --out $genRoot
+  --creator $creator --stage gen --out $genRoot --ledger-dir $ledger
 
 & $py orgs/figment/pipeline/figment_train.py run `
   --creator $creator --stage gen --plan "$genRoot/plan.json"

@@ -53,6 +53,8 @@ SCORE_CELLS_MODULE = HERE / "score_cells.py"
 IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
 LINEAGE_MODULE = HERE / "lineage.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
+# Compatibility export for older callers. New plans resolve through the pod harness's
+# configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
@@ -1413,7 +1415,13 @@ def _copy_support_files(out: Path, persona: dict, prompts: dict, workflow: dict)
     }
 
 
-def _planned_run(out: Path, manifest_path: Path, run_out: Path) -> dict[str, Any]:
+def _resolved_ledger_dir(explicit: Path | None = None) -> Path:
+    """Freeze the harness's ledger selection into a plan before any run is emitted."""
+    pod_module = _pod_runner_module()
+    return Path(pod_module.configured_ledger_dir(explicit)).resolve()
+
+
+def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: Path) -> dict[str, Any]:
     manifest = _read_json(manifest_path)
     ceiling = manifest_ceiling(manifest)
     argv = [
@@ -1424,7 +1432,7 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path) -> dict[str, Any
         "--out", str(run_out.resolve()),
         "--max-usd", ceiling,
         "--max-minutes", str(manifest["max_minutes"]),
-        "--ledger-dir", str(LEDGER_DIR),
+        "--ledger-dir", str(ledger_dir),
         "--arc-cap-usd", ARC_CAP_USD,
         "--arc-ledger-glob", ARC_LEDGER_GLOB,
     ]
@@ -1449,6 +1457,7 @@ def build_plan(
     personas_root: Path = PERSONAS_ROOT,
     skip_pin_verify: bool = False,
     detail_images: str | None = None,
+    ledger_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -1467,6 +1476,7 @@ def build_plan(
     if out.exists() and any(out.iterdir()):
         raise FigmentTrainError(f"plan output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
+    resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
 
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
@@ -1579,7 +1589,7 @@ def build_plan(
             _write_json(path, manifest)
         run_root = out / ("expand" if current in ("anchor", "dataset") else "train") / "runs" / "out"
         runs = [
-            _planned_run(out, path, run_root / path.stem)
+            _planned_run(out, path, run_root / path.stem, ledger_dir=resolved_ledger_dir)
             for path in paths
         ]
         plan_stages[current] = {"runs": runs}
@@ -1596,7 +1606,7 @@ def build_plan(
             "smoke": _relative(smoke_config, out),
             "train": _relative(full_config, out),
         },
-        "ledger_dir": str(LEDGER_DIR),
+        "ledger_dir": str(resolved_ledger_dir),
         "arc_cap_usd": ARC_CAP_USD,
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "stages": plan_stages,
@@ -1722,6 +1732,7 @@ def build_train_first_plan(
     *,
     personas_root: Path = PERSONAS_ROOT,
     skip_pin_verify: bool = False,
+    ledger_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): plan a train +
     tester run directly against an ALREADY-BUILT, ALREADY-CAPTIONED dataset directory
@@ -1766,6 +1777,7 @@ def build_train_first_plan(
     if out.exists() and any(out.iterdir()):
         raise FigmentTrainError(f"plan output directory must be empty: {out}")
     out.mkdir(parents=True, exist_ok=True)
+    resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
 
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
@@ -1832,8 +1844,8 @@ def build_train_first_plan(
     _write_json(tester_path, tester_manifest)
 
     run_root = train_runs_dir / "out"
-    train_run = _planned_run(out, train_path, run_root / train_path.stem)
-    tester_run = _planned_run(out, tester_path, run_root / tester_path.stem)
+    train_run = _planned_run(out, train_path, run_root / train_path.stem, ledger_dir=resolved_ledger_dir)
+    tester_run = _planned_run(out, tester_path, run_root / tester_path.stem, ledger_dir=resolved_ledger_dir)
 
     plan = {
         "schema": "figment/train-plan@1",
@@ -1844,7 +1856,7 @@ def build_train_first_plan(
         "training": training,
         "assets": assets,
         "configs": {"train": _relative(plan_dataset_dir / "training.json", out)},
-        "ledger_dir": str(LEDGER_DIR),
+        "ledger_dir": str(resolved_ledger_dir),
         "arc_cap_usd": ARC_CAP_USD,
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "stages": {
@@ -2176,6 +2188,10 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
+    ledger_value = plan.get("ledger_dir")
+    if not isinstance(ledger_value, str) or not ledger_value:
+        raise FigmentTrainError("plan has no resolved ledger_dir")
+    plan_ledger_dir = Path(ledger_value).resolve()
     if stage == "all":
         # A promoted persona's plan never contains "anchor" (build_plan already refused
         # to (re-)plan it) -- walk only the stages the plan actually carries, in STAGES
@@ -2227,7 +2243,9 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             manifest_path = root / key
             if _sha256(manifest_path) != run["sha256"]:
                 raise FigmentTrainError(f"planned manifest digest changed: {manifest_path}")
-            expected_run = _planned_run(root, manifest_path, root / run["out"])
+            expected_run = _planned_run(
+                root, manifest_path, root / run["out"], ledger_dir=plan_ledger_dir,
+            )
             for field in ("ceiling_usd", "out", "argv", "cli"):
                 if run.get(field) != expected_run[field]:
                     raise FigmentTrainError(
@@ -3423,6 +3441,10 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument("--stage", choices=(*STAGES, "all"), default="all")
     plan.add_argument("--out", required=True, type=Path)
     plan.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (frozen in plan: explicit, KB_LEDGER_DIR, managed OPS, then repo)",
+    )
+    plan.add_argument(
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
     )
@@ -3472,6 +3494,10 @@ def build_parser() -> argparse.ArgumentParser:
     train_first.add_argument("--dataset-dir", required=True, type=Path)
     train_first.add_argument("--out", required=True, type=Path)
     train_first.add_argument(
+        "--ledger-dir", type=Path,
+        help="cost ledger root (frozen in plan: explicit, KB_LEDGER_DIR, managed OPS, then repo)",
+    )
+    train_first.add_argument(
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
     )
@@ -3518,7 +3544,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
-                detail_images=args.detail_images,
+                detail_images=args.detail_images, ledger_dir=args.ledger_dir,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
@@ -3536,6 +3562,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "train-first":
             result = build_train_first_plan(
                 args.creator, args.dataset_dir, args.out, skip_pin_verify=args.skip_pin_verify,
+                ledger_dir=args.ledger_dir,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} "
                   f"({len(result['stages'])} stage(s))")

@@ -177,10 +177,10 @@ def test_all_pauses_at_anchor_and_repeat_never_launches_duplicate_work(
     ledger_dir.mkdir()
     ledger = ledger_dir / "figment-2026-09-08.tsv"
     ledger.write_text("model\tstep\tusd\n", encoding="utf-8")
-    monkeypatch.setattr(command, "LEDGER_DIR", ledger_dir)
     root = tmp_path / "all"
     plan = command.build_plan(
         "creator-002", "all", root, personas_root=personas, skip_pin_verify=True,
+        ledger_dir=ledger_dir,
     )
     calls = []
 

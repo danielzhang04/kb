@@ -1380,10 +1380,9 @@ def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
     ledger_dir.mkdir()
     ledger_path = ledger_dir / "figment-2026-09-04.tsv"
     ledger_path.write_text("model\tstep\tusd\n", encoding="utf-8")
-    monkeypatch.setattr(command, "LEDGER_DIR", ledger_dir)
-
     plan = command.build_train_first_plan(
         "creator-002", dataset_dir, out, personas_root=personas_root, skip_pin_verify=True,
+        ledger_dir=ledger_dir,
     )
     assert plan["ledger_dir"] == str(ledger_dir)
 
@@ -1637,3 +1636,56 @@ def test_print_train_budget_prints_the_derived_numbers(command, capsys):
 def test_print_train_budget_is_silent_when_the_stage_was_not_planned(command, capsys):
     command._print_train_budget({"stages": {"dataset": {"runs": []}}})
     assert capsys.readouterr().out == ""
+
+
+def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_budget(
+    command, tmp_path, monkeypatch,
+):
+    """A plan must bind the exact ledger its later harness argv will budget against.
+
+    The two fixture ledgers deliberately disagree: choosing the stale environment ledger
+    would leave $49 available, while the explicit reconciled ledger leaves one dollar.
+    This uses the real harness's local arc-budget function;
+    no harness invocation, auth, or provider call occurs.
+    """
+    reconciled = tmp_path / "reconciled" / "cost"
+    stale = tmp_path / "stale-worktree" / "cost"
+    for directory, usd in ((reconciled, "49.000000"), (stale, "1.000000")):
+        directory.mkdir(parents=True)
+        (directory / "figment-fixture.tsv").write_text(
+            f"model\tstep\tusd\nrunpod:test\tprior\t{usd}\n", encoding="utf-8",
+        )
+    monkeypatch.setenv("KB_LEDGER_DIR", str(stale))
+
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    normal = command.build_plan(
+        "creator-002", "smoke", tmp_path / "normal", personas_root=personas_root,
+        skip_pin_verify=True, ledger_dir=reconciled,
+    )
+    dataset = _prebuilt_dataset_dir(tmp_path / "dataset", command=command)
+    train_first = command.build_train_first_plan(
+        "creator-002", dataset, tmp_path / "train-first", personas_root=personas_root,
+        skip_pin_verify=True, ledger_dir=reconciled,
+    )
+
+    expected = str(reconciled.resolve())
+    assert normal["ledger_dir"] == train_first["ledger_dir"] == expected
+    for plan in (normal, train_first):
+        for stage in plan["stages"].values():
+            for run in stage["runs"]:
+                argv = run["argv"]
+                assert argv[argv.index("--ledger-dir") + 1] == expected
+
+    pod_module = command._pod_runner_module()
+    with pytest.raises(pod_module.HarnessError, match="ARC CAP REFUSED"):
+        pod_module.enforce_arc_cap(
+            2.0, arc_cap_usd=50.0, ledger_dir=Path(normal["ledger_dir"]),
+        )
+    assert pod_module.enforce_arc_cap(2.0, arc_cap_usd=50.0, ledger_dir=stale) == (50.0, 1.0)
+
+    env_plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "environment", personas_root=personas_root,
+        skip_pin_verify=True,
+    )
+    assert env_plan["ledger_dir"] == str(stale.resolve())
