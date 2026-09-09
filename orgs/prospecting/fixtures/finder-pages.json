@@ -1,0 +1,47 @@
+{
+  "companies": [
+    "company-0", "company-1", "company-2", "company-3", "company-4",
+    "company-5", "company-6", "company-7", "company-8", "company-9",
+    "company-10", "company-11", "company-12", "company-13", "company-14",
+    "company-15", "company-16", "company-17", "company-18", "company-19",
+    "company-20", "company-21", "company-22", "company-23", "company-24",
+    "company-25", "company-26", "company-27", "company-28", "company-29"
+  ],
+  "manual_records": [
+    {
+      "kind": "person",
+      "linkedin_url": "https://professional-network.invalid/profile/synthetic-person",
+      "name": "Synthetic Person",
+      "first_name": "Synthetic"
+    },
+    {
+      "kind": "company",
+      "linkedin_url": "https://professional-network.invalid/organization/synthetic-co",
+      "name": "Synthetic Co",
+      "location": "New York"
+    }
+  ],
+  "pitchbook": [
+    {
+      "Company Name": "Synthetic Capital",
+      "Website": "https://synthetic.test",
+      "Primary Industry": "Software",
+      "Company Type": "VC",
+      "Company Stage": "Early Stage",
+      "HQ Location": "New York",
+      "LinkedIn URL": "https://professional-network.invalid/organization/synthetic-co"
+    }
+  ],
+  "linkedin_local_pages": [
+    {"kind": "search", "url": "file:///fixtures/linkedin-search.html"},
+    {"kind": "profile", "url": "file:///fixtures/linkedin-profile.html"},
+    {"kind": "company", "url": "file:///fixtures/linkedin-company.html"}
+  ],
+  "snapshots": {
+    "https://synthetic.test/about": {
+      "body": "<html><body>synthetic snapshot</body></html>",
+      "content_type": "text/html",
+      "final_url": "https://synthetic.test/about"
+    }
+  }
+}

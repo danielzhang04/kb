@@ -1,0 +1,26 @@
+{
+  "happy": {
+    "outreach-run-list-a1": {"stage_id":"list","state":"complete","ids":["fixture-1"],"counts":{"processed":20},"hashes":["aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"],"failure_codes":{},"attempt":1},
+    "list-only-list-a1": {"stage_id":"list","state":"complete","ids":["fixture-2"],"counts":{"processed":20},"hashes":["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"],"failure_codes":{},"attempt":1},
+    "personalize-only-personalize-a1": {"stage_id":"personalize","state":"complete","ids":["fixture-3"],"counts":{"processed":20},"hashes":["cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"],"failure_codes":{},"attempt":1},
+    "enroll-only-enroll-a1": {"stage_id":"enroll","state":"complete","ids":["fixture-4"],"counts":{"processed":20},"hashes":["dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"],"failure_codes":{},"attempt":1},
+    "reply-triage-scan-a1": {"stage_id":"scan","state":"complete","ids":["fixture-5"],"counts":{"processed":20},"hashes":["eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"],"failure_codes":{},"attempt":1}
+  },
+  "retry_then_success": {
+    "list-a1": {"stage_id":"list","state":"failed","ids":["fixture-6"],"counts":{"processed":0},"hashes":["ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"],"failure_codes":{"synthetic_failure":1},"attempt":1},
+    "list-a2": {"stage_id":"list","state":"complete","ids":["fixture-7"],"counts":{"processed":20},"hashes":["1111111111111111111111111111111111111111111111111111111111111111"],"failure_codes":{},"attempt":2}
+  },
+  "repeated_failure": {
+    "personalize-a1": {"stage_id":"personalize","state":"failed","ids":["fixture-8"],"counts":{"processed":0},"hashes":["2222222222222222222222222222222222222222222222222222222222222222"],"failure_codes":{"synthetic_failure":1},"attempt":1},
+    "personalize-a2": {"stage_id":"personalize","state":"failed","ids":["fixture-9"],"counts":{"processed":0},"hashes":["3333333333333333333333333333333333333333333333333333333333333333"],"failure_codes":{"synthetic_failure":1},"attempt":2}
+  },
+  "pii_attacks": {
+    "name": {"stage_id":"list","state":"complete","ids":["fixture-10"],"counts":{"name":1},"hashes":["4444444444444444444444444444444444444444444444444444444444444444"],"failure_codes":{},"attempt":1},
+    "email": {"stage_id":"list","state":"complete","ids":["fixture-11"],"counts":{"email":1},"hashes":["5555555555555555555555555555555555555555555555555555555555555555"],"failure_codes":{},"attempt":1},
+    "phone": {"stage_id":"list","state":"complete","ids":["fixture-12"],"counts":{"phone":1},"hashes":["6666666666666666666666666666666666666666666666666666666666666666"],"failure_codes":{},"attempt":1},
+    "profile_url": {"stage_id":"list","state":"complete","ids":["fixture-13"],"counts":{"profile_url":1},"hashes":["7777777777777777777777777777777777777777777777777777777777777777"],"failure_codes":{},"attempt":1},
+    "note": {"stage_id":"list","state":"complete","ids":["fixture-14"],"counts":{"note":1},"hashes":["8888888888888888888888888888888888888888888888888888888888888888"],"failure_codes":{},"attempt":1},
+    "excerpt": {"stage_id":"list","state":"complete","ids":["fixture-15"],"counts":{"excerpt":1},"hashes":["9999999999999999999999999999999999999999999999999999999999999999"],"failure_codes":{},"attempt":1},
+    "body": {"stage_id":"list","state":"complete","ids":["fixture-16"],"counts":{"body":1},"hashes":["0000000000000000000000000000000000000000000000000000000000000000"],"failure_codes":{},"attempt":1}
+  }
+}

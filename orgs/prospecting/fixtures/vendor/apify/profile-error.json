@@ -1,0 +1,7 @@
+{
+  "url": "https://profile-fixture.test/person",
+  "status": "error",
+  "error_kind": "synthetic_error",
+  "reason": "synthetic fixture failure",
+  "_metadata": {"extracted_at": "2026-09-03T00:00:00Z"}
+}

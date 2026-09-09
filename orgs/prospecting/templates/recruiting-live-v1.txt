@@ -1,0 +1,10 @@
+template_id: recruiting-live
+template_version: 1
+intent: recruiting_live
+subject: Learning about {company} and {role}
+body:
+Hi {first_name},
+
+{why_them} I am interested in the way {company} approaches {role} work and am trying to understand where my background could be useful. {sender_proof} I would appreciate hearing how the team defines strong work in this role, what the immediate priorities are, and what someone evaluating the opportunity should understand. {ask}
+
+{signature}

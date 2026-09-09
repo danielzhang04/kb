@@ -1,0 +1,485 @@
+"""Loopback-only HTTP shell for the local prospecting review service."""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import asdict, is_dataclass
+from datetime import datetime, timezone
+from http import HTTPStatus
+from http.cookies import SimpleCookie
+from http.server import BaseHTTPRequestHandler, HTTPServer
+import hmac
+import json
+from pathlib import Path
+import re
+import secrets
+import time
+from typing import Any, Callable
+from urllib.parse import parse_qs, urlsplit
+
+from scripts.prospecting.affinity.anchors import load_anchors
+from scripts.prospecting.affinity.templates_v2 import DraftError, draft_campaign
+from scripts.prospecting.manager.campaigns import (
+    CampaignError,
+    CampaignService,
+    DraftingSettings,
+)
+from scripts.prospecting.review_service import (
+    EditDraftRequest,
+    EditorialRequest,
+    FeedbackRequest,
+    ReviewError,
+    ReviewService,
+)
+from scripts.prospecting.store import open_store, resolve_store_path
+
+
+HOST = "127.0.0.1"
+MAX_JSON_BYTES = 72 * 1024
+SESSION_SECONDS = 8 * 60 * 60
+BOOTSTRAP_SECONDS = 60
+REQUEST_SECONDS = 5
+HTML_PATH = Path(__file__).with_name("review_app.html")
+_ENTITY_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
+_SECURITY_HEADERS = {
+    "Cache-Control": "no-store",
+    "Content-Security-Policy": (
+        "default-src 'self'; base-uri 'none'; connect-src 'self'; "
+        "font-src 'self'; form-action 'self'; frame-ancestors 'none'; "
+        "img-src 'self' data:; object-src 'none'; script-src 'unsafe-inline'; "
+        "style-src 'unsafe-inline'"
+    ),
+    "Permissions-Policy": "camera=(), microphone=(), geolocation=()",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+}
+_EXPIRED_HTML = b"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">
+<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>Session ended</title>
+<style>body{margin:0;background:#f7f7f2;color:#172018;font:16px/1.5 system-ui;display:grid;place-items:center;min-height:100vh}main{max-width:34rem;background:white;border:1px solid #dfe3da;border-radius:12px;padding:32px;box-shadow:0 18px 60px rgba(24,43,32,.09)}h1{font-family:Georgia,serif;margin-top:0}code{color:#173f31}</style></head>
+<body><main><h1>Your review session ended</h1><p>Restart Prospecting Review, then open its local link again. Unsaved form text in this browser page is no longer available.</p></main></body></html>"""
+
+
+def _selected_store_context(requested: Path | None) -> tuple[Path, Path]:
+    """Bind sibling local inputs to the same explicit store selection."""
+    database = (resolve_store_path() if requested is None else Path(requested)).absolute()
+    return database, database.parent / "sender-anchors.json"
+
+
+def _draft_preparer(connection: object, anchors_file: Path) -> Callable[[str, int], object]:
+    def prepare(campaign_id: str, step: int) -> object:
+        try:
+            anchors = load_anchors(anchors_file)
+        except ValueError:
+            raise DraftError("sender_anchors_missing") from None
+        return draft_campaign(
+            connection, campaign_id, step,
+            anchors=anchors, now=datetime.now(timezone.utc),
+        )
+
+    return prepare
+
+
+def _jsonable(value: object) -> object:
+    if is_dataclass(value) and not isinstance(value, type):
+        return {key: _jsonable(item) for key, item in asdict(value).items()}
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_jsonable(item) for item in value]
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+    raise TypeError("response_schema")
+
+
+def _require_object(value: object, keys: set[str], optional: set[str] = set()) -> dict[str, Any]:
+    if not isinstance(value, dict) or not set(value) <= keys | optional or not keys <= set(value):
+        raise ValueError("request_schema")
+    return value
+
+
+def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
+    campaigns = snapshot["campaigns"]
+    if not campaigns:
+        return {"title": "Create your first campaign", "detail": "Save a local brief to establish its durable identity.", "label": "Campaign setup"}
+    if "campaign" not in snapshot:
+        return {"title": "Choose a campaign", "detail": "Every count and review state is scoped to one campaign.", "label": "Campaign required"}
+    drafts = snapshot["drafts"]
+    people = snapshot["people"]
+    pending = [item for item in drafts if item.get("candidate_state") in {"pending_qa", "qa_failed"}]
+    review = [item for item in drafts if item.get("editorial_state") != "ready"]
+    if pending:
+        return {"title": "Resolve the pending draft review", "detail": "The edited candidate has not produced a validated revision.", "label": f"{len(pending)} blocked"}
+    if review:
+        return {"title": "Review saved drafts", "detail": "Editorial readiness never grants sending authority.", "label": f"{len(review)} to review"}
+    if not people:
+        return {"title": "Run the existing candidate workflow", "detail": "No discovery is launched by this review app.", "label": "People empty"}
+    return {"title": "Inspect the sending plan", "detail": "Schedule and approval state remain read-only here.", "label": "Review plan"}
+
+
+class ReviewHTTPServer(HTTPServer):
+    """One-process server with a one-use bootstrap and one expiring session."""
+
+    def __init__(
+        self,
+        address: tuple[str, int],
+        review: ReviewService,
+        campaigns: CampaignService,
+        html: str,
+        *,
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        if address[0] != HOST:
+            raise ValueError("loopback_required")
+        self.review = review
+        self.campaigns = campaigns
+        self.html_template = html
+        self.monotonic = monotonic
+        self.bootstrap_deadline = monotonic() + BOOTSTRAP_SECONDS
+        self.bootstrap_used = False
+        self.session_token: str | None = None
+        self.csrf_token: str | None = None
+        self.session_deadline = 0.0
+        super().__init__(address, ReviewHandler)
+
+    @property
+    def authority(self) -> str:
+        return f"{HOST}:{self.server_address[1]}"
+
+    def get_request(self) -> tuple[Any, Any]:
+        connection, address = super().get_request()
+        connection.settimeout(REQUEST_SECONDS)
+        return connection, address
+
+    def handle_error(self, _request: object, _client_address: object) -> None:
+        return
+
+    def bootstrap(self) -> tuple[str, str] | None:
+        if self.bootstrap_used or self.monotonic() > self.bootstrap_deadline:
+            return None
+        self.bootstrap_used = True
+        self.session_token = secrets.token_urlsafe(32)
+        self.csrf_token = secrets.token_urlsafe(32)
+        self.session_deadline = self.monotonic() + SESSION_SECONDS
+        return self.session_token, self.csrf_token
+
+    def session_valid(self, token: str | None) -> bool:
+        return bool(
+            token
+            and self.session_token
+            and self.monotonic() <= self.session_deadline
+            and hmac.compare_digest(token, self.session_token)
+        )
+
+
+class ReviewHandler(BaseHTTPRequestHandler):
+    server: ReviewHTTPServer
+    protocol_version = "HTTP/1.1"
+    server_version = "ReviewLocal/1"
+    sys_version = ""
+
+    def log_message(self, _format: str, *_args: object) -> None:
+        return
+
+    def send_error(
+        self,
+        code: int,
+        _message: str | None = None,
+        _explain: str | None = None,
+    ) -> None:
+        self._error(code, "request_invalid")
+
+    def handle_expect_100(self) -> bool:
+        self._error(HTTPStatus.EXPECTATION_FAILED, "request_framing")
+        return False
+
+    def _headers(self, status: int, content_type: str, length: int, extra: dict[str, str] | None = None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(length))
+        self.send_header("Connection", "close")
+        for key, value in _SECURITY_HEADERS.items():
+            self.send_header(key, value)
+        for key, value in (extra or {}).items():
+            self.send_header(key, value)
+        self.end_headers()
+
+    def _bytes(self, status: int, body: bytes, content_type: str, extra: dict[str, str] | None = None) -> None:
+        self._headers(status, content_type, len(body), extra)
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def _json(self, status: int, value: object) -> None:
+        body = json.dumps(_jsonable(value), sort_keys=True, separators=(",", ":")).encode("utf-8")
+        self._bytes(status, body, "application/json; charset=utf-8")
+
+    def _error(self, status: int, code: str) -> None:
+        self._json(status, {"error": code})
+
+    def _valid_host(self) -> bool:
+        values = self.headers.get_all("Host", failobj=[])
+        return len(values) == 1 and hmac.compare_digest(values[0], self.server.authority)
+
+    def _valid_get_framing(self) -> bool:
+        return not self.headers.get_all("Transfer-Encoding", failobj=[]) and not self.headers.get_all("Content-Length", failobj=[])
+
+    def _session_cookie(self) -> str | None:
+        values = self.headers.get_all("Cookie", failobj=[])
+        if len(values) != 1:
+            return None
+        try:
+            cookie = SimpleCookie(values[0])
+            return cookie["review_session"].value if "review_session" in cookie else None
+        except Exception:
+            return None
+
+    def _authorized(self) -> bool:
+        return self.server.session_valid(self._session_cookie())
+
+    def _path(self) -> tuple[str, dict[str, list[str]]] | None:
+        try:
+            parsed = urlsplit(self.path)
+            if parsed.scheme or parsed.netloc or parsed.fragment:
+                return None
+            return parsed.path, parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+        except ValueError:
+            return None
+
+    def do_GET(self) -> None:  # noqa: N802 -- stdlib handler API
+        try:
+            if not self._valid_host() or not self._valid_get_framing():
+                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                return
+            target = self._path()
+            if target is None:
+                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                return
+            path, query = target
+            if path == "/bootstrap":
+                if query:
+                    self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                    return
+                issued = self.server.bootstrap()
+                if issued is None:
+                    self._error(HTTPStatus.GONE, "bootstrap_unavailable")
+                    return
+                session, csrf = issued
+                body = self.server.html_template.replace("{{CSRF_TOKEN}}", csrf).encode("utf-8")
+                cookie = f"review_session={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
+                self._bytes(HTTPStatus.OK, body, "text/html; charset=utf-8", {"Set-Cookie": cookie})
+                return
+            if path == "/" and not query:
+                if not self._authorized():
+                    if self.server.bootstrap_used:
+                        self._bytes(HTTPStatus.UNAUTHORIZED, _EXPIRED_HTML, "text/html; charset=utf-8")
+                    else:
+                        self._bytes(HTTPStatus.SEE_OTHER, b"", "text/plain; charset=utf-8", {"Location": "/bootstrap"})
+                    return
+                csrf = self.server.csrf_token or ""
+                body = self.server.html_template.replace("{{CSRF_TOKEN}}", csrf).encode("utf-8")
+                self._bytes(HTTPStatus.OK, body, "text/html; charset=utf-8")
+                return
+            if path == "/api/review" and self._authorized():
+                self._review_snapshot(query)
+                return
+            if path == "/favicon.ico" and not query:
+                self._bytes(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
+                return
+            self._error(HTTPStatus.UNAUTHORIZED if not self._authorized() else HTTPStatus.NOT_FOUND, "session_required" if not self._authorized() else "route_missing")
+        except ReviewError as error:
+            code = str(error)
+            status = HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            self._error(status, code)
+        except Exception:
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error")
+
+    def _review_snapshot(self, query: dict[str, list[str]]) -> None:
+        if set(query) - {"campaign_id"} or len(query.get("campaign_id", [])) > 1:
+            self._error(HTTPStatus.BAD_REQUEST, "request_schema")
+            return
+        campaigns = [_jsonable(item) for item in self.server.review.list_campaigns()]
+        snapshot: dict[str, object] = {
+            "campaigns": campaigns,
+            "sender_profiles": [_jsonable(item) for item in self.server.review.list_sender_profiles()],
+            "mailboxes": list(self.server.review.list_mailboxes()),
+            "people": [], "drafts": [], "schedule": [], "activity": [],
+        }
+        campaign_id = query.get("campaign_id", [""])[0]
+        if campaign_id:
+            if _ENTITY_ID.fullmatch(campaign_id) is None:
+                self._error(HTTPStatus.BAD_REQUEST, "invalid_campaign_id")
+                return
+            snapshot.update(
+                campaign=_jsonable(self.server.review.get_campaign(campaign_id)),
+                people=[_jsonable(item) for item in self.server.review.list_people(campaign_id)],
+                drafts=[_jsonable(item) for item in self.server.review.list_drafts(campaign_id)],
+                schedule=[_jsonable(item) for item in self.server.review.list_schedule(campaign_id)],
+                activity=[_jsonable(item) for item in self.server.review.list_activity(campaign_id)],
+            )
+        snapshot["next_action"] = _next_action(snapshot)
+        self._json(HTTPStatus.OK, snapshot)
+
+    def _read_json(self) -> object:
+        lengths = self.headers.get_all("Content-Length", failobj=[])
+        transfers = self.headers.get_all("Transfer-Encoding", failobj=[])
+        expects = self.headers.get_all("Expect", failobj=[])
+        content_types = self.headers.get_all("Content-Type", failobj=[])
+        if transfers or expects or len(lengths) != 1 or len(content_types) != 1 or content_types[0].casefold() != "application/json":
+            raise ValueError("request_framing")
+        if not lengths[0].isascii() or not lengths[0].isdigit():
+            raise ValueError("request_framing")
+        length = int(lengths[0])
+        if length <= 0:
+            raise ValueError("request_framing")
+        if length > MAX_JSON_BYTES:
+            raise OverflowError("request_too_large")
+        raw = self.rfile.read(length)
+        if len(raw) != length:
+            raise ValueError("request_framing")
+        try:
+            return json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            raise ValueError("request_json") from None
+
+    def _csrf_valid(self) -> bool:
+        values = self.headers.get_all("X-CSRF-Token", failobj=[])
+        origin = self.headers.get_all("Origin", failobj=[])
+        expected = self.server.csrf_token
+        return bool(
+            expected and len(values) == 1 and hmac.compare_digest(values[0], expected)
+            and (not origin or (len(origin) == 1 and hmac.compare_digest(origin[0], f"http://{self.server.authority}")))
+        )
+
+    def do_POST(self) -> None:  # noqa: N802 -- stdlib handler API
+        try:
+            if not self._valid_host():
+                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                return
+            if not self._authorized():
+                self._error(HTTPStatus.UNAUTHORIZED, "session_required")
+                return
+            if not self._csrf_valid():
+                self._error(HTTPStatus.FORBIDDEN, "csrf_invalid")
+                return
+            target = self._path()
+            if target is None or target[1]:
+                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                return
+            try:
+                payload = self._read_json()
+            except OverflowError:
+                self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large")
+                return
+            except ValueError as error:
+                self._error(HTTPStatus.BAD_REQUEST, str(error))
+                return
+            path = target[0]
+            if path == "/api/campaigns":
+                value = _require_object(payload, {"request_id", "brief_text", "sender_profile_id", "mailbox_id"}, {"drafting"})
+                drafting = value.get("drafting")
+                settings = None
+                if drafting is not None:
+                    draft_value = _require_object(drafting, {"step", "minimum_confidence", "model_version"})
+                    settings = DraftingSettings(**draft_value)
+                result = self.server.campaigns.create(
+                    request_id=value["request_id"], brief_text=value["brief_text"],
+                    sender_profile_id=value["sender_profile_id"], mailbox_id=value["mailbox_id"], drafting=settings,
+                    require_first_draft_compatible=True,
+                )
+                self._json(
+                    HTTPStatus.CREATED if result.created else HTTPStatus.OK,
+                    {"campaign_id": result.campaign_id, "created": result.created},
+                )
+                return
+            if path == "/api/drafts/prepare":
+                value = _require_object(payload, {"campaign_id", "step"})
+                if type(value["step"]) is not int or value["step"] != 0:
+                    raise ValueError("request_schema")
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.review.prepare_drafts(value["campaign_id"], value["step"]),
+                )
+                return
+            if path == "/api/drafts/edit":
+                value = _require_object(
+                    payload,
+                    {"request_id", "campaign_id", "expected_revision_id", "subject", "body"},
+                    {"expected_candidate_id"},
+                )
+                self._json(HTTPStatus.OK, self.server.review.edit_draft(EditDraftRequest(**value)))
+                return
+            if path == "/api/drafts/feedback":
+                value = _require_object(payload, {"request_id", "campaign_id", "expected_revision_id", "disposition", "tags", "text"})
+                tags = value["tags"]
+                if not isinstance(tags, list):
+                    raise ValueError("request_schema")
+                request = FeedbackRequest(
+                    request_id=value["request_id"], campaign_id=value["campaign_id"],
+                    expected_revision_id=value["expected_revision_id"],
+                    disposition=value["disposition"], tags=tuple(tags), text=value["text"],
+                )
+                self._json(HTTPStatus.ACCEPTED, self.server.review.request_feedback(request))
+                return
+            if path == "/api/drafts/ready":
+                value = _require_object(payload, {"request_id", "campaign_id", "expected_revision_id", "ready"})
+                self._json(HTTPStatus.OK, self.server.review.set_editorial_ready(EditorialRequest(**value)))
+                return
+            self._error(HTTPStatus.NOT_FOUND, "route_missing")
+        except (CampaignError, ReviewError) as error:
+            code = str(error) if str(error) else "request_invalid"
+            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "feedback_already_requested", "transaction_active"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            self._error(status, code)
+        except (ValueError, TypeError):
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "request_schema")
+        except Exception:
+            self._error(HTTPStatus.INTERNAL_SERVER_ERROR, "internal_error")
+
+
+def create_server(
+    review: ReviewService,
+    campaigns: CampaignService,
+    *,
+    port: int = 0,
+    html_path: Path = HTML_PATH,
+    monotonic: Callable[[], float] = time.monotonic,
+) -> ReviewHTTPServer:
+    html = html_path.read_text(encoding="utf-8")
+    if "{{CSRF_TOKEN}}" not in html:
+        raise ValueError("html_csrf_marker_missing")
+    return ReviewHTTPServer((HOST, port), review, campaigns, html, monotonic=monotonic)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="prospecting-review")
+    parser.add_argument("--store", type=Path)
+    parser.add_argument("--port", type=int, default=8765)
+    args = parser.parse_args(argv)
+    if not 1024 <= args.port <= 65535:
+        parser.error("port must be between 1024 and 65535")
+    database, anchors_file = _selected_store_context(args.store)
+    connection = open_store(database)
+    try:
+        server = create_server(
+            ReviewService(
+                connection,
+                prepare_adapter=_draft_preparer(connection, anchors_file),
+            ),
+            CampaignService(connection),
+            port=args.port,
+        )
+    except OSError:
+        connection.close()
+        parser.exit(2, "review server could not start\n")
+    try:
+        print(f"Prospecting review is available at http://{server.authority}/")
+        server.serve_forever()
+    except KeyboardInterrupt:
+        return 0
+    finally:
+        server.server_close()
+        connection.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

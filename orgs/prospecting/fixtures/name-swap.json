@@ -1,0 +1,5 @@
+{
+  "left": {"person_id": "person-alpha", "first_name": "Avery", "company": "Example Robotics"},
+  "right": {"person_id": "person-beta", "first_name": "Blair", "company": "Example Climate"},
+  "generic_why_them": "Your background is impressive and relevant to my interests."
+}

@@ -1,0 +1,14 @@
+[
+  {"ask":"intent:networking industry:fintech company-location:nyc people-count:20","intent":"networking"},
+  {"ask":"intent:recruiting_live title:engineering seniority:director people-count:10","intent":"recruiting_live"},
+  {"ask":"intent:curiosity company-list:North_Star people-count:4","intent":"curiosity"},
+  {"ask":"intent:alumni industry:healthcare tone:warm","intent":"alumni"},
+  {"ask":"intent:networking company-type:private lane:manual","intent":"networking"},
+  {"ask":"intent:networking lane:pitchbook companies-count:12","intent":"networking"},
+  {"ask":"intent:networking lane:pdl credits:5","intent":"networking"},
+  {"ask":"intent:curiosity lane:class_c_public_profile ask:feedback","intent":"curiosity"},
+  {"ask":"intent:alumni lane:linkedin_assisted minutes:10","intent":"alumni"},
+  {"ask":"intent:recruiting_live company-stage:series_a tone:formal","intent":"recruiting_live"},
+  {"ask":"intent:networking company-list:North_Star,Acme_Labs people-count:20","intent":"networking"},
+  {"ask":"intent:curiosity person-location:boston school:synthetic_university platform:linkedin_assisted ask:relationship","intent":"curiosity"}
+]

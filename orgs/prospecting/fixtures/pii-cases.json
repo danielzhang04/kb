@@ -1,0 +1,13 @@
+{
+  "known_names": ["Casey Example"],
+  "cases": [
+    {"class":"name","field":"name","value":"Casey Example","pattern_value":"Casey Example"},
+    {"class":"email","field":"email","value":"casey\u0040example.test","pattern_value":"casey%40example.test"},
+    {"class":"phone","field":"phone","value":"+1\u002d202\u002d555\u002d0142","pattern_value":"%2B1-202-555-0142"},
+    {"class":"profile_url","field":"profile_url","value":"https://linkedin.example.test/in/casey-example","pattern_parts":["https%3A%2F%2Fwww.linkedin",".com%2Fin%2Fsynthetic-case"]},
+    {"class":"note","field":"person_note","value":"Synthetic private note","pattern_value":"[[person-note:synthetic-private-note]]"},
+    {"class":"excerpt","field":"excerpt","value":"Synthetic source excerpt","pattern_value":"[[source-excerpt:synthetic-source-excerpt]]"},
+    {"class":"body","field":"message_body","value":"Synthetic message body","pattern_value":"[[message-body:synthetic-message-body]]"}
+  ],
+  "safe": {"campaign_id":"campaign-1","count":20,"result_code":"eligible"}
+}

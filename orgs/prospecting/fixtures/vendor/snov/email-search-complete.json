@@ -1,0 +1,9 @@
+{
+  "data": [
+    {"email": "avery@alpha.test", "status": "valid"},
+    {"email": "avery-alias@alpha.test", "status": "catch_all"}
+  ],
+  "meta": {"task_hash": "synthetic-email-task-1"},
+  "links": [],
+  "status": "completed"
+}

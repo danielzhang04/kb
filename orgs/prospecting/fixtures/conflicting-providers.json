@@ -1,0 +1,9 @@
+{
+  "observations": [
+    {"observation_id":"observation-provider-a","entity_type":"contact","entity_id":"contact-a","field":"email","value":"\"casey@example.test\"","source":"provider-a-v1","seen_at":"2026-09-02","retrieved_at":"2026-09-03T00:00:00Z","confidence":0.8,"snapshot_id":null},
+    {"observation_id":"observation-provider-b","entity_type":"contact","entity_id":"contact-b","field":"email","value":"\"casey.alt@example.test\"","source":"provider-b-v1","seen_at":"2026-09-02","retrieved_at":"2026-09-03T00:00:00Z","confidence":0.7,"snapshot_id":null}
+  ],
+  "merge_review": {
+    "review_id":"review-1","entity_type":"contact","candidate_ids":["contact-a","contact-b"],"observation_ids":["observation-provider-a","observation-provider-b"],"reason":"conflicting_provider_values","state":"open","decided_by":null,"decided_at":null
+  }
+}

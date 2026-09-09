@@ -1,0 +1,12 @@
+template_id: asset_management_referral
+template_version: 1
+intent: alumni
+subject: A grad's quick question on your path
+body:
+Hi {first_name},
+
+{shared_signal_sentence} We share {shared_school}. {their_role} at {firm} connects {transition_from} and {transition_to}. {firm_specific_hook}. That perspective would be useful context for thoughtful early-career decisions in practice. {sender_intro} {sender_proof}
+
+Could we schedule {ask_minutes} minutes for an {ask_mode} in {time_window}? I would value practical recommendations for someone earlier in the process today.
+
+{signature}

@@ -1,0 +1,7 @@
+{
+  "angle": "why_them",
+  "why_them": "Your team doubled revenue last quarter.",
+  "ask": "Would you have 15 minutes for an informational conversation?",
+  "evidence_ids_used": {"why_them": "ev-allowed"},
+  "self_critique": "The claim requires evidence."
+}

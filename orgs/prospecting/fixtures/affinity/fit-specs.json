@@ -1,0 +1,12 @@
+{
+  "minimal": {
+    "version": 1,
+    "paths": [{"path_id": "corp_to_startup_ops", "label": "corporate strategy", "kinds": ["corporate", "startup"], "weight": 26}],
+    "role_families": [{"family_id": "operations", "label": "operations", "title_tokens": ["operations"], "required": false}],
+    "levels": ["director"],
+    "required_signals": ["shared_school"],
+    "weighted_signals": {"shared_school": 30, "shared_prior_employer": 28, "path_match": 26, "own_writing": 14, "board_or_portfolio": 10, "role_family_match": 10, "firm_thesis": 8, "level_match": 6},
+    "aside_signals": ["hometown"],
+    "disqualifiers": [{"kind": "level", "value": "intern"}]
+  }
+}

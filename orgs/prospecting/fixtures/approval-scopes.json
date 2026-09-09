@@ -1,0 +1,18 @@
+{
+  "fixture": "approval-scopes",
+  "campaign_id": "campaign-1",
+  "policy_hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "items": [
+    {
+      "revision_hash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "contact_id": "contact-1"
+    },
+    {
+      "revision_hash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+      "contact_id": "contact-2"
+    }
+  ],
+  "mailbox_id": "mailbox-1",
+  "tier": "T1",
+  "expected": "materialized"
+}

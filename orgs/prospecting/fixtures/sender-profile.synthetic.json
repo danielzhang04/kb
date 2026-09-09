@@ -1,0 +1,10 @@
+{
+  "sender_name": "Example Sender",
+  "sender_school": "Example University",
+  "sender_focus": "learning how operating teams improve",
+  "sender_background": "I evaluate and build synthetic operating systems.",
+  "sender_operating_proof": "I have worked on synthetic operating problems.",
+  "approved_metrics": [
+    {"text": "Improved a synthetic workflow by 20 percent.", "evidence_id": "sender.synthetic.metric.1"}
+  ]
+}

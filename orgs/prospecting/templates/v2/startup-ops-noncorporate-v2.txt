@@ -1,0 +1,12 @@
+template_id: startup_ops_noncorporate
+template_version: 1
+intent: networking
+subject: Quick question on your operating choices
+body:
+Hi {first_name},
+
+{shared_signal_sentence} Your {their_role} perspective at {firm} connects {transition_from} to {transition_to}. I noted {firm_specific_hook}. That perspective would be useful context for thoughtful early-career decisions in practice. {sender_intro} {sender_proof}
+
+Could we schedule {ask_minutes} minutes for an {ask_mode} in {time_window}? I would value practical recommendations for someone earlier in the process today.
+
+{signature}

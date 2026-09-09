@@ -1,0 +1,6 @@
+{
+  "fixture": "approval-expired",
+  "scope_hash": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+  "expires_at": "2026-09-03T21:59:59+00:00",
+  "expected_rejection": "scope_expiry"
+}
