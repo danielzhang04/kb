@@ -68,9 +68,11 @@ import os
 import shutil
 import statistics
 import sys
+import tempfile
 import time
 import urllib.error
 import urllib.request
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -82,6 +84,7 @@ HERE = Path(__file__).resolve().parent
 IDENTITY_MODULE_PATH = HERE / "train" / "identity_check.py"
 SCORE_CELLS_MODULE_PATH = HERE / "score_cells.py"
 VLM_JUDGE_MODULE_PATH = HERE / "vlm_judge.py"
+CODEX_JUDGE_MODULE_PATH = HERE / "codex_judge_backend.py"
 DEFAULT_GATE_CONFIG_PATH = HERE / "gate.yaml"
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
@@ -287,6 +290,40 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
 # every `grade` run and the `identity_gate.py run` CLI (both pass this straight to
 # `judge_images_for_stage`). One source now, not a copy that can drift again.
 DEFAULT_GATE_WORKERS = _vlm_judge_module().DEFAULT_WORKERS
+JUDGE_BACKENDS = ("claude", "codex-diagnostic")
+CODEX_DIAGNOSTIC_MODEL = "gpt-5.6-terra"
+CODEX_DIAGNOSTIC_PROMPT_VERSION = "figment-codex-diagnostic-v1"
+CODEX_DIAGNOSTIC_TIMEOUT_SECONDS = 120.0
+CODEX_DIAGNOSTIC_EXECUTABLE = Path(
+    r"C:\Users\danie\AppData\Roaming\npm\node_modules\@openai\codex\node_modules"
+    r"\@openai\codex-win32-x64\vendor\x86_64-pc-windows-msvc\bin\codex.exe"
+)
+CODEX_DIAGNOSTIC_PROMPT = """Perform a diagnostic visual comparison using only the attached images.
+The first image is the canonical g01 reference and the second is the candidate. Do not use
+tools, files, project instructions, or external sources. Score same-person identity,
+apparent age in each image, skin realism, gloss, and visible artifacts. Describe concrete
+visual evidence briefly in notes. Return only the required JSON object. This diagnostic is
+not an automatic gate decision and must not apply any existing Claude/Sonnet thresholds."""
+
+
+def _codex_judge_backend_module():
+    return _load_module("_figment_identity_gate_codex_judge_backend", CODEX_JUDGE_MODULE_PATH)
+
+
+def _codex_diagnostic(image: dict[str, Any], canonical_anchor: Path) -> dict[str, Any]:
+    module = _codex_judge_backend_module()
+    work_root = Path(tempfile.gettempdir()) / f"figment-codex-judge-{uuid.uuid4().hex}"
+    request = module.CodexJudgeRequest(
+        candidate=Path(image["path"]),
+        references=[canonical_anchor],
+        prompt=CODEX_DIAGNOSTIC_PROMPT,
+        prompt_version=CODEX_DIAGNOSTIC_PROMPT_VERSION,
+        requested_model=CODEX_DIAGNOSTIC_MODEL,
+        work_root=work_root,
+        timeout_seconds=CODEX_DIAGNOSTIC_TIMEOUT_SECONDS,
+        executable=CODEX_DIAGNOSTIC_EXECUTABLE,
+    )
+    return module.run_codex_judge(request)
 
 
 def run_two_stage_gate(
@@ -298,6 +335,7 @@ def run_two_stage_gate(
     skip_judge: bool = False,
     workers: int = DEFAULT_GATE_WORKERS,
     model: str | None = None,
+    judge_backend: str = "claude",
 ) -> dict[str, Any]:
     """The one fail-closed two-stage gate composition EVERY caller of this module uses
     to gate a set of images against a persona's identity references -- extracted so
@@ -320,6 +358,8 @@ def run_two_stage_gate(
     (`vlm_judge.judge_images_for_stage`'s own `model=` kwarg); left unset, that
     function's own default model is used unchanged -- `build_grade`'s callers never
     pass this, so their behaviour is identical to before this function existed."""
+    if judge_backend not in JUDGE_BACKENDS:
+        raise IdentityGateError(f"judge_backend must be one of {JUDGE_BACKENDS}")
     anchors_by_stem = {path.stem: path for path in anchors}
     # REVIEW-2026-09-07 finding #5: judge rows are keyed by image_id = path.stem, but
     # `_resolve_images` de-duplicates by PATH, not stem -- a shared stem across two
@@ -338,11 +378,13 @@ def run_two_stage_gate(
     thresholds: dict[str, Any] = {}
     judge_thresholds: dict[str, Any] = {}
     judge_by_id: dict[str, dict[str, Any] | None] = {}
+    codex_by_id: dict[str, dict[str, Any]] = {}
     outage: str | None = None
     try:
         persona = load_persona()
         thresholds = load_thresholds(persona)
-        judge_thresholds = load_judge_thresholds()
+        if judge_backend == "claude":
+            judge_thresholds = load_judge_thresholds()
         rows = score_cells_for_stage(images, anchors_by_stem, own_anchor=own_anchor)
         stage1_list = [identity_floor_gate(row, thresholds) for row in rows]
 
@@ -351,6 +393,23 @@ def run_two_stage_gate(
             # only) -- a stage-1-passing cell still fails overall, exactly the same
             # "unavailable: judge" verdict `two_stage_gate` would give a cell whose
             # judge call genuinely produced nothing, just without spending one.
+            verdicts = [
+                {
+                    "pass": False,
+                    "reasons": list(stage1["reasons"]) + ([] if not stage1["pass"] else ["unavailable: judge"]),
+                    "stage1": stage1,
+                    "stage2": None,
+                }
+                for stage1 in stage1_list
+            ]
+        elif judge_backend == "codex-diagnostic":
+            to_judge = [image for image, verdict in zip(images, stage1_list) if verdict["pass"]]
+            if to_judge and anchors:
+                canonical_anchor = anchors[0]
+                codex_by_id = {
+                    image["image_id"]: _codex_diagnostic(image, canonical_anchor)
+                    for image in to_judge
+                }
             verdicts = [
                 {
                     "pass": False,
@@ -389,9 +448,11 @@ def run_two_stage_gate(
         merged["stage1"] = verdict.get("stage1")
         merged["stage2"] = verdict.get("stage2")
         merged["judge"] = judge_by_id.get(row["image_id"])
+        if judge_backend == "codex-diagnostic":
+            merged["codex_diagnostic"] = codex_by_id.get(row["image_id"])
         result_rows.append(merged)
 
-    return {
+    document = {
         "schema": "figment/gate@1",
         "own_anchor": own_anchor,
         "thresholds": thresholds,
@@ -405,6 +466,9 @@ def run_two_stage_gate(
             "failed": sum(1 for row in result_rows if not row["pass"]),
         },
     }
+    if judge_backend == "codex-diagnostic":
+        document["judge_backend"] = judge_backend
+    return document
 
 
 def two_stage_gate(

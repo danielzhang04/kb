@@ -7,6 +7,7 @@ Every metric that could not be computed must fail closed, never pass silently.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -795,6 +796,8 @@ def test_run_gate_writes_gate_json_matching_the_figment_gate_schema(gate_module,
         assert field in on_disk["rows"][0]
     assert on_disk["summary"]["passed"] == 2
     assert fake_judge.calls == 1  # one BATCH call, not one per image
+    assert "judge_backend" not in on_disk
+    assert "codex_diagnostic" not in on_disk["rows"][0]
 
 
 def test_run_gate_raises_when_persona_not_found(gate_module, tmp_path):
@@ -844,6 +847,118 @@ def test_run_gate_skip_judge_never_loads_the_judge_module_and_fails_closed(
     assert row["pass"] is False
     assert row["reasons"] == ["unavailable: judge"]
     assert document["summary"]["passed"] == 0
+
+
+def test_codex_diagnostic_builds_one_bounded_native_request(gate_module, tmp_path, monkeypatch):
+    anchor = _png(tmp_path / "anchors", "g01.png")
+    candidate = _png(tmp_path / "cells", "cell-01.png")
+    captured = {}
+
+    class FakeCodexModule:
+        class CodexJudgeRequest:
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+
+        @staticmethod
+        def run_codex_judge(request):
+            captured["request"] = request
+            return {"schema": "figment/codex-judge-diagnostic@1", "payload": None,
+                    "unavailable": "fixture"}
+
+    external_temp = tmp_path / "runner-temp"
+    external_temp.mkdir()
+    monkeypatch.setattr(gate_module, "_codex_judge_backend_module", lambda: FakeCodexModule)
+    monkeypatch.setattr(gate_module.tempfile, "gettempdir", lambda: str(external_temp))
+
+    result = gate_module._codex_diagnostic(
+        {"image_id": "cell-01", "path": str(candidate)}, anchor,
+    )
+
+    request = captured["request"]
+    assert result["unavailable"] == "fixture"
+    assert request.candidate == candidate
+    assert request.references == [anchor]
+    assert request.requested_model == "gpt-5.6-terra"
+    assert request.prompt_version == "figment-codex-diagnostic-v1"
+    assert request.timeout_seconds == 120.0
+    assert request.executable == gate_module.CODEX_DIAGNOSTIC_EXECUTABLE
+    assert request.work_root.parent == external_temp
+    assert not request.work_root.exists()
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        {"schema": "figment/codex-judge-diagnostic@1", "payload": {
+            "same_person": 91, "apparent_age_reference": 22,
+            "apparent_age_candidate": 22, "skin_realism": 84, "gloss": 5,
+            "artifacts": 2, "notes": "fixture",
+        }, "unavailable": None},
+        {"schema": "figment/codex-judge-diagnostic@1", "payload": None,
+         "unavailable": "codex CLI timed out"},
+    ],
+)
+def test_codex_backend_records_diagnostic_but_never_passes_or_reuses_sonnet_thresholds(
+    gate_module, tmp_path, monkeypatch, diagnostic,
+):
+    persona = _synthetic_persona(tmp_path)
+    anchors_dir = Path(persona["_persona_path"]).parent / "anchors"
+    canonical = anchors_dir / "g01.png"
+    second_anchor = _png(anchors_dir, "g02.png")
+    passing = _png(tmp_path / "cells", "passing.png")
+    failing = _png(tmp_path / "cells", "failing.png")
+    images = [
+        {"image_id": "passing", "path": str(passing)},
+        {"image_id": "failing", "path": str(failing)},
+    ]
+
+    def fake_scores(items, _anchors, *, own_anchor, models=None):
+        assert own_anchor == "g01"
+        return [
+            dict(_FAKE_STAGE1_PASS_ROW, image_id="passing"),
+            dict(_FAKE_STAGE1_PASS_ROW, image_id="failing", identity_own=0.1),
+        ]
+
+    calls = []
+
+    def fake_codex(image, anchor):
+        calls.append((image, anchor))
+        bound = dict(diagnostic)
+        bound["provenance"] = {"images": [
+            {"role": "reference", "sha256": hashlib.sha256(anchor.read_bytes()).hexdigest()},
+            {"role": "candidate", "sha256": hashlib.sha256(Path(image["path"]).read_bytes()).hexdigest()},
+        ]}
+        return bound
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", fake_scores)
+    monkeypatch.setattr(gate_module, "_codex_diagnostic", fake_codex)
+    monkeypatch.setattr(
+        gate_module, "_vlm_judge_module",
+        lambda: (_ for _ in ()).throw(AssertionError("Claude judge must not load")),
+    )
+
+    document = gate_module.run_two_stage_gate(
+        lambda: persona, [canonical, second_anchor], images, tmp_path / "out",
+        judge_backend="codex-diagnostic",
+    )
+
+    assert calls == [(images[0], canonical)]
+    assert document["judge_backend"] == "codex-diagnostic"
+    assert document["judge_thresholds"] == {}
+    assert document["summary"]["passed"] == 0
+    by_id = {row["image_id"]: row for row in document["rows"]}
+    assert by_id["passing"]["judge"] is None
+    saved = by_id["passing"]["codex_diagnostic"]
+    assert saved["payload"] == diagnostic["payload"]
+    assert saved["unavailable"] == diagnostic["unavailable"]
+    assert saved["provenance"]["images"] == [
+        {"role": "reference", "sha256": hashlib.sha256(canonical.read_bytes()).hexdigest()},
+        {"role": "candidate", "sha256": hashlib.sha256(passing.read_bytes()).hexdigest()},
+    ]
+    assert by_id["passing"]["pass"] is False
+    assert by_id["passing"]["reasons"] == ["unavailable: judge"]
+    assert by_id["failing"]["codex_diagnostic"] is None
+    assert by_id["failing"]["stage1"]["pass"] is False
 
 
 def test_format_gate_table_shows_identity_and_judge_columns_with_verdicts(gate_module):

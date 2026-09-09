@@ -57,6 +57,7 @@
           "max_minutes": 270,
           "container_disk_gb": 80,
           "volume_gb": 200,
+          "avoid_machine_hosts": ["wx25nhzztsdt"],
           "readiness_timeout_seconds": 3600,
           "job_timeout_seconds": 10800,
           "artifact_download_seconds": 180,

@@ -33,6 +33,12 @@ MAX_STDOUT_BYTES = 256 * 1024
 MAX_STDERR_BYTES = 64 * 1024
 MAX_NOTES_CHARS = 1200
 MODEL_RE = re.compile(r"^[A-Za-z0-9._-]{1,128}$")
+# Explicit per-call config: do not read project instructions or enable shell/web tools.
+HARDENED_CONFIG: tuple[str, ...] = (
+    "project_doc_max_bytes=0",
+    "features.shell_tool=false",
+    'web_search="disabled"',
+)
 
 PAYLOAD_SCHEMA: dict[str, Any] = {
     "type": "object",
@@ -152,7 +158,10 @@ def _clean_env() -> dict[str, str]:
 def _build_argv(executable: Path, request: CodexJudgeRequest, schema_path: Path, output_path: Path) -> list[str]:
     images = [*request.references, request.candidate]
     argv = [str(executable), "exec", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check",
-            "-c", 'model_reasoning_effort="low"', "--model", request.requested_model]
+            "-c", 'model_reasoning_effort="low"']
+    for setting in HARDENED_CONFIG:
+        argv.extend(["-c", setting])
+    argv.extend(["--model", request.requested_model])
     for image in images:
         argv.extend(["--image", str(image)])
     argv.extend(["--output-schema", str(schema_path), "--output-last-message", str(output_path), "-"])
@@ -160,8 +169,11 @@ def _build_argv(executable: Path, request: CodexJudgeRequest, schema_path: Path,
 
 
 def _safe_argv_protocol(request: CodexJudgeRequest) -> list[str]:
-    return ["exec", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check",
-            "-c", 'model_reasoning_effort="low"', "--model", request.requested_model,
+    argv = ["exec", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check",
+            "-c", 'model_reasoning_effort="low"']
+    for setting in HARDENED_CONFIG:
+        argv.extend(["-c", setting])
+    return [*argv, "--model", request.requested_model,
             *(item for pair in (("--image", f"<reference-{index}>") for index, _ in enumerate(request.references, 1)) for item in pair),
             "--image", "<candidate>", "--output-schema", "<schema>", "--output-last-message", "<result>", "-"]
 

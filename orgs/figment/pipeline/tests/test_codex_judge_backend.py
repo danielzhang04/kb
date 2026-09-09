@@ -96,7 +96,10 @@ def test_success_attaches_explicit_images_stdin_and_sanitized_provenance(tmp_pat
     assert result["provenance"]["cache_key"] and result["provenance"]["image_count"] == 2
     argv = captured["process"].argv
     assert argv[:9] == [str(tmp_path / "codex.exe"), "exec", "--ephemeral", "--ignore-user-config", "--sandbox", "read-only", "--skip-git-repo-check", "-c", 'model_reasoning_effort="low"']
+    assert argv[9:15] == ["-c", "project_doc_max_bytes=0", "-c", "features.shell_tool=false", "-c", 'web_search="disabled"']
     assert argv.count("--image") == 2 and "--output-schema" in argv and "--output-last-message" in argv
+    protocol = result["provenance"]["argv"]
+    assert protocol[8:14] == ["-c", "project_doc_max_bytes=0", "-c", "features.shell_tool=false", "-c", 'web_search="disabled"']
     assert captured["process"].stdin.getvalue() == request.prompt.encode("utf-8")
     assert not request.work_root.exists(), "the private work root must be removed after every call"
 

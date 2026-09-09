@@ -1111,6 +1111,29 @@ def test_run_identity_gate_delegates_to_identity_gate_run_two_stage_gate(command
     assert direct_document == gate_document
 
 
+def test_run_identity_gate_threads_explicit_codex_backend(command, tmp_path, monkeypatch):
+    captured = {}
+
+    class FakeGateModule:
+        @staticmethod
+        def run_two_stage_gate(load_persona, anchors, images, grade_dir, **kwargs):
+            captured.update(kwargs)
+            return {"schema": "figment/gate@1", "rows": []}
+
+    monkeypatch.setattr(command, "_identity_gate_module", lambda: FakeGateModule)
+    command._run_identity_gate(
+        {}, [], [], tmp_path / "grade", judge_backend="codex-diagnostic",
+    )
+    assert captured == {"skip_judge": False, "judge_backend": "codex-diagnostic"}
+
+
+def test_grade_parser_defaults_to_claude_and_accepts_explicit_codex(command):
+    parser = command.build_parser()
+    common = ["grade", "--creator", "creator-001", "--stage", "tester"]
+    assert parser.parse_args(common).judge_backend == "claude"
+    assert parser.parse_args([*common, "--judge-backend", "codex-diagnostic"]).judge_backend == "codex-diagnostic"
+
+
 def _build_grade_with_fake_stage1_and_judge(
     command, tmp_path, monkeypatch, *, out_name: str, judge_row_factory,
 ):

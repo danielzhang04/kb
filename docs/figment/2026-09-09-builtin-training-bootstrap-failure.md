@@ -37,6 +37,11 @@ used the same image and bootstrap prerequisites; its adjacent completed receipt 
 recipe completed once, although it does not record a separate container-readiness
 duration and does not prove current registry or host-cache conditions.
 
+The official [Docker Hub layer page](https://hub.docker.com/layers/runpod/pytorch/2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04/images/sha256-cb154fcca15d1d6ce858cfa672b76505e30861ef981d28ec94bd44168767d853)
+lists the expected Linux/amd64 manifest `cb154f…d853` at 9.36 GB compressed; its
+largest listed layer is 3.7 GB. This supports a heavy cold-pull context. It does not
+establish the digest the failed pod resolved, its transferred byte count, or the EOF cause.
+
 The next bounded hypothesis is a truncated registry/image-layer transfer or host-local
 cache condition on `wx25nhzztsdt`, rather than a dataset, training configuration, or
 model-download failure. The evidence supports excluding that host for one otherwise

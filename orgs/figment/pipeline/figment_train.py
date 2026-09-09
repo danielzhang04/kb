@@ -2701,7 +2701,7 @@ def validate_approved_gen_still(
 
 def _run_identity_gate(
     plan: dict[str, Any], anchors: list[Path], images: list[dict[str, Any]],
-    grade_dir: Path, *, skip_judge: bool = False,
+    grade_dir: Path, *, skip_judge: bool = False, judge_backend: str = "claude",
 ) -> dict[str, Any]:
     """Fail-closed per-cell TWO-STAGE gate (operator ruling 2026-09-03: no board reaches
     the operator until every shown cell holds identity, age and realism; ruling
@@ -2732,12 +2732,13 @@ def _run_identity_gate(
     gate_module = _identity_gate_module()
     return gate_module.run_two_stage_gate(
         lambda: _load_persona_document_for_gate(plan),
-        anchors, images, grade_dir, skip_judge=skip_judge,
+        anchors, images, grade_dir, skip_judge=skip_judge, judge_backend=judge_backend,
     )
 
 
 def build_grade(
     creator_id: str, stage: str, plan_path: Path, *, skip_judge: bool = False,
+    judge_backend: str = "claude",
 ) -> dict[str, str]:
     """Build a non-destructive, original-pixel grading surface and blank rulings.
 
@@ -2771,7 +2772,10 @@ def build_grade(
     # Operator ruling 2026-09-03: no board reaches the operator until this fail-closed
     # gate has scored every cell -- see _run_identity_gate's own docstring for how a
     # total scoring outage still fails every cell closed rather than skipping the gate.
-    gate_document = _run_identity_gate(plan, anchors, images, grade_dir, skip_judge=skip_judge)
+    gate_document = _run_identity_gate(
+        plan, anchors, images, grade_dir,
+        skip_judge=skip_judge, judge_backend=judge_backend,
+    )
     gate_path = grade_dir / "gate.json"
     _write_json(gate_path, gate_document)
 
@@ -3468,6 +3472,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="omit stage 2 (the vlm_judge.py Claude vision judge) -- offline/test use "
              "only, NEVER pass this on a real grading run",
     )
+    grade.add_argument(
+        "--judge-backend", choices=("claude", "codex-diagnostic"), default="claude",
+        help="stage-2 backend; codex-diagnostic records evidence but cannot pass the gate",
+    )
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
@@ -3552,7 +3560,10 @@ def main(argv: list[str] | None = None) -> int:
             result = run_planned_stage(args.creator, args.stage, args.plan)
             print(f"stage state: {result['status']}")
         elif args.command == "grade":
-            result = build_grade(args.creator, args.stage, args.plan, skip_judge=args.skip_judge)
+            result = build_grade(
+                args.creator, args.stage, args.plan,
+                skip_judge=args.skip_judge, judge_backend=args.judge_backend,
+            )
             print(f"grading page: {result['page']}")
             print(f"rulings template: {result['rulings_template']}")
         elif args.command == "gate":
