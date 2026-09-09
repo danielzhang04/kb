@@ -315,4 +315,24 @@ describe('FigmentWorkspace', () => {
     render(<FigmentWorkspace fetchImpl={fetchImpl} />);
     await screen.findByText('Figment records are unavailable.');
   });
+
+  it('shows the exact current train-first lifecycle without implying liveness or quality', async () => {
+    const trainFirst = { status: 'recorded' as const, planSha256: 'e'.repeat(64), creator: 'creator-001', stage: 'train' as const, execution: 'completed' as const, liveness: null, maxMinutes: 351, maxUsd: 7.61, startedUtc: '2026-09-09T20:12:32Z', finishedUtc: '2026-09-09T22:12:32Z', terminationVerified: true, checkpoints: Array.from({ length: 5 }, (_, index) => ({ name: `creator-step-${(index + 1) * 250}.safetensors`, bytes: 1024 + index })), outputCount: 0, quality: 'not-reviewed' as const };
+    const fetchImpl = vi.fn(() => response({ ...projection, trainFirst })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
+    expect(screen.getByRole('heading', { name: 'Current train-first lifecycle' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'creator-001 · train' })).toBeTruthy();
+    expect(screen.getByText(/completed · up to 351 minutes · \$7\.61 ceiling/)).toBeTruthy();
+    expect(screen.getByText('Verified')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Receipt-bound checkpoints' })).toBeTruthy();
+    expect(screen.getByText('Checkpoint hashes are not present in the run receipt.')).toBeTruthy();
+    expect(screen.getByText('Plan-bound lifecycle evidence only. Liveness is unknown while a stage is running, and quality remains unreviewed.')).toBeTruthy();
+    expect(screen.queryByText(/pod|prompt/i)).toBeNull();
+  });
+
+  it('fails closed for an inconsistent train-first terminal projection', async () => {
+    const trainFirst = { status: 'recorded', planSha256: 'e'.repeat(64), creator: 'creator-001', stage: 'tester', execution: 'completed', liveness: 'unknown', maxMinutes: 115, maxUsd: 2.5, startedUtc: null, finishedUtc: null, terminationVerified: false, checkpoints: [], outputCount: 5, quality: 'not-reviewed' };
+    const fetchImpl = vi.fn(() => response({ ...projection, trainFirst })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('Figment records are unavailable.');
+  });
 });

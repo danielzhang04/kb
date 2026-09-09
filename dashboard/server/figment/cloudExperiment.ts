@@ -1,13 +1,19 @@
-/** Bounded, read-only status projection for one configured Figment cloud experiment. */
+/** Bounded, read-only status projections for configured Figment cloud experiments. */
+import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, lstatSync, openSync, opendirSync, readSync, realpathSync } from 'node:fs';
 import { basename, isAbsolute, relative, resolve, sep } from 'node:path';
 
 const MAX_JSON_BYTES = 256 * 1024, MAX_DEPTH = 64, MAX_JOBS = 32, MAX_FILES_PER_JOB = 32, MAX_OUTPUTS = 128, MAX_ROOT_ENTRIES = 32;
+const MAX_CHECKPOINT_BYTES = 512 * 1024 * 1024, SHA256 = /^[a-f0-9]{64}$/;
 type Failure = 'bootstrap' | 'run';
 export type CloudExperimentProjection =
   | { status: 'not-configured' }
   | { status: 'unavailable'; reason: 'evidence-unavailable' }
   | { status: 'recorded'; execution: 'started-pending-final' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number | null; preflightEstimateUsd: number | null; estimatedActualUsd: number | null; startedUtc: string; finishedUtc: string | null; terminationVerified: boolean | null; outputCount: number; quality: 'not-reviewed'; failure: Failure | null };
+export type TrainFirstProjection =
+  | { status: 'not-configured' }
+  | { status: 'unavailable'; reason: 'evidence-unavailable' }
+  | { status: 'recorded'; planSha256: string; creator: string; stage: 'train' | 'tester'; execution: 'planned' | 'running' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number; startedUtc: string | null; finishedUtc: string | null; terminationVerified: boolean | null; checkpoints: Array<{ name: string; bytes: number }>; outputCount: number; quality: 'not-reviewed' };
 
 interface Root { path: string; real: string; }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
@@ -15,7 +21,22 @@ function inside(root: string, candidate: string): boolean { const value = relati
 function reparse(path: string): boolean { try { const info = lstatSync(path), real = realpathSync(path); return info.isSymbolicLink() || resolve(real) !== resolve(path); } catch { return true; } }
 function root(value: string | null | undefined): Root | null { if (!value?.trim() || !isAbsolute(value)) return null; try { const path = resolve(value); return lstatSync(path).isDirectory() && !reparse(path) ? { path, real: realpathSync(path) } : null; } catch { return null; } }
 function file(root: Root, name: string): string | null { const path = resolve(root.path, name); if (!inside(root.path, path)) return null; try { let cursor = root.path; for (const segment of relative(root.path, path).split(/[\\/]/).filter(Boolean)) { cursor = resolve(cursor, segment); if (reparse(cursor)) return null; } return lstatSync(path).isFile() && inside(root.real, realpathSync(path)) ? path : null; } catch { return null; } }
+function childRoot(parent: Root, name: string): Root | null { const path = resolve(parent.path, name); if (!inside(parent.path, path)) return null; try { let cursor = parent.path; for (const segment of relative(parent.path, path).split(/[\\/]/).filter(Boolean)) { cursor = resolve(cursor, segment); if (reparse(cursor)) return null; } return lstatSync(path).isDirectory() && inside(parent.real, realpathSync(path)) ? { path, real: realpathSync(path) } : null; } catch { return null; } }
+function absent(root: Root, name: string): boolean {
+  const path = resolve(root.path, name); if (!inside(root.path, path)) return false;
+  let cursor = root.path;
+  for (const segment of relative(root.path, path).split(/[\\/]/).filter(Boolean)) {
+    cursor = resolve(cursor, segment);
+    try { const info = lstatSync(cursor); if (info.isSymbolicLink() || resolve(realpathSync(cursor)) !== cursor) return false; }
+    catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
+  }
+  return false;
+}
 function bounded(path: string): Buffer | null { let descriptor: number | null = null; try { descriptor = openSync(path, 'r'); const before = fstatSync(descriptor); if (!before.isFile() || before.size < 1 || before.size > MAX_JSON_BYTES) return null; const bytes = Buffer.allocUnsafe(before.size); for (let offset = 0; offset < bytes.length;) { const count = readSync(descriptor, bytes, offset, bytes.length - offset, offset); if (count <= 0) return null; offset += count; } const after = fstatSync(descriptor); return after.isFile() && after.size === before.size ? bytes : null; } catch { return null; } finally { if (descriptor !== null) try { closeSync(descriptor); } catch { /* invalid above */ } } }
+function decoded(raw: Buffer): Record<string, unknown> | null { try { const source = raw.toString('utf8'); const value: unknown = shallow(source) ? JSON.parse(source) : null; return object(value) ? value : null; } catch { return null; } }
+function json(path: string): Record<string, unknown> | null { const raw = bounded(path); return raw === null ? null : decoded(raw); }
+function jsonDigest(path: string): { value: Record<string, unknown>; sha256: string } | null { const raw = bounded(path); if (raw === null) return null; const value = decoded(raw); return value === null ? null : { value, sha256: createHash('sha256').update(raw).digest('hex') }; }
+function size(path: string, maximum: number): number | null { let descriptor: number | null = null; try { descriptor = openSync(path, 'r'); const info = fstatSync(descriptor); return info.isFile() && info.size > 0 && info.size <= maximum ? info.size : null; } catch { return null; } finally { if (descriptor !== null) try { closeSync(descriptor); } catch { /* invalid above */ } } }
 function shallow(source: string): boolean { let depth = 0, quoted = false, escaped = false; for (const character of source) { if (quoted) { if (escaped) escaped = false; else if (character === '\\') escaped = true; else if (character === '"') quoted = false; continue; } if (character === '"') quoted = true; else if (character === '{' || character === '[') { depth += 1; if (depth > MAX_DEPTH) return false; } else if (character === '}' || character === ']') depth -= 1; } return !quoted && depth === 0; }
 function finite(value: unknown, maximum: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= maximum; }
 function iso(value: unknown): value is string { return typeof value === 'string' && value.length <= 40 && Number.isFinite(Date.parse(value)); }
@@ -55,4 +76,98 @@ export function collectCloudExperiment(configuredRoot?: string | null): CloudExp
     const outputs = outputCount(value.jobs); if (outputs === null) throw new Error('malformed');
     return { status: 'recorded', execution: error !== null ? 'failed' : 'completed', liveness: null, maxMinutes: value.max_minutes, maxUsd: null, preflightEstimateUsd: value.preflight_estimate_usd, estimatedActualUsd: actual, startedUtc: value.started_utc, finishedUtc: finished, terminationVerified: terminated, outputCount: outputs, quality: 'not-reviewed', failure: error === null ? null : error.startsWith('BootstrapFailed:') ? 'bootstrap' : 'run' };
   } catch { return { status: 'unavailable', reason: 'evidence-unavailable' }; }
+}
+
+interface ManifestArtifact { remote: string; local: string; type: string; waitFor: string; }
+interface PlannedRun { manifest: string; sha256: string; out: string; maxMinutes: number; maxUsd: number; artifacts: ManifestArtifact[]; outputs: string[]; }
+function argvValue(argv: unknown, flag: string): string | null {
+  if (!Array.isArray(argv) || argv.length < 2 || argv.length > 32 || argv.some((item) => typeof item !== 'string' || item.length > 2048)) return null;
+  const indexes = argv.flatMap((item, index) => item === flag ? [index] : []);
+  return indexes.length === 1 && indexes[0] + 1 < argv.length ? argv[indexes[0] + 1] as string : null;
+}
+function plannedRun(opened: Root, value: unknown): PlannedRun | null {
+  if (!object(value) || typeof value.manifest !== 'string' || typeof value.out !== 'string' || typeof value.sha256 !== 'string' || !SHA256.test(value.sha256) || typeof value.ceiling_usd !== 'string') return null;
+  const maximum = Number(value.ceiling_usd), minutes = Number(argvValue(value.argv, '--max-minutes')), argvMaximum = Number(argvValue(value.argv, '--max-usd'));
+  const argvManifest = argvValue(value.argv, '--manifest'), argvOutput = argvValue(value.argv, '--out'), budget = object(value.budget) ? value.budget : null;
+  const manifest = file(opened, value.manifest), output = childRoot(opened, value.out), manifestRecord = manifest === null ? null : jsonDigest(manifest);
+  if (manifest === null || manifestRecord === null || (output === null && !absent(opened, value.out)) || manifestRecord.sha256 !== value.sha256 || !finite(maximum, 50) || maximum <= 0 || argvMaximum !== maximum || !finite(minutes, 840) || minutes <= 0 || typeof argvManifest !== 'string' || resolve(argvManifest) !== resolve(opened.path, value.manifest) || typeof argvOutput !== 'string' || resolve(argvOutput) !== resolve(opened.path, value.out) || (budget !== null && budget.max_minutes !== minutes)) return null;
+  const manifestValue = manifestRecord.value;
+  const rawArtifacts = manifestValue.artifacts, rawJobs = manifestValue.jobs;
+  const artifacts: ManifestArtifact[] = [];
+  if (rawArtifacts !== undefined && (!Array.isArray(rawArtifacts) || rawArtifacts.length > 8)) return null;
+  if (Array.isArray(rawArtifacts)) for (const row of rawArtifacts) {
+    if (!object(row) || typeof row.remote !== 'string' || basename(row.remote) !== row.remote || typeof row.local !== 'string' || basename(row.local) !== row.local || !row.local.endsWith('.safetensors') || row.remote !== row.local || typeof row.type !== 'string' || typeof row.wait_for !== 'string' || artifacts.some((item) => item.local === row.local)) return null;
+    artifacts.push({ remote: row.remote, local: row.local, type: row.type, waitFor: row.wait_for });
+  }
+  const outputs: string[] = [];
+  if (rawJobs !== undefined && (!Array.isArray(rawJobs) || rawJobs.length > MAX_JOBS)) return null;
+  if (Array.isArray(rawJobs)) for (const row of rawJobs) {
+    if (!object(row) || typeof row.output_name !== 'string' || basename(row.output_name) !== row.output_name || row.expected_images !== 1 || outputs.includes(row.output_name)) return null;
+    outputs.push(row.output_name);
+  }
+  return { manifest: value.manifest, sha256: value.sha256, out: value.out, maxMinutes: minutes, maxUsd: maximum, artifacts, outputs };
+}
+function safeRun(opened: Root, plan: Record<string, unknown>, stage: 'train' | 'tester'): PlannedRun | null {
+  const stages = object(plan.stages) ? plan.stages : null, section = stages && object(stages[stage]) ? stages[stage] : null, runs = section?.runs;
+  return Array.isArray(runs) && runs.length === 1 ? plannedRun(opened, runs[0]) : null;
+}
+function attemptState(value: unknown): 'running' | 'failed' | 'complete' | null { return object(value) && (value.status === 'running' || value.status === 'failed' || value.status === 'complete') ? value.status : null; }
+function testerOutputs(output: Root, run: PlannedRun, jobs: unknown): number | null {
+  if (run.outputs.length !== 5 || !Array.isArray(jobs) || jobs.length !== run.outputs.length) return null;
+  const seen = new Set<string>();
+  for (const [index, job] of jobs.entries()) {
+    if (!object(job) || job.output_name !== run.outputs[index] || !Array.isArray(job.files) || job.files.length !== 1 || !object(job.files[0])) return null;
+    const item = job.files[0], name = item.path, recordedBytes = item.bytes;
+    if (typeof name !== 'string' || basename(name) !== name || !name.toLowerCase().endsWith('.png') || seen.has(name) || typeof recordedBytes !== 'number' || !Number.isSafeInteger(recordedBytes) || recordedBytes <= 0) return null;
+    const path = file(output, name); if (path === null || size(path, 64 * 1024 * 1024) !== recordedBytes) return null;
+    seen.add(name);
+  }
+  return seen.size;
+}
+function terminalReceipt(opened: Root, run: PlannedRun, stage: 'train' | 'tester'): Pick<Extract<TrainFirstProjection, { status: 'recorded' }>, 'execution' | 'startedUtc' | 'finishedUtc' | 'terminationVerified' | 'checkpoints' | 'outputCount'> | null {
+  const output = childRoot(opened, run.out); if (output === null) return null;
+  const receiptPath = file(output, 'run.json'), receipt = receiptPath === null ? null : json(receiptPath);
+  if (receipt === null || receipt.schema !== 'figment/runpod-run@1' || receipt.dry_run !== false || receipt.max_minutes !== run.maxMinutes || !finite(receipt.preflight_estimate_usd, run.maxUsd) || receipt.preflight_estimate_usd <= 0 || !iso(receipt.started_utc) || !iso(receipt.finished_utc) || Date.parse(receipt.finished_utc) < Date.parse(receipt.started_utc) || receipt.termination_verified !== true || !Array.isArray(receipt.placement_attempts) || receipt.placement_attempts.length < 1 || receipt.placement_attempts.some((row) => !object(row) || row.termination_verified !== true)) return null;
+  const error = receipt.error;
+  if (error !== undefined && (typeof error !== 'string' || !error)) return null;
+  if (error !== undefined) return { execution: 'failed', startedUtc: receipt.started_utc, finishedUtc: receipt.finished_utc, terminationVerified: true, checkpoints: [], outputCount: 0 };
+  if (stage === 'train') {
+    if (run.artifacts.length !== 5 || !Array.isArray(receipt.artifacts) || receipt.artifacts.length !== run.artifacts.length) return null;
+    const checkpoints: Array<{ name: string; bytes: number }> = [];
+    for (const [index, row] of receipt.artifacts.entries()) {
+      const expected = run.artifacts[index];
+      if (!object(row) || row.remote !== expected.remote || row.path !== expected.local || row.type !== expected.type || row.wait_for !== expected.waitFor || typeof row.bytes !== 'number' || !Number.isSafeInteger(row.bytes) || row.bytes <= 0 || row.bytes > MAX_CHECKPOINT_BYTES) return null;
+      const path = file(output, expected.local); if (path === null || size(path, MAX_CHECKPOINT_BYTES) !== row.bytes) return null;
+      checkpoints.push({ name: expected.local, bytes: row.bytes });
+    }
+    return { execution: 'completed', startedUtc: receipt.started_utc, finishedUtc: receipt.finished_utc, terminationVerified: true, checkpoints, outputCount: 0 };
+  }
+  const outputs = testerOutputs(output, run, receipt.jobs);
+  return outputs === 5 ? { execution: 'completed', startedUtc: receipt.started_utc, finishedUtc: receipt.finished_utc, terminationVerified: true, checkpoints: [], outputCount: outputs } : null;
+}
+
+/** Projects one exact, server-configured train-first plan; request data cannot select its root. */
+export function collectTrainFirst(configuredRoot?: string | null, allowedPlanSha256?: string | null): TrainFirstProjection {
+  if ((configuredRoot == null || !configuredRoot.trim()) && (allowedPlanSha256 == null || !allowedPlanSha256.trim())) return { status: 'not-configured' };
+  if (configuredRoot == null || !configuredRoot.trim() || typeof allowedPlanSha256 !== 'string' || !SHA256.test(allowedPlanSha256)) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const opened = root(configuredRoot), planPath = opened === null ? null : file(opened, 'plan.json'), planRecord = planPath === null ? null : jsonDigest(planPath);
+  const plan = planRecord?.value;
+  if (opened === null || planRecord?.sha256 !== allowedPlanSha256 || plan === undefined || plan.schema !== 'figment/train-plan@1' || plan.variant !== 'train-first' || typeof plan.creator !== 'string' || !/^[A-Za-z0-9._-]{1,80}$/.test(plan.creator)) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const train = safeRun(opened, plan, 'train'), tester = safeRun(opened, plan, 'tester');
+  if (train === null || tester === null || train.artifacts.length !== 5 || train.artifacts.some((item) => item.type !== 'output' || item.waitFor !== '_training.complete') || tester.artifacts.length !== 0 || tester.outputs.length !== 5) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const stagePath = file(opened, 'stage.json');
+  if (stagePath === null) return absent(opened, 'stage.json') ? { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: 'train', execution: 'planned', liveness: null, maxMinutes: train.maxMinutes, maxUsd: train.maxUsd, startedUtc: null, finishedUtc: null, terminationVerified: null, checkpoints: [], outputCount: 0, quality: 'not-reviewed' } : { status: 'unavailable', reason: 'evidence-unavailable' };
+  const state = json(stagePath), runs = state && object(state.runs) ? state.runs : null, completed = state?.completed_stages;
+  if (state === null || state.schema !== 'figment/train-stage@1' || state.creator !== plan.creator || state.plan_sha256 !== allowedPlanSha256 || runs === null || !Array.isArray(completed) || completed.some((item) => item !== 'train' && item !== 'tester') || new Set(completed).size !== completed.length || (completed.includes('tester') && !completed.includes('train'))) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const testerAttempt = attemptState(runs[tester.manifest]), trainAttempt = attemptState(runs[train.manifest]);
+  const selectedStage: 'train' | 'tester' = testerAttempt !== null || completed.includes('tester') || state.status === 'running:tester' || state.status === 'stopped:tester' ? 'tester' : 'train';
+  const selectedRun = selectedStage === 'tester' ? tester : train, attempt = selectedStage === 'tester' ? testerAttempt : trainAttempt;
+  const expectedStatus = attempt === 'running' ? `running:${selectedStage}` : attempt === 'failed' ? `stopped:${selectedStage}` : selectedStage === 'tester' ? new Set(['complete:tester', 'complete']) : new Set(['complete:train', 'complete']);
+  if (attempt === null || (typeof expectedStatus === 'string' ? state.status !== expectedStatus : !expectedStatus.has(String(state.status))) || (attempt === 'complete') !== completed.includes(selectedStage) || (selectedStage === 'tester' && !completed.includes('train'))) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  const selectedRecord = runs[selectedRun.manifest];
+  const started = object(selectedRecord) && iso(selectedRecord.started_utc) ? selectedRecord.started_utc : null;
+  if (attempt === 'running') return started === null ? { status: 'unavailable', reason: 'evidence-unavailable' } : { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, execution: 'running', liveness: 'unknown', maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, startedUtc: started, finishedUtc: null, terminationVerified: null, checkpoints: [], outputCount: 0, quality: 'not-reviewed' };
+  const terminal = terminalReceipt(opened, selectedRun, selectedStage);
+  if (terminal === null || (attempt === 'complete' && terminal.execution !== 'completed') || (attempt === 'failed' && terminal.execution !== 'failed')) return { status: 'unavailable', reason: 'evidence-unavailable' };
+  return { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, liveness: null, maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, quality: 'not-reviewed', ...terminal };
 }

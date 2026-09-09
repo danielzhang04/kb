@@ -98,6 +98,7 @@ describe('Figment read projection', () => {
     expect(projection.localTrainingResults).toEqual({ status: 'not-configured' });
     expect(projection.matchedGallery).toEqual({ status: 'not-configured' });
     expect(projection.profileGallery).toEqual({ status: 'not-configured' });
+    expect(projection.trainFirst).toEqual({ status: 'not-configured' });
   });
 
   it('keeps the profile-gallery root optional and fails closed when its evidence is missing', async () => {
