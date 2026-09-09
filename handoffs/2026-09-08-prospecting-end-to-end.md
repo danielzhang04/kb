@@ -108,6 +108,38 @@ stay in local SQLite; no live data has been opened by workers. The credential-fr
 harness exists at root `_private/prospecting-codex-capability-probe.py`, pending root execution.
 It uses an empty runtime home, fake loopback provider and isolated network, never ambient auth.
 
+## Capability checkpoint (September 9, 04:15 UTC)
+
+Root executed the credential-free harness. With the restrictive `:root=deny` internal profile,
+Codex failed during AGENTS.md loading because its nested sandbox cannot create a namespace.
+With `permissions.job.filesystem={":root"="read","/output"="write"}` inside the SAME narrow
+outer bwrap, the actual installed Codex 0.152.0 contacted the fake loopback Responses provider.
+The captured outgoing request had `tools=[]`, count zero, and no configuration warnings.
+Exit code 1 is intentional: the fake provider returns HTTP 400 after inspecting the request.
+This is a tool-inventory proof, not a successful model response. Both probes had no auth mount,
+no external network and no persistent VM task directory; their temporary files lived in tmpfs.
+
+Independent reviewer vm_review accepted the root-read profile within this exact outer filesystem
+boundary. The trusted CLI can read its ambient auth bind; no model tool can read it. Keep all
+shell, unified execution, patch, apps, snapshots, MCP and web tools disabled, fresh runtime homes,
+and no global config/skills/plugins mounts. The probe did not exercise the real auth/default
+provider or output-schema flags. Actual Codex execution remains pending runner re-review.
+
+Active assignments remain:
+- gate_repair: finish campaign creation/resume service and new P9 migration with synthetic tests;
+  propose safe explicit CLI inputs before wiring. Preserve persisted camp_<16hex> IDs.
+- remote_protocol: validator fixes plus the five independent runner findings; tests and docs.
+  Freeze scope and finish verification. Runner has grown substantially; avoid new framework work.
+- vm_review: independently re-review repaired runner once stable, using the capability evidence.
+
+Exact next action: collect each worker's ready report, run independent re-review, then create a
+new local receipt for one small authenticated tool-disabled Codex job. Do not reuse the old
+cleaned synthetic receipt as a new job. Collect status/output/evidence, record observable model
+identity honestly, clean exact resources and verify absence. Then prove timeout/descendant and
+forced-disconnect recovery, stage temporary test dependencies, and continue product/UI slices.
+There is no main PR yet and no owned VM job remains running. Operational publishing is still
+held by the automatic-review rejection; only local commits were made after the rejection.
+
 ## Files and Load list
 - CLAUDE.md; BOSS.md; governance/agent-rules.md; orgs/prospecting/contract.md
 - Source worktree docs/superpowers/plans/2026-09-08-prospecting-end-to-end.md
