@@ -36,3 +36,10 @@ unknown; ambient subscription		gpt-5.6-sol	unavailable	completed READY; collecte
 unknown; ambient subscription		gpt-5.6-sol	unavailable	NOT READY two findings; collected cleaned absence verified	first-draft-integration-cdfe6926	2026-09-09T07:35:09.072860+00:00	0
 unknown; ambient subscription		gpt-5.6-sol	unavailable	running on VM; bounded lease	evidence-binding-repair-1321cddf	2026-09-09T07:35:09.072860+00:00	0
 unknown; ambient subscription		gpt-5.6-luna	unavailable	running on VM; bounded lease	review-form-compatibility-1222a0c6	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	noteonly rejected; cleaned absenceverified	review-form-compatibility-1222a0c6	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	empty output rejected; cleaned absenceverified	review-form-repair-c39aa859	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	proposal rejected; cleaned absenceverified	evidence-binding-repair-1321cddf	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	proposal rejected; cleaned absenceverified	evidence-binding-delta-bccb57a8	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	accepted rootintegration45tests; cleaned absenceverified	review-form-delta-eb78a098	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-6-astra	unavailable	running bounded VMjob	evidence-binding-final-9ce1c4a0	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	running bounded VMjob	form-compatibility-review-335be294	2026-09-09T07:52:28.559033+00:00	0

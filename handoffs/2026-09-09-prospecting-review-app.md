@@ -2,6 +2,15 @@
 
 Active work; this replaces the September 8 end-to-end handoff. Do not restart the baseline.
 
+## Current repair checkpoint (supersedes earlier job status)
+
+- Source still HEAD efa5f9e2; frozen native P8/service/HTTP app changes remain uncommitted. Form compatibility delta applied to manager/campaigns.py,review_app.py/html,tests/test_campaigns.py/test_review_app.py. Root45tests passed (campaigns,HTTP,actualintegration) in19sec. Adds strict opt-in create guard, actual compiled policy and saved retry validation, informational_call10-20 UI. Worker supplied exact-edit artifact445db71dca3fc12d3767e0d753a2cc3734de732748c5275955ca21b6674da255; root rejected2stale UI anchor chunks and integrated same error text into actual current handler; all oldtests preserved.
+- ACTIVE VM evidence-binding-final-20260909 id9ce1c4a06a7a4910b43694e42301229e requested gpt-6-astra, started07:50:20UTC,900secdeadline+3600collection. Current source-backed provenance repair; output JSON exact replacements. Do not apply old evidence proposals.
+- ACTIVE VM form-compatibility-review-20260909 id335be2945b7e466fb9ec73ac4cd32c58 requestedLuna, started07:51:22UTC,300secdeadline+3600collection. Independent static review of actual formguarddelta.
+- ALL predecessorjobs collected/cleaned and exactdir/mount/threeunits absent: review-form-compatibility1222a0c6 noteonly rejected; review-form-repairc39aa859 emptyfiles rejected; evidence-binding-repair1321cddf fullrewrite2files rejected (legacy snapshot fallback lost,unusedfactrequirements,no tests); evidence-binding-deltabccb57a8 partialpatch rejected (invented restrictive observation type,still mismatched path/current facts). review-form-deltaeb78a098 accepted with rootintegration above and cleaned/absenceverified. Never treat success exit as acceptable patch.
+- For upcoming ASTRA artifact: normalize proposed CRLF text before exactanchor checks, compare ALL edited source input hashes against receipt manifest (artifact-only output_base does NOT cover code target paths). Explicit editpath allowlist only. Review then apply all-or-none, preserve testfunctioninventory. No source changes yet from rejected evidenceworkers. Source data current snapshots may link via observation.source when snapshot_idNULL; actual bio.persist_bio_facts uses this legacy shape. Do not drop it or rebrand fixture entitytypes to make an arbitrary guard pass.
+- Read-only realcopy diagnosis:2selected/currentemployment/validcontact; supportedask and senderfields.42resolvable person observations throughlegacy source links,34totalsnapshots.0selected employment directsource links resolve to snapshots,0exactcurrentbio employer+title sources resolve. Missing current-role provenance is a real trial data prerequisite. No copy/original writes yet and no realdraftgenerated. Paid vendors/sends stilloutofscope; no silentclaims based on contactrecord.
+
 ## Async continuation checkpoint
 
 - User explicitly instructed: rest is async, run through the full plan. Continue autonomously; sending and public publication limits remain unchanged.

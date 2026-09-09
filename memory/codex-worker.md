@@ -477,3 +477,5 @@ an empty ControlGroup, so terminal ownership/recovery tests must use real observ
 - An equal content hash does not prove an old revision was produced from newly supplied QA bindings. New revisions record context atomically; retries require existing equal context and refuse legacy backfill.
 - A custom database selection must bind dependent sender profiles/anchors, stage directories and child environment to that same context. Correct source DB selection alone did not prevent wrong-root execution.
 - Reuse a real drafting owner before adding a qualification bridge. Empty predicate outcomes would have manufactured eligibility; preserve a truthful P8-selected state until target predicates are actually evaluated.
+
+- Source-only VM JSON edit artifacts reduce full-file rewrite churn, but their output manifest protects the artifact path, not the eventual source targets. Verify target input hashes and unique old-text anchors separately before applying. Empty output or exit0 is not implementation acceptance.
