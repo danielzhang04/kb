@@ -23,6 +23,16 @@ image path, byte count and SHA-256, plus hashes of the approved list and approva
 lineage records. The compiled `figment/video-i2v-manifest@1` remains
 `not_promotable: true`: it has not rendered a clip and has no temporal review.
 
+Resolution is selected from two fixed profiles. The receipt-based diagnostic route
+continues to default to `legacy-512x288`. The approved-gen route defaults to and requires
+`native-1280x704`; explicitly requesting the legacy profile on that route fails closed. The
+compiler changes only the pinned workflow's node-55 width/height and the matching
+`frame_budget`. It records the profile, dimensions, immutable source-template hash, and the
+effective compiled-workflow hash. The output name includes both the profile and effective
+hash prefix so outputs from different resolutions cannot collide or share ambiguous
+provenance. The digest covers the manifest-compiled graph before the harness applies its
+per-job seed and output-prefix substitutions.
+
 Freshness is the essential gate. The adapter must reuse the existing current
 approval validation, currently `figment_train._load_current_approval`, which
 recomputes the `lineage.review_subject` and calls `lineage.assert_current`.
@@ -37,7 +47,7 @@ The video adapter only consumes that result. No `gen` schema or approval-lineage
 schema change is needed. The exact CLI shape is:
 
 ```powershell
-python video_manifest.py --root <ROOT> --persona <PERSONA> --approved-gen-plan <GEN_PLAN> --approved-gen-image-id <IMAGE_ID> --action <MOTION_TEXT> --out <MANIFEST_BESIDE_SELECTED_FRAME>
+python video_manifest.py --root <ROOT> --persona <PERSONA> --approved-gen-plan <GEN_PLAN> --approved-gen-image-id <IMAGE_ID> --resolution-profile native-1280x704 --action <MOTION_TEXT> --out <MANIFEST_BESIDE_SELECTED_FRAME>
 ```
 
 `--out` must be beside the selected frame so the existing harness can stage both
@@ -48,7 +58,12 @@ The implementation is covered by the following fixtures and assertions:
 - current `gen` approval with one kept image compiles and binds its bytes/hash;
 - stale approval lineage, stale plan, receipt/image byte mutation, wrong creator,
   root-escape path, and a rejected image fail closed;
-- the existing diagnostic receipt command still compiles unchanged;
+- the existing diagnostic receipt command keeps its default resolution and render settings,
+  while its added profile metadata and output name bind the effective graph;
+- receipt-based diagnostics default to 512x288, approved-gen manifests default to 1280x704,
+  and unknown profiles or an approved-gen legacy request fail before any write;
+- the effective workflow, `frame_budget`, profile record, and output name bind the same
+  selected resolution;
 - the manifest does not claim acceptance, rendering, or temporal quality.
 
 After the upload-path repair, the production-lineage integration test passed in
@@ -56,3 +71,7 @@ After the upload-path repair, the production-lineage integration test passed in
 The 14 video-manifest tests passed in 1.38 seconds and the two approved-still
 validator tests passed in 0.29 seconds. These are contract checks; the compiled
 video manifest remains diagnostic and non-promotable.
+
+The resolution-profile change was independently reviewed READY with no findings. Root's
+full video suite passed 48 tests in 17.06 seconds. No live video or quality conclusion is
+part of that verification.

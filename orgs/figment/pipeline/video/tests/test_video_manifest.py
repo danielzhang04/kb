@@ -50,6 +50,9 @@ def test_compiles_hash_bound_native_81_frame_manifest(tmp_path: Path) -> None:
 
     assert manifest["schema"] == video.MANIFEST_SCHEMA
     assert manifest["not_promotable"] is True
+    assert manifest["resolution_profile"] == {
+        "name": video.LEGACY_RESOLUTION_PROFILE, "width": 512, "height": 288,
+    }
     assert manifest["frame_budget"] == {"width": 512, "height": 288, "frames": 81, "fps": 16, "batch_size": 1}
     assert manifest["provenance"]["first_frame"]["frame"]["sha256"] == digest(files["frame"])
     assert manifest["provenance"]["workflow"]["sha256"] == video.WORKFLOW_SHA256
@@ -59,10 +62,14 @@ def test_compiles_hash_bound_native_81_frame_manifest(tmp_path: Path) -> None:
     output = manifest["jobs"][0]
     assert output["seed"] == 77 and output["expected_images"] == 81
     assert output["output_name"].startswith(f"video-creator-test-f{digest(files['frame'])[:12]}-s77-p")
-    assert output["output_name"].endswith(f"-w{video.WORKFLOW_SHA256[:12]}")
+    assert f"-r{video.LEGACY_RESOLUTION_PROFILE}-e" in output["output_name"]
     graph = manifest["workflow"]
     assert graph["55"]["class_type"] == "Wan22ImageToVideoLatent"
     assert graph["55"]["inputs"]["start_image"] == ["56", 0]
+    assert {key: graph["55"]["inputs"][key] for key in ("width", "height")} == {
+        "width": 512, "height": 288,
+    }
+    assert manifest["provenance"]["workflow"]["effective_sha256"] == video._effective_workflow_sha256(graph)
     assert graph["9"] == {"class_type": "SaveImage", "inputs": {"images": ["8", 0], "filename_prefix": "figment-video"}}
 
 
@@ -80,11 +87,62 @@ def test_compiles_approved_gen_still_without_changing_diagnostic_route(tmp_path:
     files = fixture(tmp_path); plan = tmp_path / "plan.json"; approval = tmp_path / "approval-lineage.json"; approved = tmp_path / "approved-list.json"
     for path in (plan, approval, approved): path.write_text("{}", encoding="utf-8")
     authority = {"image_id": "creator-test-gen-01", "path": str(files["frame"]), "bytes": files["frame"].stat().st_size, "sha256": digest(files["frame"]), "source_plan": {"path": str(plan), "sha256": digest(plan)}, "approval_lineage": {"path": str(approval), "sha256": digest(approval)}, "approved_list": {"path": str(approved), "sha256": digest(approved)}}
+    evidence_before = {path: digest(path) for path in (plan, approval, approved)}
     monkeypatch.setattr(video, "_train_module", lambda: SimpleNamespace(validate_approved_gen_still=lambda *args: authority))
     manifest = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01", action="walk slowly toward the camera", out=Path("approved-video-manifest.json"), seed=77)
     assert manifest["not_promotable"] is True
     assert manifest["provenance"]["first_frame"]["approved_gen"]["image_id"] == "creator-test-gen-01"
     assert manifest["provenance"]["first_frame"]["frame"]["sha256"] == digest(files["frame"])
+    assert manifest["resolution_profile"] == {
+        "name": video.APPROVED_GEN_RESOLUTION_PROFILE, "width": 1280, "height": 704,
+    }
+    assert manifest["frame_budget"] == {
+        "width": 1280, "height": 704, "frames": 81, "fps": 16, "batch_size": 1,
+    }
+    assert manifest["workflow"]["55"]["inputs"]["width"] == 1280
+    assert manifest["workflow"]["55"]["inputs"]["height"] == 704
+    assert all(digest(path) == expected for path, expected in evidence_before.items())
+
+
+def test_approved_gen_native_profile_dry_runs_81_outputs_and_verified_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan = tmp_path / "plan.json"; approval = tmp_path / "approval-lineage.json"; approved = tmp_path / "approved-list.json"
+    for path in (plan, approval, approved): path.write_text("{}", encoding="utf-8")
+    authority = {"image_id": "creator-test-gen-01", "path": str(files["frame"]), "bytes": files["frame"].stat().st_size, "sha256": digest(files["frame"]), "source_plan": {"path": str(plan), "sha256": digest(plan)}, "approval_lineage": {"path": str(approval), "sha256": digest(approval)}, "approved_list": {"path": str(approved), "sha256": digest(approved)}}
+    monkeypatch.setattr(video, "_train_module", lambda: SimpleNamespace(validate_approved_gen_still=lambda *args: authority))
+    video.write_manifest(root=tmp_path, persona_path=Path(files["persona"].name), approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01", action="walk slowly toward the camera", out=Path("video-manifest.json"), seed=77)
+
+    result = subprocess.run([sys.executable, str(HARNESS), "run", "--manifest", str(tmp_path / "video-manifest.json"), "--out", str(tmp_path / "native-dry-run"), "--dry-run"], cwd=VIDEO_DIR.parent, capture_output=True, text=True, timeout=30)
+
+    assert result.returncode == 0, result.stderr
+    receipt = json.loads((tmp_path / "native-dry-run" / "run.json").read_text(encoding="utf-8"))
+    assert receipt["dry_run"] is True
+    assert receipt["termination_verified"] is True
+    assert len(receipt["jobs"]) == 1
+    assert len(receipt["jobs"][0]["files"]) == 81
+    recovery = json.loads(next((tmp_path / "native-dry-run").glob("recovery-*.json")).read_text(encoding="utf-8"))
+    assert recovery["state"] == "terminated" and recovery["absence_verified"] is True
+
+
+@pytest.mark.parametrize("profile", ["unknown", "1280x704", "", False, 0, [], 1280])
+def test_refuses_unknown_or_invalid_resolution_profile_before_writing(
+    tmp_path: Path, profile: object,
+) -> None:
+    files = fixture(tmp_path)
+    out = tmp_path / "video-manifest.json"
+    with pytest.raises(video.VideoManifestError, match="resolution profile"):
+        video.write_manifest(root=tmp_path, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="walk slowly", out=Path(out.name), resolution_profile=profile)
+    assert not out.exists()
+
+
+def test_approved_gen_route_refuses_legacy_resolution_even_when_explicit(
+    tmp_path: Path,
+) -> None:
+    files = fixture(tmp_path)
+    with pytest.raises(video.VideoManifestError, match="approved gen video requires"):
+        video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), approved_gen_plan=Path("missing-plan.json"), approved_gen_image_id="candidate", action="walk slowly", out=Path("video-manifest.json"), resolution_profile=video.LEGACY_RESOLUTION_PROFILE)
+    assert not (tmp_path / "video-manifest.json").exists()
 
 
 def test_refuses_stale_claimed_approval_and_unsafe_paths(tmp_path: Path) -> None:
@@ -144,8 +202,9 @@ def test_output_name_changes_for_different_seed_or_motion(tmp_path: Path) -> Non
     base = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="walk slowly toward the camera", out=Path("video-manifest.json"), seed=1)
     different_seed = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="walk slowly toward the camera", out=Path("video-manifest.json"), seed=2)
     different_motion = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="turn gently toward the camera", out=Path("video-manifest.json"), seed=1)
-    names = {item["jobs"][0]["output_name"] for item in (base, different_seed, different_motion)}
-    assert len(names) == 3
+    different_profile = video.build_manifest(root=tmp_path, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="walk slowly toward the camera", out=Path("video-manifest.json"), seed=1, resolution_profile=video.APPROVED_GEN_RESOLUTION_PROFILE)
+    names = {item["jobs"][0]["output_name"] for item in (base, different_seed, different_motion, different_profile)}
+    assert len(names) == 4
 
 
 @pytest.mark.parametrize("seed", [True, -1, video.MAX_SEED + 1])

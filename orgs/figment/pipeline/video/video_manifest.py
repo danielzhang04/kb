@@ -36,6 +36,12 @@ WORKFLOW_FILE = "wan22_ti2v_5b_native_api.json"
 PINS_FILE = "wan22_ti2v_5b.model-pins.json"
 WORKFLOW_SHA256 = "d1020d3af19df2b8875c024b792451699b103140211da2b6359306658feac2f2"
 PINS_SHA256 = "fa7d6e5c900d963031c04ca4dfeab2ee1c955d960dcea9abd5f5224ab17a6f68"
+LEGACY_RESOLUTION_PROFILE = "legacy-512x288"
+APPROVED_GEN_RESOLUTION_PROFILE = "native-1280x704"
+RESOLUTION_PROFILES = {
+    LEGACY_RESOLUTION_PROFILE: {"width": 512, "height": 288},
+    APPROVED_GEN_RESOLUTION_PROFILE: {"width": 1280, "height": 704},
+}
 REQUIRED_NODES = {
     "37": "UNETLoader", "38": "CLIPLoader", "39": "VAELoader",
     "6": "CLIPTextEncode", "7": "CLIPTextEncode", "55": "Wan22ImageToVideoLatent",
@@ -255,7 +261,29 @@ def _validate_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
     return copy.deepcopy(workflow)
 
 
-def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, seed: int = 4815162342, first_frame_receipt: Path | None = None, approved_gen_plan: Path | None = None, approved_gen_image_id: str | None = None) -> dict[str, Any]:
+def _resolution_profile(requested: str | None, *, approved_gen: bool) -> tuple[str, dict[str, int]]:
+    selected = (
+        APPROVED_GEN_RESOLUTION_PROFILE if approved_gen else LEGACY_RESOLUTION_PROFILE
+    ) if requested is None else requested
+    if not isinstance(selected, str) or selected not in RESOLUTION_PROFILES:
+        raise VideoManifestError(
+            f"resolution profile must be one of {tuple(RESOLUTION_PROFILES)}"
+        )
+    if approved_gen and selected != APPROVED_GEN_RESOLUTION_PROFILE:
+        raise VideoManifestError(
+            f"approved gen video requires {APPROVED_GEN_RESOLUTION_PROFILE}"
+        )
+    return selected, copy.deepcopy(RESOLUTION_PROFILES[selected])
+
+
+def _effective_workflow_sha256(workflow: dict[str, Any]) -> str:
+    encoded = json.dumps(
+        workflow, ensure_ascii=False, separators=(",", ":"), sort_keys=True,
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, seed: int = 4815162342, first_frame_receipt: Path | None = None, approved_gen_plan: Path | None = None, approved_gen_image_id: str | None = None, resolution_profile: str | None = None) -> dict[str, Any]:
     root = _root(root)
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= MAX_SEED:
         raise VideoManifestError(f"seed must be an integer between 0 and {MAX_SEED}")
@@ -265,6 +293,9 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
     age, prompt = _motion(persona, action)
     if (first_frame_receipt is None) == (approved_gen_plan is None):
         raise VideoManifestError("provide exactly one first-frame receipt or approved gen plan")
+    profile_name, resolution = _resolution_profile(
+        resolution_profile, approved_gen=approved_gen_plan is not None,
+    )
     if first_frame_receipt is not None:
         if approved_gen_image_id is not None: raise VideoManifestError("approved gen image id requires an approved gen plan")
         first_frame = _load_first_frame(root, first_frame_receipt, creator)
@@ -282,15 +313,21 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
     remote_subfolder = f"figment-video-{creator}"
     remote_image = f"{remote_subfolder}/{frame_path.name}"
     prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()[:12]
-    output_name = f"video-{creator}-f{first_frame['frame']['sha256'][:12]}-s{seed}-p{prompt_digest}-w{WORKFLOW_SHA256[:12]}"
     workflow["6"]["inputs"]["text"] = prompt
     workflow["56"]["inputs"]["image"] = remote_image
+    workflow["55"]["inputs"].update(resolution)
+    effective_workflow_sha256 = _effective_workflow_sha256(workflow)
+    output_name = (
+        f"video-{creator}-f{first_frame['frame']['sha256'][:12]}-s{seed}"
+        f"-p{prompt_digest}-r{profile_name}-e{effective_workflow_sha256[:12]}"
+    )
     manifest = {
         "schema": MANIFEST_SCHEMA,
         "mode": "diagnostic", "not_promotable": True,
-        "provenance": {"first_frame": first_frame, "workflow": {"path": WORKFLOW_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(WORKFLOW_FILE).read_bytes()).hexdigest(), "source": "https://github.com/Comfy-Org/workflow_templates/blob/8f712b99e950a22cd60a04a73683c4fd370a6996/templates/video_wan2_2_5B_ti2v.json"}, "model_pins": {"path": PINS_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(PINS_FILE).read_bytes()).hexdigest()}},
+        "provenance": {"first_frame": first_frame, "workflow": {"path": WORKFLOW_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(WORKFLOW_FILE).read_bytes()).hexdigest(), "effective_sha256": effective_workflow_sha256, "source": "https://github.com/Comfy-Org/workflow_templates/blob/8f712b99e950a22cd60a04a73683c4fd370a6996/templates/video_wan2_2_5B_ti2v.json"}, "model_pins": {"path": PINS_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(PINS_FILE).read_bytes()).hexdigest()}},
         "motion": {"age_stage": age, "action": action, "prompt": prompt},
-        "frame_budget": {"width": 512, "height": 288, "frames": 81, "fps": 16, "batch_size": 1},
+        "resolution_profile": {"name": profile_name, **resolution},
+        "frame_budget": {**resolution, "frames": 81, "fps": 16, "batch_size": 1},
         "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"}, "price_usd_per_hour": 1.3, "max_minutes": 80, "readiness_timeout_seconds": 2400, "job_timeout_seconds": 1800, "container_disk_gb": 80, "volume_gb": 120, "volume_mount_path": "/workspace", "image": "runpod/pytorch:2.8.0-py3.11-cuda12.8.1-cudnn-devel-ubuntu22.04",
         "comfyui": {"root": "/workspace/ComfyUI", "git_ref": COMFY_COMMIT, "source_url": COMFY_SOURCE, "tarball_url": f"https://codeload.github.com/Comfy-Org/ComfyUI/tar.gz/{COMFY_COMMIT}", "replace_non_git_root": False, "port": 8188, "start_command": "python main.py"},
         "models": pins, "seed_fields": ["seed"], "workflow": workflow,
@@ -318,9 +355,10 @@ def main(argv: list[str] | None = None) -> int:
     inputs.add_argument("--first-frame-input", type=Path); inputs.add_argument("--approved-gen-plan", type=Path)
     parser.add_argument("--approved-gen-image-id"); parser.add_argument("--action", required=True)
     parser.add_argument("--out", required=True, type=Path); parser.add_argument("--seed", type=int, default=4815162342)
+    parser.add_argument("--resolution-profile", choices=tuple(RESOLUTION_PROFILES), default=None)
     args = parser.parse_args(argv)
     try:
-        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, approved_gen_plan=args.approved_gen_plan, approved_gen_image_id=args.approved_gen_image_id, action=args.action, out=args.out, seed=args.seed)
+        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, approved_gen_plan=args.approved_gen_plan, approved_gen_image_id=args.approved_gen_image_id, action=args.action, out=args.out, seed=args.seed, resolution_profile=args.resolution_profile)
     except VideoManifestError as exc: parser.error(str(exc))
     return 0
 
