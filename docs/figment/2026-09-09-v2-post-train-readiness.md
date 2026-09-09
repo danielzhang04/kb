@@ -25,23 +25,26 @@ completion, final-cost, or teardown evidence.
 3. Require the tester receipt to contain five original PNGs, one for each of steps 250, 500,
    750, 1000, and final 1250, plus verified teardown and final cost. Completion does not rank
    or accept a checkpoint.
-4. A live tester grade requires a future request covering the exact g01 and tester-candidate
-   transfers to the connected Codex account. Only after that request is authorized, build
-   the tester grade explicitly with the user-selected backend:
+4. The reviewed local research-grade route prepares the plan-bound tester board without an
+   external image judge or image export:
 
    ```powershell
    & $py orgs/figment/pipeline/figment_train.py grade `
      --creator creator-001 --stage tester `
      --plan 'C:/Users/danie/kb/_private/figment-builtin-train-first-20260909-v2/plan.json' `
-     --judge-backend codex-diagnostic
+     --judge-backend local-research
    ```
 
-   The currently pending Codex question covers one 120-second g01-self-comparison call only.
-   It does not authorize tester images, a complete grade, or later gen images. Do not
-   substitute the default Claude backend or `--skip-judge`. The Codex diagnostic uses
-   canonical g01 only, records image hashes and its result envelope, and deliberately leaves
-   the automatic gate failed as
-   `unavailable: judge`; it does not apply the historical Sonnet thresholds.
+   It runs the existing stage-1 diagnostics and records every automatic result as failed
+   `unavailable: judge`; it never reuses Sonnet thresholds or creates a pass. An actual local
+   execution also depends on the existing scorer cache and offline environment: the legacy
+   scorer can attempt its own network fetch when its model is absent, and `HF_HUB_OFFLINE`
+   alone is not a global network block. Preserve unavailable diagnostics rather than changing
+   the scorer stack. Do not substitute the default Claude backend or `--skip-judge`.
+
+   Separately, the proposed 120-second Codex g01 self-comparison was rejected by approval
+   review because its exact image transfer was not authorized. It remains pending and does
+   not authorize tester or gen images, a complete Codex grade, or a reroute.
 5. Review all five original tester PNGs against g01 for same-person identity, realistic skin
    and anatomy, clearly adult/about-21 presentation, clothing integrity, and pairwise
    consistency. Quality is not predictable from training completion or local tests. A kept
@@ -58,9 +61,10 @@ completion, final-cost, or teardown evidence.
    training and tester receipts, checkpoint bytes, and teardown before writing checkpoint
    lineage. No keep means no checkpoint selection.
 6. Only a selected current checkpoint can produce a fresh `gen` plan. Use a new empty plan
-   root and the canonical ledger; run, Codex-grade under separately applicable image-transfer
-   permission, review originals, and apply rulings. The selected still must appear in the
-   current `approved-list.json` before the approved-still video adapter can consume it.
+   root and the canonical ledger; run, local-research grade, review originals, and apply
+   rulings. The selected still must appear in the current `approved-list.json` before the
+   approved-still video adapter can consume it. The blocked Codex transfer is separate and is
+   not part of this local research path.
 
 ## Evidence already established
 

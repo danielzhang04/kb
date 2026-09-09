@@ -290,7 +290,7 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
 # every `grade` run and the `identity_gate.py run` CLI (both pass this straight to
 # `judge_images_for_stage`). One source now, not a copy that can drift again.
 DEFAULT_GATE_WORKERS = _vlm_judge_module().DEFAULT_WORKERS
-JUDGE_BACKENDS = ("claude", "codex-diagnostic")
+JUDGE_BACKENDS = ("claude", "codex-diagnostic", "local-research")
 CODEX_DIAGNOSTIC_MODEL = "gpt-5.6-terra"
 CODEX_DIAGNOSTIC_PROMPT_VERSION = "figment-codex-diagnostic-v1"
 CODEX_DIAGNOSTIC_TIMEOUT_SECONDS = 120.0
@@ -402,9 +402,12 @@ def run_two_stage_gate(
                 }
                 for stage1 in stage1_list
             ]
-        elif judge_backend == "codex-diagnostic":
+        elif judge_backend in ("codex-diagnostic", "local-research"):
+            # local-research is an explicit real-review mode, distinct from the
+            # offline/test-only skip_judge seam. It runs stage 1 but deliberately
+            # makes no stage-2 call, so stage-1 passes remain unavailable/failed.
             to_judge = [image for image, verdict in zip(images, stage1_list) if verdict["pass"]]
-            if to_judge and anchors:
+            if judge_backend == "codex-diagnostic" and to_judge and anchors:
                 canonical_anchor = anchors[0]
                 codex_by_id = {
                     image["image_id"]: _codex_diagnostic(image, canonical_anchor)
@@ -466,7 +469,7 @@ def run_two_stage_gate(
             "failed": sum(1 for row in result_rows if not row["pass"]),
         },
     }
-    if judge_backend == "codex-diagnostic":
+    if judge_backend in ("codex-diagnostic", "local-research"):
         document["judge_backend"] = judge_backend
     return document
 

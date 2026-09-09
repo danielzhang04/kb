@@ -1086,6 +1086,51 @@ def test_build_grade_skip_judge_never_loads_the_judge_module(command, tmp_path, 
     assert gate_document["summary"]["passed"] == 0
 
 
+def test_build_grade_local_research_is_plan_bound_and_never_calls_external_judges(
+    command, tmp_path, monkeypatch,
+):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    out = tmp_path / "local-research-plan"
+    command.build_plan("creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True)
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    gate_module = command._identity_gate_module()
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: (_ for _ in ()).throw(AssertionError("VLM called")))
+    monkeypatch.setattr(gate_module, "_codex_judge_backend_module", lambda: (_ for _ in ()).throw(AssertionError("Codex called")))
+
+    grade = command.build_grade("creator-002", "dataset", plan_file, judge_backend="local-research")
+    gate_document = load_json(Path(grade["gate"]))
+    evaluation = load_json(Path(grade["gate"]).with_name("evaluation-inputs.json"))
+    template = load_json(Path(grade["rulings_template"]))
+    assert gate_document["judge_backend"] == "local-research"
+    assert gate_document["judge_skipped"] is False
+    assert gate_document["review_mode"] == "local-research"
+    assert gate_document["summary"]["passed"] == 0
+    assert gate_document["rows"][0]["stage1"]["pass"] is True
+    assert gate_document["rows"][0]["pass"] is False
+    assert gate_document["rows"][0]["reasons"] == ["unavailable: judge"]
+    assert set(gate_document["research_provenance"]) == {"executing_cli_sha256", "identity_gate_sha256", "stage2"}
+    assert evaluation["review_mode"] == "local-research"
+    assert evaluation["research_provenance"] == gate_document["research_provenance"]
+    assert evaluation["subject"]["numeric_gate"]["sha256"] == command._sha256(Path(grade["gate"]))
+    assert template["rulings"][0]["gate_override"] == ""
+    board = Path(grade["page"]).read_text(encoding="utf-8")
+    assert "Local research mode ran stage-1 diagnostics only" in board
+    assert "Research review candidates" in board
+    assert f"1. {gate_document['rows'][0]['image_id']}" in board
+    assert "unavailable: judge" in board
+    assert '<details class="failed-gate">' not in board
+
+
 def test_run_identity_gate_delegates_to_identity_gate_run_two_stage_gate(command, tmp_path, monkeypatch):
     """The refactor's contract (identity_gate.py's plan-independent `run` CLI and this
     module's own `build_grade` must share ONE gate composition, never duplicate it):
@@ -1132,6 +1177,7 @@ def test_grade_parser_defaults_to_claude_and_accepts_explicit_codex(command):
     common = ["grade", "--creator", "creator-001", "--stage", "tester"]
     assert parser.parse_args(common).judge_backend == "claude"
     assert parser.parse_args([*common, "--judge-backend", "codex-diagnostic"]).judge_backend == "codex-diagnostic"
+    assert parser.parse_args([*common, "--judge-backend", "local-research"]).judge_backend == "local-research"
 
 
 def _build_grade_with_fake_stage1_and_judge(

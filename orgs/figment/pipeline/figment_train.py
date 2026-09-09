@@ -2470,6 +2470,36 @@ def _grading_html(
         _figure_html(row, advisory_by_id, gate_by_id=gate_by_id, reasons=reasons)
         for row, reasons in failed_rows
     )
+    research_note = ""
+    local_research = (gate_document or {}).get("review_mode") == "local-research"
+    if local_research:
+        research_note = (
+            '<p class="advisory-note">Local research mode ran stage-1 diagnostics only. '
+            'No external image judge was called; every automatic verdict remains unavailable and failed. '
+            'A kept cell requires a real attributed ruling and an explicit gate-override reason.</p>'
+        )
+        review_cells = "\n".join(
+            _figure_html(
+                row, advisory_by_id, gate_by_id=gate_by_id, number=index,
+                reasons=list((gate_by_id.get(row["image_id"]) or {}).get("reasons") or ["unavailable: judge"]),
+            )
+            for index, row in enumerate(images, start=1)
+        )
+        cells_section = (
+            f'<main><h2>Research review candidates ({len(images)}; automatic gate unavailable)</h2>'
+            f'<div class="grid">{review_cells}</div></main>'
+        )
+        gate_summary = (
+            "The gate has no automatic passes in this research mode. Candidates are numbered only for the "
+            "attributed ruling template; they remain unavailable and failed until a valid explicit override."
+        )
+    else:
+        cells_section = (
+            f'<main><h2>Cells passing the gate ({len(passed_rows)})</h2><div class="grid">{passed_cells}</div></main>'
+            f'<details class="failed-gate"><summary>failed gate ({len(failed_rows)})</summary>'
+            f'<div class="grid">{failed_cells}</div></details>'
+        )
+        gate_summary = "The gate below IS fail-closed: only PASS cells are numbered for the ruling sheet."
     return f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2487,10 +2517,10 @@ summary{{cursor:pointer;font-size:1.2em;margin:16px 0}}
 </style></head><body>
 <h1>{html.escape(creator_id)} · {html.escape(stage)}</h1>
 <p>full-resolution source files: click any image to inspect its original pixels. Rule beside the anchors; never grade a thumbnail alone.</p>
-<p class="advisory-note">advisory annotations (cos/Δage/lap/clip) are advisory only — never keep or cull. The gate below IS fail-closed: only PASS cells are numbered for the ruling sheet.</p>
+<p class="advisory-note">advisory annotations (cos/Δage/lap/clip) are advisory only — never keep or cull. {gate_summary}</p>
+{research_note}
 <section class="anchors"><h2>Identity anchors</h2><div class="grid">{anchor_cards}</div></section>
-<main><h2>Cells passing the gate ({len(passed_rows)})</h2><div class="grid">{passed_cells}</div></main>
-<details class="failed-gate"><summary>failed gate ({len(failed_rows)})</summary><div class="grid">{failed_cells}</div></details>
+{cells_section}
 </body></html>
 """
 
@@ -2746,7 +2776,10 @@ def build_grade(
     entirely omits stage 2 (the vlm_judge.py Claude vision judge, subscription-billed):
     every cell's overall pass/fail then rests on stage 1 alone failing closed, or on
     stage 2 being recorded as `unavailable: judge` for any cell whose stage 1 passed --
-    see `_run_identity_gate`'s own docstring."""
+    see `_run_identity_gate`'s own docstring. `judge_backend=local-research` is a
+    separate explicit mode: it runs stage 1, never calls an external image judge,
+    and records every automatic verdict as unavailable/failed for attributed research
+    review; it is not a production pass or a synonym for `skip_judge`."""
     if stage not in GRADEABLE_STAGES:
         raise FigmentTrainError(f"grade stage must be one of {GRADEABLE_STAGES}")
     plan, root = _load_plan(creator_id, plan_path)
@@ -2776,6 +2809,14 @@ def build_grade(
         plan, anchors, images, grade_dir,
         skip_judge=skip_judge, judge_backend=judge_backend,
     )
+    local_research = judge_backend == "local-research"
+    if local_research:
+        gate_document["review_mode"] = "local-research"
+        gate_document["research_provenance"] = {
+            "executing_cli_sha256": _sha256(Path(__file__)),
+            "identity_gate_sha256": _sha256(IDENTITY_GATE_MODULE),
+            "stage2": "unavailable: local research mode does not invoke an external image judge",
+        }
     gate_path = grade_dir / "gate.json"
     _write_json(gate_path, gate_document)
 
@@ -2790,6 +2831,10 @@ def build_grade(
         _lineage_module().wrap_subject(
             _lineage_module().EVALUATION_SCHEMA, subject,
             creator=creator_id, stage=stage,
+            **({
+                "review_mode": "local-research",
+                "research_provenance": gate_document["research_provenance"],
+            } if local_research else {}),
         ),
     )
     _write_json(template_path, {
@@ -2810,6 +2855,7 @@ def build_grade(
             "garment_integrity": None,
             "real_person_resemblance": None,
             "why": "",
+            **({"gate_override": ""} if local_research else {}),
         } for row in images],
     })
     page_path.write_text(
@@ -3473,8 +3519,8 @@ def build_parser() -> argparse.ArgumentParser:
              "only, NEVER pass this on a real grading run",
     )
     grade.add_argument(
-        "--judge-backend", choices=("claude", "codex-diagnostic"), default="claude",
-        help="stage-2 backend; codex-diagnostic records evidence but cannot pass the gate",
+        "--judge-backend", choices=("claude", "codex-diagnostic", "local-research"), default="claude",
+        help="stage-2 backend; local-research omits external judging and cannot pass the gate",
     )
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")

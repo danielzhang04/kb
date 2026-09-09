@@ -72,7 +72,7 @@ runbook does not grant either.
 
 & $py orgs/figment/pipeline/figment_train.py grade `
   --creator $creator --stage tester --plan "$planRoot/plan.json" `
-  --judge-backend codex-diagnostic
+  --judge-backend local-research
 ```
 
 `grade` writes the board and a rulings template under
@@ -80,12 +80,23 @@ runbook does not grant either.
 review document. It can select only an actually kept tester candidate; use the
 produced checkpoint step, not a placeholder:
 
-The user-selected Codex path requires the explicit backend argument shown above. Its
-offline contracts are tested, but a real invocation also sends the canonical g01 bytes to
-the connected Codex account. Do not execute it until that exact transfer and account use are
-authorized. A valid Codex diagnostic remains `unavailable: judge`; it never applies the
-historical Sonnet thresholds or creates an automatic gate pass. Any bounded research keep
-still requires the existing attributed `gate_override` evidence.
+`local-research` is the explicit local review mode. It runs the existing stage-1
+diagnostics and writes the ordinary plan-bound board, gate, evaluation-inputs, and
+rulings template without an external image judge or image export. Every automatic
+verdict remains failed with `unavailable: judge`; it does not reuse Sonnet thresholds,
+create a PASS, or establish production quality. Its gate and evaluation records include
+the executing CLI and identity-gate source digests. Any kept research candidate still
+requires a real attributed ruling and an explicit `gate_override` reason.
+
+This mode does not guarantee that legacy local scorer dependencies are already cached:
+their existing implementations may need network access for missing weights. For an actual
+local run, root must set the intended offline environment and retain explicit unavailable
+diagnostics for uncached dependencies. Do not install or change that scoring stack here.
+
+The separate Codex diagnostic path remains blocked: its real invocation would send the
+canonical g01 bytes to the connected Codex account, and exact transfer authorization is
+pending. Do not execute or reroute it. A valid future Codex diagnostic would remain
+`unavailable: judge`; it never creates an automatic gate pass.
 
 ```powershell
 & $py orgs/figment/pipeline/figment_train.py apply-rulings `
@@ -123,7 +134,7 @@ $genRoot = '<FRESH_EMPTY_GEN_PLAN_ROOT>'
 
 & $py orgs/figment/pipeline/figment_train.py grade `
   --creator $creator --stage gen --plan "$genRoot/plan.json" `
-  --judge-backend codex-diagnostic
+  --judge-backend local-research
 
 & $py orgs/figment/pipeline/figment_train.py apply-rulings `
   --creator $creator --stage gen --plan "$genRoot/plan.json" `

@@ -849,6 +849,38 @@ def test_run_gate_skip_judge_never_loads_the_judge_module_and_fails_closed(
     assert document["summary"]["passed"] == 0
 
 
+def test_local_research_runs_stage1_without_loading_any_external_judge(
+    gate_module, tmp_path, monkeypatch,
+):
+    persona = _synthetic_persona(tmp_path)
+    batch_dir = tmp_path / "local-research-batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+
+    def boom():
+        raise AssertionError("local-research must not load an external image judge")
+
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", boom)
+    monkeypatch.setattr(gate_module, "_codex_judge_backend_module", boom)
+
+    anchor = Path(persona["_persona_path"]).parent / "anchors" / "g01.png"
+    candidate = batch_dir / "cell-01.png"
+    document = gate_module.run_two_stage_gate(
+        lambda: persona,
+        [anchor], [{"image_id": "cell-01", "path": str(candidate)}],
+        tmp_path / "local-research-out", judge_backend="local-research",
+    )
+    row = document["rows"][0]
+    assert document["judge_backend"] == "local-research"
+    assert document["judge_skipped"] is False
+    assert row["stage1"]["pass"] is True
+    assert row["judge"] is None
+    assert row["pass"] is False
+    assert row["reasons"] == ["unavailable: judge"]
+    assert document["summary"]["passed"] == 0
+
+
 def test_codex_diagnostic_builds_one_bounded_native_request(gate_module, tmp_path, monkeypatch):
     anchor = _png(tmp_path / "anchors", "g01.png")
     candidate = _png(tmp_path / "cells", "cell-01.png")
