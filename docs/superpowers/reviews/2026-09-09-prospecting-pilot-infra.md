@@ -929,3 +929,15 @@ Independent verification: **5 passed, 22 deselected in 1.09s** at `rt-infra-0910
 | `scripts/prospecting/tests/test_pipeline_stage_cli.py` | `D9F8CC706D3FCE6DD045A7146070F14CD13F5386B0AA1AAC6D08A6CBD990D367` |
 
 Remaining acceptance gates: resolve the separately observed HTTP 401 through authorized account setup; review a genuine authenticated synthetic canary and a full synthetic Humanizer/stage invocation under the exact bundle; verify direct-route tool behavior, output/schema handling, owned cache/log/temp observations and cleanup before enabling real data. The small fixed-JSON preflight is a transport/sink observation, not a full Humanizer quality or workflow test. Scanning is bounded to owned controller files, full input/output representations and exact string values of at least 16 UTF-8 bytes. It does not prove absence of short names, escaped/transformed fragments, arbitrary partial text, OS traces or provider retention. No demonstrated short-name leak was found; no universal no-log claim is accepted. Ambient credentials remain CLI-owned, with no controller reads/copies, API-key fallback or VM data path. This independent review performed no live-provider or authentication calls and used no real records or production stores.
+
+
+### Selected-campaign workspace layout: independent UI review
+
+Independent verdict: READY for the two-file layout slice. Selected campaign details and provisional funding evidence occupy the full content width before the research editor. Creation controls are hidden for an existing campaign; blank selection and New restore creation mode. Research saving remains a separate type=button action, so hidden required creation fields do not block it, and selected-campaign form submission cannot create a duplicate campaign. Existing per-campaign research/draft preservation, load-generation fencing, source/ready gates and escaped read-only funding rendering remain in place.
+
+Closed a concrete browser-cascade defect: the form-grid display rule overrode the native hidden attribute. The final explicit `#campaignCreateFields[hidden]{display:none}` rule and stylesheet regression close it. Independent actual bundled JavaScript suite: **18 passed in 220.5505ms**. This verifies state/event handling and the stylesheet invariant; actual browser computed-display and visual verification remain root-owned, not claimed by this source review.
+
+- `scripts/prospecting/review_app.html`: `98A9DD7963E76DBC9FFF1C2C387781609A50978A59553A50FBE5252A13B8F8BF`
+- `scripts/prospecting/tests/review_app_state.test.js`: `1DAB39816FBCB5DD6B07370D165F34034A90AFD5823D70667B27489FFC8C0929`
+
+No endpoint, qualification, approval, runtime or outbound authority changes are included. P19 remains separately under review and is not accepted by this UI addendum. No browser, model, authentication or real-store operation was performed by the reviewer.

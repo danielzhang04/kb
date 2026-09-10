@@ -266,6 +266,7 @@ test("obsolete campaign-create success and error cannot replace newer UI context
   const afterSwitch = harness();
   afterSwitch.reply(afterSwitch.requests.shift(), snapshot("A"));
   await tick(); await tick();
+  afterSwitch.document.getElementById("newCampaign").dispatch("click");
   afterSwitch.document.getElementById("campaignForm").dispatch("submit");
   const oldError = afterSwitch.requests.shift();
   const retryId = JSON.parse(oldError.init.body).request_id;
@@ -299,6 +300,10 @@ test("New campaign and a blank picker synchronously clear campaign projections",
   assert.match(afterNew.document.getElementById("scheduleList").innerHTML, /No messages are scheduled/);
   assert.match(afterNew.document.getElementById("activityList").innerHTML, /No campaign activity/);
   assert.equal(afterNew.evaluate('state.editors[editorKey("A","rev-A")].subject'), "Unsaved A subject");
+  assert.equal(afterNew.document.getElementById("campaignCreateFields").hidden, false);
+  assert.equal(afterNew.document.getElementById("saveCampaign").hidden, false);
+  assert.equal(afterNew.document.getElementById("campaignDetailCard").hidden, true);
+  assert.equal(afterNew.document.getElementById("campaignEditorTitle").textContent, "Create a campaign");
 
   const afterBlank = harness();
   afterBlank.reply(afterBlank.requests.shift(), snapshot("A"));
@@ -310,9 +315,53 @@ test("New campaign and a blank picker synchronously clear campaign projections",
   assert.equal(pending.url, "/api/review");
   assert.equal(afterBlank.evaluate('[state.data.people.length,state.data.drafts.length,state.data.schedule.length,state.data.activity.length].join(",")'), "0,0,0,0");
   assert.equal(afterBlank.evaluate("state.campaign"), "");
+  assert.equal(afterBlank.document.getElementById("campaignCreateFields").hidden, false);
+  assert.equal(afterBlank.document.getElementById("campaignDetailCard").hidden, true);
   assert.match(afterBlank.document.getElementById("draftList").innerHTML, /No drafts yet/);
   afterBlank.reply(pending, snapshot(null));
   await tick(); await tick();
+});
+
+test("selected campaign puts saved evidence first and keeps only research editing visible", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const selected = snapshot("A");
+  selected.pipeline = {
+    state: "awaiting_research_adapter", campaign_id: "A", requested_companies: 8,
+    requested_people_per_company: 2, funding_window_years: 3,
+    next_stage: "research_adapter", intake_revision: 1, run_id: "run-A",
+  };
+  selected.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 0, provisional_excluded_count: 0,
+    unknown_count: 1, collision_count: 0, provisional_shortfall: 8,
+    companies: [{name: "Saved Research Company", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.evaluate('state.campaign="A"; globalThis.selectedLoad=load("A")');
+  app.reply(app.requests.shift(), selected);
+  await app.context.selectedLoad;
+
+  assert.equal(app.document.getElementById("campaignCreateFields").hidden, true);
+  assert.equal(app.document.getElementById("saveCampaign").hidden, true);
+  assert.equal(app.document.getElementById("campaignDetailCard").hidden, false);
+  assert.equal(app.document.getElementById("campaignEditorTitle").textContent, "Edit research brief");
+  assert.equal(app.document.getElementById("researchBriefSummary").textContent, "Edit research brief");
+  assert.equal(app.document.getElementById("saveResearchBrief").hidden, false);
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Saved Research Company/);
+
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0, "selected-campaign form cannot create another campaign");
+});
+
+test("campaign workspace cards are full width with saved detail ordered before the editor", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "review_app.html"), "utf8");
+  assert.match(html, /id="campaignEditorCard"[^>]*class="card full campaign-editor"|class="card full campaign-editor"[^>]*id="campaignEditorCard"/);
+  assert.match(html, /id="campaignDetailCard"[^>]*class="card full campaign-detail"|class="card full campaign-detail"[^>]*id="campaignDetailCard"/);
+  assert.match(html, /\.campaign-detail\{order:1\}\.campaign-editor\{order:2\}/);
+  assert.match(html, /#campaignCreateFields\[hidden\]\{display:none\}/);
 });
 
 test("feedback remains visible on its child and fulfillment uses the projected revision", async () => {
