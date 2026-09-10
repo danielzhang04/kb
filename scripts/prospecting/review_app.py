@@ -398,6 +398,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "people": [], "drafts": [], "feedback": [], "schedule": [], "activity": [],
             "control": None,
             "pipeline": None,
+            "funding": None,
             "editorial_pipeline": [],
             "unmet_inputs": [],
         }
@@ -409,6 +410,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             drafts = [_jsonable(item) for item in self.server.review.list_drafts(campaign_id)]
             snapshot.update(
                 campaign=_jsonable(self.server.review.get_campaign(campaign_id)),
+                funding=_jsonable(self.server.review.get_funding_review(campaign_id)),
                 people=[_jsonable(item) for item in self.server.review.list_people(campaign_id)],
                 drafts=drafts,
                 feedback=[_jsonable(item) for item in self.server.feedback.list_feedback(campaign_id)],

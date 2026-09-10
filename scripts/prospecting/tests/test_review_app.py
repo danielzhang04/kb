@@ -44,6 +44,9 @@ from scripts.prospecting.review_service import (
     CampaignView,
     DraftView,
     FeedbackRequest,
+    FundingBatchView,
+    FundingCompanyView,
+    FundingSourceView,
     ImportIdentitySourceRequest,
     PersonView,
     PrepareDraftsResult,
@@ -73,6 +76,20 @@ class FakeReview:
     def __init__(self) -> None:
         self.seen: list[tuple[str, object]] = []
         self.fail = False
+        self.funding = FundingBatchView(
+            "awaiting_qualification_factcheck", batch_id="batch_aaaaaaaaaaaaaaaa",
+            batch_hash="a" * 64, desired_companies=2, candidate_count=1,
+            provisional_match_count=1, provisional_shortfall=1,
+            companies=(FundingCompanyView(
+                "Synthetic Systems", "provisional_match",
+                ("latest_event_eligible_with_current_coverage",),
+                "series_b", "2025-05-01",
+                (FundingSourceView(
+                    "https://funding.example.test/announcement", "issuer",
+                    "funding_event", "2026-09-09T04:00:00Z",
+                ),),
+            ),),
+        )
 
     def _record(self, name: str, value: object = None) -> None:
         if self.fail:
@@ -98,6 +115,10 @@ class FakeReview:
     def get_campaign(self, campaign_id):
         self._record("campaign", campaign_id)
         return self.list_campaigns()[0]
+
+    def get_funding_review(self, campaign_id):
+        self._record("funding", campaign_id)
+        return self.funding
 
     def list_people(self, campaign_id):
         self._record("people", campaign_id)
@@ -333,7 +354,7 @@ def test_parallel_loopback_servers_use_port_scoped_cookie_names() -> None:
             thread.join(timeout=2)
 
 
-def test_snapshot_is_campaign_scoped_and_calls_all_five_read_owners(app) -> None:
+def test_snapshot_is_campaign_scoped_and_calls_all_read_owners(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, _csrf, _headers, _body = bootstrap(server)
     status, _headers, raw = request(
@@ -349,10 +370,26 @@ def test_snapshot_is_campaign_scoped_and_calls_all_five_read_owners(app) -> None
     assert value["feedback"][0]["state"] == "ready_to_record"
     assert value["schedule"][0]["approval_state"] == "missing"
     assert value["activity"][0]["reason"] == "pending_qa"
+    assert value["funding"]["state"] == "awaiting_qualification_factcheck"
+    assert value["funding"]["companies"][0]["name"] == "Synthetic Systems"
+    assert value["funding"]["companies"][0]["sources"][0]["source_kind"] == "issuer"
     assert value["control"]["code"] == "disabled"
     assert value["mailboxes"] == ["mailbox-001"]
-    for method in ("campaign", "people", "drafts", "feedback_list", "schedule", "activity"):
+    for method in (
+        "campaign", "funding", "people", "drafts", "feedback_list", "schedule", "activity",
+    ):
         assert (method, CAMPAIGN) in review.seen
+
+
+def test_snapshot_keeps_funding_hidden_when_review_service_has_no_pipeline(app) -> None:
+    server, review, _campaigns, _clock = app
+    review.funding = None
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    status, _headers, raw = request(
+        server, "GET", f"/api/review?campaign_id={CAMPAIGN}", headers={"Cookie": cookie},
+    )
+    assert status == 200
+    assert json.loads(raw)["funding"] is None
 
 
 def test_editorial_projection_and_human_actions_are_scoped_typed_and_csrf_guarded() -> None:

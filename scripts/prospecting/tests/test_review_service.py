@@ -33,6 +33,14 @@ from scripts.prospecting.review_qa import (
     record_revision_qa_context,
 )
 from scripts.prospecting.store import approval_scope_hash, open_store
+from scripts.prospecting.tests.test_funding_research_service import (
+    CAMPAIGN_ID as FUNDING_CAMPAIGN_ID,
+    STAMP as FUNDING_STAMP,
+    _candidate as funding_candidate,
+    _request as funding_request,
+    _seed as seed_funding_pipeline,
+)
+from scripts.prospecting.funding_research_service import FundingResearchService
 
 
 NOW = "2026-09-09T12:00:00Z"
@@ -1064,3 +1072,90 @@ def test_actual_pipeline_chain_requires_human_ready_and_unready_revokes_it(tmp_p
         require_revision_ready(connection, "campaign-a", accepted.revision_hash, NOW)
     assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 2
     assert not connection.in_transaction
+
+
+def test_funding_review_is_hidden_without_pipeline_and_waits_without_batch(database) -> None:
+    _path, connection, _ids = database
+    assert ReviewService(connection, now=lambda: NOW).get_funding_review("campaign-a") is None
+
+    other = open_store(_path.parent / "funding-empty.sqlite")
+    seed_funding_pipeline(other)
+    view = ReviewService(other, now=lambda: FUNDING_STAMP).get_funding_review(
+        FUNDING_CAMPAIGN_ID,
+    )
+    assert view is not None
+    assert (view.state, view.code, view.companies) == ("awaiting_capture", None, ())
+    other.close()
+
+
+def test_funding_review_projects_validated_provisional_sources(tmp_path: Path) -> None:
+    connection = open_store(tmp_path / "funding.sqlite")
+    started = seed_funding_pipeline(connection)
+    funding = FundingResearchService(connection, now=lambda: FUNDING_STAMP)
+    funding.import_and_classify(
+        funding_request(started, funding_candidate(tmp_path)),
+    )
+
+    view = ReviewService(connection, now=lambda: FUNDING_STAMP).get_funding_review(
+        FUNDING_CAMPAIGN_ID,
+    )
+
+    assert view is not None
+    assert view.state == "awaiting_qualification_factcheck"
+    assert (
+        view.candidate_count,
+        view.provisional_match_count,
+        view.provisional_shortfall,
+    ) == (1, 1, 1)
+    assert len(view.companies) == 1
+    company = view.companies[0]
+    assert (
+        company.name,
+        company.provisional_state,
+        company.latest_stage,
+        company.latest_announced_at,
+    ) == ("Nimbus Systems", "provisional_match", "series_b", "2025-05-01")
+    assert company.reason_codes == ("latest_event_eligible_with_current_coverage",)
+    assert [(source.binding_kind, source.source_kind) for source in company.sources] == [
+        ("funding_event", "issuer"),
+        ("coverage", "search_coverage"),
+    ]
+    assert all(source.source_url.startswith("https://") for source in company.sources)
+    connection.close()
+
+
+@pytest.mark.parametrize(
+    ("break_source", "expected_state", "expected_code"),
+    (
+        (False, "source_stale", "source_stale"),
+        (True, "unavailable", "source_changed"),
+    ),
+)
+def test_funding_review_withholds_rows_when_sources_are_stale_or_changed(
+    tmp_path: Path, break_source: bool, expected_state: str, expected_code: str,
+) -> None:
+    connection = open_store(tmp_path / "funding.sqlite")
+    started = seed_funding_pipeline(connection)
+    FundingResearchService(connection, now=lambda: FUNDING_STAMP).import_and_classify(
+        funding_request(started, funding_candidate(tmp_path)),
+    )
+    now = "2027-09-10T12:00:00Z"
+    if break_source:
+        body_ref = connection.execute(
+            "SELECT body_ref FROM source_snapshot ORDER BY snapshot_id LIMIT 1",
+        ).fetchone()[0]
+        (tmp_path / "snapshots" / str(body_ref)).write_text(
+            "replacement synthetic content", encoding="utf-8",
+        )
+        now = FUNDING_STAMP
+
+    view = ReviewService(connection, now=lambda: now).get_funding_review(
+        FUNDING_CAMPAIGN_ID,
+    )
+
+    assert view is not None
+    assert (view.state, view.code, view.companies) == (
+        expected_state, expected_code, (),
+    )
+    assert view.candidate_count == view.provisional_match_count == 0
+    connection.close()

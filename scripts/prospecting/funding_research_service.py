@@ -12,11 +12,9 @@ from datetime import datetime, timedelta, timezone
 from hashlib import sha256
 import ipaddress
 import json
-import os
 from pathlib import Path
 import re
 import sqlite3
-import stat
 from types import MappingProxyType
 from typing import Callable, Mapping
 from urllib.parse import SplitResult, urlsplit, urlunsplit
@@ -24,6 +22,13 @@ import uuid
 
 from scripts.prospecting.affinity.source_review import plain_text
 from scripts.prospecting.pipeline_service import FUNDING_STAGES, PipelineError, PipelineService
+from scripts.prospecting.source_capture import (
+    SourceCaptureError,
+    cleanup_owned,
+    copy_owned,
+    read_capture,
+    read_owned,
+)
 
 
 MAX_QUERIES_PER_COMPANY = 4
@@ -114,6 +119,14 @@ class FundingResearchRequest:
 
 
 @dataclass(frozen=True, repr=False)
+class FundingSourceProjection:
+    source_url: str
+    source_kind: str
+    binding_kind: str
+    retrieved_at: str
+
+
+@dataclass(frozen=True, repr=False)
 class CompanyFundingProjection:
     result_id: str
     ordinal: int
@@ -124,6 +137,7 @@ class CompanyFundingProjection:
     latest_stage: str | None
     latest_announced_at: str | None
     source_count: int
+    sources: tuple[FundingSourceProjection, ...] = ()
 
 
 @dataclass(frozen=True, repr=False)
@@ -312,68 +326,15 @@ def _snapshot_root(connection: sqlite3.Connection) -> Path:
     return Path(database).parent / "snapshots"
 
 
-def _unsafe(info: os.stat_result) -> bool:
-    return stat.S_ISLNK(info.st_mode) or bool(
-        getattr(info, "st_file_attributes", 0)
-        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
-    )
-
-
-def _reject_reparse_tree(path: Path) -> None:
-    try:
-        for candidate in (path, *path.parents):
-            if _unsafe(candidate.lstat()):
-                raise OSError
-    except OSError:
-        raise FundingResearchError("source_changed") from None
-
-
 def _read_capture(root: Path, body_ref: object) -> tuple[str, bytes]:
-    ref = _text(body_ref, "invalid_body_ref", maximum=240)
-    assert ref is not None
-    candidate = Path(ref)
-    if (
-        candidate.is_absolute() or "\\" in ref
-        or any(part in {"", ".", ".."} for part in candidate.parts)
-    ):
-        raise FundingResearchError("invalid_body_ref")
     try:
-        _reject_reparse_tree(root)
-        root = root.resolve(strict=True)
-        current = root
-        for part in candidate.parts:
-            current /= part
-            info = current.lstat()
-            if _unsafe(info):
-                raise OSError
-        resolved = (root / candidate).resolve(strict=True)
-        before = resolved.lstat()
-        if root not in resolved.parents:
-            raise OSError
-        if _unsafe(before) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-            raise OSError
-        if before.st_size > MAX_PAGE_BYTES:
-            raise FundingResearchError("source_too_large")
-        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-        with os.fdopen(os.open(resolved, flags), "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino):
-                raise OSError
-            contents = handle.read(MAX_PAGE_BYTES + 1)
-            after = os.fstat(handle.fileno())
-        named = resolved.lstat()
-        if (
-            len(contents) > MAX_PAGE_BYTES or len(contents) != after.st_size
-            or (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino)
-            or (after.st_dev, after.st_ino) != (named.st_dev, named.st_ino)
-            or opened.st_mtime_ns != after.st_mtime_ns or after.st_mtime_ns != named.st_mtime_ns
-            or _unsafe(named) or named.st_nlink != 1
-        ):
-            raise OSError
-        return ref, contents
-    except FundingResearchError:
-        raise
-    except (OSError, RuntimeError, ValueError):
+        captured = read_capture(root, body_ref, maximum=MAX_PAGE_BYTES)
+        return captured.body_ref, captured.contents
+    except SourceCaptureError as error:
+        if str(error) == "invalid_ref":
+            raise FundingResearchError("invalid_body_ref") from None
+        if str(error) == "too_large":
+            raise FundingResearchError("source_too_large") from None
         raise FundingResearchError("source_changed") from None
 
 
@@ -728,50 +689,12 @@ class FundingResearchService:
         self, root: Path, snapshot_id: str, contents: bytes,
         created: list[tuple[Path, tuple[int, int]]],
     ) -> str:
-        folder = root / "funding-research"
         try:
-            _reject_reparse_tree(root)
-            folder.mkdir(parents=True, exist_ok=True)
-            if _unsafe(folder.lstat()):
-                raise OSError
-        except (OSError, FundingResearchError):
-            raise FundingResearchError("source_changed")
-        body_ref = f"funding-research/{snapshot_id}.body"
-        final = root / Path(body_ref)
-        staged = folder / f".{snapshot_id}.tmp"
-        staged_identity: tuple[int, int] | None = None
-        final_identity: tuple[int, int] | None = None
-        try:
-            descriptor = os.open(
-                staged, os.O_CREAT | os.O_EXCL | os.O_WRONLY | getattr(os, "O_BINARY", 0), 0o600,
+            return copy_owned(
+                root, namespace="funding-research", snapshot_id=snapshot_id,
+                contents=contents, maximum=MAX_PAGE_BYTES, created=created,
             )
-            staged_info = os.fstat(descriptor)
-            staged_identity = (staged_info.st_dev, staged_info.st_ino)
-            with os.fdopen(descriptor, "wb") as handle:
-                handle.write(contents)
-                handle.flush()
-                os.fsync(handle.fileno())
-            os.link(staged, final)
-            final_identity = staged_identity
-            linked = final.lstat()
-            if (linked.st_dev, linked.st_ino) != staged_identity or linked.st_nlink != 2:
-                raise OSError
-            staged.unlink()
-            found = final.lstat()
-            if _unsafe(found) or found.st_nlink != 1 or found.st_size != len(contents):
-                raise OSError
-            created.append((final, final_identity))
-            return body_ref
-        except OSError:
-            for path, identity in ((staged, staged_identity), (final, final_identity)):
-                if identity is None:
-                    continue
-                try:
-                    found = path.lstat()
-                    if (found.st_dev, found.st_ino) == identity:
-                        path.unlink()
-                except FileNotFoundError:
-                    pass
+        except SourceCaptureError:
             raise FundingResearchError("source_changed") from None
 
     def import_and_classify(self, request: FundingResearchRequest) -> FundingResearchResult:
@@ -973,16 +896,7 @@ class FundingResearchService:
             return self._result(projection, False)
         except BaseException as error:
             self.connection.rollback()
-            for path, identity in reversed(created):
-                try:
-                    info = path.lstat()
-                    if (
-                        (info.st_dev, info.st_ino) == identity and not _unsafe(info)
-                        and stat.S_ISREG(info.st_mode) and info.st_nlink == 1
-                    ):
-                        path.unlink()
-                except FileNotFoundError:
-                    pass
+            cleanup_owned(created)
             if isinstance(error, FundingResearchError):
                 raise
             if isinstance(error, sqlite3.Error):
@@ -1089,7 +1003,10 @@ class FundingResearchService:
                 str(row["candidate_name"]), str(row["rule_outcome"]), reasons,
                 None if row["latest_stage"] is None else str(row["latest_stage"]),
                 None if row["latest_announced_at"] is None else str(row["latest_announced_at"]),
-                len(sources),
+                len(sources), tuple(FundingSourceProjection(
+                    str(source["expected_source_url"]), str(source["source_kind"]),
+                    str(source["binding_kind"]), str(source["expected_retrieved_at"]),
+                ) for source in sources),
             ))
             hash_results.append({
                 "result_id": str(row["result_id"]), "ordinal": int(row["ordinal"]),
@@ -1166,45 +1083,10 @@ class FundingResearchService:
 
 
 def _read_stored_snapshot(root: Path, body_ref: str) -> tuple[str, bytes]:
-    if type(body_ref) is not str or "\\" in body_ref:
-        raise FundingResearchError("store_state_invalid")
-    path = Path(body_ref)
-    if path.is_absolute() or any(part in {"", ".", ".."} for part in path.parts):
-        raise FundingResearchError("store_state_invalid")
     try:
-        _reject_reparse_tree(root)
-        root = root.resolve(strict=True)
-        current = root
-        for part in path.parts:
-            current /= part
-            if _unsafe(current.lstat()):
-                raise OSError
-        candidate = (root / path).resolve(strict=True)
-        if root not in candidate.parents:
-            raise OSError
-        before = candidate.lstat()
-        if _unsafe(before) or not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
-            raise OSError
-        if before.st_size > MAX_PAGE_BYTES:
-            raise OSError
-        flags = os.O_RDONLY | getattr(os, "O_BINARY", 0) | getattr(os, "O_NOFOLLOW", 0)
-        with os.fdopen(os.open(candidate, flags), "rb") as handle:
-            opened = os.fstat(handle.fileno())
-            if (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino):
-                raise OSError
-            contents = handle.read(MAX_PAGE_BYTES + 1)
-            after = os.fstat(handle.fileno())
-        named = candidate.lstat()
-        if (
-            len(contents) > MAX_PAGE_BYTES or len(contents) != after.st_size
-            or (opened.st_dev, opened.st_ino) != (after.st_dev, after.st_ino)
-            or (after.st_dev, after.st_ino) != (named.st_dev, named.st_ino)
-            or opened.st_mtime_ns != after.st_mtime_ns or after.st_mtime_ns != named.st_mtime_ns
-            or _unsafe(named) or named.st_nlink != 1
-        ):
-            raise OSError
-        return body_ref, contents
-    except (OSError, RuntimeError, ValueError):
+        captured = read_owned(root, body_ref, maximum=MAX_PAGE_BYTES)
+        return captured.body_ref, captured.contents
+    except SourceCaptureError:
         raise FundingResearchError("source_changed") from None
 
 
@@ -1212,5 +1094,5 @@ __all__ = [
     "CapturedPage", "CompanyCapture", "CompanyFundingProjection", "CoverageInput",
     "FundingEventInput", "FundingResearchError", "FundingResearchProjection",
     "FundingResearchRequest", "FundingResearchResult", "FundingResearchSafeProjection",
-    "FundingResearchService",
+    "FundingResearchService", "FundingSourceProjection",
 ]

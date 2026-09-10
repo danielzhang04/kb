@@ -15,7 +15,7 @@ from scripts.prospecting.funding_research_service import (
     FundingResearchRequest,
     FundingResearchService,
 )
-from scripts.prospecting import funding_research_service as funding_module
+from scripts.prospecting import source_capture as capture_module
 from scripts.prospecting.pipeline_service import (
     PipelineService,
     PipelineStartRequest,
@@ -112,6 +112,8 @@ def test_import_is_atomic_source_bound_provisional_and_safe(tmp_path: Path) -> N
     assert projection is not None
     assert projection.companies[0].rule_outcome == "provisional_match"
     assert projection.companies[0].latest_stage == "series_b"
+    assert {item.source_kind for item in projection.companies[0].sources} == {"issuer", "search_coverage"}
+    assert all(item.source_url.startswith("https://") for item in projection.companies[0].sources)
     assert connection.execute("SELECT source_lane FROM company").fetchone()[0] == "manual"
     assert connection.execute("SELECT count(*) FROM source_snapshot").fetchone()[0] == 2
     assert connection.execute("SELECT count(*) FROM source_observation").fetchone()[0] == 2
@@ -498,7 +500,7 @@ def test_copy_failure_never_deletes_a_foreign_replacement(
     root.mkdir()
     connection = open_store(tmp_path / "store.sqlite")
     service = FundingResearchService(connection, now=lambda: STAMP)
-    original_link = funding_module.os.link
+    original_link = capture_module.os.link
     final_path: Path | None = None
 
     def fail_after_link(source, target):
@@ -509,7 +511,7 @@ def test_copy_failure_never_deletes_a_foreign_replacement(
         if replace_final:
             final_path.write_text("foreign replacement", encoding="utf-8")
 
-    monkeypatch.setattr(funding_module.os, "link", fail_after_link)
+    monkeypatch.setattr(capture_module.os, "link", fail_after_link)
     with pytest.raises(FundingResearchError, match="^source_changed$"):
         service._copy_snapshot(root, "snap_syntheticcopy", b"synthetic input", [])
     assert final_path is not None

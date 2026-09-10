@@ -846,3 +846,33 @@ Final reviewed SHA-256 bindings:
 | `skills/learned/prospecting-intake/SKILL.md` | `3B21F01F7BD658C3D7E3770A7C7AA923234C568036DE98FA90D9A1D9076E6B58` |
 
 Limits: `awaiting_qualification_factcheck` and `provisional_match` do not establish company qualification, authenticated issuer/investor authority, semantic entailment, complete market coverage, or provider execution. Source-kind and extracted scope/event values remain untrusted claims for later actual factual review; search summaries cannot supply funding-event proof. Exact hostname identity is deliberately conservative and is not a registrable-domain or corporate-ownership determination. This slice neither selects people nor creates draft, humanizer, approval, or outbound receipts. Verification establishes handled-failure rollback and exact replay, not abrupt-process-termination recovery between filesystem publication and SQLite commit. No real records, browser/authentication/model calls, new network dependencies, or production sends were used in this independent review.
+
+### P18 provisional person capture and P17 dashboard: final independent review
+
+Independent verdict: READY for the bounded source-import and read-only dashboard slice. P18 binds its two immutable tables to the exact current P15 intake and P17 batch/result scope. A selected company can have zero candidates; shortfall is the sum of each company's missing distinct people, so surplus candidates at another company cannot erase it. Imports retain exact captured bytes and an operator-local-v1 source candidate compatible with later P13 review. Existing person/employment identity conflicts remain snapshot-only, and existing employment is not rewritten. No fill selection, ranking, contact lookup, draft, qualification, or approval authority is created.
+
+Reviewed the complete new capture helper, schema and person service, the P17 extraction/source projection, and the changed dashboard service, HTTP, HTML and tests. The shared capture implementation preserves bounded handle reads, root/ancestor reparse checks, direct-child P13 body references, exclusive publication and identity-based rollback. P17 retains its existing error wrappers and mechanical classification manifests. Closed findings: per-company shortfall replaces aggregate subtraction; first-name conflicts become explicit identity collisions; changed bound profile URLs invalidate projection; and malformed research-scope entries are type-checked before set construction, preserving the fixed error contract. Supplied first names need an exact contiguous normalized token sequence in the full name/source; the importer does not infer cultural name order.
+
+The dashboard uses the validated latest P15/P17 projection. It labels results provisional and source types as recorded claims, renders escaped HTTPS links, hides the section without a saved intake, and replaces company rows with an honest unavailable/expired state when source validation fails. It adds no mutation route or qualification/ready control. Existing authentication, campaign scope and human-review gates remain in force.
+
+Independent verification: **26 passed, 18 deselected in 11.80s** at `p18-infra-0910-a` for P18 and affected P17 capture, identity, scope, replay and rollback cases; after the final guard repair, **1 passed, 15 deselected in 0.70s** at `p18-infra-0910-b`. Genuine ReviewService/HTTP funding projection cases: **6 passed, 73 deselected in 3.85s** at `p18-ui-infra-0910-a`. Actual bundled JavaScript: **16 passed in 189.9017ms**, including campaign switching, escaped provisional details, hidden/expired/unavailable funding sections, and existing draft/source controls. Builder verification: preceding backend matrix **45 passed in 19.54s**, final P18 suite **16 passed in 6.54s**, dashboard Python **79 passed in 39.17s** and JavaScript **16 passed in 80.3ms**. Runs overlap and are not additive coverage claims.
+
+Final reviewed SHA-256 bindings:
+
+| File | SHA-256 |
+| --- | --- |
+| `scripts/prospecting/source_capture.py` | `FD23E77C1F7368454D3E2378B98162169A19FB9593BD833315D6ED3A1CB41D5C` |
+| `scripts/prospecting/funding_research_service.py` | `EC1656C2ADA6FC3BF858DB4228830BB2868ECF3AFD8668D97121B8E55CDD7FA6` |
+| `scripts/prospecting/person_research_service.py` | `92AAB19036BBF67816DD7089D31E5DEAB21CCF23EFE746B552FDC5B748A66DE0` |
+| `scripts/prospecting/schema_p18.sql` | `B7652D95C7FDF1B14F528C4637D7624B50357E0BF655AA097EF5F028C8E04DD1` |
+| `scripts/prospecting/tests/test_funding_research_service.py` | `581DF4551ADB53AB5C5DFEEF19416925E5FCEC5227010AF5BA7CDA757BDDBBB6` |
+| `scripts/prospecting/tests/test_person_research_service.py` | `AC332AA80F32C86B5248370B1974C2CB69F1D1AD1C3E77AF3281664869229EC5` |
+| `scripts/prospecting/tests/test_store.py` | `F1D90A7527D85ECCBD3BCFC1D1556B752E89E79678F61052844FE3BC5EA2AF4E` |
+| `scripts/prospecting/review_service.py` | `0C2DC2AC8DC2A5B9555EEADEC6515443F6B87E141AA1BCF99BAB7361E01DA773` |
+| `scripts/prospecting/review_app.py` | `D4FE7B209EBF0BD83018E5264D753CB5B887B05742028084F236F552901349BD` |
+| `scripts/prospecting/review_app.html` | `CAF7C21297CCA3528B50A916405AA6B3768C4451DEB05480DCA36980469A865A` |
+| `scripts/prospecting/tests/test_review_service.py` | `2737FBF031838B803FF34A839A15CFA9DF86D702FE4D1F1380B7585DCA6B113E` |
+| `scripts/prospecting/tests/test_review_app.py` | `ACCD27AF3C6631BA2F375C80A918857CABE1A4874C8311C3559EC0AC64166DCE` |
+| `scripts/prospecting/tests/review_app_state.test.js` | `FB3CAB9B0923BF060A16FB96C7A6F1C51E1B8732E3B944B297D2AF23F90FC459` |
+
+Limits: name/title/company containment is structural evidence, not a semantic determination of identity, current employment or recipient suitability. Funding and person qualification still require genuine model review; the native subscription route remains unavailable after the separately observed HTTP 401. This review made no authentication, model, browser or external-source calls and used no real records. Handled rollback/replay is verified; abrupt termination between file publication and SQLite commit remains an explicit recovery limitation. The next integration must preserve exact P17/P18 selection and employment IDs: existing `fill_campaign_fit` scans all companies and starts contact work, while `score_campaign` joins all open employment by person. Those routines are not accepted as an unchanged bridge from these provisional imports to ranked, reviewed drafts.

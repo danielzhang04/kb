@@ -80,7 +80,8 @@ function snapshot(campaign, subject = "Server subject", body = "Server body") {
   const campaigns = ["A", "B"].map(id => ({campaign_id: id, intent: `campaign_${id}`, status: "draft", next_action: "review_drafts"}));
   return {
     campaigns, sender_profiles: [], mailboxes: [], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
-    people: [], schedule: [], activity: [], control: null, editorial_pipeline: [], next_action: {},
+    people: [], schedule: [], activity: [], control: null, pipeline: null, funding: null,
+    editorial_pipeline: [], next_action: {},
     drafts: campaign ? [{campaign_id: campaign, person_id: `person-${campaign}`, full_name: `Person ${campaign}`, revision_id: `rev-${campaign}`,
       step: 0, subject, body, evidence: [], candidate_id: null, candidate_subject: null, candidate_body: null,
       candidate_state: null, qa_failure_codes: [], candidate_history: [], editorial_state: "review_required",
@@ -125,13 +126,33 @@ test("latest campaign load wins and accepted failure clears prior projections", 
   const loadA = app.requests.shift();
   app.evaluate('state.campaign="B"; globalThis.loadB=load("B")');
   const loadB = app.requests.shift();
-  app.reply(loadB, snapshot("B"));
+  const current = snapshot("B");
+  current.funding = {
+    state: "awaiting_qualification_factcheck", candidate_count: 1,
+    provisional_match_count: 0, provisional_excluded_count: 0, unknown_count: 1,
+    collision_count: 0, provisional_shortfall: 1,
+    companies: [{name: "Current B Funding", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.reply(loadB, current);
   await app.context.loadB;
-  app.reply(loadA, snapshot("A"));
+  const obsolete = snapshot("A");
+  obsolete.funding = {
+    state: "awaiting_qualification_factcheck", candidate_count: 1,
+    provisional_match_count: 1, provisional_excluded_count: 0, unknown_count: 0,
+    collision_count: 0, provisional_shortfall: 0,
+    companies: [{name: "Obsolete A Funding", provisional_state: "provisional_match",
+      reason_codes: [], latest_stage: "series_a", latest_announced_at: "2025-01-01",
+      sources: []}],
+  };
+  app.reply(loadA, obsolete);
   await app.context.loadA;
   assert.equal(app.evaluate("state.campaign"), "B");
   assert.equal(app.evaluate("state.data.campaign.campaign_id"), "B");
   assert.equal(app.document.getElementById("draftSubject").value, "Server subject");
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Current B Funding/);
+  assert.doesNotMatch(app.document.getElementById("campaignDetail").innerHTML, /Obsolete A Funding/);
 
   app.evaluate('state.campaign="A"; globalThis.failed=load("A")');
   const failed = app.requests.shift();
@@ -665,4 +686,87 @@ test("draft readiness stays disabled while required review stages are unavailabl
   app.document.emit("click", {closest: () => ({disabled: true, dataset: {ready: "rev-A"}})});
   assert.equal(app.requests.length, 0);
   assert.equal(app.document.getElementById("draftBody").value, "Server body");
+});
+
+test("funding evidence renders escaped provisional details and recorded source types without mutations", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 1, provisional_excluded_count: 0,
+    unknown_count: 0, collision_count: 0, provisional_shortfall: 1,
+    companies: [{
+      name: '<img src=x onerror="bad">', provisional_state: "provisional_match",
+      reason_codes: ["latest_event_eligible_with_current_coverage"],
+      latest_stage: "series_b", latest_announced_at: "2025-05-01",
+      sources: [
+        {source_url: "https://source.invalid/item?a=1&b=2", source_kind: '<issuer & "claimed">', binding_kind: "funding_event", retrieved_at: "2026-09-10T12:00:00Z"},
+        {source_url: "javascript:bad()", source_kind: "issuer", binding_kind: "funding_event", retrieved_at: "2026-09-10T12:00:00Z"},
+      ],
+    }],
+  };
+  app.evaluate('state.campaign="A"; globalThis.fundingLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.fundingLoad;
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Funding evidence &middot; provisional/);
+  assert.match(markup, /Awaiting funding factcheck/);
+  assert.match(markup, /Provisional match - factual review pending/);
+  assert.match(markup, /&lt;img src=x onerror=&quot;bad&quot;&gt;/);
+  assert.doesNotMatch(markup, /<img src=x/);
+  assert.match(markup, /href="https:\/\/source\.invalid\/item\?a=1&amp;b=2"/);
+  assert.match(markup, /Recorded type: &lt;issuer &amp; &quot;claimed&quot;&gt;/);
+  assert.doesNotMatch(markup, /javascript:bad/);
+  assert.doesNotMatch(markup, /data-(approve|confirm|qualif)/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("funding section hides without P15 and stale or corrupt states replace prior company rows", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const valid = snapshot("A");
+  valid.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 0, provisional_excluded_count: 0,
+    unknown_count: 1, collision_count: 0, provisional_shortfall: 2,
+    companies: [{name: "Prior Synthetic Company", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.evaluate('state.campaign="A"; globalThis.validFunding=load("A")');
+  app.reply(app.requests.shift(), valid);
+  await app.context.validFunding;
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Prior Synthetic Company/);
+
+  const stale = snapshot("A");
+  stale.funding = {state: "source_stale", code: "source_stale", companies: []};
+  app.evaluate('globalThis.staleFunding=load("A")');
+  app.reply(app.requests.shift(), stale);
+  await app.context.staleFunding;
+  let markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Saved evidence expired/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+
+  const corrupt = snapshot("A");
+  corrupt.funding = {state: "unavailable", code: "source_changed", companies: []};
+  app.evaluate('globalThis.corruptFunding=load("A")');
+  app.reply(app.requests.shift(), corrupt);
+  await app.context.corruptFunding;
+  markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Funding view unavailable/);
+  assert.match(markup, /source changed/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+
+  const hidden = snapshot("A");
+  app.evaluate('globalThis.hiddenFunding=load("A")');
+  app.reply(app.requests.shift(), hidden);
+  await app.context.hiddenFunding;
+  markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.doesNotMatch(markup, /Funding evidence/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+  assert.equal(app.requests.length, 0);
 });

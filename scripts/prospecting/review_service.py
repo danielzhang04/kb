@@ -17,6 +17,11 @@ import sqlite3
 import uuid
 
 from scripts.prospecting.personalizer.qa import QaResult
+from scripts.prospecting.funding_research_service import (
+    FundingResearchError,
+    FundingResearchService,
+)
+from scripts.prospecting.pipeline_service import PipelineError, PipelineService
 from scripts.prospecting.affinity.evidence_bridge import (
     attested_current_role_source,
     current_role_source_proof,
@@ -105,6 +110,40 @@ class CampaignView:
     scheduled_count: int
     blocker_count: int
     next_action: str
+
+
+@dataclass(frozen=True)
+class FundingSourceView:
+    source_url: str
+    source_kind: str
+    binding_kind: str
+    retrieved_at: str
+
+
+@dataclass(frozen=True)
+class FundingCompanyView:
+    name: str
+    provisional_state: str
+    reason_codes: tuple[str, ...]
+    latest_stage: str | None
+    latest_announced_at: str | None
+    sources: tuple[FundingSourceView, ...]
+
+
+@dataclass(frozen=True)
+class FundingBatchView:
+    state: str
+    code: str | None = None
+    batch_id: str | None = None
+    batch_hash: str | None = None
+    desired_companies: int = 0
+    candidate_count: int = 0
+    provisional_match_count: int = 0
+    provisional_excluded_count: int = 0
+    unknown_count: int = 0
+    collision_count: int = 0
+    provisional_shortfall: int = 0
+    companies: tuple[FundingCompanyView, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -859,6 +898,69 @@ class ReviewService:
             created_at=None if row["created_at"] is None else str(row["created_at"]),
             people_count=len(people), draft_count=len(drafts), ready_count=ready,
             scheduled_count=len(schedule), blocker_count=blockers, next_action=next_action,
+        )
+
+    def get_funding_review(self, campaign_id: str) -> FundingBatchView | None:
+        """Project the latest validated P17 batch without adding review authority."""
+        self._campaign(campaign_id)
+        try:
+            pipeline = PipelineService(
+                self.connection, now=self.now,
+            ).get_latest_projection(campaign_id)
+        except PipelineError as error:
+            if str(error) == "invalid_campaign_id":
+                return None
+            return FundingBatchView("unavailable", "pipeline_projection_unavailable")
+        if pipeline is None:
+            return None
+        if pipeline.state == "input_pending":
+            return FundingBatchView("input_pending", "pipeline_input_pending")
+        try:
+            projection = FundingResearchService(
+                self.connection, now=self.now,
+            ).get_projection(pipeline.run_id)
+        except FundingResearchError as error:
+            code = str(error)
+            allowed = {
+                "intake_stale", "pipeline_context_stale", "run_missing",
+                "source_changed", "source_stale", "store_state_invalid",
+            }
+            if code == "source_stale":
+                return FundingBatchView("source_stale", code)
+            return FundingBatchView(
+                "unavailable", code if code in allowed else "funding_projection_unavailable",
+            )
+        if projection is None:
+            return FundingBatchView("awaiting_capture")
+        companies = tuple(
+            FundingCompanyView(
+                name=company.name,
+                provisional_state=company.rule_outcome,
+                reason_codes=company.reason_codes,
+                latest_stage=company.latest_stage,
+                latest_announced_at=company.latest_announced_at,
+                sources=tuple(
+                    FundingSourceView(
+                        source.source_url, source.source_kind,
+                        source.binding_kind, source.retrieved_at,
+                    )
+                    for source in company.sources
+                ),
+            )
+            for company in projection.companies
+        )
+        return FundingBatchView(
+            state=projection.state,
+            batch_id=projection.batch_id,
+            batch_hash=projection.batch_hash,
+            desired_companies=projection.desired_companies,
+            candidate_count=projection.candidate_count,
+            provisional_match_count=projection.provisional_match_count,
+            provisional_excluded_count=projection.provisional_excluded_count,
+            unknown_count=projection.unknown_count,
+            collision_count=projection.collision_count,
+            provisional_shortfall=projection.provisional_shortfall,
+            companies=companies,
         )
 
     def list_people(self, campaign_id: str) -> tuple[PersonView, ...]:

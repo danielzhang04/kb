@@ -354,10 +354,13 @@ def test_06_migration_is_idempotent(tmp_path: Path) -> None:
     assert second.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == len(phase_migrations)
     assert {
         row[0] for row in second.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'prospecting_funding_%'"
+            """SELECT name FROM sqlite_master
+                 WHERE type='table'
+                   AND (name LIKE 'prospecting_funding_%' OR name LIKE 'prospecting_person_%')"""
         )
     } == {
         "prospecting_funding_batch", "prospecting_funding_company", "prospecting_funding_source",
+        "prospecting_person_batch", "prospecting_person_candidate",
     }
     second.close()
 
