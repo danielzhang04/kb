@@ -53,6 +53,11 @@ _STATE_FILE_CAP = 16 * 1024 * 1024
 _STATE_TOTAL_CAP = 64 * 1024 * 1024
 _STATE_FILE_COUNT = 128
 _ID = re.compile(r"[a-z][a-z0-9-]{1,127}\Z")
+_QUALIFICATION_IDS = MappingProxyType({
+    "item_id": re.compile(r"pqit_[0-9a-f]{32}\Z"),
+    "attempt_id": re.compile(r"pqat_[0-9a-f]{32}\Z"),
+    "worker_job_id": re.compile(r"pqwj_[0-9a-f]{32}\Z"),
+})
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _CAPABILITY_SENTINEL = object()
 _AMBIENT_ENV_KEYS = (
@@ -96,6 +101,34 @@ class _Capability:
     environ: Mapping[str, str] = field(repr=False)
     lock: Lock = field(repr=False)
     invalidated: Event = field(repr=False)
+
+
+@dataclass
+class _CleanupEvidence:
+    lock: Lock = field(default_factory=Lock, repr=False)
+    code: str | None = None
+
+    def record(self, code: str | None) -> None:
+        if code != "stage_runtime_cleanup_failed":
+            return
+        with self.lock:
+            self.code = code
+
+    def take(self) -> str | None:
+        with self.lock:
+            value, self.code = self.code, None
+            return value
+
+
+@dataclass(frozen=True, repr=False)
+class _StageAsset:
+    stage: str
+    schema: bytes
+    prompt: str
+    skill_name: str
+    skill_version: str
+    skill_bytes: bytes = field(repr=False)
+    skill_hash: str
 
 
 def _canonical(value: object) -> bytes:
@@ -152,6 +185,19 @@ _LIST = {
     "type": "array", "maxItems": 32,
     "items": {"type": "string", "minLength": 1, "maxLength": 2_048},
 }
+_QUALIFICATION_UNCERTAINTY = [
+    "authority_unclear", "bounded_coverage_incomplete", "company_identity_unclear",
+    "continuity_not_established", "current_statement_unclear",
+    "event_entailment_ambiguous", "location_unclear", "role_context_ambiguous",
+    "sector_unclear", "source_context_incomplete", "source_disagreement",
+    "supplemental_source_binding_required", "title_granularity_mismatch",
+]
+_QUALIFICATION_CODES = {
+    "type": "array", "maxItems": 64, "uniqueItems": True,
+    "items": {"enum": _QUALIFICATION_UNCERTAINTY},
+}
+_QUALIFICATION_TEXT = {"type": ["string", "null"], "minLength": 1, "maxLength": 240}
+_QUALIFICATION_ID = {"type": "string", "minLength": 2, "maxLength": 128}
 _SCHEMAS = MappingProxyType({
     "humanizer": _schema_bytes({
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -195,6 +241,91 @@ _SCHEMAS = MappingProxyType({
             "repair_instructions": {"type": "string", "maxLength": 8_192},
         },
     }),
+    "qualification_factcheck": _schema_bytes({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object", "additionalProperties": False,
+        "required": ["company", "people"],
+        "properties": {
+            "company": {
+                "type": "object", "additionalProperties": False,
+                "required": [
+                    "identity_consistency", "location", "sector", "funding_events",
+                    "coverage_assessment", "source_agreement", "uncertainty_codes",
+                ],
+                "properties": {
+                    "identity_consistency": {"enum": ["consistent", "contradicted", "unknown"]},
+                    "location": _QUALIFICATION_TEXT,
+                    "sector": _QUALIFICATION_TEXT,
+                    "funding_events": {
+                        "type": "array", "maxItems": 64,
+                        "items": {
+                            "type": "object", "additionalProperties": False,
+                            "required": [
+                                "source_key", "authority", "entailment", "stage",
+                                "announced_at", "uncertainty_codes",
+                            ],
+                            "properties": {
+                                "source_key": _QUALIFICATION_ID,
+                                "authority": {"enum": [
+                                    "issuer", "participating_investor", "other", "unknown",
+                                ]},
+                                "entailment": {"enum": [
+                                    "supports_exact_stage_date", "contradicts", "ambiguous",
+                                ]},
+                                "stage": {"enum": [
+                                    "pre_seed", "seed", "series_a", "series_b", "series_c",
+                                    "series_d", "series_e", "series_f", "series_g", "growth",
+                                ]},
+                                "announced_at": {
+                                    "type": "string", "format": "date",
+                                    "pattern": r"^\d{4}-\d{2}-\d{2}$",
+                                },
+                                "uncertainty_codes": _QUALIFICATION_CODES,
+                            },
+                        },
+                    },
+                    "coverage_assessment": {"enum": [
+                        "bounded_current_search", "stale", "ambiguous", "missing",
+                    ]},
+                    "source_agreement": {"enum": ["consistent", "conflict", "insufficient"]},
+                    "uncertainty_codes": _QUALIFICATION_CODES,
+                },
+            },
+            "people": {
+                "type": "array", "maxItems": 64,
+                "items": {
+                    "type": "object", "additionalProperties": False,
+                    "required": [
+                        "candidate_id", "page_kind", "role_statement", "observed_name",
+                        "observed_company", "observed_title", "title_granularity",
+                        "continuity", "source_keys", "uncertainty_codes",
+                    ],
+                    "properties": {
+                        "candidate_id": _QUALIFICATION_ID,
+                        "page_kind": {"enum": [
+                            "current_individual_profile", "current_company_team",
+                            "dated_hiring_announcement", "other", "unknown",
+                        ]},
+                        "role_statement": {"enum": ["current", "historical", "ambiguous"]},
+                        "observed_name": _QUALIFICATION_TEXT,
+                        "observed_company": _QUALIFICATION_TEXT,
+                        "observed_title": _QUALIFICATION_TEXT,
+                        "title_granularity": {"enum": [
+                            "exact", "narrower", "broader", "different", "unknown",
+                        ]},
+                        "continuity": {"enum": [
+                            "current_statement", "historical_only", "unsupported", "contradicted",
+                        ]},
+                        "source_keys": {
+                            "type": "array", "minItems": 1, "maxItems": 64,
+                            "uniqueItems": True, "items": _QUALIFICATION_ID,
+                        },
+                        "uncertainty_codes": _QUALIFICATION_CODES,
+                    },
+                },
+            },
+        },
+    }),
 })
 
 _PROMPTS = MappingProxyType({
@@ -216,6 +347,13 @@ _PROMPTS = MappingProxyType({
         "specific, accurate, natural, and appropriately scoped; otherwise return bounded "
         "repair instructions. Do not claim human approval."
     ),
+    "qualification_factcheck": (
+        "Apply the supplied qualification fact-check skill to every supplied company and "
+        "person source, including current and predecessor text. Return the exact schema "
+        "object with one finding per required funding source and person candidate, all "
+        "required source keys, and explicit uncertainty where currentness or support is "
+        "incomplete. Do not browse, infer human attestation, rank people, or authorize copy."
+    ),
 })
 
 
@@ -230,13 +368,47 @@ def _humanizer_bytes() -> bytes:
     return value
 
 
+def _qualification_skill_bytes() -> bytes:
+    path = (
+        Path(__file__).resolve().parents[3]
+        / "skills" / "learned" / "prospecting-qualification-factcheck" / "SKILL.md"
+    )
+    try:
+        value = path.read_bytes()
+    except OSError:
+        raise PrivateStageRuntimeError("qualification_skill_unavailable") from None
+    if not value or len(value) > 32 * 1024:
+        raise PrivateStageRuntimeError("qualification_skill_mismatch")
+    return value
+
+
 def _skill(stage: str) -> tuple[str, str, bytes, str]:
     if stage == "humanizer":
         value = _humanizer_bytes()
         return "humanizer", HUMANIZER_VERSION, value, sha256(value).hexdigest()
+    if stage == "qualification_factcheck":
+        value = _qualification_skill_bytes()
+        return "prospecting-qualification-factcheck", "v1", value, sha256(value).hexdigest()
     value = _PROMPTS[stage].encode("utf-8")
     name = "prospecting-post-factchecker" if stage == "post_humanization_factcheck" else "prospecting-independent-critic"
     return name, "v1", value, sha256(value).hexdigest()
+
+
+def _stage_assets() -> Mapping[str, _StageAsset]:
+    values: dict[str, _StageAsset] = {}
+    for stage, schema in _SCHEMAS.items():
+        skill_name, skill_version, skill_bytes, skill_hash = _skill(stage)
+        values[stage] = _StageAsset(
+            stage, bytes(schema), str(_PROMPTS[stage]), skill_name, skill_version,
+            bytes(skill_bytes), skill_hash,
+        )
+    return MappingProxyType(values)
+
+
+def _assert_asset_current(asset: _StageAsset) -> None:
+    current = _stage_assets().get(asset.stage)
+    if current != asset:
+        raise PrivateStageRuntimeError("runtime_bundle_changed")
 
 
 def _fixed_config() -> tuple[str, ...]:
@@ -258,7 +430,11 @@ def _event_policy_hash() -> str:
     })
 
 
-def _bundle_manifest(executable_hash: str, cli_version: str) -> dict[str, object]:
+def _bundle_manifest(
+    executable_hash: str, cli_version: str,
+    assets: Mapping[str, _StageAsset] | None = None,
+) -> dict[str, object]:
+    bound = _stage_assets() if assets is None else assets
     return {
         "version": 1, "runtime": "codex-cli-private", "runtime_hash": executable_hash,
         "cli_version": cli_version, "requested_model": REQUESTED_MODEL,
@@ -284,12 +460,18 @@ def _bundle_manifest(executable_hash: str, cli_version: str) -> dict[str, object
             "state_file_count": _STATE_FILE_COUNT,
         },
         "event_policy_hash": _event_policy_hash(),
-        "schemas": {stage: sha256(value).hexdigest() for stage, value in _SCHEMAS.items()},
+        "schemas": {stage: sha256(asset.schema).hexdigest() for stage, asset in bound.items()},
         "prompts": {
-            stage: sha256(value.encode("utf-8")).hexdigest()
-            for stage, value in _PROMPTS.items()
+            stage: sha256(asset.prompt.encode("utf-8")).hexdigest()
+            for stage, asset in bound.items()
         },
-        "skills": {stage: {"name": _skill(stage)[0], "version": _skill(stage)[1], "sha256": _skill(stage)[3]} for stage in _SCHEMAS},
+        "skills": {
+            stage: {
+                "name": asset.skill_name, "version": asset.skill_version,
+                "sha256": asset.skill_hash,
+            }
+            for stage, asset in bound.items()
+        },
     }
 
 
@@ -661,6 +843,21 @@ def _preflight_envelope(bundle_hash: str) -> bytes:
     })
 
 
+def _stage_job_ids_valid(job: StageJob) -> bool:
+    if job.stage == "qualification_factcheck":
+        return all(
+            type(value) is str and pattern.fullmatch(value) is not None
+            for value, pattern in (
+                (job.item_id, _QUALIFICATION_IDS["item_id"]),
+                (job.attempt_id, _QUALIFICATION_IDS["attempt_id"]),
+                (job.worker_job_id, _QUALIFICATION_IDS["worker_job_id"]),
+            )
+        )
+    return all(type(value) is str and _ID.fullmatch(value) is not None for value in (
+        job.item_id, job.attempt_id, job.worker_job_id,
+    ))
+
+
 def _run_live_canary(capability: _Capability) -> None:
     attempt = capability.root / "preflight"
     schema, output, stdin = (attempt / "schema.json", attempt / "output.json", attempt / "stdin.json")
@@ -704,13 +901,17 @@ def _run_live_canary(capability: _Capability) -> None:
     _finish_with_cleanup(primary, cleanup_ok=cleanup_ok)
 
 
-def _bootstrap(store: Path, selected: Mapping[str, str]) -> tuple[Path, _Capability]:
+def _bootstrap(
+    store: Path, selected: Mapping[str, str], *,
+    assets: Mapping[str, _StageAsset] | None = None,
+) -> tuple[Path, _Capability]:
+    bound = _stage_assets() if assets is None else assets
     parent, root = _prepare_root(store)
     try:
         executable = runtime._codex_executable(selected)
         executable_hash = runtime._sha_file(executable)
         cli_version = runtime._cli_version(executable)
-        bundle_hash = _digest(_bundle_manifest(executable_hash, cli_version))
+        bundle_hash = _digest(_bundle_manifest(executable_hash, cli_version, bound))
         state = root / "state"
         state.mkdir(mode=0o700)
         _prime_cache(root, state, executable, selected)
@@ -741,12 +942,13 @@ def run_diagnostic_preflight(
     bundle_hash = _digest({"unavailable": True})
     bootstrap_started = False
     try:
+        assets = _stage_assets()
         executable = runtime._codex_executable(selected)
         executable_hash = runtime._sha_file(executable)
         cli_version = runtime._cli_version(executable)
-        bundle_hash = _digest(_bundle_manifest(executable_hash, cli_version))
+        bundle_hash = _digest(_bundle_manifest(executable_hash, cli_version, assets))
         bootstrap_started = True
-        parent, capability = _bootstrap(private_store_path, selected)
+        parent, capability = _bootstrap(private_store_path, selected, assets=assets)
         executable_hash, cli_version = capability.executable_sha256, capability.cli_version
         bundle_hash = capability.bundle_sha256
         status, code = "succeeded", "ok"
@@ -767,12 +969,14 @@ def run_diagnostic_preflight(
     )
 
 
-def _stage_envelope(job: StageJob) -> bytes:
+def _stage_envelope(job: StageJob, asset: _StageAsset | None = None) -> bytes:
     if not isinstance(job, StageJob) or job.stage not in _SCHEMAS:
         raise PrivateStageRuntimeError("stage_job_invalid")
+    bound = _stage_assets()[job.stage] if asset is None else asset
+    if not isinstance(bound, _StageAsset) or bound.stage != job.stage:
+        raise PrivateStageRuntimeError("runtime_bundle_changed")
     if (
-        not _ID.fullmatch(job.item_id) or not _ID.fullmatch(job.attempt_id)
-        or not _ID.fullmatch(job.worker_job_id) or type(job.cycle) is not int or job.cycle < 0
+        not _stage_job_ids_valid(job) or type(job.cycle) is not int or job.cycle < 0
         or not _SHA.fullmatch(job.input_hash) or type(job.input_json) is not bytes
         or len(job.input_json) > MAX_STAGE_INPUT_BYTES
         or sha256(job.input_json).hexdigest() != job.input_hash
@@ -784,18 +988,17 @@ def _stage_envelope(job: StageJob) -> bytes:
         raise PrivateStageRuntimeError("stage_job_invalid") from None
     if type(stage_input) is not dict:
         raise PrivateStageRuntimeError("stage_job_invalid")
-    skill_name, skill_version, skill_bytes, skill_hash = _skill(job.stage)
     value = {
         "binding": {
             "item_id": job.item_id, "attempt_id": job.attempt_id,
             "worker_job_id": job.worker_job_id, "stage": job.stage,
             "cycle": job.cycle, "input_sha256": job.input_hash,
-            "schema_sha256": sha256(_SCHEMAS[job.stage]).hexdigest(),
-            "skill_name": skill_name, "skill_version": skill_version,
-            "skill_sha256": skill_hash,
+            "schema_sha256": sha256(bound.schema).hexdigest(),
+            "skill_name": bound.skill_name, "skill_version": bound.skill_version,
+            "skill_sha256": bound.skill_hash,
         },
-        "instructions": _PROMPTS[job.stage],
-        "skill": skill_bytes.decode("utf-8"),
+        "instructions": bound.prompt,
+        "skill": bound.skill_bytes.decode("utf-8"),
         "input": stage_input,
     }
     encoded = _canonical(value)
@@ -804,9 +1007,11 @@ def _stage_envelope(job: StageJob) -> bytes:
     return encoded
 
 
-def _execute_stage(capability: _Capability, job: StageJob) -> StageResult:
+def _execute_stage(
+    capability: _Capability, job: StageJob, asset: _StageAsset,
+) -> StageResult:
     capability = _validate_capability(capability)
-    envelope = _stage_envelope(job)
+    envelope = _stage_envelope(job, asset)
     attempt = capability.root / job.attempt_id
     observer = _EventObserver()
     primary: BaseException | None = None
@@ -814,6 +1019,7 @@ def _execute_stage(capability: _Capability, job: StageJob) -> StageResult:
     with capability.lock:
         try:
             capability = _validate_capability(capability)
+            _assert_asset_current(asset)
             if runtime._sha_file(capability.executable) != capability.executable_sha256:
                 raise PrivateStageRuntimeError("runtime_bundle_changed")
             attempt.mkdir(mode=0o700)
@@ -822,7 +1028,7 @@ def _execute_stage(capability: _Capability, job: StageJob) -> StageResult:
             schema, output, stdin = (
                 attempt / "schema.json", attempt / "output.json", attempt / "stdin.json",
             )
-            _write(schema, _SCHEMAS[job.stage])
+            _write(schema, asset.schema)
             _write(stdin, envelope)
             outcome = runtime._run_owned_windows_process(
                 _command(
@@ -838,7 +1044,7 @@ def _execute_stage(capability: _Capability, job: StageJob) -> StageResult:
             if outcome.cancelled or outcome.exit_code != 0:
                 raise PrivateStageRuntimeError("provider_unavailable")
             observer.finish()
-            payload = _validate_output(output, _SCHEMAS[job.stage])
+            payload = _validate_output(output, asset.schema)
             raw_output = _read_bounded_regular(output, MAX_STAGE_OUTPUT_BYTES)
             output_bytes = _canonical(payload)
             for path in (stdin, schema, output):
@@ -868,10 +1074,14 @@ def _execute_stage(capability: _Capability, job: StageJob) -> StageResult:
 class _NativeStageAdapter:
     binding: StageBinding
     capability: _Capability = field(repr=False)
+    asset: _StageAsset = field(repr=False)
+    cleanup_evidence: _CleanupEvidence = field(
+        default_factory=_CleanupEvidence, repr=False, compare=False,
+    )
 
     def execute(self, job: StageJob) -> StageResult:
         try:
-            return _execute_stage(self.capability, job)
+            return _execute_stage(self.capability, job, self.asset)
         except PrivateStageRuntimeError as error:
             mapping = {
                 "runtime_timeout": "stage_runtime_timeout",
@@ -881,29 +1091,44 @@ class _NativeStageAdapter:
                 "runtime_cleanup_failed": "stage_runtime_cleanup_failed",
             }
             translated = PipelineStageError(mapping.get(error.code, "stage_runtime_failed"))
-            if error.cleanup_code is not None:
+            if error.code == "runtime_cleanup_failed" or error.cleanup_code is not None:
                 setattr(translated, "cleanup_code", "stage_runtime_cleanup_failed")
+                self.cleanup_evidence.record("stage_runtime_cleanup_failed")
             raise translated from None
 
 
-def _adapters(capability: _Capability) -> Mapping[str, StageAdapter]:
+def take_adapter_cleanup_code(value: object) -> str | None:
+    """Consume fixed cleanup evidence after a controller normalizes the primary error."""
+    if not isinstance(value, _NativeStageAdapter):
+        return None
+    return value.cleanup_evidence.take()
+
+
+def _adapters(
+    capability: _Capability, assets: Mapping[str, _StageAsset] | None = None,
+) -> Mapping[str, StageAdapter]:
     capability = _validate_capability(capability)
+    bound = _stage_assets() if assets is None else assets
     values: dict[str, StageAdapter] = {}
-    manifest = _bundle_manifest(capability.executable_sha256, capability.cli_version)
-    for stage, schema in _SCHEMAS.items():
-        skill_name, skill_version, _bytes, skill_hash = _skill(stage)
+    manifest = _bundle_manifest(
+        capability.executable_sha256, capability.cli_version, bound,
+    )
+    if _digest(manifest) != capability.bundle_sha256:
+        raise PrivateStageRuntimeError("runtime_bundle_changed")
+    for stage, asset in bound.items():
         stage_manifest = {
-            "bundle": manifest, "stage": stage, "prompt": _PROMPTS[stage],
-            "schema_sha256": sha256(schema).hexdigest(),
+            "bundle": manifest, "stage": stage, "prompt": asset.prompt,
+            "schema_sha256": sha256(asset.schema).hexdigest(),
         }
         identity = sha256(_canonical(stage_manifest)).hexdigest()
         binding = StageBinding(
             f"private-{stage}-{identity[:16]}", "codex-cli-private",
             capability.cli_version, capability.executable_sha256,
-            sha256(schema).hexdigest(), skill_name, skill_version, skill_hash,
+            sha256(asset.schema).hexdigest(), asset.skill_name,
+            asset.skill_version, asset.skill_hash,
             sha256(_canonical(stage_manifest)).hexdigest(),
         )
-        values[stage] = _NativeStageAdapter(binding, capability)
+        values[stage] = _NativeStageAdapter(binding, capability, asset)
     return MappingProxyType(values)
 
 
@@ -916,18 +1141,21 @@ def prepare_stage_adapters(
         raise PrivateStageRuntimeError("live_runtime_not_accepted")
     selected = _selected_environment(os.environ)
     try:
+        assets = _stage_assets()
         executable = runtime._codex_executable(selected)
-        current = _digest(_bundle_manifest(runtime._sha_file(executable), runtime._cli_version(executable)))
+        current = _digest(_bundle_manifest(
+            runtime._sha_file(executable), runtime._cli_version(executable), assets,
+        ))
     except runtime.PrivateRuntimeError as error:
         raise PrivateStageRuntimeError(error.code) from None
     if current != ACCEPTED_RUNTIME_BUNDLE_SHA256:
         raise PrivateStageRuntimeError("live_runtime_not_accepted")
-    parent, capability = _bootstrap(private_store_path, selected)
+    parent, capability = _bootstrap(private_store_path, selected, assets=assets)
     primary: BaseException | None = None
     try:
         if capability.bundle_sha256 != current:
             raise PrivateStageRuntimeError("runtime_bundle_changed")
-        yield _adapters(capability)
+        yield _adapters(capability, assets)
     except BaseException as error:
         primary = _normalized_error(error)
     capability.invalidated.set()
@@ -939,5 +1167,5 @@ def prepare_stage_adapters(
 
 __all__ = [
     "ACCEPTED_RUNTIME_BUNDLE_SHA256", "PreflightResult", "PrivateStageRuntimeError",
-    "prepare_stage_adapters", "run_diagnostic_preflight",
+    "prepare_stage_adapters", "run_diagnostic_preflight", "take_adapter_cleanup_code",
 ]

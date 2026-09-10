@@ -958,3 +958,22 @@ Independent verification at the final hashes: **24 qualification tests passed in
 - `scripts/prospecting/tests/test_qualification_service.py`: `B1F260416728B91588605DDA75EEB0BBB21DA6F4036836EB726C2FE6DC8828CF`
 
 The proposed fourth shared-runtime qualification adapter, its learned skill/CLI, real authenticated execution and downstream ranking bridge are separate unaccepted work. This acceptance does not resolve the previously observed HTTP 401 or enable the private runtime source gate.
+
+
+### Fourth shared-runtime qualification stage: independent review
+
+Independent verdict: READY for the five-file gated qualification adapter/CLI/skill slice. The existing shared runtime gains a closed qualification schema and a code-owned fourth adapter; no parallel process boundary or scheduler is introduced. Exact P19 pqit/pqat/pqwj identifiers are accepted only in the qualification stage. Full source input is preserved up to the existing 1 MiB stage limit, with the complete skill and schema envelope still subject to the pinned stdin byte cap. The private CLI takes a store plus opaque item/request IDs, invokes one existing P19 controller step, and emits only opaque/aggregate metadata. The unset source gate refuses before store opening and native runtime access.
+
+Closed two reproduced findings. First, cleanup-only failures now enter the same whitelisted, consumed-once side evidence as cleanup failures accompanying another error, so P19's safe primary-error normalization does not erase cleanup status. Second, immutable one-read stage assets bind the accepted bundle, persisted StageBinding, actual skill/prompt bytes and output schema. The actual envelope uses that snapshot; a later skill change is detected under the execution lock before process launch and invalidates the capability. This avoids a check-then-reread mismatch between the recorded skill hash and sent text.
+
+The learned skill requires every supplied current/predecessor source, keeps semantic authority and continuity uncertain when unsupported, distinguishes publication/disclosure dates from the underlying round date, and grants no ranking, human confirmation or outbound authority. Aggregate bundle changes conservatively invalidate the shared adapter identities. Requested model/configuration and native executable identity remain separate from the unverified responding model.
+
+Independent final adapter plus qualification-CLI verification: **25 passed in 4.86s** at `qart-infra-final-a`. Coverage includes exact four-stage schema/skill/prompt binding, maximum qualification input and underscore IDs, strict JSON/schema refusal, changed-skill no-process refusal, primary/secondary cleanup evidence, actual P19 controller/artifact composition using synthetic stage output, metadata-only CLI errors/results, and source-disabled refusal. The installed CLI cache-prime case uses only an invented empty home and the code-owned loopback fixture, with the live canary replaced for the test. Builder adapter/CLI/P19 matrix: **49 passed in 19.59s**; these tests overlap. Evolving P19 accessor/P20 files present in the fixture environment are outside this acceptance.
+
+- `scripts/prospecting/personalizer/private_stage_adapter.py`: `56FFB8167FE5E2DDC36FE516F20EF39109D05E4143C1EFCA27B79DE6CECAC782`
+- `scripts/prospecting/qualification_stage_cli.py`: `ACF1FB4731FB28A85437ED45A3687CC23015924F597EDAE64D63A8227CAE43F2`
+- `scripts/prospecting/tests/test_private_stage_adapter.py`: `C6B56A149D199BADA4F241D021C64C76E231B038763D59BE15685AD734212A35`
+- `scripts/prospecting/tests/test_qualification_stage_cli.py`: `6996C050C95875AD0AFEB79E180FD29356BA86C50BB030BB6115D06066CCB35E`
+- `skills/learned/prospecting-qualification-factcheck/SKILL.md`: `F3F03E72FFFC3C2B63FAD937D2A261B1904D8E461DBBE3A31D3F00A182AF10A7`
+
+`ACCEPTED_RUNTIME_BUNDLE_SHA256` remains None. No genuine qualification model result, authenticated canary, full-stage quality acceptance or real-data permission is established. The previously documented bounded owned-sink scan limits remain unchanged; no universal no-log/OS/provider-retention claim is made. No live provider, authentication, browser, VM or real-store operation was performed by this reviewer.
