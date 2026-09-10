@@ -1,8 +1,95 @@
 # Repeatable startup outreach pilot
 
-Status: intake implementation accepted; pilot scope answers and later execution stages pending.
+Status: active overnight execution; see refreshed phases below. End-to-end pilot is not complete.
 Source baseline: `53b29992` on `codex/prospecting-session-20260909`.
 The canonical coordination handoff owns current publication and runtime status.
+
+## Overnight execution refresh - 2026-09-09
+
+The user explicitly requested continued asynchronous execution through completion or an actively
+working terminal, with keep-awake, plan/testing/permissions review, and a current handoff. This
+refresh is the execution plan; the historical checkpoint notes below remain evidence of their
+own bounded slices. The canonical coordination handoff owns current processes, hashes and leases.
+
+**Completion means:** a real, non-sending campaign in the dedicated local dashboard, produced by
+reusable skills and callable stages from the saved intake, with qualified companies, two explained
+contact rankings per company or an honest shortfall, cited sources, personalized drafts, actual
+Humanizer/factual/independent-critic execution, human review/feedback controls, and demonstrated
+restart/replay safety. Synthetic tests and a polished dashboard alone are insufficient.
+
+### Current state and ordered work
+
+- [x] Durable P15 intake via shared service, private-file CLI and authenticated dashboard save/reload.
+- [x] Evidence-bound neutral/current-role email templates and a sandboxed reusable intake skill.
+- [x] Existing Chrome DevTools connection reused centrally; current desktop/narrow visual checks.
+- [x] Phase B: P16 exact-revision stage controller and shared approval/scheduler/executor readers.
+  Independent technical review accepted the bounded saved-revision scope. Final core29focused,
+  root31affected and independent35actual-chain checks passed. The preceding combined run had
+  259passes and one launcher exclusion; that launcher separately passed with process cleanup.
+  Counts overlap. Known binding omission/alias, stale-result and lineage findings are repaired.
+- [ ] Phase C: connect actual bounded skill execution. CLI reports ChatGPT login. Two genuine
+  synthetic Humanizer attempts timed out; the90second diagnostic emitted no progress events and
+  deleted its attempt. Startup cause remains unknown. Port proven private-file stdin deadline
+  handling into the reusable runtime, diagnose startup, then prove actual stage execution and
+  exact output import. No fabricated Humanizer/reviewer receipts or real-data isolation claim.
+- [ ] Phase D: connect research, funding qualification and deterministic two-contact ranking. Reuse
+  P15 intake and existing finder/source/evidence/affinity services. The reviewed P17 design is deferred
+  until Phase B/C interfaces are stable; do not add speculative infrastructure ahead of execution.
+- [ ] Phase E: complete first-review-at-drafts UI and feedback loop. Show sources beside provisional
+  email and exact agent suggestion; preserve separate human source/accept/ready decisions. Current
+  P13 pre-attestation barrier must be resolved with a proof-pending path, not invented attestations.
+  Saved-revision core alone does not satisfy this. A parked exhausted lineage currently has no human
+  reset path; an explicit authenticated new-work decision needs a bounded policy and tests.
+- [ ] Phase F: run the real pilot through the reusable intake and stages, inspect desktop/narrow UI
+  in the already-open Chrome, exercise interrupted/restarted work and changed inputs, reconcile
+  independent code/security findings, clean owned resources, and leave the canonical handoff.
+- [ ] Consolidate the completed source into the existing session PR when the concrete publication
+  payload is approved. Prior auto-review publication hold remains; no new PR per small change.
+
+### Pilot assumptions and human decisions
+
+Use eight companies and two ranked contacts per company as the provisional test size. Pending a
+reply to the scope question, use US startups across industries, latest known round Series A-C,
+with a qualifying announcement in the three calendar years ending on the intake as-of date.
+Record these as orchestrator assumptions, not user answers. Missing latest-round coverage remains
+unknown, not a pass. Do not invent a second contact or relax criteria to fill a quota.
+
+Sender claims may initially use only the user's supplied current statements: building with AI,
+curiosity about internal AI use/products and the company or person's path, and interest in a coffee
+chat. Employment is secondary. Historical resume/draft material is candidate context until current
+claims are selected. Unanswered preferences do not justify manufacturing human approval or sending.
+
+### Permission and execution boundaries
+
+The user authorizes source fixes, skill integration, synthetic tests, independent reviews, bounded
+subscription Codex workflow execution and scoped runtime operations needed for this task. Root owns
+browser/remote operations so workers do not repeatedly create control sessions. Persistent access
+means reusing the current supported connection, not bypassing a platform permission boundary.
+No raw credential handling, API-paid fallback, purchases, outreach send, mailbox mutation, widened
+cadence, production VM/main-dashboard change, global security change or eval-manifest blessing.
+
+Real contact/source/message records stay in desktop-local SQLite/snapshots. VM workers receive an
+explicit source/skill/synthetic allowlist under the existing bounded job lease and return proposals
+for local validation; they do not inherit desktop connectors or filesystem access. Cleanup claims
+cover exact owned resources, not provider/OS bookkeeping. No physical laptop-close or VM-reboot
+recovery guarantee has been demonstrated. The session-scoped keep-awake request prevents idle
+sleep while its lease is active; root verifies/renews it during continued work.
+
+### Verification and repair rules
+
+Use the established Python313 runtime and short private pytest roots. Run focused tests for each
+change, then one relevant combined suite after the final freeze. Distinguish infrastructure errors
+from product failures and synthetic adapters from live model evidence. Use actual shared gate paths
+in integration tests; test-only mocks for old isolated fixtures do not establish pipeline acceptance.
+Independent reviewers check frozen source and the meaningful failure paths; builders fix confirmed
+findings, then reviewers verify the repair. Do not keep adding speculative scope after tests pass.
+
+The two-repair limit applies to semantic work across an unchanged lineage; a new run ID cannot reset
+it. Old/expired workers cannot commit late output or cancel another worker's claim. Source, sender,
+brief, policy or revision changes invalidate dependent review. Human edits remain distinguishable
+from accepted automation suggestions. Human acceptance is separate from readiness, and latest
+unready/pending human edits revoke eligibility for queued work. Deterministic binding checks enforce
+known structure; semantic reviewers remain responsible for novel prose claims and writing quality.
 
 ## Goal and acceptance
 
@@ -20,7 +107,7 @@ list or manually polished set of emails is not pipeline acceptance.
 ## Intake decisions
 
 - Proposed pilot size: eight companies and two people per company; awaiting user preference.
-- Geography and sectors are pending. Suggested defaults are NYC-first and AI-native/B2B software.
+- Geography and sectors are unanswered. Current provisional assumptions above supersede earlier NYC/AI-only suggestions.
 - Confirm whether latest funding must still be A-C, or any A-C round in the window qualifies.
 - Pin an as-of date per run; derive and retain the three-year window from that date.
 - Confirm current sender background, allowed projects/claims, exclusions, and virtual/in-person ask.

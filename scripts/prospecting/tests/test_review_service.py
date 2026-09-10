@@ -930,3 +930,54 @@ def test_clear_ready_preserves_idempotency_and_request_conflicts(database) -> No
         service.set_editorial_ready(EditorialRequest(clear.request_id, "campaign-a", ids["a"], True))
     assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 1
     assert not connection.in_transaction
+
+
+def test_actual_pipeline_chain_requires_human_ready_and_unready_revokes_it(tmp_path: Path) -> None:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        PipelineStageService,
+        require_revision_ready,
+    )
+    from scripts.prospecting.tests.test_pipeline_stage_service import (
+        _adapters,
+        _run_to_review,
+        _seed,
+    )
+
+    connection, revision = _seed(tmp_path)
+    pipeline = PipelineStageService(
+        connection,
+        adapters=_adapters(unchanged=True),
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = pipeline.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "review-ready-start",
+    )
+    _run_to_review(pipeline, item.item_id)
+    accepted = pipeline.accept_suggestion(
+        item.item_id, "review-ready-accept", revision.revision_id, "human:fixture",
+    )
+    review = ReviewService(connection, now=lambda: NOW)
+
+    before = review.get_draft("campaign-a", accepted.revision_id)
+    assert before.editorial_gate_code is None
+    assert before.editorial_state == "review_required"
+    with pytest.raises(PipelineStageError, match="^human_editorial_ready_missing$"):
+        require_revision_ready(connection, "campaign-a", accepted.revision_hash, NOW)
+
+    ready = review.set_editorial_ready(EditorialRequest(
+        request_id(601), "campaign-a", accepted.revision_id, True,
+    ))
+    assert ready.state == "ready"
+    assert require_revision_ready(
+        connection, "campaign-a", accepted.revision_hash, NOW,
+    )["revision_id"] == accepted.revision_id
+
+    cleared = review.set_editorial_ready(EditorialRequest(
+        request_id(602), "campaign-a", accepted.revision_id, False,
+    ))
+    assert cleared.state == "review_required"
+    with pytest.raises(PipelineStageError, match="^human_editorial_ready_missing$"):
+        require_revision_ready(connection, "campaign-a", accepted.revision_hash, NOW)
+    assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 2
+    assert not connection.in_transaction

@@ -43,6 +43,17 @@ from scripts.prospecting.tests.synthetic_fixtures import legacy_fixture
 
 NOW = datetime(2099, 5, 31, 22, tzinfo=timezone.utc)
 SYNTHETIC = legacy_fixture("test_approval_integration")
+_REAL_BATCH_REVISION_READY = approval_batch._revision_ready
+_REAL_VERIFY_REVISION_READY = approval_verify._require_revision_ready
+_REAL_STORE_REVISION_READY = store._require_revision_ready
+
+
+@pytest.fixture(autouse=True)
+def isolate_existing_approval_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise approval mechanics, not P16 receipt validity."""
+    monkeypatch.setattr(approval_batch, "_revision_ready", lambda *_args: True)
+    monkeypatch.setattr(approval_verify, "_require_revision_ready", lambda *_args: None)
+    monkeypatch.setattr(store, "_require_revision_ready", lambda *_args: None)
 
 
 def _temporary_git_repo(root: Path) -> None:
@@ -650,7 +661,7 @@ def _migrated_batch_store(path: Path) -> sqlite3.Connection:
     return db
 
 
-def test_approval_cli_subprocess_stages_scope_from_migrated_store(tmp_path: Path) -> None:
+def test_approval_cli_subprocess_blocks_store_without_editorial_receipts(tmp_path: Path) -> None:
     store_path = tmp_path / "store.sqlite"
     db = _migrated_batch_store(store_path)
     _temporary_git_repo(tmp_path)
@@ -670,17 +681,10 @@ def test_approval_cli_subprocess_stages_scope_from_migrated_store(tmp_path: Path
         capture_output=True,
         text=True,
     )
-    assert result.returncode == 0, result.stderr
-    summary = json.loads(result.stdout)
-    assert set(summary) == {"count", "batch_hash", "scope_hash", "card_ref", "next"}
-    staged_path = tmp_path / "queue" / "approvals" / f"prospecting-t1-{summary['batch_hash'][:16]}.md"
-    scope = deserialize(
-        approvals.work_order_of(cards.parse(staged_path).body),
-        summary["scope_hash"],
-        NOW,
-    )
-    assert scope.mailbox_id == "mailbox-1"
-    assert len(scope.items) == summary["count"] == 1
+    assert result.returncode == 1
+    assert json.loads(result.stdout) == {"error": "approval_failed"}
+    assert result.stderr == ""
+    assert not (tmp_path / "queue" / "approvals").exists()
 
 
 def test_materialize_subprocess_uses_pinned_verifier_boundary(tmp_path: Path) -> None:
@@ -707,6 +711,7 @@ sys.path.insert(0, str(Path.cwd() / 'scripts'))
 import cards
 import scripts.prospecting.approval.verify as verification
 from scripts.prospecting.approval import cli
+verification._require_revision_ready = lambda *_args: None
 original_apply = cli.batch.apply_batch
 verified = False
 def verify(card_path, repo_root, *, ref=None):
@@ -804,3 +809,154 @@ def test_identical_completed_batch_is_explicit_noop(tmp_path: Path, monkeypatch)
     )
     assert first.state == "materialized"
     assert second.state == "identical_completed_noop"
+
+
+def test_actual_chain_materializes_then_unready_blocks_queued_send(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from scripts.prospecting.pipeline_stage_service import PipelineStageService
+    from scripts.prospecting.executor import Executor
+    from scripts.prospecting.review_service import (
+        EditDraftRequest,
+        EditorialRequest,
+        ReviewService,
+    )
+    from scripts.prospecting.tests.test_pipeline_stage_service import (
+        NOW as PIPELINE_NOW,
+        _adapters,
+        _run_to_review,
+        _seed,
+    )
+
+    monkeypatch.setattr(approval_batch, "_revision_ready", _REAL_BATCH_REVISION_READY)
+    monkeypatch.setattr(approval_verify, "_require_revision_ready", _REAL_VERIFY_REVISION_READY)
+    monkeypatch.setattr(store, "_require_revision_ready", _REAL_STORE_REVISION_READY)
+    connection, revision = _seed(tmp_path)
+    now = datetime.fromisoformat(PIPELINE_NOW.replace("Z", "+00:00"))
+    pipeline = PipelineStageService(connection, adapters=_adapters(), now=lambda: now)
+    item = pipeline.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "approval-chain-start",
+    )
+    _run_to_review(pipeline, item.item_id)
+    accepted = pipeline.accept_suggestion(
+        item.item_id, "approval-chain-accept", revision.revision_id, "human:fixture",
+    )
+    review = ReviewService(connection, now=lambda: PIPELINE_NOW)
+    review.set_editorial_ready(EditorialRequest(
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeea1",
+        "campaign-a", accepted.revision_id, True,
+    ))
+    connection.execute(
+        "UPDATE campaign SET status='approved',approval_tier='T1',mailbox_id='mailbox-a',"
+        "send_window='09:00-11:30',timezone='UTC',daily_cap=25,hourly_cap=6 "
+        "WHERE campaign_id='campaign-a'"
+    )
+    policy_hash = connection.execute(
+        "SELECT policy_hash FROM campaign WHERE campaign_id='campaign-a'",
+    ).fetchone()[0]
+    activation = {
+        "assertion_ref": "approval-activation",
+        "campaign_id": "campaign-a",
+        "policy_hash": policy_hash,
+        "content_kind": "campaign_policy",
+        "revision_hash": None,
+        "contact_id": None,
+        "mailbox_id": None,
+        "approver": "human:fixture",
+        "approved_at": "2020-01-01T00:00:00Z",
+        "expires_at": "2100-01-01T00:00:00Z",
+        "tier": "T1",
+        "send_window": "{}",
+        "nonce": "approval-activation",
+        "permitted_action": "activate_campaign",
+    }
+    connection.execute(
+        "INSERT INTO approval(approval_id,assertion_ref,campaign_id,policy_hash,content_kind,"
+        "revision_hash,contact_id,mailbox_id,approver,approved_at,expires_at,tier,send_window,"
+        "nonce,permitted_action,scope_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("approval-campaign-activation", *(activation[key] for key in activation),
+         store.approval_scope_hash(activation)),
+    )
+    connection.execute(
+        "UPDATE campaign SET status='active' WHERE campaign_id='campaign-a'",
+    )
+    connection.execute(
+        "INSERT INTO fit_score_version VALUES(?,?,?,?,?,?)",
+        ("approval-fit-version", "fixture", "{}", "7" * 64, PIPELINE_NOW, PIPELINE_NOW),
+    )
+    connection.execute(
+        "INSERT INTO fit_score VALUES(?,?,?,?,?,?,?)",
+        ("approval-fit", "campaign-a", "person-a", "approval-fit-version", 100, "{}", PIPELINE_NOW),
+    )
+    connection.execute(
+        "INSERT INTO contact_point VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("contact-actual", "person-a", "cmp_" + "a" * 16, SYNTHETIC["contact_email"],
+         "manual", "fixture", PIPELINE_NOW, PIPELINE_NOW, "valid", 1.0, 0),
+    )
+    connection.execute(
+        "INSERT INTO enrollment VALUES(?,?,?,?,?,?,?,?,?)",
+        ("enrollment-actual", "campaign-a", "person-a", 0,
+         (now - timedelta(minutes=1)).isoformat(),
+         "approved", None, None, "fixture"),
+    )
+    connection.commit()
+
+    scope = build_batch(
+        connection, "campaign-a", "mailbox-a", now, "actual-ready-nonce",
+    )
+    assert len(scope.items) == 1
+    assert scope.items[0].revision_hash == accepted.revision_hash
+    approved = stubbed_test_approval(
+        monkeypatch, tmp_path, serialize(scope), scope_hash(scope), now,
+    )
+    materialized = apply_batch(
+        connection, approved.card_ref, approved.approval_path, approved.repo_root,
+        scope_hash(scope), now,
+    )
+    assert materialized.state == "materialized"
+    approval_id = materialized.ids[0]
+    delivery_id = connection.execute(
+        "SELECT delivery_id FROM delivery WHERE enrollment_id='enrollment-actual'",
+    ).fetchone()[0]
+    send_at = str(scope.send_window["start"])
+    request = store.ExecRequest(
+        "req_0000000000000701", "prospecting-campaigner", "gmail_send",
+        {"delivery_id": delivery_id}, "a" * 64, approval_id, send_at,
+        "queued", None,
+    )
+    store.insert_exec_request(connection, request, "T1", send_at)
+
+    connection.execute("BEGIN IMMEDIATE")
+    assert store.consume_send_approval(connection, request, "T1", send_at) is None
+    assert connection.execute(
+        "SELECT consumed_at FROM approval WHERE approval_id=?", (approval_id,),
+    ).fetchone()[0] == send_at
+    connection.rollback()
+
+    adapter_calls: list[str] = []
+
+    def create_pending_edit(_request) -> None:
+        pending = review.edit_draft(EditDraftRequest(
+            "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeea2",
+            "campaign-a", accepted.revision_id, "Pending synthetic edit",
+            "Pending synthetic body",
+        ))
+        assert pending.state in {"pending_qa", "qa_failed"}
+
+    def fake_send(_request) -> tuple[str, str]:
+        adapter_calls.append("called")
+        return "succeeded", "sent"
+
+    # Pin the executor-owned clock to the signed scope window; the hook then
+    # invalidates readiness after initial validation and before transactional
+    # approval consumption.
+    monkeypatch.setattr(Executor, "_trusted_now", lambda _self: send_at)
+    executor = Executor(connection, hooks=(create_pending_edit,), send_adapter=fake_send)
+    assert executor.process_one() is True
+    assert adapter_calls == []
+    assert connection.execute(
+        "SELECT consumed_at FROM approval WHERE approval_id=?", (approval_id,),
+    ).fetchone()[0] is None
+    assert tuple(connection.execute(
+        "SELECT state,reason FROM exec_request WHERE request_id=?", (request.request_id,),
+    ).fetchone()) == ("rejected", "adapter_error")

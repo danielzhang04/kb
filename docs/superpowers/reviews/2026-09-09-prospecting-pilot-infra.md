@@ -725,3 +725,64 @@ The intermediate post-sentinel test hash was `1ED65EFA04F5CEF85AA7FA59F1016F787F
 it is superseded by the final formatting-only hash above. This slice saves intake
 only; no live research, humanization, critique, sending, provider call, browser client,
 or VM was exercised. The learned skill remains a sandboxed draft pending promotion.
+
+
+## P16 final independent review - 2026-09-10
+
+Independent technical verdict: READY for the bounded saved-revision controller and shared readiness gate. This reviews the core and consumer builders' code; root retains acceptance/checkpoint authority. It is not a completed prospecting pipeline or a working production model adapter.
+
+The reviewed path persists controller-owned attempts, immutable Humanizer/fact-check/critic artifacts, separate human acceptance, and agent-origin revision lineage. No automation calls the authentic human-edit writer. A complete accepted chain is a precondition for marking ready; approval construction/materialization, scheduling, and transaction-time execution consumption additionally require the latest exact-revision human-ready event. Missing adapters fail before claiming work. Structural QA is not semantic entailment or proof of actual model execution.
+
+Material review findings are closed in the final source:
+
+- Pending or failed authentic human edits now block suggestion acceptance and shared readiness; an Executor hook creating such an edit after initial T1 validation prevents final consumption and any fake-send adapter call.
+- Every reviewing stage receives the pinned sender profile, campaign brief, intake, P11 context and evidence. Context changes invalidate subsequent work and accepted receipts. The current role predicate uses the existing resolver plus the exact P13 attestation and source expiry.
+- Surviving literal parent bindings cannot be omitted or replaced to evade P11. Repeated or overlapping recipient binding aliases cannot inflate the recipient/sender ratio. Distinct separately rendered claims from the same evidence source remain supported. These controls preserve known structural claims; novel free-text assertions still require genuine independent semantic judgment.
+- Expired synchronous results store no artifact and now record expired/lease_expired with stable old-request replay and a new-request retry path. Independent two-connection testing also verified that a late old worker cannot overwrite a recovered successful attempt.
+- Exhausted parked lineage cannot restart by creating another intake run. Ambiguous dual-table parents and cross-table cycles fail closed. The dual-parent case was a store-integrity hardening finding: both existing public writers require a newly created globally unique revision before inserting lineage, so no ordinary valid-writer path to that corruption was established.
+- T0 cancellation preserves another process's existing claim; owned cancellation uses the exact acquired claim values. The final gate runs after refresh/persist callbacks with a fresh controller clock. T1 materialization retains the signed batch scope verification and computes the persisted approval hash from the final authenticated approval-row fields required by the existing executor.
+
+Independent final verification: 35 passed, 115 deselected in 12.50s, covering all 29 frozen core tests plus six genuine consumer compositions in review, approval/Executor, scheduling and T0 release. Earlier independent targeted tests confirmed acceptance rollback and fresh-connection stale-worker fencing (2 passed in 2.02s). The private tests that demonstrated pre-repair binding omission/alias admission are retained as discovery evidence, not represented as passing final acceptance tests.
+
+Root verification: the broader pre-final-alias run at service 996B8102 had 259 passed in 49.50s with one launcher test deselected. That launcher test separately passed in 5.74s in the normal-user context, including owned process cleanup; earlier orphan trees were identity-checked, cleaned and verified absent by root. The final affected run at the hashes below passed 31 tests in 11.37s (all 29 core tests, actual approval/Executor composition, and review acceptance). These overlapping counts are not additive. Legacy store/approval/release tests explicitly isolate P16 gates; the genuine compositions restore the real gates and provide the integration evidence.
+
+Next-slice limitations remain explicit:
+
+- The saved-revision entrypoint requires P13 human source attestation before model stages. The requested first-review-at-drafts experience still needs provisional source/draft review or a validated pre-attestation path; no attestation may be fabricated.
+- Parked exhausted lineage has no authenticated reset authority, including after a genuine human rewrite. A future explicit new-work decision may define a bounded reset; the cap must not be silently weakened.
+- The conservative first-occurrence alias guard can park legitimate nested hook/company/role wording. A later reviewed distinct-span metric may improve this using actual drafts while preserving bindings.
+- Discovery, funding qualification, contact ranking, initial draft integration, UI suggestion acceptance and production private model adapters are not delivered by this slice. The separate synthetic live smoke attempts returned no final output or production receipts. Real-data sink isolation remains unproven.
+
+Final SHA-256 bindings (verified after the independent final run):
+
+| File | SHA-256 |
+| --- | --- |
+| `scripts/prospecting/schema_p16.sql` | `3696D7EE69C5F6918E588FD242BBEAD9C5FAD74D8D40DD3405F5B48554D65BAD` |
+| `scripts/prospecting/pipeline_stage_service.py` | `6DC0C83D5AEADF47FE846DBEB0DB16295FB2047B1E4D3310CBB2C0E449C3A106` |
+| `scripts/prospecting/tests/test_pipeline_stage_service.py` | `4BEEBD33E7CAE0FCDDE1B1850E443EAE80F52F47E36EF4E9397FFDA70DBCD957` |
+| `docs/superpowers/specs/2026-09-09-prospecting-skill-pipeline.md` | `BCDB13B54133A86112F32FC80E3F410A346FC25A3A764545E5B054B954328A97` |
+| `scripts/prospecting/store.py` | `18BBA823E16A794EF7D3D65652E587E347CBE59C59DC1F0EFA55FA090F5906FE` |
+| `scripts/prospecting/review_service.py` | `222B9136BF785EEA737D0FD957BFC317C3F18C73523257743175709CD422E7BD` |
+| `scripts/prospecting/approval/batch.py` | `395AC21BF757E90EE046E0C8BD3CF6AC36DB568E0A455C8EB2A4BC5636FCAB97` |
+| `scripts/prospecting/approval/verify.py` | `534DACCEA6004CF98752856980C24BC091D493AA68859C4AC2F5B81F164AF953` |
+| `scripts/prospecting/campaigner/schedule.py` | `FB07EDBA1DD5C6051AB8D0A0762E8FC73C1CF8B2604D0DD7B493A66A62471F30` |
+| `scripts/prospecting/executor_campaigner.py` | `1A0183AFA8002E27EF75810B2C4F2384CA7491BBC3069DE559A777497B383223` |
+| `scripts/prospecting/campaigner/wiring.py` | `2F119ACFDA1C74E46D71CDEB28BD20879710FB705584C2940286FB70824F74F5` |
+| `scripts/prospecting/tests/test_store.py` | `868C9026F10364FC92BBE6D03178BBA65131904BCD06CDA31D88A4FB6314E34B` |
+| `scripts/prospecting/tests/test_review_service.py` | `30DFB0BD540AEEE30FAB21068B2C6270E458CDFA43364BF4A4BB81C66564B2FB` |
+| `scripts/prospecting/tests/test_approval_integration.py` | `C06AB72A3363ED1B9508850565BD37245B5E75E4D3614E7955C0C5D782A40F8C` |
+| `scripts/prospecting/tests/test_campaigner_schedule.py` | `ABF49593468D3DCA3FCD7CDCD832DCE2CCEB576AEAAB153C5EB3F394EA4DB1CA` |
+| `scripts/prospecting/tests/test_campaigner_release.py` | `8C685BB458C80B959BDB23B14AF15AA51CD2FE357314942C8666A3A3EE7140A3` |
+| `scripts/prospecting/tests/test_contracts.py` | `D9EF3DDA135C7B282F8A5467FC733F3FAF955325F3B55198DC7362CB188BC955` |
+| `scripts/prospecting/tests/test_executor_surface.py` | `0FE734075D3FC44C96406C0ABE063D78CAC25AE7EED7D9D5CF5DB98AB97E0974` |
+| `scripts/prospecting/tests/test_t1_release.py` | `62A8967AE7EBD16FA3B98877BA8B39063CEC1A9000E2A04C6257BD6B08A6A058` |
+| `scripts/prospecting/tests/test_review_pipeline_acceptance.py` | `35ED85A79D435CFE66EE3375077BCE460326D8549D556DC8386577C1FB3C69D0` |
+
+
+### P16 final test-only sentinel addendum
+
+Independently reviewed the seven post-freeze literal substitutions: six UUID values were replaced with canonical synthetic UUIDs, and one inline message ID now uses the existing synthetic fixture. Assertions and production code are unchanged; the builder reran the four affected actual-chain tests with **4 passed in 2.38s**. The bounded P16 acceptance remains unchanged. These final test hashes supersede the corresponding hashes above:
+
+- `scripts/prospecting/tests/test_approval_integration.py`: `38FD598DA82A3EE3640B469FC61C01C2E4C6EAACD3B826D692F277B6F4454E8C`
+- `scripts/prospecting/tests/test_campaigner_release.py`: `4793892CA30396CE64C5FCE105457DCA4AB73F72EF70FCF612AAB4C48FA562BF`
+- `scripts/prospecting/tests/test_campaigner_schedule.py`: `9BB807144CAF1A184F798776DC1C728B551FA45D893488B5FC27112FE3A0C615`

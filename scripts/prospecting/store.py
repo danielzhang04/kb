@@ -921,6 +921,23 @@ def approval_scope_hash(values: Mapping[str, object]) -> str:
 ENABLED_SEND_TIERS = ("T1",)
 
 
+def _require_revision_ready(
+    connection: sqlite3.Connection,
+    campaign_id: str,
+    revision_hash_value: str,
+    now: str,
+) -> None:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_ready,
+    )
+
+    try:
+        require_revision_ready(connection, campaign_id, revision_hash_value, now)
+    except (PipelineStageError, sqlite3.Error, TypeError):
+        raise ValueError("revision_not_ready") from None
+
+
 def _normalize_trusted_now(now: str) -> str:
     try:
         parsed = datetime.fromisoformat(now.replace("Z", "+00:00"))
@@ -1025,6 +1042,9 @@ def validate_exec_request(
             raise ValueError("approval_outside_send_window")
         if row["scope_hash"] != approval_scope_hash(dict(row)):
             raise ValueError("approval_scope_hash_mismatch")
+        _require_revision_ready(
+            connection, str(row["campaign_id"]), str(row["revision_hash"]), now,
+        )
         return row
     return None
 

@@ -43,6 +43,12 @@ DATASSETTE_SCRIPT = Path(__file__).parents[1] / "serve_datasette.ps1"
 SYNTHETIC = legacy_fixture("test_store")
 
 
+@pytest.fixture(autouse=True)
+def isolate_existing_store_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise store contracts, not P16 receipt validity."""
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
+
+
 def _schema_connection() -> sqlite3.Connection:
     connection = sqlite3.connect(":memory:")
     connection.execute("PRAGMA foreign_keys=ON")

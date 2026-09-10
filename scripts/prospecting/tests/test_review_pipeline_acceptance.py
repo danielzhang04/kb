@@ -15,6 +15,8 @@ import uuid
 import pytest
 
 import scripts.prospecting.cli as cli_module
+import scripts.prospecting.campaigner.schedule as schedule_module
+import scripts.prospecting.executor_campaigner as executor_campaigner_module
 from scripts.prospecting.affinity.fitspec import (
     approve_fit_spec,
     store_proposed,
@@ -154,6 +156,11 @@ def _drain(executor: Executor) -> None:
 def test_reviewed_t0_campaign_creates_one_draft_and_reply_stops_followup(
     tmp_path: Path, monkeypatch,
 ) -> None:
+    # This legacy acceptance fixture exercises campaign/reply mechanics and has
+    # no P15/P16 run. Genuine P16 consumer success and races are covered by the
+    # focused review, approval, schedule, and campaigner-release tests.
+    monkeypatch.setattr(schedule_module, "_require_revision_ready", lambda *_args: None)
+    monkeypatch.setattr(executor_campaigner_module, "_revision_ready", lambda *_args: True)
     # Reuse the checked-in P8 evidence fixture, replacing only its raw campaign
     # row so the same record starts at the real CampaignService boundary.
     connection, person_id, fixture_campaign, affinity = _scored_person(

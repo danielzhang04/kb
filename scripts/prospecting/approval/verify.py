@@ -9,6 +9,24 @@ from pathlib import Path
 import scripts.approvals as approvals
 from scripts.webauthn_verify import verify_webauthn_approval
 from scripts.prospecting.approval.scope import deserialize, materialized_send_scopes, scope_hash
+from scripts.prospecting.store import approval_scope_hash
+
+
+def _require_revision_ready(
+    connection: sqlite3.Connection,
+    campaign_id: str,
+    revision_hash_value: str,
+    now: datetime,
+) -> None:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_ready,
+    )
+
+    try:
+        require_revision_ready(connection, campaign_id, revision_hash_value, now)
+    except (PipelineStageError, sqlite3.Error, TypeError):
+        raise ValueError("revision_not_ready") from None
 
 
 def _human(value: str) -> bool:
@@ -101,7 +119,27 @@ def verify_and_insert(
             ).fetchone()
             if match is None:
                 raise ValueError("scope_mismatch")
+            _require_revision_ready(
+                connection, scope.campaign_id, row["revision_hash"], now,
+            )
             approval_id = _approval_id(row)
+            approved_at = now.isoformat()
+            approval_values = {
+                "assertion_ref": card_ref,
+                "campaign_id": row["campaign_id"],
+                "policy_hash": row["policy_hash"],
+                "content_kind": row["content_kind"],
+                "revision_hash": row["revision_hash"],
+                "contact_id": row["contact_id"],
+                "mailbox_id": row["mailbox_id"],
+                "approver": approver,
+                "approved_at": approved_at,
+                "expires_at": row["expires_at"],
+                "tier": row["tier"],
+                "send_window": row["send_window"],
+                "nonce": row["nonce"],
+                "permitted_action": row["permitted_action"],
+            }
             connection.execute(
                 "INSERT INTO approval VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
@@ -114,14 +152,14 @@ def verify_and_insert(
                     row["contact_id"],
                     row["mailbox_id"],
                     approver,
-                    now.isoformat(),
+                    approved_at,
                     row["expires_at"],
                     row["tier"],
                     row["send_window"],
                     row["nonce"],
                     row["permitted_action"],
                     None,
-                    row["scope_hash"],
+                    approval_scope_hash(approval_values),
                     None,
                 ),
             )

@@ -58,13 +58,25 @@ class ReviewError(ValueError):
     """A fixed-code refusal safe for a local UI response."""
 
 
-def _editorial_gate_code() -> str:
-    """Fail closed until controller-owned, exact-revision receipts can be read.
+def _editorial_gate_code(
+    connection: sqlite3.Connection,
+    campaign_id: str,
+    revision_hash_value: str,
+    now: str,
+) -> str | None:
+    """Translate the shared exact-revision gate to the review API's fixed code."""
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_review_chain,
+    )
 
-    This is not a configurable QA adapter: neither callers nor a model result can
-    supply editorial authority. The future receipt reader replaces this refusal.
-    """
-    return "editorial_receipts_missing"
+    try:
+        require_revision_review_chain(
+            connection, campaign_id, revision_hash_value, now,
+        )
+    except PipelineStageError:
+        return "editorial_receipts_missing"
+    return None
 
 
 @dataclass(frozen=True)
@@ -1077,7 +1089,9 @@ class ReviewService:
         approval_state, approval_id = self._approval(campaign_id, person_id, str(row["hash"]))
         if candidate is not None:
             approval_state, approval_id = "missing", None
-        gate_code = _editorial_gate_code()
+        gate_code = _editorial_gate_code(
+            self.connection, campaign_id, str(row["hash"]), self.now(),
+        )
         editorial_state = "review_required" if candidate is not None or gate_code else (
             str(editorial[0]) if editorial is not None else "review_required"
         )
@@ -1428,15 +1442,17 @@ class ReviewService:
             revision = self._current(campaign_id, expected)
             if self._has_unresolved_candidate(campaign_id, expected):
                 raise ReviewError("candidate_pending")
+            now = self.now()
             if request.ready:
-                gate_code = _editorial_gate_code()
+                gate_code = _editorial_gate_code(
+                    self.connection, campaign_id, str(revision["hash"]), now,
+                )
                 if gate_code:
                     raise ReviewError(gate_code)
             if replay is not None:
                 self.connection.commit()
                 return EditorialResult(request_id, str(replay["result_id"]), expected, state, True)
             event_id = _derived_id("ready", request_id)
-            now = self.now()
             self.connection.execute(
                 "INSERT INTO draft_editorial_event(event_id,request_id,campaign_id,person_id,revision_id,state,created_at) VALUES(?,?,?,?,?,?,?)",
                 (event_id, request_id, campaign_id, revision["person_id"], expected, state, now),

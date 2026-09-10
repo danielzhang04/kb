@@ -5,10 +5,17 @@ from pathlib import Path
 import pytest
 
 import scripts.prospecting.executor as executor_module
+import scripts.prospecting.store as store_module
 from scripts.prospecting.executor import Executor, enumerate_agent_capabilities
 from scripts.prospecting.store import (
     ExecRequest, approval_scope_hash, insert_exec_request, open_store,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_existing_executor_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise executor behavior, not P16 receipt validity."""
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
 
 
 def _queued(connection: sqlite3.Connection, request_id: str = "req_1111111111111111") -> None:

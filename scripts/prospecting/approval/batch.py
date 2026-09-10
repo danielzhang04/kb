@@ -32,6 +32,22 @@ class ContactSelectionError(ValueError):
     """A campaign tranche does not resolve to exactly one valid contact."""
 
 
+def _revision_ready(
+    connection: sqlite3.Connection, campaign_id: str, revision_hash_value: str,
+    now: datetime,
+) -> bool:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_ready,
+    )
+
+    try:
+        require_revision_ready(connection, campaign_id, revision_hash_value, now)
+    except (PipelineStageError, sqlite3.Error, TypeError):
+        return False
+    return True
+
+
 class _NestedScheduleConnection:
     """Let the scheduler participate in ``apply_batch``'s outer transaction."""
 
@@ -73,7 +89,7 @@ def _selected_candidates(connection: sqlite3.Connection, campaign_id: str, now: 
     authority; joining the raw contact table by itself would silently widen the
     scope to every contact for a person.
     """
-    return connection.execute(
+    rows = connection.execute(
         "SELECT e.enrollment_id,r.hash,cp.contact_id FROM enrollment e "
         "JOIN revision r ON r.campaign_id=e.campaign_id AND r.person_id=e.person_id AND r.step=0 "
         "LEFT JOIN person_tranche pt ON pt.person_id=e.person_id AND pt.campaign_id=e.campaign_id "
@@ -84,6 +100,10 @@ def _selected_candidates(connection: sqlite3.Connection, campaign_id: str, now: 
         "ORDER BY e.enrollment_id,r.hash,cp.contact_id",
         (campaign_id, now.isoformat()),
     ).fetchall()
+    return [
+        row for row in rows
+        if _revision_ready(connection, campaign_id, str(row[1]), now)
+    ]
 
 
 def build_batch(

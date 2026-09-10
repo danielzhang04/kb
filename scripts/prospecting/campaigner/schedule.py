@@ -7,7 +7,7 @@ import json
 import random
 import sqlite3
 from dataclasses import dataclass
-from datetime import date, datetime, time, timedelta
+from datetime import date, datetime, time, timedelta, timezone
 from typing import Iterable, Mapping
 from zoneinfo import ZoneInfo
 
@@ -89,6 +89,23 @@ class EnrollmentInput:
 class ScheduledSlot:
     when: datetime
     jitter_minutes: int
+
+
+def _require_revision_ready(
+    connection: sqlite3.Connection,
+    campaign_id: str,
+    revision_hash_value: str,
+    now: datetime,
+) -> None:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_ready,
+    )
+
+    try:
+        require_revision_ready(connection, campaign_id, revision_hash_value, now)
+    except (PipelineStageError, sqlite3.Error, TypeError):
+        raise ValueError("revision_not_ready") from None
 
 
 def business_day_add(start: date, days: int, holidays: Iterable[date]) -> date:
@@ -196,11 +213,15 @@ def enroll_revision(
     item: EnrollmentInput,
     *,
     step_revisions: Mapping[int, str] | None = None,
+    now: datetime | None = None,
 ) -> str:
     if isinstance(item.step, bool) or not isinstance(item.step, int) or item.step != 0:
         raise ValueError("unsupported_starting_step")
     if item.due_at.tzinfo is None or item.due_at.utcoffset() is None:
         raise ValueError("aware_due_at_required")
+    checked_at = datetime.now(timezone.utc) if now is None else now
+    if checked_at.tzinfo is None or checked_at.utcoffset() is None:
+        raise ValueError("aware_now_required")
     key = logical_key(item)
     owns_transaction = not connection.in_transaction
     if owns_transaction:
@@ -272,6 +293,9 @@ def enroll_revision(
             ).fetchone()
             if revision is None or revision[:3] != (item.person_id, item.campaign_id, step):
                 raise ValueError("revision_scope_mismatch")
+            _require_revision_ready(
+                connection, item.campaign_id, revisions[step], checked_at,
+            )
             qa, evidence_ids = json.loads(revision[3]), json.loads(revision[4])
             if qa.get("qa_score", 0) < 80 or not qa.get("passed", False) or not evidence_ids:
                 raise ValueError("revision_not_approved")

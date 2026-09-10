@@ -1,7 +1,7 @@
 # Prospecting skill pipeline: implementation proposal
 
-Status: proposal, not implemented. This document specifies product behavior and the smallest concrete
-service seams for review. Names below remain provisional until the independent design review closes.
+Status: P15 intake and the P16 editorial controller are implemented locally. Research, production
+model adapters, and a complete template-drafting bridge remain unavailable.
 
 ## Purpose
 
@@ -99,58 +99,54 @@ These are capability categories, not invented API names:
 The flow audit must choose concrete interfaces, access boundaries, failure codes, and owner processes.
 No stage may expose personal data to Git, logs, process arguments, cards, ledgers, or VM sinks.
 
-## Proposed integration seams
+## Implemented intake and editorial seams
 
-Keep the existing campaign, P8 evidence, P11 QA-context, revision, review, and approval tables as the
-authoritative product records. Add one migration with orchestration records; do not create a second
-prospecting store or duplicate revision model.
+The existing campaign, P8 evidence, P11 QA context, revision, review, and approval tables remain
+authoritative. P15 stores immutable versioned intake and an honest `input_pending` or
+`awaiting_research_adapter` state. Pilot values such as Series A-C, three calendar years, and two people
+per company are typed inputs rather than SQL constants.
 
-- `prospecting_pipeline_run`: opaque run ID, campaign/person/step, exact base revision ID and hash,
-  workflow ID/version/manifest hash, state, next stage, repair cycle (`0..2`), timestamps, and a unique
-  idempotency key over the exact inputs.
-- `prospecting_stage_artifact`: run/stage/cycle, input and output hashes, skill name/version/content
-  hash, producer role and job identity, typed decision/failure codes, and creation time. Private bodies,
-  critiques, and evidence remain desktop-local; manager projections contain only IDs, hashes, counts,
-  states, and failure codes.
-- `company_qualification`: campaign/company, `as_of_date`, latest known funding stage and announcement
-  date, source observation IDs for both facts, policy hash, decision, and reason. A three-year window is
-  computed as three calendar years back from `as_of_date`, with an explicit leap-day rule.
-- `candidate_rank`: campaign/company/person, current-role observation ID, fit components, deterministic
-  rank, selected flag, and shortfall reason. Eligibility requires a current role in the configured
-  Ops/BizOps/Strategy/Chief-of-Staff families and a current valid contact. Select exactly the configured
-  number per qualified company, default two, using declared criteria and a stable opaque-ID tie break.
-  Do not describe the ordering as response-rate optimization.
-- `pipeline_suggestion`: exact parent revision/hash, proposed subject/body hash, origin stage/artifact,
-  structural and semantic states, and optional accepted revision ID. It records agent output without
-  representing it as a human edit.
+P16 adds one editorial item per saved revision and intake run, controller-owned attempts, immutable
+stage artifacts, suggestions, separate human decisions, and `accepted_agent_suggestion` lineage.
+`PipelineStageService.start_from_saved_revision(...)` binds the current policy, intake, evidence,
+P11 context, sender profile, campaign brief, and exact base revision. `run_next(...)` derives the role,
+five-minute lease, token, worker job ID, and private input internally. There is no public claim or receipt
+submission method. Missing adapters fail before an attempt is created.
 
-Expose these narrow desktop-local service methods, with CLI commands passing only opaque IDs and local
-file paths:
+The fixed order is Humanizer, post-humanization fact-checker, independent critic, then human review.
+All stage results are strict bounded JSON. Artifacts bind the attempt, executor identity,
+runtime/schema/skill hashes, input/output hashes, evidence manifest, and approved-context hash. The
+critic sees final copy, facts, and the post-fact-check result, without the Humanizer draft or style audit.
+Changed copy records the runtime in `model_version` as explicitly unverified model provenance; a future
+live adapter must supply provider-supported model evidence before it can claim a model identity.
 
-1. `start_or_resume(campaign_id, request_id)` validates the intake and snapshots the workflow and skill
-   bindings. Reusing the request with different inputs fails with `request_conflict`.
-2. `prepare_next(run_id)` writes the one current-stage input artifact under the selected store root.
-   It never advances state merely because a file exists.
-3. `claim_stage(run_id, stage, input_hash, worker_role)` grants one bounded lease. Researcher,
-   fact-checker, drafter, humanizer, and independent critic are distinct declared roles; a producer
-   cannot claim its own critic stage.
-4. `submit_stage(...)` validates the lease, exact input hash, declared skill binding, typed output, and
-   output hash before committing the artifact and next state atomically. A caller cannot submit a
-   self-authored human attestation or an independent-review identity.
-5. `accept_suggestion(request_id, suggestion_id, expected_parent_revision_id)` is an explicit UI human
-   action. It routes the accepted text through the existing `ReviewService.edit_draft` and P11 context
-   propagation so structural QA and immutable lineage are retained. Humanizer output never calls the
-   human-edit path by itself and never silently replaces a human-authored revision.
-6. `resume_parked(run_id, request_id)` reopens only after corrected inputs or an explicit human choice.
-   It preserves earlier artifacts and restarts at the first invalidated stage.
+The controller reruns deterministic P11 QA after the fact-check. A claimed pass that fails those
+mechanical checks becomes a recorded failure and enters the repair loop. At most two repair cycles are
+available across the revision lineage, including a new intake run. An independent stage must use a
+different code-wired executor identity; random worker IDs alone do not establish independence.
+Known parent bindings whose exact values survive in proposed copy remain in the candidate context even
+when the fact-checker omits them. P11 therefore still applies sender-to-recipient ratio and source checks;
+this is structural preservation of known claims, not proof that every novel phrase is semantically entailed.
+P16 also rejects duplicate or overlapping recipient binding spans so aliases cannot inflate that ratio. This
+conservative rule can park a legitimate nested hook/company/role phrase; a later product slice may replace
+it with a reviewed distinct-span metric using actual drafts.
+Malformed dual-parent or cyclic lineage fails closed. A result returned after its lease expires records an
+expired attempt, stores no artifact, and leaves the stage available to a new fenced request.
 
-Use a generic, versioned outreach-skill workflow whose startup qualification criteria are intake
-parameters. Its stage order is researcher -> qualification fact-checker -> two-person ranker -> drafter
--> humanizer -> post-humanization fact-checker -> independent critic -> human review. A failed critic
-may return once through drafter and humanizer; the second failed repair parks with exact uncertainty and
-shortfall codes. Any new revision, including a manual edit, invalidates later receipts and restarts at
-humanizer for that exact hash. Editorial-ready and approval readers must require passing humanizer,
-post-humanization fact-check, and critic artifacts bound to the current revision hash.
+`accept_suggestion(...)` requires an explicit `human:*` actor. It never calls the authentic human-edit
+operation. Changed copy becomes a canonical child revision; literal no-change copy keeps the existing
+revision. Both paths store a separate human acceptance, and accepted automation remains outside the
+human-feedback learning stream. An unresolved typed human edit blocks acceptance and readiness.
+
+`require_revision_review_chain(...)` validates the exact accepted chain before ReviewService records an
+editorial decision. `require_revision_ready(...)` additionally requires the latest exact-revision
+editorial event to be `ready`; approval, scheduling, and execution use this full gate. The gate parses
+timestamps as timezone-aware instants. It temporarily installs `sqlite3.Row` because the existing P11
+reader requires named rows, then restores the caller's row factory.
+
+The target workflow remains researcher -> qualification fact-checker -> configured-person ranker ->
+drafter -> Humanizer -> post-humanization fact-checker -> independent critic -> human review. Discovery,
+qualification, ranking, initial drafting, and a production private model adapter remain future slices.
 
 ## Current implementation gaps
 
@@ -160,9 +156,7 @@ post-humanization fact-check, and critic artifacts bound to the current revision
   target count is global and does not bind the P8 per-company target of two.
 - The UI prepare action renders deterministic P8 templates. The separate personalizer model-turn path
   is not an integrated prepare/model/submit stage in the declared workflow.
-- No declared workflow invokes the Humanizer skill, a post-humanization semantic fact-checker, or a
-  revision-bound independent copy critic.
-- Existing review QA is valuable structural revalidation of stored bindings; its token-overlap check is
-  not semantic entailment. Editorial-ready currently has no prerequisite receipt gate.
-- Feedback retains immutable human edits and lineage, but automated rewriting is unavailable. Restart
-  and feedback-to-repair lineage are therefore manual rather than repeatable through the skill pipeline.
+- The Humanizer/fact-check/critic state machine is persisted, but no approved live private model adapter
+  is connected; it refuses rather than fabricating receipts.
+- Existing review QA is structural revalidation of stored bindings; its token overlap check is not
+  semantic entailment. Future model reviewers must make genuine semantic judgments.

@@ -69,7 +69,7 @@ def build_live_service(
 
     gmail = attach_campaigner(
         executor, backend, persist_inbound=persist_inbound,
-        inject=lambda _point: None, now=now(),
+        inject=lambda _point: None, now=now(), clock=now,
     )
 
     def inbound_source() -> tuple[InboundEnvelope, ...]:
@@ -112,6 +112,7 @@ class ExecutorDraftContext:
     inject: Callable[[ArrivalPoint], None]
     now: str
     request_policy_hash: str = "p" * 64
+    clock: Callable[[], str] = lambda: datetime.now(timezone.utc).isoformat()
 
 
 def _lock_for(thread_id: str) -> threading.Lock:
@@ -120,12 +121,44 @@ def _lock_for(thread_id: str) -> threading.Lock:
 
 
 def _cancel(connection: sqlite3.Connection, delivery_id: str, reason: str) -> ReleaseResult:
+    del reason
     with connection:
         connection.execute(
             "UPDATE delivery SET state='cancelled' WHERE delivery_id=? AND state='reserved'",
             (delivery_id,),
         )
     return ReleaseResult("cancelled")
+
+
+def _cancel_owned_claim(
+    connection: sqlite3.Connection,
+    delivery_id: str,
+    attempted_at: str,
+    revision_hash_value: str,
+) -> ReleaseResult:
+    """Cancel only the claim this invocation acquired with its exact CAS values."""
+    with connection:
+        connection.execute(
+            "UPDATE delivery SET state='cancelled' WHERE delivery_id=? AND state='claimed' "
+            "AND attempted_at=? AND revision_hash=?",
+            (delivery_id, attempted_at, revision_hash_value),
+        )
+    return ReleaseResult("cancelled")
+
+
+def _revision_ready(
+    connection: sqlite3.Connection, campaign_id: str, revision_hash_value: str, now: str,
+) -> bool:
+    from scripts.prospecting.pipeline_stage_service import (
+        PipelineStageError,
+        require_revision_ready,
+    )
+
+    try:
+        require_revision_ready(connection, campaign_id, revision_hash_value, now)
+    except (PipelineStageError, sqlite3.Error, TypeError):
+        return False
+    return True
 
 
 def _full_recheck(
@@ -180,6 +213,8 @@ def _full_recheck(
         (row[5], row[12]),
     ).fetchone()[0]
     if day_count >= policy["daily_cap"] or hour_count >= policy["hourly_cap"] or firm_count > policy["firm_collision_cap"]:
+        return None
+    if not _revision_ready(connection, str(row[5]), str(row[2]), now):
         return None
     return row
 
@@ -264,6 +299,18 @@ def execute_linearized_draft(context: ExecutorDraftContext, delivery_id: str) ->
                     (delivery_id,),
                 )
             return ReleaseResult("stopped_after_claim")
+        try:
+            final_now = context.clock()
+        except Exception:
+            return _cancel_owned_claim(
+                context.connection, delivery_id, context.now, str(row[2]),
+            )
+        if not _revision_ready(
+            context.connection, str(row[5]), str(row[2]), final_now,
+        ):
+            return _cancel_owned_claim(
+                context.connection, delivery_id, context.now, str(row[2]),
+            )
         parent = thread.messages[-1].rfc_message_id if thread is not None else None
         references = (tuple(message.rfc_message_id for message in thread.messages if not message.inbound)
                       if thread is not None else ())

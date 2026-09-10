@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+import scripts.prospecting.store as store_module
 from scripts.prospecting.store import (
     ExecRequest,
     LaneCapability,
@@ -22,6 +23,12 @@ from scripts.prospecting.store import (
     validate_exec_request,
     validate_target_policy,
 )
+
+
+@pytest.fixture(autouse=True)
+def isolate_existing_contract_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise request contracts, not P16 receipt validity."""
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
 
 
 def _policy(*predicates: Predicate) -> TargetPolicy:

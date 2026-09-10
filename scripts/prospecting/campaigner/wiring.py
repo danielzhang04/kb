@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
+from datetime import datetime, timezone
+
 from .fake_gmail import FakeGmail
 from ..executor import Executor
 from ..executor_campaigner import ExecutorDraftContext, execute_linearized_draft
@@ -40,6 +43,7 @@ def attach_campaigner(
     persist_inbound=lambda _thread: None,
     inject=lambda _point: None,
     now: str = "2026-09-03T12:00:00+00:00",
+    clock: Callable[[], str] | None = None,
 ) -> GmailAdapter:
     """Attach the campaigner's linearized draft handler inside Executor._act."""
     gmail = attach_gmail(executor, backend)
@@ -62,9 +66,12 @@ def attach_campaigner(
         ).fetchall()
         if len(deliveries) != 1:
             return "rejected", "delivery_not_unique"
+        controller_clock = clock or (
+            lambda: datetime.now(timezone.utc).isoformat()
+        )
         result = execute_linearized_draft(ExecutorDraftContext(
             executor.connection, gmail, persist_inbound, inject, now,
-            request.policy_hash,
+            request.policy_hash, controller_clock,
         ), deliveries[0][0])
         if result.state in {"drafted", "reconciled"}:
             return "succeeded", result.state

@@ -7,6 +7,7 @@ from threading import Barrier, Thread
 
 import pytest
 
+import scripts.prospecting.store as store_module
 from scripts.prospecting.approval.release_t1 import (
     FenceUnavailable,
     attach_t1_send,
@@ -27,6 +28,12 @@ REVISION = "b" * 64
 NOW = datetime(2099, 6, 1, 12, tzinfo=timezone.utc)
 T1_SYNTHETIC_FIXTURE = Path(__file__).parents[3] / "orgs" / "prospecting" / "fixtures" / "t1-synthetic-10.json"
 SYNTHETIC = legacy_fixture("test_t1_release")
+
+
+@pytest.fixture(autouse=True)
+def isolate_existing_t1_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise T1 release mechanics, not P16 receipt validity."""
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
 
 
 class SendFakeGmail(FakeGmail):

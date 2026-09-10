@@ -10,15 +10,23 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from scripts.prospecting.campaigner import schedule as schedule_module
 from scripts.prospecting.campaigner.schedule import (
     DEFAULT_WINDOW, US_HOLIDAYS_2026, EnrollmentInput, business_day_add,
     cadence_due_dates, enroll_revision, logical_key, schedule_slots,
 )
-from scripts.prospecting.store import open_store
+from scripts.prospecting.store import approval_scope_hash, open_store
 from scripts.prospecting.tests.synthetic_fixtures import legacy_fixture
 
 EASTERN = ZoneInfo("America/New_York")
 SYNTHETIC = legacy_fixture("test_campaigner_schedule")
+_REAL_REQUIRE_REVISION_READY = schedule_module._require_revision_ready
+
+
+@pytest.fixture(autouse=True)
+def isolate_existing_schedule_tests_from_editorial_pipeline(monkeypatch) -> None:
+    """These unit tests exercise scheduling rules, not P16 receipt validity."""
+    monkeypatch.setattr(schedule_module, "_require_revision_ready", lambda *_args: None)
 
 
 def test_business_day_math_skips_weekends_and_holidays() -> None:
@@ -412,3 +420,116 @@ def test_saved_one_based_cadence_maps_to_real_schema_steps_and_revision_hashes(
         "2027-01-05T08:10:00-05:00",
     ]
     db.close()
+
+
+def test_actual_ready_chain_schedules_and_latest_unready_blocks(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from scripts.prospecting.pipeline_stage_service import PipelineStageService
+    from scripts.prospecting.review_service import EditorialRequest, ReviewService
+    from scripts.prospecting.tests.test_pipeline_stage_service import (
+        NOW,
+        _adapters,
+        _run_to_review,
+        _seed,
+    )
+
+    monkeypatch.setattr(
+        schedule_module, "_require_revision_ready", _REAL_REQUIRE_REVISION_READY,
+    )
+    connection, revision = _seed(tmp_path)
+    now = datetime.fromisoformat(NOW.replace("Z", "+00:00"))
+    pipeline = PipelineStageService(
+        connection, adapters=_adapters(unchanged=True), now=lambda: now,
+    )
+    item = pipeline.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "schedule-chain-start",
+    )
+    _run_to_review(pipeline, item.item_id)
+    accepted = pipeline.accept_suggestion(
+        item.item_id, "schedule-chain-accept", revision.revision_id, "human:fixture",
+    )
+    review = ReviewService(connection, now=lambda: NOW)
+    review.set_editorial_ready(EditorialRequest(
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeb1",
+        "campaign-a", accepted.revision_id, True,
+    ))
+    connection.execute(
+        "UPDATE campaign SET status='approved',approval_tier='T0',mailbox_id='mailbox-a',"
+        "policy_json=?,cadence=? WHERE campaign_id='campaign-a'",
+        (json.dumps({"approval_tier": "T0", "mailbox_id": "mailbox-a", "firm_collision_cap": 2}),
+         json.dumps([{"step": 1, "business_day": 0}])),
+    )
+    policy_hash = connection.execute(
+        "SELECT policy_hash FROM campaign WHERE campaign_id='campaign-a'",
+    ).fetchone()[0]
+    activation = {
+        "assertion_ref": "schedule-activation",
+        "campaign_id": "campaign-a",
+        "policy_hash": policy_hash,
+        "content_kind": "campaign_policy",
+        "revision_hash": None,
+        "contact_id": None,
+        "mailbox_id": None,
+        "approver": "human:fixture",
+        "approved_at": "2020-01-01T00:00:00Z",
+        "expires_at": "2100-01-01T00:00:00Z",
+        "tier": "T0",
+        "send_window": "{}",
+        "nonce": "schedule-activation",
+        "permitted_action": "activate_campaign",
+    }
+    connection.execute(
+        "INSERT INTO approval(approval_id,assertion_ref,campaign_id,policy_hash,content_kind,"
+        "revision_hash,contact_id,mailbox_id,approver,approved_at,expires_at,tier,send_window,"
+        "nonce,permitted_action,scope_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("approval-schedule-activation", *(activation[key] for key in activation),
+         approval_scope_hash(activation)),
+    )
+    connection.execute(
+        "UPDATE campaign SET status='active' WHERE campaign_id='campaign-a'",
+    )
+    connection.execute(
+        "INSERT INTO contact_point VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+        ("contact-ready", "person-a", "cmp_" + "a" * 16, SYNTHETIC["contact_email"],
+         "manual", "fixture", NOW, NOW, "valid", 1.0, 0),
+    )
+    connection.execute(
+        "INSERT INTO fit_score_version VALUES(?,?,?,?,?,?)",
+        ("schedule-fit-version", "fixture", "{}", "8" * 64, NOW, NOW),
+    )
+    connection.execute(
+        "INSERT INTO eligibility_decision("
+        "decision_id,campaign_id,person_id,rule_version,fit_score_version_id,outcome,"
+        "failed_predicate_ids,approximate_predicate_ids,decided_at"
+        ") VALUES(?,?,?,?,?,?,?,?,?)",
+        ("schedule-decision", "campaign-a", "person-a", "fixture", "schedule-fit-version",
+         "eligible", "[]", "[]", NOW),
+    )
+    connection.commit()
+    first = EnrollmentInput(
+        "enrollment-ready", "delivery-ready", "campaign-a", "person-a",
+        "contact-ready", accepted.revision_hash, "mailbox-a", 0, now,
+    )
+    enroll_revision(
+        connection, first, step_revisions={0: accepted.revision_hash}, now=now,
+    )
+    assert connection.execute(
+        "SELECT state FROM delivery WHERE delivery_id='delivery-ready'",
+    ).fetchone()[0] == "reserved"
+
+    review.set_editorial_ready(EditorialRequest(
+        "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeb2",
+        "campaign-a", accepted.revision_id, False,
+    ))
+    second = EnrollmentInput(
+        "enrollment-blocked", "delivery-blocked", "campaign-a", "person-a",
+        "contact-ready", accepted.revision_hash, "mailbox-a", 0, now,
+    )
+    with pytest.raises(ValueError, match="^revision_not_ready$"):
+        enroll_revision(
+            connection, second, step_revisions={0: accepted.revision_hash}, now=now,
+        )
+    assert connection.execute(
+        "SELECT count(*) FROM enrollment WHERE enrollment_id='enrollment-blocked'",
+    ).fetchone()[0] == 0
