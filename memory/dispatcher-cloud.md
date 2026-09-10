@@ -792,3 +792,19 @@
 - Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
   card, so no step-4b verification needed this run.
 - Silent run appropriate: nothing new broke; every pending item already carries a wake/decision card.
+
+## 2026-09-10 nightly-review (cloud, DIRECT-PUSH pending)
+- preamble PASS; pyyaml 6.0.1 ok; sync_skills --check in sync (exit 0).
+- Dispatched 1 card (6aa24b0a nightly-review, kb) and self-executed it (dashboards regenerated).
+- Queue by state: inbox 53, working 3 (6a6bc3dd halted-terminal lingering; d126c410 figment
+  long-running boss/terminal card; 6aa24b0a = tonight's, done at commit), done 1578, approvals 1.
+- daemon-dirs gate: sync_daemon_dirs.py STILL absent from ops (present on main). Ran main's copy
+  refs-fallback -> exit 1, same single ops-only extra orgs/kb-ops/workflows/acceptance-run.md.
+- DECISION/tension: routine step 2b says "on drift, write a wake-me card"; prior run (2026-08-30
+  region) held back to avoid a duplicate since two open cards already track it. Tonight the task
+  prompt was "follow it exactly", so I DID file wake-daniel-2026-09-10-sync-daemon-dirs-drift, but
+  cross-referenced both open priors and flagged the duplication rather than filing blind. If Daniel
+  wants to stop the nightly duplication, amend step 2b to skip when an open card already tracks the
+  same drift. Unbounded: a third identical card now sits in inbox.
+- Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
+  card, so no step-4b verification needed this run.
