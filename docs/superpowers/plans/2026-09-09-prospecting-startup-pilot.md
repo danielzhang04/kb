@@ -113,26 +113,31 @@ known structure; semantic reviewers remain responsible for novel prose claims an
 
 ## Resumed execution checkpoint - 2026-09-10
 
-Accepted source remains cad838cf. The task list below describes end-to-end acceptance, not a
-claim that implemented waiting states have already run real model work.
+Accepted local HEAD32fdce0f: P18 source-bound person imports and P17 funding dashboard,
+private CLI with opaque research scope, and truthful captured-funding status/source guidance.
+Root banner25 checks and independent3 checks passed; staged PII/mirror/diff guards passed.
+Previous P18 combined170 and final migration24 checks overlap and are not additive coverage.
+Same existing PR; source/coordination publication remains held, with no push or new PR.
 
-- Intake: desktop-private pilot saved and exact replay verified; eight US companies/all sectors
-  remain explicitly recorded orchestration assumptions. Funding as-of date is 2026-09-10.
-- Evidence: first company has a prepared four-page funding manifest and four person candidates
-  from two captured role sources. These are unimported, unqualified and unranked research inputs.
-- Current build: P18 person/source import backend frozen for independent review after 45 focused
-  P17/P18/migration tests passed. Read-only funding dashboard tests are still being completed.
-- Next order: independently accept combined importer/dashboard; verify actual Chrome UI; add
-  the private-file P18 skill/CLI path; then exact-source qualification and scoped ranking.
-  Existing fill_campaign_fit is unsuitable because it scans all companies and queues contact
-  searches; reuse score_person with exact employment bindings instead.
-- Model execution: native desktop CLI HTTP401 remains unresolved. Existing hosted workers are
-  usable again after the usage-limit interruption. Their availability is not a native runtime
-  canary. A small P16 adapter design may progress, but genuine authenticated synthetic execution,
-  sink checks and independent review must precede real record input.
-- Durability: handled failures/replay are tested; abrupt death between snapshot publication and
-  SQLite commit and actual closed-lid/network recovery still require evidence. No claim of full
-  offline continuity. VM jobs are currently absent and prior owned job directories/units cleaned.
+- [x] Import the first private funding batch and verify exact replay; repair scope granularity
+  via source-supported complete replacement. One provisional match, seven-company shortfall.
+- [x] Import four person candidates and verify replay. Two imported after a complete source replacement, two unresolved compact
+  identity excerpts; no qualification or ranking. Original captures and exact replay are preserved.
+- [x] Capture stronger individual sources and replay the complete replacement person batch.
+  One title discrepancy remains explicit; two additional sources are research-only evidence.
+- [ ] Research the remaining requested companies. Do not weaken literal source proof to fill quota.
+- [ ] Finish and independently review the gated P16 runtime adapter. Synthetic installed-CLI
+  loopback cache prime passes; no live provider call or production acceptance is claimed.
+  Shared desktop HTTP401 remains pending user-controlled reauthentication; no credential changes.
+- [ ] Build exact-scope qualification and employment-bound ranking after bounded design review.
+  Do not reuse broad company/person-employment joins unchanged; fresh capture alone does not
+  establish current employment when the underlying announcement is old.
+- [ ] Complete actual Humanizer/factcheck/critic execution, first sourced-email review, feedback
+  recovery, remaining desktop/narrow visual verification, and interrupted/restarted workflow.
+
+Keep-awake remains active; no VM worker is active. Canonical coordination handoff owns exact
+resource IDs, private aggregate batch IDs and current runtime/permission state. These are real
+partial pilot imports, not an end-to-end result or human-approved campaign.
 
 ## Goal and acceptance
 
