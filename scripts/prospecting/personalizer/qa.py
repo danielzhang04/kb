@@ -7,7 +7,7 @@ from .evidence import EvidenceRecord, copy_eligible
 
 
 ALLOWED_SOURCES = frozenset({"evidence", "sender", "policy"})
-RECIPIENT_SLOTS = frozenset({"first_name", "company", "role", "topic", "school", "why_them"})
+RECIPIENT_SLOTS = frozenset({"first_name", "company", "role", "topic", "school", "why_them", "recipient_hook"})
 REFERRAL = re.compile(
     r"\b(?:refer(?:ral|s|red|ring)?|intro me|introduce me|put me in touch|introduc(?:e|tion)|resume review|job commitment)\b",
     re.I,
@@ -120,7 +120,7 @@ def validate_revision(
             if name in RECIPIENT_SLOTS:
                 recipient_points += 1
             person_specific = person_specific or (
-                name == "why_them" and _entailed(binding.value, item.claim)
+                name in {"why_them", "recipient_hook"} and _entailed(binding.value, item.claim)
             )
         elif name in RECIPIENT_SLOTS and binding.source_kind != "evidence":
             failures.add("recipient_slot_unsourced")

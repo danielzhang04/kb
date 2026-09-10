@@ -590,3 +590,82 @@ shows an approved revision whose editorial projection remains review-required. P
 must wire exact-revision receipt/freshness requirements into every approval/executor
 reader that treats a draft as eligible. No humanizer, factual-recheck, or independent
 critic stage has been executed or attested by this change.
+
+
+## Independent frozen template implementation review: repair required
+
+Reviewed the frozen source hashes reported by the email builder; independently matched
+`evidence_bridge.py` FE80B19F..., `templates_v2.py` 18BABFDB..., and `qa.py` 66571AAD....
+The builder reported 153 focused tests passing. Independent source review and isolated
+synthetic probes found two concrete issues; this implementation is not accepted yet.
+
+- High: `affinity/evidence_bridge.py:143,307-327,582-587` has no source-specific
+  recipient-hook signal mapping. A selected `own_writing` observation with a weak
+  signal inherits copy permission from unrelated strong/medium signals. An isolated
+  fixture downgraded only own_writing to weak, confirmed that obs_writing was selected,
+  and observed `allowed_for_copy=1`. Preserve the selected writing source's copy class;
+  test mixed strong identity and weak/disallowed writing rather than only weak-only
+  affinity. Current-role fallback must never relabel writing as role evidence.
+- Medium: `templates_v2.py:69` truncates recipient hooks to 18 words, but
+  `evidence_bridge.py:502` accepts only exact canonical display for this new slot.
+  A normal longer writing hook was clamped and then rejected by the real display
+  helper. Define safe canonical/display handling for this slot and verify the entire
+  renderer, evidence mint, and QA path with long authored-work and current-role inputs.
+  Do not weaken other slots' source or entailment checks.
+
+The first probe's attempt to modify its synthetic source observation was refused by
+its existing immutability trigger. The second issue was then verified without store
+mutation using the actual clamp/display helpers. This immutability refusal is not a
+product defect. Scratch remains at `_private/template-audit-probe-20260909/`; the
+probe process exited and no server was started. No product source was edited by this
+independent template review.
+
+
+### Template repair closure
+
+Independent verdict: READY for the bounded neutral-copy/networking-fallback slice.
+The selected authored-work signal now determines its own copy permission. Long writing
+that cannot fit intact uses the independently verified current-role hook; it is not
+copied as a misleadingly truncated sentence. Legacy employer/path slots retain their
+requirements, and the current-employment identity gate remains mandatory for both
+recipient-hook sources. This is structural/source-binding acceptance, not a semantic
+review result or runtime Humanizer receipt. The fallback is currently selected in the
+networking branch; curiosity/alumni/recruiting routes retain their existing selection.
+
+Final independent focused verification: 13 tests passed, 114 deselected, in 2.75s
+(`current_role_hook or long_own_writing or weak_selected_writing`). This includes the
+three pilot role families, invalid current source, long-writing full rendering/minting,
+and mixed strong-identity/weak-writing authority. Root independently ran the joined broader template regression: 156 tests passed in 22.83s.
+Final reviewed hashes: evidence bridge `02BFED67071E92AB68F79459032D785616B4488418F673C511E241EEA96F1C6B`;
+evidence tests `5BB9CF0C03AA6AB9CEA5BF6E8C70CC22F24B156043D18F951D1AEB5DBB80CB90`;
+template tests `9EC14F6ABC0FCCD7C1019DE7B1A363C2FC5C41A0EF8DBAEC0FB933E6C87FAD64`;
+fallback template `345BFC926DEE86FA0C493B4CE50BC5460D81288AE1E18268DE638462E3F708C3`.
+
+## Independent synthetic runtime implementation review: repair required
+
+Matched frozen source `private_runtime.py` 42C0A93D..., tests 6179D513..., and spec
+14598F71.... The implementation admits only fixed synthetic input/schema/skill bytes,
+uses a code-owned fake loopback provider, excludes raw byte fields from dataclass repr,
+and does not create a live adapter, controller lease authority, or Humanizer receipt.
+Builder reported 12 installed-CLI/synthetic tests passed in 16.23s. Review found:
+
+- Process failure cleanup: after successful suspended CreateProcessW, a failed
+  AssignProcessToJobObject leaves the process outside the job. Closing its process
+  handle does not terminate it. Explicitly terminate/wait before releasing handles.
+  Additionally, an exception from the process helper bypasses cancellation/join of
+  observe_fixture, leaving that daemon thread running. Test both injected failures.
+- Tool declaration validation: the fixture handler extracts only names, so a nameless
+  built-in declaration is ignored. An independent in-memory request probe confirmed
+  `{'type':'web_search'}` yields no declared tools and no rejection. Validate the exact
+  allowed shape: empty, or one function named request_user_input; reject other types,
+  malformed rows and duplicates. No forwarding broker is required.
+- Fixed-code request validation: a TurnBinding with skill=None raises AttributeError;
+  boolean deadline is accepted as an integer. Both were confirmed without launching
+  a process. Validate the nested DTO before dereference and require literal integers.
+
+These are bounded synthetic-executor repairs. No credentials, provider call, browser,
+MCP remote-control session, VM, or real prospect record was used in this review. The
+absence of synthetic canary bytes remains a measurement of named application sinks,
+not universal provider/OS privacy proof. Production authentication, retention, ACLs,
+exact-revision controller fencing/import and mandatory review-stage execution remain
+outside this synthetic slice.

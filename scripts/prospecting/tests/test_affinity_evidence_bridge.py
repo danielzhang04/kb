@@ -10,7 +10,7 @@ import re
 import pytest
 
 from scripts.prospecting.affinity.evidence_bridge import (
-    CLAIM_TEMPLATES, _observation as resolved_observation, mint_evidence,
+    CLAIM_TEMPLATES, _observation as resolved_observation, mint_evidence, resolve_slot_facts,
 )
 from scripts.prospecting.affinity.score import Affinity, Signal
 from scripts.prospecting.personalizer.evidence import list_evidence
@@ -29,6 +29,7 @@ SLOTS = {
     "topic": "Test Capital climate thesis", "school": "Newtown University", "why_them": "Meridian Bank",
     "transition_from": "bank at Meridian Bank", "transition_to": "vc at Test Capital",
     "new_fact_sentence": "Synthetic climate note",
+    "recipient_hook": "I read Synthetic climate note.",
 }
 SLOTS_FOR_RENDER = dict(SLOTS)
 ASK = "Would you be open to a 15-minute informational conversation to learn about your work?"
@@ -36,7 +37,7 @@ TEMPLATE = Template(
     "synthetic_affinity", 1, "networking", "{first_name} at {company}",
     """Hello {first_name},
 
-I noticed {first_name} works at {company} as {role}. The {topic} stood out while I was reading about the firm's approach. Your time at {school} and {why_them} made the path from {transition_from} to {transition_to} especially useful context. I also appreciated the {new_fact_sentence}, which made the work feel practical rather than abstract. I am exploring similar decisions carefully and would value hearing how you evaluate opportunities, build conviction, and decide where to focus early effort. """ + ASK + """
+I noticed {first_name} works at {company} as {role}. The {topic} stood out while I was reading about the firm's approach. Your time at {school} and {why_them} made the path from {transition_from} to {transition_to} especially useful context. {recipient_hook} I also appreciated the {new_fact_sentence}, which made the work feel practical rather than abstract. I am exploring similar decisions carefully and would value hearing how you evaluate opportunities, build conviction, and decide where to focus early effort. """ + ASK + """
 
 Regards,
 Synthetic Sender
@@ -48,6 +49,7 @@ CLAIM_SAMPLE = {
     "kind_a": "bank", "employer_a": "Meridian Bank", "kind_b": "vc",
     "employer_b": "Test Capital", "work_title": "Synthetic climate note",
     "path_transition": "bank to vc", "role_level": "investing/director",
+    "recipient_hook": "Operations Director at Test Capital",
 }
 SLOT_SAMPLE = {
     "first_name": "Morgan", "company": "Test Capital", "role": "Operations Director",
@@ -55,6 +57,7 @@ SLOT_SAMPLE = {
     "transition_from": "bank at Meridian Bank", "transition_to": "vc at Test Capital",
     "new_fact_sentence": "Synthetic climate note",
     "path_transition": "bank to vc", "role_level": "investing/director",
+    "recipient_hook": "Operations Director at Test Capital",
 }
 
 
@@ -84,8 +87,10 @@ def _scored_person(tmp_path: Path, monkeypatch, *,
                    school_field: str = "education",
                    school_snapshot_owner: str | None = None,
                    employment_excerpt: str = "Morgan is Operations Director at Test Capital",
+                   title: str = "Operations Director",
                    link_kind: str = "writing",
                    link_signal: str = "own_writing",
+                   writing_excerpt: str = "Synthetic climate note",
                    ) -> tuple[object, str, str, Affinity]:
     connection = open_store(tmp_path / "store.sqlite")
     connection.execute("INSERT INTO sender_profile VALUES(?,?,?,?,?,?,?)", ("sender", "Synthetic", None, "synthetic", "synthetic", "synthetic", "[]"))
@@ -110,9 +115,9 @@ def _scored_person(tmp_path: Path, monkeypatch, *,
         "Newtown University alum",
     )
     _observation(connection, "obs_employer", PERSON_ID, "employer", "snap_person", "Meridian Bank experience")
-    _observation(connection, "obs_writing", PERSON_ID, "link", "snap_person", "Synthetic climate note")
+    _observation(connection, "obs_writing", PERSON_ID, "link", "snap_person", writing_excerpt)
     _observation(connection, "obs_topic", COMPANY_ID, "topic", "snap_company", "Test Capital climate thesis")
-    connection.execute("INSERT INTO employment VALUES(?,?,?,?,?,?,?,?)", ("emp_0000000000000001", PERSON_ID, COMPANY_ID, "Operations Director", None, None, "obs_employment", 0.9))
+    connection.execute("INSERT INTO employment VALUES(?,?,?,?,?,?,?,?)", ("emp_0000000000000001", PERSON_ID, COMPANY_ID, title, None, None, "obs_employment", 0.9))
     connection.execute("INSERT INTO person_education VALUES(?,?,?,?,?,?,?,?)", (PERSON_ID, 0, "newtown university", "Newtown University", None, None, None, "obs_school"))
     connection.execute("INSERT INTO person_employer VALUES(?,?,?,?,?,?,?,?,?)", (PERSON_ID, 0, "meridian bank", "Meridian Bank", "bank", None, None, 2090, "obs_employer"))
     connection.execute("INSERT INTO person_employer VALUES(?,?,?,?,?,?,?,?,?)", (PERSON_ID, 1, "test capital", "Test Capital", "vc", "Operations Director", 2091, None, "obs_employment"))
@@ -157,9 +162,67 @@ def test_every_recipient_slot_gets_its_own_row_and_survives_validate_revision(tm
 
 def test_weak_signals_are_never_copy_allowed(tmp_path, monkeypatch) -> None:
     connection, person_id, campaign_id, affinity = _weak_only_person(tmp_path, monkeypatch)
-    ids = mint_evidence(connection, person_id, campaign_id, affinity, SLOTS, NOW)
+    slots = dict(SLOTS, recipient_hook="Your Operations Director work at Test Capital caught my attention.")
+    ids = mint_evidence(connection, person_id, campaign_id, affinity, slots, NOW)
     rows = list_evidence(connection, person_id, NOW, include_expired=True)
     assert all(not row.allowed_for_copy for row in rows if row.evidence_id in set(ids.values()))
+
+
+def test_recipient_hook_prefers_same_person_own_writing(tmp_path, monkeypatch) -> None:
+    connection, person_id, _campaign_id, affinity = _scored_person(tmp_path, monkeypatch)
+    facts = resolve_slot_facts(connection, person_id, affinity, COMPANY_ID, required_slots=("recipient_hook",))
+    assert facts.sources["recipient_hook"].observation_id == "obs_writing"
+    assert facts.values["recipient_hook"] == SLOTS["recipient_hook"]
+
+
+def test_recipient_hook_ignores_wrong_person_writing_and_uses_current_role(tmp_path, monkeypatch) -> None:
+    connection, person_id, _campaign_id, affinity = _scored_person(tmp_path, monkeypatch)
+    _observation(connection, "obs_wrong_writing", COMPANY_ID, "link", "snap_company", "Firm-only writing")
+    wrong_affinity = Affinity(
+        affinity.person_id, affinity.campaign_id, affinity.score,
+        tuple(
+            Signal(item.code, item.klass, item.strength, item.weight, item.points,
+                   ("obs_wrong_writing",) if item.code == "own_writing" else item.observation_ids)
+            for item in affinity.signals
+        ), affinity.fit_spec_hash,
+    )
+    facts = resolve_slot_facts(connection, person_id, wrong_affinity, COMPANY_ID, required_slots=("recipient_hook",))
+    assert facts.sources["recipient_hook"].observation_id == "obs_employment"
+    assert facts.values["recipient_hook"] == "Your Operations Director work at Test Capital caught my attention."
+
+
+def test_weak_selected_writing_cannot_inherit_copy_authority_from_other_signals(tmp_path, monkeypatch) -> None:
+    connection, person_id, campaign_id, affinity = _scored_person(tmp_path, monkeypatch)
+    weak_writing = Affinity(
+        affinity.person_id, affinity.campaign_id, affinity.score,
+        tuple(
+            Signal(item.code, "weak" if item.code == "own_writing" else item.klass,
+                   item.strength, item.weight, item.points, item.observation_ids)
+            for item in affinity.signals
+        ), affinity.fit_spec_hash,
+    )
+    evidence_ids = mint_evidence(connection, person_id, campaign_id, weak_writing, SLOTS, NOW)
+    recipient = next(item for item in list_evidence(connection, person_id, NOW, include_expired=True)
+                     if item.evidence_id == evidence_ids["recipient_hook"])
+    assert recipient.allowed_for_copy is False
+
+
+def test_long_own_writing_hook_uses_verified_current_role_before_minting(tmp_path, monkeypatch) -> None:
+    connection, person_id, campaign_id, affinity = _scored_person(tmp_path, monkeypatch)
+    excerpt = "Synthetic operating note on how teams choose priorities during rapid change with shared ownership"
+    _observation(connection, "obs_long_writing", person_id, "link", "snap_person", excerpt)
+    long_affinity = Affinity(
+        affinity.person_id, affinity.campaign_id, affinity.score,
+        tuple(
+            Signal(item.code, item.klass, item.strength, item.weight, item.points,
+                   ("obs_long_writing",) if item.code == "own_writing" else item.observation_ids)
+            for item in affinity.signals
+        ), affinity.fit_spec_hash,
+    )
+    facts = resolve_slot_facts(connection, person_id, long_affinity, COMPANY_ID, required_slots=("recipient_hook",))
+    display = "Your Operations Director work at Test Capital caught my attention."
+    ids = mint_evidence(connection, person_id, campaign_id, long_affinity, {"recipient_hook": display}, NOW)
+    assert set(ids) == {"recipient_hook"}
 
 
 def test_claims_carry_two_shared_terms_so_entailment_holds() -> None:

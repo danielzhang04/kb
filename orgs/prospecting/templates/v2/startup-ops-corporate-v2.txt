@@ -1,12 +1,12 @@
 template_id: startup_ops_corporate
-template_version: 1
+template_version: 2
 intent: networking
 subject: Question about your operating perspective
 body:
 Hi {first_name},
 
-{shared_signal_sentence} Your {their_role} perspective at {firm} connects {transition_from} to {transition_to}. I noted {firm_specific_hook}. I am especially interested in how professionals turn that context into disciplined decisions and useful early-career judgment every day consistently. {sender_intro} {sender_proof}
+{shared_signal_sentence} I noticed {firm_specific_hook}, and your {their_role} work at {firm} gave me a useful view of the transition from {transition_from} to {transition_to}. {sender_intro} {sender_proof}
 
-Could we schedule {ask_minutes} minutes for an {ask_mode} in {time_window}? I would value practical recommendations for someone earlier in the process today.
+I would value hearing how you approached that transition and the operating choices that mattered. I am trying to understand those decisions with more care. Would you have {ask_minutes} minutes for an {ask_mode} in {time_window}?
 
 {signature}

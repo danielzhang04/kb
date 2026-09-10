@@ -21,6 +21,7 @@ CLAIM_TEMPLATES: Mapping[str, str] = {
     "topic": "{firm} thesis on {domain}",
     "school": "Attended {school}",
     "why_them": "Worked at {employer} before joining {firm}",
+    "recipient_hook": "Holds the {title} role at {firm}",
     "transition_from": "Moved from {kind_a} at {employer_a} to {kind_b} at {employer_b}",
     "transition_to": "Moved from {kind_a} at {employer_a} to {kind_b} at {employer_b}",
     "new_fact_sentence": "Published {work_title}",
@@ -148,6 +149,7 @@ _SLOT_CODES: Mapping[str, tuple[str, ...]] = {
     "topic": ("firm_thesis",),
     "path_transition": ("path_match",),
     "role_level": ("role_family_match", "level_match"),
+    "recipient_hook": ("own_writing",),
 }
 
 
@@ -258,7 +260,7 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
     identity, company_id, firm, title = _identity(connection, person_id, selected_company_id)
     first_name = str(_value(identity, "first_name"))
     employment_source: _Observation | None = None
-    if required & {"first_name", "company", "role", "transition_to"}:
+    if required & {"first_name", "company", "role", "transition_to", "recipient_hook"}:
         employment_source = _observation(
             connection, str(_value(identity, "source_observation_id")),
         )
@@ -299,6 +301,29 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
             raise ValueError("evidence_identity_source_mismatch")
         sources["role"] = employment_source
         claims["role"], values["role"] = f"Holds the {title} role at {firm}", title
+    if "recipient_hook" in required:
+        if employment_source is None:
+            raise ValueError("evidence_identity_source_mismatch")
+        own_writing_ids = _signal_ids(affinity.signals, "own_writing")
+        sources["recipient_hook"] = employment_source
+        claims["recipient_hook"] = f"Holds the {title} role at {firm}"
+        values["recipient_hook"] = f"Your {title} work at {firm} caught my attention."
+        if own_writing_ids:
+            candidates = [
+                source for oid in sorted(own_writing_ids)
+                if (source := _observation(connection, oid)) is not None
+                and source.entity_id == person_id
+                and _valid_source(source, person_id, company_id, ("link",))
+                and source.excerpt
+            ]
+            # A malformed writing signal must not displace a verified current-role hook.
+            # The current-employment source above remains mandatory in either case.
+            if candidates and len(candidates[0].excerpt.split(".", 1)[0].split()) <= 10:
+                source = _first_valid(candidates, "evidence_recipient_hook_source_mismatch")
+                sources["recipient_hook"] = source
+                claims["recipient_hook"] = source.excerpt
+                fragment = source.excerpt.split(".", 1)[0].strip()
+                values["recipient_hook"] = f"I read {fragment}."
 
     school_ids = _signal_ids(affinity.signals, "shared_school")
     if "school" in required:
@@ -478,7 +503,7 @@ def _word_prefix(display: str, canonical: str) -> bool:
 def _display_matches(slot: str, display: str, canonical: str) -> bool:
     if _normal(display) == _normal(canonical):
         return True
-    if slot in {"role", "topic"}:
+    if slot in {"role", "topic", "recipient_hook"}:
         return _word_prefix(display, canonical)
     if slot == "why_them":
         return _normal(display) == _normal(

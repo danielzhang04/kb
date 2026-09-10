@@ -34,6 +34,7 @@ BINDING_MAP = {
     "firm_specific_hook": "topic", "shared_school": "school",
     "shared_signal_sentence": "why_them", "transition_from": "transition_from",
     "transition_to": "transition_to", "new_fact_sentence": "new_fact_sentence",
+    "recipient_hook": "recipient_hook",
 }
 KIND_PHRASES = {
     "bank": "banking", "consultancy": "consulting", "pe": "private equity",
@@ -56,6 +57,7 @@ GENERIC_SUBJECTS = {
     "startup_nonops": "Learning how your team is structured",
     "startup_ops_corporate": "Question about your operating perspective",
     "startup_ops_noncorporate": "Quick question on your operating choices",
+    "startup_current_role_hook": "A question about your operating work",
     "startup_role_application": "Question about the team's operating work",
     "vc_networking": "Question on your investment approach",
     "vc_parttime": "Quick question on your investment path",
@@ -64,6 +66,7 @@ SUPPORTED_INTENTS = frozenset({"networking", "recruiting_live", "curiosity", "al
 SLOT_WORD_LIMITS = MappingProxyType({
     "firm_specific_hook": 12,
     "shared_signal_sentence": 18,
+    "recipient_hook": 18,
     "their_role": 6,
 })
 
@@ -170,7 +173,9 @@ def _family(intent: str, step: int, row: object, registry: Mapping[str, Template
     if current_kind == "pe":
         return "pe_networking"
     title = str(_value(row, "title", "")).casefold()
-    if any(word in title for word in ("operations", "operator", "chief operating")):
+    if any(word in title for word in ("operations", "operator", "chief operating", "strategy", "chief of staff")):
+        if "path_match" not in codes:
+            return "startup_current_role_hook"
         return "startup_ops_corporate" if "shared_prior_employer" in codes else "startup_ops_noncorporate"
     return "startup_nonops" if "startup_nonops" in registry else "vc_networking"
 
@@ -234,6 +239,7 @@ def _slot_values_with_clamp_count(
         "their_role": str(_value(row, "title")),
         "firm_specific_hook": facts.values.get("topic", ""),
         "shared_signal_sentence": f"Your {employer} experience caught my attention.",
+        "recipient_hook": facts.values.get("recipient_hook", ""),
         "transition_from": transition_from,
         "transition_to": transition_to,
         "sender_intro": sender_focus,

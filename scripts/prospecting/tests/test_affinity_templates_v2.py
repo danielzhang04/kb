@@ -24,7 +24,7 @@ EXPECTED_IDS = {
     "startup_ops_corporate", "startup_ops_noncorporate", "startup_nonops",
     "startup_role_application", "vc_networking", "vc_parttime", "pe_networking",
     "asset_management_referral", "consulting_networking", "curiosity_thesis",
-    "follow_up_de_escalation",
+    "follow_up_de_escalation", "startup_current_role_hook",
 }
 COPY_PROFILE_DEFAULT = {"body_words": [75, 125], "subject_chars": [36, 50]}
 NOW = datetime(2099, 12, 30, tzinfo=UTC)
@@ -37,6 +37,7 @@ CAMPAIGN = "camp_0000000000000001"
 FLOOR_SLOT_VALUES = {
     "first_name": "Al", "firm": "Thrive", "their_role": "Partner",
     "firm_specific_hook": "the work at Thrive",
+    "recipient_hook": "Your Partner work at Thrive caught my attention.",
     "shared_signal_sentence": "Your earlier work experience caught my attention.",
     "transition_from": "an earlier role", "transition_to": "venture investing at Thrive",
     "sender_intro": "I am exploring a similar career path.",
@@ -68,6 +69,7 @@ def _bindings(template, values):
         "firm_specific_hook": "topic", "shared_school": "school",
         "shared_signal_sentence": "why_them", "transition_from": "transition_from",
         "transition_to": "transition_to", "new_fact_sentence": "new_fact_sentence",
+        "recipient_hook": "recipient_hook",
     }
     for slot, name in mapping.items():
         if slot not in values:
@@ -97,7 +99,10 @@ def test_every_family_renders_and_passes_qa(template_id, record_property) -> Non
     assert 36 <= len(subject) <= 50
     assert 75 <= _body_word_count(body) <= 125
     bindings, evidence = _bindings(template, values)
-    assert bindings["why_them"].value == values["shared_signal_sentence"]
+    if "shared_signal_sentence" in values:
+        assert bindings["why_them"].value == values["shared_signal_sentence"]
+    else:
+        assert bindings["recipient_hook"].value == values["recipient_hook"]
     step = int(template_id == "follow_up_de_escalation")
     result = validate_revision(
         subject, body, ask_sentence(body), bindings, evidence,
@@ -204,9 +209,10 @@ def _draft_ready_fixture(tmp_path, monkeypatch, *, subject_high: int = 50,
     return connection, person_id, campaign_id
 
 
-def test_every_family_including_the_follow_up_renders_the_shared_signal() -> None:
+def test_every_family_has_a_typed_person_specific_recipient_slot() -> None:
     for template in load_registry_v2().values():
-        assert "shared_signal_sentence" in slot_inventory(template), template.template_id
+        slots = slot_inventory(template)
+        assert "shared_signal_sentence" in slots or "recipient_hook" in slots, template.template_id
 
 
 def test_the_follow_up_cites_an_id_outside_the_step_zero_set() -> None:
@@ -251,6 +257,65 @@ def test_draft_campaign_creates_a_qa_checked_revision(tmp_path, monkeypatch) -> 
     assert json.loads(revision["sender_proof_points"]) == [
         "I built a verified synthetic operating project."
     ]
+
+
+@pytest.mark.parametrize("title", ("Operations Director", "Strategy Director", "Chief of Staff"))
+def test_current_role_hook_renders_for_ops_strategy_and_chief_of_staff_without_a_career_path(
+    tmp_path, monkeypatch, title,
+) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(
+        tmp_path, monkeypatch,
+        scored_options={"title": title, "employment_excerpt": f"Morgan is {title} at Test Capital"},
+    )
+    signals = json.loads(connection.execute("SELECT signals_json FROM person_affinity").fetchone()[0])
+    connection.execute(
+        "UPDATE person_affinity SET signals_json=? WHERE person_id=? AND campaign_id=?",
+        (json.dumps([item for item in signals if item["code"] != "path_match"]), person_id, campaign_id),
+    )
+    connection.execute("DELETE FROM person_employer WHERE person_id=? AND end_year IS NOT NULL", (person_id,))
+
+    summary = draft_campaign(connection, campaign_id, 0, anchors=object(), now=NOW)
+
+    assert summary.revisions_created == 1 and summary.failure_codes == {}
+    template_id, template_version, body = connection.execute(
+        "SELECT template_id,template_version,body FROM revision"
+    ).fetchone()
+    assert (template_id, template_version) == ("startup_current_role_hook", 1)
+    assert body.count("Would you have") == 1
+
+
+def test_invalid_current_role_hook_source_parks_before_revision_write(tmp_path, monkeypatch) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    signals = json.loads(connection.execute("SELECT signals_json FROM person_affinity").fetchone()[0])
+    connection.execute(
+        "UPDATE person_affinity SET signals_json=? WHERE person_id=? AND campaign_id=?",
+        (json.dumps([item for item in signals if item["code"] != "path_match"]), person_id, campaign_id),
+    )
+    connection.execute("UPDATE source_snapshot SET entity_id='wrong-person' WHERE snapshot_id='snap_company'")
+
+    summary = draft_campaign(connection, campaign_id, 0, anchors=object(), now=NOW)
+
+    assert summary.revisions_created == 0
+    assert summary.failure_codes == {"evidence_identity_source_mismatch": 1}
+    assert connection.execute("SELECT count(*) FROM revision").fetchone()[0] == 0
+
+
+def test_long_own_writing_hook_renders_as_a_complete_sentence(tmp_path, monkeypatch) -> None:
+    excerpt = "Synthetic operating note on how teams choose priorities during rapid change with shared ownership"
+    connection, person_id, campaign_id = _draft_ready_fixture(
+        tmp_path, monkeypatch, scored_options={"writing_excerpt": excerpt},
+    )
+    signals = json.loads(connection.execute("SELECT signals_json FROM person_affinity").fetchone()[0])
+    connection.execute(
+        "UPDATE person_affinity SET signals_json=? WHERE person_id=? AND campaign_id=?",
+        (json.dumps([item for item in signals if item["code"] != "path_match"]), person_id, campaign_id),
+    )
+
+    summary = draft_campaign(connection, campaign_id, 0, anchors=object(), now=NOW)
+
+    assert summary.revisions_created == 1
+    body = connection.execute("SELECT body FROM revision").fetchone()[0]
+    assert "Your Operations Director work at Test Capital caught my attention. I noticed" in body
 
 
 def test_draft_campaign_retry_requires_the_existing_exact_qa_context(
@@ -470,6 +535,12 @@ def test_the_follow_up_clears_the_seventy_five_word_floor() -> None:
     template = load_registry_v2()["follow_up_de_escalation"]
     _subject, body = render(template, _slot_values(template))
     assert _body_word_count(body) >= 75
+
+
+def test_current_role_hook_clears_the_seventy_five_word_floor() -> None:
+    template = load_registry_v2()["startup_current_role_hook"]
+    _subject, body = render(template, _slot_values(template))
+    assert 75 <= _body_word_count(body) <= 125
 
 
 def test_the_registry_holds_many_templates_per_intent() -> None:
