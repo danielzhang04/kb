@@ -163,8 +163,8 @@ is a separate unscored protocol and does not replace this generation path.
 ## Video, after an approved `gen` still exists
 
 The approved-still adapter consumes a current approved image from the fresh `gen`
-plan. It reads existing lineage and writes a
-fresh, non-promotable video manifest beside that selected image. All values below
+plan. The explicit prospective mode reads existing lineage and writes a fresh,
+unreviewed video-review candidate manifest beside that selected image. All values below
 are root-relative paths; `--out` must be in the approved image’s directory.
 
 ```powershell
@@ -173,14 +173,16 @@ are root-relative paths; `--out` must be in the approved image’s directory.
   --persona 'orgs/figment/personas/creator-001/persona.yaml' `
   --approved-gen-plan '<GEN_PLAN_ROOT_RELATIVE_TO_REPOSITORY_ROOT>/plan.json' `
   --approved-gen-image-id '<APPROVED_GEN_IMAGE_ID>' `
+  --mode review-candidate-v1 `
   --resolution-profile native-1280x704 `
   --action '<SHORT_CLOTHED_MOTION_TEXT>' `
   --out '<APPROVED_GEN_IMAGE_DIRECTORY_RELATIVE_TO_REPOSITORY_ROOT>/video-manifest.json'
 ```
 
-The compiler does not render a clip or create temporal acceptance. Its manifest
-remains diagnostic and non-promotable pending the existing video execution,
-receipt, and temporal review path. See [the adapter contract](../../orgs/figment/pipeline/video/APPROVED_GEN_ADAPTER.md).
+The compiler does not render a clip or create temporal acceptance. Candidate mode
+records only an unreviewed subject eligible for the future temporal-review
+authority. The unchanged diagnostic mode remains non-promotable. Assembly and
+extraction are evidence, not acceptance. See [the adapter contract](../../orgs/figment/pipeline/video/APPROVED_GEN_ADAPTER.md).
 
 ## Video execution, only under its separate live authorization
 

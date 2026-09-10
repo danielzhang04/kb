@@ -20,8 +20,12 @@ The adapter selects exactly one approved image from
 `stage` is exactly `gen`. It must not write or amend any approval record. Its
 first-frame provenance must contain only the selected `image_id`, root-relative
 image path, byte count and SHA-256, plus hashes of the approved list and approval
-lineage records. The compiled `figment/video-i2v-manifest@1` remains
+lineage records. The default compiled `figment/video-i2v-manifest@1` remains
 `not_promotable: true`: it has not rendered a clip and has no temporal review.
+The explicit `--mode review-candidate-v1` route instead emits the distinct
+`figment/video-review-candidate@1` schema with literal `unreviewed` lifecycle
+and temporal-review eligibility. It is still not accepted media. Only a future
+terminal review authority may produce accepted-video lineage.
 
 Resolution is selected from two fixed profiles. The receipt-based diagnostic route
 continues to default to `legacy-512x288`. The approved-gen route defaults to and requires
@@ -50,6 +54,14 @@ schema change is needed. The exact CLI shape is:
 python video_manifest.py --root <ROOT> --persona <PERSONA> --approved-gen-plan <GEN_PLAN> --approved-gen-image-id <IMAGE_ID> --resolution-profile native-1280x704 --action <MOTION_TEXT> --out <MANIFEST_BESIDE_SELECTED_FRAME>
 ```
 
+For a prospective temporal-review candidate, add
+`--mode review-candidate-v1`. Candidate mode requires the exact current persona
+bound by the approved-gen plan, uses a reserved candidate ID/output prefix, and
+records the SHA-256 of the harness-derived per-job graph. The unchanged harness
+must apply that same candidate ID to SaveImage node 9. A diagnostic receipt,
+same-ID alternate persona, legacy resolution, stale approval, or unsafe evidence
+path fails before publication.
+
 `--out` must be beside the selected frame so the existing harness can stage both
 without widening its upload boundary.
 
@@ -64,7 +76,10 @@ The implementation is covered by the following fixtures and assertions:
   and unknown profiles or an approved-gen legacy request fail before any write;
 - the effective workflow, `frame_budget`, profile record, and output name bind the same
   selected resolution;
-- the manifest does not claim acceptance, rendering, or temporal quality.
+- neither manifest mode claims acceptance, rendering, or temporal quality;
+- candidate mode reaches the real approved-gen validator, upload expansion and
+  unchanged harness dry-run, while its 81-frame assembly stays non-promotable
+  review evidence.
 
 After the upload-path repair, the production-lineage integration test passed in
 54.65 seconds and the nested diagnostic-frame regression passed in 0.57 seconds.

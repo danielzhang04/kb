@@ -44,6 +44,26 @@ def compile_manifest(root: Path, files: dict[str, Path], out: str = "video-manif
     return video.write_manifest(root=root, persona_path=Path(files["persona"].name), first_frame_receipt=Path(files["receipt"].name), action="walk slowly toward the camera in a fully clothed street-style shot", out=Path(out), seed=77)
 
 
+def approved_fixture(root: Path, files: dict[str, Path]) -> tuple[Path, SimpleNamespace]:
+    source_persona = root / "source-persona"; source_persona.mkdir()
+    source_persona_file = source_persona / "persona.yaml"
+    source_persona_file.write_bytes(files["persona"].read_bytes())
+    plan = root / "plan.json"
+    write_json(plan, {"assets": {"persona_dir": "source-persona"}})
+    grade = root / "grade" / "gen"; grade.mkdir(parents=True)
+    evidence = {}
+    for name in ("approval-lineage.json", "approved-list.json", "rulings.json", "grading-manifest.json", "evaluation-inputs.json", "gate.json"):
+        path = grade / name; write_json(path, {"fixture": name}); evidence[name] = path
+    authority = {
+        "image_id": "creator-test-gen-01", "path": str(files["frame"]),
+        "bytes": files["frame"].stat().st_size, "sha256": digest(files["frame"]),
+        "source_plan": {"path": str(plan), "sha256": digest(plan)},
+        "approval_lineage": {"path": str(evidence["approval-lineage.json"]), "sha256": digest(evidence["approval-lineage.json"])},
+        "approved_list": {"path": str(evidence["approved-list.json"]), "sha256": digest(evidence["approved-list.json"])},
+    }
+    return plan, SimpleNamespace(ROOT=root, validate_approved_gen_still=lambda *args: authority)
+
+
 def test_compiles_hash_bound_native_81_frame_manifest(tmp_path: Path) -> None:
     files = fixture(tmp_path)
     manifest = compile_manifest(tmp_path, files)
@@ -123,6 +143,181 @@ def test_approved_gen_native_profile_dry_runs_81_outputs_and_verified_teardown(
     assert len(receipt["jobs"][0]["files"]) == 81
     recovery = json.loads(next((tmp_path / "native-dry-run").glob("recovery-*.json")).read_text(encoding="utf-8"))
     assert recovery["state"] == "terminated" and recovery["absence_verified"] is True
+
+
+def test_compiles_distinct_unreviewed_review_candidate_from_approved_gen_only(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan, train = approved_fixture(tmp_path, files)
+    monkeypatch.setattr(video, "_train_module", lambda: train)
+    manifest = video.write_manifest(
+        root=tmp_path, persona_path=Path("source-persona/persona.yaml"),
+        approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+        action="walk slowly toward the camera", out=Path("candidate.json"), seed=77,
+        mode=video.CANDIDATE_MODE,
+    )
+    job = manifest["jobs"][0]
+    assert manifest["schema"] == video.CANDIDATE_MANIFEST_SCHEMA
+    assert manifest["mode"] == video.CANDIDATE_MODE
+    assert manifest["lifecycle"] == "unreviewed"
+    assert manifest["eligible_for_temporal_review"] is True
+    assert "not_promotable" not in manifest
+    assert manifest["candidate_id"] == job["output_name"]
+    assert job["output_name"].startswith(video.CANDIDATE_PREFIX)
+    assert manifest["provenance"]["first_frame"]["approved_gen"]["persona"] == {
+        "path": "source-persona/persona.yaml", "sha256": digest(tmp_path / "source-persona" / "persona.yaml"),
+    }
+    assert manifest["resolution_profile"]["name"] == video.APPROVED_GEN_RESOLUTION_PROFILE
+
+
+def test_review_candidate_refuses_diagnostic_input_and_unsafe_authority_before_write(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path)
+    out = tmp_path / "candidate.json"
+    with pytest.raises(video.VideoManifestError, match="require the current approved gen"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path(files["persona"].name),
+            first_frame_receipt=Path(files["receipt"].name), action="walk slowly",
+            out=Path(out.name), mode=video.CANDIDATE_MODE,
+        )
+    assert not out.exists()
+
+    plan, train = approved_fixture(tmp_path, files)
+    called = False
+    def authority(*args: object) -> object:
+        nonlocal called; called = True; return train.validate_approved_gen_still(*args)
+    guarded = SimpleNamespace(ROOT=tmp_path, validate_approved_gen_still=authority)
+    monkeypatch.setattr(video, "_train_module", lambda: guarded)
+    (tmp_path / "grade" / "gen" / "gate.json").write_bytes(b" " * (video.MAX_JSON_BYTES + 1))
+    with pytest.raises(video.VideoManifestError, match="no larger"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path(files["persona"].name),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+        )
+    assert called is False and not out.exists()
+    (tmp_path / "grade" / "gen" / "gate.json").write_text(
+        '{"nested":' + ('[' * 10_000) + ('0' + ']' * 10_000) + '}', encoding="utf-8",
+    )
+    with pytest.raises(video.VideoManifestError, match="shallow object"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path(files["persona"].name),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+        )
+    assert called is False and not out.exists()
+
+
+def test_review_candidate_refuses_reparse_gen_evidence_before_authority(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan, train = approved_fixture(tmp_path, files)
+    grade = tmp_path / "grade"
+    grade_target = tmp_path / "grade-real"
+    grade.rename(grade_target)
+    result = subprocess.run(
+        ["cmd", "/c", "mklink", "/J", str(grade), str(grade_target)],
+        shell=False, capture_output=True, text=True,
+    )
+    if result.returncode != 0:
+        grade_target.rename(grade)
+        pytest.skip("this Windows test environment cannot create NTFS junctions")
+    called = False
+    def authority(*args: object) -> object:
+        nonlocal called; called = True; return train.validate_approved_gen_still(*args)
+    monkeypatch.setattr(
+        video, "_train_module",
+        lambda: SimpleNamespace(ROOT=tmp_path, validate_approved_gen_still=authority),
+    )
+    out = tmp_path / "candidate.json"
+    try:
+        with pytest.raises(video.VideoManifestError, match="reparse point"):
+            video.write_manifest(
+                root=tmp_path, persona_path=Path("source-persona/persona.yaml"),
+                approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+                action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+            )
+        assert called is False and not out.exists()
+    finally:
+        os.rmdir(grade)
+        grade_target.rename(grade)
+
+
+def test_review_candidate_rejects_same_id_alternate_persona(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan, train = approved_fixture(tmp_path, files)
+    alternate = json.loads(files["persona"].read_text(encoding="utf-8"))
+    alternate["identity"]["look"]["clothing"] = "a different fully opaque coat and jeans"
+    write_json(files["persona"], alternate)
+    monkeypatch.setattr(video, "_train_module", lambda: train)
+    with pytest.raises(video.VideoManifestError, match="must be the current approved gen plan persona"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path(files["persona"].name),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path("candidate.json"), mode=video.CANDIDATE_MODE,
+        )
+
+
+def test_review_candidate_requires_native_profile_and_stable_persona_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan, train = approved_fixture(tmp_path, files)
+    monkeypatch.setattr(video, "_train_module", lambda: train)
+    out = tmp_path / "candidate.json"
+    with pytest.raises(video.VideoManifestError, match="approved gen video requires"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path("source-persona/persona.yaml"),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+            resolution_profile=video.LEGACY_RESOLUTION_PROFILE,
+        )
+    assert not out.exists()
+
+    original = video._read_json_snapshot
+    changed = False
+    def mutate_after_initial_persona(path: Path, label: str) -> tuple[dict[str, object], str]:
+        nonlocal changed
+        value, digest_value = original(path, label)
+        if label == "persona" and not changed:
+            changed = True
+            updated = json.loads(path.read_text(encoding="utf-8"))
+            updated["identity"]["look"]["clothing"] = "a changed fully opaque coat and jeans"
+            write_json(path, updated)
+        return value, digest_value
+    monkeypatch.setattr(video, "_read_json_snapshot", mutate_after_initial_persona)
+    with pytest.raises(video.VideoManifestError, match="current approved gen plan persona"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path("source-persona/persona.yaml"),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+        )
+    assert not out.exists()
+
+
+def test_review_candidate_rechecks_dependencies_at_write_boundary(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    files = fixture(tmp_path); plan, train = approved_fixture(tmp_path, files)
+    monkeypatch.setattr(video, "_train_module", lambda: train)
+    original = video.build_manifest
+    calls = 0
+    def mutate_after_first_build(**kwargs: object) -> dict[str, object]:
+        nonlocal calls
+        calls += 1
+        result = original(**kwargs)
+        if calls == 1: plan.write_text(plan.read_text(encoding="utf-8") + " ", encoding="utf-8")
+        return result
+    monkeypatch.setattr(video, "build_manifest", mutate_after_first_build)
+    out = tmp_path / "candidate.json"
+    with pytest.raises(video.VideoManifestError, match="approved gen plan changed"):
+        video.write_manifest(
+            root=tmp_path, persona_path=Path("source-persona/persona.yaml"),
+            approved_gen_plan=Path(plan.name), approved_gen_image_id="creator-test-gen-01",
+            action="walk slowly", out=Path(out.name), mode=video.CANDIDATE_MODE,
+        )
+    assert calls == 2 and not out.exists()
 
 
 @pytest.mark.parametrize("profile", ["unknown", "1280x704", "", False, 0, [], 1280])

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compile one bounded, non-promotable Wan 2.2 TI2V-5B image job manifest.
+"""Compile one bounded Wan 2.2 TI2V-5B diagnostic or review-candidate manifest.
 
 The compiler never starts a pod, downloads a model, invokes ComfyUI, or assembles
 video. It writes one fresh JSON manifest for the existing image-output harness.
@@ -20,6 +20,10 @@ from typing import Any
 
 FRAME_SCHEMA = "figment/video-first-frame-input@1"
 MANIFEST_SCHEMA = "figment/video-i2v-manifest@1"
+CANDIDATE_MANIFEST_SCHEMA = "figment/video-review-candidate@1"
+DIAGNOSTIC_MODE = "diagnostic"
+CANDIDATE_MODE = "review-candidate-v1"
+CANDIDATE_PREFIX = f"{CANDIDATE_MODE}-"
 MAX_JSON_BYTES = 256 * 1024
 MAX_FRAME_BYTES = 32 * 1024 * 1024
 MAX_JSON_DEPTH = 32
@@ -51,7 +55,7 @@ REQUIRED_NODES = {
 
 
 class VideoManifestError(ValueError):
-    """Raised when a bounded diagnostic manifest cannot be compiled safely."""
+    """Raised when a bounded video manifest cannot be compiled safely."""
 
 
 def _reparse_point(path: Path) -> bool:
@@ -117,6 +121,32 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
     return value
 
 
+def _read_json_snapshot(path: Path, label: str) -> tuple[dict[str, Any], str]:
+    try:
+        before = path.stat()
+        if not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > MAX_JSON_BYTES:
+            raise VideoManifestError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
+        with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            raw = handle.read(MAX_JSON_BYTES + 1)
+            finished = os.fstat(handle.fileno())
+        after = path.stat()
+        identity = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
+        if len(raw) > MAX_JSON_BYTES:
+            raise VideoManifestError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
+        if len(raw) != before.st_size or identity(before) != identity(opened) or identity(opened) != identity(finished) or identity(finished) != identity(after):
+            raise VideoManifestError(f"{label} changed while being read")
+        source = raw.decode("utf-8")
+        if not _depth_ok(source):
+            raise VideoManifestError(f"{label} JSON must be a shallow object")
+        value = json.loads(source)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise VideoManifestError(f"cannot read {label} JSON") from exc
+    if not isinstance(value, dict):
+        raise VideoManifestError(f"{label} JSON must be a shallow object")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
 def _hash_file(root: Path, relative: Path, label: str, maximum: int) -> dict[str, Any]:
     path = _within(root, relative, label)
     if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
@@ -177,33 +207,99 @@ def _train_module() -> Any:
     return module
 
 
-def _relative_path_record(root: Path, record: dict[str, Any], label: str) -> dict[str, Any]:
+def _relative_path_record(root: Path, record: dict[str, Any], label: str, *, strict: bool = False) -> dict[str, Any]:
     try:
-        path = Path(record["path"]).resolve(strict=True); relative = path.relative_to(root.resolve())
+        raw = Path(record["path"])
+        if strict:
+            if not raw.is_absolute(): raise ValueError("not absolute")
+            relative = raw.relative_to(root)
+            path = _within(root, relative, f"approved gen {label}")
+        else:
+            path = raw.resolve(strict=True); relative = path.relative_to(root.resolve())
         if not isinstance(record.get("sha256"), str) or not SHA256.fullmatch(record["sha256"]): raise ValueError("digest")
     except (KeyError, TypeError, OSError, ValueError) as exc: raise VideoManifestError(f"approved gen {label} escapes --root") from exc
     return {"path": relative.as_posix(), "sha256": record["sha256"]}
 
 
-def _relative_record(root: Path, record: dict[str, Any], label: str) -> dict[str, Any]:
-    result = _relative_path_record(root, record, label)
+def _relative_record(root: Path, record: dict[str, Any], label: str, *, strict: bool = False) -> dict[str, Any]:
+    result = _relative_path_record(root, record, label, strict=strict)
     path = root / result["path"]
     try:
-        _read_json(path, f"approved gen {label}")
-        if hashlib.sha256(path.read_bytes()).hexdigest() != result["sha256"]: raise ValueError("changed")
+        if strict:
+            _, actual_sha256 = _read_json_snapshot(path, f"approved gen {label}")
+        else:
+            _read_json(path, f"approved gen {label}")
+            actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+        if actual_sha256 != result["sha256"]: raise ValueError("changed")
     except (OSError, ValueError, VideoManifestError) as exc: raise VideoManifestError(f"approved gen {label} changed") from exc
     return result
 
 
-def _load_approved_gen(root: Path, plan_relative: Path, creator: str, image_id: str) -> dict[str, Any]:
+def _candidate_persona(root: Path, train: Any, plan_record: dict[str, Any]) -> dict[str, str]:
+    assets = plan_record.get("assets")
+    persona_dir = assets.get("persona_dir") if isinstance(assets, dict) else None
+    if not isinstance(persona_dir, str):
+        raise VideoManifestError("approved gen plan persona path is malformed")
+    relative = Path(persona_dir)
+    if relative.is_absolute() or relative.drive:
+        raise VideoManifestError("approved gen persona path must be authority-root-relative")
+    current = Path(train.ROOT)
+    for part in relative.parts:
+        if part in ("", "."): continue
+        current = current.parent if part == ".." else current / part
+        if _reparse_point(current):
+            raise VideoManifestError("approved gen persona path traverses a link")
+    persona = current / "persona.yaml"
+    if _reparse_point(persona):
+        raise VideoManifestError("approved gen persona path traverses a link")
+    try: persona_relative = persona.resolve(strict=True).relative_to(root)
+    except (OSError, ValueError) as exc:
+        raise VideoManifestError("approved gen persona escapes candidate --root") from exc
+    bounded = _within(root, persona_relative, "approved gen persona")
+    _, digest = _read_json_snapshot(bounded, "approved gen persona")
+    return {
+        "path": persona_relative.as_posix(),
+        "sha256": digest,
+    }
+
+
+def _candidate_preflight(root: Path, plan: Path, train: Any) -> tuple[dict[str, str], dict[str, str]]:
+    plan_record, plan_digest = _read_json_snapshot(plan, "approved gen plan")
+    plan_relative = plan.relative_to(root)
+    snapshot = {"plan": plan_digest}
+    for name in (
+        "approval-lineage.json", "approved-list.json", "rulings.json",
+        "grading-manifest.json", "evaluation-inputs.json", "gate.json",
+    ):
+        relative = plan_relative.parent / "grade" / "gen" / name
+        evidence = _within(root, relative, f"approved gen {name}")
+        _, snapshot[name] = _read_json_snapshot(evidence, f"approved gen {name}")
+    persona = _candidate_persona(root, train, plan_record)
+    snapshot["persona"] = persona["sha256"]
+    return persona, snapshot
+
+
+def _load_approved_gen(root: Path, plan_relative: Path, creator: str, image_id: str, *, candidate: bool = False) -> dict[str, Any]:
     plan = _within(root, plan_relative, "approved gen plan")
-    try: authority = _train_module().validate_approved_gen_still(creator, plan, image_id)
+    train = _train_module()
+    persona_record = snapshot = None
+    if candidate: persona_record, snapshot = _candidate_preflight(root, plan, train)
+    try: authority = train.validate_approved_gen_still(creator, plan, image_id)
     except Exception as exc: raise VideoManifestError("approved gen lineage is invalid") from exc
-    frame_record = _relative_path_record(root, authority, "image")
+    frame_record = _relative_path_record(root, authority, "image", strict=candidate)
     frame = _hash_file(root, Path(frame_record["path"]), "approved gen frame", MAX_FRAME_BYTES)
     if frame["bytes"] != authority.get("bytes") or frame["sha256"] != authority.get("sha256"):
         raise VideoManifestError("approved gen frame changed while preparing video")
-    return {"approved_gen": {"image_id": authority["image_id"], "source_plan": _relative_record(root, authority["source_plan"], "plan"), "approval_lineage": _relative_record(root, authority["approval_lineage"], "approval lineage"), "approved_list": _relative_record(root, authority["approved_list"], "approved list")}, "frame": frame}
+    approved_gen = {"image_id": authority["image_id"], "source_plan": _relative_record(root, authority["source_plan"], "plan", strict=candidate), "approval_lineage": _relative_record(root, authority["approval_lineage"], "approval lineage", strict=candidate), "approved_list": _relative_record(root, authority["approved_list"], "approved list", strict=candidate)}
+    if candidate:
+        repeated_persona, repeated_snapshot = _candidate_preflight(root, plan, train)
+        if repeated_snapshot != snapshot:
+            raise VideoManifestError("approved gen evidence changed while preparing candidate")
+        assert persona_record is not None
+        if repeated_persona != persona_record:
+            raise VideoManifestError("approved gen persona changed while preparing candidate")
+        approved_gen["persona"] = persona_record
+    return {"approved_gen": approved_gen, "frame": frame}
 
 
 def _motion(persona: dict[str, Any], action: str) -> tuple[str, str]:
@@ -283,11 +379,23 @@ def _effective_workflow_sha256(workflow: dict[str, Any]) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
-def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, seed: int = 4815162342, first_frame_receipt: Path | None = None, approved_gen_plan: Path | None = None, approved_gen_image_id: str | None = None, resolution_profile: str | None = None) -> dict[str, Any]:
+def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, seed: int = 4815162342, first_frame_receipt: Path | None = None, approved_gen_plan: Path | None = None, approved_gen_image_id: str | None = None, resolution_profile: str | None = None, mode: str = DIAGNOSTIC_MODE) -> dict[str, Any]:
     root = _root(root)
+    if mode not in (DIAGNOSTIC_MODE, CANDIDATE_MODE):
+        raise VideoManifestError(
+            f"mode must be {DIAGNOSTIC_MODE!r} or {CANDIDATE_MODE!r}"
+        )
+    if mode == CANDIDATE_MODE and approved_gen_plan is None:
+        raise VideoManifestError(
+            "review candidates require the current approved gen plan and image"
+        )
     if isinstance(seed, bool) or not isinstance(seed, int) or not 0 <= seed <= MAX_SEED:
         raise VideoManifestError(f"seed must be an integer between 0 and {MAX_SEED}")
-    persona = _read_json(_within(root, persona_path, "persona"), "persona")
+    persona_file = _within(root, persona_path, "persona")
+    if mode == CANDIDATE_MODE:
+        persona, candidate_persona_sha256 = _read_json_snapshot(persona_file, "persona")
+    else:
+        persona, candidate_persona_sha256 = _read_json(persona_file, "persona"), None
     creator = _text(persona.get("id"), "persona.id")
     if not SAFE_NAME.fullmatch(creator): raise VideoManifestError("persona.id must be safe for a harness destination")
     age, prompt = _motion(persona, action)
@@ -302,7 +410,14 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
     else:
         if not isinstance(approved_gen_image_id, str) or not approved_gen_image_id:
             raise VideoManifestError("approved gen plan requires an approved gen image id")
-        first_frame = _load_approved_gen(root, approved_gen_plan, creator, approved_gen_image_id)
+        first_frame = _load_approved_gen(root, approved_gen_plan, creator, approved_gen_image_id, candidate=mode == CANDIDATE_MODE)
+        if mode == CANDIDATE_MODE:
+            candidate_persona = first_frame["approved_gen"]["persona"]
+            if (
+                candidate_persona["path"] != persona_file.relative_to(root).as_posix()
+                or candidate_persona["sha256"] != candidate_persona_sha256
+            ):
+                raise VideoManifestError("review candidate persona must be the current approved gen plan persona")
     out_path = _within(root, out, "output", allow_missing=True)
     if out_path.exists(): raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
     frame_path = Path(first_frame["frame"]["path"])
@@ -317,13 +432,24 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
     workflow["56"]["inputs"]["image"] = remote_image
     workflow["55"]["inputs"].update(resolution)
     effective_workflow_sha256 = _effective_workflow_sha256(workflow)
+    namespace = CANDIDATE_PREFIX if mode == CANDIDATE_MODE else "video-"
     output_name = (
-        f"video-{creator}-f{first_frame['frame']['sha256'][:12]}-s{seed}"
+        f"{namespace}{creator}-f{first_frame['frame']['sha256'][:12]}-s{seed}"
         f"-p{prompt_digest}-r{profile_name}-e{effective_workflow_sha256[:12]}"
     )
+    state = (
+        {
+            "schema": CANDIDATE_MANIFEST_SCHEMA,
+            "mode": CANDIDATE_MODE,
+            "lifecycle": "unreviewed",
+            "eligible_for_temporal_review": True,
+            "candidate_id": output_name,
+        }
+        if mode == CANDIDATE_MODE else
+        {"schema": MANIFEST_SCHEMA, "mode": DIAGNOSTIC_MODE, "not_promotable": True}
+    )
     manifest = {
-        "schema": MANIFEST_SCHEMA,
-        "mode": "diagnostic", "not_promotable": True,
+        **state,
         "provenance": {"first_frame": first_frame, "workflow": {"path": WORKFLOW_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(WORKFLOW_FILE).read_bytes()).hexdigest(), "effective_sha256": effective_workflow_sha256, "source": "https://github.com/Comfy-Org/workflow_templates/blob/8f712b99e950a22cd60a04a73683c4fd370a6996/templates/video_wan2_2_5B_ti2v.json"}, "model_pins": {"path": PINS_FILE, "sha256": hashlib.sha256(Path(__file__).with_name(PINS_FILE).read_bytes()).hexdigest()}},
         "motion": {"age_stage": age, "action": action, "prompt": prompt},
         "resolution_profile": {"name": profile_name, **resolution},
@@ -334,11 +460,23 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
         "uploads": [{"files": [frame_path.name], "subfolder": remote_subfolder, "type": "input", "overwrite": False}],
         "jobs": [{"seed": seed, "output_name": output_name, "expected_images": 81}],
     }
+    if mode == CANDIDATE_MODE:
+        candidate_graph = copy.deepcopy(workflow)
+        for node in candidate_graph.values():
+            inputs = node.get("inputs") if isinstance(node, dict) else None
+            if isinstance(inputs, dict):
+                if "seed" in inputs: inputs["seed"] = seed
+                if "filename_prefix" in inputs: inputs["filename_prefix"] = output_name
+        manifest["provenance"]["workflow"]["candidate_job_sha256"] = _effective_workflow_sha256(candidate_graph)
     return manifest
 
 
 def write_manifest(*, root: Path, out: Path, **kwargs: Any) -> dict[str, Any]:
     root = _root(root); value = build_manifest(root=root, out=out, **kwargs)
+    if value.get("mode") == CANDIDATE_MODE:
+        repeated = build_manifest(root=root, out=out, **kwargs)
+        if repeated != value:
+            raise VideoManifestError("review candidate inputs changed before write")
     path = _within(root, out, "output", allow_missing=True)
     try:
         with path.open("x", encoding="utf-8") as handle:
@@ -350,15 +488,16 @@ def write_manifest(*, root: Path, out: Path, **kwargs: Any) -> dict[str, Any]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--root", required=True, type=Path); parser.add_argument("--persona", required=True, type=Path)
+    parser.add_argument("--root", required=True, type=Path, help="candidate mode requires one common root containing its plan, persona, evidence, frame, and output"); parser.add_argument("--persona", required=True, type=Path)
     inputs = parser.add_mutually_exclusive_group(required=True)
     inputs.add_argument("--first-frame-input", type=Path); inputs.add_argument("--approved-gen-plan", type=Path)
     parser.add_argument("--approved-gen-image-id"); parser.add_argument("--action", required=True)
     parser.add_argument("--out", required=True, type=Path); parser.add_argument("--seed", type=int, default=4815162342)
     parser.add_argument("--resolution-profile", choices=tuple(RESOLUTION_PROFILES), default=None)
+    parser.add_argument("--mode", choices=(DIAGNOSTIC_MODE, CANDIDATE_MODE), default=DIAGNOSTIC_MODE)
     args = parser.parse_args(argv)
     try:
-        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, approved_gen_plan=args.approved_gen_plan, approved_gen_image_id=args.approved_gen_image_id, action=args.action, out=args.out, seed=args.seed, resolution_profile=args.resolution_profile)
+        write_manifest(root=args.root, persona_path=args.persona, first_frame_receipt=args.first_frame_input, approved_gen_plan=args.approved_gen_plan, approved_gen_image_id=args.approved_gen_image_id, action=args.action, out=args.out, seed=args.seed, resolution_profile=args.resolution_profile, mode=args.mode)
     except VideoManifestError as exc: parser.error(str(exc))
     return 0
 

@@ -26,10 +26,16 @@ def _load_frame_helpers() -> Any:
 frames = _load_frame_helpers()
 SCHEMA = "figment/video-frame-assembly@1"
 MANIFEST_SCHEMA = "figment/video-i2v-manifest@1"
+CANDIDATE_MANIFEST_SCHEMA = "figment/video-review-candidate@1"
+DIAGNOSTIC_MODE = "diagnostic"
+CANDIDATE_MODE = "review-candidate-v1"
+CANDIDATE_PREFIX = f"{CANDIDATE_MODE}-"
 MAX_RECEIPT_BYTES = 1024 * 1024
 MAX_TOTAL_FRAME_BYTES = 512 * 1024 * 1024
 FRAME_COUNT = 81
 FPS = 16
+CANDIDATE_WIDTH = 1280
+CANDIDATE_HEIGHT = 704
 MAX_JSON_DEPTH = 32
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -69,10 +75,24 @@ def _json(root: Path, relative: Path, label: str) -> tuple[dict[str, Any], Path,
     return value, path, hashlib.sha256(raw).hexdigest()
 
 
-def _manifest(value: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+def _manifest(value: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any], bool]:
     jobs, budget = value.get("jobs"), value.get("frame_budget")
-    if value.get("schema") != MANIFEST_SCHEMA or value.get("mode") != "diagnostic" or value.get("not_promotable") is not True:
-        raise FrameAssembleError("manifest must be a non-promotable diagnostic I2V manifest")
+    diagnostic = (
+        value.get("schema") == MANIFEST_SCHEMA
+        and value.get("mode") == DIAGNOSTIC_MODE
+        and value.get("not_promotable") is True
+    )
+    candidate = (
+        value.get("schema") == CANDIDATE_MANIFEST_SCHEMA
+        and value.get("mode") == CANDIDATE_MODE
+        and value.get("lifecycle") == "unreviewed"
+        and value.get("eligible_for_temporal_review") is True
+        and "not_promotable" not in value
+    )
+    if not diagnostic and not candidate:
+        raise FrameAssembleError(
+            "manifest must be a diagnostic or unreviewed eligible review-candidate manifest"
+        )
     if not isinstance(jobs, list) or len(jobs) != 1 or not isinstance(jobs[0], dict):
         raise FrameAssembleError("manifest must contain exactly one video image job")
     job = jobs[0]
@@ -82,7 +102,15 @@ def _manifest(value: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
         raise FrameAssembleError("manifest has the wrong video frame budget")
     if any(isinstance(budget.get(key), bool) or not isinstance(budget.get(key), int) or budget[key] <= 0 for key in ("width", "height")):
         raise FrameAssembleError("manifest has invalid frame dimensions")
-    return job, budget
+    if candidate and (
+        not isinstance(value.get("candidate_id"), str)
+        or value["candidate_id"] != job["output_name"]
+        or not job["output_name"].startswith(CANDIDATE_PREFIX)
+        or budget.get("width") != CANDIDATE_WIDTH
+        or budget.get("height") != CANDIDATE_HEIGHT
+    ):
+        raise FrameAssembleError("review candidate identity, native dimensions, and output namespace must agree")
+    return job, budget, candidate
 
 
 def _run_job(value: dict[str, Any], job: dict[str, Any]) -> list[dict[str, Any]]:
@@ -149,7 +177,7 @@ def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, 
     except frames.FrameExtractError as exc: raise _fail_from_frames(exc) from exc
     manifest, _, manifest_hash = _json(root, manifest_path, "manifest")
     run, run_path, run_hash = _json(root, run_receipt_path, "run receipt")
-    job, budget = _manifest(manifest); files = _run_job(run, job)
+    job, budget, candidate = _manifest(manifest); files = _run_job(run, job)
     try:
         run_dir = run_path.parent.relative_to(root)
         destination = frames._within(root, output_dir, "output directory", must_exist=False)
@@ -160,7 +188,7 @@ def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, 
         destination.mkdir()
         if frames._unsafe_link(destination) or not frames._real_below(root, destination): raise FrameAssembleError("output directory could not be created safely")
         partial_name = f".video-{uuid.uuid4().hex}.partial.mp4"; partial = output_dir / partial_name
-        final = output_dir / "diagnostic.mp4"
+        final = output_dir / ("candidate.mp4" if candidate else "diagnostic.mp4")
         pattern = root / run_dir / f"{job['output_name']}_%02d.png"
         frames._run([frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-framerate", str(FPS), "-start_number", "1", "-i", str(pattern), "-frames:v", str(FRAME_COUNT), "-c:v", "libx264", "-pix_fmt", "yuv420p", str(root / partial)], "ffmpeg frame assembly")
         after_records = _frame_records(root, run_dir, files, budget)
@@ -171,7 +199,9 @@ def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, 
         os.replace(root / partial, root / final)
         after = frames._hash_file(root, final, "assembled MP4", frames.MAX_VIDEO_BYTES)
         if before["bytes"] != after["bytes"] or before["sha256"] != after["sha256"]: raise FrameAssembleError("assembled MP4 changed while being finalized")
-        receipt = {"schema": SCHEMA, "not_promotable": True, "provenance": "local diagnostic assembly; no identity, approval, temporal-quality, or production claim", "manifest": {"path": manifest_path.as_posix(), "sha256": manifest_hash}, "run_receipt": {"path": run_receipt_path.as_posix(), "sha256": run_hash, "binding": "output_name and seed only; harness run.json has no executed-workflow hash"}, "frames": records, "movie": after, "metadata": metadata}
+        receipt = {"schema": SCHEMA, "not_promotable": True, "provenance": "local review-candidate assembly evidence; no approval or temporal-quality claim" if candidate else "local diagnostic assembly; no identity, approval, temporal-quality, or production claim", "manifest": {"path": manifest_path.as_posix(), "sha256": manifest_hash}, "run_receipt": {"path": run_receipt_path.as_posix(), "sha256": run_hash, "binding": "output_name and seed only; PNG prompt metadata requires separate review" if candidate else "output_name and seed only; harness run.json has no executed-workflow hash"}, "frames": records, "movie": after, "metadata": metadata}
+        if candidate:
+            receipt["candidate"] = {"id": manifest["candidate_id"], "mode": CANDIDATE_MODE}
         frames._write_receipt(root, output_dir / "frame-assembly.json", receipt)
         return receipt
     except Exception:

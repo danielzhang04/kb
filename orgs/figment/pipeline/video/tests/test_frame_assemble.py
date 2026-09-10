@@ -21,17 +21,19 @@ def write_json(path: Path, value: object) -> None:
     path.write_text(json.dumps(value), encoding="utf-8")
 
 
-def fixture(root: Path) -> tuple[Path, Path, str]:
+def fixture(root: Path, *, candidate: bool = False) -> tuple[Path, Path, str]:
     root.mkdir(parents=True, exist_ok=True)
-    output_name = "video-creator-test-f0123456789a-s77-p0123456789ab-w0123456789ab"
+    output_name = (assembly.CANDIDATE_PREFIX if candidate else "video-") + "creator-test-f0123456789a-s77-p0123456789ab-w0123456789ab"
     run_dir = root / "run"; run_dir.mkdir()
-    subprocess.run([str(assembly.frames.FFMPEG_PATH), "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=512x288:rate=16", "-frames:v", "81", str(run_dir / "raw_%02d.png")], shell=False, check=True, timeout=assembly.frames.COMMAND_TIMEOUT_SECONDS)
+    width, height = ((assembly.CANDIDATE_WIDTH, assembly.CANDIDATE_HEIGHT) if candidate else (512, 288))
+    subprocess.run([str(assembly.frames.FFMPEG_PATH), "-y", "-v", "error", "-f", "lavfi", "-i", f"testsrc2=size={width}x{height}:rate=16", "-frames:v", "81", str(run_dir / "raw_%02d.png")], shell=False, check=True, timeout=assembly.frames.COMMAND_TIMEOUT_SECONDS)
     files = []
     for index in range(1, 82):
         source = run_dir / f"raw_{index:02d}.png"; target = run_dir / f"{output_name}_{index:02d}.png"; source.replace(target)
         files.append({"path": target.name, "bytes": target.stat().st_size})
     manifest = root / "manifest.json"
-    write_json(manifest, {"schema": assembly.MANIFEST_SCHEMA, "mode": "diagnostic", "not_promotable": True, "frame_budget": {"width": 512, "height": 288, "frames": 81, "fps": 16, "batch_size": 1}, "jobs": [{"seed": 77, "output_name": output_name, "expected_images": 81}]})
+    state = ({"schema": assembly.CANDIDATE_MANIFEST_SCHEMA, "mode": assembly.CANDIDATE_MODE, "lifecycle": "unreviewed", "eligible_for_temporal_review": True, "candidate_id": output_name} if candidate else {"schema": assembly.MANIFEST_SCHEMA, "mode": assembly.DIAGNOSTIC_MODE, "not_promotable": True})
+    write_json(manifest, {**state, "frame_budget": {"width": width, "height": height, "frames": 81, "fps": 16, "batch_size": 1}, "jobs": [{"seed": 77, "output_name": output_name, "expected_images": 81}]})
     receipt = run_dir / "run.json"
     # Synthetic local media only; this emulates the successful harness receipt fields
     # required by the adapter and does not claim a real provider run occurred.
@@ -52,6 +54,40 @@ def test_assembles_real_ordered_81_pngs_and_records_honest_binding(tmp_path: Pat
     assert (tmp_path / "assembled" / "frame-assembly.json").is_file()
     extracted = assembly.frames.extract_frames(root=tmp_path, video_path=Path("assembled/diagnostic.mp4"), output_dir=Path("samples"))
     assert [(item["label"], item["index"]) for item in extracted["frames"]] == [("first", 0), ("middle", 40), ("last", 80)]
+
+
+def test_assembles_review_candidate_as_non_authoritative_evidence(tmp_path: Path) -> None:
+    manifest, _, output_name = fixture(tmp_path, candidate=True)
+    receipt = assembly.assemble_frames(root=tmp_path, manifest_path=Path(manifest.name), run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"))
+    assert receipt["schema"] == assembly.SCHEMA and receipt["not_promotable"] is True
+    assert receipt["candidate"] == {"id": output_name, "mode": assembly.CANDIDATE_MODE}
+    assert len(receipt["frames"]) == 81
+    assert receipt["metadata"]["width"] == assembly.CANDIDATE_WIDTH
+    assert receipt["metadata"]["height"] == assembly.CANDIDATE_HEIGHT
+    assert (tmp_path / "assembled" / "candidate.mp4").is_file()
+    assert not (tmp_path / "assembled" / "diagnostic.mp4").exists()
+
+
+@pytest.mark.parametrize("mutation", ["relabel", "promotable", "candidate-id", "prefix", "resolution"])
+def test_refuses_malformed_or_relabelled_candidate_state(mutation: str) -> None:
+    output_name = f"{assembly.CANDIDATE_PREFIX}creator-test"
+    value = {"schema": assembly.CANDIDATE_MANIFEST_SCHEMA, "mode": assembly.CANDIDATE_MODE, "lifecycle": "unreviewed", "eligible_for_temporal_review": True, "candidate_id": output_name, "frame_budget": {"width": 1280, "height": 704, "frames": 81, "fps": 16, "batch_size": 1}, "jobs": [{"seed": 77, "output_name": output_name, "expected_images": 81}]}
+    if mutation == "relabel": value["schema"] = assembly.MANIFEST_SCHEMA
+    elif mutation == "promotable": value["not_promotable"] = True
+    elif mutation == "candidate-id": value["candidate_id"] = "other"
+    elif mutation == "prefix":
+        value["candidate_id"] = "video-creator-test"; value["jobs"][0]["output_name"] = "video-creator-test"
+    else:
+        value["frame_budget"]["width"] = 512; value["frame_budget"]["height"] = 288
+    with pytest.raises(assembly.FrameAssembleError, match="candidate"):
+        assembly._manifest(value)
+
+
+def test_refuses_oversized_candidate_manifest_before_media_read(tmp_path: Path) -> None:
+    tmp_path.mkdir(exist_ok=True)
+    (tmp_path / "manifest.json").write_bytes(b" " * (assembly.MAX_RECEIPT_BYTES + 1))
+    with pytest.raises(assembly.FrameAssembleError, match="no larger"):
+        assembly.assemble_frames(root=tmp_path, manifest_path=Path("manifest.json"), run_receipt_path=Path("missing.json"), output_dir=Path("assembled"))
 
 
 @pytest.mark.parametrize("mutation, message", [("missing", "exactly 81"), ("duplicate", "ordered harness filename"), ("order", "ordered harness filename")])

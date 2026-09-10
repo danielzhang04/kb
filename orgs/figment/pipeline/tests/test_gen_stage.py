@@ -456,7 +456,50 @@ def test_real_approved_gen_lineage_compiles_nonpromotable_video_and_rejects_stal
     uploads = pod_runner.expand_manifest_uploads(manifest, manifest_path)
     assert len(uploads) == 1
     assert uploads[0].local_path == Path(authority["path"]).resolve()
+    source_persona = (command.ROOT / plan["assets"]["persona_dir"] / "persona.yaml").resolve()
+    candidate_relative = Path(authority["path"]).relative_to(tmp_path).parent / "review-candidate.json"
+    candidate = video.write_manifest(
+        root=tmp_path,
+        persona_path=source_persona.relative_to(tmp_path),
+        approved_gen_plan=(out / "plan.json").relative_to(tmp_path),
+        approved_gen_image_id=image_id,
+        action="walk slowly toward the camera",
+        out=candidate_relative,
+        seed=77,
+        mode=video.CANDIDATE_MODE,
+    )
+    candidate_path = tmp_path / candidate_relative
+    candidate_uploads = pod_runner.expand_manifest_uploads(candidate, candidate_path)
+    assert len(candidate_uploads) == 1
+    assert candidate_uploads[0].local_path == Path(authority["path"]).resolve()
+    job = candidate["jobs"][0]
+    applied = pod_runner.apply_job(
+        candidate["workflow"], job, pod_runner.manifest_seed_fields(candidate),
+    )
+    assert applied["9"]["inputs"]["filename_prefix"] == job["output_name"] == candidate["candidate_id"]
+    assert job["output_name"].startswith(video.CANDIDATE_PREFIX)
+    applied_sha = hashlib.sha256(json.dumps(applied, ensure_ascii=False, separators=(",", ":"), sort_keys=True).encode("utf-8")).hexdigest()
+    assert candidate["provenance"]["workflow"]["candidate_job_sha256"] == applied_sha
+    dry = tmp_path / "candidate-dry-run"
+    dry_run = subprocess.run(
+        [sys.executable, str(POD_RUNNER), "run", "--manifest", str(candidate_path),
+         "--out", str(dry), "--dry-run"], capture_output=True, text=True, timeout=30,
+    )
+    assert dry_run.returncode == 0, dry_run.stderr
+    dry_receipt = load_json(dry / "run.json")
+    assert dry_receipt["dry_run"] is True and dry_receipt["termination_verified"] is True
+    assert len(dry_receipt["jobs"][0]["files"]) == 81
     plan_path = out / "plan.json"; original = plan_path.read_text("utf-8"); plan_path.write_text(original + " ", "utf-8")
+    with pytest.raises(video.VideoManifestError, match="approved gen lineage is invalid"):
+        video.build_manifest(
+            root=tmp_path,
+            persona_path=source_persona.relative_to(tmp_path),
+            approved_gen_plan=plan_path.relative_to(tmp_path),
+            approved_gen_image_id=image_id,
+            action="walk slowly toward the camera",
+            out=Path(authority["path"]).relative_to(tmp_path).parent / "stale-candidate.json",
+            mode=video.CANDIDATE_MODE,
+        )
     with pytest.raises(command.FigmentTrainError, match="stale"):
         command.validate_approved_gen_still("creator-002", plan_path, image_id)
 
