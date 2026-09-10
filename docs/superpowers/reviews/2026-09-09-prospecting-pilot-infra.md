@@ -669,3 +669,32 @@ absence of synthetic canary bytes remains a measurement of named application sin
 not universal provider/OS privacy proof. Production authentication, retention, ACLs,
 exact-revision controller fencing/import and mandatory review-stage execution remain
 outside this synthetic slice.
+
+
+### Synthetic runtime repair closure
+
+Independent verdict: READY for the synthetic-only structured-turn executor. The
+reviewed repair explicitly terminates and waits for an unassigned suspended process,
+stops and joins the observer on orchestration failure, validates the allowed tool
+array shape, and rejects malformed nested bindings and boolean numeric bounds with
+fixed codes. Independent focused verification: 20 tests passed in 19.06s, including
+the installed CLI against the fake loopback provider, input/output/error canary scans,
+tool-response rejection, malformed/oversized/schema-invalid output, timeout and
+fresh-attempt recovery, exclusive attempt ownership, and descendant/process cleanup.
+Builder independently reported 20 tests passed in 18.34s.
+
+Reviewed SHA-256 bindings:
+- `private_runtime.py`: `b299f1939ee05b0e3dbfe272efa9ca2c929eae071f893ebc8235f97f03c78ff0`
+- `test_private_model_runtime.py`: `72a68c426a2edb37bb546bb88ecb777463a3199e366fbc9a85428a6e2e3fe45b`
+- Runtime spec: `afd3d6cb0959a950daa001b3d1a78e58f9ca4e01e91b8f1b85ea9e07c2b62694`
+
+This closes the preceding synthetic implementation findings. It does not establish
+live-provider authentication or retention, approved production runtime identity,
+real-data sink isolation, controller-owned durable lease fencing/import, or actual
+Humanizer/fact-check/independent-critic execution. Tool-response observation here
+belongs to the code-owned fake provider; a live response-observation boundary remains
+to be designed and tested. Canary absence is confined to the scanned isolated CLI
+home. No real records, credentials, external provider, VM, browser, or remote-control
+session were used. Review scratch remains for root-owned collection and cleanup.
+
+Post-review test-only addendum: the non-synthetic input sentinel was changed to plain text for the repository PII guard; the refusal, hash and repr assertions are unchanged, the affected test passed (1 passed in 0.21s), and independent review accepts the change without a broader rerun. The final test-file SHA-256 is `17572F7044C812E9EEC94F73D0FBF254FB5B2481A1946B34D9150804F052487D`; runtime source and spec are unchanged.
