@@ -27,19 +27,14 @@ checkpoint, not termination. Continue afterward while useful authorized work rem
 
 ## Current execution priorities — 2026-09-09
 
-The 2026-09-08 priorities below are historical planning context. The completed bounded research
-train-first run now has one original tester active under its immutable plan; no tester originals,
-quality ruling, selected checkpoint, held-out still, video, or production acceptance exists.
+V2 training and tester are complete with verified teardown. Root's promising final-checkpoint observation and independent all-cull review are both preserved. All five culls are now recorded without selecting a checkpoint; no accepted still or current video exists.
 
-1. Let the sole tester finish, record its receipt and verified teardown, and do not duplicate it.
-2. Produce the existing plan-bound local-research board from the real tester originals. Its automatic
-   rows remain false and `unavailable: judge`; review requires actual attributed research rulings
-   and explicit overrides, without an external image judge.
-3. If a valid checkpoint is selected through that evidence, run fresh held-out generation, then use
-   the existing approved-still adapter for a video manifest and temporal review.
-4. Project the resulting bounded lifecycle and review evidence in the local hub. The reviewed hub
-   mechanics do not make the pipeline deployed or its images quality-accepted.
+1. Keep the private LoRA transfer blocked pending the exact user answer after automatic approval review rejected the V3 launch before execution. Final source/review and actual ten-cell dry-run are complete; no diagnostic pod or spend exists.
+2. Prepare and independently review a public-base-only seed-1595 control with no reference/LoRA uploads. Use the existing native harness and public pins, fresh budget/inventory checks, bounded spend and verified teardown.
+3. Review actual controls before changing prompt, serving base or dataset. Resume the ten-cell private-checkpoint comparison only if exact consent arrives and fresh preflight passes. Normal generation/video require supported source lineage.
+4. Continue the research book and hub against actual lifecycle/rejection records. Instagram remains deferred; the 8 AM checkpoint does not stop work or keep-awake.
 
+See [transfer status](2026-09-09-runpod-checkpoint-transfer-status.md), [code review](2026-09-09-control-rejection-review.md) and [quality decision](2026-09-09-checkpoint-quality-decision.md).
 ## Historical execution priorities — 2026-09-08
 
 1. Run the one bounded local ComfyUI smoke with its corrected isolated cache, then record the actual result. A failed smoke is evidence, not a reason to retry automatically.

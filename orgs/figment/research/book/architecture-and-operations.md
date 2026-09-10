@@ -1,5 +1,11 @@
 # Architecture and operations
 
+## Current status — 2026-09-09, after final launch review
+
+V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
+
+The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent is pending. Independent preparation continues on a public-base-only control that exports no reference image or checkpoint. See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+
 The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
 
 The generated-input gallery is now complete at `adcf4591` and independently READY. Its 124 affected tests, typecheck, and actual original-route probe passed; the dashboard production build also passed. No screenshot or deployment was performed, and the display does not establish accepted identity or output quality.
