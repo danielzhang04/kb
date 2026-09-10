@@ -16,10 +16,12 @@ import sys
 from pathlib import Path
 
 import pytest
+from PIL import Image, PngImagePlugin
 
 ROOT = Path(__file__).resolve().parents[4]
 PIPELINE = ROOT / "orgs" / "figment" / "pipeline"
 POD_RUNNER = PIPELINE / "pod" / "runpod_run.py"
+VIDEO_REVIEW = PIPELINE / "video" / "video_review.py"
 GEN_WORKFLOW = PIPELINE / "train" / "workflows" / "krea2_gen_api.json"
 DETAIL_WORKFLOW = PIPELINE / "train" / "workflows" / "krea2_detail_only_api.json"
 PINS_PATH = PIPELINE / "train" / "tensor-pins.yaml"
@@ -47,6 +49,8 @@ _promoted_persona = anchor_stage_test._promoted_persona
 _set_training = anchor_stage_test._set_training
 load_json = anchor_stage_test.load_json
 video = load_module("figment_gen_test_video_manifest", PIPELINE / "video" / "video_manifest.py")
+video_assembly = load_module("figment_gen_test_video_assembly", PIPELINE / "video" / "frame_assemble.py")
+video_review = load_module("figment_gen_test_video_review", PIPELINE / "video" / "video_review.py")
 pod_runner = load_module("figment_gen_test_pod_runner", POD_RUNNER)
 train_first_test = load_module(
     "figment_gen_test_train_first", PIPELINE / "tests" / "test_figment_train.py",
@@ -157,6 +161,124 @@ def _prepare_accepted_checkpoint(
     )
     assert (source / "grade" / "tester" / "accepted-checkpoint.json").is_file()
     return step
+
+
+def test_gen_consumer_revalidates_current_selected_checkpoint_authority_before_harness(
+    command, tmp_path, monkeypatch,
+):
+    """A compiled gen plan retains staged bytes, but never retains stale authority."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "approved-gen-consumer"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+    )
+    plan_path = out / "plan.json"
+    approval = Path(plan["training"]["chosen_checkpoint_approval"])
+    approval_lineage = approval.with_name("approval-lineage.json")
+    accepted = load_json(approval)
+    source_plan = Path(accepted["source_plan"])
+    checkpoint = Path(accepted["checkpoint"]["path"])
+    persona_path = personas / "creator-002" / "persona.yaml"
+    manifest = load_json(out / plan["stages"]["gen"]["runs"][0]["manifest"])
+    staged = (out / plan["stages"]["gen"]["runs"][0]["manifest"]).parent / next(
+        value for upload in manifest["uploads"] for value in upload["files"]
+        if value.endswith(".safetensors")
+    )
+    launched = []
+
+    class _RC1:
+        returncode = 1
+
+    monkeypatch.setattr(
+        command.subprocess, "run", lambda argv, cwd=None: launched.append(argv) or _RC1(),
+    )
+
+    def rejects_before_harness(path: Path, mutate, message: str):
+        original = path.read_bytes()
+        try:
+            mutate(path)
+            with pytest.raises(command.FigmentTrainError, match=message):
+                command.run_planned_stage("creator-002", "gen", plan_path)
+            assert launched == []
+            assert not (out / "stage.json").exists()
+        finally:
+            path.write_bytes(original)
+
+    rejects_before_harness(approval, lambda path: path.unlink(), "cannot read JSON document")
+    rejects_before_harness(approval, lambda path: path.write_bytes(path.read_bytes() + b" "),
+                           "selected checkpoint approval provenance changed")
+    rejects_before_harness(approval_lineage, lambda path: path.unlink(), "tester approval lineage")
+    rejects_before_harness(approval_lineage, lambda path: path.write_bytes(path.read_bytes() + b" "),
+                           "tester approval lineage changed")
+    rejects_before_harness(persona_path,
+                           lambda path: _set_training(path.parent, chosen_checkpoint_step=3000),
+                           "current persona changed")
+    rejects_before_harness(persona_path, lambda path: path.write_bytes(path.read_bytes() + b" "),
+                           "current persona changed")
+    rejects_before_harness(source_plan, lambda path: path.write_bytes(path.read_bytes() + b" "),
+                           "chosen checkpoint source plan changed")
+    rejects_before_harness(checkpoint, lambda path: path.write_bytes(path.read_bytes() + b"x"),
+                           "checkpoint")
+    rejects_before_harness(staged, lambda path: path.write_bytes(path.read_bytes() + b"x"),
+                           "staged gen checkpoint changed")
+
+    def drop_gen_authority(path: Path):
+        legacy = load_json(path)
+        del legacy["gen_authority"]
+        path.write_text(json.dumps(legacy), "utf-8")
+
+    rejects_before_harness(plan_path, drop_gen_authority, "no captured selected-checkpoint provenance")
+
+    with pytest.raises(command.FigmentTrainError, match="harness stopped"):
+        command.run_planned_stage("creator-002", "gen", plan_path)
+    assert len(launched) == 1
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (("selection", "current persona changed"), ("source-plan", "source evidence cannot be read")),
+)
+def test_gen_consumer_revalidates_authority_between_base_and_detail_launches(
+    command, tmp_path, monkeypatch, mutation, message,
+):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    detail = tmp_path / "detail.png"
+    Image.new("RGB", (8, 8), (30, 40, 50)).save(detail)
+    out = tmp_path / "approved-gen-two-run"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas,
+        detail_images=str(detail), skip_pin_verify=True,
+    )
+    assert len(plan["stages"]["gen"]["runs"]) == 2
+    source_plan = Path(load_json(Path(plan["training"]["chosen_checkpoint_approval"]))["source_plan"])
+    launched = []
+
+    class _RC0:
+        returncode = 0
+
+    def fake_harness(argv, cwd=None):
+        launched.append(argv)
+        if len(launched) == 1:
+            if mutation == "selection":
+                _set_training(personas / "creator-002", chosen_checkpoint_step=3000)
+            else:
+                source_plan.unlink()
+        return _RC0()
+
+    monkeypatch.setattr(command.subprocess, "run", fake_harness)
+    monkeypatch.setattr(command, "verify_run_record", lambda *args: None)
+    with pytest.raises(command.FigmentTrainError, match=message):
+        command.run_planned_stage("creator-002", "gen", out / "plan.json")
+    assert len(launched) == 1
+    state = load_json(out / "stage.json")
+    runs = plan["stages"]["gen"]["runs"]
+    assert state["status"] == "stopped:gen"
+    assert state["runs"][runs[0]["manifest"]]["status"] == "complete"
+    assert runs[1]["manifest"] not in state["runs"]
 
 
 # ---------------------------------------------------------------------------
@@ -489,6 +611,46 @@ def test_real_approved_gen_lineage_compiles_nonpromotable_video_and_rejects_stal
     dry_receipt = load_json(dry / "run.json")
     assert dry_receipt["dry_run"] is True and dry_receipt["termination_verified"] is True
     assert len(dry_receipt["jobs"][0]["files"]) == 81
+
+    executed = json.loads(json.dumps(applied))
+    executed["56"]["inputs"]["is_changed"] = [authority["sha256"]]
+    prompt = json.dumps(executed, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    run_dir = tmp_path / "candidate-native-run"; run_dir.mkdir()
+    files = []
+    for index in range(1, 82):
+        frame = run_dir / f"{job['output_name']}_{index:02d}.png"
+        metadata = PngImagePlugin.PngInfo(); metadata.add_text("prompt", prompt)
+        Image.new("RGB", (1280, 704), (index % 255, 70, 90)).save(frame, pnginfo=metadata)
+        files.append({"path": frame.name, "bytes": frame.stat().st_size})
+    run_path = run_dir / "run.json"
+    run_path.write_text(json.dumps({
+        "schema": "figment/runpod-run@1", "dry_run": False,
+        "pod_id": "synthetic-real-lineage-fixture", "termination_verified": True,
+        "placement_attempts": [{"termination_verified": True}],
+        "jobs": [{"job": 1, "output_name": job["output_name"], "seed": job["seed"], "files": files}],
+    }), "utf-8")
+    video_assembly.assemble_frames(
+        root=tmp_path, manifest_path=candidate_relative,
+        run_receipt_path=run_path.relative_to(tmp_path), output_dir=Path("candidate-native-assembly"),
+    )
+    video_assembly.frames.extract_frames(
+        root=tmp_path, video_path=Path("candidate-native-assembly/candidate.mp4"),
+        output_dir=Path("candidate-native-samples"),
+    )
+    prepared = subprocess.run(
+        [sys.executable, str(VIDEO_REVIEW), "prepare", "--root", str(tmp_path),
+         "--candidate-manifest", str(candidate_relative),
+         "--run-receipt", str(run_path.relative_to(tmp_path)),
+         "--assembly-receipt", "candidate-native-assembly/frame-assembly.json",
+         "--extraction-receipt", "candidate-native-samples/frame-extraction.json"],
+        capture_output=True, text=True, timeout=90,
+    )
+    assert prepared.returncode == 0, prepared.stderr
+    review_dir = video_review._review_directory(candidate_path, candidate["candidate_id"])
+    evaluation = load_json(review_dir / "evaluation-inputs.json")
+    assert evaluation["schema"] == video_review.SCHEMA
+    assert evaluation["candidate_id"] == candidate["candidate_id"]
+    assert evaluation["subject"]["workflow"]["png_prompt_graphs_verified"] == 81
     plan_path = out / "plan.json"; original = plan_path.read_text("utf-8"); plan_path.write_text(original + " ", "utf-8")
     with pytest.raises(video.VideoManifestError, match="approved gen lineage is invalid"):
         video.build_manifest(

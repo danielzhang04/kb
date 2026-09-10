@@ -20,3 +20,15 @@ Decisions: preserve V1 as the historical failed result with severe later-frame a
 Current status, 2026-09-09: the approved-still adapter is reviewed and committed at `37820079`, with 18 distinct passing tests across focused commands. The follow-up compiler SHA prefix `303fbf63` is READY after root's 48 tests in 17.06 seconds and independent Terra review; the committed change is `545b1f75`. The approved route preserves the native 1280x704 frame size; the legacy receipt path retains its 512 default. Its compiled-workflow hash binds the planned workflow and must not be described as a runtime graph hash. The production-shaped approval fixture reaches the real video compiler and harness upload expansion, including the nested-frame regression, while the resulting manifest remains diagnostic and non-promotable. Figment has a bounded 20-train/2-eval research dataset; V2 training and tester execution completed, then the root-attributed all-cull left no selected checkpoint or approved consistent still to feed this boundary. See the [book README](README.md) for the separate public-base-only control's current state. Both reviews stopped the upstream Omni V3 pair before the six-row pilot. See the [adapter contract](../../pipeline/video/APPROVED_GEN_ADAPTER.md) and [CLI verification](../../../../docs/figment/2026-09-09-cli-integration-verification.md).
 
 The prospective `review-candidate-v1` compiler mode is a separate producer state. It accepts only a current approved `gen` still, the native 1280x704 profile, and a reserved candidate output namespace. It records an unreviewed candidate eligible for later temporal review and binds the effective per-job graph, including the harness-applied SaveImage prefix. Assembly remains non-promotable evidence. This mode supplies no terminal review, accepted-video lineage, or production approval; the temporal review authority described in the reviewed acceptance plan remains the next missing core.
+
+
+Review preparation is independently READY as of September 10: 74 video tests
+and the real approved-gen -> prospective candidate -> 81 PNGs -> local
+assembly/extraction -> subprocess preparation join passed. Root verified the
+saved hashes, exact prompt graphs, canonical store and native media. The
+result is a current-evidence review input, with no decisions or acceptance.
+The next slice supplies attributed rulings and the sole accepted-video
+validator. It must separately assess intended adult age presentation, all
+81 frames and actual full-clip playback. Missing playback remains a parked
+review. See the [preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md)
+and [CLI contract](../../pipeline/video/APPROVED_GEN_ADAPTER.md).

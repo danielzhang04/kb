@@ -114,6 +114,14 @@ checkpoint into the new generation plan. Provider receipts carry byte counts rat
 signed digest, so this proves continuity from the local source hashed at upload time; it does
 not cryptographically attest the bytes consumed inside the provider pod.
 
+Fresh gen plans also capture a `gen_authority` snapshot. Before each base or
+detail launch, the driver revalidates the current persona, selected checkpoint,
+upstream approval and source bytes, then rechecks the staged copy. If those
+inputs change after the base run, the base stays complete, no detail attempt
+is created, and the stage records `stopped:gen`. Older gen plans without this
+snapshot must be recompiled; never add the field to an immutable plan by hand.
+See the [freshness review](../../../docs/figment/2026-09-10-gen-authority-freshness-review.md).
+
 `identity_gate.py` alone does **not** separate the operator's actual verdicts — Track-1 cells
 the operator called "glossy, older" score facenet ~0.92, indistinguishable from the anchors'
 own 0.89-0.93 pairwise cosine (STATE.md 2026-09-06). `vlm_judge.py` does: it read g01 vs the

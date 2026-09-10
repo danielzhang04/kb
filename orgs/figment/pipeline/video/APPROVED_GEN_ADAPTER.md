@@ -90,3 +90,33 @@ video manifest remains diagnostic and non-promotable.
 The resolution-profile change was independently reviewed READY with no findings. Root's
 full video suite passed 48 tests in 17.06 seconds. No live video or quality conclusion is
 part of that verification.
+
+
+## Prepare a prospective candidate for review
+
+After the existing runner, assembler and extractor have produced current local
+evidence, the reviewed preparation command is:
+
+```powershell
+python video_review.py prepare --root <ROOT> --candidate-manifest <CANDIDATE_JSON> --run-receipt <RUN_JSON> --assembly-receipt <FRAME_ASSEMBLY_JSON> --extraction-receipt <FRAME_EXTRACTION_JSON>
+```
+
+All four evidence paths are relative to ROOT. This command has no output-path
+option: it writes a fresh `evaluation-inputs.json` beneath the candidate's
+physical directory, in `video-review/SHA256(candidate_id encoded as UTF-8)/`.
+The full ID remains in the record. Renaming the manifest or widening ROOT does
+not create a second review store for that candidate. Existing stores are never
+overwritten.
+
+Preparation revalidates the approved still and candidate compiler, all 81
+original PNG prompt graphs, terminated receipt, native movie, and three
+extracted samples. Missing, changed, oversized, malformed or linked evidence
+fails before publication. Its status is `prepared`; it writes no rulings,
+accepted video, or quality conclusion. Historical diagnostics stay ineligible.
+
+Independent verification passed 74 video tests and the real approved-gen to
+candidate, local assembly/extraction and subprocess preparation join. See the
+[preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md).
+The attributed rulings writer and accepted-video validator are a separate next
+slice. Intended adult age presentation, all-frame observations and actual
+full-clip playback remain distinct requirements.

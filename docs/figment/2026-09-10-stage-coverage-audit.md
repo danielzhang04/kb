@@ -24,11 +24,25 @@ deferred. No parallel orchestrator or publisher stub is proposed.
 
 ## Gaps and blocks
 
-**Quality block, not missing still-pipeline code.** The accepted research dataset
+**Quality block.** The accepted research dataset
 can feed train/tester, and an accepted tester checkpoint can feed fresh `gen`.
 Creator-001 cannot advance because the actual tester disposition culled all five
 images. Creating a keep, checkpoint, gen still, or assignment to bypass that
 result would violate the existing contracts.
+
+**Gen execution freshness prerequisite.** The real Studio design probe compiled
+an accepted-checkpoint fixture and then removed its source tester approval.
+The existing gen consumer still reached a fake harness because it only
+rechecked the staged checkpoint bytes. The existing consumer now revalidates current persona,
+selection, tester approval and source-checkpoint authority at every launch.
+The repair is independently READY: four focused tests cover mutations and the
+real train-first/fresh-gen join. Both changed selection and missing source
+evidence between runs persist a stopped state. See the
+[freshness review](2026-09-10-gen-authority-freshness-review.md). The Studio
+control implementation and its independent review remain separate. Moving a compiled plan directory also breaks its absolute
+argv binding; the future control must preserve the directory selected before
+compilation. See [Studio control plan](2026-09-10-studio-control-plan.md) and
+`REVIEW/_private/figment-studio-control-plan-probe-20260910-v1/result.json`.
 
 **Missing video acceptance authority.** The runbook explicitly states that no
 standalone temporal-QA acceptance command exists. The candidate compiler now
@@ -45,7 +59,11 @@ publication readiness, or deployment.
 **Unsupported asset classes.** The new adapter accepts only persona stills.
 Non-persona stills have no approved generation/QA authority, and motion slots
 have no accepted-video authority. These are upstream evidence/schema gaps, not
-fields the hub should infer.
+fields the hub should infer. In addition, the native candidate is
+1280x704 at 16 fps for 5.0625 seconds, while `reel-templates.yaml` specifies
+1080x1920 at 30 fps and template-specific durations. A future accepted clip
+assignment would identify source material only. It cannot assert finished reel
+fit or silently authorize cropping, retiming, audio, or delivery acceptance.
 
 **Missing Studio control surface.** The hub currently offers bounded read-only
 research and training views plus a fixed offline tester preview. It does not
@@ -64,8 +82,9 @@ boundary.
 
 ## Ranked next infrastructure choices
 
-1. Implement the reviewed video contract in two bounded slices: exact current-evidence preparation first, then attributed rulings and the sole accepted-video validator. Each receives independent review and real producer/consumer tests. This has the highest end-to-end value because it completes the Stage 6 authority boundary and enables future `G` slots. It must not accept current diagnostic clips retroactively or imply live execution.
-2. Add a non-persona still authority only when there is an actual bounded generator and QA producer to consume. Do not generalize the persona adapter or invent accepted lineage.
+1. Current-evidence video preparation is independently READY, with74video tests and the actual producer-to-subprocess CLI join passing. Implement the next separate slice: attributed rulings and the sole accepted-video validator. Each receives independent review and real producer/consumer tests. This has the highest end-to-end value because it completes the Stage 6 authority boundary and enables future `G` slots. It must not accept current diagnostic clips retroactively or imply live execution.
+2. The gen freshness repair is independently READY. Implement the existing authenticated Studio plan-preparation control with stable paths, bounded storage and request idempotency. No live launch or approval writer belongs in that first control.
+3. Add a non-persona still authority only when there is an actual bounded generator and QA producer to consume. Do not generalize the persona adapter or invent accepted lineage.
 
 Product progress still depends on new supported evidence that yields a selected
 checkpoint and approved held-out stills. Green contract tests show that the

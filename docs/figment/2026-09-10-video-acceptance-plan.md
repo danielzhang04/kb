@@ -35,7 +35,11 @@ current manifest SHA-256 and receipt names, seed, order, byte counts, successful
 status, and teardown. Missing, oversized, or malformed PNG prompt metadata is
 ineligible. A new schema label placed beside an old diagnostic graph and
 receipt cannot satisfy these checks. No harness change or second runner is
-required.
+required. The pinned `SaveImage.save_images` stores the graph using
+`PngInfo.add_text` and ordinary ASCII-escaped JSON serialization (nodes.py,
+lines 1538-1547 at the linked commit). The prepare reader therefore supports
+exactly one bounded native `tEXt` prompt chunk; compressed or international
+text alternatives are refused instead of adding a general PNG text decoder.
 
 This graph check has bounded diagnostic feasibility evidence, not prospective
 eligibility. The first strict comparison against all 81 historical V3 PNGs
@@ -80,6 +84,14 @@ The preparation is a review surface, not a decision. It may generate a bounded
 local contact sheet or playback reference from those already-recorded bytes,
 but such a convenience file is not evidence and is never part of acceptance.
 
+The CLI has no output-directory option. Preparation and later review attempts
+share the physical candidate-manifest parent / `video-review` /
+`SHA256(candidate_id encoded as UTF-8)` directory. The compiler requires that
+parent to be the approved still's physical directory. The record retains the
+full candidate ID. A sibling manifest filename or wider root cannot select a
+second review store for the same candidate; the hash component also bounds
+Windows path length. An existing store is never overwritten by preparation.
+
 ## Human observations and rulings
 
 `video-rulings.json` is an explicit operator/root-authored input. It binds the
@@ -99,7 +111,11 @@ Two additional observations are mandatory for acceptance:
    entries, states `coverage: all-81-ordered-frames`, and records pass/fail
    rulings for identity stability, anatomy stability, background stability,
    visible corruption, adult read throughout, garment integrity throughout,
-   and real-person resemblance throughout.
+   and real-person resemblance throughout. A separate
+   `matches_persona_age_presentation` pass/fail records whether the persona
+   retains its intended adult age stage (about 21 for creator-001). This is an
+   attributed visual quality observation, never an exact-age inference or
+   classifier verdict; adult-read remains a distinct safety requirement.
 2. `full_playback` binds the MP4 SHA-256, states `coverage: entire-clip`, and
    records pass/fail rulings for motion intent, motion coherence, subject and
    camera continuity, flicker/warping, and pacing. This is an operator

@@ -1777,6 +1777,7 @@ def build_plan(
     )
 
     plan_stages: dict[str, Any] = {}
+    gen_authority: dict[str, str] | None = None
     for current in selected:
         if current == "anchor":
             manifests = _anchor_manifests(
@@ -1802,7 +1803,11 @@ def build_plan(
             manifests = [_tester_manifest(persona, training, pins)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
         elif current == "gen":
-            checkpoint_upload = _stage_accepted_checkpoint(out, persona, training)
+            accepted_checkpoint = _validated_accepted_checkpoint(persona, training)
+            checkpoint_upload = _stage_accepted_checkpoint(
+                out, persona, training, accepted_checkpoint=accepted_checkpoint,
+            )
+            gen_authority = _accepted_checkpoint_snapshot(accepted_checkpoint)
             gen_manifest = _gen_manifest(
                 persona, training, pins, checkpoint_upload=checkpoint_upload,
             )
@@ -1854,6 +1859,8 @@ def build_plan(
         "arc_ledger_glob": ARC_LEDGER_GLOB,
         "stages": plan_stages,
     }
+    if gen_authority is not None:
+        plan["gen_authority"] = gen_authority
     _write_json(out / "plan.json", plan)
     return plan
 
@@ -2270,6 +2277,7 @@ def _write_stage_state(path: Path, state: dict[str, Any]) -> None:
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     if stage == "gen":
+        _revalidate_planned_gen_authority(plan)
         expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
         if not isinstance(expected, str):
             raise FigmentTrainError("gen plan has no accepted checkpoint digest")
@@ -2483,6 +2491,16 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                     "live) before touching this plan again — never launch a second pod for the "
                     "same manifest"
                 )
+            # A gen plan may carry a base run and optional detail run.  Recheck the
+            # external selected-checkpoint authority at every launch boundary, not
+            # merely once before the stage loop.
+            if current == "gen":
+                try:
+                    _install_stage_config(current, plan, root)
+                except FigmentTrainError:
+                    state["status"] = f"stopped:{current}"
+                    _write_stage_state(state_path, state)
+                    raise
             manifest_path = root / key
             if _sha256(manifest_path) != run["sha256"]:
                 raise FigmentTrainError(f"planned manifest digest changed: {manifest_path}")
@@ -3632,9 +3650,8 @@ def apply_rulings(
     return result
 
 
-def _stage_accepted_checkpoint(
-    out: Path, persona: dict[str, Any], training: dict[str, Any],
-) -> str:
+def _validated_accepted_checkpoint(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
+    """Return still-current checkpoint authority without copying source bytes."""
     step = training.get("chosen_checkpoint_step")
     digest = training.get("chosen_checkpoint_sha256")
     approval_value = training.get("chosen_checkpoint_approval")
@@ -3662,8 +3679,12 @@ def _stage_accepted_checkpoint(
         raise FigmentTrainError("chosen checkpoint source plan changed after promotion")
     source_plan, source_root = _load_plan(persona["id"], source_plan_path)
     approval_lineage = approval_path.with_name("approval-lineage.json")
+    try:
+        approval_lineage_sha256 = _sha256(approval_lineage)
+    except OSError as exc:
+        raise FigmentTrainError("tester approval lineage is missing after checkpoint promotion") from exc
     if (Path(accepted.get("approval_lineage", "")).resolve() != approval_lineage.resolve()
-            or _sha256(approval_lineage) != accepted.get("approval_lineage_sha256")):
+            or approval_lineage_sha256 != accepted.get("approval_lineage_sha256")):
         raise FigmentTrainError("tester approval lineage changed after checkpoint promotion")
     _load_current_approval(source_plan, source_root, "tester")
     expected_inputs = _lineage_module().training_input_projection(training)
@@ -3681,6 +3702,71 @@ def _stage_accepted_checkpoint(
             raise FigmentTrainError(f"chosen checkpoint provenance changed at field {field!r}")
     if candidate["sha256"] != digest:
         raise FigmentTrainError("chosen checkpoint bytes do not match training configuration")
+
+    return {
+        "candidate": candidate,
+        "digest": digest,
+        "step": step,
+        "approval_path": approval_path,
+        "source_plan_path": source_plan_path,
+        "approval_lineage_path": approval_lineage,
+    }
+
+
+def _accepted_checkpoint_snapshot(accepted_checkpoint: dict[str, Any]) -> dict[str, str]:
+    """The approval/source binding compiled into a reviewed gen plan."""
+    candidate = accepted_checkpoint["candidate"]
+    return {
+        "approval_sha256": _sha256(accepted_checkpoint["approval_path"]),
+        "source_plan_sha256": _sha256(accepted_checkpoint["source_plan_path"]),
+        "approval_lineage_sha256": _sha256(accepted_checkpoint["approval_lineage_path"]),
+        "checkpoint_sha256": candidate["sha256"],
+    }
+
+
+def _revalidate_planned_gen_authority(plan: dict[str, Any]) -> None:
+    """Reject a compiled gen plan when its current source authority has changed."""
+    planned_training = plan.get("training")
+    planned_persona_sha256 = plan.get("persona_sha256")
+    snapshot = plan.get("gen_authority")
+    required = {
+        "approval_sha256", "source_plan_sha256", "approval_lineage_sha256", "checkpoint_sha256",
+    }
+    if not isinstance(planned_training, dict) or not isinstance(planned_persona_sha256, str):
+        raise FigmentTrainError("gen plan has no captured persona/training authority")
+    if (not isinstance(snapshot, dict) or set(snapshot) != required
+            or any(not isinstance(value, str) for value in snapshot.values())):
+        raise FigmentTrainError("gen plan has no captured selected-checkpoint provenance; replan")
+    persona, training = _current_persona_training(plan)
+    persona_path = _persona_path_for_plan(plan)
+    if persona.get("id") != plan.get("creator") or _sha256(persona_path) != planned_persona_sha256:
+        raise FigmentTrainError("current persona changed after gen planning; create a fresh gen plan")
+    if training != planned_training:
+        raise FigmentTrainError(
+            "current training or checkpoint selection changed after gen planning; create a fresh gen plan"
+        )
+    try:
+        current_snapshot = _accepted_checkpoint_snapshot(
+            _validated_accepted_checkpoint(persona, training)
+        )
+    except OSError as exc:
+        raise FigmentTrainError(
+            "selected checkpoint source evidence cannot be read after gen planning"
+        ) from exc
+    if current_snapshot != snapshot:
+        raise FigmentTrainError(
+            "selected checkpoint approval provenance changed after gen planning; create a fresh gen plan"
+        )
+
+
+def _stage_accepted_checkpoint(
+    out: Path, persona: dict[str, Any], training: dict[str, Any], *,
+    accepted_checkpoint: dict[str, Any] | None = None,
+) -> str:
+    accepted_checkpoint = accepted_checkpoint or _validated_accepted_checkpoint(persona, training)
+    candidate = accepted_checkpoint["candidate"]
+    digest = accepted_checkpoint["digest"]
+    step = accepted_checkpoint["step"]
 
     upload_name = _checkpoint_name(training["trigger"], step)
     staged_dir = out / "train" / "runs" / "accepted-checkpoint"
