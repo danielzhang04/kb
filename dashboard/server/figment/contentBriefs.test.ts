@@ -36,6 +36,30 @@ async function assignment(item: { brief: string }, overrides: Record<string, unk
 }
 
 describe('content brief inventory', () => {
+  it('projects motion as source footage and refuses delivery claims or legacy relabeling', async () => {
+    const item = await fixture();
+    const brief = record();
+    brief.content = { surface: 'reel', template_id: 'RT-1', template_sha256: 'c'.repeat(64), taxonomy_sha256: 'd'.repeat(64), required_asset_slots: [{ index: 1, role: 'motion', taxonomy_type: 'G', kind: 'persona' }] };
+    await writeFile(item.brief, JSON.stringify(brief));
+    const value = await assignment(item);
+    const old = value.assignments as Array<Record<string, unknown>>;
+    const snapshot = (path: string) => ({ path, bytes: 10, sha256: 'a'.repeat(64) });
+    const motionAsset = { kind: 'accepted-video-source', scope: 'source-material-only', candidate_id: 'candidate-01', ...snapshot('private/movie.mp4'), accepted_lineage: snapshot('private/accepted-video.json'), candidate_manifest: snapshot('private/candidate.json'), approved_still: old[0].asset };
+    value.schema = 'figment/content-asset-assignment@2';
+    value.assignments = [{ ...old[0], role: 'motion', taxonomy_type: 'G', asset: motionAsset }];
+    const target = join(item.folder, 'assignment.json');
+    await writeFile(target, JSON.stringify(value));
+    expect(collectContentBriefs(item.repo)).toMatchObject({ status: 'recorded', items: [{ assignment: 'recorded-source-snapshot' }] });
+    for (const invalid of [
+      { ...value, schema: 'figment/content-asset-assignment@1' },
+      { ...value, assignments: [{ ...old[0], role: 'motion', taxonomy_type: 'G', asset: { ...motionAsset, scope: 'delivery-approved' } }] },
+      { ...value, assignments: [{ ...old[0], role: 'motion', taxonomy_type: 'G', asset: { ...motionAsset, delivery_approved: true } }] },
+    ]) {
+      await writeFile(target, JSON.stringify(invalid));
+      expect(collectContentBriefs(item.repo)).toMatchObject({ status: 'recorded', items: [{ assignment: 'unavailable' }] });
+    }
+  });
+
   it('projects only bounded planning fields from one compiler-shaped brief', async () => {
     const item = await fixture();
     const projection = collectContentBriefs(item.repo);

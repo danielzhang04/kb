@@ -1,6 +1,6 @@
 # Accepted motion source assignment and later delivery evidence
 
-Status: design only, September10. Video terminal authority is implemented and locally tested in `2ef9f36a`, pending independent review. This document grants no new acceptance, transformation, publication or platform permission.
+Status: motion-source adapter and hub projection implemented and locally tested September10; independent review pending. Delivery transformation remains design only. Video terminal authority is implemented and locally tested in `2ef9f36a`, pending independent review. This document grants no new acceptance, transformation, publication or platform permission.
 
 ## Smallest next slice
 
@@ -39,3 +39,8 @@ After the producer and reader change, run real producer/consumer positive and st
 A tools-disabled Sonnet CLI (`claude-sonnet-5`, one response,41.172seconds) proposed the generic evidence split. A separate tools-disabled Opus CLI (`claude-opus-5`, one response,63.891seconds) found contradictions in its no-op reuse, insufficient frame/time equivalence, missing current authority and missing failure publication semantics. Root incorporated these findings and chose the narrower exact-byte rule above. Neither worker received repository source, images, checkpoints, internal notes or the rejected review packets. This was generic design feedback, not independent review of existing code.
 
 Evidence: MAIN/_private/figment-claude-sonnet-delivery-contract-generic-20260910-v1/ and MAIN/_private/figment-claude-opus-delivery-contract-generic-20260910-v1/. Final reported API-equivalent prices are$0.0946048 and$0.261995; subscription accounting is not a RunPod charge or invoice.
+
+
+## Local implementation evidence
+
+The existing content adapter now accepts v2 motion-source rulings, invokes the sole video validator, joins the underlying approved still against brief identity, and rechecks current authority before writing a v2 source-only assignment. The collector/UI accept the explicit new state while preserving v1 still behavior. Content56PASS before final integration correction; final10motion testsPASS; hub44PASS/typecheck/buildPASS. Exact synthetic producer records passed the real collector. The real CLI join first exposed a too-small duplicate content-parser budget on the full81-frame approval subject; delegating bounded parsing to the sole video validator fixed it. See [whole-plan progress](2026-09-10-whole-plan-progress.md). This remains locally verified, not independently READY or production media acceptance.

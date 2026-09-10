@@ -307,6 +307,15 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Assignment evidence unavailable')).toBeTruthy();
   });
 
+  it('labels recorded motion footage as pending delivery review', async () => {
+    const base = recordedBriefs();
+    const contentBriefs = { ...base, items: base.items.map((item) => ({ ...item, surface: 'reel', templateId: 'RT-1', assignment: 'recorded-source-snapshot' })) };
+    const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('Recorded source footage; delivery review pending')).toBeTruthy();
+  });
+
   it('keeps research artifacts visible for empty and unavailable brief inventories', async () => {
     for (const contentBriefs of [{ status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] }, { status: 'unavailable', reason: 'evidence-unavailable', items: [] }]) {
       const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;

@@ -24,7 +24,7 @@ export interface ContentBriefItem {
   sourceDates: string[];
   observedMetrics: null;
   renderAs: 'text';
-  assignment: 'missing' | 'recorded-snapshot' | 'unavailable';
+  assignment: 'missing' | 'recorded-snapshot' | 'recorded-source-snapshot' | 'unavailable';
 }
 export type ContentBriefsProjection =
   | { status: 'not-configured'; items: [] }
@@ -134,20 +134,29 @@ function asset(value: unknown): boolean {
   if (!object(value) || !keys(value, ['kind', 'image_id', 'path', 'sha256', 'bytes', 'source_plan', 'approval_lineage', 'approved_list'])) return false;
   return value.kind === 'approved-gen-still' && text(value.image_id, 256) !== null && snapshotRef({ path: value.path, sha256: value.sha256 }) && bytes(value.bytes) && snapshotRef(value.source_plan) && snapshotRef(value.approval_lineage) && snapshotRef(value.approved_list);
 }
-function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | null {
+function videoAsset(value: unknown): boolean {
+  if (!object(value) || !keys(value, ['kind', 'scope', 'candidate_id', 'path', 'sha256', 'bytes', 'accepted_lineage', 'candidate_manifest', 'approved_still'])) return false;
+  const entry = (input: unknown): boolean => object(input) && keys(input, ['path', 'sha256', 'bytes']) && snapshotRef({ path: input.path, sha256: input.sha256 }) && bytes(input.bytes);
+  return value.kind === 'accepted-video-source' && value.scope === 'source-material-only' && text(value.candidate_id, 256) !== null
+    && snapshotRef({ path: value.path, sha256: value.sha256 }) && typeof value.bytes === 'number' && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= 2 * 1024 * 1024 * 1024
+    && entry(value.accepted_lineage) && entry(value.candidate_manifest) && asset(value.approved_still);
+}
+function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | 'recorded-source-snapshot' | null {
   if (!object(value) || !keys(value, ['schema', 'not_promotable', 'provenance', 'brief', 'request', 'rulings', 'creator', 'assignments'])) return null;
   const briefRef = object(value.brief) ? value.brief : null;
-  if (value.schema !== 'figment/content-asset-assignment@1' || value.not_promotable !== true || text(value.provenance) === null || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
+  const motion = brief.slots.some((slot) => slot.taxonomyType === 'G');
+  if (value.schema !== (motion ? 'figment/content-asset-assignment@2' : 'figment/content-asset-assignment@1') || value.not_promotable !== true || text(value.provenance) === null || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
   if (briefRef.sha256 !== briefSha256) return null;
   const imageIds = new Set<string>();
   for (const [index, row] of value.assignments.entries()) {
     const expected = brief.slots[index];
     const recordedAsset = object(row) && object(row.asset) ? row.asset : null;
-    const imageId = recordedAsset === null ? null : text(recordedAsset.image_id, 256);
-    if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || expected.kind !== 'persona' || expected.taxonomyType === 'G' || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !asset(row.asset) || imageId === null || imageIds.has(imageId)) return null;
+    const isMotion = expected.taxonomyType === 'G';
+    const imageId = recordedAsset === null ? null : text(isMotion ? recordedAsset.candidate_id : recordedAsset.image_id, 256);
+    if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || expected.kind !== 'persona' || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !(isMotion ? videoAsset(row.asset) : asset(row.asset)) || imageId === null || imageIds.has(imageId)) return null;
     imageIds.add(imageId);
   }
-  return 'recorded-snapshot';
+  return motion ? 'recorded-source-snapshot' : 'recorded-snapshot';
 }
 function entries(root: Root): import('node:fs').Dirent[] | null {
   try {
@@ -189,7 +198,7 @@ export function collectContentBriefs(repoRoot?: string | null): ContentBriefsPro
         const assignmentRaw = bounded(assignmentPath);
         try {
           const assignmentSource = assignmentRaw?.toString('utf8');
-          assignmentState = assignmentSource !== undefined && shallow(assignmentSource) && assignment(JSON.parse(assignmentSource) as unknown, parsed, createHash('sha256').update(raw).digest('hex')) !== null ? 'recorded-snapshot' : 'unavailable';
+          assignmentState = assignmentSource !== undefined && shallow(assignmentSource) ? assignment(JSON.parse(assignmentSource) as unknown, parsed, createHash('sha256').update(raw).digest('hex')) ?? 'unavailable' : 'unavailable';
         } catch { assignmentState = 'unavailable'; }
       }
       items.push({ ...parsed.item, assignment: assignmentState });

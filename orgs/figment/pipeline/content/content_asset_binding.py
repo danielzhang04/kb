@@ -34,6 +34,9 @@ except ImportError:  # Direct script execution.
 SCHEMA = "figment/content-asset-assignment@1"
 RULINGS_SCHEMA = "figment/content-slot-fit-rulings@1"
 SOURCE_KIND = "approved-gen-still"
+MOTION_SCHEMA = "figment/content-asset-assignment@2"
+MOTION_RULINGS_SCHEMA = "figment/content-slot-fit-rulings@2"
+VIDEO_SOURCE_KIND = "accepted-video-source"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 MAX_ATTRIBUTION = 256
 
@@ -301,6 +304,8 @@ def _project_authority(root: Path, authority: object, image_id: str) -> dict[str
 def _validate_source(
     root: Path, creator: str, brief: dict[str, Any], source: dict[str, Any], train: Any,
 ) -> dict[str, Any]:
+    if source.get("kind") == VIDEO_SOURCE_KIND:
+        return _validate_video_source(root, creator, brief, source, train)
     _only_keys(source, {"kind", "plan", "image_id"}, "slot source")
     if source.get("kind") != SOURCE_KIND:
         raise ContentAssetBindingError("only approved-gen-still sources are supported")
@@ -315,6 +320,92 @@ def _validate_source(
     projected = _project_authority(root, authority, image_id)
     _assert_identity_join(root, brief, projected, train)
     return projected
+
+
+def _video_module() -> Any:
+    name = "figment_content_asset_video_authority"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).parents[1] / "video" / "video_review.py"
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ContentAssetBindingError("accepted video authority is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise ContentAssetBindingError("accepted video authority is unavailable") from exc
+    return module
+
+
+def _video_entry(root: Path, value: object, label: str) -> dict[str, Any]:
+    if not isinstance(value, dict):
+        raise ContentAssetBindingError(f"video {label} snapshot is malformed")
+    _only_keys(value, {"path", "bytes", "sha256"}, f"video {label}")
+    size, digest = value.get("bytes"), value.get("sha256")
+    maximum = 2 * 1024 * 1024 * 1024 if label == "movie" else 32 * 1024 * 1024
+    if type(size) is not int or not 0 < size <= maximum or not isinstance(digest, str) or not SHA256.fullmatch(digest):
+        raise ContentAssetBindingError(f"video {label} snapshot is malformed")
+    path = _safe_input(root, value.get("path"), f"video {label}")
+    if path.stat().st_size != size:
+        raise ContentAssetBindingError(f"video {label} bytes changed")
+    measured, count = hashlib.sha256(), 0
+    with path.open("rb") as handle:
+        while chunk := handle.read(min(1024 * 1024, size - count + 1)):
+            count += len(chunk)
+            if count > size:
+                raise ContentAssetBindingError(f"video {label} grew during validation")
+            measured.update(chunk)
+    _safe_input(root, value.get("path"), f"video {label}")
+    if count != size or measured.hexdigest() != digest or path.stat().st_size != size:
+        raise ContentAssetBindingError(f"video {label} bytes changed")
+    return {"path": path.relative_to(root).as_posix(), "bytes": size, "sha256": digest}
+
+
+def _validate_video_source(
+    root: Path, creator: str, brief: dict[str, Any], source: dict[str, Any], train: Any,
+) -> dict[str, Any]:
+    _only_keys(source, {"kind", "accepted_video"}, "video slot source")
+    accepted = _safe_input(root, source.get("accepted_video"), "accepted video record")
+    # The sole video validator applies its own bounded record parser. The
+    # smaller content-brief node budget cannot parse a full 81-frame subject.
+    video = _video_module()
+    try:
+        authority = video.validate_accepted_video(root, accepted.relative_to(root))
+    except Exception as exc:
+        raise ContentAssetBindingError("accepted video authority rejected a slot source") from exc
+    if not isinstance(authority, dict) or authority.get("creator_id") != creator:
+        raise ContentAssetBindingError("accepted video belongs to a different creator")
+    candidate_id = _text(authority.get("candidate_id"), "video candidate id", 256)
+    entries = {key: _video_entry(root, authority.get(key), key) for key in (
+        "movie", "approved_still", "candidate_manifest", "accepted_lineage",
+    )}
+    if entries["accepted_lineage"]["path"] != accepted.relative_to(root).as_posix():
+        raise ContentAssetBindingError("accepted video authority returned a different record")
+    candidate = _read_json(root / entries["candidate_manifest"]["path"], "video candidate manifest")
+    provenance = candidate.get("provenance")
+    first_frame = provenance.get("first_frame") if isinstance(provenance, dict) else None
+    approved = first_frame.get("approved_gen") if isinstance(first_frame, dict) else None
+    plan = approved.get("source_plan") if isinstance(approved, dict) else None
+    if not isinstance(plan, dict):
+        raise ContentAssetBindingError("accepted video has no approved-gen source binding")
+    still_source = {"kind": SOURCE_KIND, "plan": plan.get("path"), "image_id": approved.get("image_id")}
+    still = _validate_source(root, creator, brief, still_source, train)
+    if any(still[key] != entries["approved_still"][key] for key in ("path", "bytes", "sha256")):
+        raise ContentAssetBindingError("accepted video still differs from brief-bound gen authority")
+    if still["source_plan"] != plan:
+        raise ContentAssetBindingError("accepted video gen plan differs from current authority")
+    for key, captured in entries.items():
+        if _video_entry(root, captured, key) != captured:
+            raise ContentAssetBindingError("accepted video snapshot changed during identity join")
+    return {
+        "kind": VIDEO_SOURCE_KIND, "scope": "source-material-only",
+        "candidate_id": candidate_id, **entries["movie"],
+        "accepted_lineage": entries["accepted_lineage"],
+        "candidate_manifest": entries["candidate_manifest"], "approved_still": still,
+    }
 
 
 def build_content_asset_binding(
@@ -334,6 +425,7 @@ def build_content_asset_binding(
     slots = content.get("required_asset_slots") if isinstance(content, dict) else None
     if not isinstance(creator, str) or not isinstance(slots, list) or not slots:
         raise ContentAssetBindingError("current brief has no valid creator or required slots")
+    has_motion = any(isinstance(slot, dict) and slot.get("taxonomy_type") == "G" for slot in slots)
 
     rulings_file = _safe_input(root, rulings_path, "slot-fit rulings")
     rulings_digest = _sha256(rulings_file)
@@ -344,11 +436,11 @@ def build_content_asset_binding(
         raise ContentAssetBindingError("slot-fit rulings brief binding is malformed")
     _only_keys(brief_ref, {"path", "sha256"}, "slot-fit rulings brief binding")
     if (
-        rulings.get("schema") != RULINGS_SCHEMA
+        rulings.get("schema") != (MOTION_RULINGS_SCHEMA if has_motion else RULINGS_SCHEMA)
         or rulings.get("creator") != creator
         or brief_ref != current["brief"]
     ):
-        raise ContentAssetBindingError("slot-fit rulings do not bind the current brief and creator")
+        raise ContentAssetBindingError("slot-fit rulings do not bind the current brief and creator; motion/video requires v2")
     rows = rulings.get("rulings")
     if not isinstance(rows, list) or len(rows) != len(slots):
         raise ContentAssetBindingError("slot-fit rulings must cover every required slot exactly")
@@ -383,8 +475,8 @@ def build_content_asset_binding(
         }
         if any(row.get(key) != value for key, value in expected.items()):
             raise ContentAssetBindingError("slot-fit ruling does not match its exact brief slot")
-        if row.get("kind") != "persona" or row.get("taxonomy_type") == "G":
-            raise ContentAssetBindingError("nonpersona and motion/video slots have no supported authority")
+        if row.get("kind") != "persona":
+            raise ContentAssetBindingError("nonpersona slots have no supported authority")
         if row.get("decision") != "fit":
             raise ContentAssetBindingError("every slot requires an explicit fit ruling")
         attribution = {
@@ -395,16 +487,20 @@ def build_content_asset_binding(
         source = row.get("source")
         if not isinstance(source, dict):
             raise ContentAssetBindingError("slot source must be an object")
-        image_id = source.get("image_id")
-        if not isinstance(image_id, str) or image_id in used_images:
-            raise ContentAssetBindingError("each slot must use a distinct approved gen image id")
-        used_images.add(image_id)
+        expected_kind = VIDEO_SOURCE_KIND if row.get("taxonomy_type") == "G" else SOURCE_KIND
+        if source.get("kind") != expected_kind:
+            raise ContentAssetBindingError("motion/video requires accepted-video-source; still slots require approved-gen-still")
         asset = _validate_source(root, creator, brief, source, train)
+        image_id = asset.get("candidate_id") if expected_kind == VIDEO_SOURCE_KIND else asset.get("image_id")
+        identity = f"{expected_kind}:{image_id}"
+        if not isinstance(image_id, str) or identity in used_images:
+            raise ContentAssetBindingError("each slot must use a distinct approved gen image id")
+        used_images.add(identity)
         source_inputs.append((source, asset))
         assignments.append({**expected, "slot_fit": attribution, "asset": asset})
 
     result = {
-        "schema": SCHEMA,
+        "schema": MOTION_SCHEMA if has_motion else SCHEMA,
         "not_promotable": True,
         "provenance": "offline content-slot planning evidence; no new asset, batch, publication, or metric approval",
         "brief": current["brief"],
