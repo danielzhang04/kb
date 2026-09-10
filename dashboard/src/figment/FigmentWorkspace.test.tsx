@@ -193,6 +193,38 @@ describe('FigmentWorkspace', () => {
     expect(fetchImpl).toHaveBeenCalledWith('/api/figment/plan-preview/tester', { method: 'POST', headers: { authorization: 'Bearer session' } });
   });
 
+  it('prepares one generation plan without exposing a launch or authority details', async () => {
+    const prepared = { schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'b'.repeat(64) };
+    const fetchImpl = vi.fn((url: string) => url === '/api/figment' ? response(projection) : response(prepared)) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    expect(screen.getByText(/does not launch a run or create an approval/)).toBeTruthy(); fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
+    const request = (fetchImpl as ReturnType<typeof vi.fn>).mock.calls.find(([url]) => url === '/api/figment/studio/gen-plan');
+    expect(request).toBeDefined(); expect(request![1]).toMatchObject({ method: 'POST', headers: expect.objectContaining({ authorization: 'Bearer session' }) }); expect((request![1] as RequestInit).headers).not.toHaveProperty('content-type'); expect(String((request![1] as { headers: Record<string, string> }).headers['Idempotency-Key'])).toMatch(/^[A-Za-z0-9_-]{32,64}$/); expect(screen.queryByRole('button', { name: /launch/i })).toBeNull();
+  });
+
+  it('reuses the preparation intent after a lost response and rotates it only after success', async () => {
+    const prepared = { schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'b'.repeat(64) };
+    const keys: string[] = [];
+    const fetchImpl = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/figment') return response(projection);
+      keys.push(new Headers(options?.headers).get('Idempotency-Key')!);
+      return keys.length === 1 ? Promise.reject(new Error('Response lost')) : response(prepared);
+    }) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await screen.findByText('Response lost');
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
+    expect(keys).toHaveLength(2); expect(keys[1]).toBe(keys[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await waitFor(() => expect(keys).toHaveLength(3));
+    expect(keys[2]).not.toBe(keys[0]);
+    await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
+  });
+
   it('fetches only listed diagnostic PNG assets with their projection hash', async () => {
     const created: string[] = []; const originalCreate = URL.createObjectURL; const originalRevoke = URL.revokeObjectURL;
     Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: vi.fn(() => { const url = `blob:fixture-${created.length}`; created.push(url); return url; }) });

@@ -53,9 +53,9 @@ before checkpoint staging ([figment_train.py:1741](../../orgs/figment/pipeline/f
 and the CLI has only its generic nonzero/`STOP:` interface. The HTTP layer must
 not infer a trusted missing-vs-stale checkpoint classification from child text.
 
-## Prerequisite before endpoint work
+## Prerequisite completed before endpoint work
 
-First make and independently review a narrow existing-consumer change: before a
+The prerequisite made and independently reviewed a narrow existing-consumer change: before a
 `gen` plan's `run_planned_stage` reaches `apply_job`/the harness, reload the
 current plan-bound persona and training authority, revalidate the currently
 selected tester checkpoint and approval lineage, compare that current projection
@@ -118,12 +118,30 @@ server, scheduler, state machine, CSRF scheme, or direct launch route is needed.
 | Content-brief preparation | Provider-free and bounded, but the existing hub consumes recorded snapshots only and explicitly does not revalidate sources ([contentBriefs.ts:161](../../dashboard/server/figment/contentBriefs.ts#L161)). It is a good later planning-editor control, not a substitute for the next media producer/consumer boundary. |
 | Path-preserving `gen` plan preparation | Reuses the existing producer and future consumer, but only after the explicit current-authority prerequisite above. |
 
-## Eventual implementation and proof scope
+## Implemented preparation scope
 
-After the prerequisite lands: add one `dashboard/server/figment/studioGenPlan.ts`
-module and test, register it in `dashboard/server/http/surface.ts`, and add one
-prepared/refused text state plus test to `FigmentWorkspace.tsx`. No `index.ts`,
-pipeline runner, harness, or approval writer changes belong to the control slice.
+The independently reviewed `gen` authority prerequisite landed in `d73d852e`.
+This control adds `dashboard/server/figment/studioGenPlan.ts` and its tests,
+registers the route only within the existing authenticated write child in
+`dashboard/server/http/surface.ts`, and adds prepared/refused text in
+`FigmentWorkspace.tsx`. It makes no `index.ts`, pipeline runner, harness,
+spend, selection, ruling, or approval-writer change.
+
+The server accepts no body and only a 32–64 character opaque idempotency key.
+It allocates a UUID directory before invoking the fixed current planner, reads
+at most 64 KiB of `plan.json`, checks the one-`gen` schema and a ceiling no
+higher than $50, then writes and syncs a marker last. It limits preparation to
+one active child, two published plans, 256 MiB per tree and 512 MiB total. The
+child is capped at 30 seconds and 16 KiB output. A failure removes only the
+route's own unmarked directory and returns a generic error.
+
+Focused proof covers fixed planner arguments and ledger, no pin-verification
+bypass, marker replay and stale-marker conflict, single-flight, capacity,
+unsafe entries, generic child failure, Origin/session refusal, and the minimal
+prepared-plan UI. The existing pipeline's real accepted-checkpoint producer to
+consumer fixture remains the authority proof; the current creator has no
+selected checkpoint, so this control does not fabricate one or claim a live
+prepared plan.
 
 Test fixed argv with no `--skip-pin-verify`, session/origin refusal before spawn,
 request-key reuse/conflict, single flight, link/reparse refusal, marker-last
@@ -137,3 +155,13 @@ Sources: [MANDATE.md:49](../../orgs/figment/MANDATE.md#L49),
 [stage coverage audit:16](2026-09-10-stage-coverage-audit.md#L16),
 [plan preview:140](../../dashboard/server/figment/planPreview.ts#L140), and
 [content brief compiler:397](../../orgs/figment/pipeline/content/content_brief.py#L397).
+
+## Root verification checkpoint ? 2026-09-10
+
+Implemented and locally verified; independent route/security review remains pending. Windows execution now uses an owned Job Object, assigns a waiting wrapper before dispatching the planner, and confirms the entire job empty on every terminal path. Missing job support or failed assignment refuses dispatch. Uncertain termination retains the allocation and latches preparation unavailable. Directory traversal is bounded by entry/depth/byte limits; partial publication markers are preserved, and cleanup finishes before an error response is sent. The UI retains its request key after a failed/lost response until a valid success is decoded (within the mounted Plans view).
+
+Final affected suite: **137 PASS**, `MAIN/_private/figment-studio-final-20260910-v2.xml`. This covers the actual default Windows executor with a synthetic upstream authority fixture, the real planner/control/fresh-consumer join followed by stale-authority refusal, storage/publication failure cases, process descendants, HTTP boundaries and UI retries. Typecheck and production build passed. No production creator authority or provider call is fabricated.
+
+Preserved RED: the first combined run had136PASS/1FAIL because synthetic training/tester setup ran inside the production 30-second planner timeout. An isolated rerun passed; the test now prepares its synthetic upstream history before invoking the timed planner, matching production's already-existing authority. Production limits are unchanged. Earlier host testing found an orphaned-grandchild false success; the Job Object repair closes it and all14 process tests pass.
+
+Automatic approval review rejected the exact Studio route/test source transfer to Claude. Root completed the local repair; independent transfer consent remains pending. This checkpoint does not claim deployment, launch/review controls or production quality acceptance.

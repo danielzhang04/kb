@@ -1,5 +1,17 @@
 # Prospective Figment video acceptance contract
 
+## Implementation checkpoint ? 2026-09-10
+
+The attributed `apply-rulings` command and `validate_accepted_video` consumer are implemented and locally tested, pending independent security review. The earlier candidate and preparation slices remain separately reviewed. Historical diagnostic clips remain ineligible; no creator-001 video has been accepted.
+
+The new writer binds normalized rulings, the shared QA stamp, attribution, current evidence and a canonical review store. Exclusive terminal claims prevent competing accept/reject decisions; parked attempts do not create acceptance. The validator reconstructs the current subject and rereads complete record snapshots. Acceptance requires the sample axes, all-frame coverage and actual full-clip playback observations; fixture rulings prove contracts only.
+
+Evidence: `MAIN/_private/figment-claude-video-root-20260910-v3/` records 177 passing video tests (309.18 seconds). A subsequent local review found an unbounded terminal-claim read. Its regression first failed, then the bounded/link-checked snapshot repair passed five targeted tests (72.55 seconds), including the real producer/CLI join. RED and GREEN: `MAIN/_private/figment-video-claim-bound-root-20260910-v1/`.
+
+The attempted independent Opus review stopped at its context limit without a verdict. Automatic approval review rejected the subsequent source-packet transfer; exact consent is pending. The rejected packet predates the final bounded-read repair and must not be silently replaced or rerouted. Implementation is not independently READY.
+
+The design history below describes the original gaps before these implementation slices.
+
 ## Decision boundary
 
 This plan defines one future offline review and lineage boundary. It does not

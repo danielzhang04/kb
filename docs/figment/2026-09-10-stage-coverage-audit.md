@@ -1,5 +1,9 @@
 # Figment stage coverage audit — 2026-09-10
 
+## September 10 implementation update
+
+Video rulings/validation and the protected Studio generation-plan preparation action are now implemented and locally tested. Video: full177PASS before a final bounded-read fix, then5 targetedPASS. Studio:137 affected testsPASS, typecheck/buildPASS. Both new slices still require independent review; the older gap inventory below is historical for those two slices. No accepted current creator media exists, and launch/review controls, non-persona asset authority, motion assignment/delivery fit and Instagram remain unfinished or deferred.
+
 ## Scope
 
 This is a read-only coverage check against the Figment mandate, current

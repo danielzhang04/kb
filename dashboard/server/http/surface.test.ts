@@ -196,6 +196,12 @@ afterEach(async () => {
 });
 
 describe('write surface — composition chain', () => {
+  it('keeps Studio generation-plan preparation behind the shared origin and session boundary', async () => {
+    app = buildApp().app;
+    expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { origin: GOOD_ORIGIN, host: GOOD_HOST, 'idempotency-key': 'A'.repeat(32) } })).statusCode).toBe(401);
+    expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { origin: 'https://wrong.example', host: GOOD_HOST, authorization: `Bearer ${token()}`, 'idempotency-key': 'A'.repeat(32) } })).statusCode).toBe(403);
+  });
+
   it('constructs no PTY host, registry, or run store when the probe refused', () => {
     // An injected host is still refused: the capability decides, not the override. If composition ever
     // took the override before checking `capabilities.pty`, a probe-refused daemon would expose a host.
