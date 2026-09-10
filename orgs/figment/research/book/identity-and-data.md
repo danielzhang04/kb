@@ -38,3 +38,13 @@ and evidence that remains explicitly non-promotable. The executor defaults to
 private offline preparation or a harness dry-run; its explicit live path also
 needs a separately fixed parent admission, current cost revalidation, and
 staged-inventory verification. The current 20-train/2-eval dataset is accepted only for bounded research and its v2 train and five-image tester completed with verified teardown. All five tester candidates were subsequently culled; no selected checkpoint, accepted held-out still, current video result, or production acceptance exists. Neither component writes an operator dataset acceptance, production training plan, checkpoint decision, or LoRA export.
+
+
+### Recorded coverage gap, September10
+
+A local metadata/header audit found zero close/shoulders-up labels in the20-row research
+training set:18 rows extend to thighs/knees/fullbody and2 are waist-up. The actual trainer
+used512/768/1024 resolutions and corresponding aspect buckets; it was not512-only.
+This is a source-coverage hypothesis to test, not an explanation proven by the current
+outputs. The public base misses the crop too. Preserve source/eval ancestry when planning
+any close-face variant. See the [curation audit](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md).

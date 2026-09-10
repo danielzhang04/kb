@@ -154,12 +154,64 @@ C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe -m pytest orgs
 ## Active sequence and completion criteria
 
 1. **Content asset-binding adapter is technically READY.** The [adapter plan](2026-09-10-content-asset-binding-plan.md) joins an unchanged, replayed content brief to current approved gen stills through `validate_approved_gen_still`. It requires exact attributed slot-fit decisions, current persona/reference identity binding and approval provenance. The final full content suite passed 47 tests for the author and 47 independently; root source/hash/log review accepted technical READY. The real producer-to-isolated-CLI join and CLI failure without partial output both pass. See the [independent review](2026-09-10-content-asset-binding-review.md). It neither approves assets nor invents video authority.
-2. **Assignment hub and prospective video producer are independently READY.** The optional Research assignment snapshot passed 59 focused tests, typecheck/build and qualified fixture QA. The candidate producer passed 61 independent video tests and the real approved-gen-to-unchanged-runner dry-run join. Root verified the actual candidate graph/upload/receipt and a separate native1280x704,81-frame assembled movie. The [producer review](2026-09-10-video-candidate-producer-review.md) records current persona binding, bounded snapshots, reserved output namespace and native assembly. Current-evidence review preparation is independently READY: 74 video tests and the actual producer-to-subprocess CLI join passed; root verified the canonical record, all81 frame hashes/graphs, receipts, native MP4 and samples. See the [preparation review](2026-09-10-video-review-preparation-review.md). The separate attributed-rulings/accepted-video-validator slice comes next. The Studio design exposed stale upstream approval at gen execution; its narrow consumer repair is independently READY, with four final focused tests and root verification of stopped-state preservation. Terra now builds the local provider-free plan-preparation control using existing auth and commands, with separate control tests and independent review before acceptance. No live endpoint exposure, provider or production approval action is implied. The shared runner and existing diagnostic defaults remain fixed.
+2. **Assignment hub and prospective video producer are independently READY.** The optional Research assignment snapshot passed 59 focused tests, typecheck/build and qualified fixture QA. The candidate producer passed 61 independent video tests and the real approved-gen-to-unchanged-runner dry-run join. Root verified the actual candidate graph/upload/receipt and a separate native1280x704,81-frame assembled movie. The [producer review](2026-09-10-video-candidate-producer-review.md) records current persona binding, bounded snapshots, reserved output namespace and native assembly. Current-evidence review preparation is independently READY: 74 video tests and the actual producer-to-subprocess CLI join passed; root verified the canonical record, all81 frame hashes/graphs, receipts, native MP4 and samples. See the [preparation review](2026-09-10-video-review-preparation-review.md). The separate attributed-rulings/accepted-video-validator slice comes next. The Studio design exposed stale upstream approval at gen execution; its narrow consumer repair is independently READY, with four final focused tests and root verification of stopped-state preservation. After the native workers hit their usage quota, Claude Sonnet resumes the local provider-free Studio plan-control repair and Claude Opus completes the video ruling authority. Root reproduced a real planner/control mismatch (decimal-string cost ceiling rejected as nonnumeric); the interrupted repair remains WIP. Both CLI response models are verified, tasks are bounded, and root runs tests before independent review. Neither slice is accepted yet. No live endpoint exposure, provider or production approval action is implied. The shared runner and existing diagnostic defaults remain fixed.
 3. **Resolve the quality hypothesis before more training.** Public wording and sampler comparisons are complete and stopped. The current private LoRA/no-LoRA five-seed diagnostic remains the cheapest prepared discriminator, but automatic review rejected its exact checkpoint upload and explicit consent remains pending. Preserve the preparation and do not reroute or retrain elsewhere to bypass the block. Continue independent research and local infrastructure meanwhile. A new quality experiment must name its changed variable, evidence, budget and stop condition before execution.
 
 Infrastructure completion means each supported stage consumes the previous stage's real output with current lineage, meaningful failure tests, independent code review and a usable local hub/runbook. Product-quality completion additionally requires a recognizably consistent fictional adult who reads about 21 identity over held-out poses/settings, accepted stills and inspected video continuity. The current project meets neither full completion condition yet. No code-test count substitutes for the quality evidence.
 
-Standing user authorization covers continued local implementation, fixes, research and bounded RunPod experiments within the $50 arc. It does not override an actual rejected private-payload transfer, authorize publication/Instagram, or turn rejected imagery into acceptance. Keep-awake was verified at 03:39 UTC with the root CLI lease alive; the existing 16-hour lease reaches about 09:44 Eastern. The 8 AM checkpoint is a progress report, with continued work or a completed resumable handoff afterward.
+Standing user authorization covers continued local implementation, fixes, research and bounded RunPod experiments within the $50 arc. It does not override an actual rejected private-payload transfer, authorize publication/Instagram, or turn rejected imagery into acceptance. The previous finite keep-awake lease expired during the quota pause. Root renewed it at 16:31:34 Eastern on September 10; supervisor64772 and root56824 were verified alive and armed, with a new16-hour bound through about08:31 Eastern September11. The 8 AM checkpoint is a progress report, with continued work or a completed resumable handoff afterward.
+
+## Resumed work and alternative pathways - September 10, 20:42 UTC
+
+The active build path has four bounded slices. First finish and independently verify
+video terminal decisions and the Studio plan-preparation control. Acceptance requires
+actual producer/consumer fixture joins, failure-state preservation, bounded subprocess
+time/output and current lineage; source-only worker reports are insufficient.
+Second, use the sole accepted-video validator in the existing content adapter for
+persona motion slots. Preserve the distinction between accepted source footage and
+finished reel delivery: native1280x704/16fps footage does not satisfy the current
+1080x1920/30fps template by itself. Stale upstream media, wrong persona and diagnostic
+clips must refuse before assignment. Third, expose bounded video-review and asset
+states in the existing hub with unchanged auth and explicit missing/parked/rejected
+states. Fourth, exercise one documented local operator journey over fixtures from
+training selection through still/video review and assignments, including refusal and
+resume. A fixture journey demonstrates infrastructure only; actual identity and
+full-playback acceptance remain separate evidence requirements.
+
+The following are hypotheses for a new experiment, not findings or permission to
+replay stopped experiments:
+
+- **Framing and source coverage:** the public base also misses the requested crop,
+  so LoRA alone cannot explain framing. Audit existing captions, effective training
+  buckets and source crop diversity locally before another run. If a concrete mismatch
+  is found, change only that factor in a fresh bounded experiment; preserve originals.
+  Stop if improved framing loses identity, realistic skin, whole-head coverage or adult
+  presentation. This audit can proceed without a private export.
+- **Single-anchor generalization:** every retained derivative shares g01 ancestry;
+  two held-out derivatives do not supply independent reference evidence. A new dataset
+  experiment must predeclare pose/lighting/expression coverage and exclude evaluation
+  rows by provenance. First determine whether the existing rows cover that matrix.
+  Do not expand or retrain merely to increase sample count. A new seed would be an
+  explicit new hypothesis and persona revision, not a silent replacement for g01.
+- **Checkpoint contribution:** the prepared five-seed LoRA/base diagnostic can distinguish
+  checkpoint-specific drift from base-model behavior more clearly than the completed
+  single-seed controls. Its exact private-checkpoint upload remains blocked until specific
+  consent. If permitted later, recompile against current sources and budgets, preserve
+  the old preparation, and judge the predeclared paired results. Do not reroute the
+  checkpoint or invent a selected checkpoint to unlock this diagnostic.
+
+Further model or serving changes require a named hypothesis and a small discriminating
+control. Official Raw-training/Turbo-serving is already the intended Krea pairing; a
+change is not justified merely because the two names differ. No new open-ended sampler
+search, metric-threshold relaxation or blind retraining is scheduled. Local source
+and dataset inspection will determine whether another unblocked experiment has enough
+expected information to justify its cost.
+
+The user requested mostly Claude CLI implementation. Sonnet/Opus response IDs and
+prospective usage are recorded in each bounded worker result; historical native token
+usage remains unavailable. A separate Fable strategy review was rejected by automatic
+approval review for its internal-plan transfer and has not run. That rejection is
+isolated; the approved implementation workers continue.
 
 ## Review and test cadence
 
@@ -181,7 +233,7 @@ This is the existing user-directed build session with bounded worker tasks, not 
 | Failure mode | Concrete control |
 | --- | --- |
 | Vague completion creates endless work | Each work order names an actual producer and consumer, observable success/failure commands, changed paths and a deliverable. The coverage audit decides the next gap. |
-| Author judges its own work | A separate Codex reviewer checks the source and runs focused evidence; root reconciles actual artifacts and records the decision. Report requested model separately from unavailable response-model telemetry. |
+| Author judges its own work | A separate review session checks frozen source; root runs focused evidence and reconciles actual artifacts. Record requested and actual CLI response models, observed usage and telemetry gaps separately. |
 | Green tests hide a broken product | Exercise real producer-to-consumer joins and subprocess exit/output behavior. Do not loosen quality thresholds, delete failing tests or create a keep ruling to advance a stage. |
 | Missing permission discovered mid-run | Standing build and bounded compute authorization are recorded. Actual private-transfer rejections remain isolated until their exact answer. Other independent work continues. |
 | Stale state causes reruns | Update the canonical handoff and current STATE after terminal run results. Preserve failed preparations and receipts; do not replay a completed attempt. |

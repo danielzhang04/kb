@@ -1,6 +1,6 @@
 # Built-in research dataset curation result
 
-**Date:** 2026-09-09
+**Date:** 2026-09-09; lifecycle and local coverage audit refreshed 2026-09-10
 
 **Scope:** creator-001 bounded research dataset and train-first preparation
 
@@ -10,7 +10,7 @@
 
 The direct-`g01` candidate expansion has completed its local research-curation path. Root recorded `eligible-for-bounded-research-training`, the existing curation compiler materialized 20 numbered training image/caption pairs while retaining both evaluation rows as evidence, an independent materialization verifier passed, and the existing CLI recorded dataset decision `verified` for `codex-worker/root` at `2026-09-09T18:14:35Z`.
 
-This is an accepted dataset for one bounded research LoRA trial. It is not a production dataset, checkpoint acceptance, production identity claim, or publication decision. The user separately approved the exact 20-image/caption `$7.61`/351-minute RunPod payload. A first launcher attempt failed locally with `WinError 5` reading `dataset-approval.json` before any provider call; the same-user read/execute repair then verified all 88 dataset files unchanged. The normal CLI child launched at 18:38:23 UTC (PID 60208) after empty-inventory and current-ledger preflight. Recovery recorded owned pod `iu3uzm2swvup3l` (`figment-bakeoff-20260909-183826-e7284e`) at 18:38:26 UTC. The latest recorded read-only snapshot at 18:44 UTC saw its container `RUNNING` while system logs were still downloading image layers. It is bootstrapping, not a training-step result or container-progress claim. No final receipt, checkpoint, tester output, or final cost claim exists.
+This is an accepted dataset for one bounded research LoRA trial, not a production dataset, checkpoint acceptance or publication decision. The original v1 pod failed during image pull before dataset upload and was verified terminated. The subsequent v2 train completed1250steps and five checkpoints; its five-image tester completed with verified teardown. Root recorded all five as culled after independent review, leaving no selected checkpoint or approved still. The prior bootstrap-only status in this document was stale; its historical launch details remain in the handoff. See the [quality decision](2026-09-09-checkpoint-quality-decision.md) and [current delivery plan](2026-09-09-end-to-end-delivery-plan.md).
 
 ## Bound evidence
 
@@ -40,8 +40,35 @@ The numbered training PNG byte hashes differ from the original source hashes bec
 
 The current public pin preflight passed for the selected train and tester profiles. The CLI then wrote `_private/figment-builtin-train-first-20260909-v1/plan.json`, SHA-256 `9c82f6dd64500f1ac46144cf882261990353e0659773c95c3617649fbe6ece7c`. It contains the existing two-stage train/tester sequence and binds the accepted dataset subject and canonical OPS ledger path. The train stage is the normal 1250-step DOP configuration on the L40S class, with a 351-minute bound and `$7.61` ceiling.
 
-The train child has launched but no train stage has completed and no tester has launched. The final one-shot launcher is independently READY at SHA-256 `86530deca2cd878484139d4809b97626df64eb72b319acc955b7c622194f73e7`; after the historical local pre-provider access failure, its unchanged normal CLI child launched at 18:38:23 UTC. Recovery recorded owned pod `iu3uzm2swvup3l` (`figment-bakeoff-20260909-183826-e7284e`) at 18:38:26 UTC, and the latest 18:44 UTC read-only snapshot saw its container `RUNNING` while system logs were downloading image layers. That is bootstrap, not a training-step result or container-progress claim. No final receipt, checkpoint, tester output, or quality result exists from this plan.
+That v1 preparation is historical and must not be replayed. Its image-pull failure preceded upload/training. The completed v2 run and all-cull tester disposition supersede the previous live-bootstrap status; neither run changes the dataset's bounded-research-only status.
 
 ## Quality limits
 
 The research acceptance is grounded in original-pixel root and independent review of the fictional adult identity and factual captions. It remains a single-anchor, first-generation derivative set. Most faces are frontal or three-quarter, repeated makeup and jewelry are common, and each variation has one generated sample. The two held-out images are narrow within-identity diagnostics from the same anchor; they are not independent identity references and cannot establish broad generalization.
+
+
+## Local coverage audit - 2026-09-10
+
+Root read the immutable curation metadata and image headers, without a new pixel review
+or quality ruling. The source curation SHA remains
+`e1445eab14bc755728e2d66ce86c870a440da45b63736bdc9f1a36765bb51568`.
+The20 training rows have no declared close/shoulders-up framing:12 are head-to-upper-thighs,
+4 head-to-knees,1 head-to-thighs,1 full-body and2 waist-up. The seed is1408x768;
+all19 derivatives are1086x1448. Source hashes are distinct. Pilot03/06 remain eval-only.
+These are recorded labels and dimensions, not a fresh verification that every image
+matches its label.
+
+The actual v2 training log declares three resolutions512,768,1024, not a512-only fit.
+It records one seed plus19 derivative images in each resolution's two buckets:
+704x368 /448x576,1024x576 /656x896, and1392x752 /896x1168 respectively.
+Do not diagnose the result as a512-only training error.
+
+This supports a bounded close-face coverage hypothesis, not causality: the public base
+also missed shoulders-up framing. Before another dataset or training trial, compare the
+required evaluation framing matrix against this recorded source matrix, then define one
+changed factor and stop conditions. Preserve original images/captions and acceptance
+hashes; any crop-derived rows remain shared-source derivatives and cannot become
+independent held-out references.
+
+Exact metadata/header and training-log evidence is
+`MAIN/_private/figment-dataset-coverage-audit-20260910-v1/result.json`.
