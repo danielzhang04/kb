@@ -22,11 +22,18 @@ from .funding_research_service import (
     FundingResearchService,
 )
 from .pipeline_service import PipelineError, PipelineService, PipelineStartRequest, ScopeSpec
+from .person_research_service import (
+    PersonCapture,
+    PersonResearchError,
+    PersonResearchRequest,
+    PersonResearchService,
+)
 from .store import open_store
 
 
 MAX_INPUT_BYTES = 20 * 1024
 MAX_FUNDING_IMPORT_BYTES = 1024 * 1024
+MAX_PERSON_IMPORT_BYTES = 1024 * 1024
 MAX_JSON_DEPTH = 32
 _REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _FIELDS = frozenset({
@@ -49,6 +56,15 @@ _COVERAGE_FIELDS = frozenset({
     "query", "searched_at", "status", "result_count", "result_cap",
 })
 _EVENT_FIELDS = frozenset({"page_ordinal", "stage", "announced_at", "excerpt"})
+_PERSON_FIELDS = frozenset({
+    "request_id", "run_id", "expected_intake_hash", "funding_batch_id",
+    "funding_batch_hash", "predecessor_batch_id", "predecessor_hash",
+    "research_result_ids", "candidates",
+})
+_PERSON_CANDIDATE_FIELDS = frozenset({
+    "funding_result_id", "company_id", "first_name", "full_name", "title",
+    "profile_url", "source_url", "body_ref", "captured_at",
+})
 _CLI_CODES = frozenset({
     "funding_import_duplicate_key", "funding_import_invalid",
     "funding_import_json_invalid", "funding_import_json_too_deep",
@@ -56,6 +72,10 @@ _CLI_CODES = frozenset({
     "funding_import_too_large", "funding_projection_missing",
     "input_duplicate_key", "input_invalid", "input_json_invalid", "input_json_too_deep",
     "input_schema_invalid", "input_snapshot_required", "input_too_large", "invalid_arguments",
+    "person_import_duplicate_key", "person_import_invalid",
+    "person_import_json_invalid", "person_import_json_too_deep",
+    "person_import_schema_invalid", "person_import_snapshot_required",
+    "person_import_too_large", "person_projection_missing", "person_scope_missing",
     "store_invalid", "store_private_root_required",
 })
 _FUNDING_CODES = frozenset({
@@ -76,6 +96,18 @@ _PIPELINE_CODES = frozenset({
     "invalid_requested_companies", "invalid_role_families", "invalid_sector",
     "invalid_sector_scope", "request_conflict", "run_missing", "store_state_invalid",
     "transaction_active",
+})
+_PERSON_CODES = frozenset({
+    "batch_too_large", "candidate_company_mismatch", "candidate_outside_scope",
+    "candidate_pool_too_large", "funding_batch_stale", "intake_stale",
+    "invalid_body_ref", "invalid_candidate", "invalid_candidates",
+    "invalid_funding_batch", "invalid_intake_hash", "invalid_predecessor",
+    "invalid_profile_url", "invalid_request", "invalid_request_id",
+    "invalid_research_scope", "invalid_run_id", "invalid_source_url",
+    "operator_source_store_cap", "operator_source_store_invalid",
+    "pipeline_context_stale", "predecessor_conflict", "request_conflict",
+    "research_scope_too_large", "snapshot_store_required", "source_changed",
+    "source_stale", "source_too_large", "store_state_invalid", "transaction_active",
 })
 
 
@@ -466,6 +498,45 @@ def _read_funding_import(store: Path, input_path: Path) -> FundingResearchReques
     ))
 
 
+def _person_request(value: Any) -> PersonResearchRequest:
+    if type(value) is not dict or set(value) != _PERSON_FIELDS:
+        raise CliError("person_import_schema_invalid")
+    candidates_value = value["candidates"]
+    result_ids = value["research_result_ids"]
+    if type(candidates_value) is not list or type(result_ids) is not list:
+        raise CliError("person_import_schema_invalid")
+    candidates: list[PersonCapture] = []
+    for candidate_value in candidates_value:
+        if type(candidate_value) is not dict or set(candidate_value) != _PERSON_CANDIDATE_FIELDS:
+            raise CliError("person_import_schema_invalid")
+        candidates.append(PersonCapture(
+            candidate_value["funding_result_id"], candidate_value["company_id"],
+            candidate_value["first_name"], candidate_value["full_name"],
+            candidate_value["title"], candidate_value["profile_url"],
+            candidate_value["source_url"], candidate_value["body_ref"],
+            candidate_value["captured_at"],
+        ))
+    return PersonResearchRequest(
+        value["request_id"], value["run_id"], value["expected_intake_hash"],
+        value["funding_batch_id"], value["funding_batch_hash"],
+        value["predecessor_batch_id"], value["predecessor_hash"],
+        tuple(result_ids), tuple(candidates),
+    )
+
+
+def _read_person_import(store: Path, input_path: Path) -> PersonResearchRequest:
+    return _person_request(_read_private_json(
+        store, input_path,
+        invalid_code="person_import_invalid",
+        snapshot_code="person_import_snapshot_required",
+        too_large_code="person_import_too_large",
+        duplicate_code="person_import_duplicate_key",
+        json_code="person_import_json_invalid",
+        depth_code="person_import_json_too_deep",
+        limit=MAX_PERSON_IMPORT_BYTES,
+    ))
+
+
 def _safe_output(result: object, safe: object) -> dict[str, object]:
     return {
         "run_id": safe.run_id,
@@ -510,6 +581,55 @@ def _safe_funding_projection_output(safe: object) -> dict[str, object]:
     }
 
 
+def _safe_person_import_output(
+    result: object, request: PersonResearchRequest,
+) -> dict[str, object]:
+    return {
+        "batch_id": result.batch_id,
+        "batch_hash": result.batch_hash,
+        "run_id": result.run_id,
+        "intake_hash": request.expected_intake_hash,
+        "funding_batch_id": request.funding_batch_id,
+        "funding_batch_hash": request.funding_batch_hash,
+        "state": result.state,
+        "counts": dict(result.counts),
+        "replayed": result.replayed,
+    }
+
+
+def _safe_person_projection_output(safe: object) -> dict[str, object]:
+    return {
+        "batch_id": safe.batch_id,
+        "batch_hash": safe.batch_hash,
+        "run_id": safe.run_id,
+        "intake_hash": safe.intake_hash,
+        "funding_batch_id": safe.funding_batch_id,
+        "funding_batch_hash": safe.funding_batch_hash,
+        "state": safe.state,
+        "counts": dict(safe.counts),
+    }
+
+
+def _safe_person_scope_output(projection: object) -> dict[str, object]:
+    return {
+        "run_id": projection.run_id,
+        "intake_hash": projection.intake_hash,
+        "funding_batch_id": projection.batch_id,
+        "funding_batch_hash": projection.batch_hash,
+        "state": "provisional_person_research_scope",
+        "requested_company_cap": projection.desired_companies,
+        "companies": [
+            {
+                "ordinal": company.ordinal,
+                "funding_result_id": company.result_id,
+                "company_id": company.company_id,
+            }
+            for company in projection.companies
+            if company.rule_outcome == "provisional_match" and company.company_id is not None
+        ],
+    }
+
+
 def _error_code(error: BaseException) -> str:
     value = str(error)
     if isinstance(error, CliError) and value in _CLI_CODES:
@@ -517,6 +637,8 @@ def _error_code(error: BaseException) -> str:
     if isinstance(error, PipelineError) and value in _PIPELINE_CODES:
         return value
     if isinstance(error, FundingResearchError) and value in _FUNDING_CODES:
+        return value
+    if isinstance(error, PersonResearchError) and value in _PERSON_CODES:
         return value
     return "operation_failed"
 
@@ -528,15 +650,21 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--input")
     mode.add_argument("--funding-import")
     mode.add_argument("--funding-project")
+    mode.add_argument("--person-import")
+    mode.add_argument("--person-project")
+    mode.add_argument("--person-scope")
     try:
         args = parser.parse_args(argv)
         store, identity = _approved_store(Path(args.store))
         request = None
         funding_request = None
+        person_request = None
         if args.input is not None:
             request = _read_input(store, Path(args.input))
         elif args.funding_import is not None:
             funding_request = _read_funding_import(store, Path(args.funding_import))
+        elif args.person_import is not None:
+            person_request = _read_person_import(store, Path(args.person_import))
         store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)
         connection = open_store(store)
         try:
@@ -545,7 +673,7 @@ def main(argv: list[str] | None = None) -> int:
                 result = service.start_or_resume(request)
                 safe = service.get_safe_projection(result.run_id)
                 output = _safe_output(result, safe)
-            else:
+            elif funding_request is not None or args.funding_project is not None:
                 funding = FundingResearchService(connection)
                 if funding_request is not None:
                     result = funding.import_and_classify(funding_request)
@@ -555,13 +683,30 @@ def main(argv: list[str] | None = None) -> int:
                     if safe is None:
                         raise CliError("funding_projection_missing")
                     output = _safe_funding_projection_output(safe)
+            elif args.person_scope is not None:
+                projection = FundingResearchService(connection).get_projection(
+                    args.person_scope,
+                )
+                if projection is None:
+                    raise CliError("person_scope_missing")
+                output = _safe_person_scope_output(projection)
+            else:
+                people = PersonResearchService(connection)
+                if person_request is not None:
+                    result = people.import_current_people(person_request)
+                    output = _safe_person_import_output(result, person_request)
+                else:
+                    safe = people.get_safe_projection(args.person_project)
+                    if safe is None:
+                        raise CliError("person_projection_missing")
+                    output = _safe_person_projection_output(safe)
         finally:
             connection.close()
         sys.stdout.write(
             json.dumps(output, sort_keys=True, separators=(",", ":")) + "\n"
         )
         return 0
-    except (CliError, FundingResearchError, PipelineError) as error:
+    except (CliError, FundingResearchError, PersonResearchError, PipelineError) as error:
         code = _error_code(error)
     except (OSError, OverflowError, RecursionError, RuntimeError, sqlite3.Error, TypeError, ValueError):
         code = "operation_failed"

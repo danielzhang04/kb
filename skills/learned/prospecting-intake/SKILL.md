@@ -1,9 +1,9 @@
 ---
 name: prospecting-intake
-description: Turn a natural-language prospecting brief into a private typed intake, then import operator-captured public funding evidence for provisional factcheck. Use for starting, safely retrying, or inspecting this local prospecting pipeline; this draft does not qualify people or perform outreach.
+description: Turn a natural-language prospecting brief into a private typed intake, then import operator-captured funding and current-role evidence for provisional factcheck. Use for starting, safely retrying, or inspecting this local prospecting pipeline; this draft does not qualify people or perform outreach.
 ---
 
-# Prospecting intake and funding capture
+# Prospecting intake and evidence capture
 
 Convert the user's brief into one `PipelineStartRequest` JSON object and submit it through the repository's existing `PipelineService` CLI boundary. Keep the brief, outreach goal, names, and other private text out of arguments, stdout, logs, and tracked files.
 
@@ -43,6 +43,32 @@ Inspect the latest aggregate projection without reading private evidence into ou
 python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --funding-project <opaque-run-id>
 ```
 
-Report only the returned opaque IDs, hashes, state, and counts. `awaiting_qualification_factcheck` means the deterministic import found provisional matches that still need factual review. It does not mean that a company is qualified. Company qualification, two-person ranking, role verification, personalized drafting, humanization, criticism, human approval, and sending remain later gated work.
+Report only the returned opaque IDs, hashes, state, and counts. `awaiting_qualification_factcheck` means the deterministic import found provisional matches that still need factual review. It does not mean that a company is qualified.
+
+Before capturing people, retrieve the latest validated opaque research scope:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --person-scope <opaque-run-id>
+```
+
+This output contains only the current intake and funding batch hashes, the requested company cap, and each provisional match's ordinal, funding result ID, and company ID. It contains no company name, source text, or qualification. Match the ordinal to the retained private funding manifest. Choose the exact result IDs to research within the saved request; this is a research scope, not a human qualification decision. The person import service revalidates every ID against the current funding batch.
+
+For each person candidate, save one exact public current-role page body beneath the selected store's `snapshots/` directory. The page must support the supplied full name, current title, and exact scoped company. Preserve an optional HTTPS profile URL only when the captured source supports it. Derive `first_name` from an exact contiguous token sequence in `full_name`; do not guess it from an account handle or email address.
+
+Create a private person-import manifest with exactly `request_id`, `run_id`, `expected_intake_hash`, `funding_batch_id`, `funding_batch_hash`, `predecessor_batch_id`, `predecessor_hash`, `research_result_ids`, and `candidates`. Each candidate has exactly `funding_result_id`, `company_id`, `first_name`, `full_name`, `title`, nullable `profile_url`, `source_url`, `body_ref`, and `captured_at`. Use the opaque values returned by `--person-scope`; never put page bodies, qualification flags, reviewer decisions, rankings, contact details, or caller-created entity IDs in the manifest.
+
+Retain one canonical UUID for an exact person-import retry. A complete replacement batch needs a new UUID and the preceding person projection's exact batch ID and hash. Import or replay with:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --person-import <selected-store-parent>/snapshots/<person-manifest.json>
+```
+
+Inspect the latest aggregate person projection with:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --person-project <opaque-run-id>
+```
+
+Keep person and source details in the private store. Report only returned opaque batch and funding IDs, hashes, state, and counts. `awaiting_person_qualification_factcheck` means current-role pages were imported provisionally. It does not select or rank people, confirm the source as a human, create contact data, or authorize drafting or outreach. Company factcheck, ranking to the requested per-company count, humanization, criticism, human approval, and sending remain later gated work. Local source-bound drafting can precede human source confirmation; confirmation remains mandatory before readiness and outbound steps.
 
 This learned skill is a sandboxed draft until separately reviewed and promoted.

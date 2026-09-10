@@ -876,3 +876,19 @@ Final reviewed SHA-256 bindings:
 | `scripts/prospecting/tests/review_app_state.test.js` | `FB3CAB9B0923BF060A16FB96C7A6F1C51E1B8732E3B944B297D2AF23F90FC459` |
 
 Limits: name/title/company containment is structural evidence, not a semantic determination of identity, current employment or recipient suitability. Funding and person qualification still require genuine model review; the native subscription route remains unavailable after the separately observed HTTP 401. This review made no authentication, model, browser or external-source calls and used no real records. Handled rollback/replay is verified; abrupt termination between file publication and SQLite commit remains an explicit recovery limitation. The next integration must preserve exact P17/P18 selection and employment IDs: existing `fill_campaign_fit` scans all companies and starts contact work, while `score_campaign` joins all open employment by person. Those routines are not accepted as an unchanged bridge from these provisional imports to ranked, reviewed drafts.
+
+Root subsequently accepted and checkpointed this P18/dashboard slice locally at `904a394b`. Root verification included **170 Python tests and 16 bundled JavaScript tests**, plus a final affected P18/migration run of **24 passed, 42 deselected in 9.83s**; these overlap the independent and builder runs above.
+
+### P18 private CLI and intake skill: final independent review
+
+Independent verdict: READY for the three-file person import/projection CLI slice. `--person-scope` obtains the latest validated P17 batch and returns only its intake/batch hashes, requested company cap and opaque provisional-match result/company IDs with ordinals. It grants no qualification or selection authority. Person import uses the existing bounded private snapshot JSON reader and the P18 service's exact scope/source validation; output contains only opaque bindings and aggregate counts. Exact replay of batch A after replacement B returns A, while the latest person projection returns B. Errors use an explicit fixed-code allowlist without input text, file paths or private source values.
+
+Reviewed the complete CLI and learned skill plus the new real-subprocess tests. Independent verification: **10 passed, 26 deselected in 15.52s** at `p18cli-infra-0910-a`, covering current scope, import/replay, nested private inputs, duplicate/nonfinite/extra-key rejection, bounded size/depth before migration, snapshot containment, hardlink refusal, missing/invalid/conflicting modes and safe failure output. Builder P18/CLI combined verification was **52 passed in 50.27s**. The only review repair was skill wording: ranking uses the requested per-company count, and local source-bound drafting may precede human confirmation while confirmation remains required before readiness/outbound. The final skill validator passed; CLI code and test hashes did not change after the independent run.
+
+| File | SHA-256 |
+| --- | --- |
+| `scripts/prospecting/pipeline_cli.py` | `F97715335B154D06CC0A37E87A9013B9C884CE3389FE6436CA14C68808CA3F10` |
+| `scripts/prospecting/tests/test_pipeline_cli.py` | `83312510DC417CB7A6EBC8B8A549BF5E972CCB118A92BDB9C92705F3269E3861` |
+| `skills/learned/prospecting-intake/SKILL.md` | `CEB27F88D14B919BD96FA9DDB1E4AAF53D4B25A5110D14FF89EEE940BAF2CDE7` |
+
+This acceptance does not promote the learned skill, execute public research or models, rank/select candidates, create drafts, or establish a live private StageAdapter. The separately proposed adapter remains outside this reviewed slice. No real records, authentication changes, browser connections, provider calls or production store migrations were used in the independent verification.

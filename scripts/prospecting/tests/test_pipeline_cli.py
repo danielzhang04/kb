@@ -10,8 +10,11 @@ from datetime import datetime, timezone
 
 import pytest
 
+import scripts.prospecting.pipeline_cli as pipeline_cli
+from scripts.prospecting.funding_research_service import FundingResearchError
 from scripts.prospecting.pipeline_cli import (
     MAX_FUNDING_IMPORT_BYTES, MAX_INPUT_BYTES, MAX_JSON_DEPTH,
+    MAX_PERSON_IMPORT_BYTES,
 )
 from scripts.prospecting.pipeline_service import PipelineService
 from scripts.prospecting.store import open_store
@@ -32,6 +35,15 @@ FUNDING_OUTPUT_FIELDS = {
     "batch_id", "batch_hash", "run_id", "intake_hash", "state", "counts", "replayed",
 }
 FUNDING_PROJECTION_FIELDS = FUNDING_OUTPUT_FIELDS - {"replayed"}
+PERSON_OUTPUT_FIELDS = {
+    "batch_id", "batch_hash", "run_id", "intake_hash", "funding_batch_id",
+    "funding_batch_hash", "state", "counts", "replayed",
+}
+PERSON_PROJECTION_FIELDS = PERSON_OUTPUT_FIELDS - {"replayed"}
+PERSON_SCOPE_FIELDS = {
+    "run_id", "intake_hash", "funding_batch_id", "funding_batch_hash",
+    "state", "requested_company_cap", "companies",
+}
 
 
 def _paths(tmp_path: Path) -> tuple[Path, Path, dict[str, str]]:
@@ -107,6 +119,42 @@ def _run_funding_project(
     )
 
 
+def _run_person(
+    store: Path, source: Path, environment: dict[str, str], *extra: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable, "-B", "-m", "scripts.prospecting.pipeline_cli",
+            "--store", str(store), "--person-import", str(source), *extra,
+        ],
+        cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
+    )
+
+
+def _run_person_project(
+    store: Path, run_id: str, environment: dict[str, str], *extra: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable, "-B", "-m", "scripts.prospecting.pipeline_cli",
+            "--store", str(store), "--person-project", run_id, *extra,
+        ],
+        cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
+    )
+
+
+def _run_person_scope(
+    store: Path, run_id: str, environment: dict[str, str], *extra: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable, "-B", "-m", "scripts.prospecting.pipeline_cli",
+            "--store", str(store), "--person-scope", run_id, *extra,
+        ],
+        cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
+    )
+
+
 def _write(snapshots: Path, value: object, name: str = "intake.json") -> Path:
     path = snapshots / name
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -175,6 +223,55 @@ def _funding_manifest(
             }],
         }],
     }
+
+
+def _person_manifest(
+    snapshots: Path, scope: dict[str, object], *, request_id: str | None = None,
+    predecessor: dict[str, object] | None = None,
+) -> dict[str, object]:
+    captured_at = datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    body_root = snapshots / "captures" / "people"
+    body_root.mkdir(parents=True, exist_ok=True)
+    body = f"{CANARY} Avery Example is Head of Operations at Example Systems."
+    (body_root / "avery.txt").write_text(body, encoding="utf-8")
+    company = scope["companies"][0]
+    return {
+        "request_id": request_id or str(uuid.uuid4()),
+        "run_id": scope["run_id"],
+        "expected_intake_hash": scope["intake_hash"],
+        "funding_batch_id": scope["funding_batch_id"],
+        "funding_batch_hash": scope["funding_batch_hash"],
+        "predecessor_batch_id": None if predecessor is None else predecessor["batch_id"],
+        "predecessor_hash": None if predecessor is None else predecessor["batch_hash"],
+        "research_result_ids": [company["funding_result_id"]],
+        "candidates": [{
+            "funding_result_id": company["funding_result_id"],
+            "company_id": company["company_id"],
+            "first_name": "Avery",
+            "full_name": "Avery Example",
+            "title": "Head of Operations",
+            "profile_url": "https://profile.test/avery",
+            "source_url": "https://example.test/team/avery",
+            "body_ref": "captures/people/avery.txt",
+            "captured_at": captured_at,
+        }],
+    }
+
+
+def _person_cli_setup(tmp_path: Path):
+    store, snapshots, environment = _paths(tmp_path)
+    intake = json.loads(_run(
+        store, _write(snapshots, _payload(), "people/intake.json"), environment,
+    ).stdout)
+    funding = _run_funding(
+        store,
+        _write(snapshots, _funding_manifest(snapshots, intake), "people/funding.json"),
+        environment,
+    )
+    assert funding.returncode == 0 and funding.stderr == ""
+    scoped = _run_person_scope(store, str(intake["run_id"]), environment)
+    assert scoped.returncode == 0 and scoped.stderr == ""
+    return store, snapshots, environment, intake, json.loads(funding.stdout), json.loads(scoped.stdout)
 
 
 def _assert_private_failure(result: subprocess.CompletedProcess[str], source: Path) -> str:
@@ -588,3 +685,246 @@ def test_funding_project_missing_invalid_and_mutually_exclusive_modes_are_privat
         store, source, environment, "--funding-project", missing_run,
     )
     assert _assert_private_failure(conflicting, source) == "invalid_arguments"
+
+
+def test_person_scope_import_replay_and_latest_projection_are_aggregate_safe(
+    tmp_path: Path,
+) -> None:
+    store, snapshots, environment, intake, funding, scope = _person_cli_setup(tmp_path)
+    assert set(scope) == PERSON_SCOPE_FIELDS
+    assert scope["run_id"] == intake["run_id"]
+    assert scope["funding_batch_id"] == funding["batch_id"]
+    assert scope["funding_batch_hash"] == funding["batch_hash"]
+    assert scope["state"] == "provisional_person_research_scope"
+    assert scope["requested_company_cap"] == intake["counts"]["requested_companies"]
+    assert len(scope["companies"]) == 1
+    assert set(scope["companies"][0]) == {"ordinal", "funding_result_id", "company_id"}
+
+    manifest = _person_manifest(snapshots, scope)
+    source = _write(snapshots, manifest, "people/import.json")
+    first = _run_person(store, source, environment)
+    replay = _run_person(store, source, environment)
+    first_value = json.loads(first.stdout)
+
+    replacement_manifest = _person_manifest(
+        snapshots, scope, request_id=str(uuid.uuid4()), predecessor=first_value,
+    )
+    replacement_source = _write(
+        snapshots, replacement_manifest, "people/replacement.json",
+    )
+    replacement = _run_person(store, replacement_source, environment)
+    late_replay = _run_person(store, source, environment)
+    projected = _run_person_project(store, str(intake["run_id"]), environment)
+
+    assert all(
+        result.returncode == 0
+        for result in (first, replay, replacement, late_replay, projected)
+    )
+    assert all(
+        result.stderr == ""
+        for result in (first, replay, replacement, late_replay, projected)
+    )
+    replayed = json.loads(replay.stdout)
+    replaced = json.loads(replacement.stdout)
+    replayed_after_replacement = json.loads(late_replay.stdout)
+    projection = json.loads(projected.stdout)
+    assert set(first_value) == PERSON_OUTPUT_FIELDS
+    assert set(projection) == PERSON_PROJECTION_FIELDS
+    assert first_value["state"] == "awaiting_person_qualification_factcheck"
+    assert first_value["counts"]["imported"] == 1
+    assert first_value["replayed"] is False and replayed["replayed"] is True
+    assert {**first_value, "replayed": True} == replayed
+    assert replayed_after_replacement == replayed
+    assert replaced["batch_id"] != first_value["batch_id"]
+    assert replaced["batch_hash"] != first_value["batch_hash"]
+    assert projection["batch_id"] == replaced["batch_id"]
+    assert projection["batch_hash"] == replaced["batch_hash"]
+    assert projection["counts"] == replaced["counts"]
+    private_values = (
+        CANARY, "Example Systems", "Avery Example", "Head of Operations",
+        "profile.test", "example.test/team", "captures/people",
+    )
+    public_output = json.dumps(scope) + "".join(
+        result.stdout
+        for result in (first, replay, replacement, late_replay, projected)
+    )
+    assert all(item not in public_output for item in private_values)
+
+    changed = json.loads(json.dumps(manifest))
+    changed["candidates"][0]["title"] = "Other private title"
+    refused_source = _write(snapshots, changed, "people/changed.json")
+    assert _assert_private_failure(
+        _run_person(store, refused_source, environment), refused_source,
+    ) == "request_conflict"
+
+
+def test_person_scope_uses_latest_validated_funding_batch(tmp_path: Path) -> None:
+    store, snapshots, environment = _paths(tmp_path)
+    intake = json.loads(_run(
+        store, _write(snapshots, _payload(), "people/intake.json"), environment,
+    ).stdout)
+    manifest = _funding_manifest(snapshots, intake)
+    first = json.loads(_run_funding(
+        store, _write(snapshots, manifest, "people/funding-a.json"), environment,
+    ).stdout)
+    replacement = json.loads(json.dumps(manifest))
+    replacement["request_id"] = str(uuid.uuid4())
+    replacement["predecessor_batch_id"] = first["batch_id"]
+    replacement["predecessor_hash"] = first["batch_hash"]
+    replacement["candidates"][0]["sector"] = "Infrastructure Software"
+    second_result = _run_funding(
+        store, _write(snapshots, replacement, "people/funding-b.json"), environment,
+    )
+    assert second_result.returncode == 0 and second_result.stderr == ""
+    second = json.loads(second_result.stdout)
+
+    scoped = _run_person_scope(store, str(intake["run_id"]), environment)
+    assert scoped.returncode == 0 and scoped.stderr == ""
+    value = json.loads(scoped.stdout)
+    assert value["funding_batch_id"] == second["batch_id"]
+    assert value["funding_batch_hash"] == second["batch_hash"]
+    assert value["funding_batch_id"] != first["batch_id"]
+    assert CANARY not in scoped.stdout
+
+
+@pytest.mark.parametrize(
+    ("name", "raw", "code"),
+    (
+        (
+            "duplicate",
+            b'{"request_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",'
+            b'"request_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',
+            "person_import_duplicate_key",
+        ),
+        (
+            "nonfinite", b'{"sentinel":"PRIVATE-CANARY-SENTINEL","value":NaN}',
+            "person_import_json_invalid",
+        ),
+        (
+            "unknown", b'{"sentinel":"PRIVATE-CANARY-SENTINEL"}',
+            "person_import_schema_invalid",
+        ),
+    ),
+)
+def test_person_manifest_json_and_exact_schema_fail_privately(
+    tmp_path: Path, name: str, raw: bytes, code: str,
+) -> None:
+    store, snapshots, environment = _paths(tmp_path)
+    source = _write_raw(snapshots, raw, f"people/{name}.json")
+    assert _assert_private_failure(_run_person(store, source, environment), source) == code
+
+
+def test_person_manifest_nested_schema_depth_and_size_are_bounded_before_open(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "local" / "kb-prospecting"
+    snapshots = root / "snapshots"
+    snapshots.mkdir(parents=True)
+    store = root / "uninitialized.sqlite"
+    store.write_bytes(b"")
+    environment = dict(os.environ, LOCALAPPDATA=str(tmp_path / "local"))
+
+    oversized = _write_raw(
+        snapshots,
+        b'{"sentinel":"PRIVATE-CANARY-SENTINEL","padding":"'
+        + b"x" * MAX_PERSON_IMPORT_BYTES,
+        "people/oversized.json",
+    )
+    assert _assert_private_failure(
+        _run_person(store, oversized, environment), oversized,
+    ) == "person_import_too_large"
+    assert store.read_bytes() == b""
+
+    deep_raw = (
+        b"[" * (MAX_JSON_DEPTH + 1)
+        + json.dumps(CANARY).encode()
+        + b"]" * (MAX_JSON_DEPTH + 1)
+    )
+    deep = _write_raw(snapshots, deep_raw, "people/deep.json")
+    assert _assert_private_failure(
+        _run_person(store, deep, environment), deep,
+    ) == "person_import_json_too_deep"
+    assert store.read_bytes() == b""
+    assert not Path(f"{store}-wal").exists()
+    assert not Path(f"{store}-shm").exists()
+
+
+def test_person_manifest_requires_snapshot_containment_and_exact_nested_schema(
+    tmp_path: Path,
+) -> None:
+    store, snapshots, environment, _intake, _funding, scope = _person_cli_setup(tmp_path)
+    manifest = _person_manifest(snapshots, scope)
+    manifest["candidates"][0]["sentinel"] = CANARY
+    nested = _write(snapshots, manifest, "people/nested-extra.json")
+    assert _assert_private_failure(
+        _run_person(store, nested, environment), nested,
+    ) == "person_import_schema_invalid"
+
+    clean = _person_manifest(snapshots, scope)
+    outside = _write(tmp_path, clean, "outside-person.json")
+    assert _assert_private_failure(
+        _run_person(store, outside, environment), outside,
+    ) == "person_import_snapshot_required"
+
+
+def test_person_referenced_body_hardlink_refusal_is_private(tmp_path: Path) -> None:
+    store, snapshots, environment, _intake, _funding, scope = _person_cli_setup(tmp_path)
+    manifest = _person_manifest(snapshots, scope)
+    original = snapshots / "captures" / "people" / "avery.txt"
+    linked = snapshots / "captures" / "people" / "avery-linked.txt"
+    try:
+        os.link(original, linked)
+    except OSError:
+        pytest.skip("hardlinks unavailable")
+    manifest["candidates"][0]["body_ref"] = "captures/people/avery-linked.txt"
+    source = _write(snapshots, manifest, "people/linked.json")
+    assert _assert_private_failure(
+        _run_person(store, source, environment), source,
+    ) == "source_changed"
+
+
+def test_person_scope_and_project_missing_invalid_and_conflicting_modes_are_private(
+    tmp_path: Path,
+) -> None:
+    store, snapshots, environment = _paths(tmp_path)
+    invalid_scope = _run_person_scope(store, CANARY, environment)
+    assert _assert_private_failure(invalid_scope, store) == "invalid_run_id"
+    missing_run = "prun_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    missing_scope = _run_person_scope(store, missing_run, environment)
+    assert _assert_private_failure(missing_scope, store) == "run_missing"
+
+    intake = json.loads(_run(
+        store, _write(snapshots, _payload(), "people/intake.json"), environment,
+    ).stdout)
+    no_scope = _run_person_scope(store, str(intake["run_id"]), environment)
+    assert _assert_private_failure(no_scope, store) == "person_scope_missing"
+    no_people = _run_person_project(store, str(intake["run_id"]), environment)
+    assert _assert_private_failure(no_people, store) == "person_projection_missing"
+
+    conflict = _run(
+        store, _write(snapshots, _payload(), "people/conflict.json"), environment,
+        "--person-project", str(intake["run_id"]),
+    )
+    assert _assert_private_failure(conflict, store) == "invalid_arguments"
+
+
+def test_person_scope_translates_stale_source_without_private_projection(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
+) -> None:
+    store, _snapshots, _environment = _paths(tmp_path)
+
+    def stale(_service, _run_id):
+        raise FundingResearchError("source_stale")
+
+    monkeypatch.setattr(
+        pipeline_cli.FundingResearchService, "get_projection", stale,
+    )
+    result = pipeline_cli.main([
+        "--store", str(store),
+        "--person-scope", "prun_aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    ])
+    captured = capsys.readouterr()
+    assert result == 2
+    assert captured.out == ""
+    assert captured.err == "pipeline_cli_error:source_stale\n"
+    assert CANARY not in captured.err
