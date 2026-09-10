@@ -30,9 +30,12 @@ receipt outputs to the evaluation subject, then requires the canonical subject
 digest in the evaluation, rulings, and both rejection subject copies. It also
 requires exact structural equality of the three subject copies, the raw
 rulings-file digest, matching decision actor/time, all five ordered culls, and
-a `none`/no-replan transition. The regression changes the image evidence in
-all three subject copies while retaining a stale shared digest; it now produces
-`quality: unavailable`, closing the prior stale-digest acceptance gap.
+a `none`/no-replan transition. The checked-in regression replaces the shared
+evaluation/rulings/rejection digest with `e` repeated 64 times and recomputes
+the rulings-file digest; it produces `quality: unavailable`. An earlier
+independent probe separately changed an image digest in all three subject
+copies while retaining a stale shared subject digest, and it also failed closed.
+Together these close the prior stale-digest acceptance gap.
 
 Canonical hashing follows `lineage.py`'s sorted-key, compact UTF-8 approach.
 The Unicode regression pins the `café`/`雪` digest; ordinary integral image-byte
@@ -72,3 +75,5 @@ tests in 11.81 seconds after the depth-order repair. A local direct call to the
 configured V2 collector returned `status: recorded`, `execution: completed`,
 `quality: recorded-rejection`, `outputCount: 5`, and no checkpoints. It read
 no image contents.
+
+Root retained the final source hashes and actual collector output at `MAIN/_private/figment-hub-rejection-root-20260910-v1/probe-final.json` (02:05:39 UTC). That directory also holds `depth-red.log` and `final-tests.log`. Author typecheck and dashboard build passed before the final three-line depth-order correction; root's 62-test result follows it.

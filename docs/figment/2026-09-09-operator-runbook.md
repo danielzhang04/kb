@@ -107,6 +107,16 @@ pending. Do not execute or reroute it. A valid future Codex diagnostic would rem
   --creator $creator --stage tester --plan "$planRoot/plan.json"
 ```
 
+If the actual review culls every tester image, omit `--checkpoint-step` and record that decision with the same command:
+
+```powershell
+& $py orgs/figment/pipeline/figment_train.py apply-rulings `
+  --creator $creator --stage tester --plan "$planRoot/plan.json" `
+  --rulings '<ACTUAL_ALL_CULL_RULINGS_JSON>'
+```
+
+This writes rulings, a review manifest and `rejection-lineage.json`; it creates no approved list or accepted checkpoint. Do not manufacture a keep to advance. The current v2 tester followed this path successfully. Subsequent acceptance requires new supported review evidence under the existing lineage rules; a public-model control cannot supply it.
+
 The completed train receipt is under the plan-recorded run output, normally
 `<PLAN_ROOT>/train/runs/out/creator-001-tensor-train-first/run.json`; tester
 evidence is similarly under `.../creator-001-tensor-tester-first/`. Use those
