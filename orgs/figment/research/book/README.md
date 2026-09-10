@@ -93,7 +93,7 @@ The Qwen component metadata is collected in the [component licence evidence](../
 
 ## Active infrastructure work
 
-The content-to-approved-assets adapter is in final testing and independent review. It replays the brief producer and consumes the existing approved-gen authority, binding persona/reference identity and exact attributed slot-fit. It creates a non-promotable assignment record, no new acceptance or publication. Author 29 focused tests include a real producer-to-isolated-CLI join; technical READY remains pending. After acceptance, the next step is a concrete stage/consumer coverage audit, not another speculative orchestrator. See the [delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md) and [adapter plan](../../../../docs/figment/2026-09-10-content-asset-binding-plan.md).
+The content-to-approved-assets adapter is independently READY. It replays the brief producer and consumes the existing approved-gen authority, binding persona/reference identity and exact attributed slot-fit. It creates a non-promotable assignment record, no new acceptance or publication. The full content suite passed 47 tests for the author and 47 independently, including a real producer-to-isolated-CLI join and invalid-CLI/no-output regression. Root verified the frozen source hashes and accepted technical READY. A concrete stage/consumer coverage audit is now in progress. See the [delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md) and [adapter plan](../../../../docs/figment/2026-09-10-content-asset-binding-plan.md).
 
 ## Governing rules
 

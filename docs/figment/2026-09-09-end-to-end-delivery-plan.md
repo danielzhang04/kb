@@ -153,7 +153,7 @@ C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe -m pytest orgs
 
 ## Active sequence and completion criteria
 
-1. **Finish the offline content asset-binding adapter.** The [adapter plan](2026-09-10-content-asset-binding-plan.md) joins an unchanged, replayed content brief to current approved gen stills through `validate_approved_gen_still`. It requires exact attributed slot-fit decisions, current persona/reference identity binding and approval provenance. Author reports 29 passing focused tests including actual producer-to-isolated-CLI integration; independent review and root acceptance remain pending. It neither approves assets nor invents video authority.
+1. **Content asset-binding adapter is technically READY.** The [adapter plan](2026-09-10-content-asset-binding-plan.md) joins an unchanged, replayed content brief to current approved gen stills through `validate_approved_gen_still`. It requires exact attributed slot-fit decisions, current persona/reference identity binding and approval provenance. The final full content suite passed 47 tests for the author and 47 independently; root source/hash/log review accepted technical READY. The real producer-to-isolated-CLI join and CLI failure without partial output both pass. See the [independent review](2026-09-10-content-asset-binding-review.md). It neither approves assets nor invents video authority.
 2. **Audit remaining infrastructure against concrete consumers.** After adapter acceptance, trace persona/dataset -> training/tester -> approved gen -> video and brief -> asset assignment -> hub. Keep built, tested, live-proven and visually accepted statuses separate. Implement only a demonstrated missing consumer or broken join, then run its real producer/consumer tests and independent review. Do not build another orchestrator, publisher stub or speculative scheduling layer.
 3. **Resolve the quality hypothesis before more training.** Public wording and sampler comparisons are complete and stopped. The current private LoRA/no-LoRA five-seed diagnostic remains the cheapest prepared discriminator, but automatic review rejected its exact checkpoint upload and explicit consent remains pending. Preserve the preparation and do not reroute or retrain elsewhere to bypass the block. Continue independent research and local infrastructure meanwhile. A new quality experiment must name its changed variable, evidence, budget and stop condition before execution.
 
@@ -173,3 +173,21 @@ separate again.
 The historical Omni and Qwen cloud runs are complete and terminated. The separate rejected Codex self-comparison transfer remains pending its exact answer; it has not run or been rerouted. The accepted bounded research dataset exists. Train-first v1 failed before upload or training and is terminal; v2 training and its five-image tester completed with verified receipts and teardown. The root/independent visual disagreement leaves every checkpoint unselected. No paid LoRA/base diagnostic, accepted still, or current video has run.
 
 Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.
+
+## Overnight loop review - September 10
+
+This is the existing user-directed build session with bounded worker tasks, not a new recurring daemon or HEARTBEAT cadence. The loop-design-check review yields these operating conditions:
+
+| Failure mode | Concrete control |
+| --- | --- |
+| Vague completion creates endless work | Each work order names an actual producer and consumer, observable success/failure commands, changed paths and a deliverable. The coverage audit decides the next gap. |
+| Author judges its own work | A separate Codex reviewer checks the source and runs focused evidence; root reconciles actual artifacts and records the decision. Report requested model separately from unavailable response-model telemetry. |
+| Green tests hide a broken product | Exercise real producer-to-consumer joins and subprocess exit/output behavior. Do not loosen quality thresholds, delete failing tests or create a keep ruling to advance a stage. |
+| Missing permission discovered mid-run | Standing build and bounded compute authorization are recorded. Actual private-transfer rejections remain isolated until their exact answer. Other independent work continues. |
+| Stale state causes reruns | Update the canonical handoff and current STATE after terminal run results. Preserve failed preparations and receipts; do not replay a completed attempt. |
+
+A worker repair is limited to the existing two repair cycles for that work order. A recurring defect then requires root to preserve the evidence, reassess the design and choose a different bounded task or hypothesis. Paid jobs additionally retain the native one-placement, time, daily and $50 arc limits and independently verified teardown. Polling does not authorize another job.
+
+The user's standing instructions authorize root research decisions and continuation; this review introduces no new mandatory human gate for ordinary implementation. Publication, production promotion, rejected private payloads and merges/deployment retain their applicable boundaries. Apparent age and identity consistency remain explicit visual evidence requirements; neither a numeric score nor a code-test exit decides them automatically.
+
+The 8 AM checkpoint reports completed work, current worker/task, remaining quality evidence, spend and keep-awake status. If work remains independently actionable, continue it. If complete, leave the verified result and resumable handoff. Keep-awake is finite and requires renewal before its approximately 09:44 Eastern expiry if the session continues; an armed power lease alone is not evidence that an LLM worker is executing.

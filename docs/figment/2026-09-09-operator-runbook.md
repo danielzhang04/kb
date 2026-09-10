@@ -208,6 +208,23 @@ acceptance command, so this runbook does not invent one. Frame extraction or
 assembly evidence and any later temporal judgment remain non-promotable until a
 documented review procedure records an actual result.
 
+## Assign approved stills to a content brief
+
+After current approved `gen` stills exist, the offline content adapter joins them to an existing brief. Keep the original request: the adapter recompiles it against current persona, canonical reference, taxonomy and template data. Use an existing directory containing the brief, request, source plan, persona and approved media as `--root`; every other argument is relative to that root.
+
+```powershell
+& $py -I -B orgs/figment/pipeline/content/content_asset_binding.py `
+  --root '<BOUNDED_CONTENT_AND_GEN_ROOT>' `
+  --brief '<CURRENT_BRIEF_JSON>' `
+  --request '<ORIGINAL_BRIEF_REQUEST_JSON>' `
+  --rulings '<ACTUAL_SLOT_FIT_RULINGS_JSON>' `
+  --out '<FRESH_ASSIGNMENT_JSON>'
+```
+
+The [slot-fit schema](2026-09-10-content-asset-binding-plan.md) requires one attributed `fit` ruling for every exact slot and a distinct approved image ID. Image approval alone does not establish that the image fits a hook or payoff. This version supports persona stills only; non-persona and motion/video slots have no supported authority. It writes a non-promotable planning assignment, not an image approval, generated batch or publication record.
+
+The current creator-001 run has no selected checkpoint or approved still set, so it cannot produce a real assignment yet. Do not substitute its rejected tester images. Implementation testing uses an isolated real producer fixture; no live quality acceptance follows from that test. Root verified the isolated CLI's `--help` command on September 10; final technical review is recorded separately.
+
 ## Command-shape evidence
 
 This runbook was checked against `figment_train.py --help`,

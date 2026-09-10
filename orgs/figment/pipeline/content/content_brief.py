@@ -228,11 +228,7 @@ def _assets(request: dict[str, Any], template: dict[str, Any], types: dict[str, 
     return result
 
 
-def build_content_brief(root: Path, request_path: str | Path, output_path: str | Path) -> dict[str, Any]:
-    """Validate a local request and write one new deterministic planning record."""
-    root = _safe_root(Path(root))
-    request_file = _safe_existing(root, str(request_path), "request")
-    output_file = _safe_output(root, str(output_path))
+def _compile_content_brief(root: Path, request_file: Path) -> dict[str, Any]:
     request = _read_json(request_file, "request")
     _only_keys(request, {
         "schema", "brief_date", "creator", "surface", "template_id", "asset_slots",
@@ -320,6 +316,90 @@ def build_content_brief(root: Path, request_path: str | Path, output_path: str |
         "intended_metric": _required_string(request, "intended_metric"),
         "observed_metrics": None,
     }
+    return record
+
+
+def compile_content_brief(root: Path, request_path: str | Path) -> dict[str, Any]:
+    """Recompute one brief record from its current bounded producer inputs."""
+    root = _safe_root(Path(root))
+    request_file = _safe_existing(root, str(request_path), "request")
+    return _compile_content_brief(root, request_file)
+
+
+def _producer_dependencies(root: Path, record: dict[str, Any]) -> dict[str, dict[str, str]]:
+    creator = record.get("creator")
+    content = record.get("content")
+    if not isinstance(creator, dict) or not isinstance(content, dict):
+        raise ContentBriefError("compiled brief producer fields are malformed")
+    persona_record = creator.get("persona")
+    reference_record = creator.get("canonical_reference")
+    if not isinstance(persona_record, dict) or not isinstance(reference_record, dict):
+        raise ContentBriefError("compiled brief identity fields are malformed")
+    persona = _safe_existing(root, persona_record.get("path"), "compiled persona")
+    reference = _safe_existing(root, reference_record.get("path"), "compiled canonical reference")
+    template_name = "carousel-templates.yaml" if content.get("surface") == "carousel" else "reel-templates.yaml"
+    static_paths = {
+        "taxonomy": CONTENT_DIR / "taxonomy.yaml",
+        "template": CONTENT_DIR / template_name,
+    }
+    for label, path in static_paths.items():
+        if _is_reparse(path) or not path.is_file():
+            raise ContentBriefError(f"{label} producer input is missing or linked")
+    dependencies = {
+        "persona": {"path": persona.relative_to(root).as_posix(), "sha256": _sha256(persona)},
+        "canonical_reference": {"path": reference.relative_to(root).as_posix(), "sha256": _sha256(reference)},
+        "taxonomy": {"path": "taxonomy.yaml", "sha256": _sha256(static_paths["taxonomy"])},
+        "template": {"path": template_name, "sha256": _sha256(static_paths["template"])},
+    }
+    if (
+        dependencies["persona"]["sha256"] != persona_record.get("sha256")
+        or dependencies["canonical_reference"]["sha256"] != reference_record.get("sha256")
+        or dependencies["taxonomy"]["sha256"] != content.get("taxonomy_sha256")
+        or dependencies["template"]["sha256"] != content.get("template_sha256")
+    ):
+        raise ContentBriefError("compiled brief producer inputs changed while revalidating")
+    return dependencies
+
+
+def revalidate_content_brief(
+    root: Path, request_path: str | Path, brief_path: str | Path,
+) -> dict[str, Any]:
+    """Return a stored brief only when it exactly matches current producer inputs."""
+    root = _safe_root(Path(root))
+    request_file = _safe_existing(root, str(request_path), "request")
+    brief_file = _safe_existing(root, str(brief_path), "brief")
+    before = {"request": _sha256(request_file), "brief": _sha256(brief_file)}
+    expected = _compile_content_brief(root, request_file)
+    actual = _read_json(brief_file, "brief")
+    repeated = _compile_content_brief(root, request_file)
+    dependencies = _producer_dependencies(root, repeated)
+    after = {"request": _sha256(request_file), "brief": _sha256(brief_file)}
+    if before != after:
+        raise ContentBriefError("brief or request changed while revalidating")
+    if expected != repeated:
+        raise ContentBriefError("brief producer inputs changed while revalidating")
+    if actual != repeated:
+        raise ContentBriefError("compiled brief is stale against current producer inputs")
+    return {
+        "record": repeated,
+        "brief": {
+            "path": brief_file.relative_to(root).as_posix(),
+            "sha256": before["brief"],
+        },
+        "request": {
+            "path": request_file.relative_to(root).as_posix(),
+            "sha256": before["request"],
+        },
+        "dependencies": dependencies,
+    }
+
+
+def build_content_brief(root: Path, request_path: str | Path, output_path: str | Path) -> dict[str, Any]:
+    """Validate a local request and write one new deterministic planning record."""
+    root = _safe_root(Path(root))
+    request_file = _safe_existing(root, str(request_path), "request")
+    output_file = _safe_output(root, str(output_path))
+    record = _compile_content_brief(root, request_file)
     encoded = (json.dumps(record, indent=2, sort_keys=True) + "\n").encode("utf-8")
     if len(encoded) > MAX_JSON_BYTES:
         raise ContentBriefError("compiled brief exceeds output size limit")
