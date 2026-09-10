@@ -786,3 +786,15 @@ Independently reviewed the seven post-freeze literal substitutions: six UUID val
 - `scripts/prospecting/tests/test_approval_integration.py`: `38FD598DA82A3EE3640B469FC61C01C2E4C6EAACD3B826D692F277B6F4454E8C`
 - `scripts/prospecting/tests/test_campaigner_release.py`: `4793892CA30396CE64C5FCE105457DCA4AB73F72EF70FCF612AAB4C48FA562BF`
 - `scripts/prospecting/tests/test_campaigner_schedule.py`: `9BB807144CAF1A184F798776DC1C728B551FA45D893488B5FC27112FE3A0C615`
+
+
+### Phase C: pinned-file stdin deadline repair
+
+Independent source/security review: READY for the bounded synthetic runtime repair. The owned Windows process now receives a canonical direct-child, regular, single-link, non-reparse file through a held read-only/share-read handle; it verifies the hash and rewinds before suspended process creation. The deadline starts before file opening/spawn, removing the blocking parent pipe write. Existing Job Object assignment, descendant cleanup, and whole-attempt deletion remain; owned stdin is deleted before sink scanning. Public execution remains synthetic-only, with no live adapter or real-data readiness claim.
+
+Reviewed the complete changed source and test paths, including maximum-input digest, unread maximum input timeout and descendant termination, hash/nested/hardlink rejection before spawn, spawn/assignment handle closure and recovery, and stdin deletion failure. Builder verification: **24 passed in 16.65s**. Root independent verification: **24 passed in 17.34s** at `pcr-root-0910-a`. These are overlapping runs, not additive counts.
+
+- `scripts/prospecting/personalizer/private_runtime.py`: `4E54D8CAFC551DB47B06FF79FEC2E828CAAA0CBDF76030376D4EC79BB8163C5B`
+- `scripts/prospecting/tests/test_private_model_runtime.py`: `80D6B3CB6C4C0D2C4AB410E4024907956D52B6C35E59618ED32172DD100EBB1A`
+
+Private diagnostics continue to pin the preserved previously accepted b299 source explicitly; this acceptance does not silently retarget their imports. Native model execution and its storage boundary remain separate pending work.

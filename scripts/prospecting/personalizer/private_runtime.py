@@ -72,6 +72,8 @@ _MAX_INPUT = 65_536
 _MAX_SCHEMA = 32_768
 _MAX_SKILL = 32_768
 _MAX_OUTPUT_CAP = 65_536
+# Room for the current 1 MiB P16 stage input plus its skill and JSON envelope.
+_MAX_PINNED_STDIN = 1_310_720
 _MODEL = "synthetic-model"
 _PROVIDER = "loopback"
 _ALLOWED_TOOL = "request_user_input"
@@ -677,7 +679,8 @@ def _run_owned_windows_process(
     *,
     cwd: Path,
     environ: Mapping[str, str],
-    stdin_bytes: bytes,
+    stdin_path: Path,
+    stdin_sha256: str,
     deadline_seconds: float,
     cancel: Event | None = None,
     _assign_process: Callable[[object, object, int], bool] | None = None,
@@ -727,6 +730,20 @@ def _run_owned_windows_process(
             ("dwThreadId", wintypes.DWORD),
         ]
 
+    class BY_HANDLE_FILE_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("dwFileAttributes", wintypes.DWORD),
+            ("ftCreationTime", wintypes.FILETIME),
+            ("ftLastAccessTime", wintypes.FILETIME),
+            ("ftLastWriteTime", wintypes.FILETIME),
+            ("dwVolumeSerialNumber", wintypes.DWORD),
+            ("nFileSizeHigh", wintypes.DWORD),
+            ("nFileSizeLow", wintypes.DWORD),
+            ("nNumberOfLinks", wintypes.DWORD),
+            ("nFileIndexHigh", wintypes.DWORD),
+            ("nFileIndexLow", wintypes.DWORD),
+        ]
+
     class IO_COUNTERS(ctypes.Structure):
         _fields_ = [(name, ctypes.c_ulonglong) for name in (
             "ReadOperationCount", "WriteOperationCount", "OtherOperationCount",
@@ -762,13 +779,6 @@ def _run_owned_windows_process(
         handle_t, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
     ]
     kernel32.SetInformationJobObject.restype = wintypes.BOOL
-    kernel32.CreatePipe.argtypes = [
-        ctypes.POINTER(handle_t), ctypes.POINTER(handle_t),
-        ctypes.POINTER(SECURITY_ATTRIBUTES), wintypes.DWORD,
-    ]
-    kernel32.CreatePipe.restype = wintypes.BOOL
-    kernel32.SetHandleInformation.argtypes = [handle_t, wintypes.DWORD, wintypes.DWORD]
-    kernel32.SetHandleInformation.restype = wintypes.BOOL
     kernel32.CreateFileW.argtypes = [
         wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
         ctypes.POINTER(SECURITY_ATTRIBUTES), wintypes.DWORD, wintypes.DWORD, handle_t,
@@ -784,11 +794,21 @@ def _run_owned_windows_process(
     kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
     kernel32.ResumeThread.argtypes = [handle_t]
     kernel32.ResumeThread.restype = wintypes.DWORD
-    kernel32.WriteFile.argtypes = [
-        handle_t, wintypes.LPCVOID, wintypes.DWORD,
+    kernel32.ReadFile.argtypes = [
+        handle_t, wintypes.LPVOID, wintypes.DWORD,
         ctypes.POINTER(wintypes.DWORD), wintypes.LPVOID,
     ]
-    kernel32.WriteFile.restype = wintypes.BOOL
+    kernel32.ReadFile.restype = wintypes.BOOL
+    kernel32.SetFilePointerEx.argtypes = [
+        handle_t, ctypes.c_longlong, wintypes.LPVOID, wintypes.DWORD,
+    ]
+    kernel32.SetFilePointerEx.restype = wintypes.BOOL
+    kernel32.GetFileInformationByHandle.argtypes = [
+        handle_t, ctypes.POINTER(BY_HANDLE_FILE_INFORMATION),
+    ]
+    kernel32.GetFileInformationByHandle.restype = wintypes.BOOL
+    kernel32.GetFileType.argtypes = [handle_t]
+    kernel32.GetFileType.restype = wintypes.DWORD
     kernel32.WaitForSingleObject.argtypes = [handle_t, wintypes.DWORD]
     kernel32.WaitForSingleObject.restype = wintypes.DWORD
     kernel32.TerminateJobObject.argtypes = [handle_t, wintypes.UINT]
@@ -821,19 +841,82 @@ def _run_owned_windows_process(
         security = SECURITY_ATTRIBUTES(
             ctypes.sizeof(SECURITY_ATTRIBUTES), None, True
         )
-        stdin_read, stdin_write = handle_t(), handle_t()
+        if (
+            not isinstance(stdin_path, Path)
+            or not stdin_path.is_absolute()
+            or stdin_path != Path(os.path.abspath(stdin_path))
+            or stdin_path.parent != cwd
+            or not _valid_sha(stdin_sha256)
+        ):
+            raise PrivateRuntimeError("stdin_path_invalid")
+        try:
+            _require_plain_directory_tree(stdin_path.parent)
+            if _is_link_or_reparse(stdin_path):
+                raise OSError
+        except OSError:
+            raise PrivateRuntimeError("stdin_path_invalid") from None
+        deadline = time.monotonic() + deadline_seconds
+        stdin_read = kernel32.CreateFileW(
+            str(stdin_path), 0x80000000, 0x00000001,
+            ctypes.byref(security), 3, 0x00200000, None,
+        )
+        if (
+            not stdin_read
+            or ctypes.cast(stdin_read, ctypes.c_void_p).value == invalid_handle
+        ):
+            raise PrivateRuntimeError("stdin_open_failed")
+        handles.append(stdin_read)
+        file_info = BY_HANDLE_FILE_INFORMATION()
         require(
-            kernel32.CreatePipe(
-                ctypes.byref(stdin_read), ctypes.byref(stdin_write),
-                ctypes.byref(security), 0,
+            kernel32.GetFileInformationByHandle(
+                stdin_read, ctypes.byref(file_info),
             ),
-            "process_start_failed",
+            "stdin_open_failed",
         )
-        handles.extend([stdin_read, stdin_write])
+        stdin_size = (
+            int(file_info.nFileSizeHigh) << 32
+        ) | int(file_info.nFileSizeLow)
+        if (
+            kernel32.GetFileType(stdin_read) != 1
+            or file_info.dwFileAttributes & (0x00000400 | 0x00000010)
+            or file_info.nNumberOfLinks != 1
+            or not 0 < stdin_size <= _MAX_PINNED_STDIN
+        ):
+            raise PrivateRuntimeError("stdin_path_invalid")
+        try:
+            _require_plain_directory_tree(stdin_path.parent)
+        except OSError:
+            raise PrivateRuntimeError("stdin_path_invalid") from None
+        digest = hashlib.sha256()
+        total = 0
+        input_buffer = (ctypes.c_ubyte * 65_536)()
+        try:
+            while True:
+                read = wintypes.DWORD()
+                require(
+                    kernel32.ReadFile(
+                        stdin_read, input_buffer, len(input_buffer),
+                        ctypes.byref(read), None,
+                    ),
+                    "stdin_read_failed",
+                )
+                if not read.value:
+                    break
+                total += int(read.value)
+                if total > _MAX_PINNED_STDIN:
+                    raise PrivateRuntimeError("stdin_path_invalid")
+                digest.update(bytes(input_buffer[: read.value]))
+                ctypes.memset(input_buffer, 0, len(input_buffer))
+        finally:
+            ctypes.memset(input_buffer, 0, len(input_buffer))
+        if total != stdin_size or digest.hexdigest() != stdin_sha256:
+            raise PrivateRuntimeError("stdin_hash_mismatch")
         require(
-            kernel32.SetHandleInformation(stdin_write, 1, 0),
-            "process_start_failed",
+            kernel32.SetFilePointerEx(stdin_read, 0, None, 0),
+            "stdin_read_failed",
         )
+        if time.monotonic() >= deadline:
+            raise PrivateRuntimeError("timeout")
         nul = kernel32.CreateFileW(
             "NUL", 0x40000000, 0x00000003, ctypes.byref(security), 3, 0, None
         )
@@ -876,23 +959,6 @@ def _run_owned_windows_process(
             raise PrivateRuntimeError("process_start_failed")
         kernel32.CloseHandle(stdin_read)
         handles.remove(stdin_read)
-        offset = 0
-        while offset < len(stdin_bytes):
-            chunk = stdin_bytes[offset : offset + 16_384]
-            written = wintypes.DWORD()
-            buffer = ctypes.create_string_buffer(chunk)
-            require(
-                kernel32.WriteFile(
-                    stdin_write, buffer, len(chunk), ctypes.byref(written), None
-                ),
-                "stdin_write_failed",
-            )
-            if written.value == 0:
-                raise PrivateRuntimeError("stdin_write_failed")
-            offset += written.value
-        kernel32.CloseHandle(stdin_write)
-        handles.remove(stdin_write)
-        deadline = time.monotonic() + deadline_seconds
         timed_out = cancelled = False
         while True:
             wait = kernel32.WaitForSingleObject(process_info.hProcess, 25)
@@ -939,6 +1005,24 @@ def _write_exclusive(path: Path, data: bytes) -> None:
     except OSError:
         path.unlink(missing_ok=True)
         raise PrivateRuntimeError("attempt_write_failed") from None
+
+
+def _delete_owned_stdin(path: Path, attempt: Path) -> None:
+    try:
+        if path.parent != attempt or not path.is_absolute():
+            raise OSError
+        info = path.lstat()
+        if (
+            _is_link_or_reparse(path)
+            or not stat.S_ISREG(info.st_mode)
+            or info.st_nlink != 1
+        ):
+            raise OSError
+        path.unlink()
+        if path.exists():
+            raise OSError
+    except OSError:
+        raise PrivateRuntimeError("stdin_cleanup_failed") from None
 
 
 def _process_environment(runtime_home: Path, environ: Mapping[str, str]) -> dict[str, str]:
@@ -1028,7 +1112,9 @@ def _stdin_envelope(request: SyntheticTurnRequest) -> bytes:
         "skill": request.skill_bytes.decode("utf-8", "strict"),
         "input": json.loads(request.input_json),
     }
-    return json.dumps(value, sort_keys=True, separators=(",", ":")).encode()
+    return json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+    ).encode()
 
 
 def _scan_runtime_canaries(runtime_home: Path) -> Mapping[str, tuple[str, ...]]:
@@ -1126,6 +1212,7 @@ def execute_synthetic_turn(
     root = attempt.parent
     schema_path = attempt / "output-schema.json"
     output_path = attempt / "last-message.json"
+    stdin_path = attempt / "stdin.json"
     started = time.monotonic()
     status = "failed"
     code = "runtime_failed"
@@ -1136,6 +1223,10 @@ def execute_synthetic_turn(
     cleanup_state = "not_started"
     try:
         _write_exclusive(schema_path, request.output_schema_json)
+        stdin_bytes = _stdin_envelope(request)
+        if len(stdin_bytes) > _MAX_PINNED_STDIN:
+            raise PrivateRuntimeError("stdin_path_invalid")
+        _write_exclusive(stdin_path, stdin_bytes)
         child_env = _process_environment(runtime_home, selected_env)
         with _RunningFixture(request.scenario) as server:
             cancel = Event()
@@ -1153,6 +1244,7 @@ def execute_synthetic_turn(
                 name="private-runtime-tool-observer",
             )
             observer.start()
+            process_error: BaseException | None = None
             try:
                 outcome = _run_owned_windows_process(
                     _command(
@@ -1164,16 +1256,26 @@ def execute_synthetic_turn(
                     ),
                     cwd=attempt,
                     environ=child_env,
-                    stdin_bytes=_stdin_envelope(request),
+                    stdin_path=stdin_path,
+                    stdin_sha256=_sha(stdin_bytes),
                     deadline_seconds=request.deadline_seconds,
                     cancel=cancel,
                 )
                 declared_tools = server.declared_tools
                 unexpected = server.unexpected_tool_declaration.is_set()
                 tool_emitted = server.tool_response_emitted.is_set()
+            except BaseException as error:
+                process_error = error
             finally:
                 cancel.set()
                 observer.join(timeout=1)
+                try:
+                    _delete_owned_stdin(stdin_path, attempt)
+                except PrivateRuntimeError:
+                    if process_error is None:
+                        raise
+            if process_error is not None:
+                raise process_error
         sinks = _scan_runtime_canaries(runtime_home)
         if any(sinks.values()):
             code = "prohibited_content_logged"

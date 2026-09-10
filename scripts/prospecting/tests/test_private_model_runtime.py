@@ -51,6 +51,14 @@ def _request(attempt: str = "attempt-one", **changes: object) -> runtime.Synthet
     return runtime.build_synthetic_request(**values)  # type: ignore[arg-type]
 
 
+def _pinned_input(
+    directory: Path, name: str, data: bytes = b"{}",
+) -> tuple[Path, str]:
+    path = directory / name
+    path.write_bytes(data)
+    return path, runtime._sha(data)
+
+
 def test_builder_rejects_non_synthetic_bytes_without_rendering_them() -> None:
     request = _request()
     secret = b"NON_SYNTHETIC_PRIVATE_TEXT_91C7"
@@ -279,6 +287,60 @@ def _process_is_active(pid: int) -> bool:
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
+def test_maximum_pinned_input_is_read_directly_and_hash_matches(tmp_path: Path) -> None:
+    payload = b"S" * runtime._MAX_PINNED_STDIN
+    stdin_path, stdin_sha256 = _pinned_input(
+        tmp_path, "maximum-input.json", payload,
+    )
+    observed = tmp_path / "observed.sha256"
+    script = (
+        "import hashlib,pathlib,sys;"
+        f"pathlib.Path({str(observed)!r}).write_text("
+        "hashlib.sha256(sys.stdin.buffer.read()).hexdigest())"
+    )
+
+    outcome = runtime._run_owned_windows_process(
+        (sys.executable, "-c", script), cwd=tmp_path, environ=dict(os.environ),
+        stdin_path=stdin_path, stdin_sha256=stdin_sha256, deadline_seconds=5,
+    )
+
+    assert outcome.exit_code == 0 and not outcome.timed_out
+    assert observed.read_text() == stdin_sha256
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
+def test_pinned_input_rejects_hash_nested_path_and_hardlink_before_spawn(
+    tmp_path: Path,
+) -> None:
+    marker = tmp_path / "spawned.txt"
+    script = f"from pathlib import Path;Path({str(marker)!r}).write_text('spawned')"
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "protected-input.json")
+
+    with pytest.raises(runtime.PrivateRuntimeError, match="^stdin_hash_mismatch$"):
+        runtime._run_owned_windows_process(
+            (sys.executable, "-c", script), cwd=tmp_path, environ=dict(os.environ),
+            stdin_path=stdin_path, stdin_sha256="0" * 64, deadline_seconds=5,
+        )
+    nested = tmp_path / "nested"
+    nested.mkdir()
+    nested_path, nested_sha256 = _pinned_input(nested, "nested-input.json")
+    with pytest.raises(runtime.PrivateRuntimeError, match="^stdin_path_invalid$"):
+        runtime._run_owned_windows_process(
+            (sys.executable, "-c", script), cwd=tmp_path, environ=dict(os.environ),
+            stdin_path=nested_path, stdin_sha256=nested_sha256, deadline_seconds=5,
+        )
+    hardlink = tmp_path / "protected-hardlink.json"
+    os.link(stdin_path, hardlink)
+    with pytest.raises(runtime.PrivateRuntimeError, match="^stdin_path_invalid$"):
+        runtime._run_owned_windows_process(
+            (sys.executable, "-c", script), cwd=tmp_path, environ=dict(os.environ),
+            stdin_path=stdin_path, stdin_sha256=stdin_sha256, deadline_seconds=5,
+        )
+
+    assert not marker.exists()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
 def test_job_object_kills_descendant_and_runner_recovers(tmp_path: Path) -> None:
     child_pid = tmp_path / "child.pid"
     script = (
@@ -288,12 +350,16 @@ def test_job_object_kills_descendant_and_runner_recovers(tmp_path: Path) -> None
         "time.sleep(60)"
     )
     environ = dict(os.environ)
+    stdin_path, stdin_sha256 = _pinned_input(
+        tmp_path, "unread-maximum-input.json", b"S" * runtime._MAX_PINNED_STDIN,
+    )
 
     outcome = runtime._run_owned_windows_process(
         (sys.executable, "-c", script),
         cwd=tmp_path,
         environ=environ,
-        stdin_bytes=b"",
+        stdin_path=stdin_path,
+        stdin_sha256=stdin_sha256,
         deadline_seconds=1,
     )
 
@@ -306,11 +372,15 @@ def test_job_object_kills_descendant_and_runner_recovers(tmp_path: Path) -> None
     assert not _process_is_active(pid)
 
     marker = tmp_path / "recovered.txt"
+    recovery_input, recovery_sha256 = _pinned_input(
+        tmp_path, "recovery-input.json",
+    )
     recovered = runtime._run_owned_windows_process(
         (sys.executable, "-c", f"from pathlib import Path;Path({str(marker)!r}).write_text('ok')"),
         cwd=tmp_path,
         environ=environ,
-        stdin_bytes=b"",
+        stdin_path=recovery_input,
+        stdin_sha256=recovery_sha256,
         deadline_seconds=5,
     )
     assert recovered.exit_code == 0
@@ -321,6 +391,7 @@ def test_job_object_kills_descendant_and_runner_recovers(tmp_path: Path) -> None
 @pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
 def test_assignment_failure_terminates_suspended_process(tmp_path: Path) -> None:
     captured: dict[str, int] = {}
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "assignment-input.json")
 
     def reject_assignment(job: object, process: object, pid: int) -> bool:
         captured["pid"] = pid
@@ -331,7 +402,8 @@ def test_assignment_failure_terminates_suspended_process(tmp_path: Path) -> None
             (sys.executable, "-c", "import time;time.sleep(60)"),
             cwd=tmp_path,
             environ=dict(os.environ),
-            stdin_bytes=b"",
+            stdin_path=stdin_path,
+            stdin_sha256=stdin_sha256,
             deadline_seconds=5,
             _assign_process=reject_assignment,
         )
@@ -339,6 +411,58 @@ def test_assignment_failure_terminates_suspended_process(tmp_path: Path) -> None
     assert caught.value.code == "job_assignment_failed"
     assert captured["pid"] > 0
     assert not _process_is_active(captured["pid"])
+    stdin_path.write_bytes(b"handle closed")
+
+
+@pytest.mark.skipif(os.name != "nt", reason="Windows Job Object required")
+def test_spawn_failure_closes_pinned_input_and_fresh_run_recovers(tmp_path: Path) -> None:
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "spawn-input.json")
+
+    with pytest.raises(runtime.PrivateRuntimeError, match="^process_start_failed$"):
+        runtime._run_owned_windows_process(
+            (str(tmp_path / "missing.exe"),), cwd=tmp_path,
+            environ=dict(os.environ), stdin_path=stdin_path,
+            stdin_sha256=stdin_sha256, deadline_seconds=5,
+        )
+
+    stdin_path.write_bytes(b"fresh input")
+    fresh_sha256 = runtime._sha(b"fresh input")
+    outcome = runtime._run_owned_windows_process(
+        (sys.executable, "-c", "import sys;sys.stdin.buffer.read()"),
+        cwd=tmp_path, environ=dict(os.environ), stdin_path=stdin_path,
+        stdin_sha256=fresh_sha256, deadline_seconds=5,
+    )
+    assert outcome.exit_code == 0 and not outcome.timed_out
+
+
+def test_owned_stdin_deletion_failure_is_fixed_code_and_attempt_is_cleaned(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_executable = tmp_path / "codex.exe"
+    fake_executable.write_bytes(b"synthetic executable")
+    monkeypatch.setattr(runtime, "_codex_executable", lambda environ: fake_executable)
+    monkeypatch.setattr(runtime, "_sha_file", lambda path: "b" * 64)
+    monkeypatch.setattr(runtime, "_cli_version", lambda path: "codex-cli synthetic")
+    monkeypatch.setattr(
+        runtime, "_run_owned_windows_process",
+        lambda *args, **kwargs: runtime._ProcessOutcome(0, False, False),
+    )
+
+    def fail_delete(path: Path, attempt: Path) -> None:
+        raise runtime.PrivateRuntimeError("stdin_cleanup_failed")
+
+    monkeypatch.setattr(runtime, "_delete_owned_stdin", fail_delete)
+    environ = _environment(tmp_path)
+
+    result = runtime.execute_synthetic_turn(_request(), environ=environ)
+
+    assert (result.status, result.code, result.cleanup_state) == (
+        "failed", "stdin_cleanup_failed", "deleted",
+    )
+    assert not (
+        Path(environ["LOCALAPPDATA"])
+        / "kb-prospecting/snapshots/private-runtime/attempt-one"
+    ).exists()
 
 
 def test_orchestration_error_stops_observer_and_cleans_attempt(
