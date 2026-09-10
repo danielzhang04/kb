@@ -13,7 +13,7 @@ export type CloudExperimentProjection =
 export type TrainFirstProjection =
   | { status: 'not-configured' }
   | { status: 'unavailable'; reason: 'evidence-unavailable' }
-  | { status: 'recorded'; planSha256: string; creator: string; stage: 'train' | 'tester'; execution: 'planned' | 'running' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number; startedUtc: string | null; finishedUtc: string | null; terminationVerified: boolean | null; checkpoints: Array<{ name: string; bytes: number }>; outputCount: number; quality: 'not-reviewed' };
+  | { status: 'recorded'; planSha256: string; creator: string; stage: 'train' | 'tester'; execution: 'planned' | 'running' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number; startedUtc: string | null; finishedUtc: string | null; terminationVerified: boolean | null; checkpoints: Array<{ name: string; bytes: number }>; outputCount: number; quality: 'not-reviewed' | 'recorded-rejection' | 'unavailable' };
 
 interface Root { path: string; real: string; }
 function object(value: unknown): value is Record<string, unknown> { return typeof value === 'object' && value !== null && !Array.isArray(value); }
@@ -36,6 +36,40 @@ function bounded(path: string): Buffer | null { let descriptor: number | null = 
 function decoded(raw: Buffer): Record<string, unknown> | null { try { const source = raw.toString('utf8'); const value: unknown = shallow(source) ? JSON.parse(source) : null; return object(value) ? value : null; } catch { return null; } }
 function json(path: string): Record<string, unknown> | null { const raw = bounded(path); return raw === null ? null : decoded(raw); }
 function jsonDigest(path: string): { value: Record<string, unknown>; sha256: string } | null { const raw = bounded(path); if (raw === null) return null; const value = decoded(raw); return value === null ? null : { value, sha256: createHash('sha256').update(raw).digest('hex') }; }
+const NUMBER_SOURCE = Symbol('canonical-number-source');
+type CanonicalNumber = { [NUMBER_SOURCE]: string };
+function canonicalNumber(source: unknown, value: number): CanonicalNumber | null {
+  if (typeof source !== 'string' || !Number.isFinite(value)) return null;
+  if (!source.includes('.') && !/[eE]/.test(source)) return Number.isSafeInteger(value) && source === String(value) ? { [NUMBER_SOURCE]: source } : null;
+  if (!/^-?(?:0|[1-9]\d*)\.(?:0|\d*[1-9])$/.test(source)) return null;
+  const magnitude = Math.abs(value);
+  if (magnitude !== 0 && (magnitude < 1e-4 || magnitude >= 1e16)) return null;
+  const rendered = Object.is(value, -0) ? '-0.0' : Number.isInteger(value) ? `${String(value)}.0` : String(value);
+  return rendered === source ? { [NUMBER_SOURCE]: source } : null;
+}
+function canonicalJson(value: unknown): string | null {
+  if (object(value) && NUMBER_SOURCE in value) return typeof (value as CanonicalNumber)[NUMBER_SOURCE] === 'string' ? (value as CanonicalNumber)[NUMBER_SOURCE] : null;
+  if (value === null || typeof value === 'boolean') return String(value);
+  if (typeof value === 'string') return JSON.stringify(value);
+  if (Array.isArray(value)) { const rows = value.map(canonicalJson); return rows.some((row) => row === null) ? null : `[${rows.join(',')}]`; }
+  if (object(value)) { const rows = Object.keys(value).sort().map((key) => { const row = canonicalJson(value[key]); return row === null ? null : `${JSON.stringify(key)}:${row}`; }); return rows.some((row) => row === null) ? null : `{${rows.join(',')}}`; }
+  return null;
+}
+function jsonCanonicalSubject(path: string): { value: Record<string, unknown>; subjectSha256: string } | null {
+  const raw = bounded(path); if (raw === null) return null;
+  const value = decoded(raw); if (value === null) return null;
+  try {
+    let valid = true;
+    const annotated: unknown = JSON.parse(raw.toString('utf8'), function (_key: string, value: unknown) {
+      if (typeof value !== 'number') return value;
+      const wrapped = canonicalNumber((arguments[2] as { source?: unknown } | undefined)?.source, value);
+      if (wrapped === null) valid = false;
+      return wrapped ?? value;
+    });
+    const subject = object(annotated) ? annotated.subject : null, canonical = valid ? canonicalJson(subject) : null;
+    return canonical === null ? null : { value, subjectSha256: createHash('sha256').update(canonical, 'utf8').digest('hex') };
+  } catch { return null; }
+}
 function size(path: string, maximum: number): number | null { let descriptor: number | null = null; try { descriptor = openSync(path, 'r'); const info = fstatSync(descriptor); return info.isFile() && info.size > 0 && info.size <= maximum ? info.size : null; } catch { return null; } finally { if (descriptor !== null) try { closeSync(descriptor); } catch { /* invalid above */ } } }
 function shallow(source: string): boolean { let depth = 0, quoted = false, escaped = false; for (const character of source) { if (quoted) { if (escaped) escaped = false; else if (character === '\\') escaped = true; else if (character === '"') quoted = false; continue; } if (character === '"') quoted = true; else if (character === '{' || character === '[') { depth += 1; if (depth > MAX_DEPTH) return false; } else if (character === '}' || character === ']') depth -= 1; } return !quoted && depth === 0; }
 function finite(value: unknown, maximum: number): value is number { return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= maximum; }
@@ -124,6 +158,52 @@ function testerOutputs(output: Root, run: PlannedRun, jobs: unknown): number | n
   }
   return seen.size;
 }
+interface TesterOutput { imageId: string; name: string; bytes: number; }
+function testerOutputRows(output: Root, run: PlannedRun, jobs: unknown): TesterOutput[] | null {
+  if (run.outputs.length !== 5 || !Array.isArray(jobs) || jobs.length !== run.outputs.length) return null;
+  const rows: TesterOutput[] = [], seen = new Set<string>();
+  for (const [index, job] of jobs.entries()) {
+    if (!object(job) || job.output_name !== run.outputs[index] || !Array.isArray(job.files) || job.files.length !== 1 || !object(job.files[0])) return null;
+    const item = job.files[0], name = item.path, recordedBytes = item.bytes;
+    if (typeof name !== 'string' || basename(name) !== name || !name.toLowerCase().endsWith('.png') || seen.has(name) || typeof recordedBytes !== 'number' || !Number.isSafeInteger(recordedBytes) || recordedBytes <= 0) return null;
+    const path = file(output, name); if (path === null || size(path, 64 * 1024 * 1024) !== recordedBytes) return null;
+    seen.add(name); rows.push({ imageId: run.outputs[index], name, bytes: recordedBytes });
+  }
+  return rows;
+}
+function reviewSubjectMatches(subject: unknown, creator: string, planSha256: string, run: PlannedRun, outputs: TesterOutput[]): boolean {
+  if (!object(subject) || subject.creator !== creator || subject.stage !== 'tester' || !object(subject.plan) || subject.plan.name !== 'plan.json' || subject.plan.sha256 !== planSha256 || !Array.isArray(subject.manifests) || subject.manifests.length !== 1 || !object(subject.manifests[0]) || subject.manifests[0].name !== basename(run.manifest) || subject.manifests[0].sha256 !== run.sha256 || !Array.isArray(subject.images) || subject.images.length !== outputs.length) return false;
+  return subject.images.every((row, index) => object(row) && row.image_id === outputs[index].imageId && row.name === outputs[index].name && row.bytes === outputs[index].bytes && typeof row.sha256 === 'string' && SHA256.test(row.sha256));
+}
+function structural(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(structural);
+  if (object(value)) return Object.fromEntries(Object.keys(value).sort().map((key) => [key, structural(value[key])]));
+  return value;
+}
+function sameStructure(left: unknown, right: unknown): boolean { return JSON.stringify(structural(left)) === JSON.stringify(structural(right)); }
+function testerReviewQuality(opened: Root, creator: string, planSha256: string, run: PlannedRun): 'not-reviewed' | 'recorded-rejection' | 'unavailable' {
+  const grade = childRoot(opened, 'grade/tester');
+  if (grade === null) return absent(opened, 'grade/tester') ? 'not-reviewed' : 'unavailable';
+  const decisionNames = ['rulings.json', 'review-manifest.json', 'rejection-lineage.json'] as const;
+  const decisionPaths = decisionNames.map((name) => file(grade, name));
+  const decisionsMissing = decisionNames.map((name) => absent(grade, name));
+  const forbidden = ['approval-lineage.json', 'approved-list.json', 'accepted-checkpoint.json', 'approved'];
+  if (decisionPaths.every((path) => path === null) && decisionsMissing.every(Boolean)) return forbidden.every((name) => absent(grade, name)) ? 'not-reviewed' : 'unavailable';
+  const evaluationPath = file(grade, 'evaluation-inputs.json');
+  if (evaluationPath === null || decisionPaths.some((path) => path === null) || forbidden.some((name) => !absent(grade, name))) return 'unavailable';
+  const evaluationRecord = jsonCanonicalSubject(evaluationPath), rulingsRecord = jsonDigest(decisionPaths[0] as string), review = json(decisionPaths[1] as string), rejection = json(decisionPaths[2] as string);
+  const outputRoot = childRoot(opened, run.out), receiptPath = outputRoot === null ? null : file(outputRoot, 'run.json'), receipt = receiptPath === null ? null : json(receiptPath);
+  const outputs = outputRoot === null || receipt === null ? null : testerOutputRows(outputRoot, run, receipt.jobs);
+  if (evaluationRecord === null || rulingsRecord === null || review === null || rejection === null || outputs === null) return 'unavailable';
+  const evaluation = evaluationRecord.value;
+  const subjectSha256 = evaluation.subject_sha256;
+  if (evaluation.schema !== 'figment/evaluation-inputs@1' || evaluation.creator !== creator || evaluation.stage !== 'tester' || typeof subjectSha256 !== 'string' || !SHA256.test(subjectSha256) || subjectSha256 !== evaluationRecord.subjectSha256 || !reviewSubjectMatches(evaluation.subject, creator, planSha256, run, outputs)) return 'unavailable';
+  const rulings = rulingsRecord.value, rulingRows = rulings.rulings;
+  if (rulings.schema !== 'figment/rulings@1' || rulings.creator !== creator || rulings.stage !== 'tester' || rulings.evaluation_subject_sha256 !== subjectSha256 || typeof rulings.decided_by !== 'string' || !rulings.decided_by.trim() || !iso(rulings.decided_at) || !Array.isArray(rulingRows) || rulingRows.length !== outputs.length || !rulingRows.every((row, index) => object(row) && row.image_id === outputs[index].imageId && row.decision === 'cull')) return 'unavailable';
+  if (review.creator !== creator || review.stage !== 'tester' || !Array.isArray(review.images) || review.images.length !== outputs.length || !review.images.every((row, index) => object(row) && row.image_id === outputs[index].imageId && typeof row.path === 'string' && basename(row.path) === outputs[index].name && (row.review_status === 'parked' || row.review_status === 'verified'))) return 'unavailable';
+  if (rejection.schema !== 'figment/approval-lineage@1' || rejection.creator !== creator || rejection.stage !== 'tester' || rejection.decision !== 'rejected' || rejection.decided_by !== rulings.decided_by || rejection.decided_at !== rulings.decided_at || rejection.rulings_sha256 !== rulingsRecord.sha256 || rejection.reviewed_subject_sha256 !== subjectSha256 || rejection.subject_sha256 !== subjectSha256 || !reviewSubjectMatches(rejection.reviewed_subject, creator, planSha256, run, outputs) || !reviewSubjectMatches(rejection.subject, creator, planSha256, run, outputs) || !sameStructure(rejection.reviewed_subject, evaluation.subject) || !sameStructure(rejection.subject, evaluation.subject) || !object(rejection.transition) || rejection.transition.kind !== 'none' || rejection.transition.requires_replan !== false) return 'unavailable';
+  return 'recorded-rejection';
+}
 function terminalReceipt(opened: Root, run: PlannedRun, stage: 'train' | 'tester'): Pick<Extract<TrainFirstProjection, { status: 'recorded' }>, 'execution' | 'startedUtc' | 'finishedUtc' | 'terminationVerified' | 'checkpoints' | 'outputCount'> | null {
   const output = childRoot(opened, run.out); if (output === null) return null;
   const receiptPath = file(output, 'run.json'), receipt = receiptPath === null ? null : json(receiptPath);
@@ -169,5 +249,6 @@ export function collectTrainFirst(configuredRoot?: string | null, allowedPlanSha
   if (attempt === 'running') return started === null ? { status: 'unavailable', reason: 'evidence-unavailable' } : { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, execution: 'running', liveness: 'unknown', maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, startedUtc: started, finishedUtc: null, terminationVerified: null, checkpoints: [], outputCount: 0, quality: 'not-reviewed' };
   const terminal = terminalReceipt(opened, selectedRun, selectedStage);
   if (terminal === null || (attempt === 'complete' && terminal.execution !== 'completed') || (attempt === 'failed' && terminal.execution !== 'failed')) return { status: 'unavailable', reason: 'evidence-unavailable' };
-  return { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, liveness: null, maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, quality: 'not-reviewed', ...terminal };
+  const quality = selectedStage === 'tester' && terminal.execution === 'completed' ? testerReviewQuality(opened, plan.creator, allowedPlanSha256, tester) : 'not-reviewed';
+  return { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, liveness: null, maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, quality, ...terminal };
 }

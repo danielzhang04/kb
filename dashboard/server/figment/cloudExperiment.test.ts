@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { collectCloudExperiment, collectTrainFirst } from './cloudExperiment.ts';
 
 const temporary: string[] = [];
+function canonical(value: unknown): string { if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`; if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`; return JSON.stringify(value); }
+function canonicalSha256(value: unknown): string { return createHash('sha256').update(canonical(value), 'utf8').digest('hex'); }
 async function fixture(overrides: Record<string, unknown> = {}): Promise<string> { const root = await mkdtemp(join(tmpdir(), 'figment-cloud-experiment-')); temporary.push(root); await writeFile(join(root, 'run.json'), JSON.stringify({ schema: 'figment/runpod-run@1', dry_run: false, started_utc: '2026-09-09T07:33:27+00:00', finished_utc: '2026-09-09T07:34:21+00:00', max_minutes: 60, preflight_estimate_usd: 1.3, estimated_actual_usd: 0.019366, termination_verified: true, jobs: [], artifacts: [], error: 'BootstrapFailed: bootstrap failed after 3 attempts', pod_id: 'must-not-project', uploads: [{ name: 'g01.jpg' }], bootstrap_log_tail: 'must-not-project', ...overrides })); return root; }
 afterEach(async () => { await Promise.all(temporary.splice(0).map((path) => rm(path, { recursive: true, force: true }))); });
 
@@ -23,7 +25,7 @@ describe('cloud experiment projection', () => {
   it('fails closed for malformed records and reparse roots', async () => { const malformed = await fixture({ schema: 'wrong' }); expect(collectCloudExperiment(malformed)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' }); const root = await fixture(); const link = `${root}-link`; temporary.push(link); await symlink(root, link, 'junction'); expect(collectCloudExperiment(link)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' }); expect(collectCloudExperiment()).toEqual({ status: 'not-configured' }); });
 });
 
-async function trainFirstFixture(): Promise<{ root: string; planSha256: string; trainManifest: string; testerManifest: string; trainOut: string; testerOut: string }> {
+async function trainFirstFixture(): Promise<{ root: string; planSha256: string; trainManifest: string; testerManifest: string; testerManifestSha256: string; trainOut: string; testerOut: string }> {
   const root = await mkdtemp(join(tmpdir(), 'figment-train-first-')); temporary.push(root);
   const trainManifest = 'train/runs/train.yaml', testerManifest = 'train/runs/tester.yaml';
   const trainOut = 'train/runs/out/train', testerOut = 'train/runs/out/tester';
@@ -37,12 +39,15 @@ async function trainFirstFixture(): Promise<{ root: string; planSha256: string; 
   const run = (manifest: string, manifestSource: string, out: string, maxMinutes: number, maxUsd: string) => ({ manifest, sha256: hash(manifestSource), ceiling_usd: maxUsd, out, argv: ['python', 'runpod_run.py', 'run', '--manifest', join(root, manifest), '--out', join(root, out), '--max-usd', maxUsd, '--max-minutes', String(maxMinutes)] });
   const plan = { schema: 'figment/train-plan@1', creator: 'creator-001', variant: 'train-first', stages: { train: { runs: [run(trainManifest, trainSource, trainOut, 351, '7.61')] }, tester: { runs: [run(testerManifest, testerSource, testerOut, 115, '2.50')] } } };
   const source = JSON.stringify(plan); await writeFile(join(root, 'plan.json'), source);
-  return { root, planSha256: hash(source), trainManifest, testerManifest, trainOut, testerOut };
+  return { root, planSha256: hash(source), trainManifest, testerManifest, testerManifestSha256: hash(testerSource), trainOut, testerOut };
 }
 const stage = (fixture: Awaited<ReturnType<typeof trainFirstFixture>>, selected: 'train' | 'tester', status: 'running' | 'failed' | 'complete') => ({ schema: 'figment/train-stage@1', creator: 'creator-001', plan_sha256: fixture.planSha256, status: status === 'running' ? `running:${selected}` : status === 'failed' ? `stopped:${selected}` : `complete:${selected}`, runs: { [selected === 'train' ? fixture.trainManifest : fixture.testerManifest]: { status, started_utc: '2026-09-09T20:12:32Z' } }, completed_stages: status === 'complete' ? selected === 'train' ? ['train'] : ['train', 'tester'] : selected === 'tester' ? ['train'] : [] });
 const receipt = (maxMinutes: number, maxUsd: number, extra: Record<string, unknown>) => ({ schema: 'figment/runpod-run@1', dry_run: false, max_minutes: maxMinutes, preflight_estimate_usd: maxUsd, started_utc: '2026-09-09T20:12:33Z', finished_utc: '2026-09-09T20:20:33Z', termination_verified: true, placement_attempts: [{ termination_verified: true }], ...extra });
 
 describe('train-first lifecycle projection', () => {
+  it('matches the Python canonical UTF-8 digest for Unicode JSON', () => {
+    expect(canonicalSha256({ z: '雪', a: 'café' })).toBe('867e5d2a2843c530e8adab8e27e16e4344561b86e25b2c52ff1490944aba53ae');
+  });
   it('requires both an exact configured root and exact plan digest', async () => {
     const item = await trainFirstFixture();
     expect(collectTrainFirst()).toEqual({ status: 'not-configured' });
@@ -83,6 +88,70 @@ describe('train-first lifecycle projection', () => {
     await writeFile(join(output, 'run.json'), JSON.stringify(receipt(115, 2.5, { artifacts: [], jobs })));
     await writeFile(join(item.root, 'stage.json'), JSON.stringify({ ...complete, status: 'running:tester' }));
     expect(collectTrainFirst(item.root, item.planSha256)).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+  it('projects an exact all-cull tester review as a recorded rejection and never an acceptance', async () => {
+    const item = await trainFirstFixture(), output = join(item.root, item.testerOut), grade = join(item.root, 'grade', 'tester'); await mkdir(output, { recursive: true }); await mkdir(grade, { recursive: true });
+    const complete = stage(item, 'tester', 'complete'), jobs = [], images = [];
+    await writeFile(join(item.root, 'stage.json'), JSON.stringify(complete));
+    for (let index = 0; index < 5; index += 1) { const imageId = `tester-${index + 1}`, name = `${imageId}.png`, body = Buffer.alloc(100 + index, index); await writeFile(join(output, name), body); jobs.push({ output_name: imageId, files: [{ path: name, bytes: body.length }] }); images.push({ image_id: imageId, name, bytes: body.length, sha256: createHash('sha256').update(body).digest('hex') }); }
+    await writeFile(join(output, 'run.json'), JSON.stringify(receipt(115, 2.5, { artifacts: [], jobs })));
+    const subject = { creator: 'creator-001', stage: 'tester', plan: { name: 'plan.json', sha256: item.planSha256 }, manifests: [{ name: 'tester.yaml', sha256: item.testerManifestSha256 }], images, note: 'café 雪' }, subjectSha256 = canonicalSha256(subject), decidedBy = 'operator-fixture', decidedAt = '2026-09-09T23:36:16Z';
+    const evaluation = { schema: 'figment/evaluation-inputs@1', creator: 'creator-001', stage: 'tester', subject, subject_sha256: subjectSha256 };
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify(evaluation));
+    const rulings = { schema: 'figment/rulings@1', creator: 'creator-001', stage: 'tester', evaluation_subject_sha256: subjectSha256, decided_by: decidedBy, decided_at: decidedAt, rulings: images.map((image) => ({ image_id: image.image_id, decision: 'cull' })) }, rulingsSource = JSON.stringify(rulings);
+    await writeFile(join(grade, 'rulings.json'), rulingsSource);
+    await writeFile(join(grade, 'review-manifest.json'), JSON.stringify({ creator: 'creator-001', stage: 'tester', images: images.map((image) => ({ image_id: image.image_id, path: join(output, image.name), review_status: 'parked' })) }));
+    const rejection = { schema: 'figment/approval-lineage@1', creator: 'creator-001', stage: 'tester', decision: 'rejected', decided_by: decidedBy, decided_at: decidedAt, rulings_sha256: createHash('sha256').update(rulingsSource).digest('hex'), reviewed_subject: subject, reviewed_subject_sha256: subjectSha256, transition: { kind: 'none', requires_replan: false }, subject, subject_sha256: subjectSha256 };
+    await writeFile(join(grade, 'rejection-lineage.json'), JSON.stringify(rejection));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', stage: 'tester', execution: 'completed', outputCount: 5, quality: 'recorded-rejection' });
+    const staleDigest = 'e'.repeat(64), staleRulingsSource = JSON.stringify({ ...rulings, evaluation_subject_sha256: staleDigest });
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify({ ...evaluation, subject_sha256: staleDigest }));
+    await writeFile(join(grade, 'rulings.json'), staleRulingsSource);
+    await writeFile(join(grade, 'rejection-lineage.json'), JSON.stringify({ ...rejection, rulings_sha256: createHash('sha256').update(staleRulingsSource).digest('hex'), reviewed_subject_sha256: staleDigest, subject_sha256: staleDigest }));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify(evaluation));
+    await writeFile(join(grade, 'rulings.json'), rulingsSource);
+    await writeFile(join(grade, 'rejection-lineage.json'), JSON.stringify(rejection));
+    const approved = join(grade, 'approved');
+    await mkdir(approved);
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+    await rm(approved, { recursive: true });
+    const foreign = await mkdtemp(join(tmpdir(), 'figment-approved-foreign-')); temporary.push(foreign);
+    await symlink(foreign, approved, 'junction');
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+    await rm(approved);
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify({ ...evaluation, subject: { ...subject, plan: { name: 'plan.json', sha256: '0'.repeat(64) } } }));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify(evaluation));
+    await writeFile(join(grade, 'approved-list.json'), JSON.stringify({ schema: 'figment/approved-images@1', images: [] }));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+  });
+  it('rejects deep tester review JSON before recursive parsing', async () => {
+    const item = await trainFirstFixture(), output = join(item.root, item.testerOut), grade = join(item.root, 'grade', 'tester');
+    await mkdir(output, { recursive: true }); await mkdir(grade, { recursive: true });
+    await writeFile(join(item.root, 'stage.json'), JSON.stringify(stage(item, 'tester', 'complete')));
+    const jobs = [];
+    for (let index = 0; index < 5; index += 1) { const name = `tester-${index + 1}.png`; await writeFile(join(output, name), Buffer.alloc(100)); jobs.push({ output_name: `tester-${index + 1}`, files: [{ path: name, bytes: 100 }] }); }
+    await writeFile(join(output, 'run.json'), JSON.stringify(receipt(115, 2.5, { artifacts: [], jobs })));
+    for (const name of ['rulings.json', 'review-manifest.json', 'rejection-lineage.json']) await writeFile(join(grade, name), '{}');
+    const deep = '{"subject":' + '['.repeat(10000) + '0' + ']'.repeat(10000) + '}';
+    await writeFile(join(grade, 'evaluation-inputs.json'), deep);
+    const parser = vi.spyOn(JSON, 'parse');
+    try {
+      expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
+      expect(parser.mock.calls.filter(([source]) => source === deep)).toHaveLength(0);
+    } finally { parser.mockRestore(); }
+  });
+  it('keeps completed lifecycle evidence while distinguishing no review from unavailable review', async () => {
+    const item = await trainFirstFixture(), output = join(item.root, item.testerOut), grade = join(item.root, 'grade', 'tester'); await mkdir(output, { recursive: true }); await mkdir(grade, { recursive: true });
+    await writeFile(join(item.root, 'stage.json'), JSON.stringify(stage(item, 'tester', 'complete')));
+    const jobs = [];
+    for (let index = 0; index < 5; index += 1) { const name = `tester-${index + 1}.png`, body = Buffer.alloc(100 + index, index); await writeFile(join(output, name), body); jobs.push({ output_name: `tester-${index + 1}`, files: [{ path: name, bytes: body.length }] }); }
+    await writeFile(join(output, 'run.json'), JSON.stringify(receipt(115, 2.5, { artifacts: [], jobs })));
+    await writeFile(join(grade, 'evaluation-inputs.json'), JSON.stringify({ schema: 'figment/evaluation-inputs@1' }));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'not-reviewed' });
+    await writeFile(join(grade, 'rulings.json'), JSON.stringify({ schema: 'figment/rulings@1' }));
+    expect(collectTrainFirst(item.root, item.planSha256)).toMatchObject({ status: 'recorded', execution: 'completed', quality: 'unavailable' });
   });
   it('fails closed for a reparse root', async () => {
     const item = await trainFirstFixture(), link = `${item.root}-link`; temporary.push(link); await symlink(item.root, link, 'junction');

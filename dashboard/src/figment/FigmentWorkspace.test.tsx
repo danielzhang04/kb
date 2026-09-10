@@ -326,8 +326,17 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Verified')).toBeTruthy();
     expect(screen.getByRole('heading', { name: 'Receipt-bound checkpoints' })).toBeTruthy();
     expect(screen.getByText('Checkpoint hashes are not present in the run receipt.')).toBeTruthy();
-    expect(screen.getByText('Plan-bound lifecycle evidence only. Liveness is unknown while a stage is running, and quality remains unreviewed.')).toBeTruthy();
+    expect(screen.getByText('Plan-bound lifecycle evidence only. Liveness is unknown while a stage is running. Quality has not been reviewed.')).toBeTruthy();
     expect(screen.queryByText(/pod|prompt/i)).toBeNull();
+  });
+
+  it('shows a recorded tester rejection without implying checkpoint acceptance', async () => {
+    const trainFirst = { status: 'recorded' as const, planSha256: 'e'.repeat(64), creator: 'creator-001', stage: 'tester' as const, execution: 'completed' as const, liveness: null, maxMinutes: 115, maxUsd: 2.5, startedUtc: '2026-09-09T22:42:16Z', finishedUtc: '2026-09-09T23:03:12Z', terminationVerified: true, checkpoints: [], outputCount: 5, quality: 'recorded-rejection' as const };
+    const fetchImpl = vi.fn(() => response({ ...projection, trainFirst })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Training readiness' }));
+    expect(screen.getByText('Recorded rejection')).toBeTruthy();
+    expect(screen.getByText((_, element) => element?.tagName === 'P' && element.textContent === '5 tester originals recorded. Recorded review rejected all 5 tester outputs. No checkpoint selected for this run.')).toBeTruthy();
+    expect(screen.queryByText(/approved checkpoint/i)).toBeNull();
   });
 
   it('fails closed for an inconsistent train-first terminal projection', async () => {
