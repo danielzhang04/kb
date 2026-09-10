@@ -486,3 +486,107 @@ synthetic scratch only after all other work is complete:
 This acceptance concerns technical readiness of the exact intake slice. It does not
 refresh human-owned evaluation manifests, authorize publication, or establish the
 user's full real-data pipeline goal.
+
+## Independent email-template proposal review
+
+Verdict: revise the proposal before template implementation. This is a source and
+synthetic-render review of `2026-09-09-prospecting-email-template-revisions.md`, not
+runtime humanizer acceptance. No template or product source was edited.
+
+1. **Medium: AI interest becomes unconditional generic-template content.** Proposal
+   lines 29, 41 and 53 add fixed first-person AI learning goals to existing reusable
+   IDs; integration lines 64-67 retain routing unchanged. The pilot's user-authorized
+   AI curiosity is valid input, but another campaign with no AI angle would acquire
+   it automatically. P8 binds `sender_intro`/`sender_proof` to the sender profile
+   (`affinity/templates_v2.py:323-327`); these new literals have no such binding.
+   Keep generic copy goal-neutral or make AI copy selection explicitly depend on
+   approved intake/AI-angle context. Test an AI-authorized campaign and a no-AI
+   campaign, including an exclusion, without asking again for already supplied claims.
+
+2. **Medium: three edited families do not cover the pilot's role families.**
+   `_family()` (`affinity/templates_v2.py:174-177`) selects the ops families only
+   for titles containing operations/operator/chief operating. Strategy and Chief of
+   Staff titles normally select unchanged `startup_nonops`, whose stock copy remains.
+   Curiosity intent instead routes every person to `curiosity_thesis` at lines 162-163.
+   State this limit explicitly; a later bounded selection change must test actual
+   operations, strategy and Chief of Staff titles against approved campaign intent.
+
+3. **Medium: template eligibility still requires a supported career bridge.** All
+   three proposed bodies retain mandatory `shared_signal_sentence` and both transition
+   slots. `templates_v2.py:219-225` requires their evidence before rendering, and
+   `affinity/evidence_bridge.py:324-337,351-399` refuses absent employer/path sources.
+   A valid current pilot contact without a supported earlier-career bridge therefore
+   cannot use these families. Preserve that refusal; specify an evidence-eligible
+   research-hook/current-role occasion as the fallback instead of inventing a bridge
+   or treating common background as a pilot requirement. `startup_nonops` currently
+   has the same slots and is not that fallback. Test both supported and absent bridges.
+
+4. **Medium: the noncorporate rewrite adds causal career interpretation.** Proposal
+   line 39 says the role "grew out of" the prior work and "into" the current work.
+   The underlying source claims establish prior/current employment, not that one
+   caused the other (`evidence_bridge.py:393-399`). Prefer neutral wording such as
+   "I'd like to hear about your move from {transition_from} to {transition_to} and
+   your work as {their_role} at {firm}." Review the rendered sentence with real-shaped
+   synthetic role/path values; do not infer motivations or consequential choices.
+
+The rewrite removes the worst filler. Remaining editorial fixes are small but useful:
+remove "stands out given" and "AI inside the work"; avoid implying comparable sender
+experience with "compare notes" unless the sender context supports that posture.
+For an authorized AI-angle variant, "I'm curious where AI has been useful in day-to-day
+operations, if at all" asks about experience without assuming adoption. Keep exactly
+one question overall by incorporating the informational ask in the same question or
+keeping the angle declarative. These suggestions are illustrative, not approved copy.
+
+Independent in-memory render verification used the existing floor/ceiling synthetic
+slot fixtures and the real renderer/clamping/band helpers. Every proposed template
+preserves the exact existing slot inventory and one question. Corporate renders at
+90/109 body words; noncorporate and curiosity each render at 91/110. All six pass the
+existing 75-125 word and 36-50 subject-character bands. This does not prove every
+possible sender profile fits every saved campaign band or establish factual entailment.
+
+Before accepting the proposal, change its line 72 semantic assertion into an explicit
+semantic review obligation; deterministic tests can catch known forbidden strings,
+not prove all claims are supported. Its Humanizer section summarizes a draft rather
+than retaining the actual draft required by the skill's draft/audit/final process.
+Retain that draft if calling the section evidence, or label it editorial notes.
+
+Version binding: ID plus version 2 is the correct existing registry seam. P11 already
+hashes template ID/version, exact subject/body, evidence IDs and prompt/model labels
+(`personalizer/revision.py:45-73`); keep old revisions immutable and add regression
+coverage for version changes producing distinct revision identity. For the future
+pipeline, pin exact template content, approved intake/AI-angle and sender-context
+version/hash, and Humanizer 2.8.2 skill content hash. Humanizer draft/audit/final and
+independent review receipts must bind the exact parent and resulting revision hashes.
+No current renderer call or template-development pass supplies those runtime receipts.
+
+
+## Phase A editorial refusal implementation checkpoint
+
+Root requested this bounded implementation after the independent design review.
+The infra reviewer therefore authored Phase A; root owns its independent acceptance.
+No migration, receipt writer, synthetic pass switch, P15 change, or live runtime was added.
+
+The review service now refuses `ready=True` with `editorial_receipts_missing` for all
+revisions, including human-edited descendants and replayed historical ready requests.
+Request conflicts, current-revision checks and pending-candidate checks precede the
+refusal. Effective draft projections mask historical ready events as review-required;
+immutable history remains intact. `ready=False` and its current-revision replay remain
+available. HTTP returns 409 for the missing-receipts condition; the UI disables Mark
+ready and explicitly says the required review stages are not connected yet.
+
+Builder verification: 67 focused Python tests passed; the remaining acceptance test
+failed because it edited a phrase removed by the concurrently revised template. That
+fixture now edits the subject while preserving the evidence-bound body; its rerun passed
+(1 passed, 0.84s). All 10 bundled JavaScript tests passed (185.946ms). Scoped diff
+whitespace validation passed. Root independently found no blocking defect for this
+explicit refusal scope. Root's final independent acceptance is READY for editorial
+refusal only: 50 focused service and real-HTTP tests passed in 27.63s, and all 10
+bundled JavaScript tests passed in 138.27ms. The author did not self-grade this change.
+
+Material limit: this is an editorial-readiness refusal gate, not whole-pipeline or send
+enforcement. Approval and executor readers still hold and consume their separate
+authority independently of editorial state; the existing synthetic acceptance fixture
+shows an approved revision whose editorial projection remains review-required. Phase B
+must wire exact-revision receipt/freshness requirements into every approval/executor
+reader that treats a draft as eligible. No humanizer, factual-recheck, or independent
+critic stage has been executed or attested by this change.

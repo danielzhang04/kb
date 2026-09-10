@@ -427,3 +427,45 @@ def test_feedback_http_links_only_the_authentic_human_edit_and_persists(tmp_path
     assert connection.execute("SELECT count(*) FROM delivery").fetchone()[0] == 0
     assert connection.execute("SELECT count(*) FROM exec_request").fetchone()[0] == 0
     connection.close()
+
+
+def test_editorial_gate_http_blocks_ready_but_preserves_clear(tmp_path: Path) -> None:
+    path = tmp_path / "editorial-gate.sqlite"
+    _seed_profile(path)
+    app = _start(path, (CAMPAIGNS[0],))
+    cookie, csrf = _bootstrap(app)
+    try:
+        status, _result = _post(app, "/api/campaigns", {
+            "request_id": str(uuid.UUID(int=601)), "brief_text": BRIEF,
+            "sender_profile_id": PROFILE, "mailbox_id": "mailbox-001",
+        }, cookie, csrf)
+        assert status == 201
+    finally:
+        app.stop()
+    revision = _seed_draft(path, CAMPAIGNS[0], "a")
+    app = _start(path)
+    cookie, csrf = _bootstrap(app)
+    payload = {"request_id": str(uuid.UUID(int=602)), "campaign_id": CAMPAIGNS[0],
+               "expected_revision_id": revision, "ready": True}
+    try:
+        for _attempt in range(2):
+            status, result = _post(app, "/api/drafts/ready", payload, cookie, csrf)
+            assert (status, result) == (409, {"error": "editorial_receipts_missing"})
+        status, _headers, raw = _request(
+            app, "GET", f"/api/review?campaign_id={CAMPAIGNS[0]}", cookie=cookie,
+        )
+        snapshot = json.loads(raw)
+        assert status == 200
+        assert snapshot["drafts"][0]["editorial_state"] == "review_required"
+        assert snapshot["drafts"][0]["editorial_gate_code"] == "editorial_receipts_missing"
+        assert snapshot["next_action"]["title"] == "Waiting for humanizer and independent review"
+        clear = {**payload, "request_id": str(uuid.UUID(int=603)), "ready": False}
+        status, result = _post(app, "/api/drafts/ready", clear, cookie, csrf)
+        assert status == 200 and result["state"] == "review_required"
+        assert _post(app, "/api/drafts/ready", clear, cookie, csrf)[1]["replayed"] is True
+    finally:
+        app.stop()
+    connection = open_store(path)
+    assert connection.execute("SELECT count(*) FROM draft_editorial_event WHERE state='ready'").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 1
+    connection.close()

@@ -12,6 +12,8 @@ import json
 from pathlib import Path
 import uuid
 
+import pytest
+
 import scripts.prospecting.cli as cli_module
 from scripts.prospecting.affinity.fitspec import (
     approve_fit_spec,
@@ -30,6 +32,7 @@ from scripts.prospecting.review_service import (
     EditDraftRequest,
     EditorialRequest,
     FeedbackRequest,
+    ReviewError,
     ReviewService,
 )
 from scripts.prospecting.scorer import (
@@ -288,10 +291,8 @@ def test_reviewed_t0_campaign_creates_one_draft_and_reply_stops_followup(
             _request_id(2),
             CAMPAIGN_ID,
             parent["revision_id"],
-            parent["subject"],
-            parent["body"].replace(
-                "practical recommendations", "practical, grounded recommendations"
-            ),
+            parent["subject"] + " (edited)",
+            parent["body"],
         )
     )
     assert edited.state == "revision_created"
@@ -314,9 +315,10 @@ def test_reviewed_t0_campaign_creates_one_draft_and_reply_stops_followup(
         )
     )
     assert feedback.state == "pending"
-    review.set_editorial_ready(
-        EditorialRequest(_request_id(4), CAMPAIGN_ID, edited.revision_id, True)
-    )
+    with pytest.raises(ReviewError, match="^editorial_receipts_missing$"):
+        review.set_editorial_ready(
+            EditorialRequest(_request_id(4), CAMPAIGN_ID, edited.revision_id, True)
+        )
     _insert_revision_approval(
         connection,
         revised.revision_hash,
@@ -338,7 +340,8 @@ def test_reviewed_t0_campaign_creates_one_draft_and_reply_stops_followup(
         expires_at=NOW + timedelta(days=1),
     )
     reviewed = review.get_draft(CAMPAIGN_ID, edited.revision_id)
-    assert (reviewed.editorial_state, reviewed.approval_state) == ("ready", "approved")
+    assert (reviewed.editorial_state, reviewed.approval_state) == ("review_required", "approved")
+    assert reviewed.editorial_gate_code == "editorial_receipts_missing"
 
     follow_summary = draft_campaign(
         connection, CAMPAIGN_ID, 1, anchors=object(), now=NOW

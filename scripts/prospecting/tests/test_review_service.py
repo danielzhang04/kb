@@ -18,6 +18,7 @@ from scripts.prospecting.personalizer.qa import QaPolicy, QaResult, SlotBinding
 from scripts.prospecting.personalizer.revision import RevisionInput, build_revision
 from scripts.prospecting.review_service import (
     CandidateRevision,
+    _digest,
     EditDraftRequest,
     EditorialRequest,
     FeedbackRequest,
@@ -49,6 +50,23 @@ SOURCE_REVIEW = json.loads(
 
 def request_id(index: int) -> str:
     return str(uuid.UUID(int=index))
+
+
+def insert_historical_ready(connection, request: EditorialRequest) -> None:
+    """Seed immutable pre-gate history without adding a runtime bypass."""
+    person_id = connection.execute(
+        "SELECT person_id FROM revision WHERE revision_id=?", (request.expected_revision_id,),
+    ).fetchone()[0]
+    event_id = "historical-" + request.request_id
+    connection.execute(
+        "INSERT INTO draft_editorial_event(event_id,request_id,campaign_id,person_id,revision_id,state,created_at) VALUES(?,?,?,?,?,'ready',?)",
+        (event_id, request.request_id, request.campaign_id, person_id, request.expected_revision_id, NOW),
+    )
+    digest = _digest("editorial", {"campaign_id": request.campaign_id,
+                                  "expected_revision_id": request.expected_revision_id, "ready": True})
+    connection.execute("INSERT INTO review_request VALUES(?,?,?,?,?,?,?,?,?)",
+        (request.request_id, "editorial", request.campaign_id, person_id,
+         request.expected_revision_id, digest, "ready", event_id, NOW))
 
 
 def insert_campaign(connection: sqlite3.Connection, campaign_id: str, sender: str, mailbox: str) -> None:
@@ -477,7 +495,7 @@ def test_draft_evidence_refuses_cross_person_or_malformed_ids(database, evidence
 def test_valid_human_edit_uses_real_qa_owner_and_does_not_inherit_authority(database) -> None:
     _path, connection, ids = database
     service = ReviewService(connection, now=lambda: NOW)
-    service.set_editorial_ready(EditorialRequest(request_id(1), "campaign-a", ids["a"], True))
+    insert_historical_ready(connection, EditorialRequest(request_id(1), "campaign-a", ids["a"], True))
     insert_approval(connection, ids["a_hash"])
     connection.commit()
     assert service.get_draft("campaign-a", ids["a"]).approval_state == "approved"
@@ -499,9 +517,10 @@ def test_valid_human_edit_uses_real_qa_owner_and_does_not_inherit_authority(data
     inherited = load_revision_qa_context(connection, result.revision_id)
     assert inherited.inherited_from_revision_id == ids["a"]
 
-    service.set_editorial_ready(EditorialRequest(
-        request_id(19), "campaign-a", result.revision_id, True
-    ))
+    with pytest.raises(ReviewError, match="^editorial_receipts_missing$"):
+        service.set_editorial_ready(EditorialRequest(
+            request_id(19), "campaign-a", result.revision_id, True
+        ))
     second = service.edit_draft(EditDraftRequest(
         request_id(20), "campaign-a", result.revision_id, "Second synthetic subject",
         f"Hello. {POINT}. This second edit keeps the same synthetic evidence. {ASK}",
@@ -861,3 +880,53 @@ def test_p10_rows_are_immutable_and_schema_rejects_cross_campaign_parent(databas
             ("candidate-cross", request_id(15), "campaign-b", "person-a", 0, ids["a"],
              "Synthetic", "Synthetic", "pending_qa", None, NOW),
         )
+
+
+@pytest.mark.parametrize("scope", ("a", "b"))
+def test_ready_requires_receipts_for_every_campaign_without_writing(database, scope) -> None:
+    _path, connection, ids = database
+    service = ReviewService(connection, now=lambda: NOW)
+    campaign = "campaign-" + scope
+    with pytest.raises(ReviewError, match="^editorial_receipts_missing$"):
+        service.set_editorial_ready(EditorialRequest(request_id(501), campaign, ids[scope], True))
+    assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM review_request").fetchone()[0] == 0
+    assert not connection.in_transaction
+    draft = service.get_draft(campaign, ids[scope])
+    assert (draft.editorial_state, draft.editorial_gate_code) == (
+        "review_required", "editorial_receipts_missing",
+    )
+
+
+def test_historical_ready_is_blocked_in_projection_and_replay(database) -> None:
+    _path, connection, ids = database
+    request = EditorialRequest(request_id(502), "campaign-a", ids["a"], True)
+    insert_historical_ready(connection, request)
+    service = ReviewService(connection, now=lambda: NOW)
+    assert service.get_draft("campaign-a", ids["a"]).editorial_state == "review_required"
+    with pytest.raises(ReviewError, match="^editorial_receipts_missing$"):
+        service.set_editorial_ready(request)
+    assert connection.execute("SELECT state FROM draft_editorial_event").fetchone()[0] == "ready"
+    assert connection.execute("SELECT count(*) FROM review_request").fetchone()[0] == 1
+    changed = service.edit_draft(EditDraftRequest(
+        request_id(503), "campaign-a", ids["a"], "Synthetic new subject",
+        f"Hello. {POINT}. This synthetic edit keeps the evidence. {ASK}",
+    ))
+    assert changed.state == "revision_created"
+    with pytest.raises(ReviewError, match="^revision_conflict$"):
+        service.set_editorial_ready(request)
+    with pytest.raises(ReviewError, match="^editorial_receipts_missing$"):
+        service.set_editorial_ready(EditorialRequest(request_id(504), "campaign-a", changed.revision_id, True))
+
+
+def test_clear_ready_preserves_idempotency_and_request_conflicts(database) -> None:
+    _path, connection, ids = database
+    service = ReviewService(connection, now=lambda: NOW)
+    clear = EditorialRequest(request_id(505), "campaign-a", ids["a"], False)
+    result = service.set_editorial_ready(clear)
+    assert (result.state, result.replayed) == ("review_required", False)
+    assert service.set_editorial_ready(clear).replayed is True
+    with pytest.raises(ReviewError, match="^request_conflict$"):
+        service.set_editorial_ready(EditorialRequest(clear.request_id, "campaign-a", ids["a"], True))
+    assert connection.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 1
+    assert not connection.in_transaction

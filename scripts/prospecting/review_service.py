@@ -58,6 +58,15 @@ class ReviewError(ValueError):
     """A fixed-code refusal safe for a local UI response."""
 
 
+def _editorial_gate_code() -> str:
+    """Fail closed until controller-owned, exact-revision receipts can be read.
+
+    This is not a configurable QA adapter: neither callers nor a model result can
+    supply editorial authority. The future receipt reader replaces this refusal.
+    """
+    return "editorial_receipts_missing"
+
+
 @dataclass(frozen=True)
 class SenderProfileView:
     sender_profile_id: str
@@ -153,6 +162,7 @@ class DraftView:
     approval_state: str
     approval_id: str | None
     feedback_state: str | None
+    editorial_gate_code: str = "editorial_receipts_missing"
 
 
 @dataclass(frozen=True)
@@ -1067,7 +1077,8 @@ class ReviewService:
         approval_state, approval_id = self._approval(campaign_id, person_id, str(row["hash"]))
         if candidate is not None:
             approval_state, approval_id = "missing", None
-        editorial_state = "review_required" if candidate is not None else (
+        gate_code = _editorial_gate_code()
+        editorial_state = "review_required" if candidate is not None or gate_code else (
             str(editorial[0]) if editorial is not None else "review_required"
         )
         return DraftView(
@@ -1083,6 +1094,7 @@ class ReviewService:
             editorial_state=editorial_state,
             approval_state=approval_state, approval_id=approval_id,
             feedback_state=None if feedback is None else str(feedback[0]),
+            editorial_gate_code=gate_code,
         )
 
     def list_drafts(self, campaign_id: str) -> tuple[DraftView, ...]:
@@ -1412,13 +1424,17 @@ class ReviewService:
         self._begin()
         try:
             replay = self._replay(request_id, "editorial", request_hash)
-            if replay is not None:
-                self.connection.commit()
-                return EditorialResult(request_id, str(replay["result_id"]), expected, state, True)
             self._campaign(campaign_id)
             revision = self._current(campaign_id, expected)
             if self._has_unresolved_candidate(campaign_id, expected):
                 raise ReviewError("candidate_pending")
+            if request.ready:
+                gate_code = _editorial_gate_code()
+                if gate_code:
+                    raise ReviewError(gate_code)
+            if replay is not None:
+                self.connection.commit()
+                return EditorialResult(request_id, str(replay["result_id"]), expected, state, True)
             event_id = _derived_id("ready", request_id)
             now = self.now()
             self.connection.execute(

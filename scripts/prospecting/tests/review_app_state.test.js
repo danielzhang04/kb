@@ -428,3 +428,22 @@ test("research brief retries keep the request identity and drafts stay campaign-
   app.evaluate('state.campaign="B"; hydrateResearchBrief(null)');
   assert.equal(app.document.getElementById("outreachGoal").value, "B goal");
 });
+
+
+test("draft readiness stays disabled while required review stages are unavailable", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loaded=load("A")');
+  const value = snapshot("A");
+  value.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  app.reply(app.requests.shift(), value);
+  await app.context.loaded;
+  const markup = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(markup, /data-ready="rev-A" disabled/);
+  assert.match(markup, /Waiting for humanizer and independent review/);
+  assert.match(markup, /Required review stages are not connected yet/);
+  app.document.emit("click", {closest: () => ({disabled: true, dataset: {ready: "rev-A"}})});
+  assert.equal(app.requests.length, 0);
+  assert.equal(app.document.getElementById("draftBody").value, "Server body");
+});

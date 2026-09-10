@@ -153,6 +153,8 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
     review = [item for item in drafts if item.get("editorial_state") != "ready"]
     if pending:
         return {"title": "Resolve the pending draft review", "detail": "The edited candidate has not produced a validated revision.", "label": f"{len(pending)} blocked"}
+    if any(item.get("editorial_gate_code") for item in drafts):
+        return {"title": "Waiting for humanizer and independent review", "detail": "Required review stages are not connected yet. You can keep editing saved drafts.", "label": "Readiness blocked"}
     if review:
         return {"title": "Review saved drafts", "detail": "Editorial readiness never grants sending authority.", "label": f"{len(review)} to review"}
     if not people:
@@ -609,7 +611,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "route_missing")
         except (CampaignError, ControlError, ControlReviewError, FeedbackError, PipelineError, ReviewError) as error:
             code = str(error) if str(error) else "request_invalid"
-            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "editorial_receipts_missing", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
             self._error(status, code)
         except (ValueError, TypeError):
             self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "request_schema")
