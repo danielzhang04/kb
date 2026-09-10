@@ -487,6 +487,7 @@ class _FixtureServer(ThreadingHTTPServer):
         self.tool_response_emitted = Event()
         self.unexpected_tool_declaration = Event()
         self.declared_tools: tuple[str, ...] = ()
+        self.tools_field_state = "unseen"
         super().__init__(("127.0.0.1", 0), _FixtureHandler)
 
 
@@ -537,6 +538,11 @@ class _FixtureHandler(BaseHTTPRequestHandler):
                     and rows[0].get("name") == _ALLOWED_TOOL
                 )
             )
+        )
+        server.tools_field_state = (
+            "omitted"
+            if isinstance(body, dict) and "tools" not in body
+            else "allowed" if allowed_shape else "invalid"
         )
         if not allowed_shape:
             server.unexpected_tool_declaration.set()
@@ -683,6 +689,8 @@ def _run_owned_windows_process(
     stdin_sha256: str,
     deadline_seconds: float,
     cancel: Event | None = None,
+    stdout_observer: Callable[[bytes], None] | None = None,
+    stdout_limit_bytes: int = 2 * 1024 * 1024,
     _assign_process: Callable[[object, object, int], bool] | None = None,
 ) -> _ProcessOutcome:
     """Start suspended, assign to a kill-on-close Job Object, then resume."""
@@ -779,6 +787,13 @@ def _run_owned_windows_process(
         handle_t, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
     ]
     kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    kernel32.CreatePipe.argtypes = [
+        ctypes.POINTER(handle_t), ctypes.POINTER(handle_t),
+        ctypes.POINTER(SECURITY_ATTRIBUTES), wintypes.DWORD,
+    ]
+    kernel32.CreatePipe.restype = wintypes.BOOL
+    kernel32.SetHandleInformation.argtypes = [handle_t, wintypes.DWORD, wintypes.DWORD]
+    kernel32.SetHandleInformation.restype = wintypes.BOOL
     kernel32.CreateFileW.argtypes = [
         wintypes.LPCWSTR, wintypes.DWORD, wintypes.DWORD,
         ctypes.POINTER(SECURITY_ATTRIBUTES), wintypes.DWORD, wintypes.DWORD, handle_t,
@@ -829,6 +844,11 @@ def _run_owned_windows_process(
         raise PrivateRuntimeError("windows_job_unavailable")
     handles: list[object] = [job]
     process_info = PROCESS_INFORMATION()
+    stdout_read = handle_t()
+    stdout_write = handle_t()
+    stdout_thread: Thread | None = None
+    stdout_error: list[PrivateRuntimeError] = []
+    stdout_cancel = Event()
     try:
         limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
         limits.BasicLimitInformation.LimitFlags = 0x2000  # KILL_ON_JOB_CLOSE
@@ -923,11 +943,26 @@ def _run_owned_windows_process(
         if not nul or ctypes.cast(nul, ctypes.c_void_p).value == invalid_handle:
             raise PrivateRuntimeError("process_start_failed")
         handles.append(nul)
+        if stdout_observer is not None:
+            if type(stdout_limit_bytes) is not int or not 1 <= stdout_limit_bytes <= 8 * 1024 * 1024:
+                raise PrivateRuntimeError("stdout_limit_invalid")
+            require(
+                kernel32.CreatePipe(
+                    ctypes.byref(stdout_read), ctypes.byref(stdout_write),
+                    ctypes.byref(security), 65_536,
+                ),
+                "stdout_pipe_failed",
+            )
+            handles.extend([stdout_read, stdout_write])
+            require(
+                kernel32.SetHandleInformation(stdout_read, 0x00000001, 0),
+                "stdout_pipe_failed",
+            )
         startup = STARTUPINFOW()
         startup.cb = ctypes.sizeof(startup)
         startup.dwFlags = 0x00000100  # STARTF_USESTDHANDLES
         startup.hStdInput = stdin_read
-        startup.hStdOutput = nul
+        startup.hStdOutput = stdout_write if stdout_observer is not None else nul
         startup.hStdError = nul
         command = ctypes.create_unicode_buffer(subprocess.list2cmdline(argv))
         environment_text = "\0".join(
@@ -955,6 +990,42 @@ def _run_owned_windows_process(
             kernel32.TerminateProcess(process_info.hProcess, 0xED)
             kernel32.WaitForSingleObject(process_info.hProcess, 2000)
             raise PrivateRuntimeError("job_assignment_failed")
+        if stdout_observer is not None:
+            kernel32.CloseHandle(stdout_write)
+            handles.remove(stdout_write)
+
+            def read_stdout() -> None:
+                total = 0
+                buffer = (ctypes.c_ubyte * 65_536)()
+                try:
+                    while True:
+                        read = wintypes.DWORD()
+                        if not kernel32.ReadFile(
+                            stdout_read, buffer, len(buffer), ctypes.byref(read), None,
+                        ):
+                            if ctypes.get_last_error() in (38, 109, 232):
+                                break
+                            raise PrivateRuntimeError("stdout_read_failed")
+                        if not read.value:
+                            break
+                        total += int(read.value)
+                        if total > stdout_limit_bytes:
+                            raise PrivateRuntimeError("stdout_too_large")
+                        stdout_observer(bytes(buffer[: read.value]))
+                        ctypes.memset(buffer, 0, len(buffer))
+                except PrivateRuntimeError as error:
+                    stdout_error.append(error)
+                    stdout_cancel.set()
+                except BaseException:
+                    stdout_error.append(PrivateRuntimeError("stdout_observer_failed"))
+                    stdout_cancel.set()
+                finally:
+                    ctypes.memset(buffer, 0, len(buffer))
+
+            stdout_thread = Thread(
+                target=read_stdout, daemon=True, name="private-runtime-stdout-observer",
+            )
+            stdout_thread.start()
         if kernel32.ResumeThread(process_info.hThread) == 0xFFFFFFFF:
             raise PrivateRuntimeError("process_start_failed")
         kernel32.CloseHandle(stdin_read)
@@ -966,7 +1037,7 @@ def _run_owned_windows_process(
                 break
             if wait != 258:
                 raise PrivateRuntimeError("process_wait_failed")
-            if cancel is not None and cancel.is_set():
+            if stdout_cancel.is_set() or cancel is not None and cancel.is_set():
                 cancelled = True
                 require(kernel32.TerminateJobObject(job, 0xEE), "process_termination_failed")
                 require(kernel32.WaitForSingleObject(process_info.hProcess, 2000) == 0, "process_termination_failed")
@@ -976,6 +1047,17 @@ def _run_owned_windows_process(
                 require(kernel32.TerminateJobObject(job, 0xEF), "process_termination_failed")
                 require(kernel32.WaitForSingleObject(process_info.hProcess, 2000) == 0, "process_termination_failed")
                 break
+        if stdout_thread is not None:
+            # A completed direct child may leave descendants holding the inherited
+            # pipe. End the owned tree before waiting for EOF from the observer.
+            kernel32.TerminateJobObject(job, 0xF0)
+            stdout_thread.join(timeout=2)
+            if stdout_thread.is_alive():
+                raise PrivateRuntimeError("stdout_read_failed")
+            kernel32.CloseHandle(stdout_read)
+            handles.remove(stdout_read)
+            if stdout_error:
+                raise stdout_error[0]
         exit_code = wintypes.DWORD()
         require(
             kernel32.GetExitCodeProcess(process_info.hProcess, ctypes.byref(exit_code)),
@@ -984,6 +1066,9 @@ def _run_owned_windows_process(
         return _ProcessOutcome(int(exit_code.value), timed_out, cancelled)
     finally:
         # Closing the configured job is a final fail-safe for every descendant.
+        if stdout_thread is not None and stdout_thread.is_alive():
+            kernel32.TerminateJobObject(job, 0xF1)
+            stdout_thread.join(timeout=2)
         for handle in reversed(handles):
             if handle:
                 kernel32.CloseHandle(handle)

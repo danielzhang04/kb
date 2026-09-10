@@ -490,3 +490,56 @@ def test_orchestration_error_stops_observer_and_cleans_attempt(
         thread.name == "private-runtime-tool-observer" and thread.is_alive()
         for thread in threading.enumerate()
     )
+
+
+def test_owned_process_streams_stdout_only_to_bounded_memory_observer(tmp_path: Path) -> None:
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "observer-input.json")
+    chunks: list[bytes] = []
+    outcome = runtime._run_owned_windows_process(
+        (
+            sys.executable, "-c",
+            "import sys;sys.stdout.write('{\"type\":\"turn.completed\"}\\n');"
+            "sys.stdout.flush();sys.stderr.write('discarded synthetic stderr')",
+        ),
+        cwd=tmp_path, environ=dict(os.environ), stdin_path=stdin_path,
+        stdin_sha256=stdin_sha256, deadline_seconds=5,
+        stdout_observer=chunks.append, stdout_limit_bytes=1024,
+    )
+    assert outcome.exit_code == 0 and not outcome.timed_out
+    assert b'"type":"turn.completed"' in b"".join(chunks)
+
+
+def test_owned_process_stdout_overflow_is_fixed_and_bounded(tmp_path: Path) -> None:
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "overflow-input.json")
+    with pytest.raises(runtime.PrivateRuntimeError, match="^stdout_too_large$"):
+        runtime._run_owned_windows_process(
+            (sys.executable, "-c", "import sys;sys.stdout.write('x'*4096);sys.stdout.flush()"),
+            cwd=tmp_path, environ=dict(os.environ), stdin_path=stdin_path,
+            stdin_sha256=stdin_sha256, deadline_seconds=5,
+            stdout_observer=lambda _chunk: None, stdout_limit_bytes=128,
+        )
+
+
+def test_owned_process_observer_rejection_terminates_without_waiting(tmp_path: Path) -> None:
+    stdin_path, stdin_sha256 = _pinned_input(tmp_path, "reject-input.json")
+
+    def reject(_chunk: bytes) -> None:
+        raise runtime.PrivateRuntimeError("tool_event_rejected")
+
+    started = time.monotonic()
+    with pytest.raises(runtime.PrivateRuntimeError, match="^tool_event_rejected$"):
+        runtime._run_owned_windows_process(
+            (
+                sys.executable, "-c",
+                "import sys,time;sys.stdout.write('{\"type\":\"item.started\"}\\n');"
+                "sys.stdout.flush();time.sleep(30)",
+            ),
+            cwd=tmp_path, environ=dict(os.environ), stdin_path=stdin_path,
+            stdin_sha256=stdin_sha256, deadline_seconds=10,
+            stdout_observer=reject, stdout_limit_bytes=1024,
+        )
+    assert time.monotonic() - started < 5
+    assert not any(
+        thread.name == "private-runtime-stdout-observer" and thread.is_alive()
+        for thread in threading.enumerate()
+    )
