@@ -5,6 +5,7 @@ import http.client
 import json
 from pathlib import Path
 import re
+import sqlite3
 import threading
 
 import pytest
@@ -18,6 +19,17 @@ from scripts.prospecting.control_review import (
 )
 from scripts.prospecting.feedback_service import FeedbackView, FulfillFeedbackRequest
 from scripts.prospecting.feedback_service import FeedbackService
+from scripts.prospecting.affinity.evidence_bridge import CurrentRoleProof
+from scripts.prospecting.affinity.source_review import verify_snapshot
+from scripts.prospecting.affinity.templates_v2 import draft_step_zero_proof_pending
+from scripts.prospecting.pipeline_stage_service import (
+    AcceptanceResult,
+    ItemProjection,
+    PipelineStageError,
+    PipelineStageService,
+    RejectionResult,
+    ReviewProjection,
+)
 from scripts.prospecting.review_app import (
     MAX_JSON_BYTES,
     MAX_SOURCE_BYTES,
@@ -189,6 +201,58 @@ class FakeControl:
         )
 
 
+class FakeEditorialPipeline:
+    def __init__(self) -> None:
+        self.seen: list[tuple[str, tuple[object, ...]]] = []
+        self.projection_error: PipelineStageError | None = None
+
+    @staticmethod
+    def projection(*, state: str = "human_review", decision: str | None = None):
+        item = ItemProjection(
+            "item_aaaaaaaaaaaaaaaa", CAMPAIGN, "per_1111111111111111",
+            "rev_1111111111111111", state,
+            None if state == "human_review" else "humanizer", 0,
+        )
+        proof = CurrentRoleProof(
+            CAMPAIGN, "per_1111111111111111", "company_aaaaaaaaaaaaaaaa",
+            "employment_aaaaaaaaaaaa", "observation_aaaaaaaaaaa",
+            "snapshot_aaaaaaaaaaaaaa", "https://profile.example.test/source",
+            "Taylor Example is Principal at Example Co.",
+            "2026-09-09T04:00:00+00:00", "2099-09-09T04:00:00+00:00", False,
+        )
+        return ReviewProjection(
+            item, proof, "suggestion_aaaaaaaaaaaa", "Suggested subject",
+            "Suggested synthetic body", "a" * 64, decision,
+        )
+
+    def get_latest_review_projection(self, campaign_id, revision_id):
+        self.seen.append(("latest", (campaign_id, revision_id)))
+        if self.projection_error is not None:
+            raise self.projection_error
+        return self.projection()
+
+    def get_review_projection(self, item_id):
+        self.seen.append(("projection", (item_id,)))
+        return self.projection()
+
+    def get_item(self, item_id):
+        self.seen.append(("item", (item_id,)))
+        return self.projection().item
+
+    def start_from_saved_revision(self, campaign_id, revision_id, request_id):
+        self.seen.append(("start", (campaign_id, revision_id, request_id)))
+        return self.projection(state="awaiting_humanizer_adapter").item
+
+    def accept_suggestion(self, item_id, request_id, revision_id, actor):
+        self.seen.append(("accept", (item_id, request_id, revision_id, actor)))
+        return AcceptanceResult(
+            "decision_aaaaaaaaaaaa", "revision_bbbbbbbbbbbb", "b" * 64, False,
+        )
+
+    def reject_suggestion(self, item_id, request_id, revision_id, actor):
+        self.seen.append(("reject", (item_id, request_id, revision_id, actor)))
+        return RejectionResult("decision_bbbbbbbbbbbb", item_id)
+
 @pytest.fixture
 def app():
     clock = [100.0]
@@ -245,6 +309,30 @@ def test_bootstrap_is_one_use_and_session_expires(app) -> None:
     assert status == 401 and b"Restart Prospecting Review" in expired
 
 
+def test_parallel_loopback_servers_use_port_scoped_cookie_names() -> None:
+    first = create_server(FakeReview(), FakeCampaigns(), port=0)
+    second = create_server(FakeReview(), FakeCampaigns(), port=0)
+    threads = [
+        threading.Thread(target=server.serve_forever, daemon=True)
+        for server in (first, second)
+    ]
+    for thread in threads:
+        thread.start()
+    try:
+        first_cookie, _csrf1, _headers1, _body1 = bootstrap(first)
+        second_cookie, _csrf2, _headers2, _body2 = bootstrap(second)
+        assert first.cookie_name != second.cookie_name
+        combined = f"{first_cookie}; {second_cookie}"
+        assert request(first, "GET", "/", headers={"Cookie": combined})[0] == 200
+        assert request(second, "GET", "/", headers={"Cookie": combined})[0] == 200
+    finally:
+        for server in (first, second):
+            server.shutdown()
+            server.server_close()
+        for thread in threads:
+            thread.join(timeout=2)
+
+
 def test_snapshot_is_campaign_scoped_and_calls_all_five_read_owners(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, _csrf, _headers, _body = bootstrap(server)
@@ -265,6 +353,169 @@ def test_snapshot_is_campaign_scoped_and_calls_all_five_read_owners(app) -> None
     assert value["mailboxes"] == ["mailbox-001"]
     for method in ("campaign", "people", "drafts", "feedback_list", "schedule", "activity"):
         assert (method, CAMPAIGN) in review.seen
+
+
+def test_editorial_projection_and_human_actions_are_scoped_typed_and_csrf_guarded() -> None:
+    review, campaigns, editorial = FakeReview(), FakeCampaigns(), FakeEditorialPipeline()
+    server = create_server(
+        review, campaigns, port=0, editorial_pipeline=editorial,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}",
+            headers={"Cookie": cookie},
+        )
+        value = json.loads(raw)
+        assert status == 200
+        projection = value["editorial_pipeline"][0]
+        assert projection["revision_id"] == "rev_1111111111111111"
+        assert projection["item"]["campaign_id"] == CAMPAIGN
+        assert projection["suggestion_subject"] == "Suggested subject"
+        assert projection["source_proof"]["attested"] is False
+
+        headers = {
+            "Cookie": cookie, "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        }
+        request_id = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaab"
+        start = {
+            "request_id": request_id, "campaign_id": CAMPAIGN,
+            "revision_id": "rev_1111111111111111",
+        }
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/start", body=json.dumps(start).encode(),
+            headers=headers,
+        )
+        assert status == 201
+        assert json.loads(raw)["state"] == "awaiting_humanizer_adapter"
+
+        action = {
+            "request_id": "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "campaign_id": CAMPAIGN, "item_id": "item_aaaaaaaaaaaaaaaa",
+            "expected_parent_revision_id": "rev_1111111111111111",
+        }
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/accept",
+            body=json.dumps(action).encode(), headers=headers,
+        )
+        assert status == 200 and json.loads(raw)["revision_id"] == "revision_bbbbbbbbbbbb"
+        action["request_id"] = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/reject",
+            body=json.dumps(action).encode(), headers=headers,
+        )
+        assert status == 200 and json.loads(raw)["item_id"] == "item_aaaaaaaaaaaaaaaa"
+        assert ("start", (CAMPAIGN, "rev_1111111111111111", request_id)) in editorial.seen
+        assert ("accept", (
+            "item_aaaaaaaaaaaaaaaa", "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
+            "rev_1111111111111111", "human:local-review",
+        )) in editorial.seen
+        assert ("reject", (
+            "item_aaaaaaaaaaaaaaaa", "cccccccc-cccc-4ccc-8ccc-cccccccccccc",
+            "rev_1111111111111111", "human:local-review",
+        )) in editorial.seen
+
+        action["request_id"] = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+        action["campaign_id"] = "camp_bbbbbbbbbbbbbbbb"
+        before = len([name for name, _args in editorial.seen if name == "accept"])
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/accept",
+            body=json.dumps(action).encode(), headers=headers,
+        )
+        assert status == 409 and json.loads(raw) == {"error": "revision_conflict"}
+        assert len([name for name, _args in editorial.seen if name == "accept"]) == before
+        action["actor"] = "human:browser-supplied"
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/accept",
+            body=json.dumps(action).encode(), headers=headers,
+        )
+        assert status == 422 and json.loads(raw) == {"error": "request_schema"}
+        assert len([name for name, _args in editorial.seen if name == "accept"]) == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_editorial_projection_failure_is_fixed_and_does_not_hide_local_draft() -> None:
+    review, campaigns, editorial = FakeReview(), FakeCampaigns(), FakeEditorialPipeline()
+    editorial.projection_error = PipelineStageError("store_state_invalid")
+    server = create_server(
+        review, campaigns, port=0, editorial_pipeline=editorial,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}",
+            headers={"Cookie": cookie},
+        )
+        value = json.loads(raw)
+        assert status == 200 and value["drafts"][0]["subject"] == "A short hello"
+        assert value["editorial_pipeline"] == [{
+            "revision_id": "rev_1111111111111111",
+            "state": "unavailable", "code": "store_state_invalid",
+        }]
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
+def test_editorial_http_exact_retry_does_not_revalidate_expired_source_before_replay() -> None:
+    replay_id = "ffffffff-ffff-4fff-8fff-ffffffffffff"
+
+    class ReplayEditorial(FakeEditorialPipeline):
+        def get_review_projection(self, _item_id):
+            raise AssertionError("live_projection_must_not_precede_action_replay")
+
+        def accept_suggestion(self, item_id, request_id, revision_id, actor):
+            self.seen.append(("accept", (item_id, request_id, revision_id, actor)))
+            if request_id != replay_id:
+                raise PipelineStageError("current_role_proof_invalid")
+            return AcceptanceResult(
+                "decision_aaaaaaaaaaaa", "revision_bbbbbbbbbbbb", "b" * 64,
+                False, True,
+            )
+
+    editorial = ReplayEditorial()
+    server = create_server(
+        FakeReview(), FakeCampaigns(), port=0, editorial_pipeline=editorial,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        headers = {
+            "Cookie": cookie, "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        }
+        payload = {
+            "request_id": replay_id, "campaign_id": CAMPAIGN,
+            "item_id": "item_aaaaaaaaaaaaaaaa",
+            "expected_parent_revision_id": "rev_1111111111111111",
+        }
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/accept",
+            body=json.dumps(payload).encode(), headers=headers,
+        )
+        assert status == 200
+        assert json.loads(raw)["replayed"] is True
+        payload["request_id"] = "abababab-abab-4aba-8aba-abababababab"
+        status, _headers, raw = request(
+            server, "POST", "/api/editorial/accept",
+            body=json.dumps(payload).encode(), headers=headers,
+        )
+        assert status == 422
+        assert json.loads(raw) == {"error": "current_role_proof_invalid"}
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_control_status_and_process_are_scoped_typed_and_csrf_guarded() -> None:
@@ -372,6 +623,11 @@ def test_real_composed_services_must_share_the_selected_store(tmp_path) -> None:
     with pytest.raises(ValueError, match="^control_store_mismatch$"):
         create_server(
             review, FakeCampaigns(), control=ControlReviewAdapter(other.connection),
+        )
+    with pytest.raises(ValueError, match="^editorial_pipeline_store_mismatch$"):
+        create_server(
+            review, FakeCampaigns(),
+            editorial_pipeline=PipelineStageService(other.connection),
         )
 
 
@@ -503,6 +759,83 @@ def test_prepare_drafts_accepts_only_campaign_and_literal_step_zero(app) -> None
     assert [name for name, _value in review.seen].count("prepare") == 1
 
 
+def test_actual_prepare_http_creates_proof_pending_draft_without_contact_then_attests(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scripts.prospecting.tests.test_affinity_templates_v2 import (
+        NOW as TEMPLATE_NOW,
+        _draft_ready_fixture,
+        _import_current_role_proof,
+    )
+
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    _import_current_role_proof(connection, person_id)
+    connection.execute("DELETE FROM contact_point WHERE person_id=?", (person_id,))
+    connection.execute(
+        "UPDATE fill_firm SET status='no_confident_email' WHERE campaign_id=?",
+        (campaign_id,),
+    )
+    connection.commit()
+    database_path = Path(connection.execute("PRAGMA database_list").fetchone()[2])
+    connection.close()
+    connection = sqlite3.connect(database_path, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    service = ReviewService(
+        connection, now=lambda: TEMPLATE_NOW.isoformat(),
+        prepare_adapter=lambda selected, step: draft_step_zero_proof_pending(
+            connection, selected, anchors=object(), now=TEMPLATE_NOW,
+        ),
+        source_verifier=lambda proof: verify_snapshot(
+            tmp_path / "snapshots", proof, now=TEMPLATE_NOW,
+        ),
+    )
+    server = create_server(
+        service, FakeCampaigns(), port=0,
+        pipeline=object(), editorial_pipeline=object(),
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        headers = {
+            "Cookie": cookie, "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        }
+        status, _headers, raw = request(
+            server, "POST", "/api/drafts/prepare",
+            body=json.dumps({"campaign_id": campaign_id, "step": 0}).encode(),
+            headers=headers,
+        )
+        assert status == 200 and json.loads(raw)["revisions_created"] == 1
+        pending = service.list_drafts(campaign_id)[0]
+        assert pending.identity_source_state == "confirmation_required"
+        assert pending.contact_state == "missing"
+        assert pending.identity_source is not None
+        before = (pending.revision_id, pending.revision_hash, pending.subject, pending.body)
+        payload = {
+            "request_id": "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+            "campaign_id": campaign_id, "person_id": person_id,
+            "expected_observation_id": pending.current_observation_id,
+            "observation_id": pending.identity_source.observation_id,
+            "attested": True,
+        }
+        status, _headers, raw = request(
+            server, "POST", "/api/people/verify-source",
+            body=json.dumps(payload).encode(), headers=headers,
+        )
+        assert status == 200 and json.loads(raw)["state"] == "source_confirmed"
+        confirmed = service.list_drafts(campaign_id)[0]
+        assert (confirmed.revision_id, confirmed.revision_hash,
+                confirmed.subject, confirmed.body) == before
+        assert confirmed.identity_source_state == "source_ready"
+        assert confirmed.contact_state == "missing"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+
+
 def test_current_role_source_post_requires_closed_attestation_shape(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, csrf, _headers, _body = bootstrap(server)
@@ -582,14 +915,14 @@ def test_draft_preparer_loads_only_selected_sibling_anchors_with_aware_utc(
     captured = {}
     monkeypatch.setattr(review_app, "load_anchors", lambda path: anchors if path == anchors_file else None)
 
-    def draft(owner, campaign_id, step, *, anchors: object, now):
-        captured.update(owner=owner, campaign_id=campaign_id, step=step, anchors=anchors, now=now)
+    def draft(owner, campaign_id, *, anchors: object, now):
+        captured.update(owner=owner, campaign_id=campaign_id, anchors=anchors, now=now)
         return summary
 
-    monkeypatch.setattr(review_app, "draft_campaign", draft)
+    monkeypatch.setattr(review_app, "draft_step_zero_proof_pending", draft)
     assert _draft_preparer(connection, anchors_file)(CAMPAIGN, 0) is summary
     assert captured == {
-        "owner": connection, "campaign_id": CAMPAIGN, "step": 0,
+        "owner": connection, "campaign_id": CAMPAIGN,
         "anchors": anchors, "now": captured["now"],
     }
     assert captured["now"].tzinfo is not None and captured["now"].utcoffset().total_seconds() == 0

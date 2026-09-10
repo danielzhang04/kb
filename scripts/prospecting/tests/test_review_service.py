@@ -408,6 +408,89 @@ def test_local_source_import_is_selected_scoped_retriable_and_never_autoattests(
     assert len(list((path.parent / "snapshots").glob("*.body"))) == 1
 
 
+def test_draft_projects_exact_pending_source_and_missing_contact_without_hash_change(database) -> None:
+    path, connection, ids = database
+    instant = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+    root = path.parent / "snapshots"
+    importer = lambda person_id, company_id, source_url, body: import_operator_page(
+        connection, person_id=person_id, company_id=company_id,
+        source_url=source_url, body=body, now=instant,
+    )
+    verifier = lambda proof: verify_snapshot(root, proof, now=instant)
+    service = ReviewService(
+        connection, now=lambda: NOW, source_importer=importer, source_verifier=verifier,
+    )
+    imported = service.import_current_role_source(ImportIdentitySourceRequest(
+        "campaign-a", "person-a", SOURCE_REVIEW["source_url"],
+        SOURCE_REVIEW["service_identity_excerpt"],
+    ))
+    connection.execute("DELETE FROM contact_point WHERE contact_id='contact-a'")
+    connection.commit()
+
+    pending = service.get_draft("campaign-a", ids["a"])
+    assert pending.identity_source_state == "confirmation_required"
+    assert pending.identity_source is not None
+    assert pending.identity_source.snapshot_id == imported.snapshot_id
+    assert pending.identity_source.excerpt == SOURCE_REVIEW["service_identity_excerpt"]
+    assert pending.identity_source.source_url == SOURCE_REVIEW["source_url"]
+    assert pending.current_observation_id == "source_a"
+    assert pending.contact_state == "missing"
+    assert pending.source_error_code is None
+
+    service.verify_current_role_source(VerifyIdentitySourceRequest(
+        request_id(703), "campaign-a", "person-a", "source_a",
+        pending.identity_source.observation_id, True,
+    ))
+    confirmed = service.get_draft("campaign-a", ids["a"])
+    assert confirmed.revision_id == pending.revision_id
+    assert confirmed.revision_hash == pending.revision_hash
+    assert confirmed.evidence == pending.evidence
+    assert confirmed.identity_source_state == "source_ready"
+    assert confirmed.identity_source is not None and confirmed.identity_source.is_current
+    assert confirmed.contact_state == "missing"
+
+
+def test_review_projection_uses_exact_attested_name_when_authentic_duplicate_exists(database) -> None:
+    path, connection, ids = database
+    instant = datetime(2026, 9, 9, 12, tzinfo=timezone.utc)
+    root = path.parent / "snapshots"
+    service = ReviewService(
+        connection, now=lambda: NOW,
+        source_importer=lambda person_id, company_id, source_url, body: import_operator_page(
+            connection, person_id=person_id, company_id=company_id,
+            source_url=source_url, body=body, now=instant,
+        ),
+        source_verifier=lambda proof: verify_snapshot(root, proof, now=instant),
+    )
+    imported = service.import_current_role_source(ImportIdentitySourceRequest(
+        "campaign-a", "person-a", SOURCE_REVIEW["source_url"],
+        SOURCE_REVIEW["service_identity_excerpt"],
+    ))
+    pending = service.get_draft("campaign-a", ids["a"])
+    service.verify_current_role_source(VerifyIdentitySourceRequest(
+        request_id(704), "campaign-a", "person-a", "source_a",
+        pending.identity_source.observation_id, True,
+    ))
+    full_name = connection.execute(
+        "SELECT full_name FROM person WHERE person_id='person-a'",
+    ).fetchone()[0]
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        (
+            "aaa-authentic-name", "person", "person-a", "name",
+            json.dumps({"excerpt": full_name}), imported.snapshot_id,
+            NOW, NOW, 1.0, imported.snapshot_id,
+        ),
+    )
+    connection.commit()
+
+    person = service.get_person("campaign-a", "person-a")
+    draft = service.get_draft("campaign-a", ids["a"])
+    assert person.identity_source_state == "source_ready"
+    assert draft.identity_source_state == "source_ready"
+    assert draft.identity_source is not None and draft.identity_source.is_current
+
+
 def test_legacy_current_role_needs_name_proof_before_it_is_source_ready(database) -> None:
     path, connection, _ids = database
     root = path.parent / "snapshots"

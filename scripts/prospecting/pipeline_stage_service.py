@@ -11,8 +11,11 @@ from types import MappingProxyType
 from typing import Callable, Mapping, Protocol
 from uuid import uuid4
 
-from scripts.prospecting.affinity.evidence_bridge import resolve_slot_facts
-from scripts.prospecting.affinity.score import Affinity
+from scripts.prospecting.affinity.evidence_bridge import (
+    CurrentRoleProof,
+    attested_current_role_source,
+    current_role_source_proof,
+)
 from scripts.prospecting.personalizer.evidence import EvidenceRecord
 from scripts.prospecting.personalizer.qa import (
     RECIPIENT_SLOTS,
@@ -106,6 +109,24 @@ class AcceptanceResult:
     revision_hash: str
     unchanged: bool
     replayed: bool = False
+
+
+@dataclass(frozen=True)
+class RejectionResult:
+    decision_id: str
+    item_id: str
+    replayed: bool = False
+
+
+@dataclass(frozen=True)
+class ReviewProjection:
+    item: ItemProjection
+    source_proof: CurrentRoleProof | None
+    suggestion_id: str | None
+    suggestion_subject: str | None
+    suggestion_body: str | None
+    proposed_revision_hash: str | None
+    decision: str | None
 
 
 def _canonical(value: object) -> str:
@@ -294,6 +315,7 @@ def _qa_context_payload(connection: sqlite3.Connection, revision_id: str) -> dic
 
 def _source_context(
     connection: sqlite3.Connection, item: sqlite3.Row, revision: sqlite3.Row,
+    now: datetime,
 ) -> dict[str, object]:
     sender = _query(
         connection,
@@ -321,6 +343,9 @@ def _source_context(
     ).fetchone()
     if sender is None or intake is None:
         raise PipelineStageError("pipeline_context_stale")
+    proof = _model_identity_proof(
+        connection, revision, _now(now),
+    )
     return {
         "revision_hash": revision["hash"],
         "evidence_manifest_hash": item["evidence_manifest_hash"],
@@ -328,13 +353,26 @@ def _source_context(
         "sender_profile": dict(sender),
         "campaign_brief": None if brief is None else dict(brief),
         "intake": dict(intake),
+        "current_role_proof": None if proof is None else {
+            "campaign_id": proof.campaign_id,
+            "person_id": proof.person_id,
+            "company_id": proof.company_id,
+            "employment_id": proof.employment_id,
+            "candidate_observation_id": proof.candidate_observation_id,
+            "snapshot_id": proof.snapshot_id,
+            "source_url": proof.source_url,
+            "excerpt": proof.excerpt,
+            "retrieved_at": proof.retrieved_at,
+            "expires_at": proof.expires_at,
+        },
     }
 
 
 def _source_context_hash(
     connection: sqlite3.Connection, item: sqlite3.Row, revision: sqlite3.Row,
+    now: datetime,
 ) -> str:
-    return _digest(_source_context(connection, item, revision))
+    return _digest(_source_context(connection, item, revision, now))
 
 
 def current_role_source_binding(
@@ -347,45 +385,29 @@ def current_role_source_binding(
     previous_row_factory = connection.row_factory
     connection.row_factory = sqlite3.Row
     try:
-        scopes = connection.execute(
-            """SELECT fp.company_id,e.employment_id,e.source_observation_id
-                 FROM fill_person AS fp
-                 JOIN employment AS e ON e.person_id=fp.person_id
-                  AND e.company_id=fp.company_id AND e.valid_to IS NULL
-                WHERE fp.campaign_id=? AND fp.person_id=? AND fp.substituted=0
-                ORDER BY e.employment_id""",
-            (campaign_id, person_id),
-        ).fetchall()
-        if len(scopes) != 1:
-            raise PipelineStageError("identity_source_review_missing")
-        scope = scopes[0]
-        facts = resolve_slot_facts(
-            connection, person_id, Affinity(person_id, campaign_id, 0, (), "pipeline"),
-            str(scope["company_id"]), required_slots=("first_name", "company", "role"),
-        )
-        role, name = facts.sources["role"], facts.sources["first_name"]
-        if role.observation_id != str(scope["source_observation_id"]):
-            raise PipelineStageError("identity_source_review_missing")
-        review = connection.execute(
-            """SELECT * FROM identity_source_review
-                WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
-                  AND observation_id=? AND name_observation_id=? AND snapshot_id=? AND attested=1
-                ORDER BY created_at DESC,request_id DESC LIMIT 1""",
-            (
-                campaign_id, person_id, scope["company_id"], scope["employment_id"],
-                role.observation_id, name.observation_id, role.snapshot_id,
-            ),
-        ).fetchone()
-        if review is None or name.snapshot_id != role.snapshot_id:
+        try:
+            binding = attested_current_role_source(
+                connection, campaign_id, person_id,
+            )
+        except ValueError:
             raise PipelineStageError("identity_source_review_missing")
         snapshot = connection.execute(
-            "SELECT * FROM source_snapshot WHERE snapshot_id=?", (role.snapshot_id,),
+            "SELECT * FROM source_snapshot WHERE snapshot_id=?", (binding.snapshot_id,),
         ).fetchone()
         if (
             snapshot is None
             or _timestamp(snapshot["expires_at"], "identity_source_review_missing") < _now(now)
         ):
             raise PipelineStageError("identity_source_review_missing")
+        if snapshot["allowlist_version"] == "operator-local-v1":
+            try:
+                proof = current_role_source_proof(
+                    connection, campaign_id, person_id, _now(now),
+                )
+            except ValueError:
+                raise PipelineStageError("identity_source_review_missing") from None
+            if not proof.attested or proof.snapshot_id != str(snapshot["snapshot_id"]):
+                raise PipelineStageError("identity_source_review_missing")
         return snapshot, snapshot
     except PipelineStageError:
         raise
@@ -405,6 +427,19 @@ def _identity_current(
     except PipelineStageError:
         return False
     return True
+
+
+def _model_identity_proof(
+    connection: sqlite3.Connection, revision: sqlite3.Row, now: datetime,
+) -> CurrentRoleProof | None:
+    try:
+        return current_role_source_proof(
+            connection, str(revision["campaign_id"]), str(revision["person_id"]), now,
+        )
+    except ValueError:
+        if _identity_current(connection, revision, now):
+            return None
+        raise PipelineStageError("identity_source_proof_missing") from None
 
 
 def _assert_item_context_current(
@@ -447,9 +482,8 @@ def _assert_item_context_current(
         )
     ):
         raise PipelineStageError("revision_evidence_invalid")
-    if not _identity_current(connection, revision, checked_at):
-        raise PipelineStageError("identity_source_review_missing")
-    context_hash = _source_context_hash(connection, item, revision)
+    _model_identity_proof(connection, revision, checked_at)
+    context_hash = _source_context_hash(connection, item, revision, checked_at)
     if item["request_hash"] != _digest(
         "start", item["campaign_id"], item["base_revision_id"], context_hash,
     ):
@@ -600,7 +634,9 @@ def _require_revision_review_chain(
     if set(by_stage) != set(required):
         raise PipelineStageError("editorial_receipts_missing")
     base_revision = _revision(connection, str(item_binding["base_revision_id"]))
-    current_context_hash = _source_context_hash(connection, item_binding, base_revision)
+    current_context_hash = _source_context_hash(
+        connection, item_binding, base_revision, checked_at,
+    )
     for stage, decisions in required.items():
         artifact = by_stage[stage]
         try:
@@ -730,8 +766,7 @@ class PipelineStageService:
                 for row in _evidence_rows(self.connection, revision)
             ):
                 raise PipelineStageError("revision_evidence_invalid")
-            if not _identity_current(self.connection, revision, checked_at):
-                raise PipelineStageError("identity_source_review_missing")
+            _model_identity_proof(self.connection, revision, checked_at)
             run = self.connection.execute(
                 """SELECT run.run_id,run.intake_hash,run.campaign_policy_hash
                      FROM prospecting_pipeline_run AS run
@@ -772,7 +807,7 @@ class PipelineStageService:
             }
             request_hash = _digest(
                 "start", campaign_id, revision_id,
-                _source_context_hash(self.connection, pending_item, revision),
+                _source_context_hash(self.connection, pending_item, revision, checked_at),
             )
             used = self.connection.execute(
                 "SELECT COALESCE(MAX(repair_cycle),0) FROM prospecting_pipeline_item WHERE campaign_id=? AND person_id=? AND step=? AND lineage_root_revision_id=?",
@@ -799,10 +834,62 @@ class PipelineStageService:
             raise PipelineStageError("pipeline_item_missing")
         return self._project(row)
 
+    def get_review_projection(self, item_id: str) -> ReviewProjection:
+        item_id = _text(item_id, "invalid_item_id", maximum=128)
+        item = self.connection.execute(
+            "SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (item_id,),
+        ).fetchone()
+        if item is None:
+            raise PipelineStageError("pipeline_item_missing")
+        revision = _revision(self.connection, str(item["base_revision_id"]))
+        proof = _model_identity_proof(self.connection, revision, _now(self.now()))
+        suggestion = self.connection.execute(
+            """SELECT * FROM prospecting_pipeline_suggestion
+                WHERE item_id=? ORDER BY cycle DESC,created_at DESC LIMIT 1""",
+            (item_id,),
+        ).fetchone()
+        decision = None
+        if suggestion is not None:
+            decision_row = self.connection.execute(
+                "SELECT decision FROM prospecting_suggestion_decision WHERE suggestion_id=?",
+                (suggestion["suggestion_id"],),
+            ).fetchone()
+            decision = None if decision_row is None else str(decision_row["decision"])
+        return ReviewProjection(
+            self._project(item), proof,
+            None if suggestion is None else str(suggestion["suggestion_id"]),
+            None if suggestion is None else str(suggestion["subject"]),
+            None if suggestion is None else str(suggestion["body"]),
+            None if suggestion is None else str(suggestion["proposed_revision_hash"]),
+            decision,
+        )
+
+    def get_latest_review_projection(
+        self, campaign_id: str, revision_id: str,
+    ) -> ReviewProjection | None:
+        campaign_id = _text(campaign_id, "invalid_campaign_id", maximum=128)
+        revision_id = _text(revision_id, "invalid_revision_id", maximum=128)
+        item = self.connection.execute(
+            """SELECT item.item_id FROM prospecting_pipeline_item AS item
+                LEFT JOIN prospecting_pipeline_suggestion AS suggestion
+                  ON suggestion.item_id=item.item_id
+                LEFT JOIN prospecting_suggestion_decision AS decision
+                  ON decision.suggestion_id=suggestion.suggestion_id
+                 AND decision.decision='accepted'
+                WHERE item.campaign_id=? AND (
+                  item.base_revision_id=? OR decision.accepted_revision_id=?
+                )
+                ORDER BY item.created_at DESC,item.rowid DESC LIMIT 1""",
+            (campaign_id, revision_id, revision_id),
+        ).fetchone()
+        return None if item is None else self.get_review_projection(str(item["item_id"]))
+
     def _stage_input(self, item: sqlite3.Row, stage: str) -> bytes:
         revision = _revision(self.connection, item["base_revision_id"])
         evidence = [dict(row) for row in _evidence_rows(self.connection, revision)]
-        source_context = _source_context(self.connection, item, revision)
+        source_context = _source_context(
+            self.connection, item, revision, _now(self.now()),
+        )
         value: dict[str, object] = {
             "item_id": item["item_id"], "stage": stage, "cycle": item["repair_cycle"],
             "revision": dict(revision), "evidence": evidence,
@@ -1000,7 +1087,9 @@ class PipelineStageService:
         normalized = {
             "draft": draft, "audit": audit, "final_subject": subject,
             "final_body": body, "candidate": candidate,
-            "approved_context_hash": _source_context_hash(self.connection, item, parent),
+            "approved_context_hash": _source_context_hash(
+                self.connection, item, parent, _now(self.now()),
+            ),
         }
         decision = "no_change" if unchanged else "proposed"
         return normalized,decision,_digest(subject,body),proposed,_canonical(candidate)
@@ -1077,7 +1166,9 @@ class PipelineStageService:
             for name, row in decoded.items()
         }
         parent = _revision(self.connection, item["base_revision_id"])
-        approved = _source_context(self.connection, item, parent)
+        approved = _source_context(
+            self.connection, item, parent, _now(self.now()),
+        )
         authoritative: dict[tuple[str, str], str] = {}
         for row in approved["qa_context"]["bindings"].values():
             if row["source_kind"] in {"sender", "policy"}:
@@ -1112,7 +1203,9 @@ class PipelineStageService:
             "shortfalls":_string_list(payload["shortfalls"],"factcheck_output_invalid"),
             "qa_failure_codes": list(qa_failures), "qa_score": qa.qa_score,
             "approved_context_hash": _source_context_hash(
-                self.connection, item, _revision(self.connection, item["base_revision_id"]),
+                self.connection, item,
+                _revision(self.connection, item["base_revision_id"]),
+                _now(self.now()),
             ),
         }
         return normalized,decision,humanizer["subject_body_hash"],humanizer["proposed_revision_hash"],_canonical(decoded)
@@ -1136,7 +1229,9 @@ class PipelineStageService:
             "reasons":_string_list(payload["reasons"],"critic_output_invalid"),
             "repair_instructions":instructions,
             "approved_context_hash": _source_context_hash(
-                self.connection, item, _revision(self.connection, item["base_revision_id"]),
+                self.connection, item,
+                _revision(self.connection, item["base_revision_id"]),
+                _now(self.now()),
             ),
         }
         return normalized,str(payload["decision"]),fact["subject_body_hash"],fact["proposed_revision_hash"],""
@@ -1232,6 +1327,71 @@ class PipelineStageService:
             self.connection.rollback()
             raise
 
+    def reject_suggestion(
+        self, item_id: str, request_id: str,
+        expected_parent_revision_id: str, actor: str,
+    ) -> RejectionResult:
+        item_id = _text(item_id, "invalid_item_id", maximum=128)
+        request_id = _text(request_id, "invalid_request_id", maximum=128)
+        expected_parent_revision_id = _text(
+            expected_parent_revision_id, "invalid_revision_id", maximum=128,
+        )
+        if type(actor) is not str or not actor.startswith("human:") or actor == "human:":
+            raise PipelineStageError("human_actor_required")
+        _text(actor, "human_actor_required", maximum=128)
+        request_hash = _digest("reject", item_id, expected_parent_revision_id, actor)
+        self._begin()
+        try:
+            replay = self.connection.execute(
+                "SELECT * FROM prospecting_suggestion_decision WHERE request_id=?",
+                (request_id,),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_hash"] != request_hash or replay["decision"] != "rejected":
+                    raise PipelineStageError("request_conflict")
+                self.connection.commit()
+                return RejectionResult(str(replay["decision_id"]), item_id, True)
+            item = self.connection.execute(
+                "SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (item_id,),
+            ).fetchone()
+            if item is None or item["state"] != "human_review":
+                raise PipelineStageError("suggestion_not_reviewable")
+            parent = _revision(self.connection, expected_parent_revision_id)
+            if expected_parent_revision_id != item["base_revision_id"] or not _current_revision(
+                self.connection, parent,
+            ):
+                raise PipelineStageError("revision_conflict")
+            _assert_item_context_current(self.connection, item, _now(self.now()))
+            suggestion = self.connection.execute(
+                "SELECT * FROM prospecting_pipeline_suggestion WHERE item_id=? AND cycle=?",
+                (item_id, item["repair_cycle"]),
+            ).fetchone()
+            if suggestion is None:
+                raise PipelineStageError("suggestion_missing")
+            if self.connection.execute(
+                "SELECT 1 FROM prospecting_suggestion_decision WHERE suggestion_id=?",
+                (suggestion["suggestion_id"],),
+            ).fetchone() is not None:
+                raise PipelineStageError("suggestion_already_decided")
+            decision_id = "decision-" + uuid4().hex
+            self.connection.execute(
+                """INSERT INTO prospecting_suggestion_decision(
+                       decision_id,request_id,request_hash,suggestion_id,item_id,
+                       expected_parent_revision_id,decision,actor,accepted_revision_id,
+                       accepted_revision_hash,created_at
+                   ) VALUES(?,?,?,?,?,?,'rejected',?,NULL,NULL,?)""",
+                (
+                    decision_id, request_id, request_hash, suggestion["suggestion_id"],
+                    item_id, expected_parent_revision_id, actor,
+                    _now(self.now()).isoformat(),
+                ),
+            )
+            self.connection.commit()
+            return RejectionResult(decision_id, item_id)
+        except BaseException:
+            self.connection.rollback()
+            raise
+
     def accept_suggestion(self, item_id: str, request_id: str, expected_parent_revision_id: str, actor: str) -> AcceptanceResult:
         item_id = _text(item_id, "invalid_item_id", maximum=128)
         request_id = _text(request_id, "invalid_request_id", maximum=128)
@@ -1263,6 +1423,11 @@ class PipelineStageService:
             suggestion = self.connection.execute("SELECT * FROM prospecting_pipeline_suggestion WHERE item_id=? AND cycle=?",(item_id,item["repair_cycle"])).fetchone()
             if suggestion is None:
                 raise PipelineStageError("suggestion_missing")
+            if self.connection.execute(
+                "SELECT 1 FROM prospecting_suggestion_decision WHERE suggestion_id=?",
+                (suggestion["suggestion_id"],),
+            ).fetchone() is not None:
+                raise PipelineStageError("suggestion_already_decided")
             fact = self.connection.execute("SELECT * FROM prospecting_stage_artifact WHERE item_id=? AND cycle=? AND stage='post_humanization_factcheck' AND decision='pass'",(item_id,item["repair_cycle"])).fetchone()
             critic = self.connection.execute("SELECT * FROM prospecting_stage_artifact WHERE item_id=? AND cycle=? AND stage='independent_critic' AND decision='pass'",(item_id,item["repair_cycle"])).fetchone()
             human = self.connection.execute("SELECT * FROM prospecting_stage_artifact WHERE artifact_id=?",(suggestion["humanizer_artifact_id"],)).fetchone()
@@ -1272,7 +1437,9 @@ class PipelineStageService:
                 or len({human["producer_identity"],fact["producer_identity"],critic["producer_identity"]}) != 3
             ):
                 raise PipelineStageError("editorial_receipts_missing")
-            context_hash = _source_context_hash(self.connection, item, parent)
+            context_hash = _source_context_hash(
+                self.connection, item, parent, _now(self.now()),
+            )
             try:
                 artifact_contexts = {
                     json.loads(str(row["payload_json"]))["approved_context_hash"]

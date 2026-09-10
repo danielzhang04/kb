@@ -13,8 +13,10 @@ import scripts.prospecting.affinity.templates_v2 as templates_module
 from scripts.prospecting.affinity.fitspec import canonical_bytes, fit_spec_hash, validate_fit_spec
 from scripts.prospecting.affinity.templates_v2 import (
     DraftError, _clamp, ask_sentence, check_bands, clamp_slot_values, draft_campaign,
-    fit_subject, load_registry_v2, subject_candidates,
+    draft_step_zero_proof_pending, fit_subject, load_registry_v2, subject_candidates,
 )
+from scripts.prospecting.affinity.evidence_bridge import current_role_source_proof
+from scripts.prospecting.affinity.source_review import import_operator_page
 from scripts.prospecting.personalizer.evidence import EvidenceRecord
 from scripts.prospecting.personalizer.qa import QaPolicy, SlotBinding, _body_word_count, validate_revision
 from scripts.prospecting.personalizer.templates import load_registry, render, slot_inventory
@@ -209,6 +211,19 @@ def _draft_ready_fixture(tmp_path, monkeypatch, *, subject_high: int = 50,
     return connection, person_id, campaign_id
 
 
+def _import_current_role_proof(connection, person_id: str) -> str:
+    connection.commit()
+    snapshot_id = import_operator_page(
+        connection,
+        person_id=person_id,
+        company_id="cmp_0000000000000001",
+        source_url="https://proof.example.test/current-role",
+        body=b"Morgan Synthetic is Operations Director at Test Capital.",
+        now=NOW,
+    )
+    return snapshot_id
+
+
 def test_every_family_has_a_typed_person_specific_recipient_slot() -> None:
     for template in load_registry_v2().values():
         slots = slot_inventory(template)
@@ -257,6 +272,138 @@ def test_draft_campaign_creates_a_qa_checked_revision(tmp_path, monkeypatch) -> 
     assert json.loads(revision["sender_proof_points"]) == [
         "I built a verified synthetic operating project."
     ]
+
+
+def test_proof_pending_draft_allows_missing_email_and_preserves_family_routing(
+    tmp_path, monkeypatch,
+) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    snapshot_id = _import_current_role_proof(connection, person_id)
+    connection.execute("DELETE FROM contact_point WHERE person_id=?", (person_id,))
+    connection.execute(
+        "UPDATE fill_firm SET status='no_confident_email' WHERE campaign_id=?",
+        (campaign_id,),
+    )
+    connection.commit()
+
+    blocked = draft_campaign(connection, campaign_id, 0, anchors=object(), now=NOW)
+    assert blocked.failure_codes == {"fill_firm_unready": 1}
+    summary = draft_step_zero_proof_pending(
+        connection, campaign_id, anchors=object(), now=NOW,
+    )
+
+    assert summary.revisions_created == 1 and summary.failure_codes == {}
+    revision = connection.execute(
+        "SELECT revision_id,template_id FROM revision"
+    ).fetchone()
+    assert revision["template_id"] == "startup_ops_corporate"
+    assert connection.execute(
+        "SELECT count(*) FROM revision_qa_context WHERE revision_id=?",
+        (revision["revision_id"],),
+    ).fetchone()[0] == 1
+    assert connection.execute(
+        "SELECT count(*) FROM identity_source_review"
+    ).fetchone()[0] == 0
+    proof = current_role_source_proof(connection, campaign_id, person_id, NOW)
+    assert proof.snapshot_id == snapshot_id and proof.attested is False
+    assert connection.execute(
+        "SELECT count(*) FROM evidence WHERE url=?",
+        (proof.source_url,),
+    ).fetchone()[0] >= 3
+
+
+def test_proof_pending_draft_preserves_nonstartup_campaign_family(
+    tmp_path, monkeypatch,
+) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(
+        tmp_path, monkeypatch, body_low=60,
+    )
+    connection.execute(
+        "UPDATE campaign SET intent='alumni' WHERE campaign_id=?", (campaign_id,),
+    )
+    _import_current_role_proof(connection, person_id)
+
+    summary = draft_step_zero_proof_pending(
+        connection, campaign_id, anchors=object(), now=NOW,
+    )
+
+    assert summary.revisions_created == 1 and summary.failure_codes == {}
+    assert connection.execute("SELECT template_id FROM revision").fetchone()[0] == (
+        "asset_management_referral"
+    )
+
+
+def test_proof_pending_draft_honors_email_suppression_on_an_unusable_contact(
+    tmp_path, monkeypatch,
+) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    _import_current_role_proof(connection, person_id)
+    email = connection.execute(
+        "SELECT email FROM contact_point WHERE person_id=?", (person_id,),
+    ).fetchone()[0]
+    connection.execute("UPDATE contact_point SET state='invalid'")
+    connection.execute("UPDATE fill_firm SET status='no_confident_email'")
+    connection.execute(
+        "INSERT INTO suppression VALUES(?,?,?,?,?,?,?,?)",
+        ("email-stop", "email", email, "manual_dnc", "2099-12-01T00:00:00Z",
+         "human:fixture", None, None),
+    )
+    connection.commit()
+
+    summary = draft_step_zero_proof_pending(
+        connection, campaign_id, anchors=object(), now=NOW,
+    )
+
+    assert summary.failure_codes == {"suppression_active": 1}
+    assert connection.execute("SELECT count(*) FROM revision").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize(
+    "mutation,code",
+    [
+        ("changed_role", "current_role_proof_invalid"),
+        ("wrong_scope", "current_role_proof_missing"),
+        ("stale", "current_role_proof_invalid"),
+        ("tampered", "current_role_proof_invalid"),
+    ],
+)
+def test_proof_pending_draft_refuses_changed_wrong_stale_or_tampered_source(
+    tmp_path, monkeypatch, mutation, code,
+) -> None:
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    snapshot_id = _import_current_role_proof(connection, person_id)
+    if mutation == "changed_role":
+        connection.execute("UPDATE employment SET title='Changed Role'")
+    elif mutation == "wrong_scope":
+        connection.execute(
+            "UPDATE source_snapshot SET entity_id='wrong-person' WHERE snapshot_id=?",
+            (snapshot_id,),
+        )
+    elif mutation == "stale":
+        connection.execute(
+            "UPDATE source_snapshot SET expires_at='2099-12-01T00:00:00Z' WHERE snapshot_id=?",
+            (snapshot_id,),
+        )
+    else:
+        body_ref = connection.execute(
+            "SELECT body_ref FROM source_snapshot WHERE snapshot_id=?", (snapshot_id,),
+        ).fetchone()[0]
+        (tmp_path / "snapshots" / body_ref).write_bytes(b"tampered synthetic bytes")
+    connection.commit()
+    before = tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in ("evidence", "revision", "revision_qa_context")
+    )
+
+    summary = draft_step_zero_proof_pending(
+        connection, campaign_id, anchors=object(), now=NOW,
+    )
+
+    assert summary.failure_codes == {code: 1}
+    assert tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in ("evidence", "revision", "revision_qa_context")
+    ) == before
 
 
 @pytest.mark.parametrize("title", ("Operations Director", "Strategy Director", "Chief of Staff"))

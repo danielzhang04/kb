@@ -7,8 +7,14 @@ from dataclasses import dataclass
 from datetime import datetime
 from hashlib import sha256
 import json
+from pathlib import Path
 from typing import Any
 
+from scripts.prospecting.affinity.source_review import (
+    SnapshotProof,
+    contains_identity,
+    verify_snapshot,
+)
 from scripts.prospecting.personalizer.evidence import EvidenceDraft, EvidenceError, insert_evidence
 
 from .score import Affinity, Signal
@@ -53,6 +59,35 @@ class BoundFacts:
     sources: Mapping[str, _Observation]
     claims: Mapping[str, str]
     values: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class CurrentRoleProof:
+    campaign_id: str
+    person_id: str
+    company_id: str
+    employment_id: str
+    candidate_observation_id: str
+    snapshot_id: str
+    source_url: str
+    excerpt: str
+    retrieved_at: str
+    expires_at: str
+    attested: bool
+
+
+@dataclass(frozen=True)
+class AttestedCurrentRoleSource:
+    campaign_id: str
+    person_id: str
+    company_id: str
+    employment_id: str
+    observation_id: str
+    name_observation_id: str
+    candidate_observation_id: str
+    snapshot_id: str
+    role_excerpt: str
+    name_excerpt: str
 
 
 def _value(row: object, name: str, default: Any = None) -> Any:
@@ -182,7 +217,7 @@ def _row_for_ids(connection, table: str, person_id: str, ids: frozenset[str], co
 
 def _identity(connection, person_id: str, selected_company_id: str | None = None) -> tuple[object, str, str, str]:
     rows = connection.execute(
-        """SELECT person.first_name,company.company_id,company.name,employment.title,
+        """SELECT person.first_name,company.company_id,company.name,employment.employment_id,employment.title,
                   employment.source_observation_id
              FROM person JOIN employment ON employment.person_id=person.person_id
                AND employment.valid_to IS NULL
@@ -193,6 +228,179 @@ def _identity(connection, person_id: str, selected_company_id: str | None = None
     ).fetchall()
     row = _one_row(rows, "evidence_identity_ambiguous" if selected_company_id is None else "evidence_identity_missing")
     return row, str(_value(row, "company_id")), str(_value(row, "name")), str(_value(row, "title"))
+
+
+def _snapshot_root(connection) -> Path:
+    database = next(
+        (str(row[2]) for row in connection.execute("PRAGMA database_list") if row[1] == "main"),
+        "",
+    )
+    if not database:
+        raise ValueError("current_role_proof_missing")
+    return Path(database).parent / "snapshots"
+
+
+def attested_current_role_source(
+    connection, campaign_id: str, person_id: str,
+) -> AttestedCurrentRoleSource:
+    """Resolve the exact role and name observations selected by the latest P13 review."""
+    scopes = connection.execute(
+        """SELECT fp.company_id,e.employment_id,e.source_observation_id,
+                  p.full_name,c.name AS company_name,e.title
+             FROM fill_person AS fp
+             JOIN person AS p ON p.person_id=fp.person_id
+             JOIN company AS c ON c.company_id=fp.company_id
+             JOIN employment AS e ON e.person_id=fp.person_id
+              AND e.company_id=fp.company_id AND e.valid_to IS NULL
+            WHERE fp.campaign_id=? AND fp.person_id=? AND fp.substituted=0
+            ORDER BY e.employment_id""",
+        (campaign_id, person_id),
+    ).fetchall()
+    if len(scopes) != 1:
+        raise ValueError("current_role_attestation_invalid")
+    scope = scopes[0]
+    review = connection.execute(
+        """SELECT * FROM identity_source_review
+            WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
+              AND observation_id=? AND attested=1
+            ORDER BY created_at DESC,request_id DESC LIMIT 1""",
+        (
+            campaign_id, person_id, _value(scope, "company_id"),
+            _value(scope, "employment_id"), _value(scope, "source_observation_id"),
+        ),
+    ).fetchone()
+    if review is None:
+        raise ValueError("current_role_attestation_invalid")
+    role = _observation(connection, str(_value(review, "observation_id")))
+    name = _observation(connection, str(_value(review, "name_observation_id")))
+    full_name = str(_value(scope, "full_name"))
+    company_name = str(_value(scope, "company_name"))
+    title = str(_value(scope, "title"))
+    snapshot_id = str(_value(review, "snapshot_id"))
+    if (
+        role is None or name is None
+        or role.snapshot_id != snapshot_id or name.snapshot_id != snapshot_id
+        or not _valid_source(
+            role, person_id, str(_value(scope, "company_id")),
+            ("employment", "employer", "current_employer"),
+            (full_name, company_name, title),
+        )
+        or not _valid_source(
+            name, person_id, str(_value(scope, "company_id")),
+            ("name", "first_name"), (full_name,),
+        )
+    ):
+        raise ValueError("current_role_attestation_invalid")
+    candidate_id = str(_value(review, "candidate_observation_id"))
+    if candidate_id != role.observation_id:
+        candidate = _observation(connection, candidate_id)
+        if (
+            candidate is None or candidate.snapshot_id != snapshot_id
+            or not _valid_source(
+                candidate, person_id, str(_value(scope, "company_id")),
+                ("source_review_candidate",), (full_name, company_name, title),
+            )
+        ):
+            raise ValueError("current_role_attestation_invalid")
+    return AttestedCurrentRoleSource(
+        campaign_id, person_id, str(_value(scope, "company_id")),
+        str(_value(scope, "employment_id")), role.observation_id,
+        name.observation_id, candidate_id, snapshot_id, role.excerpt, name.excerpt,
+    )
+
+
+def current_role_source_proof(
+    connection, campaign_id: str, person_id: str, now: datetime,
+) -> CurrentRoleProof:
+    """Return the exact imported current-role proof, whether pending or attested."""
+    if not isinstance(now, datetime) or now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("aware_now_required")
+    scopes = connection.execute(
+        """SELECT fp.company_id,e.employment_id,e.source_observation_id,
+                  p.full_name,c.name AS company_name,e.title
+             FROM fill_person AS fp
+             JOIN person AS p ON p.person_id=fp.person_id
+             JOIN company AS c ON c.company_id=fp.company_id
+             JOIN employment AS e ON e.person_id=fp.person_id
+              AND e.company_id=fp.company_id AND e.valid_to IS NULL
+            WHERE fp.campaign_id=? AND fp.person_id=? AND fp.substituted=0
+            ORDER BY e.employment_id""",
+        (campaign_id, person_id),
+    ).fetchall()
+    if len(scopes) != 1:
+        raise ValueError("current_role_proof_missing")
+    scope = scopes[0]
+    review = connection.execute(
+        """SELECT candidate_observation_id,snapshot_id
+             FROM identity_source_review
+            WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
+              AND observation_id=? AND attested=1
+            ORDER BY created_at DESC,request_id DESC LIMIT 1""",
+        (
+            campaign_id, person_id, _value(scope, "company_id"),
+            _value(scope, "employment_id"), _value(scope, "source_observation_id"),
+        ),
+    ).fetchone()
+    parameters: tuple[object, ...]
+    if review is None:
+        where = ""
+        parameters = (person_id, person_id)
+    else:
+        where = "AND observation.observation_id=? AND snapshot.snapshot_id=?"
+        parameters = (
+            person_id, person_id, _value(review, "candidate_observation_id"),
+            _value(review, "snapshot_id"),
+        )
+    candidates = connection.execute(
+        f"""SELECT observation.observation_id,observation.value,
+                   snapshot.snapshot_id,snapshot.source_url,snapshot.retrieved_at,
+                   snapshot.expires_at,snapshot.body_ref,snapshot.content_sha256
+              FROM source_observation AS observation
+              JOIN source_snapshot AS snapshot
+                ON snapshot.snapshot_id=observation.snapshot_id
+             WHERE observation.entity_type='person' AND observation.entity_id=?
+               AND observation.field='source_review_candidate'
+               AND snapshot.entity_id=?
+               AND snapshot.allowlist_version='operator-local-v1'
+               {where}
+             ORDER BY snapshot.retrieved_at DESC,observation.observation_id DESC""",
+        parameters,
+    ).fetchall()
+    if not candidates:
+        raise ValueError("current_role_proof_missing")
+    row = candidates[0]
+    excerpt = _excerpt(_value(row, "value"))
+    if not contains_identity(
+        excerpt, str(_value(scope, "full_name")),
+        str(_value(scope, "company_name")), str(_value(scope, "title")),
+    ):
+        raise ValueError("current_role_proof_invalid")
+    proof = SnapshotProof(
+        str(_value(row, "snapshot_id")), str(_value(row, "body_ref")),
+        str(_value(row, "content_sha256")), str(_value(row, "expires_at")), excerpt,
+    )
+    try:
+        verify_snapshot(_snapshot_root(connection), proof, now=now)
+    except ValueError:
+        raise ValueError("current_role_proof_invalid") from None
+    attested = False
+    if review is not None:
+        try:
+            binding = attested_current_role_source(connection, campaign_id, person_id)
+        except ValueError:
+            raise ValueError("current_role_proof_invalid") from None
+        if (
+            binding.candidate_observation_id != str(_value(row, "observation_id"))
+            or binding.snapshot_id != proof.snapshot_id
+        ):
+            raise ValueError("current_role_proof_invalid")
+        attested = True
+    return CurrentRoleProof(
+        campaign_id, person_id, str(_value(scope, "company_id")),
+        str(_value(scope, "employment_id")), str(_value(row, "observation_id")),
+        proof.snapshot_id, str(_value(row, "source_url")), excerpt,
+        str(_value(row, "retrieved_at")), proof.expires_at, attested,
+    )
 
 
 def _normal_rows(connection, table: str, person_id: str) -> tuple[object, ...]:
@@ -245,7 +453,8 @@ def _observation_candidates(connection, entity_id: str, fields: Sequence[str]) -
 def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
                        selected_company_id: str | None = None, *,
                        required_slots: Sequence[str] | None = None,
-                       supplied_slots: Mapping[str, str] | None = None) -> BoundFacts:
+                       supplied_slots: Mapping[str, str] | None = None,
+                       current_role_proof: CurrentRoleProof | None = None) -> BoundFacts:
     required = frozenset(required_slots if required_slots is not None else CLAIM_TEMPLATES)
     supplied = supplied_slots or {}
     if selected_company_id is None:
@@ -259,14 +468,31 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
             selected_company_id = str(_value(selected_rows[0], "company_id"))
     identity, company_id, firm, title = _identity(connection, person_id, selected_company_id)
     first_name = str(_value(identity, "first_name"))
+    if current_role_proof is not None and (
+        not isinstance(current_role_proof, CurrentRoleProof)
+        or current_role_proof.person_id != person_id
+        or current_role_proof.campaign_id != affinity.campaign_id
+        or current_role_proof.company_id != company_id
+        or current_role_proof.employment_id != str(_value(identity, "employment_id"))
+    ):
+        raise ValueError("current_role_proof_invalid")
     employment_source: _Observation | None = None
     if required & {"first_name", "company", "role", "transition_to", "recipient_hook"}:
         employment_source = _observation(
-            connection, str(_value(identity, "source_observation_id")),
+            connection,
+            current_role_proof.candidate_observation_id
+            if current_role_proof is not None
+            else str(_value(identity, "source_observation_id")),
         )
         if employment_source is None or not _valid_source(
             employment_source, person_id, company_id,
-            ("employment", "employer", "current_employer"), (first_name, firm, title),
+            ("source_review_candidate",)
+            if current_role_proof is not None
+            else ("employment", "employer", "current_employer"),
+            (first_name, firm, title),
+        ) or current_role_proof is not None and (
+            employment_source.snapshot_id != current_role_proof.snapshot_id
+            or employment_source.excerpt != current_role_proof.excerpt
         ):
             raise ValueError("evidence_identity_source_mismatch")
 
@@ -274,22 +500,27 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
     claims: dict[str, str] = {}
     values: dict[str, str] = {}
     if "first_name" in required:
-        name_rows = connection.execute(
-            """SELECT observation_id FROM source_observation
-                WHERE entity_type='person' AND entity_id=?
-                  AND field IN ('name','first_name') ORDER BY observation_id""",
-            (person_id,),
-        ).fetchall()
-        name_sources = [
-            source for row in name_rows
-            if (source := _observation(connection, str(_value(row, "observation_id")))) is not None
-            and _valid_source(
-                source, person_id, company_id, ("name", "first_name"), (first_name,),
+        if current_role_proof is not None:
+            if employment_source is None:
+                raise ValueError("evidence_name_source_mismatch")
+            sources["first_name"] = employment_source
+        else:
+            name_rows = connection.execute(
+                """SELECT observation_id FROM source_observation
+                    WHERE entity_type='person' AND entity_id=?
+                      AND field IN ('name','first_name') ORDER BY observation_id""",
+                (person_id,),
+            ).fetchall()
+            name_sources = [
+                source for row in name_rows
+                if (source := _observation(connection, str(_value(row, "observation_id")))) is not None
+                and _valid_source(
+                    source, person_id, company_id, ("name", "first_name"), (first_name,),
+                )
+            ]
+            sources["first_name"] = _first_valid(
+                name_sources, "evidence_name_source_mismatch",
             )
-        ]
-        sources["first_name"] = _first_valid(
-            name_sources, "evidence_name_source_mismatch",
-        )
         claims["first_name"], values["first_name"] = f"Known as {first_name}", first_name
     if "company" in required:
         if employment_source is None:
@@ -377,10 +608,13 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
         if employment_source is None:
             raise ValueError("evidence_identity_source_mismatch")
         current_row = _current_employer_row(connection, person_id, firm, title)
-        current_source = _row_source(
-            connection, current_row, person_id, company_id, ("employer", "employment", "current_employer"),
-            (first_name, firm, title), "evidence_current_employer_source_mismatch",
-        )
+        current_source = employment_source
+        if current_role_proof is None:
+            current_source = _row_source(
+                connection, current_row, person_id, company_id,
+                ("employer", "employment", "current_employer"),
+                (first_name, firm, title), "evidence_current_employer_source_mismatch",
+            )
         current_observation_id = str(_value(current_row, "observation_id"))
         employment_observation_id = str(_value(identity, "source_observation_id"))
         explicit_prior_rows = tuple(
@@ -417,7 +651,9 @@ def resolve_slot_facts(connection, person_id: str, affinity: Affinity,
         sources["transition_from"] = prior_source
         claims["transition_from"] = f"Worked in {prior_kind} at {prior}"
         sources["transition_to"] = (
-            employment_source if employment_observation_id in path_ids else current_source
+            employment_source
+            if current_role_proof is not None or employment_observation_id in path_ids
+            else current_source
         )
         claims["transition_to"] = f"Works in {current_kind} at {firm}"
         values["transition_from"] = f"{prior_kind} at {prior}"
@@ -549,12 +785,14 @@ def _record_signal_evidence(connection, person_id: str, campaign_id: str,
 
 def mint_evidence(connection, person_id: str, campaign_id: str, affinity: Affinity,
                   slots: Mapping[str, str], now: datetime, confidence_floor: float = 0.7,
-                  selected_company_id: str | None = None) -> Mapping[str, str]:
+                  selected_company_id: str | None = None, *,
+                  current_role_proof: CurrentRoleProof | None = None) -> Mapping[str, str]:
     """Mint claims from exact normalized facts bound to their authentic observations."""
     del now
     facts = resolve_slot_facts(
         connection, person_id, affinity, selected_company_id,
         required_slots=tuple(slots), supplied_slots=slots,
+        current_role_proof=current_role_proof,
     )
     evidence_ids: dict[str, str] = {}
     for slot in CLAIM_TEMPLATES:

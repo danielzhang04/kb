@@ -17,7 +17,11 @@ import sqlite3
 import uuid
 
 from scripts.prospecting.personalizer.qa import QaResult
-from scripts.prospecting.affinity.evidence_bridge import resolve_slot_facts
+from scripts.prospecting.affinity.evidence_bridge import (
+    attested_current_role_source,
+    current_role_source_proof,
+    resolve_slot_facts,
+)
 from scripts.prospecting.affinity.score import Affinity
 from scripts.prospecting.affinity.templates_v2 import DraftError, DraftSummary
 from scripts.prospecting.affinity.source_review import (
@@ -175,6 +179,11 @@ class DraftView:
     approval_id: str | None
     feedback_state: str | None
     editorial_gate_code: str = "editorial_receipts_missing"
+    identity_source_state: str = "source_unavailable"
+    identity_source: IdentitySourceView | None = None
+    current_observation_id: str | None = None
+    contact_state: str = "missing"
+    source_error_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -545,6 +554,46 @@ class ReviewService:
         return bool(source.excerpt)
 
     def _identity_source_ready(self, scope: sqlite3.Row) -> bool:
+        if self.source_verifier is None:
+            return False
+        review = self.connection.execute(
+            """SELECT 1 FROM identity_source_review
+                WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
+                LIMIT 1""",
+            (scope["campaign_id"], scope["person_id"], scope["company_id"],
+             scope["employment_id"]),
+        ).fetchone()
+        if review is None:
+            return self._legacy_identity_source_ready(scope)
+        try:
+            source = attested_current_role_source(
+                self.connection, str(scope["campaign_id"]), str(scope["person_id"]),
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+        if (
+            source.company_id != str(scope["company_id"])
+            or source.employment_id != str(scope["employment_id"])
+            or source.observation_id != str(scope["source_observation_id"])
+        ):
+            return False
+        snapshot = self.connection.execute(
+            "SELECT * FROM source_snapshot WHERE snapshot_id=?", (source.snapshot_id,),
+        ).fetchone()
+        if snapshot is None or snapshot["allowlist_version"] != "operator-local-v1":
+            return False
+        try:
+            for excerpt in (source.role_excerpt, source.name_excerpt):
+                self.source_verifier(SnapshotProof(
+                    source.snapshot_id, str(snapshot["body_ref"]),
+                    str(snapshot["content_sha256"]), str(snapshot["expires_at"]), excerpt,
+                ))
+        except Exception:
+            return False
+        return bool(source.role_excerpt and source.name_excerpt)
+
+    def _legacy_identity_source_ready(self, scope: sqlite3.Row) -> bool:
+        """Keep pre-P13 trusted proof readable; reviewed sources use exact P13 IDs."""
         try:
             facts = resolve_slot_facts(
                 self.connection, str(scope["person_id"]),
@@ -557,26 +606,12 @@ class ReviewService:
             return False
         if role.observation_id != str(scope["source_observation_id"]):
             return False
-        role_snapshot = self.connection.execute(
-            "SELECT allowlist_version FROM source_snapshot WHERE snapshot_id=?", (role.snapshot_id,),
+        snapshot = self.connection.execute(
+            "SELECT allowlist_version FROM source_snapshot WHERE snapshot_id=?",
+            (role.snapshot_id,),
         ).fetchone()
-        if role_snapshot is None:
+        if snapshot is None or snapshot["allowlist_version"] == "operator-local-v1":
             return False
-        if role_snapshot["allowlist_version"] == "operator-local-v1":
-            review = self.connection.execute(
-                """SELECT name_observation_id FROM identity_source_review
-                     WHERE campaign_id=? AND person_id=? AND company_id=? AND employment_id=?
-                       AND observation_id=? AND snapshot_id=?
-                     ORDER BY created_at DESC,request_id DESC LIMIT 1""",
-                (scope["campaign_id"], scope["person_id"], scope["company_id"],
-                 scope["employment_id"], scope["source_observation_id"],
-                 role.snapshot_id),
-            ).fetchone()
-            if (
-                review is None or str(review["name_observation_id"]) != name.observation_id
-                or name.snapshot_id != role.snapshot_id
-            ):
-                return False
         return self._usable_projection_source(role) and self._usable_projection_source(name)
 
     def verify_current_role_source(self, request: VerifyIdentitySourceRequest) -> VerifyIdentitySourceResult:
@@ -804,7 +839,9 @@ class ReviewService:
             next_action = "resume_campaign"
         elif not people:
             next_action = "discover_people"
-        elif any(item.selected and item.identity_source_state != "source_ready" for item in people):
+        elif not drafts and any(
+            item.selected and item.identity_source_state == "source_missing" for item in people
+        ):
             next_action = "review_sources"
         elif not drafts:
             next_action = "prepare_drafts"
@@ -1095,6 +1132,9 @@ class ReviewService:
         editorial_state = "review_required" if candidate is not None or gate_code else (
             str(editorial[0]) if editorial is not None else "review_required"
         )
+        identity_state, identity_source, current_observation_id, contact_state, source_error = (
+            self._draft_delivery_context(campaign_id, person_id)
+        )
         return DraftView(
             person_id=person_id, full_name=str(person[0]), revision_id=revision_id,
             revision_hash=str(row["hash"]), step=int(row["step"]),
@@ -1109,7 +1149,48 @@ class ReviewService:
             approval_state=approval_state, approval_id=approval_id,
             feedback_state=None if feedback is None else str(feedback[0]),
             editorial_gate_code=gate_code,
+            identity_source_state=identity_state,
+            identity_source=identity_source,
+            current_observation_id=current_observation_id,
+            contact_state=contact_state,
+            source_error_code=source_error,
         )
+
+    def _draft_delivery_context(
+        self, campaign_id: str, person_id: str,
+    ) -> tuple[str, IdentitySourceView | None, str | None, str, str | None]:
+        """Project exact source proof and contact state without changing either."""
+        try:
+            scope = self._identity_scope(campaign_id, person_id)
+            proof = current_role_source_proof(
+                self.connection, campaign_id, person_id, _utc_time(self.now()),
+            )
+            contact = self.connection.execute(
+                """SELECT state FROM contact_point
+                    WHERE person_id=? AND employer_company_id=?
+                    ORDER BY COALESCE(verified_at,retrieved_at,'') DESC,contact_id DESC LIMIT 1""",
+                (person_id, proof.company_id),
+            ).fetchone()
+            source = IdentitySourceView(
+                proof.candidate_observation_id, proof.snapshot_id, proof.source_url,
+                proof.excerpt, proof.retrieved_at, proof.expires_at, proof.attested,
+            )
+            return (
+                "source_ready" if proof.attested else "confirmation_required",
+                source,
+                str(scope["source_observation_id"]),
+                "missing" if contact is None else str(contact["state"]),
+                None,
+            )
+        except ReviewError as error:
+            return "source_unavailable", None, None, "missing", str(error)
+        except (AttributeError, KeyError, sqlite3.Error, TypeError, ValueError) as error:
+            code = str(error)
+            allowed = {"current_role_proof_missing", "current_role_proof_invalid"}
+            return (
+                "source_unavailable", None, None, "missing",
+                code if code in allowed else "source_proof_unavailable",
+            )
 
     def list_drafts(self, campaign_id: str) -> tuple[DraftView, ...]:
         self._campaign(campaign_id)

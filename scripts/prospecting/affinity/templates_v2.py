@@ -22,7 +22,12 @@ from scripts.prospecting.review_qa import (
     require_revision_qa_context,
 )
 
-from .evidence_bridge import mint_evidence, resolve_slot_facts
+from .evidence_bridge import (
+    CurrentRoleProof,
+    current_role_source_proof,
+    mint_evidence,
+    resolve_slot_facts,
+)
 from .fitspec import FitSpecError, fit_spec_hash, validate_fit_spec
 from .score import Affinity, Signal
 
@@ -213,6 +218,7 @@ def _slot_values_with_clamp_count(
     sender_focus: str,
     sender_proof: str,
     ask_minutes: int,
+    current_role_proof: CurrentRoleProof | None = None,
 ) -> tuple[dict[str, str], int]:
     del anchors
     person_id = str(_value(row, "person_id"))
@@ -227,6 +233,7 @@ def _slot_values_with_clamp_count(
     facts = resolve_slot_facts(
         connection, person_id, affinity, str(_value(row, "company_id")),
         required_slots=required_evidence,
+        current_role_proof=current_role_proof,
     )
     firm = facts.firm
     transition_from = facts.values.get("transition_from", "")
@@ -382,8 +389,12 @@ def _approved_fit(connection, campaign_id: str, policy: Mapping[str, object]) ->
     return fit_hash, minimum
 
 
-def _candidate_blocker(row: object, fit_hash: str, minimum_fit: int) -> str | None:
-    if _value(row, "fill_status") in {None, "no_confident_email"}:
+def _candidate_blocker(
+    row: object, fit_hash: str, minimum_fit: int, *, allow_missing_contact: bool = False,
+) -> str | None:
+    if _value(row, "fill_status") is None or (
+        _value(row, "fill_status") == "no_confident_email" and not allow_missing_contact
+    ):
         return "fill_firm_unready"
     if _value(row, "employment_id") is None:
         return "current_employment_missing"
@@ -393,7 +404,7 @@ def _candidate_blocker(row: object, fit_hash: str, minimum_fit: int) -> str | No
         return "affinity_fit_spec_stale"
     if int(_value(row, "score")) < minimum_fit:
         return "affinity_below_minimum"
-    if _value(row, "contact_id") is None:
+    if _value(row, "contact_id") is None and not allow_missing_contact:
         return "confident_current_contact_missing"
     if bool(_value(row, "fit_veto_active")):
         return "fit_veto_active"
@@ -402,8 +413,8 @@ def _candidate_blocker(row: object, fit_hash: str, minimum_fit: int) -> str | No
     return None
 
 
-def draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: datetime,
-                   model_version: str = "none") -> DraftSummary:
+def _draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: datetime,
+                    model_version: str = "none", proof_pending: bool = False) -> DraftSummary:
     """Draft one P8-owned revision per delivered candidate at the requested step."""
     if step not in {0, 1, 2}:
         raise DraftError("step_invalid")
@@ -467,8 +478,13 @@ def draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: dat
                             OR (stopped.scope='person' AND stopped.subject_key=fill.person_id)
                             OR (stopped.scope='company' AND stopped.subject_key=fill.company_id)
                             OR (stopped.scope='campaign' AND stopped.subject_key=fill.campaign_id)
-                            OR (stopped.scope='email' AND cp.email IS NOT NULL
-                                AND lower(trim(stopped.subject_key))=lower(trim(cp.email)))
+                            OR (stopped.scope='email' AND EXISTS(
+                              SELECT 1 FROM contact_point AS stopped_contact
+                               WHERE stopped_contact.person_id=fill.person_id
+                                 AND stopped_contact.employer_company_id=fill.company_id
+                                 AND lower(trim(stopped.subject_key))=
+                                     lower(trim(stopped_contact.email))
+                            ))
                           )) AS suppression_active
              FROM fill_person AS fill
              JOIN person ON person.person_id=fill.person_id
@@ -498,19 +514,33 @@ def draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: dat
     failures: Counter[str] = Counter()
     created = out_of_band = qa_failed = slots_clamped = 0
     for row in rows:
-        blocker = _candidate_blocker(row, fit_hash, minimum_fit)
+        blocker = _candidate_blocker(
+            row, fit_hash, minimum_fit, allow_missing_contact=proof_pending,
+        )
         if blocker is not None:
             qa_failed += 1
             failures[blocker] += 1
             continue
         person_id = str(_value(row, "person_id"))
-        template = registry[_family(str(campaign_intent), step, row, registry)]
+        current_proof: CurrentRoleProof | None = None
+        if proof_pending:
+            try:
+                current_proof = current_role_source_proof(
+                    connection, campaign_id, person_id, now,
+                )
+            except ValueError as error:
+                qa_failed += 1
+                failures[str(error)] += 1
+                continue
+        template_id = _family(str(campaign_intent), step, row, registry)
+        template = registry[template_id]
         savepoint = False
         try:
             values, clamped = _slot_values_with_clamp_count(
                 connection, row, template, anchors,
                 sender_name=sender_name, sender_focus=sender_focus,
                 sender_proof=sender_proof, ask_minutes=ask_minutes,
+                current_role_proof=current_proof,
             )
             slots_clamped += clamped
             _template_subject, body = render(template, values)
@@ -533,6 +563,7 @@ def draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: dat
             evidence_ids = mint_evidence(
                 connection, person_id, campaign_id, affinity, slots, now,
                 selected_company_id=str(_value(row, "company_id")),
+                current_role_proof=current_proof,
             )
             ask = ask_sentence(body)
             bindings = _bindings(
@@ -593,3 +624,28 @@ def draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: dat
             if savepoint:
                 connection.execute("RELEASE p8_revision_context")
     return DraftSummary(len(rows), created, out_of_band, qa_failed, slots_clamped, MappingProxyType(dict(sorted(failures.items()))))
+
+
+def draft_campaign(
+    connection, campaign_id: str, step: int, *, anchors, now: datetime,
+    model_version: str = "none",
+) -> DraftSummary:
+    return _draft_campaign(
+        connection, campaign_id, step, anchors=anchors, now=now,
+        model_version=model_version,
+    )
+
+
+def draft_step_zero_proof_pending(
+    connection, campaign_id: str, *, anchors, now: datetime,
+    model_version: str = "none",
+) -> DraftSummary:
+    """Prepare local step-0 copy from exact imported role proof without P13.
+
+    Template selection remains governed by the campaign intent and saved affinity.
+    The narrower proof mode changes identity-source and contact prerequisites only.
+    """
+    return _draft_campaign(
+        connection, campaign_id, 0, anchors=anchors, now=now,
+        model_version=model_version, proof_pending=True,
+    )

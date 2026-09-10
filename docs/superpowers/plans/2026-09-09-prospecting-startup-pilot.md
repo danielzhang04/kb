@@ -27,17 +27,31 @@ restart/replay safety. Synthetic tests and a polished dashboard alone are insuff
   root31affected and independent35actual-chain checks passed. The preceding combined run had
   259passes and one launcher exclusion; that launcher separately passed with process cleanup.
   Counts overlap. Known binding omission/alias, stale-result and lineage findings are repaired.
-- [ ] Phase C: connect actual bounded skill execution. CLI reports ChatGPT login. Two genuine
-  synthetic Humanizer attempts timed out; the90second diagnostic emitted no progress events and
-  deleted its attempt. Startup cause remains unknown. Port proven private-file stdin deadline
-  handling into the reusable runtime, diagnose startup, then prove actual stage execution and
-  exact output import. No fabricated Humanizer/reviewer receipts or real-data isolation claim.
+- [ ] Phase C: connect actual bounded skill execution. Accepted local74a0c7fc contains the
+  independently reviewed pinned-file stdin/deadline repair; builder/root24 focused tests passed.
+  Startup history backfill was isolated and a CLI-initialized empty-home cache proved with synthetic
+  inputs. Two subsequent genuine synthetic calls reached the provider and failed; the latest
+  classified HTTP401. Desktop login presence does not establish usable authorization. User-controlled
+  CLI reauthentication is pending; do not run login/logout, retry models, or switch paid providers.
+  Owned attempts were deleted. No successful Humanizer output or production review receipt exists.
 - [ ] Phase D: connect research, funding qualification and deterministic two-contact ranking. Reuse
-  P15 intake and existing finder/source/evidence/affinity services. The reviewed P17 design is deferred
-  until Phase B/C interfaces are stable; do not add speculative infrastructure ahead of execution.
-- [ ] Phase E: complete first-review-at-drafts UI and feedback loop. Show sources beside provisional
-  email and exact agent suggestion; preserve separate human source/accept/ready decisions. Current
-  P13 pre-attestation barrier must be resolved with a proof-pending path, not invented attestations.
+  P15 intake and existing source/evidence/affinity services. A source-only VM design review completed
+  and was collected/cleaned with exact resource absence verified. P17 now implements one atomic
+  private import/classification service, three additive immutable tables and a private-file CLI.
+  Mechanical matches remain provisional and await genuine qualification factcheck. Candidate search
+  budget is separate from the desired company count; no inferred email or new scoring engine.
+  Existing Chrome proved public discovery and investor-primary capture to desktop-private files.
+- [ ] Phase E: finish the feedback loop. The first-review-at-drafts UI/backend slice is independently
+  READY: backend15, HTTP/service5 and actual bundledJS14 checks passed. Root's five-suite run passed244
+  and bundledJS14 passed; counts overlap. An additive untracked P17 migration appeared during the
+  root combined run; preceding independently frozen checks remain the baseline evidence.
+  Actual Chrome loaded the exact reviewed script and displayed the source, missing-contact and
+  honest adapter-waiting states; readiness disabled. Desktop/narrow captures were visually reviewed.
+  Narrow client/scroll widths both417px; no confirmation or readiness action was performed.
+  Sources appear beside provisional
+  email and exact agent suggestion; preserve separate human source/accept/ready decisions. Genuine
+  source proof permits drafting and local text acceptance before human source confirmation;
+  readiness/outbound still require confirmation. Same-source confirmation preserves text reviews.
   Saved-revision core alone does not satisfy this. A parked exhausted lineage currently has no human
   reset path; an explicit authenticated new-work decision needs a bounded policy and tests.
 - [ ] Phase F: run the real pilot through the reusable intake and stages, inspect desktop/narrow UI

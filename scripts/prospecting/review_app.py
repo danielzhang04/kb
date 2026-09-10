@@ -18,7 +18,7 @@ from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
 
 from scripts.prospecting.affinity.anchors import load_anchors
-from scripts.prospecting.affinity.templates_v2 import DraftError, draft_campaign
+from scripts.prospecting.affinity.templates_v2 import DraftError, draft_step_zero_proof_pending
 from scripts.prospecting.affinity.source_review import (
     MAX_SOURCE_BYTES,
     import_operator_page,
@@ -46,6 +46,10 @@ from scripts.prospecting.pipeline_service import (
     PipelineStartRequest,
     ScopeSpec,
 )
+from scripts.prospecting.pipeline_stage_service import (
+    PipelineStageError,
+    PipelineStageService,
+)
 from scripts.prospecting.review_service import (
     EditDraftRequest,
     EditorialRequest,
@@ -66,6 +70,7 @@ BOOTSTRAP_SECONDS = 60
 REQUEST_SECONDS = 5
 HTML_PATH = Path(__file__).with_name("review_app.html")
 _ENTITY_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
+_LOCAL_REVIEW_ACTOR = "human:local-review"
 _SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     "Content-Security-Policy": (
@@ -97,8 +102,10 @@ def _draft_preparer(connection: object, anchors_file: Path) -> Callable[[str, in
             anchors = load_anchors(anchors_file)
         except ValueError:
             raise DraftError("sender_anchors_missing") from None
-        return draft_campaign(
-            connection, campaign_id, step,
+        if step != 0:
+            raise DraftError("step_invalid")
+        return draft_step_zero_proof_pending(
+            connection, campaign_id,
             anchors=anchors, now=datetime.now(timezone.utc),
         )
 
@@ -139,14 +146,6 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
         return {"title": "Create your first campaign", "detail": "Save a local brief to establish its durable identity.", "label": "Campaign setup"}
     if "campaign" not in snapshot:
         return {"title": "Choose a campaign", "detail": "Every count and review state is scoped to one campaign.", "label": "Campaign required"}
-    pipeline = snapshot.get("pipeline")
-    if isinstance(pipeline, dict) and pipeline.get("state") == "input_pending":
-        missing = pipeline.get("pending_fields") or []
-        return {"title": "Complete the research brief", "detail": "Research has not started. Complete the remaining inputs before an adapter can be considered.", "label": f"{len(missing)} inputs needed"}
-    if isinstance(pipeline, dict) and pipeline.get("state") == "awaiting_research_adapter":
-        return {"title": "Brief saved; research is not connected yet", "detail": "The local intake is durable. No research is running.", "label": "Awaiting adapter"}
-    if isinstance(pipeline, dict) and pipeline.get("state") == "unavailable":
-        return {"title": "Pipeline status unavailable", "detail": "Campaign review remains available. Refresh after the local pipeline record is repaired.", "label": "Needs attention"}
     drafts = snapshot["drafts"]
     people = snapshot["people"]
     pending = [item for item in drafts if item.get("candidate_state") in {"pending_qa", "qa_failed"}]
@@ -158,7 +157,20 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
     if review:
         return {"title": "Review saved drafts", "detail": "Editorial readiness never grants sending authority.", "label": f"{len(review)} to review"}
     if not people:
+        pipeline = snapshot.get("pipeline")
+        if isinstance(pipeline, dict) and pipeline.get("state") == "input_pending":
+            missing = pipeline.get("pending_fields") or []
+            return {"title": "Complete the research brief", "detail": "Research has not started. Complete the remaining inputs before an adapter can be considered.", "label": f"{len(missing)} inputs needed"}
+        if isinstance(pipeline, dict) and pipeline.get("state") == "awaiting_research_adapter":
+            return {"title": "Brief saved; research is not connected yet", "detail": "The local intake is durable. No research is running.", "label": "Awaiting adapter"}
+        if isinstance(pipeline, dict) and pipeline.get("state") == "unavailable":
+            return {"title": "Pipeline status unavailable", "detail": "Campaign review remains available. Refresh after the local pipeline record is repaired.", "label": "Needs attention"}
         return {"title": "Run the existing candidate workflow", "detail": "No discovery is launched by this review app.", "label": "People empty"}
+    if not drafts:
+        campaign = snapshot.get("campaign")
+        if isinstance(campaign, dict) and campaign.get("next_action") == "review_sources":
+            return {"title": "Add a current-role source", "detail": "A saved source page is required before a proof-pending local draft can be prepared.", "label": "Source needed"}
+        return {"title": "Prepare local email drafts", "detail": "Source confirmation and a contact address may remain visibly pending after drafting.", "label": "Draft locally"}
     return {"title": "Inspect the sending plan", "detail": "Schedule and approval state remain read-only here.", "label": "Review plan"}
 
 
@@ -184,6 +196,7 @@ class ReviewHTTPServer(HTTPServer):
         html: str,
         *,
         pipeline: object | None = None,
+        editorial_pipeline: object | None = None,
         feedback: object | None = None,
         control: object | None = None,
         monotonic: Callable[[], float] = time.monotonic,
@@ -195,6 +208,7 @@ class ReviewHTTPServer(HTTPServer):
         self.control = _DisabledControl() if control is None else control
         self.campaigns = campaigns
         self.pipeline = pipeline
+        self.editorial_pipeline = editorial_pipeline
         self.html_template = html
         self.monotonic = monotonic
         self.bootstrap_deadline = monotonic() + BOOTSTRAP_SECONDS
@@ -207,6 +221,10 @@ class ReviewHTTPServer(HTTPServer):
     @property
     def authority(self) -> str:
         return f"{HOST}:{self.server_address[1]}"
+
+    @property
+    def cookie_name(self) -> str:
+        return f"review_session_{self.server_address[1]}"
 
     def get_request(self) -> tuple[Any, Any]:
         connection, address = super().get_request()
@@ -291,7 +309,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
             return None
         try:
             cookie = SimpleCookie(values[0])
-            return cookie["review_session"].value if "review_session" in cookie else None
+            name = self.server.cookie_name
+            return cookie[name].value if name in cookie else None
         except Exception:
             return None
 
@@ -334,7 +353,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self._error(HTTPStatus.GONE, "bootstrap_unavailable")
                     return
                 session, _csrf = issued
-                cookie = f"review_session={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
+                cookie = f"{self.server.cookie_name}={session}; HttpOnly; SameSite=Strict; Path=/; Max-Age={SESSION_SECONDS}"
                 self._bytes(
                     HTTPStatus.SEE_OTHER,
                     b"",
@@ -379,6 +398,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "people": [], "drafts": [], "feedback": [], "schedule": [], "activity": [],
             "control": None,
             "pipeline": None,
+            "editorial_pipeline": [],
             "unmet_inputs": [],
         }
         campaign_id = query.get("campaign_id", [""])[0]
@@ -386,10 +406,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if _ENTITY_ID.fullmatch(campaign_id) is None:
                 self._error(HTTPStatus.BAD_REQUEST, "invalid_campaign_id")
                 return
+            drafts = [_jsonable(item) for item in self.server.review.list_drafts(campaign_id)]
             snapshot.update(
                 campaign=_jsonable(self.server.review.get_campaign(campaign_id)),
                 people=[_jsonable(item) for item in self.server.review.list_people(campaign_id)],
-                drafts=[_jsonable(item) for item in self.server.review.list_drafts(campaign_id)],
+                drafts=drafts,
                 feedback=[_jsonable(item) for item in self.server.feedback.list_feedback(campaign_id)],
                 schedule=[_jsonable(item) for item in self.server.review.list_schedule(campaign_id)],
                 activity=[_jsonable(item) for item in self.server.review.list_activity(campaign_id)],
@@ -420,6 +441,28 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     safe_pipeline = _jsonable(pipeline)
                     snapshot["pipeline"] = safe_pipeline
                     snapshot["unmet_inputs"] = safe_pipeline.get("pending_fields", [])
+            if self.server.editorial_pipeline is not None:
+                editorial: list[object] = []
+                for draft in drafts:
+                    revision_id = str(draft["revision_id"])
+                    try:
+                        projection = self.server.editorial_pipeline.get_latest_review_projection(
+                            campaign_id, revision_id,
+                        )
+                    except PipelineStageError as error:
+                        editorial.append({
+                            "revision_id": revision_id,
+                            "state": "unavailable",
+                            "code": str(error) or "editorial_projection_unavailable",
+                        })
+                    else:
+                        if projection is not None:
+                            value = _jsonable(projection)
+                            if not isinstance(value, dict):
+                                raise TypeError("response_schema")
+                            value["revision_id"] = revision_id
+                            editorial.append(value)
+                snapshot["editorial_pipeline"] = editorial
         snapshot["next_action"] = _next_action(snapshot)
         self._json(HTTPStatus.OK, snapshot)
 
@@ -554,6 +597,45 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     self.server.review.verify_current_role_source(VerifyIdentitySourceRequest(**value)),
                 )
                 return
+            if path == "/api/editorial/start":
+                value = _require_object(
+                    payload, {"request_id", "campaign_id", "revision_id"},
+                )
+                if self.server.editorial_pipeline is None:
+                    raise ValueError("request_schema")
+                self._json(
+                    HTTPStatus.CREATED,
+                    self.server.editorial_pipeline.start_from_saved_revision(
+                        value["campaign_id"], value["revision_id"], value["request_id"],
+                    ),
+                )
+                return
+            if path in {"/api/editorial/accept", "/api/editorial/reject"}:
+                value = _require_object(
+                    payload,
+                    {"request_id", "campaign_id", "item_id", "expected_parent_revision_id"},
+                )
+                if self.server.editorial_pipeline is None:
+                    raise ValueError("request_schema")
+                item = self.server.editorial_pipeline.get_item(value["item_id"])
+                if (
+                    item.campaign_id != value["campaign_id"]
+                    or item.base_revision_id != value["expected_parent_revision_id"]
+                ):
+                    raise PipelineStageError("revision_conflict")
+                action = (
+                    self.server.editorial_pipeline.accept_suggestion
+                    if path.endswith("/accept")
+                    else self.server.editorial_pipeline.reject_suggestion
+                )
+                self._json(
+                    HTTPStatus.OK,
+                    action(
+                        value["item_id"], value["request_id"],
+                        value["expected_parent_revision_id"], _LOCAL_REVIEW_ACTOR,
+                    ),
+                )
+                return
             if path == "/api/people/import-source":
                 value = _require_object(
                     payload, {"campaign_id", "person_id", "source_url", "body"},
@@ -609,9 +691,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._json(HTTPStatus.OK, self.server.review.set_editorial_ready(EditorialRequest(**value)))
                 return
             self._error(HTTPStatus.NOT_FOUND, "route_missing")
-        except (CampaignError, ControlError, ControlReviewError, FeedbackError, PipelineError, ReviewError) as error:
+        except (CampaignError, ControlError, ControlReviewError, FeedbackError, PipelineError, PipelineStageError, ReviewError) as error:
             code = str(error) if str(error) else "request_invalid"
-            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "editorial_receipts_missing", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "editorial_receipts_missing", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict", "suggestion_already_decided", "pipeline_item_exists"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
             self._error(status, code)
         except (ValueError, TypeError):
             self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "request_schema")
@@ -628,6 +710,7 @@ def create_server(
     feedback: object | None = None,
     control: object | None = None,
     pipeline: object | None = None,
+    editorial_pipeline: object | None = None,
     monotonic: Callable[[], float] = time.monotonic,
 ) -> ReviewHTTPServer:
     html = html_path.read_text(encoding="utf-8")
@@ -640,6 +723,8 @@ def create_server(
             raise ValueError("control_store_mismatch")
         if isinstance(pipeline, PipelineService) and pipeline.connection is not review.connection:
             raise ValueError("pipeline_store_mismatch")
+        if isinstance(editorial_pipeline, PipelineStageService) and editorial_pipeline.connection is not review.connection:
+            raise ValueError("editorial_pipeline_store_mismatch")
     feedback_owner = FeedbackService(review.connection) if feedback is None and isinstance(
         review, ReviewService
     ) else review if feedback is None else feedback
@@ -649,9 +734,13 @@ def create_server(
     pipeline_owner = PipelineService(review.connection) if pipeline is None and isinstance(
         review, ReviewService
     ) else pipeline
+    editorial_pipeline_owner = PipelineStageService(review.connection) if editorial_pipeline is None and isinstance(
+        review, ReviewService
+    ) else editorial_pipeline
     return ReviewHTTPServer(
         (HOST, port), review, campaigns, html, feedback=feedback_owner,
-        control=control_owner, pipeline=pipeline_owner, monotonic=monotonic,
+        control=control_owner, pipeline=pipeline_owner,
+        editorial_pipeline=editorial_pipeline_owner, monotonic=monotonic,
     )
 
 

@@ -8,6 +8,8 @@ from typing import Mapping
 
 import pytest
 
+from scripts.prospecting.affinity.evidence_bridge import current_role_source_proof
+from scripts.prospecting.affinity.source_review import import_operator_page, verify_snapshot
 from scripts.prospecting.pipeline_stage_service import (
     PipelineStageError,
     PipelineStageService,
@@ -19,7 +21,8 @@ from scripts.prospecting.pipeline_stage_service import (
 )
 from scripts.prospecting.personalizer.qa import QaPolicy, QaResult, SlotBinding
 from scripts.prospecting.personalizer.revision import RevisionInput, build_revision
-from scripts.prospecting.review_qa import record_revision_qa_context
+from scripts.prospecting.review_qa import load_revision_qa_context, record_revision_qa_context
+from scripts.prospecting.review_service import ReviewService, VerifyIdentitySourceRequest
 from scripts.prospecting.store import open_store
 from scripts.prospecting.tests.test_review_service import (
     ASK,
@@ -28,6 +31,7 @@ from scripts.prospecting.tests.test_review_service import (
     insert_campaign,
     insert_person,
     insert_revision,
+    request_id,
 )
 
 
@@ -46,6 +50,18 @@ class FixtureAdapter:
         assert value["approved_context_hash"]
         if job.stage == "independent_critic":
             assert "audit" not in value["candidate"]
+        return StageResult(self.payload)
+
+
+@dataclass
+class RenderedFixtureAdapter:
+    binding: StageBinding
+    payload: Mapping[str, object]
+
+    def execute(self, job: StageJob) -> StageResult:
+        value = json.loads(job.input_json)
+        assert value["stage"] == job.stage
+        assert value["approved_context"]["current_role_proof"]["snapshot_id"]
         return StageResult(self.payload)
 
 
@@ -72,7 +88,7 @@ def _binding(name: str) -> StageBinding:
     )
 
 
-def _seed(tmp_path: Path):
+def _seed(tmp_path: Path, *, identity_review: bool = True):
     connection = open_store(tmp_path / "pipeline-stage.sqlite")
     insert_campaign(connection, "campaign-a", "sender-a", "mailbox-a")
     insert_person(connection, "person-a", "a")
@@ -100,12 +116,13 @@ def _seed(tmp_path: Path):
     connection.execute(
         "UPDATE employment SET source_observation_id='source-role-a' WHERE employment_id='emp_a'"
     )
-    connection.execute(
-        "INSERT INTO identity_source_review VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        ("role-review-a", "1" * 64, "campaign-a", "person-a", "cmp_" + "a" * 16,
-         "emp_a", "source_a", "source-role-a", "source-role-a", "source-name-a",
-         snapshot_id, 1, NOW),
-    )
+    if identity_review:
+        connection.execute(
+            "INSERT INTO identity_source_review VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            ("role-review-a", "1" * 64, "campaign-a", "person-a", "cmp_" + "a" * 16,
+             "emp_a", "source_a", "source-role-a", "source-role-a", "source-name-a",
+             snapshot_id, 1, NOW),
+        )
     connection.execute(
         """INSERT INTO prospecting_pipeline_intake(
           intake_id,request_id,request_hash,campaign_id,campaign_policy_hash,intake_revision,
@@ -154,6 +171,52 @@ def _run_to_review(service: PipelineStageService, item_id: str) -> None:
     service.run_next(item_id, "stage-request-h")
     service.run_next(item_id, "stage-request-f")
     service.run_next(item_id, "stage-request-c")
+
+
+def _import_pending_role_source(connection, tmp_path: Path, *, suffix: str = "a"):
+    connection.commit()
+    import_operator_page(
+        connection,
+        person_id="person-a",
+        company_id="cmp_" + "a" * 16,
+        source_url=f"https://source.example.test/current-role-{suffix}",
+        body=(
+            b"Synthetic Person A is Example Lead at Example A LLC. "
+            + suffix.encode("ascii")
+        ),
+        now=datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    return current_role_source_proof(
+        connection, "campaign-a", "person-a",
+        datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+
+
+def _insert_pipeline_run_for_campaign(connection, campaign_id: str) -> None:
+    policy_hash = connection.execute(
+        "SELECT policy_hash FROM campaign WHERE campaign_id=?", (campaign_id,),
+    ).fetchone()[0]
+    connection.execute(
+        """INSERT INTO prospecting_pipeline_intake(
+          intake_id,request_id,request_hash,campaign_id,campaign_policy_hash,intake_revision,
+          intake_hash,as_of_date,funding_stage_min,funding_stage_max,funding_window_years,
+          funding_stage_interpretation,geography_mode,geography_json,sector_mode,sector_json,
+          requested_companies,requested_people_per_company,role_families_json,
+          original_specification,outreach_goal,cutoff_date,created_at
+        ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        ("rendered-intake", "rendered-intake-request", "2" * 64, campaign_id,
+         policy_hash, 1, "3" * 64, "2099-12-30", "series_a", "series_c", 3,
+         "latest_known", "any", "[]", "any", "[]", 8, 2,
+         '["operations"]', "Synthetic source-first request", "Synthetic conversation",
+         "2096-12-30", NOW),
+    )
+    connection.execute(
+        "INSERT INTO prospecting_pipeline_run VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("rendered-run", "rendered-intake", campaign_id, "3" * 64, policy_hash,
+         "outreach-skill", 1, "4" * 64, "awaiting_research_adapter", "research",
+         0, 2, "[]", NOW, NOW),
+    )
+    connection.commit()
 
 
 def test_unconnected_stage_refuses_without_claim(tmp_path: Path) -> None:
@@ -409,17 +472,11 @@ def test_cyclic_stage_output_fails_with_fixed_code(tmp_path: Path) -> None:
     assert connection.execute("SELECT count(*) FROM prospecting_stage_artifact").fetchone()[0] == 0
 
 
-@pytest.mark.parametrize("mutation", ["superseded", "superseded_name", "expired", "wrong_company"])
+@pytest.mark.parametrize("mutation", ["superseded", "expired", "wrong_company"])
 def test_current_role_attestation_fails_closed_when_source_scope_changes(tmp_path: Path, mutation: str) -> None:
     connection, revision = _seed(tmp_path)
     if mutation == "superseded":
         connection.execute("UPDATE employment SET source_observation_id='source_a' WHERE employment_id='emp_a'")
-    elif mutation == "superseded_name":
-        connection.execute(
-            "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
-            ("aaa-current-name", "person", "person-a", "name", '"Synthetic Person A"',
-             "fixture", NOW, NOW, 1.0, "obs_aaaaaaaaaaaaaaaa"),
-        )
     elif mutation == "expired":
         connection.execute("UPDATE source_snapshot SET expires_at='2026-09-08T00:00:00Z' WHERE snapshot_id='obs_aaaaaaaaaaaaaaaa'")
     else:
@@ -428,8 +485,283 @@ def test_current_role_attestation_fails_closed_when_source_scope_changes(tmp_pat
     connection.commit()
     service = PipelineStageService(connection, now=lambda: datetime.fromisoformat(NOW.replace("Z","+00:00")))
 
-    with pytest.raises(PipelineStageError, match="^identity_source_review_missing$"):
+    with pytest.raises(PipelineStageError, match="^identity_source_proof_missing$"):
         service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+
+
+def test_exact_attested_name_binding_ignores_an_authentic_duplicate(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("aaa-authentic-name", "person", "person-a", "name", '"Synthetic Person A"',
+         "fixture", NOW, NOW, 1.0, "obs_aaaaaaaaaaaaaaaa"),
+    )
+    connection.commit()
+
+    item = PipelineStageService(
+        connection, now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    ).start_from_saved_revision(
+        "campaign-a", revision.revision_id, "duplicate-name-start",
+    )
+
+    assert item.state == "awaiting_humanizer_adapter"
+
+
+def test_exact_attested_name_binding_rejects_wrong_review_value(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("wrong-reviewed-name", "person", "person-a", "name", '"Different Synthetic"',
+         "fixture", NOW, NOW, 1.0, "obs_aaaaaaaaaaaaaaaa"),
+    )
+    connection.execute(
+        "INSERT INTO identity_source_review VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        ("wrong-name-review", "8" * 64, "campaign-a", "person-a", "cmp_" + "a" * 16,
+         "emp_a", "source_a", "source-role-a", "source-role-a", "wrong-reviewed-name",
+         "obs_" + "a" * 16, 1, "2099-12-31T00:00:00Z"),
+    )
+    connection.commit()
+
+    with pytest.raises(PipelineStageError, match="^identity_source_proof_missing$"):
+        PipelineStageService(
+            connection, now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+        ).start_from_saved_revision(
+            "campaign-a", revision.revision_id, "wrong-name-start",
+        )
+
+
+def test_proof_pending_chain_survives_exact_attestation_without_rerun(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path, identity_review=False)
+    proof = _import_pending_role_source(connection, tmp_path)
+    service = PipelineStageService(
+        connection, adapters=_adapters(),
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+
+    assert service.get_latest_review_projection(
+        "campaign-a", revision.revision_id,
+    ) is None
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "proof-pending-start",
+    )
+    _run_to_review(service, item.item_id)
+    pending = service.get_review_projection(item.item_id)
+    assert pending.item.item_id == item.item_id
+    assert pending.source_proof == proof
+    assert pending.source_proof is not None and pending.source_proof.attested is False
+    assert pending.suggestion_id and pending.suggestion_body
+    accepted = service.accept_suggestion(
+        item.item_id, "proof-pending-accept", revision.revision_id, "human:fixture",
+    )
+    counts = tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in ("prospecting_stage_attempt", "prospecting_stage_artifact")
+    )
+    with pytest.raises(PipelineStageError, match="^identity_source_review_missing$"):
+        require_revision_review_chain(
+            connection, "campaign-a", accepted.revision_hash, NOW,
+        )
+
+    review = ReviewService(
+        connection,
+        now=lambda: NOW,
+        source_verifier=lambda candidate: verify_snapshot(
+            tmp_path / "snapshots", candidate,
+            now=datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+        ),
+    )
+    review.verify_current_role_source(VerifyIdentitySourceRequest(
+        request_id(810), "campaign-a", "person-a", "source-role-a",
+        proof.candidate_observation_id, True,
+    ))
+
+    after = service.get_latest_review_projection(
+        "campaign-a", accepted.revision_id,
+    )
+    assert after is not None and after.item.item_id == item.item_id
+    assert after.suggestion_id == pending.suggestion_id
+    assert after.proposed_revision_hash == pending.proposed_revision_hash
+    assert after.decision == "accepted"
+    assert after.source_proof is not None and after.source_proof.attested is True
+    assert tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in ("prospecting_stage_attempt", "prospecting_stage_artifact")
+    ) == counts
+    assert require_revision_review_chain(
+        connection, "campaign-a", accepted.revision_hash, NOW,
+    )["revision_id"] == accepted.revision_id
+    with pytest.raises(PipelineStageError, match="^human_editorial_ready_missing$"):
+        require_revision_ready(connection, "campaign-a", accepted.revision_hash, NOW)
+
+
+def test_rendered_proof_pending_revision_completes_exact_chain_after_p13(
+    tmp_path: Path, monkeypatch,
+) -> None:
+    from scripts.prospecting.tests.test_affinity_templates_v2 import (
+        NOW as DRAFT_NOW,
+        _draft_ready_fixture,
+        _import_current_role_proof,
+    )
+    from scripts.prospecting.affinity.templates_v2 import draft_step_zero_proof_pending
+
+    connection, person_id, campaign_id = _draft_ready_fixture(tmp_path, monkeypatch)
+    signals = json.loads(connection.execute(
+        "SELECT signals_json FROM person_affinity WHERE person_id=? AND campaign_id=?",
+        (person_id, campaign_id),
+    ).fetchone()[0])
+    connection.execute(
+        "UPDATE person_affinity SET signals_json=? WHERE person_id=? AND campaign_id=?",
+        (json.dumps([item for item in signals if item["code"] != "path_match"]),
+         person_id, campaign_id),
+    )
+    _import_current_role_proof(connection, person_id)
+    summary = draft_step_zero_proof_pending(
+        connection, campaign_id, anchors=object(), now=DRAFT_NOW,
+    )
+    assert summary.revisions_created == 1 and summary.failure_codes == {}
+    revision = connection.execute(
+        "SELECT * FROM revision WHERE campaign_id=?", (campaign_id,),
+    ).fetchone()
+    proof = current_role_source_proof(connection, campaign_id, person_id, DRAFT_NOW)
+    context = load_revision_qa_context(connection, revision["revision_id"])
+    fact_bindings = [
+        {
+            "slot": name, "value": binding.value,
+            "source_kind": binding.source_kind, "source_ref": binding.source_ref,
+        }
+        for name, binding in context.bindings.items()
+    ]
+    adapters = {
+        "humanizer": RenderedFixtureAdapter(_binding("humanizer"), {
+            "draft": revision["body"],
+            "audit": "Synthetic rendered draft retained.",
+            "final_subject": revision["subject"],
+            "final_body": revision["body"],
+        }),
+        "post_humanization_factcheck": RenderedFixtureAdapter(
+            _binding("factchecker"), {
+                "decision": "pass", "bindings": fact_bindings,
+                "uncertainty": [], "shortfalls": [],
+            },
+        ),
+        "independent_critic": RenderedFixtureAdapter(_binding("critic"), {
+            "decision": "pass", "reasons": [], "repair_instructions": "",
+        }),
+    }
+    _insert_pipeline_run_for_campaign(connection, campaign_id)
+    service = PipelineStageService(connection, adapters=adapters, now=lambda: DRAFT_NOW)
+    item = service.start_from_saved_revision(
+        campaign_id, revision["revision_id"], "rendered-start",
+    )
+    _run_to_review(service, item.item_id)
+    accepted = service.accept_suggestion(
+        item.item_id, "rendered-accept", revision["revision_id"], "human:fixture",
+    )
+    assert accepted.unchanged is True
+    with pytest.raises(PipelineStageError, match="^identity_source_review_missing$"):
+        require_revision_review_chain(connection, campaign_id, accepted.revision_hash, DRAFT_NOW)
+
+    ReviewService(
+        connection,
+        now=lambda: DRAFT_NOW.isoformat(),
+        source_verifier=lambda candidate: verify_snapshot(
+            tmp_path / "snapshots", candidate, now=DRAFT_NOW,
+        ),
+    ).verify_current_role_source(VerifyIdentitySourceRequest(
+        request_id(811), campaign_id, person_id, "obs_employment",
+        proof.candidate_observation_id, True,
+    ))
+    connection.execute(
+        "INSERT INTO source_observation VALUES(?,?,?,?,?,?,?,?,?,?)",
+        ("aaa-authentic-name", "person", person_id, "name",
+         json.dumps({"excerpt": proof.excerpt}), proof.snapshot_id,
+         DRAFT_NOW.isoformat(), DRAFT_NOW.isoformat(), 1.0, proof.snapshot_id),
+    )
+    connection.commit()
+
+    assert require_revision_review_chain(
+        connection, campaign_id, accepted.revision_hash, DRAFT_NOW,
+    )["revision_id"] == accepted.revision_id
+    with pytest.raises(PipelineStageError, match="^human_editorial_ready_missing$"):
+        require_revision_ready(connection, campaign_id, accepted.revision_hash, DRAFT_NOW)
+
+
+def test_rejected_suggestion_projects_and_cannot_later_be_accepted(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(
+        connection, adapters=_adapters(),
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "rejection-start",
+    )
+    _run_to_review(service, item.item_id)
+
+    rejected = service.reject_suggestion(
+        item.item_id, "rejection-request", revision.revision_id, "human:fixture",
+    )
+    replayed = service.reject_suggestion(
+        item.item_id, "rejection-request", revision.revision_id, "human:fixture",
+    )
+
+    assert replayed == type(rejected)(rejected.decision_id, item.item_id, True)
+    assert service.get_review_projection(item.item_id).decision == "rejected"
+    with pytest.raises(PipelineStageError, match="^suggestion_already_decided$"):
+        service.accept_suggestion(
+            item.item_id, "accept-after-reject", revision.revision_id, "human:fixture",
+        )
+    assert connection.execute("SELECT count(*) FROM revision").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize("mutation", ["changed_source", "changed_role", "stale"])
+def test_proof_pending_stage_refuses_changed_or_stale_exact_source(
+    tmp_path: Path, mutation: str,
+) -> None:
+    connection, revision = _seed(tmp_path, identity_review=False)
+    proof = _import_pending_role_source(connection, tmp_path)
+    service = PipelineStageService(
+        connection, adapters=_adapters(),
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, f"{mutation}-start",
+    )
+    if mutation == "changed_source":
+        import_operator_page(
+            connection,
+            person_id="person-a",
+            company_id="cmp_" + "a" * 16,
+            source_url="https://source.example.test/current-role-new",
+            body=b"Synthetic Person A is Example Lead at Example A LLC. newer proof",
+            now=datetime.fromisoformat(NOW.replace("Z", "+00:00")) + timedelta(seconds=1),
+        )
+    elif mutation == "changed_role":
+        connection.execute("UPDATE employment SET title='Different Lead'")
+        connection.commit()
+    else:
+        connection.execute(
+            "UPDATE source_snapshot SET expires_at='2026-09-08T00:00:00Z' "
+            "WHERE snapshot_id=?", (proof.snapshot_id,),
+        )
+        connection.commit()
+
+    with pytest.raises(
+        PipelineStageError,
+        match="^(pipeline_context_stale|identity_source_proof_missing)$",
+    ):
+        service.run_next(item.item_id, f"{mutation}-run")
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_stage_artifact WHERE item_id=?",
+        (item.item_id,),
+    ).fetchone()[0] == 0
 
 
 def test_expired_claim_recovers_in_fresh_service_instance(tmp_path: Path) -> None:

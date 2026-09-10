@@ -32,6 +32,7 @@ class Element {
   setAttribute() {}
   focus() {}
   reset() {}
+  closest() { return this; }
   set innerHTML(value) {
     this._innerHTML = value;
     if (this.id === "draftDetail") this.owner.hydrateDraft(value);
@@ -79,7 +80,7 @@ function snapshot(campaign, subject = "Server subject", body = "Server body") {
   const campaigns = ["A", "B"].map(id => ({campaign_id: id, intent: `campaign_${id}`, status: "draft", next_action: "review_drafts"}));
   return {
     campaigns, sender_profiles: [], mailboxes: [], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
-    people: [], schedule: [], activity: [], control: null, next_action: {},
+    people: [], schedule: [], activity: [], control: null, editorial_pipeline: [], next_action: {},
     drafts: campaign ? [{campaign_id: campaign, person_id: `person-${campaign}`, full_name: `Person ${campaign}`, revision_id: `rev-${campaign}`,
       step: 0, subject, body, evidence: [], candidate_id: null, candidate_subject: null, candidate_body: null,
       candidate_state: null, qa_failure_codes: [], candidate_history: [], editorial_state: "review_required",
@@ -376,6 +377,224 @@ test("saved source upload sends only the selected URL and local bytes before con
   assert.match(detail, /I confirm this source shows Person A/);
 });
 
+test("draft card keeps exact source confirmation and missing contact beside the email", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    identity_source_state: "confirmation_required",
+    identity_source: {
+      observation_id: "source-A", snapshot_id: "snapshot-A",
+      source_url: "https://profile.example.test/source",
+      excerpt: "Person A is <Lead> at Example A", retrieved_at: "2026-09-09T04:00:00Z",
+      expires_at: "2099-01-01T00:00:00Z", is_current: false,
+    },
+    current_observation_id: "source-prior-A", contact_state: "missing",
+    source_error_code: null,
+  });
+  app.evaluate('state.campaign="A"; globalThis.sourceDraftLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.sourceDraftLoad;
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Source confirmation needed/);
+  assert.match(detail, /Person A is &lt;Lead&gt; at Example A/);
+  assert.match(detail, /Open exact source/);
+  assert.match(detail, /Contact address missing/);
+  assert.match(detail, /cannot be approved, scheduled, or sent/);
+  assert.doesNotMatch(detail, /Person A is <Lead>/);
+
+  const button = {
+    disabled: false,
+    dataset: {
+      verifySource: "source-A", personId: "person-A",
+      expectedSource: "source-prior-A", sourceError: "draftError",
+    },
+    closest() { return this; },
+  };
+  app.document.emit("click", button);
+  const mutation = app.requests.shift();
+  assert.equal(mutation.url, "/api/people/verify-source");
+  const payload = JSON.parse(mutation.init.body);
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ["attested", "campaign_id", "expected_observation_id", "observation_id", "person_id", "request_id"],
+  );
+  assert.equal(payload.attested, true);
+  assert.equal(payload.observation_id, "source-A");
+  assert.equal(payload.expected_observation_id, "source-prior-A");
+});
+
+test("editorial stages and exact suggestion actions stay beside the source-bound email", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const waiting = snapshot("A");
+  Object.assign(waiting.drafts[0], {
+    editorial_gate_code: "editorial_receipts_missing",
+    identity_source_state: "confirmation_required",
+    identity_source: {
+      observation_id: "source-A", source_url: "https://profile.example.test/source",
+      excerpt: "Person A is Principal at Example A", is_current: false,
+    },
+    current_observation_id: "source-prior-A", contact_state: "missing",
+  });
+  waiting.editorial_pipeline = [{
+    revision_id: "rev-A", item: {
+      item_id: "item-A", campaign_id: "A", person_id: "person-A",
+      base_revision_id: "rev-A", state: "awaiting_humanizer_adapter",
+      next_stage: "humanizer", repair_cycle: 0,
+    },
+    source_proof: null, suggestion_id: null, suggestion_subject: null,
+    suggestion_body: null, proposed_revision_hash: null, decision: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.editorialLoad=load("A")');
+  app.reply(app.requests.shift(), waiting);
+  await app.context.editorialLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Canonical local email draft/);
+  assert.match(detail, /Editorial review waiting/);
+  assert.match(detail, /Waiting for humanizer/);
+  assert.match(detail, /No provider activity is launched/);
+  assert.match(detail, /Source confirmation needed/);
+  assert.match(detail, /Contact address missing/);
+
+  const suggestion = structuredClone(waiting);
+  Object.assign(suggestion.editorial_pipeline[0], {
+    suggestion_id: "suggestion-A", suggestion_subject: "A <better> subject",
+    suggestion_body: "A careful & sourced body", proposed_revision_hash: "a".repeat(64),
+  });
+  Object.assign(suggestion.editorial_pipeline[0].item, {state: "human_review", next_stage: null});
+  app.evaluate('globalThis.suggestionLoad=load("A")');
+  app.reply(app.requests.shift(), suggestion);
+  await app.context.suggestionLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Agent suggestion/);
+  assert.match(detail, /A &lt;better&gt; subject/);
+  assert.match(detail, /A careful &amp; sourced body/);
+  assert.doesNotMatch(detail, /A <better>/);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialAccept: "item-A", editorialParent: "rev-A",
+  }})});
+  const accept = app.requests.shift();
+  assert.equal(accept.url, "/api/editorial/accept");
+  const payload = JSON.parse(accept.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "expected_parent_revision_id", "item_id", "request_id",
+  ]);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.item_id, "item-A");
+  assert.equal(payload.expected_parent_revision_id, "rev-A");
+  app.reply(accept, {decision_id: "decision-A", revision_id: "rev-B",
+    revision_hash: "b".repeat(64), unchanged: false, replayed: false});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  app.reply(reload, suggestion);
+  await tick(); await tick();
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialReject: "item-A", editorialParent: "rev-A",
+  }})});
+  const reject = app.requests.shift();
+  assert.equal(reject.url, "/api/editorial/reject");
+  const rejectPayload = JSON.parse(reject.init.body);
+  assert.equal(rejectPayload.item_id, "item-A");
+  assert.equal(rejectPayload.expected_parent_revision_id, "rev-A");
+  assert.notEqual(rejectPayload.request_id, payload.request_id);
+  app.reply(reject, {decision_id: "decision-B", item_id: "item-A", replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), suggestion);
+  await tick(); await tick();
+});
+
+test("editorial start retry is payload-bound and Mark ready still requires human source confirmation", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    editorial_gate_code: "editorial_receipts_missing",
+    identity_source_state: "confirmation_required", contact_state: "missing",
+  });
+  app.evaluate('state.campaign="A"; globalThis.startLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.startLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review has not started/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialStart: "rev-A",
+  }})});
+  const start = app.requests.shift();
+  assert.equal(start.url, "/api/editorial/start");
+  const first = JSON.parse(start.init.body);
+  assert.deepEqual(Object.keys(first).sort(), ["campaign_id", "request_id", "revision_id"]);
+  app.reply(start, {item_id: "item-A", campaign_id: "A", person_id: "person-A",
+    base_revision_id: "rev-A", state: "awaiting_humanizer_adapter", next_stage: "humanizer", repair_cycle: 0});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+
+  value.drafts[0].editorial_gate_code = null;
+  app.evaluate('globalThis.acceptedLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.acceptedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial checks complete/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  value.drafts[0].identity_source_state = "source_ready";
+  app.evaluate('globalThis.confirmedLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.confirmedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /data-ready="rev-A" >Mark ready/);
+  assert.match(detail, /Contact address missing/);
+  assert.match(detail, /cannot be approved, scheduled, or sent/);
+  const ready = app.document.getElementById("draftReady");
+  assert.equal(ready.disabled, false);
+  const subject = app.document.getElementById("draftSubject");
+  subject.value = "Unsaved visible subject";
+  app.document.emit("input", subject);
+  assert.equal(ready.disabled, true);
+  app.document.emit("click", ready);
+  assert.equal(app.requests.length, 0, "unsaved visible text cannot ready the stored revision");
+});
+
+test("history selection disables readiness and the click guard refuses unsaved text", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    editorial_gate_code: null, identity_source_state: "source_ready",
+    contact_state: "valid", candidate_history: [{
+      subject: "Earlier saved subject", body: "Earlier saved body",
+      qa_state: "revision_created", is_current_parent: false,
+    }],
+  });
+  app.evaluate('state.campaign="A"; globalThis.historyLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.historyLoad;
+  const ready = app.document.getElementById("draftReady");
+  assert.equal(ready.disabled, false);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    historyIndex: "0",
+  }})});
+  assert.equal(app.document.getElementById("draftSubject").value, "Earlier saved subject");
+  assert.equal(ready.disabled, true);
+  assert.equal(app.requests.length, 0);
+
+  ready.disabled = false;
+  ready.dataset.ready = "rev-A";
+  app.document.emit("click", ready);
+  assert.equal(app.requests.length, 0, "defensive click guard blocks dirty stored revision");
+  assert.match(app.document.getElementById("draftError").textContent, /Save and complete review/);
+});
+
 test("control action sends only the selected opaque request and reports acknowledgement", async () => {
   const app = harness();
   app.reply(app.requests.shift(), snapshot(null));
@@ -441,8 +660,8 @@ test("draft readiness stays disabled while required review stages are unavailabl
   await app.context.loaded;
   const markup = app.document.getElementById("draftDetail").innerHTML;
   assert.match(markup, /data-ready="rev-A" disabled/);
-  assert.match(markup, /Waiting for humanizer and independent review/);
-  assert.match(markup, /Required review stages are not connected yet/);
+  assert.match(markup, /Editorial review has not started/);
+  assert.match(markup, /Run editorial review/);
   app.document.emit("click", {closest: () => ({disabled: true, dataset: {ready: "rev-A"}})});
   assert.equal(app.requests.length, 0);
   assert.equal(app.document.getElementById("draftBody").value, "Server body");

@@ -798,3 +798,29 @@ Reviewed the complete changed source and test paths, including maximum-input dig
 - `scripts/prospecting/tests/test_private_model_runtime.py`: `80D6B3CB6C4C0D2C4AB410E4024907956D52B6C35E59618ED32172DD100EBB1A`
 
 Private diagnostics continue to pin the preserved previously accepted b299 source explicitly; this acceptance does not silently retarget their imports. Native model execution and its storage boundary remain separate pending work.
+
+### Draft-first source and review integration: final independent review
+
+Independent verdict: READY for the bounded desktop-local draft and review slice. A selected person with an exact, fresh, verified local source can receive a canonical P8/P11 draft and enter the existing P16 review stages before human P13 confirmation or contact discovery. Explicit human acceptance of reviewed text remains separate from source confirmation, editorial readiness, and outbound authority. Confirmation of the unchanged exact source preserves the reviewed text, revision hash, and stage chain. Final readiness still requires exact P13 confirmation and the accepted stage chain; existing approval and execution contact gates remain in force.
+
+Reviewed the complete changed backend, consumer, HTTP, and bundled JavaScript paths. Concrete findings closed: normal campaign/template routing is preserved; email suppression includes unusable current-company contacts; accepted revisions resolve their stage projection through decision lineage; P13 selects its exact authentic role/name observations rather than an unrelated lexicographic name; HTTP decision replay uses static scope checks before the service replay branch; per-port session-cookie names prevent concurrent loopback servers from replacing each other's cookies; typing and programmatic history selection disable readiness, with a defensive dirty-text check at the ready-click boundary. Source expiry, changed role/scope, tampered snapshot bytes, and changed context still fail closed. The HTTP layer owns the human actor label and exposes no stage-artifact submission authority.
+
+Independent verification: **15 passed, 135 deselected in 7.80s** for changed renderer/P16 cases at `draftfirst-infra-0910-final-a`; **5 passed, 69 deselected in 3.30s** for focused genuine HTTP/service, replay, and two-server cookie cases at `draftfirst-infra-http-0910-a`; **14 bundled JavaScript tests passed in 132.9296ms** after the final history-selection repair. The backend cases include actual rendering followed by three synthetic stage adapters, local acceptance, and later P13 confirmation. Builder verification: backend **170 passed in 45.90s**, ReviewService **52 passed**, HTTP **22 passed**, and final bundled JavaScript **14 passed**. These runs overlap and are not additive coverage claims.
+
+Final reviewed SHA-256 bindings:
+
+| File | SHA-256 |
+| --- | --- |
+| `scripts/prospecting/affinity/evidence_bridge.py` | `FACB35DF765F889B7310DE477D093C426063C06187458766589CC88B00B66E66` |
+| `scripts/prospecting/affinity/templates_v2.py` | `A0CEEE0C77EBCCE8BE58C0269C9B20B5D445781561E3D05DBAB33B37FDD207E9` |
+| `scripts/prospecting/pipeline_stage_service.py` | `B085039DBC570E737B78AA06D34DC47120964C0D36442FD4C717772DA087065E` |
+| `scripts/prospecting/review_service.py` | `04DB7E3F177A7D220D7DA854129487579A358DCE4272F78EDA7D2270F7873DE3` |
+| `scripts/prospecting/review_app.py` | `14936600F704CFBE394B0BB65EEB0CEC2A58C41BA371349BA7685034C528ADA5` |
+| `scripts/prospecting/review_app.html` | `625842E90CA380FB0A78CE15A707EF46D2300C4F3E3376F6CA5476F19E9C6F2D` |
+| `scripts/prospecting/tests/test_affinity_templates_v2.py` | `48D1CE5CEB683C15FCE9823AAD5982B307082D6FF7AEA3F61DB947D2449F3636` |
+| `scripts/prospecting/tests/test_pipeline_stage_service.py` | `030FE35B08F4D1966177CB8C4C8046F541EBD0FAF8CC647DF960DE27E96795B2` |
+| `scripts/prospecting/tests/test_review_service.py` | `7EF06B5A9FCCE8B357EE07E2CA6F67F3F79043F9277447A73B4F91C6E2BD9025` |
+| `scripts/prospecting/tests/test_review_app.py` | `88A1A2E46A0A8129180AA5B08DCFFBFA6DDDBF2E4AF126A0B4449C5F7EF487C9` |
+| `scripts/prospecting/tests/review_app_state.test.js` | `4473E89B88FBE56FC574C1BC98F77F06D2B2BE50799EC2E06D6E6C8BEF98DFBA` |
+
+Limits: these are source, local HTTP, and synthetic stage-adapter results, not successful live Humanizer/fact-check/critic execution. The live adapter remains deferred after the separately observed subscription-route HTTP 401; no new authentication operation or model retry occurred in this review. Browser verification belongs to root and is not claimed here. P17 acquisition/funding work is outside this acceptance. Human rewrite/reset authority after an exhausted repair lineage remains a separate follow-up; no automatic reset or source attestation was introduced.
