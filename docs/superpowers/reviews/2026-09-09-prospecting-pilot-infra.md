@@ -698,3 +698,30 @@ home. No real records, credentials, external provider, VM, browser, or remote-co
 session were used. Review scratch remains for root-owned collection and cleanup.
 
 Post-review test-only addendum: the non-synthetic input sentinel was changed to plain text for the repository PII guard; the refusal, hash and repr assertions are unchanged, the affected test passed (1 passed in 0.21s), and independent review accepts the change without a broader rerun. The final test-file SHA-256 is `17572F7044C812E9EEC94F73D0FBF254FB5B2481A1946B34D9150804F052487D`; runtime source and spec are unchanged.
+
+
+## Independent private intake CLI acceptance
+
+Independent verdict: READY for the private-file intake boundary and draft learned
+intake skill. The CLI accepts an existing approved private SQLite store and bounded
+strict JSON beneath that store parent's snapshots tree. The review verified exact
+source/skill bindings, fixed-code errors with no raw brief output, fresh-process
+idempotent replay, shared-private versus nested-checkout rejection, linked-input
+refusal, duplicate/nonfinite/deep JSON handling, and agreement between the CLI and
+local HTTP projection from the same P15 store. Independent focused tests: 17 passed
+in 9.34s. The skill preserves unknown scopes and original user requirements, and
+honestly reports input_pending or awaiting_research_adapter rather than completed
+research or drafts.
+
+The worker then replaced email-shaped test canaries with a plain sentinel and
+reported 17 tests passed in 15.12s; the subsequent test change only wrapped long lines.
+Independent source inspection accepts these test-only changes without another broad
+rerun. Final SHA-256 bindings:
+- `pipeline_cli.py`: `CEA9A62D7C8B860E8AB6475E9C8A4F27F8426D11395A9BA392632BCD14012886`
+- `test_pipeline_cli.py`: `8136C7E09D264EEC057BB124C1B1D26EEE0094845007EBF87E08DF8041A95CC9`
+- `skills/learned/prospecting-intake/SKILL.md`: `E286ED68DD4BAED9BBE64A15F7081A632B15F59D7ED5981A65A0846C2F910D6E`
+
+The intermediate post-sentinel test hash was `1ED65EFA04F5CEF85AA7FA59F1016F787F53734EA600307CF7BE4D287E59356B`;
+it is superseded by the final formatting-only hash above. This slice saves intake
+only; no live research, humanization, critique, sending, provider call, browser client,
+or VM was exercised. The learned skill remains a sandboxed draft pending promotion.
