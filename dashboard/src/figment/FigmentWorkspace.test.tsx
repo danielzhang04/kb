@@ -5,6 +5,7 @@ import { FigmentWorkspace } from './FigmentWorkspace';
 
 const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
+const recordedBriefs = (hypothesis = 'A recorded planning hypothesis.') => ({ status: 'recorded' as const, recordKind: 'planning-snapshot' as const, currentSourceRevalidated: false as const, items: [{ briefId: 'summer-test', briefDate: '2026-09-08', creatorId: 'creator-a', surface: 'carousel' as const, templateId: 'CT-2', requiredAssetCount: 2, requiredAssetSlots: [{ role: 'hook', kind: 'persona' as const }, { role: 'payoff', kind: 'persona' as const }], hypothesis, intendedMetric: 'saves per reached account', sourceCount: 1, sourceDates: ['2026-09-07'], observedMetrics: null, renderAs: 'text' as const }] });
 
 afterEach(cleanup);
 
@@ -236,6 +237,36 @@ describe('FigmentWorkspace', () => {
       expect(fetchImpl).toHaveBeenCalledWith('/api/figment/generated-input-assets/g01-e01-shoulders-up-v1.png?sha256=' + 'c'.repeat(64), expect.objectContaining({ headers: { authorization: 'Bearer session' } }));
       view.unmount(); expect(URL.revokeObjectURL).toHaveBeenCalledWith('blob:generated');
     } finally { Object.defineProperty(URL, 'createObjectURL', { configurable: true, value: originalCreate }); Object.defineProperty(URL, 'revokeObjectURL', { configurable: true, value: originalRevoke }); }
+  });
+
+  it('keeps an older payload without content briefs compatible', async () => {
+    const fetchImpl = vi.fn(() => response(projection)) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('chapter.md')).toBeTruthy();
+    expect(screen.queryByRole('heading', { name: 'Recorded content briefs' })).toBeNull();
+  });
+
+  it('renders a recorded brief as inert text even when research artifacts are unavailable', async () => {
+    const malicious = '<img src=x onerror="window.pwned=true">';
+    const fetchImpl = vi.fn(() => response({ ...projection, research: { available: false, artifacts: [], truncated: false }, contentBriefs: recordedBriefs(malicious) })) as unknown as typeof fetch;
+    const rendered = render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByRole('heading', { name: 'Recorded content briefs' })).toBeTruthy();
+    expect(screen.getByText('2026-09-08')).toBeTruthy();
+    expect(screen.getByText(malicious)).toBeTruthy();
+    expect(rendered.container.querySelector('img')).toBeNull();
+    expect(rendered.container.innerHTML).toContain('&lt;img src=x onerror="window.pwned=true"&gt;');
+    expect(screen.getByText('Research records are unavailable.')).toBeTruthy();
+    expect(screen.getByText('Not recorded')).toBeTruthy();
+  });
+
+  it('keeps research artifacts visible for empty and unavailable brief inventories', async () => {
+    for (const contentBriefs of [{ status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] }, { status: 'unavailable', reason: 'evidence-unavailable', items: [] }]) {
+      const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
+      render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+      expect(screen.getByText('chapter.md')).toBeTruthy();
+      expect(screen.getByText(contentBriefs.status === 'empty' ? 'No compiled content briefs are recorded.' : 'Content brief planning records are unavailable.')).toBeTruthy();
+      cleanup();
+    }
   });
 
   it('shows a distinguishable record path and reads only listed research artifacts through the KB reader', async () => {

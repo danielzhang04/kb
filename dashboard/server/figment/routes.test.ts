@@ -18,6 +18,7 @@ function png(salt = 0, width = 4, height = 3): Buffer {
 }
 function jpeg(width = 4, height = 3): Buffer { return Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x04, 0, 0, 0xff, 0xc0, 0x00, 0x0b, 8, height >> 8, height & 255, width >> 8, width & 255, 1, 1, 0x11, 0, 0xff, 0xd9]); }
 async function json(path: string, value: unknown): Promise<void> { await mkdir(join(path, '..'), { recursive: true }); await writeFile(path, JSON.stringify(value), 'utf8'); }
+function contentBrief(): Record<string, unknown> { return { schema: 'figment/content-brief@1', brief_date: '2026-09-10', creator: { id: 'creator-a', persona: { path: 'personas/creator-a/persona.yaml', sha256: 'a'.repeat(64) }, canonical_reference: { declared_path: 'anchors/g01.jpg', path: 'personas/creator-a/anchors/g01.jpg', sha256: 'b'.repeat(64) } }, content: { surface: 'reel', template_id: 'RT-1', template_sha256: 'c'.repeat(64), taxonomy_sha256: 'd'.repeat(64), required_asset_slots: [{ index: 1, role: 'motion', taxonomy_type: 'G', kind: 'persona' }] }, sources: [{ citation: 'https://example.test/source', observed_date: '2026-09-09' }], hypothesis: 'A planning hypothesis.', intended_metric: 'completion rate', observed_metrics: null }; }
 
 async function fixture(): Promise<{ repo: string; diagnostic: string; subject: string; accepted: string }> {
   const repo = await mkdtemp(join(tmpdir(), 'figment-hub-'));
@@ -105,6 +106,16 @@ describe('Figment read projection', () => {
     const paths = await fixture();
     expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, undefined, undefined, null).profileGallery).toEqual({ status: 'not-configured' });
     expect(buildFigmentProjection(paths.repo, undefined, undefined, undefined, undefined, undefined, paths.diagnostic).profileGallery).toEqual({ status: 'unavailable', reason: 'evidence-unavailable' });
+  });
+
+  it('adds the fixed content-brief inventory to the existing read response', async () => {
+    const paths = await fixture();
+    await json(join(paths.repo, 'orgs', 'figment', 'content', 'briefs', 'summer-test', 'brief.json'), contentBrief());
+    const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo }); await app.ready();
+    const response = await app.inject({ method: 'GET', url: '/api/figment' });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().contentBriefs).toMatchObject({ status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [{ briefId: 'summer-test', creatorId: 'creator-a', surface: 'reel', templateId: 'RT-1', observedMetrics: null, renderAs: 'text' }] });
+    await app.close();
   });
 
   it('keeps completed-run roots optional and fails closed when their configured shape is malformed', async () => {
