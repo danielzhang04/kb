@@ -114,7 +114,7 @@ describe('Figment read projection', () => {
     const app = Fastify(); registerFigmentRead(app, { repoRoot: paths.repo }); await app.ready();
     const response = await app.inject({ method: 'GET', url: '/api/figment' });
     expect(response.statusCode).toBe(200);
-    expect(response.json().contentBriefs).toMatchObject({ status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [{ briefId: 'summer-test', creatorId: 'creator-a', surface: 'reel', templateId: 'RT-1', observedMetrics: null, renderAs: 'text' }] });
+    expect(response.json().contentBriefs).toMatchObject({ status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [{ briefId: 'summer-test', creatorId: 'creator-a', surface: 'reel', templateId: 'RT-1', observedMetrics: null, renderAs: 'text', assignment: 'missing' }] });
     await app.close();
   });
 

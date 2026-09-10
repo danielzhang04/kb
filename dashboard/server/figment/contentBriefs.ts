@@ -1,4 +1,5 @@
 /** Fixed-repository, read-only projection of offline Figment content briefs. */
+import { createHash } from 'node:crypto';
 import { closeSync, fstatSync, lstatSync, openSync, opendirSync, readSync, realpathSync } from 'node:fs';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -23,6 +24,7 @@ export interface ContentBriefItem {
   sourceDates: string[];
   observedMetrics: null;
   renderAs: 'text';
+  assignment: 'missing' | 'recorded-snapshot' | 'unavailable';
 }
 export type ContentBriefsProjection =
   | { status: 'not-configured'; items: [] }
@@ -100,7 +102,8 @@ function snapshotRef(value: unknown): boolean {
   if (!object(value) || typeof value.path !== 'string' || value.path.length < 1 || value.path.length > 512 || !plain(value.path) || typeof value.sha256 !== 'string' || !SHA256.test(value.sha256)) return false;
   return !isAbsolute(value.path) && !value.path.includes('\\') && value.path.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 }
-function contentBrief(value: unknown, briefId: string): ContentBriefItem | null {
+interface ParsedBrief { item: Omit<ContentBriefItem, 'assignment'>; slots: Array<{ index: number; role: string; taxonomyType: string; kind: 'persona' | 'nonpersona' }>; creatorId: string; }
+function contentBrief(value: unknown, briefId: string): ParsedBrief | null {
   if (!object(value) || hasForbiddenKey(value) || value.schema !== 'figment/content-brief@1' || !Object.prototype.hasOwnProperty.call(value, 'observed_metrics') || value.observed_metrics !== null) return null;
   const briefDate = date(value.brief_date), creator = object(value.creator) ? value.creator : null, content = object(value.content) ? value.content : null;
   const creatorId = creator === null ? null : text(creator.id, 80), hypothesis = text(value.hypothesis), intendedMetric = text(value.intended_metric);
@@ -108,11 +111,11 @@ function contentBrief(value: unknown, briefId: string): ContentBriefItem | null 
   const surface = content.surface, templateId = text(content.template_id, 16);
   if ((surface !== 'carousel' && surface !== 'reel') || templateId === null || (surface === 'carousel' ? !/^CT-[1-7]$/.test(templateId) : !/^RT-[1-6]$/.test(templateId)) || typeof content.template_sha256 !== 'string' || !SHA256.test(content.template_sha256) || typeof content.taxonomy_sha256 !== 'string' || !SHA256.test(content.taxonomy_sha256)) return null;
   if (!Array.isArray(content.required_asset_slots) || content.required_asset_slots.length < 1 || content.required_asset_slots.length > MAX_SLOTS) return null;
-  const slots: ContentBriefItem['requiredAssetSlots'] = [];
+  const slots: ParsedBrief['slots'] = [];
   for (const [index, row] of content.required_asset_slots.entries()) {
     if (!object(row) || row.index !== index + 1 || (row.kind !== 'persona' && row.kind !== 'nonpersona') || typeof row.taxonomy_type !== 'string' || !TAXONOMY_TYPE.test(row.taxonomy_type)) return null;
     const role = text(row.role, 80); if (role === null) return null;
-    slots.push({ role, kind: row.kind });
+    slots.push({ index: index + 1, role, taxonomyType: row.taxonomy_type, kind: row.kind });
   }
   if (!Array.isArray(value.sources) || value.sources.length < 1 || value.sources.length > MAX_SOURCES) return null;
   const sourceDates: string[] = [];
@@ -122,7 +125,29 @@ function contentBrief(value: unknown, briefId: string): ContentBriefItem | null 
     if (citation === null || !citation.startsWith('https://') || observedDate === null) return null;
     sourceDates.push(observedDate);
   }
-  return { briefId, briefDate, creatorId, surface, templateId, requiredAssetCount: slots.length, requiredAssetSlots: slots, hypothesis, intendedMetric, sourceCount: sourceDates.length, sourceDates, observedMetrics: null, renderAs: 'text' };
+  return { item: { briefId, briefDate, creatorId, surface, templateId, requiredAssetCount: slots.length, requiredAssetSlots: slots.map(({ role, kind }) => ({ role, kind })), hypothesis, intendedMetric, sourceCount: sourceDates.length, sourceDates, observedMetrics: null, renderAs: 'text' }, slots, creatorId };
+}
+function keys(value: Record<string, unknown>, expected: string[]): boolean { const actual = Object.keys(value).sort(), wanted = [...expected].sort(); return actual.length === wanted.length && actual.every((key, index) => key === wanted[index]); }
+function bytes(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 64 * 1024 * 1024; }
+function timestamp(value: unknown): boolean { return typeof value === 'string' && value.length > 0 && value.length <= 64 && plain(value) && /(?:Z|[+-]\d{2}:\d{2})$/.test(value) && Number.isFinite(Date.parse(value)); }
+function asset(value: unknown): boolean {
+  if (!object(value) || !keys(value, ['kind', 'image_id', 'path', 'sha256', 'bytes', 'source_plan', 'approval_lineage', 'approved_list'])) return false;
+  return value.kind === 'approved-gen-still' && text(value.image_id, 256) !== null && snapshotRef({ path: value.path, sha256: value.sha256 }) && bytes(value.bytes) && snapshotRef(value.source_plan) && snapshotRef(value.approval_lineage) && snapshotRef(value.approved_list);
+}
+function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | null {
+  if (!object(value) || !keys(value, ['schema', 'not_promotable', 'provenance', 'brief', 'request', 'rulings', 'creator', 'assignments'])) return null;
+  const briefRef = object(value.brief) ? value.brief : null;
+  if (value.schema !== 'figment/content-asset-assignment@1' || value.not_promotable !== true || text(value.provenance) === null || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
+  if (briefRef.sha256 !== briefSha256) return null;
+  const imageIds = new Set<string>();
+  for (const [index, row] of value.assignments.entries()) {
+    const expected = brief.slots[index];
+    const recordedAsset = object(row) && object(row.asset) ? row.asset : null;
+    const imageId = recordedAsset === null ? null : text(recordedAsset.image_id, 256);
+    if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || expected.kind !== 'persona' || expected.taxonomyType === 'G' || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !asset(row.asset) || imageId === null || imageIds.has(imageId)) return null;
+    imageIds.add(imageId);
+  }
+  return 'recorded-snapshot';
 }
 function entries(root: Root): import('node:fs').Dirent[] | null {
   try {
@@ -155,9 +180,19 @@ export function collectContentBriefs(repoRoot?: string | null): ContentBriefsPro
     try {
       const source = raw.toString('utf8');
       if (!shallow(source)) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
-      const item = contentBrief(JSON.parse(source) as unknown, entry.name);
-      if (item === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
-      items.push(item);
+      const parsed = contentBrief(JSON.parse(source) as unknown, entry.name);
+      if (parsed === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+      const assignmentPath = file(folder, 'assignment.json');
+      let assignmentState: ContentBriefItem['assignment'];
+      if (assignmentPath === null) assignmentState = absent(folder, 'assignment.json') ? 'missing' : 'unavailable';
+      else {
+        const assignmentRaw = bounded(assignmentPath);
+        try {
+          const assignmentSource = assignmentRaw?.toString('utf8');
+          assignmentState = assignmentSource !== undefined && shallow(assignmentSource) && assignment(JSON.parse(assignmentSource) as unknown, parsed, createHash('sha256').update(raw).digest('hex')) !== null ? 'recorded-snapshot' : 'unavailable';
+        } catch { assignmentState = 'unavailable'; }
+      }
+      items.push({ ...parsed.item, assignment: assignmentState });
     } catch { return { status: 'unavailable', reason: 'evidence-unavailable', items: [] }; }
   }
   if (items.length === 0) return { status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] };

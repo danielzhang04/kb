@@ -223,6 +223,8 @@ After current approved `gen` stills exist, the offline content adapter joins the
 
 The [slot-fit schema](2026-09-10-content-asset-binding-plan.md) requires one attributed `fit` ruling for every exact slot and a distinct approved image ID. Image approval alone does not establish that the image fits a hook or payoff. This version supports persona stills only; non-persona and motion/video slots have no supported authority. It writes a non-promotable planning assignment, not an image approval, generated batch or publication record.
 
+For hub visibility, write `assignment.json` beside its `brief.json` under `orgs/figment/content/briefs/<brief-folder>/`. The Research tab shows missing, recorded planning snapshot, or unavailable assignment evidence for each brief. It checks the brief binding and assignment shape; current image approval still requires the existing authority.
+
 The current creator-001 run has no selected checkpoint or approved still set, so it cannot produce a real assignment yet. Do not substitute its rejected tester images. Implementation testing uses an isolated real producer fixture; no live quality acceptance follows from that test. Root verified the isolated CLI's `--help` command on September 10; final technical review is recorded separately.
 
 ## Command-shape evidence

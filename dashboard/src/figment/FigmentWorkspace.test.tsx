@@ -259,6 +259,22 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Not recorded')).toBeTruthy();
   });
 
+  it('renders assignment state as inert planning evidence and accepts older brief payloads', async () => {
+    const baseAssigned = recordedBriefs(); const assigned = { ...baseAssigned, items: baseAssigned.items.map((item) => ({ ...item, assignment: 'recorded-snapshot' as const })) };
+    const fetchImpl = vi.fn(() => response({ ...projection, research: { available: false, artifacts: [], truncated: false }, contentBriefs: assigned })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('Recorded planning snapshot')).toBeTruthy();
+    cleanup();
+    const oldFetch = vi.fn(() => response({ ...projection, research: { available: false, artifacts: [], truncated: false }, contentBriefs: recordedBriefs() })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={oldFetch} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('No recorded assignment')).toBeTruthy();
+    cleanup();
+    const baseUnavailable = recordedBriefs(); const unavailable = { ...baseUnavailable, items: baseUnavailable.items.map((item) => ({ ...item, assignment: 'unavailable' as const })) };
+    const unavailableFetch = vi.fn(() => response({ ...projection, research: { available: false, artifacts: [], truncated: false }, contentBriefs: unavailable })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={unavailableFetch} />); await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('Assignment evidence unavailable')).toBeTruthy();
+  });
+
   it('keeps research artifacts visible for empty and unavailable brief inventories', async () => {
     for (const contentBriefs of [{ status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] }, { status: 'unavailable', reason: 'evidence-unavailable', items: [] }]) {
       const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
