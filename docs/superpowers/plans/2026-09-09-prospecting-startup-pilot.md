@@ -19,52 +19,25 @@ restart/replay safety. Synthetic tests and a polished dashboard alone are insuff
 
 ### Current state and ordered work
 
-- [x] Durable P15 intake via shared service, private-file CLI and authenticated dashboard save/reload.
-- [x] Evidence-bound neutral/current-role email templates and a sandboxed reusable intake skill.
-- [x] Existing Chrome DevTools connection reused centrally; current desktop/narrow visual checks.
-- [x] Phase B: P16 exact-revision stage controller and shared approval/scheduler/executor readers.
-  Independent technical review accepted the bounded saved-revision scope. Final core29focused,
-  root31affected and independent35actual-chain checks passed. The preceding combined run had
-  259passes and one launcher exclusion; that launcher separately passed with process cleanup.
-  Counts overlap. Known binding omission/alias, stale-result and lineage findings are repaired.
-- [ ] Phase C: connect actual bounded skill execution. Accepted local74a0c7fc contains the
-  independently reviewed pinned-file stdin/deadline repair; builder/root24 focused tests passed.
-  Startup history backfill was isolated and a CLI-initialized empty-home cache proved with synthetic
-  inputs. Two subsequent genuine synthetic calls reached the provider and failed; the latest
-  classified HTTP401. Desktop login presence does not establish usable authorization. User-controlled
-  CLI reauthentication is pending; do not run login/logout, retry models, or switch paid providers.
-  Owned attempts were deleted. No successful Humanizer output or production review receipt exists.
-- [ ] Phase D: connect research, funding qualification and deterministic two-contact ranking. Reuse
-  P15 intake and existing source/evidence/affinity services. A source-only VM design review completed
-  and was collected/cleaned with exact resource absence verified. P17 now implements one atomic
-  private import/classification service, three additive immutable tables and a private-file CLI.
-  Mechanical matches remain provisional and await genuine qualification factcheck. Candidate search
-  budget is separate from the desired company count; no inferred email or new scoring engine.
-  Existing Chrome proved public discovery and investor-primary capture to desktop-private files.
-  P17 is independently READY for provisional import/classification and private-file CLI only.
-  Final service/CLI55 and independent26 checks passed; service/migration30 passed. Root preceding
-  P15/P17/CLI/migration75 passed before the final same-round corroboration repair. Exact replay,
-  P15 workflow integrity, timestamp ordering, hostname syntax and foreign-file rollback were repaired.
-  No qualified-company or person/reviewer receipt exists. Next, reconcile a thin exact-company/person
-  import and existing-affinity bridge with the source-only VM design before implementing it.
-- [ ] Phase E: finish the feedback loop. The first-review-at-drafts UI/backend slice is independently
-  READY: backend15, HTTP/service5 and actual bundledJS14 checks passed. Root's five-suite run passed244
-  and bundledJS14 passed; counts overlap. An additive untracked P17 migration appeared during the
-  root combined run; preceding independently frozen checks remain the baseline evidence.
-  Actual Chrome loaded the exact reviewed script and displayed the source, missing-contact and
-  honest adapter-waiting states; readiness disabled. Desktop/narrow captures were visually reviewed.
-  Narrow client/scroll widths both417px; no confirmation or readiness action was performed.
-  Sources appear beside provisional
-  email and exact agent suggestion; preserve separate human source/accept/ready decisions. Genuine
-  source proof permits drafting and local text acceptance before human source confirmation;
-  readiness/outbound still require confirmation. Same-source confirmation preserves text reviews.
-  Saved-revision core alone does not satisfy this. A parked exhausted lineage currently has no human
-  reset path; an explicit authenticated new-work decision needs a bounded policy and tests.
-- [ ] Phase F: run the real pilot through the reusable intake and stages, inspect desktop/narrow UI
-  in the already-open Chrome, exercise interrupted/restarted work and changed inputs, reconcile
-  independent code/security findings, clean owned resources, and leave the canonical handoff.
-- [ ] Consolidate the completed source into the existing session PR when the concrete publication
-  payload is approved. Prior auto-review publication hold remains; no new PR per small change.
+- [x] Phase A: durable P15 intake, source-bound templates and private CLI/learned intake skill.
+- [x] Phase B: P16 durable editorial controller and shared review/approval/scheduler/executor
+  gates; sourced draft-first local review. Human confirmation remains required for readiness.
+- [ ] Phase C: actual bounded skill execution. Shared source-disabled P16 runtime accepted;
+  qualification extension in progress. Native HTTP401 awaits user-controlled recovery. No
+  login/logout, auth-store access, blind model retries or paid fallback. Synthetic transport
+  tests do not establish genuine full Humanizer output or real-data runtime acceptance.
+- [ ] Phase D: research qualification, exact-person ranking and draft materialization. P17/P18
+  capture and P19 qualification controller accepted. P20 bounded role ordering is in progress;
+  materialization follows separately. Three companies/seven candidates imported provisionally.
+- [ ] Phase E: complete actual first sourced-email feedback loop and authenticated new-work
+  recovery for exhausted unchanged lineages. Preserve separate source, text acceptance and
+  readiness decisions; exact source/sender/intake changes invalidate dependent reviews.
+- [ ] Phase F: finish real non-sending pilot, genuine model skill chain, interrupted/restarted
+  work, changed-input and desktop/narrow UI checks; reconcile independent findings and cleanup.
+- [ ] Consolidate into existing session PR181 only at concrete publication approval gate.
+  Prior auto-review source/coordination publication hold remains; no new PR per change.
+
+The dated resumed checkpoint below records current acceptance evidence and ownership.
 
 ### Pilot assumptions and human decisions
 
@@ -113,31 +86,41 @@ known structure; semantic reviewers remain responsible for novel prose claims an
 
 ## Resumed execution checkpoint - 2026-09-10
 
-Accepted local HEAD32fdce0f: P18 source-bound person imports and P17 funding dashboard,
-private CLI with opaque research scope, and truthful captured-funding status/source guidance.
-Root banner25 checks and independent3 checks passed; staged PII/mirror/diff guards passed.
-Previous P18 combined170 and final migration24 checks overlap and are not additive coverage.
-Same existing PR; source/coordination publication remains held, with no push or new PR.
+Accepted local HEAD e19ce20f: P15 intake, P16 source-bound editorial/gates, P17 funding,
+P18 exact-person capture, source-disabled private runtime4e670a5e, fullwidth evidence
+UI35dde771, intake enum033719c7 and P19 qualification controller e19ce20f. Same existing
+PR181; publication remains held. Source-disabled runtime is accepted code, not live output.
 
-- [x] Import the first private funding batch and verify exact replay; repair scope granularity
-  via source-supported complete replacement. One provisional match, seven-company shortfall.
-- [x] Import four person candidates and verify replay. Two imported after a complete source replacement, two unresolved compact
-  identity excerpts; no qualification or ranking. Original captures and exact replay are preserved.
-- [x] Capture stronger individual sources and replay the complete replacement person batch.
-  One title discrepancy remains explicit; two additional sources are research-only evidence.
-- [ ] Research the remaining requested companies. Do not weaken literal source proof to fill quota.
-- [ ] Finish and independently review the gated P16 runtime adapter. Synthetic installed-CLI
-  loopback cache prime passes; no live provider call or production acceptance is claimed.
-  Shared desktop HTTP401 remains pending user-controlled reauthentication; no credential changes.
-- [ ] Build exact-scope qualification and employment-bound ranking after bounded design review.
-  Do not reuse broad company/person-employment joins unchanged; fresh capture alone does not
-  establish current employment when the underlying announcement is old.
-- [ ] Complete actual Humanizer/factcheck/critic execution, first sourced-email review, feedback
-  recovery, remaining desktop/narrow visual verification, and interrupted/restarted workflow.
+- [x] Import complete three-company funding replacement and verify exact replay: three
+  provisional matches, five-company shortfall. Current issuer/participating investor or
+  independent reports and bounded latest-round search are captured privately.
+- [x] Import complete seven-person replacement and replay: five imported, two source_unknown,
+  three companies researched, per-company shortfall two. Prior contradictory/unknown evidence
+  retained. No qualification, rank, draft or human approval produced by these imports.
+- [x] Accept P19 source-bound controller after review repairs. Builder/root44 focused checks
+  passed (30 deselected,19.36s/19.03s); independent24passed18.09s. Counts overlap. Covers
+  uncertainty, exception privacy, malformed output terminal state, bounded replay/expiry,
+  current sources/history and semantic-input retry bounds.
+- [x] Verify accepted UI in existing Chrome: saved evidence fullwidth, creation hidden for
+  selected campaign, New restores creation; desktop/narrow screenshots visually reviewed.
+  Root/independent18JS passed. Narrow client/scroll417px, no observed horizontal overflow.
+- [ ] Extend shared source-disabled runtime to qualification using actual learned skill,
+  bound schema/prompt and metadata-only CLI; independently review integration. Flow owns.
+- [ ] Build exact supported-scope P19 accessor and P20 deterministic role ordering only.
+  Intake owns; independent design review accepted current-proof/original-employment-pointer
+  separation and deduplicating exact people before top N. No broad legacy fill/score joins,
+  invented P8 approvals, private-career affinity or optimality claims. P20 WIP means real
+  store operations pause until migration accepted.
+- [ ] Research remaining companies and third-company people; preserve shortfalls honestly.
+- [ ] Connect exact selected-person draft lineage/materialization, source invalidation and
+  authenticated human new-work recovery after semantic repair exhaustion.
+- [ ] After user-controlled native CLI HTTP401 recovery, run genuine bounded synthetic
+  full-Humanizer/qualification/stage acceptance before source pin and real model inputs.
+- [ ] Finish real pilot emails, feedback/restart/UI verification, final review and owned cleanup.
 
-Keep-awake remains active; no VM worker is active. Canonical coordination handoff owns exact
-resource IDs, private aggregate batch IDs and current runtime/permission state. These are real
-partial pilot imports, not an end-to-end result or human-approved campaign.
+Keep-awake54884 remains active until04:30EDT Sep11; no VM job active. One shared Chrome
+connection handles root browser work. Canonical handoff owns current resource/private batch
+IDs and limits. These are real partial imports, not a completed or approved campaign.
 
 ## Goal and acceptance
 
