@@ -977,3 +977,22 @@ Independent final adapter plus qualification-CLI verification: **25 passed in 4.
 - `skills/learned/prospecting-qualification-factcheck/SKILL.md`: `F3F03E72FFFC3C2B63FAD937D2A261B1904D8E461DBBE3A31D3F00A182AF10A7`
 
 `ACCEPTED_RUNTIME_BUNDLE_SHA256` remains None. No genuine qualification model result, authenticated canary, full-stage quality acceptance or real-data permission is established. The previously documented bounded owned-sink scan limits remain unchanged; no universal no-log/OS/provider-retention claim is made. No live provider, authentication, browser, VM or real-store operation was performed by this reviewer.
+
+
+### P20 exact-scope deterministic role ordering: independent review
+
+Independent verdict: READY for the five-file supported-scope accessor and immutable ranking slice. The accessor first validates current P15/P17/P18/P19 context and source bytes, rederives artifact findings against the current policy, and compares the result to stored derived outcomes. It exposes only exact candidate/person/employment/proof bindings needed for ranking. A replacement P18 capture may reuse an existing employment row while carrying a new proof observation; employment's original source pointer remains separate and unchanged.
+
+Ranking groups by exact person ID within the exact company, preserving all grouped candidate IDs and a deterministic representative. It selects up to the requested count from machine-supported candidates with requested-family matches and retains deficits and nonselection reasons. The versioned policy recognizes COO/Chief Operating Officer, corporate strategy, strategy and ops variants, and chief of staff; function-specific generic operations exclusions do not become a blanket title-wide ban. Ordering is match tier then P18 ordinal/candidate ID. It is explicitly role-policy ordering with sender background unscored, not optimality or personal career affinity. No P8 fit spec, person_affinity, fill, contact or draft writes are introduced.
+
+The P19 policy-v2 correction now treats broader/narrower title detail as unknown with title_granularity_mismatch rather than automatically calling current employment contradicted. Exact unsupported title detail still cannot pass current-role support. Explicit contradictory continuity remains contradicted. This semantic version change is checked by current projections; it does not silently reinterpret an old accepted policy receipt as current.
+
+Independent qualification/ranking suite: **43 passed in 21.89s** at `p20-infra-final-a`. Additional real-helper synthetic proof at `p20-infra-replay-a` completed P18 replacement B, genuine controller-generated synthetic P19 B artifact and P20 B ranking, then verified exact old A request replay, fresh latest B projection and expired-source refusal. The probe completed in **1.63s**. Existing focused cases cover parked qualification, exact employment/current-proof separation, unrelated employment exclusion, exact-person grouping, role phrases/exclusions, deficits, immutable provenance, derived-artifact tamper detection and aggregate-only safe output. Builder qualification/ranking/store schema selection: **63 passed, 30 deselected in 30.17s**; these overlap the independent tests.
+
+- `scripts/prospecting/schema_p20.sql`: `C59FECF62E879AD451E8A4C81A275632756A00644EBD5451E7B9F533FA7C2FDA`
+- `scripts/prospecting/ranking_service.py`: `F13D21EA7D5FC2B491C43952292EE11F3C0026203E4F42F91D87CD3555542C4E`
+- `scripts/prospecting/qualification_service.py`: `AB31A53EA48A17C9CFB16088B802B510E8FB5B93087A14F204B74872290458F8`
+- `scripts/prospecting/tests/test_qualification_service.py`: `2F4F5BE6640E6D5D4B9F70251A6B77D7EA7A84724618C320519FDE5725066609`
+- `scripts/prospecting/tests/test_ranking_service.py`: `E75C149338216C5E7E8EC85089073F2D35947A47616C02DBC4865652C0F79A31`
+
+This remains a source/synthetic acceptance, not live machine qualification or an operational end-to-end campaign. A supported qualification start/scope CLI and the exact ranking-to-draft bridge remain separate integration work; no caller-created pass flags or fake P8 approval are acceptable substitutes. Repeated full-source reads should be measured before a bounded within-operation reuse optimization; no generic cache or weaker freshness checks are recommended. No real records/stores, authentication, provider, browser or VM operations were used by the reviewer. P21 human-edit restart remains design-only and outside this acceptance.

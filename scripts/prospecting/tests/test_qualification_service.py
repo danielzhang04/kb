@@ -211,6 +211,34 @@ def test_current_profile_needs_no_publication_date_when_exact_current_context_is
     assert result.person_counts["current_role_supported"] == 1
 
 
+@pytest.mark.parametrize("granularity", ("narrower", "broader"))
+def test_current_but_nonexact_title_is_unknown_not_contradicted(
+    tmp_path: Path, granularity: str,
+) -> None:
+    connection, started, funding, _selected, people = _ready_store(tmp_path)
+
+    def payload(job):
+        value = _supported_payload(job)
+        value["people"][0]["title_granularity"] = granularity
+        value["people"][0]["observed_title"] = (
+            "Operations" if granularity == "broader" else "Operations Planning"
+        )
+        return value
+
+    service = QualificationService(
+        connection, adapters={"qualification_factcheck": _Adapter(payload)}, now=lambda: NOW,
+    )
+    service.start_or_resume(_qualification_request(started, funding, people))
+    item_id = service.get_projection(started.run_id).items[0].item_id
+    result = service.run_next(item_id, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+    assert result.person_counts["unknown"] == 1
+    assert result.person_counts["contradicted"] == 0
+    derived = json.loads(connection.execute(
+        "SELECT derived_json FROM prospecting_qualification_artifact WHERE item_id=?", (item_id,),
+    ).fetchone()[0])
+    assert derived["people"][0]["uncertainty_codes"] == ["title_granularity_mismatch"]
+
+
 def test_relevant_predecessor_source_is_bound_and_potential_identity_is_explicit(tmp_path: Path) -> None:
     connection = open_store(tmp_path / "store.sqlite")
     started, funding, selected = _seed(connection, tmp_path)

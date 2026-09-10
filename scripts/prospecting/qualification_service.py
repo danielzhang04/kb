@@ -38,7 +38,7 @@ from scripts.prospecting.pipeline_stage_service import (
 from scripts.prospecting.source_capture import SourceCaptureError, read_owned
 
 
-CONTROLLER_POLICY_VERSION = "source-bound-qualification-policy-v1"
+CONTROLLER_POLICY_VERSION = "source-bound-qualification-policy-v2"
 STAGE = "qualification_factcheck"
 MAX_INPUT_BYTES = 1024 * 1024
 MAX_OUTPUT_BYTES = 256 * 1024
@@ -132,6 +132,47 @@ class QualificationResult:
     state: str
     counts: Mapping[str, int]
     replayed: bool = False
+
+
+@dataclass(frozen=True, repr=False)
+class QualificationSupportedCandidate:
+    candidate_id: str
+    ordinal: int
+    person_id: str
+    employment_id: str
+    candidate_observation_id: str
+    employment_observation_id: str
+    title: str
+    title_hash: str
+    outcome: str
+
+
+@dataclass(frozen=True, repr=False)
+class QualificationSupportedCompany:
+    item_id: str
+    artifact_id: str
+    artifact_output_hash: str
+    funding_result_id: str
+    company_id: str
+    company_outcome: str
+    desired_people: int
+    shortfall: int
+    candidates: tuple[QualificationSupportedCandidate, ...]
+
+
+@dataclass(frozen=True, repr=False)
+class QualificationSupportedScope:
+    batch_id: str
+    batch_hash: str
+    run_id: str
+    intake_hash: str
+    campaign_policy_hash: str
+    funding_batch_id: str
+    funding_batch_hash: str
+    person_batch_id: str
+    person_batch_hash: str
+    controller_policy_version: str
+    companies: tuple[QualificationSupportedCompany, ...]
 
 
 @dataclass(frozen=True, repr=False)
@@ -1155,7 +1196,12 @@ class QualificationService:
                 )
                 and _normal(finding["observed_title"]) == _normal(candidate_identity.get("title"))
             )
-            contradicted = finding["continuity"] == "contradicted" or finding["title_granularity"] in {"different", "narrower", "broader"}
+            if finding["title_granularity"] in {"narrower", "broader"}:
+                uncertainty = tuple(sorted(set(uncertainty) | {"title_granularity_mismatch"}))
+            contradicted = (
+                finding["continuity"] == "contradicted"
+                or finding["title_granularity"] == "different"
+            )
             supported = (
                 company_supported and not context_ambiguous
                 and finding["page_kind"] in {"current_individual_profile", "current_company_team"}
@@ -1526,6 +1572,126 @@ class QualificationService:
         ).fetchone()
         return None if row is None else self._projection(str(row[0]), intake, funding, people)
 
+    def get_supported_scope(self, run_id: str) -> QualificationSupportedScope | None:
+        """Return exact machine-reviewed bindings after rederiving stored outcomes."""
+        projection = self.get_projection(run_id)
+        if projection is None:
+            return None
+        if not projection.items or projection.state != "machine_reviewed":
+            raise QualificationError("qualification_incomplete")
+        batch = self.connection.execute(
+            "SELECT * FROM prospecting_qualification_batch WHERE batch_id=?",
+            (projection.batch_id,),
+        ).fetchone()
+        if batch is None:
+            raise QualificationError("store_state_invalid")
+        intake, _funding, _people = self._context(run_id=run_id)
+        companies: list[QualificationSupportedCompany] = []
+        for item_projection in projection.items:
+            item = self.connection.execute(
+                "SELECT * FROM prospecting_qualification_item WHERE item_id=?",
+                (item_projection.item_id,),
+            ).fetchone()
+            artifact = self.connection.execute(
+                "SELECT * FROM prospecting_qualification_artifact WHERE item_id=?",
+                (item_projection.item_id,),
+            ).fetchone()
+            if item is None or artifact is None:
+                raise QualificationError("store_state_invalid")
+            attempt = self.connection.execute(
+                "SELECT * FROM prospecting_qualification_attempt WHERE attempt_id=?",
+                (artifact["attempt_id"],),
+            ).fetchone()
+            if attempt is None or attempt["state"] != "succeeded" or any(
+                str(artifact[left]) != str(attempt[right])
+                for left, right in (
+                    ("item_id", "item_id"), ("input_hash", "input_hash"),
+                    ("producer_identity", "worker_identity"),
+                    ("producer_job_id", "worker_job_id"), ("runtime_id", "runtime_id"),
+                    ("runtime_hash", "runtime_hash"), ("schema_hash", "schema_hash"),
+                    ("skill_name", "skill_name"), ("skill_version", "skill_version"),
+                    ("skill_content_hash", "skill_content_hash"),
+                    ("skill_manifest_hash", "skill_manifest_hash"),
+                )
+            ):
+                raise QualificationError("store_state_invalid")
+            payload = _object(artifact["payload_json"])
+            if (
+                _canonical(payload) != str(artifact["payload_json"])
+                or sha256(str(artifact["payload_json"]).encode()).hexdigest()
+                != str(artifact["output_hash"])
+            ):
+                raise QualificationError("store_state_invalid")
+            _payload, derived = self._validate_payload(item, payload)
+            if _canonical(derived) != str(artifact["derived_json"]):
+                raise QualificationError("store_state_invalid")
+            derived_people = {
+                str(value["candidate_id"]): str(value["outcome"])
+                for value in derived["people"]
+            }
+            candidates: list[QualificationSupportedCandidate] = []
+            for candidate_id in _array(item["candidate_ids_json"]):
+                candidate = self.connection.execute(
+                    "SELECT * FROM prospecting_person_candidate WHERE candidate_id=?",
+                    (candidate_id,),
+                ).fetchone()
+                if candidate is None or any(
+                    candidate[key] is None
+                    for key in ("person_id", "employment_id", "observation_id")
+                ):
+                    raise QualificationError("store_state_invalid")
+                identity = _object(candidate["candidate_identity_json"])
+                title = identity.get("title")
+                if type(title) is not str or not title:
+                    raise QualificationError("store_state_invalid")
+                employment = self.connection.execute(
+                    "SELECT * FROM employment WHERE employment_id=?",
+                    (candidate["employment_id"],),
+                ).fetchone()
+                if employment is None or (
+                    str(employment["person_id"]) != str(candidate["person_id"])
+                    or str(employment["company_id"]) != str(candidate["company_id"])
+                    or employment["valid_to"] is not None
+                    or _normal(employment["title"]) != _normal(title)
+                ):
+                    raise QualificationError("store_state_invalid")
+                current_source = self.connection.execute(
+                    """SELECT 1 FROM prospecting_qualification_source
+                        WHERE item_id=? AND origin_kind='person'
+                          AND context_relation='current' AND origin_row_id=?
+                          AND observation_id=? AND snapshot_id=?""",
+                    (
+                        item["item_id"], candidate_id, candidate["observation_id"],
+                        candidate["snapshot_id"],
+                    ),
+                ).fetchall()
+                if len(current_source) != 1 or candidate_id not in derived_people:
+                    raise QualificationError("store_state_invalid")
+                candidates.append(QualificationSupportedCandidate(
+                    candidate_id, int(candidate["ordinal"]), str(candidate["person_id"]),
+                    str(candidate["employment_id"]), str(candidate["observation_id"]),
+                    str(employment["source_observation_id"]), title,
+                    sha256(title.encode()).hexdigest(), derived_people[candidate_id],
+                ))
+            supported_people = len({
+                candidate.person_id for candidate in candidates
+                if candidate.outcome == "current_role_supported"
+            })
+            desired = int(intake.requested_people_per_company)
+            companies.append(QualificationSupportedCompany(
+                str(item["item_id"]), str(artifact["artifact_id"]),
+                str(artifact["output_hash"]), str(item["funding_result_id"]),
+                str(item["company_id"]), str(derived["company_outcome"]), desired,
+                max(0, desired - supported_people), tuple(candidates),
+            ))
+        return QualificationSupportedScope(
+            projection.batch_id, projection.batch_hash, projection.run_id,
+            projection.intake_hash, str(batch["campaign_policy_hash"]),
+            projection.funding_batch_id, projection.funding_batch_hash,
+            projection.person_batch_id, projection.person_batch_hash,
+            str(batch["controller_policy_version"]), tuple(companies),
+        )
+
     @staticmethod
     def _result(value: QualificationBatchProjection, replayed: bool) -> QualificationResult:
         counts = {
@@ -1543,4 +1709,6 @@ class QualificationService:
 __all__ = [
     "QualificationBatchProjection", "QualificationError", "QualificationItemProjection",
     "QualificationResult", "QualificationService", "QualificationStartRequest",
+    "QualificationSupportedCandidate", "QualificationSupportedCompany",
+    "QualificationSupportedScope",
 ]
