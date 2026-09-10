@@ -161,6 +161,15 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
         if isinstance(pipeline, dict) and pipeline.get("state") == "input_pending":
             missing = pipeline.get("pending_fields") or []
             return {"title": "Complete the research brief", "detail": "Research has not started. Complete the remaining inputs before an adapter can be considered.", "label": f"{len(missing)} inputs needed"}
+        funding = snapshot.get("funding")
+        if isinstance(funding, dict) and funding.get("state") == "awaiting_qualification_factcheck":
+            candidate_count = funding.get("candidate_count")
+            count = candidate_count if type(candidate_count) is int else 0
+            return {
+                "title": "Funding evidence captured; factcheck pending",
+                "detail": "Captured funding sources are saved. Factual review and person research are still pending.",
+                "label": f"{count} candidate{'' if count == 1 else 's'}",
+            }
         if isinstance(pipeline, dict) and pipeline.get("state") == "awaiting_research_adapter":
             return {"title": "Brief saved; research is not connected yet", "detail": "The local intake is durable. No research is running.", "label": "Awaiting adapter"}
         if isinstance(pipeline, dict) and pipeline.get("state") == "unavailable":

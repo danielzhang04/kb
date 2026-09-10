@@ -373,6 +373,7 @@ def test_snapshot_is_campaign_scoped_and_calls_all_read_owners(app) -> None:
     assert value["funding"]["state"] == "awaiting_qualification_factcheck"
     assert value["funding"]["companies"][0]["name"] == "Synthetic Systems"
     assert value["funding"]["companies"][0]["sources"][0]["source_kind"] == "issuer"
+    assert value["next_action"]["title"] == "Waiting for humanizer and independent review"
     assert value["control"]["code"] == "disabled"
     assert value["mailboxes"] == ["mailbox-001"]
     for method in (
@@ -390,6 +391,64 @@ def test_snapshot_keeps_funding_hidden_when_review_service_has_no_pipeline(app) 
     )
     assert status == 200
     assert json.loads(raw)["funding"] is None
+
+
+def test_funding_banner_acknowledges_capture_without_overriding_draft_work() -> None:
+    snapshot = {
+        "campaigns": [{"campaign_id": CAMPAIGN}],
+        "campaign": {"campaign_id": CAMPAIGN},
+        "people": [],
+        "drafts": [],
+        "pipeline": {"state": "awaiting_research_adapter"},
+        "funding": {
+            "state": "awaiting_qualification_factcheck", "candidate_count": 2,
+        },
+    }
+    assert review_app._next_action(snapshot) == {
+        "title": "Funding evidence captured; factcheck pending",
+        "detail": "Captured funding sources are saved. Factual review and person research are still pending.",
+        "label": "2 candidates",
+    }
+
+    snapshot["drafts"] = [{
+        "candidate_state": None, "editorial_state": "review_required",
+        "editorial_gate_code": None,
+    }]
+    assert review_app._next_action(snapshot)["title"] == "Review saved drafts"
+
+
+def test_funding_banner_is_returned_by_authenticated_snapshot() -> None:
+    class FundingOnlyReview(FakeReview):
+        def list_people(self, campaign_id):
+            self._record("people", campaign_id)
+            return ()
+
+        def list_drafts(self, campaign_id):
+            self._record("drafts", campaign_id)
+            return ()
+
+    review = FundingOnlyReview()
+    server = create_server(review, FakeCampaigns(), port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}",
+            headers={"Cookie": cookie},
+        )
+        value = json.loads(raw)
+        assert status == 200
+        assert value["funding"]["state"] == "awaiting_qualification_factcheck"
+        assert value["next_action"] == {
+            "title": "Funding evidence captured; factcheck pending",
+            "detail": "Captured funding sources are saved. Factual review and person research are still pending.",
+            "label": "1 candidate",
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
 
 
 def test_editorial_projection_and_human_actions_are_scoped_typed_and_csrf_guarded() -> None:

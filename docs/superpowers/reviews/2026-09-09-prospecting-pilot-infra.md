@@ -892,3 +892,17 @@ Reviewed the complete CLI and learned skill plus the new real-subprocess tests. 
 | `skills/learned/prospecting-intake/SKILL.md` | `CEB27F88D14B919BD96FA9DDB1E4AAF53D4B25A5110D14FF89EEE940BAF2CDE7` |
 
 This acceptance does not promote the learned skill, execute public research or models, rank/select candidates, create drafts, or establish a live private StageAdapter. The separately proposed adapter remains outside this reviewed slice. No real records, authentication changes, browser connections, provider calls or production store migrations were used in the independent verification.
+
+### Funding status banner and source-capture guidance addendum
+
+Root checkpointed the accepted P18 CLI slice locally at `3451c033`. Independent verdict: READY for the subsequent two-file banner change and final skill-only guidance. The authenticated review snapshot now acknowledges captured funding evidence with factcheck still pending when there are no people. Pending draft edits, editorial blockers and saved-draft review retain priority. This is a status correction, not a new workflow action or authority. Independent focused banner/authenticated-snapshot verification: **3 passed, 22 deselected in 1.61s** at `p18banner-infra-0910-a`; builder HTTP suite: **25 passed in 10.21s**.
+
+The final skill guidance preserves source-supported geography/sector values at the requested granularity without loosening the saved filter. It also names the existing compact identity-proof requirement: an accepted literal excerpt must contain full name, title and company within 240 characters. Individual bios or self-profiles are the immediate fallback when a team page's facts are too far apart. Original captures remain preserved; concatenating source fragments, rewriting a source claim or inferring employer identity from the hostname is explicitly prohibited. This documents the current conservative acquisition boundary; it does not change P18/P13 proof rules or claim semantic qualification. A future structured team-page proof would need separately reviewed source associations and consumer support.
+
+Final reviewed bindings:
+
+- `scripts/prospecting/review_app.py`: `0E5520AA542B6400B0615ABC0B879CA9ECEB498AFB628CD2D1AE249DE3EB4716`
+- `scripts/prospecting/tests/test_review_app.py`: `EEB5BE82CC6C4EBF13A7C2E2EF792AED65B45FD9929B693F3AB68AB20FF01664`
+- `skills/learned/prospecting-intake/SKILL.md`: `39DF1EDBC86580D528579AD088BDB4662EAF2F343A042EF3D9B6EF228FD0542A`
+
+The final skill hash supersedes the earlier wording-only hashes. Builder skill validation, PII scan and diff checks passed. No additional runtime, real-record, browser or authentication work was performed for this review; the pending gated-runtime implementation is not covered by this addendum.
