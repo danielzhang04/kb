@@ -48,3 +48,25 @@ Author-provided final evidence records 56 passing focused tests across the
 three affected suites, passing typecheck and production build, plus a local
 read-only hub probe with one brief and 47 research artifacts. The captured
 evidence is in `MAIN/_private/figment-content-brief-hub-20260910-v1/phase2-*`.
+
+## Root local layout verification after code commit
+
+At commit `3ed8eaa9`, root verified the same six source hashes against the final
+phase2 proof and viewed desktop Research/Training and narrow Research/Training
+screenshots. Cards, calendar date, unrecorded metrics, recorded rejection and
+no-selected-checkpoint wording are readable without observed overlap.
+
+Evidence: `MAIN/_private/figment-content-brief-hub-20260910-v1/browser-qa/result.json`
+and its four named, hash-bound PNGs. This used the actual component and global
+styles in an isolated static fixture with in-memory sample data. CUA exposed no
+browser surfaces, so root used a fresh headless Edge profile. The first fixture
+omitted the app theme; the fixture was repaired without production CSS changes.
+Requested390px screenshots actually laid out at496px and clipped the capture;
+DOM diagnostics showed inner/client/scroll width496 and no overflow. Complete
+500px-wide narrow captures were inspected instead. A true390px viewport and
+an authenticated deployment are not verified by this check.
+
+The owned static serverPID51048 and loopback4177 were verified absent03:14:23UTC;
+`preview-teardown-v2.json` records final evidence. The first PowerShell stop
+reported an error while the process remained; the reverified native process kill
+succeeded, and both attempts remain recorded.
