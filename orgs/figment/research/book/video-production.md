@@ -32,3 +32,8 @@ validator. It must separately assess intended adult age presentation, all
 81 frames and actual full-clip playback. Missing playback remains a parked
 review. See the [preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md)
 and [CLI contract](../../pipeline/video/APPROVED_GEN_ADAPTER.md).
+
+
+## Current acceptance and delivery boundary ? September10
+
+Prospective candidate/preparation are independently reviewed. Attributed video rulings and the sole current accepted-video validator are now implemented and locally tested (full177PASS before the last bounded-read repair, then5targetedPASS), pending independent security review. No actual creator-001 video is accepted. The next bounded content slice is [source-only motion assignment](../../../../docs/figment/2026-09-10-motion-source-delivery-contract.md); it does not grant vertical reel delivery fit. Sample/perceptual hashes and matching fps/duration cannot prove a transformation preserved all observations.

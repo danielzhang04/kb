@@ -48,3 +48,8 @@ used512/768/1024 resolutions and corresponding aspect buckets; it was not512-onl
 This is a source-coverage hypothesis to test, not an explanation proven by the current
 outputs. The public base misses the crop too. Preserve source/eval ancestry when planning
 any close-face variant. See the [curation audit](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md).
+
+
+## Separate seed audition ? September10
+
+A newly invented close-portrait seed and one controlled pose variant were generated with the built-in tool under a separate two-image protocol. Both were clearly adult/clothed in root inspection, with useful face detail, but intended exact21 appearance remains unestablished and the pose variant turned opposite the requested direction. The [audition is stopped](../../../../docs/figment/2026-09-10-seed-b-audition.md), with no expansion/training/canonical replacement. Related generated views do not supply independent identity evidence.

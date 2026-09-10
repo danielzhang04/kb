@@ -211,7 +211,7 @@ The user requested mostly Claude CLI implementation. Sonnet/Opus response IDs an
 prospective usage are recorded in each bounded worker result; historical native token
 usage remains unavailable. A separate Fable strategy review was rejected by automatic
 approval review for its internal-plan transfer and has not run. That rejection is
-isolated; the approved implementation workers continue.
+isolated; that implementation wave has now finished or stopped at its explicit limits.
 
 ## Review and test cadence
 
@@ -243,3 +243,8 @@ A worker repair is limited to the existing two repair cycles for that work order
 The user's standing instructions authorize root research decisions and continuation; this review introduces no new mandatory human gate for ordinary implementation. Publication, production promotion, rejected private payloads and merges/deployment retain their applicable boundaries. Apparent age and identity consistency remain explicit visual evidence requirements; neither a numeric score nor a code-test exit decides them automatically.
 
 Keep-awake was independently checked again at 04:01:32 UTC: supervisor and root CLI lease alive. The 8 AM checkpoint reports completed work, current worker/task, remaining quality evidence, spend and keep-awake status. If work remains independently actionable, continue it. If complete, leave the verified result and resumable handoff. Keep-awake is finite and requires renewal before its approximately 09:44 Eastern expiry if the session continues; an armed power lease alone is not evidence that an LLM worker is executing.
+
+
+## Completed local checkpoint and next boundary ? September10
+
+`2ef9f36a` saves locally tested Studio preparation and video terminal authority. Studio137PASS/typecheck/build; video177PASS plus final5targetedPASS. Independent review of those new slices remains pending exact source-transfer consent. Source pins and failure evidence are preserved in the canonical handoff. A separate tools-disabled Sonnet/Opus generic design loop produced the [motion source/delivery contract](2026-09-10-motion-source-delivery-contract.md); the existing content producer/reader integration is the next code slice, not a new renderer. A separate two-image [seed audition](2026-09-10-seed-b-audition.md) was stopped for directed-pose failure and unestablished intended age; it does not replace g01 or start training.
