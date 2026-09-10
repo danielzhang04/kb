@@ -941,3 +941,20 @@ Closed a concrete browser-cascade defect: the form-grid display rule overrode th
 - `scripts/prospecting/tests/review_app_state.test.js`: `1DAB39816FBCB5DD6B07370D165F34034A90AFD5823D70667B27489FFC8C0929`
 
 No endpoint, qualification, approval, runtime or outbound authority changes are included. P19 remains separately under review and is not accepted by this UI addendum. No browser, model, authentication or real-store operation was performed by the reviewer.
+
+
+### P19 source-bound qualification controller: final independent review
+
+Independent verdict: READY for the three-file controller-only slice. Qualification batches bind the current validated P15 criteria, exact P17 provisional company scope and P18 candidate/source set. Full source text, including relevant bounded predecessor context, enters the private job; the 1 MiB envelope limit refuses rather than truncates. Ambiguous identity history and conflicting title granularity remain explicit. A current individual/team profile does not require a publication date, while a newly captured historical hiring announcement does not establish current employment. P17's recorded issuer label is not treated as authenticated semantic authority.
+
+No configured adapter means durable awaiting_qualification_adapter state with no manufactured attempt/artifact. The service consumes a code-configured StageAdapter and derives outcomes from its complete typed findings, exact event/person citations and retained uncertainty. It does not rank candidates, materialize fill selections, create drafts, enrich contacts or grant human/outbound approval. Runtime/model identity fields record the configured adapter binding; synthetic test identities are not proof of live model execution or independent factual accuracy. Controller policy provenance is explicitly versioned, not presented as an implementation hash.
+
+Five concrete review findings are closed: event-level uncertainty is retained and prevents supported outcomes; adapter exception text cannot enter public errors or the attempt ledger; a completed item refuses a new request before another adapter call; synchronous late output records expired/lease_expired consistently with recovery; and malformed list/dict enum or citation fields return qualification_output_invalid with terminal failed state instead of escaping TypeError and leaving a claim active. Claim-time completion/replay checks run in the transaction. Exact concurrent request tests use separate SQLite connections and prove one adapter call. New evidence uses an exact predecessor batch; a new UUID with unchanged semantic context cannot reset the retry budget. Historical exact replay remains distinct from the fresh validated latest projection.
+
+Independent verification at the final hashes: **24 qualification tests passed in 18.09s** at `p19-infra-final-a`. This includes the original reproduced failure classes, five malformed-output shapes, genuine controller claim/artifact/replay composition using synthetic adapters, lease expiry/recovery, complete-source size refusal, changed-source refusal, full current/predecessor context, historical-currentness distinctions and bounded retry replacement. Builder qualification plus store schema/migration selection: **44 passed, 30 deselected in 19.36s**; these overlap the independent run. No launcher/browser, model, authentication, VM, external-source or real-store actions were performed by this reviewer.
+
+- `scripts/prospecting/schema_p19.sql`: `F5EB128474E9F1024EA9C019B2B24373BDF5A496DAB8BFA3DBBDF7860A9B462E`
+- `scripts/prospecting/qualification_service.py`: `C90C5D0709FB3F54F546374D94D407E5D5B11A247B80019EF74A7745DF4EDC9B`
+- `scripts/prospecting/tests/test_qualification_service.py`: `B1F260416728B91588605DDA75EEB0BBB21DA6F4036836EB726C2FE6DC8828CF`
+
+The proposed fourth shared-runtime qualification adapter, its learned skill/CLI, real authenticated execution and downstream ranking bridge are separate unaccepted work. This acceptance does not resolve the previously observed HTTP 401 or enable the private runtime source gate.
