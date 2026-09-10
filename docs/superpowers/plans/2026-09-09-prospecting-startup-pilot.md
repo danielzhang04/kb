@@ -41,6 +41,12 @@ restart/replay safety. Synthetic tests and a polished dashboard alone are insuff
   Mechanical matches remain provisional and await genuine qualification factcheck. Candidate search
   budget is separate from the desired company count; no inferred email or new scoring engine.
   Existing Chrome proved public discovery and investor-primary capture to desktop-private files.
+  P17 is independently READY for provisional import/classification and private-file CLI only.
+  Final service/CLI55 and independent26 checks passed; service/migration30 passed. Root preceding
+  P15/P17/CLI/migration75 passed before the final same-round corroboration repair. Exact replay,
+  P15 workflow integrity, timestamp ordering, hostname syntax and foreign-file rollback were repaired.
+  No qualified-company or person/reviewer receipt exists. Next, reconcile a thin exact-company/person
+  import and existing-affinity bridge with the source-only VM design before implementing it.
 - [ ] Phase E: finish the feedback loop. The first-review-at-drafts UI/backend slice is independently
   READY: backend15, HTTP/service5 and actual bundledJS14 checks passed. Root's five-suite run passed244
   and bundledJS14 passed; counts overlap. An additive untracked P17 migration appeared during the

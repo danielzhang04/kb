@@ -352,6 +352,13 @@ def test_06_migration_is_idempotent(tmp_path: Path) -> None:
     assert get_schema_version(second) == expected_version
     assert second.execute("SELECT count(*) FROM schema_version").fetchone()[0] == 1
     assert second.execute("SELECT count(*) FROM schema_migrations").fetchone()[0] == len(phase_migrations)
+    assert {
+        row[0] for row in second.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'prospecting_funding_%'"
+        )
+    } == {
+        "prospecting_funding_batch", "prospecting_funding_company", "prospecting_funding_source",
+    }
     second.close()
 
 

@@ -1,9 +1,9 @@
 ---
 name: prospecting-intake
-description: Turn a natural-language prospecting brief into a private typed intake and save it in the selected local prospecting pipeline store. Use for starting or safely retrying a prospecting brief; this draft does not perform research or outreach.
+description: Turn a natural-language prospecting brief into a private typed intake, then import operator-captured public funding evidence for provisional factcheck. Use for starting, safely retrying, or inspecting this local prospecting pipeline; this draft does not qualify people or perform outreach.
 ---
 
-# Prospecting intake
+# Prospecting intake and funding capture
 
 Convert the user's brief into one `PipelineStartRequest` JSON object and submit it through the repository's existing `PipelineService` CLI boundary. Keep the brief, outreach goal, names, and other private text out of arguments, stdout, logs, and tracked files.
 
@@ -23,6 +23,26 @@ Save it beneath the selected existing `.sqlite` store's own `snapshots/` directo
 python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --input <selected-store-parent>/snapshots/<intake.json>
 ```
 
-Read the aggregate JSON projection. Report honestly that the intake was saved in `input_pending` or `awaiting_research_adapter`. Research, drafting, humanization, independent criticism, and human review are still unconnected in this slice; never imply that prospects or messages were produced.
+Read the aggregate JSON projection. Report honestly that the intake was saved in `input_pending` or `awaiting_research_adapter`. Stop for unresolved required fields when it is `input_pending`. The saved intake alone contains no researched or qualified prospects and no messages.
+
+When the intake is complete, public funding research may be captured through the operator's approved browser workflow. Save exact page bodies beneath the selected store's `snapshots/` directory. Prefer issuer or participating-investor announcements for a funding event; an independent report can supplement them. Search snippets alone do not establish a funding fact. Do not assume that paid enrichment credits, credentials, or providers are available.
+
+Create one funding-import manifest beneath the same `snapshots/` directory. Use a retained canonical UUID for `request_id`; use the intake projection's opaque `run_id` and `intake_hash`; and use null predecessor fields for the first batch. Later complete replacement batches must use the preceding safe projection's exact batch ID and hash. Each candidate contains only `name`, nullable `website_url`, nullable `location`, nullable `sector`, `pages`, and `events`. Each page contains `body_ref`, `source_url`, `source_kind`, `captured_at`, and optionally `coverage`. A coverage object contains only `query`, `searched_at`, `status`, `result_count`, and `result_cap`. Each event contains only `page_ordinal`, `stage`, `announced_at`, and an exact `excerpt` present in that captured page. Do not put page bodies, classifications, reviewer decisions, provider commands, or caller-created IDs and hashes in the manifest.
+
+For `latest_known`, document a bounded current search or news-index review as of the intake date. Save the queries, coverage status, date, result count and cap, plus evidence of any known newer round. This means the latest public round found within that documented search, not a guarantee that no newer round exists. With no valid coverage, preserve the result as unknown. Treat geography and sector as unknown until sourced when the intake did not constrain them.
+
+Import or safely replay the manifest with:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --funding-import <selected-store-parent>/snapshots/<funding-manifest.json>
+```
+
+Inspect the latest aggregate projection without reading private evidence into output:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --funding-project <opaque-run-id>
+```
+
+Report only the returned opaque IDs, hashes, state, and counts. `awaiting_qualification_factcheck` means the deterministic import found provisional matches that still need factual review. It does not mean that a company is qualified. Company qualification, two-person ranking, role verification, personalized drafting, humanization, criticism, human approval, and sending remain later gated work.
 
 This learned skill is a sandboxed draft until separately reviewed and promoted.

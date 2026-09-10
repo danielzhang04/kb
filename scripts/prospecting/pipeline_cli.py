@@ -12,11 +12,21 @@ import stat
 import sys
 from typing import Any
 
+from .funding_research_service import (
+    CapturedPage,
+    CompanyCapture,
+    CoverageInput,
+    FundingEventInput,
+    FundingResearchError,
+    FundingResearchRequest,
+    FundingResearchService,
+)
 from .pipeline_service import PipelineError, PipelineService, PipelineStartRequest, ScopeSpec
 from .store import open_store
 
 
 MAX_INPUT_BYTES = 20 * 1024
+MAX_FUNDING_IMPORT_BYTES = 1024 * 1024
 MAX_JSON_DEPTH = 32
 _REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 _FIELDS = frozenset({
@@ -25,10 +35,38 @@ _FIELDS = frozenset({
     "requested_companies", "requested_people_per_company", "role_families",
     "original_specification", "outreach_goal",
 })
+_FUNDING_FIELDS = frozenset({
+    "request_id", "run_id", "expected_intake_hash", "predecessor_batch_id",
+    "predecessor_hash", "candidates",
+})
+_CANDIDATE_FIELDS = frozenset({
+    "name", "website_url", "location", "sector", "pages", "events",
+})
+_PAGE_REQUIRED_FIELDS = frozenset({
+    "body_ref", "source_url", "source_kind", "captured_at",
+})
+_COVERAGE_FIELDS = frozenset({
+    "query", "searched_at", "status", "result_count", "result_cap",
+})
+_EVENT_FIELDS = frozenset({"page_ordinal", "stage", "announced_at", "excerpt"})
 _CLI_CODES = frozenset({
+    "funding_import_duplicate_key", "funding_import_invalid",
+    "funding_import_json_invalid", "funding_import_json_too_deep",
+    "funding_import_schema_invalid", "funding_import_snapshot_required",
+    "funding_import_too_large", "funding_projection_missing",
     "input_duplicate_key", "input_invalid", "input_json_invalid", "input_json_too_deep",
     "input_schema_invalid", "input_snapshot_required", "input_too_large", "invalid_arguments",
     "store_invalid", "store_private_root_required",
+})
+_FUNDING_CODES = frozenset({
+    "batch_too_large", "candidate_pool_too_large", "input_pending",
+    "intake_stale", "invalid_body_ref", "invalid_candidate", "invalid_coverage",
+    "invalid_funding_event", "invalid_intake_hash", "invalid_page",
+    "invalid_predecessor", "invalid_request", "invalid_request_id", "invalid_run_id",
+    "invalid_source_kind", "invalid_source_url", "pipeline_context_stale",
+    "predecessor_conflict", "request_conflict", "run_missing", "snapshot_store_required",
+    "source_changed", "source_stale", "source_too_large", "store_state_invalid",
+    "transaction_active",
 })
 _PIPELINE_CODES = frozenset({
     "campaign_missing", "campaign_state_invalid", "invalid_as_of_date", "invalid_campaign_id",
@@ -247,27 +285,31 @@ def _approved_store(path: Path) -> tuple[Path, os.stat_result]:
     return store, identity
 
 
-def _reject_duplicate(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+def _reject_duplicate(
+    pairs: list[tuple[str, Any]], code: str = "input_duplicate_key",
+) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
-            raise CliError("input_duplicate_key")
+            raise CliError(code)
         result[key] = value
     return result
 
 
-def _finite_float(value: str) -> float:
+def _finite_float(value: str, code: str = "input_json_invalid") -> float:
     parsed = float(value)
     if not math.isfinite(parsed):
-        raise CliError("input_json_invalid")
+        raise CliError(code)
     return parsed
 
 
-def _invalid_constant(_value: str) -> None:
-    raise CliError("input_json_invalid")
+def _invalid_constant(_value: str, code: str = "input_json_invalid") -> None:
+    raise CliError(code)
 
 
-def _reject_excess_depth(contents: bytes) -> None:
+def _reject_excess_depth(
+    contents: bytes, code: str = "input_json_too_deep",
+) -> None:
     depth = 0
     in_string = False
     escaped = False
@@ -285,7 +327,7 @@ def _reject_excess_depth(contents: bytes) -> None:
         elif value in (0x5B, 0x7B):
             depth += 1
             if depth > MAX_JSON_DEPTH:
-                raise CliError("input_json_too_deep")
+                raise CliError(code)
         elif value in (0x5D, 0x7D):
             depth -= 1
 
@@ -316,23 +358,112 @@ def _request(value: Any) -> PipelineStartRequest:
     )
 
 
-def _read_input(store: Path, input_path: Path) -> PipelineStartRequest:
-    source, _identity = _safe_existing_file(input_path, "input_invalid")
-    snapshots = _safe_existing_directory(store.parent / "snapshots", "input_snapshot_required")
+def _read_private_json(
+    store: Path,
+    input_path: Path,
+    *,
+    invalid_code: str,
+    snapshot_code: str,
+    too_large_code: str,
+    duplicate_code: str,
+    json_code: str,
+    depth_code: str,
+    limit: int,
+) -> Any:
+    source, _identity = _safe_existing_file(input_path, invalid_code)
+    snapshots = _safe_existing_directory(store.parent / "snapshots", snapshot_code)
     if not _inside(source, snapshots):
-        raise CliError("input_snapshot_required")
-    contents = _bounded_read(source, MAX_INPUT_BYTES, "input_invalid", "input_too_large")
-    _reject_excess_depth(contents)
+        raise CliError(snapshot_code)
+    contents = _bounded_read(source, limit, invalid_code, too_large_code)
+    _reject_excess_depth(contents, depth_code)
     try:
-        parsed = json.loads(
-            contents.decode("utf-8"), object_pairs_hook=_reject_duplicate,
-            parse_constant=_invalid_constant, parse_float=_finite_float,
+        return json.loads(
+            contents.decode("utf-8"),
+            object_pairs_hook=lambda pairs: _reject_duplicate(pairs, duplicate_code),
+            parse_constant=lambda value: _invalid_constant(value, json_code),
+            parse_float=lambda value: _finite_float(value, json_code),
         )
     except CliError:
         raise
     except (UnicodeDecodeError, json.JSONDecodeError, OverflowError, RecursionError, ValueError):
-        raise CliError("input_json_invalid") from None
-    return _request(parsed)
+        raise CliError(json_code) from None
+
+
+def _read_input(store: Path, input_path: Path) -> PipelineStartRequest:
+    return _request(_read_private_json(
+        store, input_path,
+        invalid_code="input_invalid", snapshot_code="input_snapshot_required",
+        too_large_code="input_too_large", duplicate_code="input_duplicate_key",
+        json_code="input_json_invalid", depth_code="input_json_too_deep",
+        limit=MAX_INPUT_BYTES,
+    ))
+
+
+def _funding_request(value: Any) -> FundingResearchRequest:
+    if type(value) is not dict or set(value) != _FUNDING_FIELDS:
+        raise CliError("funding_import_schema_invalid")
+    candidates_value = value["candidates"]
+    if type(candidates_value) is not list:
+        raise CliError("funding_import_schema_invalid")
+    candidates: list[CompanyCapture] = []
+    for candidate_value in candidates_value:
+        if (
+            type(candidate_value) is not dict
+            or set(candidate_value) != _CANDIDATE_FIELDS
+            or type(candidate_value["pages"]) is not list
+            or type(candidate_value["events"]) is not list
+        ):
+            raise CliError("funding_import_schema_invalid")
+        pages: list[CapturedPage] = []
+        for page_value in candidate_value["pages"]:
+            if type(page_value) is not dict or frozenset(page_value) not in {
+                _PAGE_REQUIRED_FIELDS, _PAGE_REQUIRED_FIELDS | {"coverage"},
+            }:
+                raise CliError("funding_import_schema_invalid")
+            coverage_value = page_value.get("coverage")
+            coverage = None
+            if "coverage" in page_value:
+                if type(coverage_value) is not dict or set(coverage_value) != _COVERAGE_FIELDS:
+                    raise CliError("funding_import_schema_invalid")
+                coverage = CoverageInput(
+                    coverage_value["query"], coverage_value["searched_at"],
+                    coverage_value["status"], coverage_value["result_count"],
+                    coverage_value["result_cap"],
+                )
+            pages.append(CapturedPage(
+                page_value["body_ref"], page_value["source_url"],
+                page_value["source_kind"], page_value["captured_at"], coverage,
+            ))
+        events: list[FundingEventInput] = []
+        for event_value in candidate_value["events"]:
+            if type(event_value) is not dict or set(event_value) != _EVENT_FIELDS:
+                raise CliError("funding_import_schema_invalid")
+            events.append(FundingEventInput(
+                event_value["page_ordinal"], event_value["stage"],
+                event_value["announced_at"], event_value["excerpt"],
+            ))
+        candidates.append(CompanyCapture(
+            candidate_value["name"], candidate_value["website_url"],
+            candidate_value["location"], candidate_value["sector"],
+            tuple(pages), tuple(events),
+        ))
+    return FundingResearchRequest(
+        value["request_id"], value["run_id"], value["expected_intake_hash"],
+        value["predecessor_batch_id"], value["predecessor_hash"], tuple(candidates),
+    )
+
+
+def _read_funding_import(store: Path, input_path: Path) -> FundingResearchRequest:
+    return _funding_request(_read_private_json(
+        store, input_path,
+        invalid_code="funding_import_invalid",
+        snapshot_code="funding_import_snapshot_required",
+        too_large_code="funding_import_too_large",
+        duplicate_code="funding_import_duplicate_key",
+        json_code="funding_import_json_invalid",
+        depth_code="funding_import_json_too_deep",
+        limit=MAX_FUNDING_IMPORT_BYTES,
+    ))
 
 
 def _safe_output(result: object, safe: object) -> dict[str, object]:
@@ -354,11 +485,38 @@ def _safe_output(result: object, safe: object) -> dict[str, object]:
     }
 
 
+def _safe_funding_import_output(
+    result: object, request: FundingResearchRequest,
+) -> dict[str, object]:
+    return {
+        "batch_id": result.batch_id,
+        "batch_hash": result.batch_hash,
+        "run_id": result.run_id,
+        "intake_hash": request.expected_intake_hash,
+        "state": result.state,
+        "counts": dict(result.counts),
+        "replayed": result.replayed,
+    }
+
+
+def _safe_funding_projection_output(safe: object) -> dict[str, object]:
+    return {
+        "batch_id": safe.batch_id,
+        "batch_hash": safe.batch_hash,
+        "run_id": safe.run_id,
+        "intake_hash": safe.intake_hash,
+        "state": safe.state,
+        "counts": dict(safe.counts),
+    }
+
+
 def _error_code(error: BaseException) -> str:
     value = str(error)
     if isinstance(error, CliError) and value in _CLI_CODES:
         return value
     if isinstance(error, PipelineError) and value in _PIPELINE_CODES:
+        return value
+    if isinstance(error, FundingResearchError) and value in _FUNDING_CODES:
         return value
     return "operation_failed"
 
@@ -366,24 +524,44 @@ def _error_code(error: BaseException) -> str:
 def main(argv: list[str] | None = None) -> int:
     parser = _Parser(add_help=False, allow_abbrev=False)
     parser.add_argument("--store", required=True)
-    parser.add_argument("--input", required=True)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--input")
+    mode.add_argument("--funding-import")
+    mode.add_argument("--funding-project")
     try:
         args = parser.parse_args(argv)
         store, identity = _approved_store(Path(args.store))
-        request = _read_input(store, Path(args.input))
+        request = None
+        funding_request = None
+        if args.input is not None:
+            request = _read_input(store, Path(args.input))
+        elif args.funding_import is not None:
+            funding_request = _read_funding_import(store, Path(args.funding_import))
         store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)
         connection = open_store(store)
         try:
-            service = PipelineService(connection)
-            result = service.start_or_resume(request)
-            safe = service.get_safe_projection(result.run_id)
+            if request is not None:
+                service = PipelineService(connection)
+                result = service.start_or_resume(request)
+                safe = service.get_safe_projection(result.run_id)
+                output = _safe_output(result, safe)
+            else:
+                funding = FundingResearchService(connection)
+                if funding_request is not None:
+                    result = funding.import_and_classify(funding_request)
+                    output = _safe_funding_import_output(result, funding_request)
+                else:
+                    safe = funding.get_safe_projection(args.funding_project)
+                    if safe is None:
+                        raise CliError("funding_projection_missing")
+                    output = _safe_funding_projection_output(safe)
         finally:
             connection.close()
         sys.stdout.write(
-            json.dumps(_safe_output(result, safe), sort_keys=True, separators=(",", ":")) + "\n"
+            json.dumps(output, sort_keys=True, separators=(",", ":")) + "\n"
         )
         return 0
-    except (CliError, PipelineError) as error:
+    except (CliError, FundingResearchError, PipelineError) as error:
         code = _error_code(error)
     except (OSError, OverflowError, RecursionError, RuntimeError, sqlite3.Error, TypeError, ValueError):
         code = "operation_failed"
