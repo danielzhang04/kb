@@ -460,6 +460,9 @@ class ReviewHandler(BaseHTTPRequestHandler):
                         projection = self.server.editorial_pipeline.get_latest_review_projection(
                             campaign_id, revision_id,
                         )
+                        offer = None if projection is not None else (
+                            self.server.editorial_pipeline.get_restart_offer(campaign_id, revision_id)
+                        )
                     except PipelineStageError as error:
                         editorial.append({
                             "revision_id": revision_id,
@@ -473,6 +476,8 @@ class ReviewHandler(BaseHTTPRequestHandler):
                                 raise TypeError("response_schema")
                             value["revision_id"] = revision_id
                             editorial.append(value)
+                        elif offer is not None:
+                            editorial.append(_jsonable(offer))
                 snapshot["editorial_pipeline"] = editorial
         snapshot["next_action"] = _next_action(snapshot)
         self._json(HTTPStatus.OK, snapshot)
@@ -611,15 +616,20 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if path == "/api/editorial/start":
                 value = _require_object(
                     payload, {"request_id", "campaign_id", "revision_id"},
+                    {"exhausted_item_id"},
                 )
                 if self.server.editorial_pipeline is None:
                     raise ValueError("request_schema")
-                self._json(
-                    HTTPStatus.CREATED,
-                    self.server.editorial_pipeline.start_from_saved_revision(
+                if "exhausted_item_id" in value:
+                    result = self.server.editorial_pipeline.start_from_human_edit(
+                        value["campaign_id"], value["revision_id"],
+                        value["exhausted_item_id"], value["request_id"], _LOCAL_REVIEW_ACTOR,
+                    )
+                else:
+                    result = self.server.editorial_pipeline.start_from_saved_revision(
                         value["campaign_id"], value["revision_id"], value["request_id"],
-                    ),
-                )
+                    )
+                self._json(HTTPStatus.CREATED, result)
                 return
             if path in {"/api/editorial/accept", "/api/editorial/reject"}:
                 value = _require_object(
@@ -704,7 +714,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             self._error(HTTPStatus.NOT_FOUND, "route_missing")
         except (CampaignError, ControlError, ControlReviewError, FeedbackError, PipelineError, PipelineStageError, ReviewError) as error:
             code = str(error) if str(error) else "request_invalid"
-            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "editorial_receipts_missing", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict", "suggestion_already_decided", "pipeline_item_exists"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
+            status = HTTPStatus.CONFLICT if code in {"request_conflict", "revision_conflict", "candidate_conflict", "candidate_pending", "editorial_receipts_missing", "feedback_already_requested", "feedback_already_fulfilled", "feedback_revision_conflict", "transaction_active", "source_conflict", "suggestion_already_decided", "pipeline_item_exists", "pipeline_work_conflict"} else HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
             self._error(status, code)
         except (ValueError, TypeError):
             self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "request_schema")

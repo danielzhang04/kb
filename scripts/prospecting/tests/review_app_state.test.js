@@ -633,6 +633,81 @@ test("editorial start retry is payload-bound and Mark ready still requires human
   assert.equal(app.requests.length, 0, "unsaved visible text cannot ready the stored revision");
 });
 
+test("an exhausted review offers exactly one payload-bound restart from the changed edit", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const parked = snapshot("A");
+  parked.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  parked.editorial_pipeline = [{
+    revision_id: "rev-A", item: {
+      item_id: "item-old", campaign_id: "A", person_id: "person-A",
+      base_revision_id: "rev-A", state: "parked", next_stage: null, repair_cycle: 2,
+    },
+    source_proof: null, suggestion_id: null, suggestion_subject: null,
+    suggestion_body: null, proposed_revision_hash: null, decision: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.parkedLoad=load("A")');
+  app.reply(app.requests.shift(), parked);
+  await app.context.parkedLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review stopped/);
+  assert.match(detail, /Save a changed edit above/);
+  assert.doesNotMatch(detail, /data-editorial-(start|restart)=/);
+
+  const offer = snapshot("A", "Edited subject", "Edited body");
+  offer.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  offer.editorial_pipeline = [{
+    revision_id: "rev-A", exhausted_item_id: "item-old", state: "restart_available", code: null,
+  }];
+  app.evaluate('globalThis.offerLoad=load("A")');
+  app.reply(app.requests.shift(), offer);
+  await app.context.offerLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Start new review from this edit/);
+  assert.equal(detail.match(/data-editorial-restart=/g).length, 1);
+  assert.doesNotMatch(detail, /Run editorial review|data-editorial-start=/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  const click = () => app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialRestart: "rev-A", editorialExhausted: "item-old",
+  }})});
+  click();
+  const first = app.requests.shift();
+  assert.equal(first.url, "/api/editorial/start");
+  const payload = JSON.parse(first.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "exhausted_item_id", "request_id", "revision_id",
+  ]);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.revision_id, "rev-A");
+  assert.equal(payload.exhausted_item_id, "item-old");
+  assert.equal("actor" in payload, false);
+  app.reply(first, {error: "request_failed"}, false);
+  await tick(); await tick();
+  click();
+  const retry = app.requests.shift();
+  assert.equal(JSON.parse(retry.init.body).request_id, payload.request_id);
+  app.reply(retry, {item_id: "item-new", campaign_id: "A", person_id: "person-A",
+    base_revision_id: "rev-A", state: "awaiting_humanizer_adapter", next_stage: "humanizer", repair_cycle: 0});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), offer);
+  await tick(); await tick();
+
+  const blocked = structuredClone(offer);
+  blocked.editorial_pipeline = [{
+    revision_id: "rev-A", exhausted_item_id: "item-old", state: "restart_blocked",
+    code: "human_edit_unresolved",
+  }];
+  app.evaluate('globalThis.blockedLoad=load("A")');
+  app.reply(app.requests.shift(), blocked);
+  await app.context.blockedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review stopped/);
+  assert.match(detail, /human edit unresolved/);
+  assert.doesNotMatch(detail, /data-editorial-(start|restart)=/);
+});
+
 test("history selection disables readiness and the click guard refuses unsaved text", async () => {
   const app = harness();
   app.reply(app.requests.shift(), snapshot(null));

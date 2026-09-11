@@ -48,6 +48,36 @@ MAX_TEXT = 65_536
 MAX_LIST = 32
 MAX_STAGE_INPUT_BYTES = 1024 * 1024
 MAX_STAGE_OUTPUT_BYTES = 256 * 1024
+MAX_RESET_LINEAGE = 256
+_HUMAN_EDIT_LINK_SQL = """
+    SELECT lineage.parent_revision_id,lineage.candidate_id,lineage.request_id,
+           parent.subject AS parent_subject,parent.body AS parent_body
+      FROM review_revision_lineage AS lineage
+      JOIN review_candidate AS candidate ON candidate.candidate_id=lineage.candidate_id
+      JOIN review_request AS request ON request.request_id=lineage.request_id
+      JOIN revision AS child ON child.revision_id=lineage.child_revision_id
+      JOIN revision AS parent ON parent.revision_id=lineage.parent_revision_id
+      JOIN revision_qa_context AS qa_context ON qa_context.revision_id=child.revision_id
+     WHERE lineage.child_revision_id=?
+       AND candidate.request_id=lineage.request_id
+       AND candidate.parent_revision_id=lineage.parent_revision_id
+       AND candidate.campaign_id=lineage.campaign_id
+       AND candidate.person_id=lineage.person_id AND candidate.step=lineage.step
+       AND candidate.qa_state='revision_created'
+       AND json_extract(candidate.qa_json,'$.passed')=1
+       AND request.operation='edit' AND request.result_state='revision_created'
+       AND request.campaign_id=lineage.campaign_id AND request.person_id=lineage.person_id
+       AND request.expected_revision_id=lineage.parent_revision_id
+       AND request.result_id=candidate.candidate_id
+       AND child.campaign_id=lineage.campaign_id AND child.person_id=lineage.person_id
+       AND child.step=lineage.step
+       AND child.subject=candidate.subject AND child.body=candidate.body
+       AND json_extract(child.qa,'$.passed')=1
+       AND qa_context.inherited_from_revision_id=lineage.parent_revision_id
+       AND NOT EXISTS (
+           SELECT 1 FROM prospecting_agent_revision_lineage AS agent
+            WHERE agent.child_revision_id=lineage.child_revision_id
+       )"""
 
 
 class PipelineStageError(ValueError):
@@ -127,6 +157,14 @@ class ReviewProjection:
     suggestion_body: str | None
     proposed_revision_hash: str | None
     decision: str | None
+
+
+@dataclass(frozen=True)
+class RestartOffer:
+    revision_id: str
+    exhausted_item_id: str
+    state: str
+    code: str | None
 
 
 def _canonical(value: object) -> str:
@@ -729,6 +767,14 @@ class PipelineStageService:
         seen: set[str] = set()
         while current not in seen:
             seen.add(current)
+            # A committed human-edit restart is a new cycle-0 lineage boundary.
+            if self.connection.execute(
+                """SELECT 1 FROM prospecting_pipeline_reset AS reset
+                     JOIN prospecting_pipeline_item AS item ON item.item_id=reset.item_id
+                    WHERE reset.edited_revision_id=?""",
+                (current,),
+            ).fetchone() is not None:
+                return current
             parents = self.connection.execute(
                 """SELECT parent_revision_id FROM review_revision_lineage WHERE child_revision_id=?
                    UNION ALL
@@ -750,83 +796,274 @@ class PipelineStageService:
         try:
             replay = self.connection.execute("SELECT * FROM prospecting_pipeline_item WHERE request_id=?", (request_id,)).fetchone()
             if replay is not None:
-                if replay["campaign_id"] != campaign_id or replay["base_revision_id"] != revision_id:
+                if (
+                    replay["campaign_id"] != campaign_id or replay["base_revision_id"] != revision_id
+                    or self.connection.execute(
+                        "SELECT 1 FROM prospecting_pipeline_reset WHERE request_id=?", (request_id,),
+                    ).fetchone() is not None
+                ):
                     raise PipelineStageError("request_conflict")
                 _assert_item_context_current(self.connection, replay, _now(self.now()))
                 self.connection.commit()
                 return self._project(replay)
-            revision = _revision(self.connection, revision_id)
-            if revision["campaign_id"] != campaign_id or not _current_revision(self.connection, revision):
-                raise PipelineStageError("revision_not_current")
-            load_revision_qa_context(self.connection, revision_id)
-            checked_at = _now(self.now())
-            if any(
-                not bool(row["allowed_for_copy"])
-                or _timestamp(row["expires_at"], "revision_evidence_invalid") < checked_at
-                for row in _evidence_rows(self.connection, revision)
-            ):
-                raise PipelineStageError("revision_evidence_invalid")
-            _model_identity_proof(self.connection, revision, checked_at)
-            run = self.connection.execute(
-                """SELECT run.run_id,run.intake_hash,run.campaign_policy_hash
-                     FROM prospecting_pipeline_run AS run
-                     JOIN prospecting_pipeline_intake AS intake ON intake.intake_id=run.intake_id
-                    WHERE run.campaign_id=?
-                    ORDER BY intake.intake_revision DESC,intake.intake_id DESC LIMIT 1""",
-                (campaign_id,),
-            ).fetchone()
-            if run is None:
-                raise PipelineStageError("pipeline_run_missing")
-            existing = self.connection.execute(
-                "SELECT * FROM prospecting_pipeline_item WHERE run_id=? AND base_revision_id=?",
-                (run["run_id"], revision_id),
-            ).fetchone()
-            if existing is not None:
-                raise PipelineStageError("pipeline_item_exists")
-            item_id = "item-" + uuid4().hex
-            timestamp = _now(self.now()).isoformat()
-            manifest = evidence_manifest_hash(self.connection, revision)
-            lineage_root = self._lineage_root(revision_id)
-            exhausted = self.connection.execute(
-                """SELECT 1 FROM prospecting_pipeline_item
-                    WHERE campaign_id=? AND person_id=? AND step=?
-                      AND lineage_root_revision_id=? AND state='parked'
-                      AND repair_cycle>=max_repair_cycles
-                    LIMIT 1""",
-                (campaign_id,revision["person_id"],revision["step"],lineage_root),
-            ).fetchone()
-            if exhausted is not None:
-                raise PipelineStageError("repair_budget_exhausted")
-            pending_item = {
-                "item_id": item_id, "request_hash": "", "run_id": run["run_id"],
-                "campaign_id": campaign_id, "intake_hash": run["intake_hash"],
-                "campaign_policy_hash": run["campaign_policy_hash"],
-                "person_id": revision["person_id"], "step": revision["step"],
-                "base_revision_id": revision_id, "base_revision_hash": revision["hash"],
-                "evidence_manifest_hash": manifest,
-            }
-            request_hash = _digest(
-                "start", campaign_id, revision_id,
-                _source_context_hash(self.connection, pending_item, revision, checked_at),
-            )
-            used = self.connection.execute(
-                "SELECT COALESCE(MAX(repair_cycle),0) FROM prospecting_pipeline_item WHERE campaign_id=? AND person_id=? AND step=? AND lineage_root_revision_id=?",
-                (campaign_id,revision["person_id"],revision["step"],lineage_root),
-            ).fetchone()[0]
-            self.connection.execute(
-                """INSERT INTO prospecting_pipeline_item(
-                       item_id,request_id,request_hash,run_id,campaign_id,intake_hash,
-                       campaign_policy_hash,person_id,step,base_revision_id,base_revision_hash,
-                       lineage_root_revision_id,evidence_manifest_hash,state,next_stage,
-                       repair_cycle,max_repair_cycles,claim_epoch,created_at,updated_at
-                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-                (item_id,request_id,request_hash,run[0],campaign_id,run[1],run[2],revision["person_id"],revision["step"],revision_id,revision["hash"],lineage_root,manifest,"awaiting_humanizer_adapter","humanizer",int(used),2,0,timestamp,timestamp),
-            )
+            item_id = self._insert_start_item(campaign_id, revision_id, request_id)
             self.connection.commit()
             return self._project(self.connection.execute("SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (item_id,)).fetchone())
         except BaseException:
             self.connection.rollback()
             raise
+
+    def _insert_start_item(
+        self, campaign_id: str, revision_id: str, request_id: str,
+        *, item_id: str | None = None, lineage_root: str | None = None,
+    ) -> str:
+        """Insert one waiting item inside the caller's already-open transaction."""
+        if not self.connection.in_transaction:
+            raise PipelineStageError("transaction_required")
+        revision = _revision(self.connection, revision_id)
+        if revision["campaign_id"] != campaign_id or not _current_revision(self.connection, revision):
+            raise PipelineStageError("revision_not_current")
+        load_revision_qa_context(self.connection, revision_id)
+        checked_at = _now(self.now())
+        if any(
+            not bool(row["allowed_for_copy"])
+            or _timestamp(row["expires_at"], "revision_evidence_invalid") < checked_at
+            for row in _evidence_rows(self.connection, revision)
+        ):
+            raise PipelineStageError("revision_evidence_invalid")
+        _model_identity_proof(self.connection, revision, checked_at)
+        run = self.connection.execute(
+            """SELECT run.run_id,run.intake_hash,run.campaign_policy_hash
+                 FROM prospecting_pipeline_run AS run
+                 JOIN prospecting_pipeline_intake AS intake ON intake.intake_id=run.intake_id
+                WHERE run.campaign_id=?
+                ORDER BY intake.intake_revision DESC,intake.intake_id DESC LIMIT 1""",
+            (campaign_id,),
+        ).fetchone()
+        if run is None:
+            raise PipelineStageError("pipeline_run_missing")
+        existing = self.connection.execute(
+            "SELECT * FROM prospecting_pipeline_item WHERE run_id=? AND base_revision_id=?",
+            (run["run_id"], revision_id),
+        ).fetchone()
+        if existing is not None:
+            raise PipelineStageError("pipeline_item_exists")
+        item_id = "item-" + uuid4().hex if item_id is None else item_id
+        timestamp = _now(self.now()).isoformat()
+        manifest = evidence_manifest_hash(self.connection, revision)
+        lineage_root = self._lineage_root(revision_id) if lineage_root is None else lineage_root
+        exhausted = self.connection.execute(
+            """SELECT 1 FROM prospecting_pipeline_item
+                WHERE campaign_id=? AND person_id=? AND step=?
+                  AND lineage_root_revision_id=? AND state='parked'
+                  AND repair_cycle>=max_repair_cycles
+                LIMIT 1""",
+            (campaign_id,revision["person_id"],revision["step"],lineage_root),
+        ).fetchone()
+        if exhausted is not None:
+            raise PipelineStageError("repair_budget_exhausted")
+        pending_item = {
+            "item_id": item_id, "request_hash": "", "run_id": run["run_id"],
+            "campaign_id": campaign_id, "intake_hash": run["intake_hash"],
+            "campaign_policy_hash": run["campaign_policy_hash"],
+            "person_id": revision["person_id"], "step": revision["step"],
+            "base_revision_id": revision_id, "base_revision_hash": revision["hash"],
+            "evidence_manifest_hash": manifest,
+        }
+        request_hash = _digest(
+            "start", campaign_id, revision_id,
+            _source_context_hash(self.connection, pending_item, revision, checked_at),
+        )
+        used = self.connection.execute(
+            "SELECT COALESCE(MAX(repair_cycle),0) FROM prospecting_pipeline_item WHERE campaign_id=? AND person_id=? AND step=? AND lineage_root_revision_id=?",
+            (campaign_id,revision["person_id"],revision["step"],lineage_root),
+        ).fetchone()[0]
+        self.connection.execute(
+            """INSERT INTO prospecting_pipeline_item(
+                   item_id,request_id,request_hash,run_id,campaign_id,intake_hash,
+                   campaign_policy_hash,person_id,step,base_revision_id,base_revision_hash,
+                   lineage_root_revision_id,evidence_manifest_hash,state,next_stage,
+                   repair_cycle,max_repair_cycles,claim_epoch,created_at,updated_at
+               ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (item_id,request_id,request_hash,run[0],campaign_id,run[1],run[2],revision["person_id"],revision["step"],revision_id,revision["hash"],lineage_root,manifest,"awaiting_humanizer_adapter","humanizer",int(used),2,0,timestamp,timestamp),
+        )
+        return item_id
+
+    def _human_edit_link(self, revision_id: str) -> sqlite3.Row | None:
+        rows = self.connection.execute(_HUMAN_EDIT_LINK_SQL, (revision_id,)).fetchall()
+        if len(rows) > 1:
+            raise PipelineStageError("revision_lineage_ambiguous")
+        return rows[0] if rows else None
+
+    def _restart_scope(
+        self, campaign_id: str, revision_id: str, exhausted_item_id: str,
+        checked_at: datetime,
+    ) -> tuple[sqlite3.Row, sqlite3.Row, sqlite3.Row]:
+        """Validate one genuine human edit against the exact exhausted lineage."""
+        revision = self.connection.execute(
+            "SELECT * FROM revision WHERE revision_id=?", (revision_id,),
+        ).fetchone()
+        if (
+            revision is None or revision["campaign_id"] != campaign_id
+            or not _current_revision(self.connection, revision)
+        ):
+            raise PipelineStageError("revision_not_current")
+        exhausted = self.connection.execute(
+            "SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (exhausted_item_id,),
+        ).fetchone()
+        if exhausted is None:
+            raise PipelineStageError("pipeline_item_missing")
+        if (
+            exhausted["campaign_id"] != revision["campaign_id"]
+            or exhausted["person_id"] != revision["person_id"]
+            or exhausted["step"] != revision["step"]
+        ):
+            raise PipelineStageError("reset_scope_mismatch")
+        if (
+            exhausted["state"] != "parked"
+            or exhausted["repair_cycle"] < exhausted["max_repair_cycles"]
+        ):
+            raise PipelineStageError("reset_not_exhausted")
+        scope = (revision["campaign_id"], revision["person_id"], revision["step"])
+        if self.connection.execute(
+            """SELECT 1 FROM prospecting_pipeline_item
+                WHERE campaign_id=? AND person_id=? AND step=? AND rowid>(
+                  SELECT rowid FROM prospecting_pipeline_item WHERE item_id=?
+                ) LIMIT 1""",
+            (*scope, exhausted_item_id),
+        ).fetchone() is not None:
+            raise PipelineStageError("pipeline_work_conflict")
+        leases = self.connection.execute(
+            """SELECT attempt.lease_until FROM prospecting_stage_attempt AS attempt
+                 JOIN prospecting_pipeline_item AS item ON item.item_id=attempt.item_id
+                WHERE item.campaign_id=? AND item.person_id=? AND item.step=?
+                  AND attempt.state='claimed'""",
+            scope,
+        ).fetchall()
+        if any(checked_at <= _timestamp(row["lease_until"], "invalid_lease") for row in leases):
+            raise PipelineStageError("pipeline_work_conflict")
+        if revision_id == exhausted["base_revision_id"]:
+            raise PipelineStageError("reset_edit_unchanged")
+        link = self._human_edit_link(revision_id)
+        if link is None:
+            raise PipelineStageError("reset_edit_required")
+        base = _revision(self.connection, str(exhausted["base_revision_id"]))
+        text = (revision["subject"], revision["body"])
+        if text in {
+            (link["parent_subject"], link["parent_body"]),
+            (base["subject"], base["body"]),
+        }:
+            raise PipelineStageError("reset_edit_unchanged")
+        current, seen = str(link["parent_revision_id"]), {revision_id}
+        while current != exhausted["base_revision_id"]:
+            if current in seen or len(seen) >= MAX_RESET_LINEAGE:
+                raise PipelineStageError("reset_scope_mismatch")
+            seen.add(current)
+            step_link = self._human_edit_link(current)
+            if step_link is None:
+                raise PipelineStageError("reset_scope_mismatch")
+            current = str(step_link["parent_revision_id"])
+        if self._lineage_root(revision_id) != exhausted["lineage_root_revision_id"]:
+            raise PipelineStageError("reset_scope_mismatch")
+        _assert_no_unresolved_candidate(self.connection, campaign_id, revision_id)
+        return revision, exhausted, link
+
+    def start_from_human_edit(
+        self, campaign_id: str, revision_id: str, exhausted_item_id: str,
+        request_id: str, actor: str,
+    ) -> ItemProjection:
+        """Atomically record a reset boundary and its ordinary waiting P16 item."""
+        campaign_id = _text(campaign_id, "invalid_campaign_id", maximum=128)
+        revision_id = _text(revision_id, "invalid_revision_id", maximum=128)
+        exhausted_item_id = _text(exhausted_item_id, "invalid_item_id", maximum=128)
+        request_id = _text(request_id, "invalid_request_id", maximum=128)
+        if type(actor) is not str or not actor.startswith("human:") or actor == "human:":
+            raise PipelineStageError("human_actor_required")
+        _text(actor, "human_actor_required", maximum=128)
+        request_hash = _digest("restart", campaign_id, revision_id, exhausted_item_id, actor)
+        self._begin()
+        try:
+            replay = self.connection.execute(
+                "SELECT * FROM prospecting_pipeline_reset WHERE request_id=?", (request_id,),
+            ).fetchone()
+            if replay is not None:
+                if replay["request_hash"] != request_hash:
+                    raise PipelineStageError("request_conflict")
+                item = self.connection.execute(
+                    "SELECT * FROM prospecting_pipeline_item WHERE item_id=? AND request_id=?",
+                    (replay["item_id"], request_id),
+                ).fetchone()
+                if item is None:
+                    raise PipelineStageError("store_state_invalid")
+                _assert_item_context_current(self.connection, item, _now(self.now()))
+                self.connection.commit()
+                return self._project(item)
+            if self.connection.execute(
+                "SELECT 1 FROM prospecting_pipeline_item WHERE request_id=?", (request_id,),
+            ).fetchone() is not None:
+                raise PipelineStageError("request_conflict")
+            revision, exhausted, link = self._restart_scope(
+                campaign_id, revision_id, exhausted_item_id, _now(self.now()),
+            )
+            item_id = "item-" + uuid4().hex
+            self.connection.execute(
+                """INSERT INTO prospecting_pipeline_reset(
+                       reset_id,request_id,request_hash,item_id,campaign_id,person_id,step,
+                       exhausted_item_id,exhausted_root_revision_id,exhausted_base_revision_id,
+                       edited_revision_id,edited_revision_hash,edit_parent_revision_id,
+                       edit_candidate_id,edit_request_id,actor,created_at
+                   ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (
+                    "reset-" + uuid4().hex, request_id, request_hash, item_id,
+                    campaign_id, revision["person_id"], revision["step"],
+                    exhausted_item_id, exhausted["lineage_root_revision_id"],
+                    exhausted["base_revision_id"], revision_id, revision["hash"],
+                    link["parent_revision_id"], link["candidate_id"], link["request_id"],
+                    actor, _now(self.now()).isoformat(),
+                ),
+            )
+            self._insert_start_item(
+                campaign_id, revision_id, request_id,
+                item_id=item_id, lineage_root=revision_id,
+            )
+            self.connection.commit()
+            return self._project(self.connection.execute(
+                "SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (item_id,),
+            ).fetchone())
+        except BaseException:
+            self.connection.rollback()
+            raise
+
+    def get_restart_offer(self, campaign_id: str, revision_id: str) -> RestartOffer | None:
+        """Project the one explicit restart action for an edit below an exhausted item."""
+        campaign_id = _text(campaign_id, "invalid_campaign_id", maximum=128)
+        revision_id = _text(revision_id, "invalid_revision_id", maximum=128)
+        revision = self.connection.execute(
+            "SELECT * FROM revision WHERE revision_id=? AND campaign_id=?",
+            (revision_id, campaign_id),
+        ).fetchone()
+        if revision is None:
+            return None
+        newest = self.connection.execute(
+            """SELECT * FROM prospecting_pipeline_item
+                WHERE campaign_id=? AND person_id=? AND step=?
+                ORDER BY rowid DESC LIMIT 1""",
+            (campaign_id, revision["person_id"], revision["step"]),
+        ).fetchone()
+        if (
+            newest is None or newest["state"] != "parked"
+            or newest["repair_cycle"] < newest["max_repair_cycles"]
+            or newest["base_revision_id"] == revision_id
+            or self._lineage_root(revision_id) != newest["lineage_root_revision_id"]
+        ):
+            return None
+        try:
+            self._restart_scope(
+                campaign_id, revision_id, str(newest["item_id"]), _now(self.now()),
+            )
+        except PipelineStageError as error:
+            return RestartOffer(revision_id, str(newest["item_id"]), "restart_blocked", error.code)
+        return RestartOffer(revision_id, str(newest["item_id"]), "restart_available", None)
 
     def get_item(self, item_id: str) -> ItemProjection:
         row = self.connection.execute("SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (item_id,)).fetchone()

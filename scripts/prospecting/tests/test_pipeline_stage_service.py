@@ -4,7 +4,8 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
-from typing import Mapping
+import sqlite3
+from typing import Callable, Mapping
 
 import pytest
 
@@ -22,7 +23,11 @@ from scripts.prospecting.pipeline_stage_service import (
 from scripts.prospecting.personalizer.qa import QaPolicy, QaResult, SlotBinding
 from scripts.prospecting.personalizer.revision import RevisionInput, build_revision
 from scripts.prospecting.review_qa import load_revision_qa_context, record_revision_qa_context
-from scripts.prospecting.review_service import ReviewService, VerifyIdentitySourceRequest
+from scripts.prospecting.review_service import (
+    EditDraftRequest,
+    ReviewService,
+    VerifyIdentitySourceRequest,
+)
 from scripts.prospecting.store import open_store
 from scripts.prospecting.tests.test_review_service import (
     ASK,
@@ -77,6 +82,21 @@ class LateOnceAdapter:
         if self.calls == 1:
             self.clock[0] += timedelta(minutes=6)
         return StageResult(self.payload)
+
+
+@dataclass
+class InterleavedCritic:
+    binding: StageBinding
+    clock: list[datetime]
+    during: Callable[[], None]
+
+    def execute(self, job: StageJob) -> StageResult:
+        self.clock[0] += timedelta(minutes=6)
+        self.during()
+        return StageResult({
+            "decision": "repair", "reasons": [],
+            "repair_instructions": "Revise the synthetic draft.",
+        })
 
 
 def _binding(name: str) -> StageBinding:
@@ -1055,3 +1075,419 @@ def test_repair_budget_survives_new_intake_run_for_same_lineage(tmp_path: Path) 
     assert connection.execute(
         "SELECT count(*) FROM prospecting_pipeline_item"
     ).fetchone()[0] == 1
+
+
+def _clock() -> datetime:
+    return datetime.fromisoformat(NOW.replace("Z", "+00:00"))
+
+
+def _exhaust(service: PipelineStageService, item_id: str, prefix: str):
+    for cycle in range(3):
+        service.run_next(item_id, f"{prefix}-h-{cycle}")
+        service.run_next(item_id, f"{prefix}-f-{cycle}")
+        result = service.run_next(item_id, f"{prefix}-c-{cycle}")
+    assert (result.state, result.repair_cycle) == ("parked", 2)
+    return result
+
+
+def _human_edit(connection, parent_revision_id: str, index: int, sentence: str, **extra):
+    result = ReviewService(connection, now=lambda: NOW).edit_draft(EditDraftRequest(
+        request_id(index), "campaign-a", parent_revision_id,
+        extra.pop("subject", f"Revised synthetic subject {index}"),
+        extra.pop("body", f"Hello. {POINT}. {sentence} {ASK}"), **extra,
+    ))
+    return result
+
+
+def _fresh_revision(connection, subject: str) -> str:
+    """A model-produced current revision with no human-edit lineage."""
+    revision = build_revision(connection, RevisionInput(
+        "person-a", "campaign-a", 0, subject, f"Hello. {POINT}. {ASK}", "why_them",
+        "bespoke", None, ASK, ("evidence-a",), (POINT,), (), "networking", 1,
+        "fixture-prompt", "fixture-model", QaResult(True, 100, {"fixture": True}, ()),
+    ))
+    record_revision_qa_context(
+        connection, revision.revision_id,
+        {"why_them": SlotBinding(POINT, "evidence", "evidence-a"),
+         "ask": SlotBinding(ASK, "policy", "policy.ask")},
+        QaPolicy("networking", 0, "informational_call", 1, 120, 0.7),
+        inherited_from_revision_id=None, created_at=NOW,
+    )
+    connection.commit()
+    return revision.revision_id
+
+
+def _authority_counts(connection) -> tuple[int, ...]:
+    return tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in (
+            "draft_editorial_event", "approval", "identity_source_review",
+            "source_snapshot", "exec_request",
+        )
+    )
+
+
+def test_changed_human_edit_restarts_exhausted_lineage_at_cycle_zero(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    exhausted = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    _exhaust(service, exhausted.item_id, "old")
+    assert service.get_restart_offer("campaign-a", revision.revision_id) is None
+    edited = _human_edit(
+        connection, revision.revision_id, 21, "This human edit reframes the synthetic evidence.",
+    )
+    assert edited.state == "revision_created"
+    with pytest.raises(PipelineStageError, match="^repair_budget_exhausted$"):
+        service.start_from_saved_revision("campaign-a", edited.revision_id, "plain-start")
+    before = _authority_counts(connection)
+
+    offer = service.get_restart_offer("campaign-a", edited.revision_id)
+    assert (offer.state, offer.exhausted_item_id, offer.code) == (
+        "restart_available", exhausted.item_id, None,
+    )
+    restarted = service.start_from_human_edit(
+        "campaign-a", edited.revision_id, exhausted.item_id, "restart-request", "human:fixture",
+    )
+
+    assert (restarted.base_revision_id, restarted.state, restarted.next_stage, restarted.repair_cycle) == (
+        edited.revision_id, "awaiting_humanizer_adapter", "humanizer", 0,
+    )
+    item = connection.execute(
+        "SELECT * FROM prospecting_pipeline_item WHERE item_id=?", (restarted.item_id,),
+    ).fetchone()
+    assert (item["lineage_root_revision_id"], item["claim_epoch"], item["request_id"]) == (
+        edited.revision_id, 0, "restart-request",
+    )
+    reset = connection.execute("SELECT * FROM prospecting_pipeline_reset").fetchone()
+    assert (
+        reset["item_id"], reset["exhausted_item_id"], reset["exhausted_base_revision_id"],
+        reset["exhausted_root_revision_id"], reset["edited_revision_id"],
+        reset["edit_parent_revision_id"], reset["edit_candidate_id"], reset["actor"],
+    ) == (
+        restarted.item_id, exhausted.item_id, revision.revision_id, revision.revision_id,
+        edited.revision_id, revision.revision_id, edited.candidate_id, "human:fixture",
+    )
+    old = service.get_item(exhausted.item_id)
+    assert (old.state, old.repair_cycle) == ("parked", 2)
+    assert _authority_counts(connection) == before
+
+    assert service.start_from_human_edit(
+        "campaign-a", edited.revision_id, exhausted.item_id, "restart-request", "human:fixture",
+    ) == restarted
+    for changed in (
+        ("campaign-a", edited.revision_id, exhausted.item_id, "restart-request", "human:other"),
+        ("campaign-a", edited.revision_id, "item-other", "restart-request", "human:fixture"),
+    ):
+        with pytest.raises(PipelineStageError, match="^request_conflict$"):
+            service.start_from_human_edit(*changed)
+    with pytest.raises(PipelineStageError, match="^request_conflict$"):
+        service.start_from_saved_revision("campaign-a", edited.revision_id, "restart-request")
+    with pytest.raises(PipelineStageError, match="^request_conflict$"):
+        service.start_from_human_edit(
+            "campaign-a", edited.revision_id, exhausted.item_id, "start-request", "human:fixture",
+        )
+    with pytest.raises(PipelineStageError, match="^pipeline_work_conflict$"):
+        service.start_from_human_edit(
+            "campaign-a", edited.revision_id, exhausted.item_id, "restart-again", "human:fixture",
+        )
+    with pytest.raises(PipelineStageError, match="^human_actor_required$"):
+        service.start_from_human_edit(
+            "campaign-a", edited.revision_id, exhausted.item_id, "agent-restart", "agent:humanizer",
+        )
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_reset").fetchone()[0] == 1
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_item").fetchone()[0] == 2
+    assert connection.in_transaction is False
+
+    reviewer = PipelineStageService(connection, adapters=_adapters(), now=_clock)
+    _run_to_review(reviewer, restarted.item_id)
+    accepted = reviewer.accept_suggestion(
+        restarted.item_id, "accept-restart", edited.revision_id, "human:fixture",
+    )
+    assert require_revision_review_chain(
+        connection, "campaign-a", accepted.revision_hash, NOW,
+    )["revision_id"] == accepted.revision_id
+    with pytest.raises(PipelineStageError, match="^human_editorial_ready_missing$"):
+        require_revision_ready(connection, "campaign-a", accepted.revision_hash, NOW)
+    assert _authority_counts(connection) == before
+
+
+def test_restart_refuses_unchanged_edits_and_preserves_pending_human_edit(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    exhausted = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    _exhaust(service, exhausted.item_id, "old")
+    with pytest.raises(PipelineStageError, match="^reset_edit_unchanged$"):
+        service.start_from_human_edit(
+            "campaign-a", revision.revision_id, exhausted.item_id, "same-base", "human:fixture",
+        )
+    parent = connection.execute(
+        "SELECT subject,body FROM revision WHERE revision_id=?", (revision.revision_id,),
+    ).fetchone()
+    changed = _human_edit(connection, revision.revision_id, 22, "A temporary synthetic change.")
+    assert changed.state == "revision_created"
+    # Reverting to the exhausted text creates no revision (its copy hash already exists);
+    # the saved attempt stays visible and unresolved instead of enabling a restart.
+    reverted = _human_edit(
+        connection, changed.revision_id, 23, "", subject=parent["subject"], body=parent["body"],
+    )
+    assert (reverted.state, reverted.revision_id) == ("qa_failed", changed.revision_id)
+    offer = service.get_restart_offer("campaign-a", changed.revision_id)
+    assert (offer.state, offer.code) == ("restart_blocked", "human_edit_unresolved")
+    with pytest.raises(PipelineStageError, match="^human_edit_unresolved$"):
+        service.start_from_human_edit(
+            "campaign-a", changed.revision_id, exhausted.item_id, "pending", "human:fixture",
+        )
+    assert connection.execute(
+        "SELECT qa_state FROM review_candidate WHERE candidate_id=?", (reverted.candidate_id,),
+    ).fetchone()[0] == "qa_failed"
+
+    resolved = _human_edit(
+        connection, changed.revision_id, 24, "A resolved synthetic change.",
+        expected_candidate_id=reverted.candidate_id,
+    )
+    assert resolved.state == "revision_created"
+    restarted = service.start_from_human_edit(
+        "campaign-a", resolved.revision_id, exhausted.item_id, "resolved", "human:fixture",
+    )
+    assert restarted.repair_cycle == 0
+    assert connection.execute("SELECT count(*) FROM review_candidate").fetchone()[0] == 3
+
+
+def test_restart_refuses_forged_and_model_only_revisions(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    exhausted = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    _exhaust(service, exhausted.item_id, "old")
+    forged = _fresh_revision(connection, "Forged synthetic subject")
+    connection.execute(
+        """INSERT INTO review_candidate(
+               candidate_id,request_id,campaign_id,person_id,step,parent_revision_id,
+               subject,body,qa_state,qa_json,created_at
+           ) VALUES(?,?,?,?,?,?,?,?,?,?,?)""",
+        ("forged-candidate", "forged-request", "campaign-a", "person-a", 0,
+         revision.revision_id, "Forged synthetic subject", f"Hello. {POINT}. {ASK}",
+         "revision_created", "{}", NOW),
+    )
+    connection.execute(
+        "INSERT INTO review_revision_lineage VALUES(?,?,?,?,?,?,?,?)",
+        (forged, revision.revision_id, "forged-candidate", "forged-request",
+         "campaign-a", "person-a", 0, NOW),
+    )
+    connection.commit()
+    offer = service.get_restart_offer("campaign-a", forged)
+    assert (offer.state, offer.code) == ("restart_blocked", "reset_edit_required")
+    with pytest.raises(PipelineStageError, match="^reset_edit_required$"):
+        service.start_from_human_edit(
+            "campaign-a", forged, exhausted.item_id, "forged", "human:fixture",
+        )
+    forged_hash = connection.execute(
+        "SELECT hash FROM revision WHERE revision_id=?", (forged,),
+    ).fetchone()[0]
+    with pytest.raises(sqlite3.IntegrityError, match="prospecting_pipeline_reset_scope"):
+        connection.execute(
+            """INSERT INTO prospecting_pipeline_reset VALUES(
+                   'reset-forged','forged-reset','5'||substr(?,2),'item-forged','campaign-a',
+                   'person-a',0,?,?,?,?,?,?,'forged-candidate','forged-request','human:fixture',?)""",
+            (forged_hash, exhausted.item_id, revision.revision_id, revision.revision_id,
+             forged, forged_hash, revision.revision_id, NOW),
+        )
+    with pytest.raises(sqlite3.IntegrityError, match="prospecting_pipeline_reset_item_scope"):
+        connection.execute(
+            """INSERT INTO prospecting_pipeline_item(
+                   item_id,request_id,request_hash,run_id,campaign_id,intake_hash,
+                   campaign_policy_hash,person_id,step,base_revision_id,base_revision_hash,
+                   lineage_root_revision_id,evidence_manifest_hash,state,next_stage,
+                   repair_cycle,max_repair_cycles,claim_epoch,created_at,updated_at
+               ) SELECT 'item-escape','escape-request',request_hash,run_id,campaign_id,
+                        intake_hash,campaign_policy_hash,person_id,step,?,?,?,
+                        evidence_manifest_hash,'awaiting_humanizer_adapter','humanizer',
+                        0,2,0,created_at,updated_at
+                   FROM prospecting_pipeline_item WHERE item_id=?""",
+            (forged, forged_hash, forged, exhausted.item_id),
+        )
+
+    model_only = _fresh_revision(connection, "Regenerated synthetic subject")
+    assert service.get_restart_offer("campaign-a", model_only) is None
+    with pytest.raises(PipelineStageError, match="^reset_edit_required$"):
+        service.start_from_human_edit(
+            "campaign-a", model_only, exhausted.item_id, "model-only", "human:fixture",
+        )
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_reset").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_item").fetchone()[0] == 1
+
+
+def test_restart_refuses_wrong_scope_root_and_newer_work(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    first = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-first")
+    _exhaust(service, first.item_id, "first")
+    fresh = _fresh_revision(connection, "Fresh synthetic subject")
+    second = service.start_from_saved_revision("campaign-a", fresh, "start-second")
+    edited = _human_edit(connection, fresh, 27, "A newer synthetic human edit.")
+
+    cases = (
+        (("campaign-a", edited.revision_id, first.item_id), "pipeline_work_conflict"),
+        (("campaign-a", edited.revision_id, second.item_id), "reset_not_exhausted"),
+        (("campaign-a", edited.revision_id, "item-missing"), "pipeline_item_missing"),
+        (("campaign-b", edited.revision_id, second.item_id), "revision_not_current"),
+        (("campaign-a", fresh, second.item_id), "revision_not_current"),
+    )
+    for index, (arguments, code) in enumerate(cases):
+        with pytest.raises(PipelineStageError, match=f"^{code}$"):
+            service.start_from_human_edit(*arguments, f"scope-{index}", "human:fixture")
+
+    third = service.start_from_saved_revision("campaign-a", edited.revision_id, "start-third")
+    _exhaust(service, third.item_id, "third")
+    other = _fresh_revision(connection, "Other synthetic subject")
+    other_edit = _human_edit(connection, other, 28, "An edit in another lineage.")
+    assert service.get_restart_offer("campaign-a", other_edit.revision_id) is None
+    with pytest.raises(PipelineStageError, match="^reset_scope_mismatch$"):
+        service.start_from_human_edit(
+            "campaign-a", other_edit.revision_id, third.item_id, "wrong-root", "human:fixture",
+        )
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_reset").fetchone()[0] == 0
+    assert connection.in_transaction is False
+
+
+@pytest.mark.parametrize("failure", ["python_between_rows", "sqlite_item_insert", "orphan_boundary"])
+def test_restart_boundary_and_item_commit_or_roll_back_together(
+    tmp_path: Path, monkeypatch, failure: str,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    exhausted = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    _exhaust(service, exhausted.item_id, "old")
+    edited = _human_edit(connection, revision.revision_id, 29, "A crash-window synthetic edit.")
+    original = PipelineStageService._insert_start_item
+    if failure == "python_between_rows":
+        def crash(self, *args, **kwargs):
+            assert self.connection.execute(
+                "SELECT count(*) FROM prospecting_pipeline_reset",
+            ).fetchone()[0] == 1
+            raise RuntimeError("injected_crash")
+        monkeypatch.setattr(PipelineStageService, "_insert_start_item", crash)
+    elif failure == "sqlite_item_insert":
+        connection.execute(
+            """CREATE TEMP TRIGGER injected_crash BEFORE INSERT ON prospecting_pipeline_item
+               WHEN EXISTS (SELECT 1 FROM prospecting_pipeline_reset WHERE item_id=NEW.item_id)
+               BEGIN SELECT RAISE(ABORT,'injected_crash'); END"""
+        )
+    else:
+        monkeypatch.setattr(
+            PipelineStageService, "_insert_start_item",
+            lambda self, *args, **kwargs: kwargs["item_id"],
+        )
+
+    with pytest.raises((RuntimeError, sqlite3.IntegrityError)):
+        service.start_from_human_edit(
+            "campaign-a", edited.revision_id, exhausted.item_id, "restart-request", "human:fixture",
+        )
+
+    assert connection.in_transaction is False
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_reset").fetchone()[0] == 0
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_item").fetchone()[0] == 1
+    monkeypatch.setattr(PipelineStageService, "_insert_start_item", original)
+    connection.execute("DROP TRIGGER IF EXISTS temp.injected_crash")
+    restarted = service.start_from_human_edit(
+        "campaign-a", edited.revision_id, exhausted.item_id, "restart-request", "human:fixture",
+    )
+    assert restarted.repair_cycle == 0
+    assert connection.execute("SELECT count(*) FROM prospecting_pipeline_reset").fetchone()[0] == 1
+
+
+def test_late_result_from_old_attempt_is_fenced_after_restart(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    clock = [_clock()]
+    old = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=lambda: clock[0])
+    item = old.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    for cycle in range(2):
+        old.run_next(item.item_id, f"old-h-{cycle}")
+        old.run_next(item.item_id, f"old-f-{cycle}")
+        old.run_next(item.item_id, f"old-c-{cycle}")
+    old.run_next(item.item_id, "old-h-2")
+    old.run_next(item.item_id, "old-f-2")
+    other = open_store(tmp_path / "pipeline-stage.sqlite")
+    restarted: dict[str, object] = {}
+
+    def recover_exhaust_edit_and_restart() -> None:
+        worker = PipelineStageService(
+            other, adapters={"independent_critic": _adapters(critic="repair")["independent_critic"]},
+            now=lambda: clock[0],
+        )
+        worker.recover_expired(item.item_id)
+        assert worker.run_next(item.item_id, "recovered-c-2").state == "parked"
+        edited = _human_edit(other, revision.revision_id, 30, "A human edit during a stale claim.")
+        restarted["item"] = worker.start_from_human_edit(
+            "campaign-a", edited.revision_id, item.item_id, "restart-request", "human:fixture",
+        )
+
+    late = PipelineStageService(
+        connection,
+        adapters={"independent_critic": InterleavedCritic(
+            _binding("critic"), clock, recover_exhaust_edit_and_restart,
+        )},
+        now=lambda: clock[0],
+    )
+    with pytest.raises(PipelineStageError, match="^lease_lost$"):
+        late.run_next(item.item_id, "late-c-2")
+
+    new_item = restarted["item"]
+    assert tuple(connection.execute(
+        "SELECT state,failure_code FROM prospecting_stage_attempt WHERE request_id='late-c-2'"
+    ).fetchone()) == ("expired", "lease_expired")
+    assert connection.execute(
+        """SELECT count(*) FROM prospecting_stage_artifact AS artifact
+             JOIN prospecting_stage_attempt AS attempt ON attempt.attempt_id=artifact.attempt_id
+            WHERE attempt.request_id='late-c-2'"""
+    ).fetchone()[0] == 0
+    parked = old.get_item(item.item_id)
+    assert (parked.state, parked.repair_cycle) == ("parked", 2)
+    fresh = connection.execute(
+        "SELECT state,claim_epoch,repair_cycle FROM prospecting_pipeline_item WHERE item_id=?",
+        (new_item.item_id,),
+    ).fetchone()
+    assert tuple(fresh) == ("awaiting_humanizer_adapter", 0, 0)
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_stage_attempt WHERE item_id=?", (new_item.item_id,),
+    ).fetchone()[0] == 0
+    other.close()
+
+
+def test_re_exhaustion_requires_another_changed_human_edit(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    service = PipelineStageService(connection, adapters=_adapters(critic="repair"), now=_clock)
+    first = service.start_from_saved_revision("campaign-a", revision.revision_id, "start-request")
+    _exhaust(service, first.item_id, "first")
+    edit_one = _human_edit(connection, revision.revision_id, 31, "The first restart edit.")
+    second = service.start_from_human_edit(
+        "campaign-a", edit_one.revision_id, first.item_id, "restart-one", "human:fixture",
+    )
+    _exhaust(service, second.item_id, "second")
+    with pytest.raises(PipelineStageError, match="^reset_edit_unchanged$"):
+        service.start_from_human_edit(
+            "campaign-a", edit_one.revision_id, second.item_id, "restart-same", "human:fixture",
+        )
+
+    edit_two = _human_edit(connection, edit_one.revision_id, 32, "The second restart edit.")
+    with pytest.raises(PipelineStageError, match="^repair_budget_exhausted$"):
+        service.start_from_saved_revision("campaign-a", edit_two.revision_id, "plain-two")
+    with pytest.raises(PipelineStageError, match="^pipeline_work_conflict$"):
+        service.start_from_human_edit(
+            "campaign-a", edit_two.revision_id, first.item_id, "restart-stale", "human:fixture",
+        )
+    offer = service.get_restart_offer("campaign-a", edit_two.revision_id)
+    assert (offer.state, offer.exhausted_item_id) == ("restart_available", second.item_id)
+    third = service.start_from_human_edit(
+        "campaign-a", edit_two.revision_id, second.item_id, "restart-two", "human:fixture",
+    )
+
+    assert third.repair_cycle == 0
+    assert connection.execute(
+        "SELECT lineage_root_revision_id FROM prospecting_pipeline_item WHERE item_id=?",
+        (third.item_id,),
+    ).fetchone()[0] == edit_two.revision_id
+    assert [tuple(row) for row in connection.execute(
+        "SELECT exhausted_item_id,edited_revision_id FROM prospecting_pipeline_reset ORDER BY rowid"
+    )] == [
+        (first.item_id, edit_one.revision_id), (second.item_id, edit_two.revision_id),
+    ]

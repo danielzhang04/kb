@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import http.client
 import json
 from pathlib import Path
+from queue import Queue
 import re
 import sqlite3
 import threading
@@ -54,6 +55,8 @@ from scripts.prospecting.review_service import (
     SenderProfileView,
     ReviewService,
 )
+from scripts.prospecting.manager.campaigns import CampaignService
+from scripts.prospecting.store import open_store
 from scripts.prospecting.tests.p6_support import migrated_t1_store
 
 
@@ -612,6 +615,111 @@ def test_editorial_http_exact_retry_does_not_revalidate_expired_source_before_re
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
+
+
+def test_actual_http_restart_from_changed_human_edit_after_exhaustion(tmp_path) -> None:
+    from scripts.prospecting.tests.test_pipeline_stage_service import (
+        _adapters, _clock, _exhaust, _seed,
+    )
+    from scripts.prospecting.tests.test_review_service import ASK, NOW, POINT
+
+    seeded, revision = _seed(tmp_path)
+    stage = PipelineStageService(seeded, adapters=_adapters(critic="repair"), now=_clock)
+    exhausted = stage.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "start-request",
+    )
+    _exhaust(stage, exhausted.item_id, "http")
+    seeded.close()
+    database = tmp_path / "pipeline-stage.sqlite"
+    ready: Queue[object] = Queue()
+
+    def run() -> None:
+        connection = open_store(database)
+        server = create_server(
+            ReviewService(connection, now=lambda: NOW), CampaignService(connection), port=0,
+            editorial_pipeline=PipelineStageService(connection, now=_clock),
+        )
+        ready.put(server)
+        try:
+            server.serve_forever()
+        finally:
+            server.server_close()
+            connection.close()
+
+    thread = threading.Thread(target=run, daemon=True)
+    thread.start()
+    server = ready.get(timeout=5)
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        headers = {
+            "Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf,
+        }
+
+        def post(path: str, value: dict[str, object]):
+            status, _headers, raw = request(
+                server, "POST", path, body=json.dumps(value).encode(), headers=headers,
+            )
+            return status, json.loads(raw)
+
+        def editorial_for(revision_id: str) -> list[object]:
+            status, _headers, raw = request(
+                server, "GET", "/api/review?campaign_id=campaign-a",
+                headers={"Cookie": cookie},
+            )
+            assert status == 200
+            return [
+                value for value in json.loads(raw)["editorial_pipeline"]
+                if value["revision_id"] == revision_id
+            ]
+
+        status, edited = post("/api/drafts/edit", {
+            "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa21", "campaign_id": "campaign-a",
+            "expected_revision_id": revision.revision_id,
+            "subject": "Revised synthetic subject",
+            "body": f"Hello. {POINT}. This human edit reframes the synthetic evidence. {ASK}",
+        })
+        assert status == 200 and edited["state"] == "revision_created"
+        assert editorial_for(edited["revision_id"]) == [{
+            "revision_id": edited["revision_id"], "exhausted_item_id": exhausted.item_id,
+            "state": "restart_available", "code": None,
+        }]
+
+        start = {
+            "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa22", "campaign_id": "campaign-a",
+            "revision_id": edited["revision_id"], "exhausted_item_id": exhausted.item_id,
+        }
+        status, created = post("/api/editorial/start", start)
+        assert status == 201
+        assert (created["base_revision_id"], created["state"], created["repair_cycle"]) == (
+            edited["revision_id"], "awaiting_humanizer_adapter", 0,
+        )
+        assert post("/api/editorial/start", start) == (201, created)
+        assert post("/api/editorial/start", {
+            **start, "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa23",
+            "actor": "human:browser-supplied",
+        }) == (422, {"error": "request_schema"})
+        assert post("/api/editorial/start", {
+            **start, "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa24",
+        }) == (409, {"error": "pipeline_work_conflict"})
+        assert post("/api/editorial/start", {
+            **start, "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaa25",
+            "revision_id": revision.revision_id,
+        }) == (422, {"error": "revision_not_current"})
+        projection = editorial_for(edited["revision_id"])
+        assert [value["item"]["item_id"] for value in projection] == [created["item_id"]]
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+    verify = open_store(database)
+    try:
+        assert [tuple(row) for row in verify.execute(
+            "SELECT actor,exhausted_item_id,edited_revision_id FROM prospecting_pipeline_reset"
+        )] == [("human:local-review", exhausted.item_id, edited["revision_id"])]
+        assert verify.execute("SELECT count(*) FROM draft_editorial_event").fetchone()[0] == 0
+        assert verify.execute("SELECT count(*) FROM approval").fetchone()[0] == 0
+    finally:
+        verify.close()
 
 
 def test_control_status_and_process_are_scoped_typed_and_csrf_guarded() -> None:
