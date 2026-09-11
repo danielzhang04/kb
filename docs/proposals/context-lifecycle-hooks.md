@@ -1,6 +1,8 @@
 # Proposal: context-lifecycle hooks — SessionStart + PreCompact + PostToolUse (for Daniel to arm, if ever)
 
-**Status:** PROPOSAL — inert, NOT wired into any live settings file.
+**Status:** ARMED 2026-09-11 — see docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md
+(SessionStart sibling, `context_lifecycle_session_start.js`, stays INERT — `project_frame_session_start.js`
+now owns SessionStart injection).
 **Built:** 2026-08-18, Agent Platform Wave 1, unit U8. Code:
 `scripts/hooks/lib/context_store.js`, `scripts/hooks/context_lifecycle_session_start.js`,
 `scripts/hooks/context_lifecycle_pre_compact.js`,

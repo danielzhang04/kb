@@ -477,34 +477,60 @@ def test_neither_hook_nor_the_audit_library_makes_a_subprocess_call():
 # module; only the deleted route's honesty check is gone.
 
 
-def test_the_u9_hook_family_is_inert():
-    """The acceptance condition for this unit: BUILT, not armed.
+def test_the_u9_model_hooks_are_armed_at_the_committed_path():
+    """Acceptance condition after arming (2026-09-11): each hook registered exactly once at its
+    committed absolute path under the correct event, the pre-existing PreToolUse guards survive the
+    append untouched, context_lifecycle_session_start.js stays unregistered, and governance/ stays
+    untouched (these hooks only read it)."""
+    settings_path = REPO / ".claude" / "settings.json"
+    settings_text = settings_path.read_text(encoding="utf-8")
+    data = json.loads(settings_text)
 
-    Nothing in `.claude/**` may reference these hooks, and this unit may not have touched that
-    directory at all — a hook that arms itself is the failure mode the whole family is shaped around.
-    """
-    family = ["subagent_context_load", "model_verify_pretooluse", "model_verify_subagentstop",
-              "model_audit", "hook_io"]
-    for settings in (REPO / ".claude").glob("settings*.json"):
-        text = settings.read_text(encoding="utf-8")
-        for name in family:
-            assert name not in text, (settings.name, name)
+    def cmd(name):
+        return f'node "C:/Users/danie/kb/scripts/hooks/{name}"'
+
+    def entries(event):
+        out = []
+        for block in data.get("hooks", {}).get(event, []):
+            for h in block.get("hooks", []):
+                out.append((block.get("matcher"), h.get("command")))
+        return out
+
+    subagent_start = [c for _, c in entries("SubagentStart") if c == cmd("subagent_context_load.js")]
+    assert subagent_start == [cmd("subagent_context_load.js")]
+
+    subagent_stop = [c for _, c in entries("SubagentStop") if c == cmd("model_verify_subagentstop.js")]
+    assert subagent_stop == [cmd("model_verify_subagentstop.js")]
+
+    pre_tool_use = entries("PreToolUse")
+    agent_hits = [(m, c) for m, c in pre_tool_use if c == cmd("model_verify_pretooluse.js")]
+    assert agent_hits == [("Agent|Task", cmd("model_verify_pretooluse.js"))]
+
+    # The three pre-existing PreToolUse guards survive the Agent|Task append, verbatim.
+    original_guards = {
+        ("Bash", cmd("block_no_verify.js")),
+        ("Bash", cmd("hard_ceiling_guard.js")),
+        ("Edit|Write", cmd("config_protection.js")),
+    }
+    assert original_guards <= set(pre_tool_use)
+
+    # Deliberately not armed anywhere: project_frame_session_start.js now owns SessionStart.
+    assert "context_lifecycle_session_start" not in settings_text
 
     def git(*args):
         result = subprocess.run(["git", *args], cwd=REPO, capture_output=True, text=True)
         assert result.returncode == 0, result.stderr
         return result.stdout
 
-    assert git("diff", "--", ".claude/").strip() == ""
-    assert git("diff", "--cached", "--", ".claude/").strip() == ""
-    assert git("status", "--porcelain", "--", ".claude/").strip() == ""
     # governance/ is human-edited (CLAUDE.md). This unit reads model-routing.yaml and never edits it.
     assert git("status", "--porcelain", "--", "governance/").strip() == ""
 
 
-def test_every_new_hook_declares_itself_inert():
+def test_armed_hooks_declare_armed():
     for name in ("subagent_context_load.js", "model_verify_pretooluse.js", "model_verify_subagentstop.js"):
-        assert "INERT" in (HOOKS / name).read_text(encoding="utf-8"), name
+        text = (HOOKS / name).read_text(encoding="utf-8")
+        assert "ARMED" in text, name
+        assert "INERT. Nothing in" not in text, name
 
 
 def test_governance_is_never_written():

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb context-lifecycle PostToolUse activity tracker — INERT (not wired into any settings file).
+ * kb context-lifecycle PostToolUse activity tracker — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Provenance:
  *   source: ecc@2.0.0/scripts/hooks/session-activity-tracker.js (redaction table + 220-char cap,

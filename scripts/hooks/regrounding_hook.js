@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb re-grounding hook — INERT (not wired into any settings file).
+ * kb re-grounding hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 session-start STALE-REPLAY GUARD (concept, not code)
@@ -12,9 +12,8 @@
  *   additionalContext after compaction and at a bounded cadence during a session.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. The exact
- *   settings snippet that WOULD arm it lives in the "Implemented design" section of
- *   docs/proposals/regrounding-hook.md.
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SessionStart (matcher
+ *   "compact"), UserPromptSubmit, and PostToolUse. See docs/proposals/regrounding-hook.md.
  *
  * Contract:
  *   - Reads env: KB_GOAL_STATE_PATH (default: the event's session_id resolved through

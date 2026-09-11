@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb model-verify PreToolUse-on-Agent hook — INERT (not wired into any settings file).
+ * kb model-verify PreToolUse-on-Agent hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Purpose:
  *   Record which model every dispatched subagent was ASKED for, at the moment of the ask.
@@ -10,9 +10,8 @@
  *   records what the transcript actually shows, and the two rows make the comparison mechanical.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. Arming snippet (including the
- *   `"matcher": "Agent|Task"` this hook needs) and decision-notes:
- *   docs/proposals/spawn-model-verify-hooks.md.
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — PreToolUse, matcher
+ *   `"Agent|Task"`. Decision-notes: docs/proposals/spawn-model-verify-hooks.md.
  *
  * ── THE TOOL IS CALLED "Agent". "Task" IS ONLY AN ALIAS. ────────────────────────────────────────
  * Verified against the installed harness (Claude Code 2.1.234): the bundle declares

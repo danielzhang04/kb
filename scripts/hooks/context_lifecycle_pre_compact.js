@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb context-lifecycle PreCompact hook — INERT (not wired into any settings file).
+ * kb context-lifecycle PreCompact hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 pre-compact write-side-effect (concept, not code)
@@ -20,7 +20,7 @@
  *   tests/test_context_lifecycle_pre_compact.py asserts this source contains no spawn/exec at all.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. Arming snippet + decision-notes:
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — PreCompact. See
  *   docs/proposals/context-lifecycle-hooks.md.
  *
  * Contract:

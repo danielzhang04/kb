@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb spawn context-load SubagentStart hook — INERT (not wired into any settings file).
+ * kb spawn context-load SubagentStart hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Purpose:
  *   A spawned subagent starts blind. It gets the dispatch prompt and nothing else — not the north
@@ -10,9 +10,8 @@
  *   the U8 context store, behind a subagent-specific inheritance guard.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. The settings snippet that WOULD
- *   arm it, the arm-time preconditions, and the decision-notes live in
- *   docs/proposals/spawn-model-verify-hooks.md.
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SubagentStart. The arm-time
+ *   preconditions and decision-notes live in docs/proposals/spawn-model-verify-hooks.md.
  *
  * ── THE OUTPUT SHAPE IS VERIFIED, NOT ASSUMED ───────────────────────────────────────────────────
  * Two doc sources disagreed on what a SubagentStart hook must emit. The question was settled
