@@ -18,12 +18,15 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   READY for the committed source with no open concrete finding (report SHA
   `ce6d14295effa7d048cfd08ee4f32a09b3f5a4964f5e54035e000928697fa8cc`). See the
   [native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md).
-  Root then accepted the adversarial still-delivery design amendment: implementation and
-  independent test authoring are being dispatched for one direct-NVR crop/resize module and its
-  test file only. It must use closed schemas, metadata key-presence refusals, direct PNG/RGB
-  reconstruction checks, stable reads/exclusive publication, real upstream fixtures, independent
-  code/security review, and at most two source-repair rounds. Neither file exists as accepted
-  source yet; no provider action or quality approval is authorized.
+  Root then accepted the direct-NVR still-delivery producer and test at `a0074da8` after independent
+  review and repaired-node execution. V1 recorded 36 passes and one fixture-collision skip; V2 was a
+  zero-test selector error; V3 passed the repaired node, for 37 distinct passing nodes across v1+v3,
+  not one fresh full-suite run. Direct script revalidation passed over the unchanged 32-file fixture.
+  The resulting receipt remains `materialized-not-reviewed`, `not_promotable`, and `not-assessed`.
+  The next dispatched slice is one read-only delivery-ruling module and test over the exact current
+  delivery chain and six fresh visual criteria, followed by actual real-chain tests and independent
+  review. See the
+  [still-delivery review](../../../../docs/figment/2026-09-11-nonpersona-still-delivery-review.md).
 - **Repair diff `150978d8..ec58decf`** (Studio, video terminal authority, motion-source
   binding, HTTP surface): reviewed **READY**, full video suite 187 passed in 392.98s. See
   the [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md).

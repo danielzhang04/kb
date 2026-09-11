@@ -16,14 +16,16 @@ is `native-source`, delivery quality is `not-assessed`, transform is null, and i
 `Recorded plan; scene images still need delivery review`.
 
 This does not make an image content-ready or establish a real human identity, visual quality,
-delivery crop/resize, approval, publication, or audience response. Root accepted an adversarial
-design amendment and is dispatching implementation plus independent test authoring for exactly one
-direct-NVR crop/resize producer and its test file, with no assignment/binder/UI edit, provider
-action, or quality approval. The module must use closed schemas, metadata key-presence refusals,
-direct PNG/RGB reconstruction checks, stable reads/exclusive publication, real upstream fixtures,
-independent code/security review, and at most two source-repair rounds. Source/tests are not yet
-written or accepted. See the
-[native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md).
+approval, publication, or audience response. Root accepted the exact two-file direct-NVR crop/resize
+producer and test at `a0074da8`, with no assignment/binder/UI edit, provider action, or quality
+approval. V1 recorded 36 passes and one fixture-collision skip; V2 ran zero tests because of a selector
+error; V3 passed the repaired node, giving 37 distinct passing nodes across v1+v3 rather than a fresh
+full 37-test run. The producer materializes a delivery while preserving `not-assessed` and
+`not_promotable` semantics. One read-only delivery-ruling module and test are now dispatched to bind
+the exact current delivery to six fresh visual criteria, with actual real-chain tests and independent
+review required before acceptance. See the
+[native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md) and
+[still-delivery review](../../../../docs/figment/2026-09-11-nonpersona-still-delivery-review.md).
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
