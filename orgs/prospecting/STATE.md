@@ -7,9 +7,7 @@ immutable source confirmation, HTTP/UI, native runtime and narrow legacy fixture
 accepted. 320 combined checks, 36 UI checks and 9 final legacy checks pass.
 
 Real pilot migrated through P24 after backup. P19 batch created; first of three items used
-one attempt and failed dynamic binding validation with zero artifacts. Remaining work is
-stronger supplemental-history fixture, closed diagnostics and wrapper clarity, fresh all-adapter
-native acceptance, then bounded real continuation. No approvals, confirmations or sends.
+one attempt and failed dynamic binding validation with zero artifacts. Supplemental-history fixture, closed diagnostics and wrapper repair now pass170checks and independent review. New native bundle passes all4actual adapters; public pin/canary and bounded real continuation next. No approvals, confirmations or sends.
 
 Export verification semantic checks reviewed; CLI read-only connection repair113 active.
 Qualification110 and fixture112 active. Capture docs await verifier addition/final scan.

@@ -176,3 +176,16 @@ subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallb
 subscription; billed cost unavailable		gpt-5.6-luna	unverified	authorized fallback/native; usage unavailable; usd0 placeholder	readonly_export_repair_113	2026-09-11T22:16:19.970963+00:00	0
 subscription; billed cost unavailable		gpt-6-astra	unverified	authorized fallback/native; usage unavailable; usd0 placeholder	real_p19_first_canary	2026-09-11T22:16:19.970963+00:00	0
 subscription; billed cost unavailable		gpt-6-astra	unverified	authorized fallback/native; usage unavailable; usd0 placeholder	real_p19_first_qualification	2026-09-11T22:16:19.970963+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	acquisition_docs_114	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-5.6-sol	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	qualification_capture_review_115	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	capture_uri_repair_116	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	infrastructure_gap_audit_117	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	runtime_accept_pin_118	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-5.6-sol	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	capture_final_review_119	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	supplemental_native_canary	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	supplemental_native_qualification	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	editorial_bundle118_canary	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	editorial_bundle118_humanizer	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	editorial_bundle118_factcheck	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	editorial_bundle118_critic	2026-09-11T22:25:25.453813+00:00	0
+subscription; billed cost unavailable		gpt-6-astra	unverified	authorized native/fallback; usage unavailable; usd0 placeholder	public_prepare118_canary	2026-09-11T22:25:25.453813+00:00	0

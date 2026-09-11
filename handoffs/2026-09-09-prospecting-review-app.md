@@ -1,3 +1,22 @@
+## Native reacceptance checkpoint 2026-09-11T22:25:25.453813+00:00
+
+Qualification110 and supplemental fixture112 independently READY115;170 combined checks
+passed62.61s. Acquisition168 combined passed104.83s before URI repair116. New native bundle
+e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814 accepted by actual trials:
+rich qualification9f9b3d139d3641f1b423a147b31e8501 at22:20:36-22:21:11UTC,1attempt1artifact,
+2unknownpeople/companyunknown, supplemental current/potential_conflict bindings; editorial
+16f17d9de7e74fd4ba2a61c5d9a0db49 at22:21:36-22:22:38UTC,3calls3artifacts0repair human_review.
+Both same CLI0.154.0/binarybe96b992178b1e467c225800da0d65f2c86d5eba1ef0b14632f65db381cbdfde,
+complete cleanup, requestedgpt-6-astra respondingunverified. Task118 exact pin applied;
+public canary check running. No further real item attempt yet.
+
+Export review115 reproduced valid Windows#path URI truncation creating sibling file.
+Repair116 encodesURI and checksidentity;12focusedpass4.51s. Its new conditionalimmutable
+setting is under119 concurrency review before acceptance. Docs114 skillvalid/scan0findings.
+117 audit found no additional required workflow gap; P20 is ranking, P16 editorial.
+Supported browser22:21 remains apps[]browsers[]; CLI work continues. Existing goal-tool status
+is historicalblocked, not current work status: user resumed and this run is making progress.
+
 ## Current checkpoint 2026-09-11T22:16:19.970963+00:00
 
 ACTIVE infrastructure goal, source HEAD ebf29901. Accepted 4bbea820 capture packet submission,
