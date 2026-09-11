@@ -141,6 +141,17 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
     expect(replay.json()).toEqual(prepared);
     expect(capturedArgv).toHaveLength(1);
 
+    // Discovery returns the same real producer's DTO from its integrity-bound
+    // marker; it is inventory, not approval, so the consumer below still decides.
+    const listed = await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: { authorization: headers(key).authorization } });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json()).toEqual({
+      schema: 'figment/studio-gen-plans@1', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/),
+      plans: [prepared], preparation: 'available',
+    });
+    expect(listed.body).not.toContain('plan.json');
+    expect(capturedArgv).toHaveLength(1);
+
     // The same real consumer must first reach the isolated sentinel harness
     // under fresh authority; a refusal-only fixture could otherwise hide a
     // producer/consumer mismatch unrelated to the later mutation.

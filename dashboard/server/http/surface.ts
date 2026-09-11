@@ -602,8 +602,11 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
       // Plan preparation allocates `_private` state and commits an audit row, so it is new work: its own
       // child scope adds the admission + fleet preamble gate after the inherited session gate, and the hook
       // cannot bleed onto sibling routes. Refusals are fixed strings — preamble output never leaves here.
+      // The one exemption is the exact read-only discovery GET, readable through a frozen/degraded fleet;
+      // origin, session, and read-rate gates still apply to it from the enclosing scopes.
       authenticated.register(async (studio) => {
-        studio.addHook('preHandler', async (_req, reply) => {
+        studio.addHook('preHandler', async (req, reply) => {
+          if (req.method === 'GET' && req.routeOptions.url === '/api/figment/studio/gen-plans') return;
           const admission = ctx.admission('new-work');
           if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
           let runnable = false;

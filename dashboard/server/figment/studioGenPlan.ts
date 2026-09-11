@@ -26,6 +26,11 @@ export interface StudioGenPlan {
   schema: 'figment/studio-gen-plan@1'; id: string; status: 'prepared'; creator: 'creator-001'; stage: 'gen';
   runCount: 1; declaredCeilingUsd: number; planSha256: string;
 }
+export type StudioPreparation = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
+/** Discovery read: prepared plans are existing POST DTOs, never approval or launch authority. */
+export interface StudioGenPlans {
+  schema: 'figment/studio-gen-plans@1'; requestScope: string; plans: StudioGenPlan[]; preparation: StudioPreparation;
+}
 export interface RunStudioGenPlanOptions { cwd: string; timeout: number; maxBuffer: number; windowsHide: boolean; }
 export type RunStudioGenPlan = (command: string, args: readonly string[], options: RunStudioGenPlanOptions) => Promise<unknown>;
 export interface StudioGenPlanOptions {
@@ -37,6 +42,8 @@ export interface StudioGenPlanOptions {
 }
 interface SafeRoot { path: string; real: string; }
 interface Marker { schema: 'figment/studio-gen-plan-marker@1'; id: string; plan_sha256: string; intent_sha256: string; created_utc: string; }
+interface Published { saved: Marker; directory: string; }
+interface Inventory { published: Published[]; unmarked: boolean; }
 
 function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
@@ -175,6 +182,37 @@ async function publishMarker(path: string, content: string): Promise<void> {
   try { await handle.writeFile(content); await handle.sync(); }
   finally { await handle.close(); }
 }
+/** Bounded read-only inventory shared by preparation and discovery; any unsafe entry throws. */
+async function scanPlans(root: SafeRoot, plansRoot: string): Promise<Inventory> {
+  const rootBytes = await sizeOf(root, plansRoot);
+  if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
+  const published: Published[] = [];
+  let unmarked = false;
+  const entries = await opendir(plansRoot);
+  let count = 0;
+  for await (const entry of entries) {
+    if (++count > MAX_ENTRIES || !entry.isDirectory() || !ID.test(entry.name)) throw new Error('unsafe-plan-entry');
+    const directory = join(plansRoot, entry.name);
+    const bytes = await sizeOf(root, directory);
+    if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
+    const markerName = join(directory, 'published.json');
+    if (!await entryExists(markerName)) { unmarked = true; continue; }
+    const markerPath = await safePath(root, markerName, 'file');
+    const raw = markerPath === null ? null : await readBounded(markerPath);
+    const saved = raw === null ? null : marker(JSON.parse(raw.toString('utf8')));
+    if (saved === null || saved.id !== entry.name) throw new Error('bad-marker');
+    published.push({ saved, directory });
+  }
+  if (published.length > MAX_PUBLISHED) throw new Error('capacity');
+  return { published, unmarked };
+}
+/** The published summary, only when the plan bytes still hash to the marker. */
+async function publishedPlan(root: SafeRoot, entry: Published): Promise<StudioGenPlan | null> {
+  const planPath = await safePath(root, join(entry.directory, 'plan.json'), 'file');
+  const raw = planPath === null ? null : await readBounded(planPath);
+  if (raw === null || sha256(raw) !== entry.saved.plan_sha256) return null;
+  return summary(JSON.parse(raw.toString('utf8')), entry.saved.id, entry.saved.plan_sha256);
+}
 
 export function registerFigmentStudioGenPlan(app: FastifyInstance, options: StudioGenPlanOptions): void {
   const repoRoot = resolve(options.repoRoot);
@@ -185,7 +223,55 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
   const run = options.runStudioGenPlan ?? runStudioPlanProcess;
   const publish = options.publishMarker ?? publishMarker;
   let active = false;
+  let started = 0;
   let terminationUncertain = false;
+  // Nonsecret continuity identifier for browser intent records, never authorization.
+  const requestScope = (subject: string): string =>
+    sha256(JSON.stringify(['figment-studio-request-scope@1', repoRoot, subject]));
+  const openRoot = async (): Promise<SafeRoot> => {
+    const root = await safeRoot(repoRoot);
+    if (root === null || await safePath(root, script, 'file') === null
+      || await safePath(root, ledgerDir, 'directory') === null
+      || !await safeProspective(root, plansRoot)) throw new Error('unsafe-root');
+    return root;
+  };
+  // Read-only discovery: no mkdir, spawn, audit, deletion, or uncertainty reset.
+  app.get('/api/figment/studio/gen-plans', { preHandler: requireSession(options.sessionConfig), exposeHeadRoute: false }, async (request, reply) => {
+    if ((request.raw.url ?? '').includes('?')) return reply.code(400).send({ error: 'query-not-allowed' });
+    const length = request.headers['content-length'];
+    if (request.body !== undefined || request.headers['transfer-encoding'] !== undefined
+      || (length !== undefined && length !== '0')) return reply.code(400).send({ error: 'body-not-allowed' });
+    const session = verifiedSession(request);
+    if (session === undefined) return reply.code(401).send({ error: 'missing-session' });
+    const view = (preparation: StudioPreparation, plans: StudioGenPlan[] = []): StudioGenPlans =>
+      ({ schema: 'figment/studio-gen-plans@1', requestScope: requestScope(session.claims.sub), plans, preparation });
+    if (active) return view('busy');
+    const generation = started;
+    let result: StudioGenPlans;
+    try {
+      const root = await openRoot();
+      if (!await entryExists(plansRoot)) {
+        result = view(terminationUncertain ? 'maintenance-required' : 'available');
+      } else {
+        const inventory = await scanPlans(root, plansRoot);
+        const ordered = [...inventory.published].sort((a, b) => a.saved.created_utc.localeCompare(b.saved.created_utc)
+          || a.saved.id.localeCompare(b.saved.id));
+        const plans: StudioGenPlan[] = [];
+        for (const entry of ordered) {
+          const prepared = await publishedPlan(root, entry);
+          if (prepared === null) throw new Error('stale-plan');
+          plans.push(prepared);
+        }
+        result = view(terminationUncertain || inventory.unmarked ? 'maintenance-required'
+          : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans);
+      }
+    } catch {
+      request.log.warn('Figment generation-plan discovery unavailable');
+      result = view('unavailable');
+    }
+    // A preparation that started during the scan may have allocated mid-read.
+    return active || started !== generation ? view('busy') : result;
+  });
   app.post('/api/figment/studio/gen-plan', { preHandler: requireSession(options.sessionConfig) }, async (request, reply) => {
     if (request.body !== undefined) return reply.code(400).send({ error: 'body-not-allowed' });
     const intent = request.headers['idempotency-key'];
@@ -193,9 +279,13 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
     // Resolve the verified subject before any mutation; the intent is bound to it.
     const session = verifiedSession(request);
     if (session === undefined) return reply.code(401).send({ error: 'missing-session' });
+    // Optional for existing controlled clients; when present it must match before any replay or allocation.
+    const scope = request.headers['x-figment-intent-scope'];
+    if (scope !== undefined && scope !== requestScope(session.claims.sub)) return reply.code(409).send({ error: 'intent-scope-conflict' });
     if (terminationUncertain) return reply.code(503).send({ error: 'preparation-unavailable' });
     if (active) return reply.code(429).send({ error: 'preparation-busy' });
     active = true;
+    started += 1;
     const intentSha = sha256(JSON.stringify([session.claims.sub, intent]));
     let root: SafeRoot | null = null;
     let allocated: string | null = null;
@@ -209,41 +299,13 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       } catch { request.log.error('Figment generation-plan cleanup failed'); }
     };
     try {
-      root = await safeRoot(repoRoot);
-      if (root === null || await safePath(root, script, 'file') === null
-        || await safePath(root, ledgerDir, 'directory') === null
-        || !await safeProspective(root, plansRoot)) throw new Error('unsafe-root');
+      root = await openRoot();
       await mkdir(plansRoot, { recursive: true });
-      const rootBytes = await sizeOf(root, plansRoot);
-      if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
-      let published = 0;
-      let unmarked = false;
-      let replay: { saved: Marker; directory: string } | null = null;
-      const entries = await opendir(plansRoot);
-      let count = 0;
-      for await (const entry of entries) {
-        if (++count > MAX_ENTRIES || !entry.isDirectory() || !ID.test(entry.name)) throw new Error('unsafe-plan-entry');
-        const directory = join(plansRoot, entry.name);
-        const bytes = await sizeOf(root, directory);
-        if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
-        const markerName = join(directory, 'published.json');
-        if (!await entryExists(markerName)) { unmarked = true; continue; }
-        const markerPath = await safePath(root, markerName, 'file');
-        const raw = markerPath === null ? null : await readBounded(markerPath);
-        const saved = raw === null ? null : marker(JSON.parse(raw.toString('utf8')));
-        if (saved === null || saved.id !== entry.name) throw new Error('bad-marker');
-        published += 1;
-        if (saved.intent_sha256 === intentSha) {
-          if (replay !== null) throw new Error('duplicate-intent');
-          replay = { saved, directory };
-        }
-      }
-      if (published > MAX_PUBLISHED) throw new Error('capacity');
-      if (replay !== null) {
-        const planPath = await safePath(root, join(replay.directory, 'plan.json'), 'file');
-        const raw = planPath === null ? null : await readBounded(planPath);
-        if (raw === null || sha256(raw) !== replay.saved.plan_sha256) return reply.code(409).send({ error: 'idempotency-conflict' });
-        const prepared = summary(JSON.parse(raw.toString('utf8')), replay.saved.id, replay.saved.plan_sha256);
+      const { published, unmarked } = await scanPlans(root, plansRoot);
+      const replays = published.filter((entry) => entry.saved.intent_sha256 === intentSha);
+      if (replays.length > 1) throw new Error('duplicate-intent');
+      if (replays.length === 1) {
+        const prepared = await publishedPlan(root, replays[0]);
         if (prepared === null) return reply.code(409).send({ error: 'idempotency-conflict' });
         // A prior audit may have failed after publication: audit again (at least
         // once, same stable id) so a replay never becomes unaudited success.
@@ -255,7 +317,7 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       // proves that process is gone, so refuse new dispatch; recovery remains
       // explicit operator work.
       if (unmarked) throw new Error('unmarked-allocation');
-      if (published >= MAX_PUBLISHED) throw new Error('capacity');
+      if (published.length >= MAX_PUBLISHED) throw new Error('capacity');
       const id = randomUUID();
       allocated = join(plansRoot, id);
       if (!await safeProspective(root, allocated)) throw new Error('unsafe-allocation');

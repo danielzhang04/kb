@@ -275,6 +275,39 @@ describe('write surface — composition chain', () => {
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
     });
+
+    const genPlans = (withToken = true, origin = GOOD_ORIGIN) => ({
+      method: 'GET' as const,
+      url: '/api/figment/studio/gen-plans',
+      headers: { origin, host: GOOD_HOST, ...(withToken ? { authorization: `Bearer ${token()}` } : {}) },
+    });
+
+    it.each([
+      ['frozen', { runPreamble: frozenPreamble }, 'fleet-frozen'],
+      ['degraded', { admission: (kind: Parameters<typeof admit>[0]) => admit(kind, { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] }) }, 'outbox-degraded'],
+    ] as const)('keeps discovery readable through a %s fleet while preparation stays refused', async (_label, overrides, refusal) => {
+      const audit = recordingAudit();
+      const runPreamble = vi.fn('runPreamble' in overrides ? overrides.runPreamble : okPreamble);
+      ({ app } = buildApp({ appendAudit: audit.fn, ...overrides, runPreamble }));
+      const read = await app.inject(genPlans());
+      expect(read.statusCode).toBe(200);
+      expect(read.json()).toEqual({ schema: 'figment/studio-gen-plans@1', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/), plans: [], preparation: expect.any(String) });
+      expect(runPreamble).not.toHaveBeenCalled();
+      expect((await app.inject(genPlan())).json()).toEqual({ error: refusal });
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(studioPlans)).toBe(false);
+    });
+
+    it('exempts only the exact discovery GET: origin, session, and read-rate gates still apply', async () => {
+      const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+      // Origin refusal precedes the read meter, so only the 401 spends the single read token.
+      const readRateGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+      ({ app } = buildApp({ runPreamble: frozenPreamble, readRateGuard }));
+      expect((await app.inject(genPlans(false))).statusCode).toBe(401);
+      expect((await app.inject(genPlans(true, 'https://wrong.example'))).statusCode).toBe(403);
+      expect((await app.inject(genPlans())).statusCode).toBe(429);
+      expect(existsSync(studioPlans)).toBe(false);
+    });
   });
 
   it('constructs no PTY host, registry, or run store when the probe refused', () => {

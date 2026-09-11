@@ -1,0 +1,13 @@
+# Studio stored-plan inventory server acceptance - 2026-09-11
+
+Responding model verified from assistant message.model: claude-opus-5, independent server review figment-claude-studio-server-review-20260911-v1. Root: READY for the bounded server slice. Browser workflow acceptance is separate.
+
+The existing registrar and two-plan store now expose an authenticated read-only inventory and preparation availability. Stored plan summaries are bounded and verified against the existing marker hash. A session/workspace scope identifies browser intent continuity. POST accepts an optional scope header and refuses mismatches before replay/allocation. Existing clients keep prior behavior. Only the exact GET route bypasses the child new-work gate; inherited auth, Origin and read-rate controls remain. Reads never launch, publish, delete, reclaim capacity or clear uncertain termination.
+
+Verification:38Studio unit,73HTTP surface and2real-planner integration tests pass. The first combined run had112PASS/onefixturefailure: Fastify inject strips a bare trailing question mark before the handler sees it. A direct probe confirmed this; the fixture was corrected and all38unit tests passed. Real planner/default-process joins and stale-authority consumer refusal passed. XMLs are MAIN/_private/figment-studio-resume-server-root-20260911-v1.xml and v2.xml. Do not add overlapping totals. Root typecheck and build also pass with current UI work in progress.
+
+Independent reviewer inspected complete server/unit/integration source and relevant HTTP context in the pinned packet. No required changes. Unexercised mid-scan race and missing-root junction variants remain reviewed guards rather than claimed direct test cases; no production seam added solely to exercise them. Bare-question-mark behavior in an actual listening socket was not tested here. ICU ordering nit is nonblocking for these fixed-format keys. Packet omitted unrelated auth internals and trusted planner containment; prior scoped security reviews and HTTP tests cover them separately, not this review.
+
+Limits: global authorized-operator inventory, not tenant isolation; request scope is continuity, not authorization. Availability describes safe preparation-store state, not guaranteed live runnability or media approval. Two-plan capacity and retained unmarked allocations need future explicit recovery; no automatic cleanup. Native media fixtures do not imply production media acceptance.
+
+Exact source pins: MAIN/_private/figment-studio-server-acceptance-pins-20260911-v1.json. Review packet and supervisor remain under MAIN/_private/figment-studio-server-review-packet-20260911-v1.* and figment-claude-studio-server-review-20260911-v1/. No provider effect from this code slice.
