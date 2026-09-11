@@ -660,3 +660,11 @@ changing correct fixtures.
 ### Validate returned patches before claiming progress
 
 Claude proposals can contain exact-context omissions and syntax errors despite correct design. Check output scope, source hashes and syntax before acceptance; return implementation corrections to the assigned Claude worker. A repeated cache-prime scan failure under desktop permissions is evidence against assuming sandbox permissions caused it; collect fixed operation metadata while preserving fail-closed checks.
+
+### Keep private test paths short on this Windows host
+
+Cache priming succeeded with maximum path252; a synthetic path probe hit WinError206 at265. The same failing cache-prime test passed with a short private base, and the full106testgroup passed. Do not misdiagnose this as authentication or weaken bounded file checks.
+
+### Carry exact proof metadata on the displayed draft
+
+A selected binding root is not necessarily the current edited draft head. Frontend equality between binding root and displayed revision disables valid descendant confirmation. Project source digest and observation IDs through the same verified revision proof, including staleness refusals, rather than reconstructing authority from latest selection.

@@ -1,3 +1,89 @@
+## Current checkpoint 2026-09-11T20:48:54.299310+00:00
+
+Goal active; boss orchestrates, all implementation/review proposals from verified Claude
+on existing vCPU. Accepted source HEAD b715deae (compiler leaf,62tests,65 review/68repair,
+73/76 exact UUID literal cleanup, staging guard passes). Source branch unchanged.
+DTO75 applied after root review: exact digest/observation through single selected proof,
+selected_source_scope true on selected refusals and descendants, false legacy. Combined
+selected source/service/HTTP/legacy plus qualification fixture114pass2fail77.52s; ONLY
+manual qualification offline checks failed (docstring substring and Windows slash).
+Sonnet79 returned repair, pending root review. 70 harness applied with mechanical allowed
+filenames manual_qualification_acceptance.py/test_manual_qualification_fixture.py.
+No actual qualification trial yet; editorial positive bb2170 metadata below remainsvalid.
+
+71 private export UNAPPLIED. Independent74 REQUEST_CHANGES: undersized exportcaps and
+noncanonical request IDs can produce unusable exports. Root verified B3 quota uncertainty:
+affinity/source_review._owned_snapshot_usage counts registered operator-local-v1 database
+rows, not the whole tree. Repair77 session30546 active; needs boundary/realquota tests.
+72 replaced by75. UI67 UNAPPLIED; corrected78 session52925 active using displayed exact
+proof and selected scope evenwhen ranking unavailable; test explicit checkbox and races.
+79 returned verified claude-sonnet-5. 70/71/72/74/75 verifiedclaude-opus-5,73/76 Sonnet.
+No browser available, realpilot untouched, runtime pin None; no acceptance/readiness/send.
+Continue:79test/actualP19;77export;78UI; legacyfixturefailures; broker seam; adversarial
+combinedverification; smallreal nonsending UI when available; concretepublication/handoff.
+
+## Current checkpoint 2026-09-11T20:33:18.766845+00:00
+
+Goal active and incomplete; root boss orchestrates and verified Claude workers perform
+implementation/test authoring on the existing source-only vCPU. Accepted source HEAD
+still beacefb4. Compiler leaf staged (2 files + review note), NOT committed: staging PII
+guard flags handformatted synthetic UUID at test_capture_import_compiler.py:77. Sonnet73
+prepared but NOT launched (three slots70/71/72 active). Use structured uuid.UUID fields,
+preserve exact IDs and guard; then focused verification/stage/commit.
+
+POSITIVE ACTUAL EDITORIAL TRIAL: bb2170f169084f69b1dc48592b4e7932 at MAIN/_private/
+prospecting-native-stage-acceptance-20260911/<id>/store.sqlite. Wall20:17:43.400553 to
+20:18:40.937895UTC. 3 stage calls, 3 artifacts, cycle0, human_review; Humanizer proposed,
+factcheck pass, independent critic pass. Bundle03709b4deb9ca0f1732d1ed6c360188389b3b4fee453e86d6b6ec8aa8fa7de33;
+binarybe96b992178b1e467c225800da0d65f2c86d5eba1ef0b14632f65db381cbdfde,
+CLI0.154.0. Requestedgpt-6-astra, respondingmodelunverified. Cleanupdeleted runtime,
+capabilityinvalidated, connectionclosed, no cleanup errors. No source confirmation,
+text acceptance, readiness or send. Runtime pin remains None: bundle also exposes P19
+qualification, so Claude70 prepares one actual synthetic qualification trial beforepin.
+
+Root read ONLY stage/decision/cycle/output_hash/payload-key metadata from that exact
+synthetic database. Automatic approval review REJECTED printing final_subject/final_body
+and diagnostic prose to stdout as private payload exposure despite syntheticfixture/
+PIIguard. Do not retry via workaround or indirect output. User informed; text stays in
+private store. Positive metadata evidence is not a claim root reviewed actual copy.
+
+Repair59 + lineage test repair63 accepted by independent63 READY. Full affected group:
+106 passed54.18s with short private basetemp and desktop process access. Earlier3fails
+resolved: forged lineage fails earlier with identity_source_proof_stale; tests also pin
+internal ambiguity/cycle and no writes. Cacheprime failed on long paths underboth
+sandbox/escalation; Claude64 synthetic diagnostic succeeded (maxpath252), deep probe
+hit Windows206 at path265, isolated original test passed1.90s with short base. Both
+probe fixtures/runtime deleted. Use MAIN/_private/p-<8hex> basetemp for runtime tests.
+
+Projection54/61:74 combined tests passed57.73s. HTTP62 newtests passed; legacyonboarding
+regressed. Repair66 assumed qualification_missing and tried immutable ranking UPDATE;
+39pass3fail exposed full flow. Repair69 nowforwards exactfunding_batch_missing and
+person_batch_missing and limits prerequisite next-action exclusion; stale fixture edits
+exactsnapshotbody instead of immutableSQL. CombinedHTTP/projection53pass1unrelated
+WinError10053 socket abort; isolated oldfeedbackHTTPtest passed0.97s. No newroute failure.
+
+UI67 RETURNED UNAPPLIED. Root found valid edited/agent descendant cannotconfirm because
+UI requiresbound_revision_id==draft.revision_id; whenselectedrootunavailable, selected
+lookupnull mayofferlegacyactions. Claude72 adds exactsource_context_digest andemployment
+observationmetadata through SAME sharedproof intoDraftView, includingdescendants. Then
+send67back forUI correction consumingexactdraftproof, selectedscopemarker onrefusal,
+no legacyfallback and bettercheckbox/async tests. Do notapply67 unchanged.
+
+Compiler68 adds exactcandidate/pageoccurrenceordinals andfixedSQLite resolutionerror.
+62 compiler+importerprecondition tests passed24.73s. Independent65 requestchanges was
+explicitoccurrencepairing; root reviewed68 andpreparedacceptancenote. DurableexportCLI71
+active: privateannotationinput ->ordinaryP17/P18request plusmanifestpublishedlast,
+no browserorautomaticimport. Nativequalification70 active. All responses62-69 Opusverified.
+
+Active:70 native-qualification-harness session4071;71 capture-import-cli session80134;
+72 selected-draft-proof-metadata session22431. Queued73 compiler-fixture-uuid (Sonnet).
+No actualmodel/server/test process active now. Keepawake17176 activeboundedlease.
+SupportedCUA inventory checkedagain:apps[] browsers[]; no real UIactions possible yet.
+COORDcommit098fc102 thenoriginops rebase succeeded; newHEAD90ba5c32; thischeckpointdirty.
+No push/merge. Realpilotstillunopened/unmigrated. Next:73leafcommit;70actualP19;72DTO/67UI;
+71privateexport; broaderremainingfixtures/adversarial/finalcombined; smallrealnonsending
+workflow/UI; publishconcreteauthorizeddiff andcanonicalhandoff. Do notshrinkgoal.
+
 ## Current checkpoint 2026-09-11T20:08:54.636267+00:00
 
 Goal active and incomplete. User reaffirmed Claude-only grunt work; root orchestrates,
