@@ -257,9 +257,13 @@ def test_calendar_shaped_but_impossible_filename_date_does_not_crash(tmp_path):
     assert run_sweep(repo, "--delete", now="2026-01-05").returncode == 0
 
 
-def test_unparseable_now_override_skips_age_checks_instead_of_crashing(tmp_path):
-    """F4, the other unguarded fromisoformat: KB_HANDOFFS_NOW. An unparseable override means "no
-    today" -- age checks are skipped, the rest of the sweep still runs."""
+def test_unparseable_now_override_is_ignored_and_the_real_clock_stands(tmp_path):
+    """F4, the other unguarded fromisoformat: KB_HANDOFFS_NOW. It is a TEST clock override, so a
+    bad value must neither crash the sweep nor silently disable age flagging for the whole run --
+    a quietly weaker sweep is worse than either. The override is ignored and the real clock stands
+    (ruling 2026-09-11), so a 2020 handoff is still age-flagged.
+
+    Red on revert: returncode 1 with a ValueError traceback."""
     repo = make_repo(tmp_path)
     set_ops_main_refs(repo)
     (repo / "handoffs" / "2020-01-01-kb-ancient.md").write_text(
@@ -267,9 +271,24 @@ def test_unparseable_now_override_skips_age_checks_instead_of_crashing(tmp_path)
     )
     r = run_sweep(repo, "--json", now="not-a-date")
     assert r.returncode == 0, r.stderr
-    rows = json.loads(r.stdout)
-    assert "days old" not in rows[0]["reason"]
-    assert "dead Load path" in rows[0]["reason"]
+    reason = json.loads(r.stdout)[0]["reason"]
+    assert "days old" in reason, reason   # the real clock still ages it
+    assert "dead Load path" in reason
+
+
+def test_valid_now_override_is_still_honoured(tmp_path):
+    """The fallback must not swallow GOOD overrides: the same 2020 handoff, told that "today" is
+    the day after it was written, is not age-flagged."""
+    repo = make_repo(tmp_path)
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2020-01-01-kb-ancient.md").write_text(
+        "# ancient\n## Load list\n`docs/does/not/exist.md`\n", encoding="utf-8"
+    )
+    r = run_sweep(repo, "--json", now="2020-01-02")
+    assert r.returncode == 0, r.stderr
+    reason = json.loads(r.stdout)[0]["reason"]
+    assert "days old" not in reason, reason
+    assert "dead Load path" in reason
 
 
 def test_annotated_load_heading_is_found(tmp_path):

@@ -156,10 +156,17 @@ def _parse_date(value: str) -> date | None:
         return None
 
 
-def _now(env: dict) -> date | None:
+def _now(env: dict) -> date:
+    """KB_HANDOFFS_NOW is a TEST clock override, and a bad one must not quietly turn age flagging
+    off for the whole run -- that is a silently weaker sweep, which is worse than either a crash
+    or an ignored override. So an unparseable value is ignored and the real clock stands (ruling
+    2026-09-11). The crash this replaces was `date.fromisoformat` raising ValueError straight out
+    of a script the SessionStart hook spawns on every session."""
     override = (env.get("KB_HANDOFFS_NOW") or "").strip()
     if override:
-        return _parse_date(override)  # unparseable override -> no age checks, not a crash
+        parsed = _parse_date(override)
+        if parsed is not None:
+            return parsed
     return datetime.now(timezone.utc).date()
 
 
@@ -222,9 +229,7 @@ def _load_paths(text: str) -> list[str]:
     return BACKTICK_PATH_RE.findall(body)
 
 
-def flag(root: Path, handoffs: list[Handoff], today: date | None) -> list[dict]:
-    """`today` is None when KB_HANDOFFS_NOW was set to something unparseable: age checks are then
-    skipped entirely, while the scope/supersession and dead-Load-path checks still run."""
+def flag(root: Path, handoffs: list[Handoff], today: date) -> list[dict]:
     by_scope: dict[str, list[Handoff]] = {}
     for h in handoffs:
         if h.scope:
@@ -245,7 +250,7 @@ def flag(root: Path, handoffs: list[Handoff], today: date | None) -> list[dict]:
     flags: list[dict] = []
     for h in handoffs:
         reasons: list[str] = []
-        if today is not None and h.handoff_date is not None:
+        if h.handoff_date is not None:
             age_days = (today - h.handoff_date).days
             if age_days > STALE_DAYS:
                 reasons.append(f"{age_days} days old (> {STALE_DAYS})")
