@@ -1,11 +1,12 @@
 # Prospecting current state
 
-Updated 2026-09-11T21:12:51.119478+00:00
+Updated 2026-09-11T21:35:24.078695+00:00
 
-Goal active. SourceHEAD1a7bcdd9: acceptedcompiler62tests and privateexport25tests.
-UI78 passes32JSchecks; independent85 findings under89repair. QA86 acceptedproduction,
-negativeexact-ref test under90repair. Legacymechanics7checks anddraftinventorynowpass.
-ActualP19 providerrejects uniqueItems schema;88 preparesprovider-compatiblewire schema
-whilefull localvalidationremainsstrict. Three diagnostictrials cleanupcomplete, noauthority.
-Nativeeditorialprevious3stagepass remainsrecorded; newbundlewillneedactualrevalidation.
-PinNone, browserunavailable, realpilot untouched. Canonicalhandoff/tasklist carrydetails.
+Goal active. SourceHEAD99b13a85: compiler62tests, export25tests, QA199combinedchecks accepted.
+All4 native adapters passed exact new bundle; source acceptance pin applied and public entry
+point verified with actual canary and complete cleanup.102 targeted checks pass. Selected UI
+36checks pass after independent findings repaired; coherent review97 active. Acquisition95
+locator active;96 packet-submit applied under tests. Existing CLI/skill supplies browser broker.
+Supported browser unavailable; real pilot untouched; no sends or source-confirmation decisions.
+Claude preferred; user authorizes Codex fallback at limits, return to Claude20:30 New York.
+Canonical handoff and delivery task list contain exact evidence and remaining work.

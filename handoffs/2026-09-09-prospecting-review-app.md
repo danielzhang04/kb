@@ -1,3 +1,36 @@
+## Current checkpoint 2026-09-11T21:35:24.078695+00:00
+
+Active infrastructure goal. Source HEAD99b13a85; coordination HEADd8de3442 before this
+checkpoint. User routing update: use Codex subagents if Claude hits limits; return new work
+to Claude at20:30 America/New_York (00:30UTC September12). Healthy in-flight jobs may finish.
+Root remains orchestrator. Claude development workers currently run on the existing vCPU.
+
+All four native adapters now pass on bundle
+4958ed4701004d397002635a3e34f05afe1fbbfbe7ad23adb0f40eba45f1109a.
+Qualification6c4d0f4b10ca4f0faf5c365fe0fa8f14: 1attempt1artifact machine_reviewed, honest
+company/person unknown, 21:17:18-21:17:47UTC. Editorial72403fe041cd4bcaa8f34a8969520efa:
+6calls6artifacts1repair finalhuman_review, 21:19:02-21:20:49UTC. Both cleanup complete,
+no authority/readiness/send changes. Requestedgpt-6-astra, responding identityunverified.
+Binarybe96b992178b1e467c225800da0d65f2c86d5eba1ef0b14632f65db381cbdfde, CLI0.154.0.
+88 wire-schema fix keeps full local validation; independent92 READY;115runtime checks pass.
+94 source pin applied; rejected only its inaccurate worker-self-test attribution doc hunk.
+102 targeted checks pass15.46s. Actual public prepare_stage_adapters accepted exact pin,
+returned4adapters, canary9815ms, capability invalidated and runtime root deleted; no stages.
+Public evidence: ORCH/public-prepare-94-evidence.json. Runtime changes await coherent commit.
+
+Compilerb715deae and export1a7bcdd9 accepted. Claim ratio99b13a85 accepted199combinedchecks.
+UI89 fixes all85 findings;93 replaces embeddedNUL key with JSON serialization.36JScheckspass,
+zeroNULbytes, textdiff restored. Coherent selected final review97 active on frozen sources.
+Opus95 private span locator active. Opus96 packet-submit applied; synthetic CLI checks running.
+Next: address reviews, test whole public capture/import CLI chain, verify private exports,
+update operator instructions, commit coherent selected/runtime leaves, full relevant suite.
+Legacy82 narrow readiness fixture repairs and87 drafttarget repair pass; no manifestblessing.
+
+Browser still unavailable; no alternate browser or private-data VM route. Real pilot untouched.
+KeepawakePID17176 verified21:32UTC, bounded12h lease. No other native test process retained.
+Latest task list: DELIVERY/docs/superpowers/plans/2026-09-09-prospecting-startup-pilot.md.
+Canonical older checkpoints below are historical and superseded by this one.
+
 ## Current checkpoint 2026-09-11T21:12:51.119478+00:00
 
 Goal active; all grunt work Claude on existing source-only vCPU. Root orchestrates,

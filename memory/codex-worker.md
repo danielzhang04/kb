@@ -678,3 +678,10 @@ preserving original refusals and emitting only a closed provider-error category 
 Adapt provider wire format separately from local validation and bind both into acceptance.
 Negative tests must sit on the decision boundary: an extra substantive sender claim made
 14 exact-reference tests pass even under the wrong identity classification.
+
+### Accept one coherent runtime bundle
+
+A fourth adapter can reject a schema even when authentication and three editorial stages
+work. Bind provider wire schema and strict local schema separately, validate all adapters
+on the same bundle, then check the public pinned entry point and cleanup. Native success
+is execution evidence; an unknown qualification is not positive source support.
