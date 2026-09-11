@@ -45,6 +45,7 @@ DETAIL_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_detail_only_api.json"
 AI_TEMPLATE_PATH = TRAIN_DIR / "ai-toolkit-krea2.yaml.template"
 TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
+TESTER_NATIVE_DIMENSIONS = {"width": 1448, "height": 2176}
 TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
 BUILD_SET_MODULE = TRAIN_DIR / "build_training_set.py"
@@ -869,9 +870,13 @@ def _tester_prompt(persona: dict[str, Any], training: dict[str, Any]) -> str:
     ))
 
 
-def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
-    creator_id = persona["id"]
-    trigger = training["trigger"]
+def _tester_base_workflow(prompt_text: str, filename_prefix: str) -> dict[str, Any]:
+    """Pinned native Flux Krea2 tester graph, no LoRA node.
+
+    Shared by `_tester_workflow` (which inserts a `LoraLoader` node "4" and
+    rewires nodes "5"/"8" onto it) and non-persona callers that want the same
+    tester pipeline run directly off the base checkpoint.
+    """
     return {
         "1": {"class_type": "UNETLoader", "inputs": {
             "unet_name": "krea2_turbo_fp8_scaled.safetensors", "weight_dtype": "default",
@@ -883,22 +888,17 @@ def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[
         "3": {"class_type": "VAELoader", "inputs": {
             "vae_name": "qwen_image_vae.safetensors",
         }},
-        "4": {"class_type": "LoraLoader", "inputs": {
-            "lora_name": f"{trigger}.safetensors",
-            "strength_model": 1.0,
-            "strength_clip": 1.0,
-            "model": ["1", 0],
-            "clip": ["2", 0],
-        }},
         "5": {"class_type": "CLIPTextEncode", "inputs": {
-            "text": _tester_prompt(persona, training),
-            "clip": ["4", 1],
+            "text": prompt_text,
+            "clip": ["2", 0],
         }},
         "6": {"class_type": "ConditioningZeroOut", "inputs": {
             "conditioning": ["5", 0],
         }},
         "7": {"class_type": "EmptyLatentImage", "inputs": {
-            "width": 1448, "height": 2176, "batch_size": 1,
+            "width": TESTER_NATIVE_DIMENSIONS["width"],
+            "height": TESTER_NATIVE_DIMENSIONS["height"],
+            "batch_size": 1,
         }},
         "8": {"class_type": "KSampler", "inputs": {
             "seed": 1595,
@@ -907,7 +907,7 @@ def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[
             "sampler_name": "res_2s",
             "scheduler": "beta",
             "denoise": 1.0,
-            "model": ["4", 0],
+            "model": ["1", 0],
             "positive": ["5", 0],
             "negative": ["6", 0],
             "latent_image": ["7", 0],
@@ -916,9 +916,27 @@ def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[
             "samples": ["8", 0], "vae": ["3", 0],
         }},
         "10": {"class_type": "SaveImage", "inputs": {
-            "filename_prefix": f"{creator_id}-tensor-tester", "images": ["9", 0],
+            "filename_prefix": filename_prefix, "images": ["9", 0],
         }},
     }
+
+
+def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
+    creator_id = persona["id"]
+    trigger = training["trigger"]
+    workflow = _tester_base_workflow(
+        _tester_prompt(persona, training), f"{creator_id}-tensor-tester",
+    )
+    workflow["4"] = {"class_type": "LoraLoader", "inputs": {
+        "lora_name": f"{trigger}.safetensors",
+        "strength_model": 1.0,
+        "strength_clip": 1.0,
+        "model": ["1", 0],
+        "clip": ["2", 0],
+    }}
+    workflow["5"]["inputs"]["clip"] = ["4", 1]
+    workflow["8"]["inputs"]["model"] = ["4", 0]
+    return {key: workflow[key] for key in ("1", "2", "3", "4", "5", "6", "7", "8", "9", "10")}
 
 
 def _tester_manifest(
