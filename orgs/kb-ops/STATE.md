@@ -1,5 +1,5 @@
 # kb-ops — STATE
-_Updated: 2026-09-06 20:30_
+_Updated: 2026-09-11 17:50_
 
 ## Now
 VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 2026-09-06 19:04:55Z
@@ -15,6 +15,9 @@ Daniel must merge PR #173; then the boss runs the scripted recovery (`morning-re
 `recover-deploy.ps1`) and interrupts stale run `run-971d5ba4` before Gate 4b can resume.
 
 ## Next
+1. Daniel: apply the proposed CLAUDE.md/BOSS.md diff (Navigation reads GOAL.md; findings -> STATE.md ## Findings;
+   grades cite the model-audit row) - text in memory/claude-boss.md 2026-09-11 section / PR #182 body.
+2. Reshape orgs/atlas/STATE.md to the project-frame shape (scripts/project_frame_lint.py fails on it today).
 1. Daniel merges PR #173.
 2. Boss: `morning-rebuild.ps1` (guard e8bf8d35) -> `recover-deploy.ps1 -SigningKey <path>`
    (daemon-down path: no API lock, parks `current`, reset-failed, pre-installs validator).
