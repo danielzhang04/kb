@@ -1,6 +1,6 @@
 # Project frame + hooks — design (2026-09-11)
 
-**Status:** DRAFT for Daniel's review. Boss session (Fable 5.1).
+**Status:** APPROVED 2026-09-11 (Daniel: "Yes proceed"); §2 trimmed to two modes same day. Boss session (Fable 5.1).
 **Goal:** every kb CLI session (boss, worker, subagent) starts and stays grounded in the active
 project's GOAL state and CURRENT state without re-reading the whole repo, and without being
 overloaded on every turn. Success = a fresh session on a project branch receives the frame at
@@ -52,13 +52,12 @@ would matter to a fresh session.
   project ids present under `orgs/` on `origin/ops` → else `null` (boss/unknown branches).
 - `readOpsFile(cwd, relPath)`: `git -C cwd show origin/ops:<relPath>`; on failure fall back to the
   working-tree file; cap 32 KiB; never throws.
-- `frame(project, mode)` → string, three modes with hard char budgets:
+- `frame(project, mode)` → string, two modes with hard char budgets (the `reground` and
+  `subagent` payloads are served by U7/U9 straight from the store's governing sections, so no
+  separate modes exist for them — ruled 2026-09-11):
   - `full` (SessionStart startup/resume/clear): GOAL all sections + STATE all sections + the
     project's handoff filenames + Load lists + the store's `## Resumed-session summary` when present.
     Budget 7000 chars, sections truncated last-first.
-  - `reground` (compact, throttled turns): STATE Now + Current gate + GOAL Invariants. 1700 chars
-    (matches U7's `MAX_CONTEXT_CHARS`).
-  - `subagent`: GOAL North star + Invariants + STATE Current gate. 2500 chars.
   - `rollup` (no active project): one line per project = `<p>: <first line of ## Now> (updated <date>)`
     plus handoff-sweep flags. 1500 chars.
 - Every string opens with the existing stale-replay `GUARD_LINE` from `lib/hook_io.js`.
