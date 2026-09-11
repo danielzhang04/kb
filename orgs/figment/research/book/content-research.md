@@ -6,6 +6,25 @@ The two growth SOP PDFs were subsequently read and summarized in [r15, section 5
 
 Use a research queue with one hypothesis per card: “This hook improves completion among the defined audience under this format.” Pre-register the asset, caption family, posting window, and comparison. Record null results and confounders such as distribution, novelty, and account history. Keep adult, clothed presentation and disclosure requirements in the content brief before production begins.
 
+## Current nonpersona source boundary — 2026-09-11
+
+The accepted v3 native-source binding (`bb9b8db2`) lets a source-planning brief record a
+nonpersona C/D/E scene against an exact current slot, creator, retained evidence, and externally
+attributed human `accept-native` ruling. It is a provenance/planning record only: its native state
+is `native-source`, delivery quality is `not-assessed`, transform is null, and it is
+`not_promotable`. The private collector data is not rendered in the client, which instead says
+`Recorded plan; scene images still need delivery review`.
+
+This does not make an image content-ready or establish a real human identity, visual quality,
+delivery crop/resize, approval, publication, or audience response. Root accepted an adversarial
+design amendment and is dispatching implementation plus independent test authoring for exactly one
+direct-NVR crop/resize producer and its test file, with no assignment/binder/UI edit, provider
+action, or quality approval. The module must use closed schemas, metadata key-presence refusals,
+direct PNG/RGB reconstruction checks, stable reads/exclusive publication, real upstream fixtures,
+independent code/security review, and at most two source-repair rounds. Source/tests are not yet
+written or accepted. See the
+[native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md).
+
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
 | Package evidence | r15 summarizes both growth SOPs and separates useful content patterns from rejected operating tactics. | Vendor claims and suggested cadences are not measured Figment results; analytics were not supplied. |

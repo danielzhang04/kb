@@ -6,6 +6,24 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 ## Current status — 2026-09-11
 
+- **Nonpersona native-source binding**: root accepted v3 at `bb9b8db2` after the final
+  mixed-flow fixture repair and a real producer/binder-to-collector/UI join. The accepted
+  source binds only an externally attributed `accept-native` ruling to the exact current
+  nonpersona C/D/E brief slot and creator, then projects a private-safe native-source snapshot.
+  It records planning evidence, not media approval: no authenticated human, real ruling,
+  transform, delivery-quality verdict, or delivery exists. The UI says `Recorded plan; scene
+  images still need delivery review`. Evidence includes 68 UI tests plus typecheck/build, 53
+  distinct Python passing nodes across the relevant receipts, preserved v1/v2 output bytes, and
+  a 1/1 isolated cross-language Vitest join. A final independent code/security evidence delta is
+  READY for the committed source with no open concrete finding (report SHA
+  `ce6d14295effa7d048cfd08ee4f32a09b3f5a4964f5e54035e000928697fa8cc`). See the
+  [native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md).
+  Root then accepted the adversarial still-delivery design amendment: implementation and
+  independent test authoring are being dispatched for one direct-NVR crop/resize module and its
+  test file only. It must use closed schemas, metadata key-presence refusals, direct PNG/RGB
+  reconstruction checks, stable reads/exclusive publication, real upstream fixtures, independent
+  code/security review, and at most two source-repair rounds. Neither file exists as accepted
+  source yet; no provider action or quality approval is authorized.
 - **Repair diff `150978d8..ec58decf`** (Studio, video terminal authority, motion-source
   binding, HTTP surface): reviewed **READY**, full video suite 187 passed in 392.98s. See
   the [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md).
