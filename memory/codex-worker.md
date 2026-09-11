@@ -668,3 +668,13 @@ Cache priming succeeded with maximum path252; a synthetic path probe hit WinErro
 ### Carry exact proof metadata on the displayed draft
 
 A selected binding root is not necessarily the current edited draft head. Frontend equality between binding root and displayed revision disables valid descendant confirmation. Project source digest and observation IDs through the same verified revision proof, including staleness refusals, rather than reconstructing authority from latest selection.
+
+### Preserve local validation when adapting provider schemas
+
+A successful authentication canary and three editorial stages did not validate the fourth
+adapter's schema. Qualification failed in four seconds because the provider rejected
+uniqueItems. Two layers of generic error translation concealed the cause. A manual probe
+preserving original refusals and emitting only a closed provider-error category exposed it.
+Adapt provider wire format separately from local validation and bind both into acceptance.
+Negative tests must sit on the decision boundary: an extra substantive sender claim made
+14 exact-reference tests pass even under the wrong identity classification.

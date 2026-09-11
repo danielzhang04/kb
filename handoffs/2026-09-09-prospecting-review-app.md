@@ -1,3 +1,49 @@
+## Current checkpoint 2026-09-11T21:12:51.119478+00:00
+
+Goal active; all grunt work Claude on existing source-only vCPU. Root orchestrates,
+reviews, applies verified proposals and checks results. Source HEAD1a7bcdd9 after
+compilerb715deae and private export1a7bcdd9. COORDHEAD76eefb9a before this dirtycheckpoint.
+Compiler62tests and export25tests accepted after independent reviews/repairs. Export
+plus diagnostic80 group48passed7.24s. Export83 docs corrected actual size-limit guarantee.
+
+QUALIFICATION BLOCKER IDENTIFIED empirically: native provider rejects uniqueItems in
+qualification output schema. Three fresh synthetic actual trials, each1attempt0artifacts,
+canary success, cleanup complete, no authority rows: d8894338302a4248a45931a8b97be49a
+20:49:44-56UTC outerqualification_adapter_failed;604d1145d4874b398a11e211ef8d354a
+20:57:59-58:11 nativeprovider_unavailable;7b861908e8db4f658338447f6a6d9a4f
+21:07:27.608406-21:07:40.396512 nativeprovider_unavailable and boundederror-only enum
+unsupported_schema_unique_items. Last call4005ms, fulltrial12788ms. Runtime root deleted,
+capabilityinvalidated, connectionclosed, probe bindings restored, no cleanup errors.
+DBs MAIN/_private/p19-native/<id>/store.sqlite. Samebundle03709b4...fa7de33 andbinary
+be96b992...9ec733 as successful editorialbb2170; actualmodel respondingidentityunverified.
+70/79/80/84 manualharness nowapplied; latest51offline checks pass3.67s. Probe emits ONLY
+closed error categories; private text export remains forbidden, no raw events/prose read.
+88 native-wire-schema active session27291: omit ONLY unsupported arraykeyword from
+provider schema, preserve full local duplicatevalidation, pin both schema hashes inbundle.
+Runtime acceptance pin remainsNone. After88review/tests need actualP19 andeditorialnewbundle.
+
+UI78 APPLIED;32realHTMLVMstate tests pass336.97ms. Independent85 REQUEST_CHANGES:
+stale selectedResult/campaignError lifecycle, People selectedsource notice incorrectly
+uses legacy/pendingPeople status as confirmation.89incrementalrepair session39868 active;
+preferneutral exactdraftstatus pointer over unsupportedPeople confirmationclaims.
+DTO75 and selectedproof/HTTPwork continueuncommitted. Genuine edited/agentdescendant
+sourceconfirmation and nofallback/stale/checkbox/generationguards otherwise85accepted.
+
+Legacy82 APPLIED five narrowlyisolatedmechanicstests, draft model-stub-onlytarget updated.
+7checks pass including unchanged real readinessintegration; draftinventory exposedanother
+stale twenty-drafts target.87 applied exactactual20revision CLItest target aftermechanical
+contexttrim (proposalomitted unchangedimmutablefield). Full drafttargetinventorynowpasses
+1test10.80s. No manifest/gate-record blessing. P6recorded-gate/inventory failures remain.
+
+Independent86 QAproductionREADY but exact-ref negativetestvacuous: extra sender_two
+alreadyfails ratio even mutant incorrectlyexemptsvariant.90Sonnetrepair session27610 active:
+remove that extra testclaim, clarifyrecipientkeycomment; no QAbehaviorchange. Thencheck
+QA+CLI+P16/P24coherently andcommit reviewedleaf. Existing32signaturecasesotherwisecorrect.
+Browser supportedinventory stillapps[]browsers[] at20:55; no realUIclaim. Realpilot untouched.
+Next88actualruntime;89UI;90QA; broaderselectedindependentfreeze andcombinedverification;
+privatebrowserbroker seam; smallrealnonsendingcase when supportedUIavailable; publication
+andhandoff. Do not stop at these milestones or shrink the infrastructure goal.
+
 ## Current checkpoint 2026-09-11T20:48:54.299310+00:00
 
 Goal active; boss orchestrates, all implementation/review proposals from verified Claude
