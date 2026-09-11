@@ -100,11 +100,11 @@ function activeProject(event, env) {
 }
 
 function readOpsFile(cwd, relPath, env) {
+  if (typeof cwd !== "string" || !cwd || typeof relPath !== "string") return null;
   const out = gitCapture(cwd, ["show", "origin/ops:" + relPath]);
   if (out !== null) {
     return out.length > MAX_OPS_FILE_CHARS ? out.slice(0, MAX_OPS_FILE_CHARS) : out;
   }
-  if (typeof cwd !== "string" || !cwd) return null;
   return io.readCappedFile(path.join(cwd, relPath), MAX_OPS_FILE_CHARS);
 }
 
@@ -123,10 +123,30 @@ function updatedStamp(text) {
   return m ? m[1].trim() : null;
 }
 
+/**
+ * Prefix-matched section lookup. Spec §1: GOAL.md/STATE.md headings are "exact, prefix-matched"
+ * — a heading like "## Current gate (P8)" must still resolve as "Current gate", the same way
+ * regrounding_hook.js's `extractSection` already prefix-matches (`^##[ \t]+<name>\b`).
+ * `context_store.sectionBody` is exact-match by design (U8's tests pin it), so the prefix match
+ * lives here rather than in context_store.js — this wraps `context_store.parseSections`' output,
+ * it does not change that module.
+ */
+function sectionBodyByPrefix(sections, name) {
+  const list = Array.isArray(sections) ? sections : [];
+  const re = new RegExp("^" + String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "\\b");
+  for (const section of list) {
+    if (section && typeof section.heading === "string" && re.test(section.heading)) {
+      const body = typeof section.body === "string" ? section.body.trim() : "";
+      return body.length ? body : null;
+    }
+  }
+  return null;
+}
+
 function bodiesFor(sections, headings) {
   const parts = [];
   for (const heading of headings) {
-    const body = store.sectionBody(sections, heading);
+    const body = sectionBodyByPrefix(sections, heading);
     if (body) parts.push({ label: heading, body });
   }
   return parts;
@@ -178,10 +198,18 @@ function projectHandoffs(cwd, project) {
 }
 
 function loadListFor(cwd, filename) {
+  if (typeof cwd !== "string" || !cwd || typeof filename !== "string" || !filename) return null;
   const text = io.readCappedFile(path.join(cwd, "handoffs", filename), MAX_HANDOFF_CHARS);
   if (!text) return null;
   const sections = parseSections(text);
-  return store.sectionBody(sections, "Load list") || store.sectionBody(sections, "Load");
+  return sectionBodyByPrefix(sections, "Load list") || sectionBodyByPrefix(sections, "Load");
+}
+
+/** Apply GUARD_LINE + truncateLastFirst + the final per-mode cap, once, for both frame() branches. */
+function renderFramed(entries, budget) {
+  const body = truncateLastFirst(entries, budget - GUARD_LINE.length - 2);
+  const text = io.truncateTo(body ? GUARD_LINE + "\n\n" + body : GUARD_LINE, budget);
+  return { text, sections: entries };
 }
 
 function frame(opts) {
@@ -196,13 +224,11 @@ function frame(opts) {
     for (const id of listProjects(cwd, env)) {
       const stateText = readOpsFile(cwd, `orgs/${id}/STATE.md`, env);
       if (!stateText) continue;
-      const now = firstLine(store.sectionBody(parseSections(stateText), "Now")) || "(no ## Now)";
+      const now = firstLine(sectionBodyByPrefix(parseSections(stateText), "Now")) || "(no ## Now)";
       const updated = updatedStamp(stateText) || "unknown";
       entries.push({ label: null, body: `${id}: ${now} (updated ${updated})` });
     }
-    const body = truncateLastFirst(entries, budget - GUARD_LINE.length - 2);
-    const text = io.truncateTo(body ? GUARD_LINE + "\n\n" + body : GUARD_LINE, budget);
-    return { text, sections: entries };
+    return renderFramed(entries, budget);
   }
 
   // mode === "full"
@@ -232,9 +258,7 @@ function frame(opts) {
   const resumed = store.sectionBody(sessionSections, store.HEADINGS.RESUMED_SUMMARY);
   if (resumed) entries.push({ label: "Resumed-session summary", body: resumed });
 
-  const body = truncateLastFirst(entries, budget - GUARD_LINE.length - 2);
-  const text = io.truncateTo(body ? GUARD_LINE + "\n\n" + body : GUARD_LINE, budget);
-  return { text, sections: entries };
+  return renderFramed(entries, budget);
 }
 
 module.exports = {

@@ -33,9 +33,11 @@ def call(fn_expr, cwd, extra_env=None):
     return json.loads(run_node(body, extra_env))
 
 
-@pytest.fixture
-def ops_repo(tmp_path):
-    repo = tmp_path / "repo"
+def _build_ops_repo(repo, current_gate_heading="## Current gate"):
+    """Build a throwaway repo with a real `origin/ops` ref carrying orgs/prospecting/{GOAL,STATE}.md.
+    `current_gate_heading` is parameterized so a test can exercise an annotated heading
+    (e.g. "## Current gate (P8)") without duplicating the whole fixture body.
+    """
     repo.mkdir()
     git(repo, "init", "-q")
     git(repo, "checkout", "-q", "-b", "main")
@@ -54,14 +56,15 @@ def ops_repo(tmp_path):
         ## Invariants
         Never fabricate an email.
         """), encoding="utf-8")
-    (orgs / "STATE.md").write_text(textwrap.dedent("""\
-        # prospecting — STATE
-        _Updated: 2026-09-10 12:00_
-        ## Now
-        Batch 2 running.
-        ## Current gate
-        Daniel reviews batch 2.
-        """), encoding="utf-8")
+    (orgs / "STATE.md").write_text(
+        "# prospecting — STATE\n"
+        "_Updated: 2026-09-10 12:00_\n"
+        "## Now\n"
+        "Batch 2 running.\n"
+        f"{current_gate_heading}\n"
+        "Daniel reviews batch 2.\n",
+        encoding="utf-8",
+    )
     git(repo, "add", "orgs")
     git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed orgs")
     git(repo, "checkout", "-q", "main")
@@ -70,6 +73,11 @@ def ops_repo(tmp_path):
     git(repo, "update-ref", "refs/remotes/origin/ops", sha)
     git(repo, "branch", "-D", "ops")
     return repo
+
+
+@pytest.fixture
+def ops_repo(tmp_path):
+    return _build_ops_repo(tmp_path / "repo")
 
 
 def test_active_project_matches_longest_id(ops_repo):
@@ -164,3 +172,26 @@ def test_frame_full_mode_includes_project_handoff_load_list(ops_repo):
     text = _frame_text(ops_repo, "full")
     assert "2026-09-05-prospecting-batch1-pickup.md" in text
     assert "orgs/prospecting/STATE.md" in text
+
+
+# ── Fix round 1 ──────────────────────────────────────────────────────────────────────────────
+
+
+def test_read_ops_file_returns_null_for_bad_relpath(ops_repo):
+    """readOpsFile(cwd, undefined) must fail soft to null, not throw a TypeError out of path.join."""
+    result = call(f'readOpsFile({json.dumps(str(ops_repo))}, undefined, {{}})', ops_repo)
+    assert result is None
+
+
+def test_load_list_for_returns_null_for_bad_filename(ops_repo):
+    """loadListFor(cwd, undefined) must fail soft to null, not throw a TypeError out of path.join."""
+    result = call(f'loadListFor({json.dumps(str(ops_repo))}, undefined)', ops_repo)
+    assert result is None
+
+
+def test_frame_full_mode_matches_annotated_heading_by_prefix(tmp_path):
+    """Spec §1: headings are 'exact, prefix-matched' — '## Current gate (P8)' must still resolve
+    as 'Current gate', the same way regrounding_hook.js's extractSection prefix-matches."""
+    repo = _build_ops_repo(tmp_path / "repo2", current_gate_heading="## Current gate (P8)")
+    text = _frame_text(repo, "full")
+    assert "Daniel reviews batch 2." in text
