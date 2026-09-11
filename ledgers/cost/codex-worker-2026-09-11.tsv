@@ -198,3 +198,5 @@ subscription; billed cost unavailable		gpt-5.6-luna	unverified	authorized fallba
 subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	nested_gate_diagnosis_126	2026-09-11T22:48:37.144352+00:00	0
 subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	pr181_update_127	2026-09-11T22:48:37.144352+00:00	0
 subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	final_verification_docs_128	2026-09-11T22:54:30.847924+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	coordination_merge_audit_130	2026-09-11T23:03:58.151524+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	coordination_pr_draft_131	2026-09-11T23:03:58.151524+00:00	0

@@ -12,7 +12,7 @@ Codex fallback after Claude quota exhaustion, then return NEW work to Claude at2
 America/New_York (00:30UTC September12). Do not interrupt healthy in-flight work.
 
 Delivery: C:/Users/danie/kb/_private/codex-worktrees/prospecting-session-20260909,
-branch codex/prospecting-session-20260909, published HEAD35ac5517 including final verification record.
+branch codex/prospecting-session-20260909, published implementation HEAD35ac5517; local plan-only checkpoint5518114a is not pushed.
 Coordination: C:/Users/danie/kb/_private/codex-worktrees/boss-remote-context-20260908,
 branch codex/boss-remote-context-20260908. Source draft PR181 targets main and is updated at35ac5517; coordination
 PR180 targets ops. Source URL: https://github.com/danielzhang04/kb/pull/181. Registered Codex workers never push directly to ops/main. MAIN checkout
@@ -62,7 +62,10 @@ MAIN/_private/prospecting-native-stage-acceptance-20260911/<run>/store.sqlite. R
 
 The single full run finished:2,087tests,2,082passed,5failed,0errors,0skips in1,245.491seconds.
 ORCH/full-suite-123.xml is the retained JUnit evidence. Root independently parsed its totals.
-Two environment-sensitive failures passed focused reruns together in2.33seconds:
+Two environment-sensitive failures passed focused reruns together in2.33seconds. The command
+used Python313 -B -m pytest -q -p no:cacheprovider on exactly the two nodes below, with
+--basetemp ORCH/pc-123-rerun and PYTHONDONTWRITEBYTECODE=1 / KB_PROSPECTING_NO_NETWORK=1.
+No focused JUnit was retained; the full JUnit is retained. Failed nodes:
 - test_pipeline_cli::test_person_scope_translates_stale_source_without_private_projection
   refused an ordinary TEMP store with store_private_root_required; proper private basetemp passed.
 - test_review_app::test_control_status_and_process_are_scoped_typed_and_csrf_guarded saw
@@ -97,6 +100,25 @@ No product regression was demonstrated. No tests/manifests were changed to erase
   this diagnosis was rejected after actual child processes were observed. Do not change tests
   or kill a healthy run based only on a waiting parent.
 
+## Publication and metadata approval
+
+SourcePR181 is OPEN/DRAFT at35ac5517 with its updated title/body. Coordination branchb88dfcd8
+was published normally after preserving duplicate remote history; no force push was used.
+Automatic approval review then REJECTED the PR180 title/body edit before execution, stating
+that publishing the prepared internal handoff/verification/project-state summary to GitHub needs
+explicit payload/destination approval. A separate asynchronous approval question is pending.
+Do not retry that summary or publish its rejected content indirectly while approval is absent.
+Current PR180 description is unchanged; the branch commits are already there. Latest local
+handoff/status updates and source plan5518114a are held locally, not pushed after this rejection.
+Prepared summary: ORCH/pr180-body.md andpr180-title.txt. User may approve it or retain old text.
+
+The remote coordination commitae3573e3 was patch-equivalent to a local earlier commit. Independent
+130 confirmed current handoff/cost/memory files contain its full text plus later append-only
+material; normal merge retained those complete versions without duplicating cost rows. A later
+plain pull--rebase tried to replay that same duplicate; it was aborted, restoringb88dfcd8.
+Fresh origin/ops was verified as an ancestor. Preserve published merge ancestry on future sync;
+do not force-push or repeat an unnecessary history rewrite to refresh metadata.
+
 ## Real private pilot exact state
 
 Store: MAIN/_private/prospecting-startup-pilot-20260909/store.sqlite. Backed up before
@@ -127,8 +149,9 @@ Private .tmp artifacts are untracked and not source changes. Real transfer and v
 
 Task123 completed; PID39720 and its nested children exited. Do not restart this expensive whole
 suite without a source change or new failure. Full suite classification is above. Task121/128
-PR text is ORCH/pr181-body.md/pr181-title.txt and was published. CoordinationPR180 is being
-updated with this canonical handoff. No merge or deployment was performed.
+PR text is ORCH/pr181-body.md/pr181-title.txt and was published. Coordination branch b88dfcd8 is published and contains the canonical handoff. PR180 title/body
+update was rejected before execution; its prior description remains. No main/ops merge or deployment
+was performed. Latest local metadata checkpoints are intentionally not republished pending approval.
 KeepawakePID17176 has a bounded lease endingabout07:16UTC September12. Do not stop it while
 owned work remains. Preserve prior .tmp/pilot-flow-audit* and unknownprospecting-pytest roots;
 currentfailedtemp .tmp/pc-7d91a4e2 andpc-80b4d2c1 may be cleaned only after verified unused.
@@ -153,7 +176,8 @@ bundle; continue the other two items once each. Keep all authority/send gates un
 approval is absent, do not make any real-data model call. Supported browser availability is a
 separate requirement for visible UI acceptance; do not invent an alternate acquisition path.
 
-Source work and independently available verification are complete. Human review must refresh
+Source work and independently available verification are complete. A PR180 summary edit also
+awaits explicit approval; leaving its current description does not block source review. Human review must refresh
 recorded P1/P6 evidence and consider draftPR181/coordinationPR180; no agent manifest blessing or
 main/ops direct push. Preserve this handoff until the outstanding real/UI acceptance is resumed.
 
