@@ -309,3 +309,33 @@
   (`runpod_run.py sweep` on a cron) is the only safety net for orphans.
 - Test the exact prompt path with the LoRA loaded before a paid tester: the trigger word must be in every prompt.
 - Background bash tasks are reaped on this host; use Start-Process for anything longer than a couple of minutes.
+
+## 2026-09-11 — project-frame hooks (PR #182): arming a dormant hook family
+- **The gap was content, not machinery.** U7/U8/U9 sat inert for three weeks because nothing WROTE the
+  store's governing sections and U7 read a dead August plan. One 190-line SessionStart writer + two
+  per-project files (GOAL.md, STATE.md on ops) made the whole family live. Before building a new hook,
+  check `scripts/hooks/` and `docs/proposals/` for an inert one and ask what it is missing.
+- **Probe the live repo between task reviews, not only at the end.** Reviewers reading diffs passed the
+  sweep; one run on the real 29-handoff tree showed 3.4 s (100+ git processes) and a section-end regex
+  without `re.MULTILINE` that scanned whole files. Both were invisible in fixture-sized tests.
+- **Measure with the right decoder.** Windows python's default `open()` is cp1252: a 6999-char payload
+  read as 7035 and nearly sent a false "over budget" fix. Same family as the CRLF delete-list that
+  silently `git rm`'d nothing (`pathspec "...md?"`). Always `encoding="utf-8"` and `tr -d '\r'`.
+- **Fix library defects in the library.** A Task-2 builder monkey-patched `child_process.execFileSync`
+  to hide git stderr leaking from a Task-1 helper. Ruled: `stdio: ["ignore","pipe","pipe"]` at the
+  source, patch deleted, test at both layers. A workaround that hides a sibling's bug is a second bug.
+- **Concurrency arrives with arming.** The store's read-modify-write was fine with one inert writer; with
+  three armed writers (SessionStart, PreCompact, PostToolUse on every tool call) it lost updates. The
+  opus whole-branch review caught it where five per-task reviews could not — the per-task lens never
+  sees two hooks at once. Keep the final adversarial review on the strongest model.
+- **Budget arithmetic: reserve before you fill.** `frame()` filled 7000 chars, then preamble + sweep
+  flags were appended and the TAIL truncated — exactly the block that mattered. Compute fixed
+  decorations first, hand the remainder to the variable body.
+- **`git cat-file --batch` parsing:** slice by the header's byte size BEFORE decoding; detect
+  `<identifier> missing` with `endswith(" missing")` before any split (identifiers may contain
+  spaces); `rsplit(" ", 2)` for type/size; `continue`, never `break`, on a malformed record.
+- **Ops branch push works** (`git push origin <sha>:ops` from a temp worktree cut from origin/ops); the
+  remote prints "Changes must be made through a pull request" as a NOTICE, the ref still moves. Verify
+  with `git ls-remote origin ops`, never from the message.
+- **Rate-limit resume:** an opus review died on the 5 am session-limit reset with nothing lost — the
+  SDD ledger + review package let the same dispatch re-run verbatim ten hours later.
