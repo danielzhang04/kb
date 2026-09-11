@@ -179,6 +179,34 @@ class CaptureReceipt:
     state: str
 
 
+@dataclass(frozen=True, repr=False)
+class ResolvedCapture:
+    """Narrow, compiler-facing view of one already-verified capture.
+
+    Every field is copied from the same immutable rows ``verify_capture``
+    already re-validated for integrity and expiry; this type adds no new
+    trust and performs no independent re-derivation of that judgement.  It
+    proves only that these exact bytes and this exact metadata are what the
+    store currently holds for one task -- never browser truth, never
+    qualification, and never employment.
+    """
+
+    task_id: str
+    session_id: str
+    run_id: str
+    intake_hash: str
+    task_kind: str
+    query: str | None
+    url: str | None
+    source_url: str
+    body_ref: str
+    retrieved_at: str
+    content_sha256: str
+    receipt_id: str
+    snapshot_id: str
+    expires_at: str
+
+
 @dataclass(frozen=True)
 class CaptureTaskStatus:
     task_id: str
@@ -1016,6 +1044,68 @@ class CaptureService:
             int(row["byte_count"]), "captured",
         )
 
+    def resolve_capture(
+        self, task_id: object, *, expected_receipt_id: object, expected_content_sha256: object,
+    ) -> ResolvedCapture:
+        """Return one narrow, typed compile view of an already-verified capture.
+
+        This first performs the exact same integrity and expiry checks as
+        ``verify_capture`` (by calling it), then enforces that the caller's
+        expected receipt id and content hash match exactly, then reads the
+        already-validated task/session/receipt/snapshot rows by their exact
+        ids to expose only the fields P17/P18 compilation needs.  No excerpt
+        or captured body text is ever included here or in any error raised
+        by this method.
+        """
+        try:
+            return self._resolve_capture(task_id, expected_receipt_id, expected_content_sha256)
+        except BaseException as error:
+            self._rethrow(error)
+            raise
+
+    def _resolve_capture(
+        self, task_id: object, expected_receipt_id: object, expected_content_sha256: object,
+    ) -> ResolvedCapture:
+        receipt = self._verify_capture(task_id)
+        receipt_id = _text(expected_receipt_id, "invalid_expected_receipt_id", maximum=80)
+        content_sha = _sha(expected_content_sha256, "invalid_expected_content_sha256")
+        if receipt.receipt_id != receipt_id:
+            raise CaptureError("receipt_mismatch")
+        if receipt.content_sha256 != content_sha:
+            raise CaptureError("content_sha256_mismatch")
+        row = self.connection.execute(
+            """SELECT t.task_id,t.session_id,t.task_kind,t.packet_json,t.packet_hash,
+                      cs.run_id,cs.intake_hash,
+                      r.receipt_id,r.snapshot_id,r.retrieved_at,r.content_sha256,r.source_url,
+                      sn.body_ref,sn.expires_at
+                 FROM prospecting_capture_task AS t
+                 JOIN prospecting_capture_session AS cs ON cs.session_id=t.session_id
+                 JOIN prospecting_capture_receipt AS r ON r.task_id=t.task_id
+                 JOIN source_snapshot AS sn ON sn.snapshot_id=r.snapshot_id
+                WHERE t.task_id=? AND r.receipt_id=?""",
+            (receipt.task_id, receipt.receipt_id),
+        ).fetchone()
+        if row is None:
+            raise CaptureError("store_state_invalid")
+        if (
+            str(row["retrieved_at"]) != receipt.retrieved_at
+            or str(row["content_sha256"]) != receipt.content_sha256
+            or str(row["snapshot_id"]) != receipt.snapshot_id
+        ):
+            raise CaptureError("store_state_invalid")
+        packet = _validated_packet(
+            str(row["task_kind"]), row["packet_json"], row["packet_hash"],
+        )
+        return ResolvedCapture(
+            task_id=str(row["task_id"]), session_id=str(row["session_id"]),
+            run_id=str(row["run_id"]), intake_hash=str(row["intake_hash"]),
+            task_kind=str(row["task_kind"]), query=packet["query"], url=packet["url"],
+            source_url=str(row["source_url"]), body_ref=str(row["body_ref"]),
+            retrieved_at=receipt.retrieved_at, content_sha256=receipt.content_sha256,
+            receipt_id=str(row["receipt_id"]), snapshot_id=str(row["snapshot_id"]),
+            expires_at=str(row["expires_at"]),
+        )
+
     def get_progress(self, session_id: object) -> CaptureProgress:
         try:
             return self._progress(session_id)
@@ -1057,5 +1147,6 @@ __all__ = [
     "CaptureProgress", "CaptureReceipt", "CaptureService", "CaptureSessionRequest",
     "CaptureSessionResult", "CaptureSubmitRequest", "CaptureTaskRequest",
     "CaptureTaskResult", "CaptureTaskStatus", "MAX_ATTEMPTS_PER_TASK",
-    "MAX_LEASE_SECONDS", "MAX_TASKS_PER_SESSION", "OPEN_KIND", "SEARCH_KIND",
+    "MAX_LEASE_SECONDS", "MAX_TASKS_PER_SESSION", "OPEN_KIND", "ResolvedCapture",
+    "SEARCH_KIND",
 ]

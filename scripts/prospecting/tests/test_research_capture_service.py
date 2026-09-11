@@ -11,6 +11,7 @@ from scripts.prospecting import research_capture_service
 from scripts.prospecting.research_capture_service import (
     MAX_TASKS_PER_SESSION,
     OPEN_KIND,
+    ResolvedCapture,
     SEARCH_KIND,
     CaptureClaimRequest,
     CaptureError,
@@ -589,4 +590,232 @@ def test_committed_replay_refuses_after_capture_expired(tmp_path: Path) -> None:
     clock.value = "2026-10-15T12:00:00Z"
     with pytest.raises(CaptureError, match="^capture_expired$"):
         service.submit_capture(request)
+    connection.close()
+
+
+def test_resolve_capture_open_task_returns_exact_verified_fields(tmp_path: Path) -> None:
+    connection, service, session, lease = _leased_service(tmp_path)
+    body_ref = _incoming(tmp_path, "capture-resolve-open.txt")
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, body_ref, "https://nimbus.test/funding", STAMP,
+    ))
+    stored_body_ref = connection.execute(
+        "SELECT body_ref FROM source_snapshot WHERE snapshot_id=?", (receipt.snapshot_id,),
+    ).fetchone()[0]
+    resolved = service.resolve_capture(
+        lease.task_id, expected_receipt_id=receipt.receipt_id,
+        expected_content_sha256=receipt.content_sha256,
+    )
+    assert isinstance(resolved, ResolvedCapture)
+    assert resolved.task_id == lease.task_id
+    assert resolved.session_id == session.session_id
+    assert resolved.run_id == session.run_id
+    assert resolved.intake_hash == session.intake_hash
+    assert resolved.task_kind == OPEN_KIND
+    assert resolved.query is None
+    assert resolved.url == "https://nimbus.test/funding"
+    assert resolved.source_url == "https://nimbus.test/funding"
+    assert resolved.body_ref == stored_body_ref
+    assert resolved.retrieved_at == receipt.retrieved_at
+    assert resolved.content_sha256 == receipt.content_sha256
+    assert resolved.receipt_id == receipt.receipt_id
+    assert resolved.snapshot_id == receipt.snapshot_id
+    assert resolved.expires_at
+    rendered = repr(resolved)
+    assert "nimbus.test" not in rendered
+    assert stored_body_ref not in rendered
+    connection.close()
+
+
+def test_resolve_capture_search_task_returns_exact_verified_fields(tmp_path: Path) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    started = _seed(connection)
+    service = CaptureService(connection, now=_Clock())
+    session = service.start_session(_session_request(started))
+    service.enqueue_task(_search_task(session.session_id))
+    lease = service.claim_task(CaptureClaimRequest(session.session_id, 60))
+    assert lease is not None
+    body_ref = _incoming(tmp_path, "capture-resolve-search.txt")
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, body_ref, "https://nimbus.test/funding", STAMP,
+    ))
+    resolved = service.resolve_capture(
+        lease.task_id, expected_receipt_id=receipt.receipt_id,
+        expected_content_sha256=receipt.content_sha256,
+    )
+    assert resolved.task_kind == SEARCH_KIND
+    assert resolved.query == "Nimbus Systems funding"
+    assert resolved.url is None
+    assert resolved.receipt_id == receipt.receipt_id
+    assert resolved.snapshot_id == receipt.snapshot_id
+    connection.close()
+
+
+def test_resolve_capture_refuses_mismatched_and_malformed_expectations(tmp_path: Path) -> None:
+    connection, service, _session, lease = _leased_service(tmp_path)
+    body_ref = _incoming(tmp_path, "capture-resolve-mismatch.txt")
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, body_ref, "https://nimbus.test/funding", STAMP,
+    ))
+    with pytest.raises(CaptureError, match="^receipt_mismatch$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id="pcr_" + "0" * 32,
+            expected_content_sha256=receipt.content_sha256,
+        )
+    with pytest.raises(CaptureError, match="^content_sha256_mismatch$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id=receipt.receipt_id,
+            expected_content_sha256="0" * 64,
+        )
+    with pytest.raises(CaptureError, match="^invalid_expected_receipt_id$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id="   ",
+            expected_content_sha256=receipt.content_sha256,
+        )
+    with pytest.raises(CaptureError, match="^invalid_expected_content_sha256$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id=receipt.receipt_id,
+            expected_content_sha256="not-hex",
+        )
+    connection.close()
+
+
+def test_resolve_capture_fails_closed_on_tampered_snapshot(tmp_path: Path) -> None:
+    connection, service, _session, lease = _leased_service(tmp_path)
+    body_ref = _incoming(tmp_path, "capture-resolve-tamper.txt")
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, body_ref, "https://nimbus.test/funding", STAMP,
+    ))
+    stored_body_ref = connection.execute(
+        "SELECT body_ref FROM source_snapshot WHERE snapshot_id=?", (receipt.snapshot_id,),
+    ).fetchone()[0]
+    (tmp_path / "snapshots" / stored_body_ref).write_text("tampered", encoding="utf-8")
+    with pytest.raises(CaptureError, match="^source_changed$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id=receipt.receipt_id,
+            expected_content_sha256=receipt.content_sha256,
+        )
+    connection.close()
+
+
+def test_resolve_capture_fails_closed_after_expiry(tmp_path: Path) -> None:
+    clock = _Clock()
+    connection, service, _session, lease = _leased_service(tmp_path, clock)
+    body_ref = _incoming(tmp_path, "capture-resolve-expiry.txt")
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, body_ref, "https://nimbus.test/funding", STAMP,
+    ))
+    clock.value = "2026-10-15T12:00:00Z"
+    with pytest.raises(CaptureError, match="^capture_expired$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id=receipt.receipt_id,
+            expected_content_sha256=receipt.content_sha256,
+        )
+    connection.close()
+
+
+def test_resolve_capture_two_sessions_same_bytes_resolve_to_own_ids_and_refuse_cross_receipt(
+    tmp_path: Path,
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    started = _seed(connection)
+    service = CaptureService(connection, now=_Clock())
+    session_a = service.start_session(_session_request(
+        started, request_id="a0000000-0000-4000-8000-000000000001",
+    ))
+    task_a = service.enqueue_task(_open_task(
+        session_a.session_id, request_id="a0000000-0000-4000-8000-000000000002",
+    ))
+    lease_a = service.claim_task(CaptureClaimRequest(session_a.session_id, 60))
+    assert lease_a is not None
+    receipt_a = service.submit_capture(CaptureSubmitRequest(
+        lease_a.task_id, lease_a.lease_token, _incoming(tmp_path, "capture-cross-a.txt"),
+        "https://nimbus.test/funding", STAMP,
+    ))
+
+    session_b = service.start_session(_session_request(
+        started, request_id="b0000000-0000-4000-8000-000000000001",
+    ))
+    task_b = service.enqueue_task(_open_task(
+        session_b.session_id, request_id="b0000000-0000-4000-8000-000000000002",
+    ))
+    lease_b = service.claim_task(CaptureClaimRequest(session_b.session_id, 60))
+    assert lease_b is not None
+    receipt_b = service.submit_capture(CaptureSubmitRequest(
+        lease_b.task_id, lease_b.lease_token, _incoming(tmp_path, "capture-cross-b.txt"),
+        "https://nimbus.test/funding", STAMP,
+    ))
+
+    assert receipt_a.content_sha256 == receipt_b.content_sha256
+    assert task_a.task_id != task_b.task_id
+
+    resolved_a = service.resolve_capture(
+        task_a.task_id, expected_receipt_id=receipt_a.receipt_id,
+        expected_content_sha256=receipt_a.content_sha256,
+    )
+    resolved_b = service.resolve_capture(
+        task_b.task_id, expected_receipt_id=receipt_b.receipt_id,
+        expected_content_sha256=receipt_b.content_sha256,
+    )
+    assert resolved_a.task_id == task_a.task_id and resolved_a.session_id == session_a.session_id
+    assert resolved_b.task_id == task_b.task_id and resolved_b.session_id == session_b.session_id
+    assert resolved_a.receipt_id != resolved_b.receipt_id
+
+    with pytest.raises(CaptureError, match="^receipt_mismatch$"):
+        service.resolve_capture(
+            task_a.task_id, expected_receipt_id=receipt_b.receipt_id,
+            expected_content_sha256=receipt_b.content_sha256,
+        )
+    connection.close()
+
+
+def test_resolve_capture_after_connection_closed_reports_fixed_code(tmp_path: Path) -> None:
+    connection, service, _session, lease = _leased_service(tmp_path)
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, _incoming(tmp_path, "capture-resolve-closed.txt"),
+        "https://nimbus.test/funding", STAMP,
+    ))
+    connection.close()
+    with pytest.raises(CaptureError, match="^store_state_invalid$"):
+        service.resolve_capture(
+            lease.task_id, expected_receipt_id=receipt.receipt_id,
+            expected_content_sha256=receipt.content_sha256,
+        )
+
+
+def test_resolve_capture_leaves_caller_owned_transaction_untouched(tmp_path: Path) -> None:
+    connection, service, _session, lease = _leased_service(tmp_path)
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, _incoming(tmp_path, "capture-resolve-owned.txt"),
+        "https://nimbus.test/funding", STAMP,
+    ))
+    connection.execute("CREATE TEMP TABLE caller_scratch(v TEXT)")
+    connection.commit()
+    connection.execute("BEGIN")
+    connection.execute("INSERT INTO caller_scratch VALUES('caller-write')")
+    resolved = service.resolve_capture(
+        lease.task_id, expected_receipt_id=receipt.receipt_id,
+        expected_content_sha256=receipt.content_sha256,
+    )
+    assert resolved.task_id == lease.task_id
+    assert connection.in_transaction is True
+    assert connection.execute("SELECT count(*) FROM caller_scratch").fetchone()[0] == 1
+    connection.commit()
+    connection.close()
+
+
+def test_legacy_verify_capture_and_receipt_equality_unchanged_by_resolve(tmp_path: Path) -> None:
+    connection, service, _session, lease = _leased_service(tmp_path)
+    receipt = service.submit_capture(CaptureSubmitRequest(
+        lease.task_id, lease.lease_token, _incoming(tmp_path, "capture-resolve-legacy.txt"),
+        "https://nimbus.test/funding", STAMP,
+    ))
+    direct = service.verify_capture(lease.task_id)
+    assert direct == receipt
+    service.resolve_capture(
+        lease.task_id, expected_receipt_id=receipt.receipt_id,
+        expected_content_sha256=receipt.content_sha256,
+    )
+    again = service.verify_capture(lease.task_id)
+    assert again == receipt and again == direct
     connection.close()
