@@ -151,6 +151,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 import json
+import os
 from pathlib import Path
 import sqlite3
 import sys
@@ -265,6 +266,7 @@ _CLI_CODES = frozenset({
     "locate_input_json_invalid", "locate_input_json_too_deep",
     "locate_input_schema_invalid", "locate_input_snapshot_required",
     "locate_input_too_large", "store_invalid", "store_private_root_required",
+    "verify_export_invalid", "verify_export_snapshot_required",
 })
 _COMPILE_CODES = frozenset({
     "batch_too_large", "candidate_pool_too_large", "capture_expired",
@@ -283,6 +285,25 @@ _COMPILE_CODES = frozenset({
     "research_scope_too_large", "run_missing", "session_missing",
     "snapshot_store_required", "snapshot_store_unavailable", "source_changed",
     "source_too_large", "store_busy", "store_state_invalid",
+})
+_VERIFY_CODES = frozenset({
+    "capture_expired", "capture_missing", "capture_mismatch",
+    "capture_occurrences_mismatch", "capture_unavailable", "content_sha256_mismatch",
+    "candidate_company_mismatch", "candidate_outside_scope", "candidate_pool_too_large",
+    "funding_batch_stale",
+    "input_pending", "intake_stale", "invalid_body_ref", "invalid_expected_content_sha256",
+    "invalid_expected_receipt_id", "invalid_manifest_ref", "manifest_duplicate_key",
+    "manifest_json_invalid", "manifest_json_too_deep", "manifest_schema_invalid",
+    "manifest_too_large", "manifest_unavailable", "invalid_candidate", "invalid_candidates",
+    "invalid_coverage", "invalid_funding_batch", "invalid_funding_event", "invalid_page",
+    "invalid_research_scope", "invalid_source_kind", "invalid_source_url", "pipeline_context_stale",
+    "person_evidence_mismatch",
+    "receipt_mismatch", "request_duplicate_key", "request_hash_mismatch",
+    "request_identity_mismatch", "request_json_invalid", "request_json_too_deep",
+    "request_schema_invalid", "request_semantics_invalid", "request_too_large", "request_unavailable",
+    "research_scope_too_large", "run_missing", "session_missing", "snapshot_store_required",
+    "source_changed", "source_stale", "source_too_large",
+    "store_busy", "store_state_invalid",
 })
 
 
@@ -488,6 +509,21 @@ def _read_locate_input(store: Path, input_path: Path) -> LocateRequest:
         _capture_ref(value["capture"], "locate_input_schema_invalid"),
         tuple(needles),
     )
+
+
+def _verify_manifest_ref(store: Path, input_path: Path) -> str:
+    """Bind one existing, unlinked manifest below this store's snapshots root."""
+    source, _identity = _safe_existing_file(input_path, "verify_export_invalid")
+    snapshots = _safe_existing_directory(
+        store.parent / "snapshots", "verify_export_snapshot_required",
+    )
+    try:
+        reference = source.relative_to(snapshots).as_posix()
+    except ValueError:
+        raise CliError("verify_export_snapshot_required") from None
+    if not reference.startswith(f"{EXPORT_NAMESPACE}/man_") or not reference.endswith(".body"):
+        raise CliError("verify_export_invalid")
+    return reference
 
 
 def _page_payload(page: object) -> dict[str, object]:
@@ -766,7 +802,43 @@ def _error_code(error: BaseException) -> str:
         return value
     if isinstance(error, CaptureCompileError) and value in _COMPILE_CODES:
         return value
+    if value in _VERIFY_CODES:
+        return value
     return "operation_failed"
+
+
+def _open_verify_store(
+    path: Path, expected: os.stat_result,
+) -> sqlite3.Connection:
+    """Open an existing store read-only without invoking migrations."""
+    connection: sqlite3.Connection | None = None
+    try:
+        connection = sqlite3.connect(
+            f"{path.as_uri()}?mode=ro", uri=True, timeout=5.0,
+        )
+        connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA query_only=ON")
+        database = next(
+            (row[2] for row in connection.execute("PRAGMA database_list") if row[1] == "main"),
+            None,
+        )
+        if type(database) is not str:
+            raise CliError("verify_export_invalid")
+        _opened, opened_identity = _safe_existing_file(
+            Path(database), "verify_export_invalid", expected=expected,
+        )
+        if (opened_identity.st_dev, opened_identity.st_ino) != (
+            expected.st_dev, expected.st_ino,
+        ):
+            raise CliError("verify_export_invalid")
+        return connection
+    except (CliError, OSError, RuntimeError, ValueError, sqlite3.Error):
+        if connection is not None:
+            try:
+                connection.close()
+            except sqlite3.Error:
+                pass
+        raise CliError("verify_export_invalid") from None
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -776,6 +848,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--compile-funding")
     mode.add_argument("--compile-people")
     mode.add_argument("--locate")
+    mode.add_argument("--verify-export")
     try:
         args = parser.parse_args(argv)
         store, identity = _approved_store(Path(args.store))
@@ -785,25 +858,50 @@ def main(argv: list[str] | None = None) -> int:
         elif args.compile_people is not None:
             kind = PEOPLE_KIND
             compile_request = _read_person_input(store, Path(args.compile_people))
-        else:
+        elif args.locate is not None:
             kind = LOCATE_KIND
             compile_request = _read_locate_input(store, Path(args.locate))
+        else:
+            kind = "verify_export"
+            manifest_ref = _verify_manifest_ref(store, Path(args.verify_export))
         root = _safe_existing_directory(store.parent / "snapshots", "export_failed")
-        store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)
-        connection = open_store(store)
+        store, current_identity = _safe_existing_file(
+            store, "store_invalid", expected=identity,
+        )
+        connection = (
+            _open_verify_store(store, current_identity)
+            if kind == "verify_export" else open_store(store)
+        )
         try:
-            compiler = CaptureImportCompiler(connection)
-            if kind == FUNDING_KIND:
-                compiled = compiler.compile_funding(compile_request)
-                request_payload = _funding_payload(compiled.request)
-            elif kind == PEOPLE_KIND:
-                compiled = compiler.compile_people(compile_request)
-                request_payload = _person_payload(compiled.request)
+            if kind == "verify_export":
+                # Deliberately lazy: the verifier imports this module's export
+                # constants, so importing it at module load would be circular.
+                from .capture_export_verifier import CaptureExportVerifier
+                try:
+                    verification = CaptureExportVerifier(connection).verify(manifest_ref)
+                except sqlite3.Error:
+                    raise CliError("verify_export_invalid") from None
             else:
-                located = compiler.locate_spans(compile_request)
+                compiler = CaptureImportCompiler(connection)
+                if kind == FUNDING_KIND:
+                    compiled = compiler.compile_funding(compile_request)
+                    request_payload = _funding_payload(compiled.request)
+                elif kind == PEOPLE_KIND:
+                    compiled = compiler.compile_people(compile_request)
+                    request_payload = _person_payload(compiled.request)
+                else:
+                    located = compiler.locate_spans(compile_request)
         finally:
             connection.close()
-        if kind == LOCATE_KIND:
+        if kind == "verify_export":
+            output = {
+                "status": verification.status,
+                "kind": verification.kind,
+                "request_id": verification.request_id,
+                "capture_count": verification.capture_count,
+                "request_sha256": verification.request_sha256,
+            }
+        elif kind == LOCATE_KIND:
             output = _export_locate(root, located, compile_request)
         else:
             output = _export(
@@ -815,9 +913,11 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     except (CaptureCompileError, CliError) as error:
         code = _error_code(error)
+    except ValueError as error:
+        code = _error_code(error)
     except (
         OSError, OverflowError, RecursionError, RuntimeError, sqlite3.Error,
-        TypeError, ValueError,
+        TypeError,
     ):
         code = "operation_failed"
     sys.stderr.write(f"capture_import_cli_error:{code}\n")
