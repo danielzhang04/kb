@@ -15,12 +15,11 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   planner/API/UI join pass, and typecheck/build all passing, reviewed READY. See the
   [Studio resume UI review](../../../../docs/figment/2026-09-11-studio-resume-ui-review.md).
   This bounded slice is complete; full Studio input/launch/review remains incomplete.
-- **Identity/coverage diagnostic (V4, ten clothed images)**: completed with independently
-  verified pod teardown; estimated cost $0.247567 (arc $30.877297/$50). Root and an
+- **Identity/coverage diagnostic (V4, ten clothed images, original checkpoint)**: completed
+  with independently verified pod teardown; estimated cost $0.247567. Root and an
   independent Opus review agree the LoRA condition shows stronger resemblance cues to
   `g01` than the no-LoRA control, but every output still misses shoulders-up framing and
-  facial proportions still differ from the reference. No checkpoint, still, or video is
-  selected or accepted. See the [held-out diagnostic review](../../../../docs/figment/2026-09-11-heldout-diagnostic-review.md)
+  facial proportions still differ from the reference. See the [held-out diagnostic review](../../../../docs/figment/2026-09-11-heldout-diagnostic-review.md)
   for the full visual assessment and for two rejected reviewer batches (image/label
   misbinding, not counted as votes). Do not infer a precise age from this evidence.
 - **Face-coverage/drift audit**: run and reviewed (33/33 records; two independent
@@ -28,8 +27,45 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   investigation of face coverage but rejects blanket crop-based training on this set, given
   a recurring proportion drift (fuller lips, wider lower face) and the canonical reference's
   own limited detail. A low-concern shortlist (`pilot-05`, `expansion-07/11/15/18`, `g01`)
-  is flagged for further full-image inspection — not a training selection or retrain
-  decision. See the [face-coverage review](../../../../docs/figment/2026-09-11-face-coverage-review.md).
+  was flagged for further full-image inspection; at that audit stage this was not yet a
+  training selection or retrain decision. The subsequent five-row selective crop/caption
+  intervention described next drew on this shortlist, and `g01` itself remained uncropped.
+  See the [face-coverage review](../../../../docs/figment/2026-09-11-face-coverage-review.md).
+- **Selective crop/caption/seed dataset change and new checkpoint**: five of the twenty
+  accepted training rows received matching 512-square selective crops and revised
+  captions, motivated by the face-coverage audit; the other fifteen rows and both
+  eval-only rows (`pilot-03`/`pilot-06`) are unchanged. The crop/caption source plus an
+  optional pinned `process.training_seed` field landed locally at `dca886ec` (94 tests
+  passing in 55.66s), with independent Opus review READY WITH COMMENTS and no blockers.
+  See the [selective crop source review](../../../../docs/figment/2026-09-11-selective-crop-source-review.md).
+  A predeclared 1250-step training run using that dataset change completed at 09:31:54 UTC;
+  all five resulting checkpoints were downloaded and hash-verified, and an independent
+  provider query returned no active pods at 19:11 UTC, for an estimated cost of $2.387633.
+  This is a combined crop/caption/seed intervention against an unseeded historical
+  baseline, not an isolated crop causal claim, and it reused the existing diagnostic set
+  rather than establishing fresh generalization evidence. A further ten-image LoRA/base
+  diagnostic against this new checkpoint, using the identical V4 manifest, seeds, prompt,
+  and tester pins, ran on pod `h4sqcy2ewe3g8p` and completed at 19:27:40 UTC, pod removed,
+  for an estimated $0.224635; an independent provider query returned no active pods around
+  19:30 UTC. Root reviewed all ten new images plus the five historical LoRA images: all ten
+  new images miss shoulders-up framing, are adult and clothed, and show no obvious gross
+  garment or anatomy failure at displayed resolution, with no material identity improvement
+  over the historical checkpoint. Three blinded `claude-opus-5` reviews were mixed and weak
+  (the first two lean historical, the third leans new/tie on image `271828`); root rejects
+  the framing-pass claim for the base-model control at seed 271828, since it shows
+  torso to elbows. Neither LoRA image at that seed passes framing. The technical image-binding audit passed all 252 of 252 checks at 19:53 UTC; see
+  `MAIN/_private/figment-selective-crop-heldout-control-20260911-v1/diagnostic/audit-review-v3.json`.
+  Today's three paid rows (training plus both diagnostics) total an estimated $2.859835,
+  bringing the arc to about $33.489565/$50. Root has stopped this experiment without
+  promoting any media or automatically sweeping other checkpoints, prompts, or training
+  recipes; a new discriminating question and bounded plan are required before further
+  compute. No checkpoint, still, or video is selected or accepted.
+- **Nonpersona content preparation**: an image-free nonpersona preparation slice landed
+  locally at `e1ceac49` with reviewed acceptance; see the
+  [nonpersona preparation review](../../../../docs/figment/2026-09-11-nonpersona-preparation-review.md).
+  No image generation, native rendering, review, slot binding, or delivery approval has
+  happened; independent review and the native compiler/tests are in progress and not yet
+  complete or accepted.
 - **Brief text contract**: repaired and independently reviewed at `a3d87a8c`, with 29 Python
   tests, 11 collector tests and a real compiler-to-collector boundary check passing.
   See the [content input contract review](../../../../docs/figment/2026-09-11-content-input-contract-review.md).
