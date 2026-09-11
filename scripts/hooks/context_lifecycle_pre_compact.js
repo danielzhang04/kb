@@ -121,8 +121,12 @@ function main() {
     emitNoop(); // nothing extractable -> leave whatever the store already holds untouched
   }
 
-  const sections = store.readStore(sessionId);
-  store.writeStore(sessionId, store.upsertSection(sections, store.HEADINGS.RESUMED_SUMMARY, summary));
+  // Locked read-modify-write: compaction fires while the PostToolUse activity tracker may still
+  // be writing the same file, and an unlocked read here dropped '## Recent activity' (or had this
+  // summary dropped by the tracker) roughly whenever the two overlapped.
+  store.updateStore(sessionId, (sections) =>
+    store.upsertSection(sections, store.HEADINGS.RESUMED_SUMMARY, summary),
+  );
   emitNoop();
 }
 

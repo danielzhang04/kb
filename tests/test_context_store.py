@@ -183,3 +183,82 @@ def test_regrounding_hook_consumes_a_store_file_with_zero_u7_edits(tmp_path):
     assert f"Invariants: {invariants}" in ctx
     # Sections U7 does not want stay out of the injected block.
     assert "Read some file" not in ctx
+
+
+def test_concurrent_writers_do_not_drop_each_others_sections(tmp_path):
+    """F5. Three armed hooks do a read-modify-write of this one file -- the SessionStart frame
+    hook (governing sections), PreCompact ('## Resumed-session summary') and the PostToolUse
+    activity tracker, which fires on EVERY tool call. Unlocked, two that read before either
+    renames silently drop the other's work.
+
+    Eight concurrent `appendActivity` processes plus one concurrent governing-section
+    `updateStore` must all survive. Red on revert (appendActivity/updateStore going back to a bare
+    readStore->writeStore): lines go missing, usually several."""
+    store_dir = tmp_path / "ctxstore"
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    session = "concurrency-session"
+
+    def spawn(script):
+        body = f'const store = require({json.dumps(str(STORE))});\n{script}'
+        return subprocess.Popen(["node", "-e", body], env=env,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+
+    markers = [f"MARKER-{i:02d}" for i in range(8)]
+    procs = [
+        spawn(f'store.appendActivity({json.dumps(session)}, {json.dumps(m)});') for m in markers
+    ]
+    procs.append(spawn(
+        f'store.updateStore({json.dumps(session)}, (s) => '
+        f'store.upsertSection(s, store.HEADINGS.NORTH_STAR, "Ship the frame."));'
+    ))
+    for proc in procs:
+        out, err = proc.communicate(timeout=60)
+        assert proc.returncode == 0, err.decode("utf-8", "replace")
+
+    sections = read_store(store_dir, session)
+    bodies = {s["heading"]: s["body"] for s in sections}
+    assert bodies.get("North star") == "Ship the frame."
+    activity = bodies.get("Recent activity", "")
+    missing = [m for m in markers if m not in activity]
+    assert not missing, f"dropped activity lines: {missing} -- got {activity!r}"
+
+
+def test_store_lock_is_released_and_leaves_no_lock_file(tmp_path):
+    """The lock is a file next to the store; a writer that finishes must not leave it behind, or
+    every later writer pays the 5 s staleness window before it can proceed."""
+    store_dir = tmp_path / "ctxstore"
+    node_eval(
+        f'store.updateStore({json.dumps(SESSION)}, (s) => '
+        f'store.upsertSection(s, "North star", "x"));',
+        store_dir,
+    )
+    assert (store_dir / f"{SESSION}.ctx.md").is_file()
+    assert not list(store_dir.glob("*.lock")), list(store_dir.glob("*.lock"))
+
+
+def test_a_stale_lock_never_blocks_a_write(tmp_path):
+    """Fail-open, both ways: a lock abandoned by a crashed writer is broken (it is older than the
+    staleness window), and even a FRESH foreign lock only costs the bounded retry budget before
+    the write goes through unlocked. Either way the section lands."""
+    store_dir = tmp_path / "ctxstore"
+    store_dir.mkdir(parents=True)
+    (store_dir / f"{SESSION}.lock").write_text("held by a process that died", encoding="utf-8")
+    node_eval(
+        f'store.updateStore({json.dumps(SESSION)}, (s) => '
+        f'store.upsertSection(s, "North star", "written anyway"));',
+        store_dir,
+    )
+    bodies = {s["heading"]: s["body"] for s in read_store(store_dir)}
+    assert bodies.get("North star") == "written anyway"
+
+
+def test_update_store_fails_open_on_a_throwing_mutator(tmp_path):
+    """A caller's mutator must never take a hook down, and must never leave the lock held."""
+    store_dir = tmp_path / "ctxstore"
+    out = node_eval(
+        f'process.stdout.write(String(store.updateStore({json.dumps(SESSION)}, () => '
+        f'{{ throw new Error("boom"); }})));',
+        store_dir,
+    )
+    assert out == "false"
+    assert not list(store_dir.glob("*.lock"))
