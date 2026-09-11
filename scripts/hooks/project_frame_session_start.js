@@ -32,37 +32,6 @@
 "use strict";
 
 const path = require("path");
-const child_process = require("child_process");
-
-/*
- * DISCOVERED WHILE WRITING THIS HOOK'S TESTS, NOT A BUG IN THIS FILE:
- *
- * lib/project_frame.js's `gitCapture` runs `execFileSync("git", …)` with no `stdio` option. Unlike
- * `spawnSync`, Node's `execFileSync` inherits the child's stderr straight to THIS process's real
- * stderr on a nonzero exit -- even though `gitCapture` catches the thrown error and returns null.
- * A missing `origin/ops` ref, or a GOAL.md/STATE.md path that simply does not exist there (both
- * normal "no project data yet" situations, not bugs), trip this: git's own "fatal: ..." line would
- * otherwise land on this hook's stderr and break the "always empty stderr" contract every hook in
- * this family is held to (lib/hook_io.js's header comment; `io.run` only catches JS throws, never
- * bytes a child process writes to an inherited fd).
- *
- * project_frame.js was committed by an earlier task and is out of THIS task's scope to edit, so the
- * fix lives here instead: force `stdio: 'pipe'` on every `git` execFileSync call anything required
- * below makes, applied BEFORE requiring lib/project_frame.js (its `gitCapture` destructures
- * `execFileSync` once at require time, so the patch must already be in place). Scoped to
- * `file === "git"` only; nothing else this short-lived, one-shot process spawns is affected, and
- * nothing outside this process ever sees the patched function.
- */
-const originalExecFileSync = child_process.execFileSync;
-child_process.execFileSync = function patchedExecFileSync(file, args, options) {
-  if (file === "git") {
-    const opts = options ? Object.assign({}, options) : {};
-    if (!opts.stdio) opts.stdio = ["pipe", "pipe", "pipe"];
-    return originalExecFileSync.call(child_process, file, args, opts);
-  }
-  return originalExecFileSync.apply(child_process, arguments);
-};
-
 const { spawnSync } = require("child_process");
 const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");

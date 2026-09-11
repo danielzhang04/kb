@@ -49,10 +49,19 @@ const UPDATED_RE = /^_Updated:\s*([^_\n]+?)_?\s*$/m;
 function gitCapture(cwd, args) {
   if (typeof cwd !== "string" || !cwd) return null;
   try {
+    // stdio: ["ignore", "pipe", "pipe"] is load-bearing, not a style choice. Node's execFileSync
+    // (unlike spawnSync) inherits the child's stderr straight to THIS process's real stderr on a
+    // nonzero exit unless stdio is given explicitly -- so a missing `origin/ops` ref or a path
+    // that doesn't exist within it (both normal "no data yet" situations here, not bugs) would
+    // otherwise leak git's own "fatal: ..." line onto every hook that calls into this module,
+    // breaking the "always empty stderr" contract those hooks are held to. Piping stdout/stderr
+    // keeps them off the real streams regardless of exit code; the catch below already discards
+    // both on failure, exactly as before.
     return execFileSync("git", ["-C", cwd, ...args], {
       timeout: GIT_TIMEOUT_MS,
       encoding: "utf8",
       windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
     }).trim();
   } catch (_err) {
     return null; // nonzero exit, missing git, timeout — all fail open

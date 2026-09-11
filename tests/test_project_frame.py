@@ -195,3 +195,24 @@ def test_frame_full_mode_matches_annotated_heading_by_prefix(tmp_path):
     repo = _build_ops_repo(tmp_path / "repo2", current_gate_heading="## Current gate (P8)")
     text = _frame_text(repo, "full")
     assert "Daniel reviews batch 2." in text
+
+
+def test_read_ops_file_stderr_stays_empty_without_origin_ops(tmp_path):
+    """gitCapture must never let git's own stderr (e.g. "fatal: Not a valid object name
+    origin/ops:...") leak onto this process's real stderr on a nonzero exit. A repo with NO
+    origin/ops ref at all -- a normal "no project data yet" situation, not a bug -- is the
+    simplest way to force gitCapture's execFileSync call to exit nonzero. Every caller of this
+    module (activeProject, listProjects, readOpsFile, and every hook built on top of them) is
+    held to an "always empty stderr" contract; this pins the fix at its source rather than in any
+    one caller."""
+    repo = tmp_path / "no_ops_ref"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "--allow-empty", "-m", "init")
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'pf.readOpsFile({json.dumps(str(repo))}, "orgs/prospecting/STATE.md", {{}});'
+    )
+    r = subprocess.run(["node", "-e", body], capture_output=True, env=os.environ)
+    assert r.returncode == 0
+    assert r.stderr == b""
