@@ -48,7 +48,16 @@ const noop = io.noop;
 // Sections lifted from the source file, in this fixed emission order. "Current gate" so a
 // re-grounded turn also carries which gate the arc is sitting on, not just the static north
 // star/invariants — see docs/superpowers/plans/2026-09-11-project-frame-hooks.md Task 3.
-const WANTED_SECTIONS = ["North star", "Invariants", "Current gate"];
+//
+// "Resumed-session summary" is LAST, and it is the whole reason the PreCompact sibling's write
+// is ever read back. THE COMPACTION PATH, END TO END: context_lifecycle_pre_compact.js writes
+// '## Resumed-session summary' into the session store just before the context is thrown away;
+// after the compaction the ONLY hook that fires is this one (SessionStart matcher "compact" --
+// project_frame_session_start.js deliberately stays silent there), so a section missing from
+// this list is a section the compacted session never gets back. Position matters: `fitSections`
+// water-fills, so the three governing sections keep their share and the summary takes what is
+// left of the 1700-char cap rather than crowding them out.
+const WANTED_SECTIONS = ["North star", "Invariants", "Current gate", "Resumed-session summary"];
 
 // Hard cap on the emitted additionalContext, in characters.
 // 1700 fits the current source whole (North star 941 + Invariants 526 + labels and
