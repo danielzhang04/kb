@@ -1,16 +1,18 @@
 # Prospecting current state
 
-Updated 2026-09-11T21:35:24.078695+00:00
+Updated 2026-09-11T22:16:19.970963+00:00
 
-Goal active. SourceHEAD99b13a85: compiler62tests, export25tests, QA199combinedchecks accepted.
-All4 native adapters passed exact new bundle; source acceptance pin applied and public entry
-point verified with actual canary and complete cleanup.102 targeted checks pass. Selected UI
-36checks pass after independent findings repaired; coherent review97 active. Acquisition95
-locator active;96 packet-submit applied under tests. Existing CLI/skill supplies browser broker.
-Supported browser unavailable; real pilot untouched; no sends or source-confirmation decisions.
-Claude preferred; user authorizes Codex fallback at limits, return to Claude20:30 New York.
-Canonical handoff and delivery task list contain exact evidence and remaining work.
+Goal active. Source HEAD ebf29901. Capture authoring/public CLI chain, selected drafts,
+immutable source confirmation, HTTP/UI, native runtime and narrow legacy fixture repairs
+accepted. 320 combined checks, 36 UI checks and 9 final legacy checks pass.
 
-Claude limit reached; Codex fallback active (luna102, sol100b, terra101). Return to Claude
-newwork00:30UTC. Selected97READY, reprrepair99b applied; locator75tests and packet26tests
-pass, independentreview refinements continue. Full selected/native check running.
+Real pilot migrated through P24 after backup. P19 batch created; first of three items used
+one attempt and failed dynamic binding validation with zero artifacts. Remaining work is
+stronger supplemental-history fixture, closed diagnostics and wrapper clarity, fresh all-adapter
+native acceptance, then bounded real continuation. No approvals, confirmations or sends.
+
+Export verification semantic checks reviewed; CLI read-only connection repair113 active.
+Qualification110 and fixture112 active. Capture docs await verifier addition/final scan.
+Claude limited; Codex fallback authorized, new work returns to Claude00:30UTC September12.
+Browser unavailable; independent work continues. PR181 draft, unpublished work PII scan clean.
+Canonical handoff and delivery task list hold exact evidence and remaining tasks.
