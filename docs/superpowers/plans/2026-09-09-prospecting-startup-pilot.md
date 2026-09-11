@@ -1,279 +1,71 @@
-# Repeatable startup outreach pilot
+# Prospecting infrastructure execution plan
 
-Status: active overnight execution; see refreshed phases below. End-to-end pilot is not complete.
-Accepted source checkpoint: `107e4d33` on `codex/prospecting-session-20260909`.
-The canonical coordination handoff owns current publication and runtime status.
+Updated 2026-09-11T22:33:53.626843+00:00. Active; external acceptance gates remain.
 
-## Infrastructure-first clarification - 2026-09-10 evening
+## Goal
 
-The user clarified that consistent, adaptable infrastructure is the deliverable; research
-and emails are acceptance cases. Complete a synthetic end-to-end chain and a small real
-non-sending campaign before expanding the provisional eight-company quota. Additional
-companies should exercise new behavior, not replace missing acquisition or stage wiring.
-Root owns planning, coordination, browser relay and acceptance review. Workers own research
-preparation and implementation; an independent worker reviews frozen changes. Source-only
-VM jobs use explicit staged skills and bounded receipts, not implicit desktop tool parity.
+Build effective, adaptable infrastructure from saved intake through research, qualification,
+ranking, drafting, model review and human feedback. Verify reusable public entry points,
+interruption/replay, changed-input recovery, exact evidence bindings and a small nonsending
+real case. Tests identify infrastructure gaps; a prospect quota is not the deliverable.
 
-The user permits any existing background or projects in drafts. Verify factual details and
-dates from existing materials; historical experience must not be described as a current role.
-Keep claims in the private sender/evidence path and invalidate downstream review when changed.
+## Running task list
 
-- [x] Accept P19 qualification runtime integration and P20 exact-person role ordering.
-- [ ] Complete qualification/rank CLI and skill, including fresh-session predecessor recovery.
-- [ ] Add the smallest durable acquisition/capture progress seam; avoid manual manifest glue.
-- [ ] Connect exact selected employment and proof through drafts, P13 and P16 without fake
-  P8 approval, affinity or broad fill rows. Preserve edits; fence explicit regeneration.
-- [ ] Implement the reviewed atomic human-edit restart after bounded repair exhaustion.
-- [ ] Prove full synthetic workflow and actual model stages after native auth recovery.
-- [ ] Exercise a small real campaign, changed inputs, source drift and interrupted recovery.
-- [ ] Verify remote source-worker lifecycle and document remaining runtime/tool boundaries.
-- [ ] Complete independent review, the existing PR publication gate, handoff and owned cleanup.
+- [x] Load canonical handoff, binding rules, assigned card and delivery worktree.
+- [x] Recover desktop authentication and source-only vCPU worker lifecycle.
+- [x] Accept atomic restart after a changed human edit with existing ancestry/budget rules.
+- [x] Accept exact selected-person drafts and immutable current-source confirmation.
+- [x] Accept matching review projection, HTTP and UI state behavior after independent reviews.
+- [x] Accept durable capture, private packet submission and exact Unicode span location.
+- [x] Accept P17/P18 compiler/export/import, replay and source-change refusal through public CLIs.
+- [x] Accept read-only retained-export verification, URI identity and concurrent-WAL visibility.
+- [x] Validate acquisition runbook and skill; preserve browser, lease and attempt controls.
+- [x] Repair canonical claim counting and narrow legacy fixture mechanics without weakening readiness.
+- [x] Diagnose real qualification's dynamic source-binding refusal; add closed diagnostics.
+- [x] Validate exact wrapper contract on genuine synthetic current/potential-conflict history.
+- [x] Run all four actual native adapters on one new bundle and verify public pin/canary cleanup.
+- [ ] Finish whole-project synthetic regression and classify remaining failures (task123 running).
+- [ ] Continue the bounded real P19 batch and deterministic P20 ranking when explicitly authorized.
+  Automatic approval review rejected private prospect/source transfer before the retry executed.
+  The first item's remaining attempt is intact; the asynchronous approval request is pending.
+- [ ] Verify visible private UI, changed input/source and restart with supported browser access.
+  Browser inventory is empty; do not substitute an unapproved acquisition transport.
+- [ ] Refresh concrete draft PR181 and coordination PR180 with accepted source and evidence.
+- [ ] Save current canonical handoff and reusable lessons; clean only owned finished resources.
 
-Important tests: stale ranking can recover its predecessor through a safe scope command;
-unrelated employments cannot enter drafts; changed selection/proof invalidates identical copy;
-retries preserve human edits and pending suggestions; no contact is needed merely to draft;
-synthetic receipts never count as actual Humanizer or critic execution. Prior dated checkpoints
-below describe historical acceptance and are superseded by this current plan where they differ.
+## Accepted evidence
 
-## Overnight execution refresh - 2026-09-09
+Source HEAD4637171b: capture authoring4bbea820; selected/native1e362284; legacyebf29901;
+qualification97df0409; export verifier9e8dfe4e; operator/acceptance docs4637171b.
+Selected/native combined320 checks and36 actual-HTML UI state checks passed. Acquisition168
+combined checks passed before the final read-only connection repairs; those repairs passed37
+CLI/verifier checks and independent review122. Qualification/native combined170 checks passed;
+postpin adapter suite36 passed. All130 unpublished committed files passed PII scan.
 
-The user explicitly requested continued asynchronous execution through completion or an actively
-working terminal, with keep-awake, plan/testing/permissions review, and a current handoff. This
-refresh is the execution plan; the historical checkpoint notes below remain evidence of their
-own bounded slices. The canonical coordination handoff owns current processes, hashes and leases.
+Current accepted runtime bundle:
+`e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814`.
+CLI0.154.0; requestedgpt-6-astra, responding identityunverified. Rich synthetic qualification
+9f9b3d139d3641f1b423a147b31e8501 reached machine_reviewed in1attempt/1artifact with2unknown
+people and unknowncompany. This proves execution and binding, not positive source support.
+Editorial16f17d9de7e74fd4ba2a61c5d9a0db49 reached human_review in3calls/3artifacts/0repairs.
+Public prepare returned4adapters in10,198ms; capability invalidated and runtime root deleted.
 
-**Completion means:** a real, non-sending campaign in the dedicated local dashboard, produced by
-reusable skills and callable stages from the saved intake, with qualified companies, two explained
-contact rankings per company or an honest shortfall, cited sources, personalized drafts, actual
-Humanizer/factual/independent-critic execution, human review/feedback controls, and demonstrated
-restart/replay safety. Synthetic tests and a polished dashboard alone are insufficient.
+Real pilot was backed up and migrated throughP24. Batchpqba_c9a7805e2b3d5e9db76cf6ea9cfcc0ce
+has3items/5currentpeople. First item used1of2attempts before the wrapper repair, with0artifacts;
+otheritems unattempted. Approval review blocked the proposed second call before execution.
+No source confirmations, approvals, readiness or sends were performed.
 
-### Current state and ordered work
+## Routing and boundaries
 
-- [x] Phase A: durable P15 intake, source-bound templates and private CLI/learned intake skill.
-- [x] Phase B: P16 durable editorial controller and shared review/approval/scheduler/executor
-  gates; sourced draft-first local review. Human confirmation remains required for readiness.
-- [ ] Phase C: actual bounded skill execution. Shared source-disabled P16 runtime and
-  qualification extension accepted. Native HTTP401 awaits user-controlled recovery. No
-  login/logout, auth-store access, blind model retries or paid fallback. Synthetic transport
-  tests do not establish genuine full Humanizer output or real-data runtime acceptance.
-- [ ] Phase D: research qualification, exact-person ranking and draft materialization. P17/P18
-  capture, P19 qualification controller and P20 bounded role ordering accepted; selected draft
-  materialization and reusable acquisition follow. Three companies/seven candidates recorded
-  provisionally, with five person imports and two source-unknown outcomes.
-- [ ] Phase E: complete actual first sourced-email feedback loop and authenticated new-work
-  recovery for exhausted unchanged lineages. Preserve separate source, text acceptance and
-  readiness decisions; exact source/sender/intake changes invalidate dependent reviews.
-- [ ] Phase F: finish real non-sending pilot, genuine model skill chain, interrupted/restarted
-  work, changed-input and desktop/narrow UI checks; reconcile independent findings and cleanup.
-- [ ] Consolidate into existing session PR181 only at concrete publication approval gate.
-  Prior auto-review source/coordination publication hold remains; no new PR per change.
+Root plans, delegates, reviews, verifies and records; subagents perform implementation.
+Claude workers use the existing source-only vCPU. At Claude quota exhaustion use authorized
+Codex subagents; return NEW work to Claude at20:30 America/New_York (00:30UTC September12),
+without interrupting healthy in-flight work. Native collaboration requested models are recorded;
+responding identities are not independently exposed. Claude identities are verified from logs.
 
-The dated resumed checkpoint below records current acceptance evidence and ownership.
-
-### Pilot assumptions and human decisions
-
-Use eight companies and two ranked contacts per company as the provisional test size. Pending a
-reply to the scope question, use US startups across industries, latest known round Series A-C,
-with a qualifying announcement in the three calendar years ending on the intake as-of date.
-Record these as orchestrator assumptions, not user answers. Missing latest-round coverage remains
-unknown, not a pass. Do not invent a second contact or relax criteria to fill a quota.
-
-Sender claims may use the user's supplied statements and verified existing background/projects,
-as authorized on Sep10. Retain the distinction between historical and current facts. AI curiosity
-and a coffee chat remain primary; employment is secondary. Unanswered preferences do not justify
-manufacturing human approval or sending.
-
-### Permission and execution boundaries
-
-The user authorizes source fixes, skill integration, synthetic tests, independent reviews, bounded
-subscription Codex workflow execution and scoped runtime operations needed for this task. Root owns
-browser/remote operations so workers do not repeatedly create control sessions. Persistent access
-means reusing the current supported connection, not bypassing a platform permission boundary.
-No raw credential handling, API-paid fallback, purchases, outreach send, mailbox mutation, widened
-cadence, production VM/main-dashboard change, global security change or eval-manifest blessing.
-
-Real contact/source/message records stay in desktop-local SQLite/snapshots. VM workers receive an
-explicit source/skill/synthetic allowlist under the existing bounded job lease and return proposals
-for local validation; they do not inherit desktop connectors or filesystem access. Cleanup claims
-cover exact owned resources, not provider/OS bookkeeping. No physical laptop-close or VM-reboot
-recovery guarantee has been demonstrated. The session-scoped keep-awake request prevents idle
-sleep while its lease is active; root verifies/renews it during continued work.
-
-### Verification and repair rules
-
-Use the established Python313 runtime and short private pytest roots. Run focused tests for each
-change, then one relevant combined suite after the final freeze. Distinguish infrastructure errors
-from product failures and synthetic adapters from live model evidence. Use actual shared gate paths
-in integration tests; test-only mocks for old isolated fixtures do not establish pipeline acceptance.
-Independent reviewers check frozen source and the meaningful failure paths; builders fix confirmed
-findings, then reviewers verify the repair. Do not keep adding speculative scope after tests pass.
-
-The two-repair limit applies to semantic work across an unchanged lineage; a new run ID cannot reset
-it. Old/expired workers cannot commit late output or cancel another worker's claim. Source, sender,
-brief, policy or revision changes invalidate dependent review. Human edits remain distinguishable
-from accepted automation suggestions. Human acceptance is separate from readiness, and latest
-unready/pending human edits revoke eligibility for queued work. Deterministic binding checks enforce
-known structure; semantic reviewers remain responsible for novel prose claims and writing quality.
-
-## Resumed execution checkpoint - 2026-09-10
-
-Accepted local HEAD e19ce20f: P15 intake, P16 source-bound editorial/gates, P17 funding,
-P18 exact-person capture, source-disabled private runtime4e670a5e, fullwidth evidence
-UI35dde771, intake enum033719c7 and P19 qualification controller e19ce20f. Same existing
-PR181; publication remains held. Source-disabled runtime is accepted code, not live output.
-
-- [x] Import complete three-company funding replacement and verify exact replay: three
-  provisional matches, five-company shortfall. Current issuer/participating investor or
-  independent reports and bounded latest-round search are captured privately.
-- [x] Import complete seven-person replacement and replay: five imported, two source_unknown,
-  three companies researched, per-company shortfall two. Prior contradictory/unknown evidence
-  retained. No qualification, rank, draft or human approval produced by these imports.
-- [x] Accept P19 source-bound controller after review repairs. Builder/root44 focused checks
-  passed (30 deselected,19.36s/19.03s); independent24passed18.09s. Counts overlap. Covers
-  uncertainty, exception privacy, malformed output terminal state, bounded replay/expiry,
-  current sources/history and semantic-input retry bounds.
-- [x] Verify accepted UI in existing Chrome: saved evidence fullwidth, creation hidden for
-  selected campaign, New restores creation; desktop/narrow screenshots visually reviewed.
-  Root/independent18JS passed. Narrow client/scroll417px, no observed horizontal overflow.
-- [ ] Extend shared source-disabled runtime to qualification using actual learned skill,
-  bound schema/prompt and metadata-only CLI; independently review integration. Flow owns.
-- [ ] Build exact supported-scope P19 accessor and P20 deterministic role ordering only.
-  Intake owns; independent design review accepted current-proof/original-employment-pointer
-  separation and deduplicating exact people before top N. No broad legacy fill/score joins,
-  invented P8 approvals, private-career affinity or optimality claims. P20 WIP means real
-  store operations pause until migration accepted.
-- [ ] Research remaining companies and third-company people; preserve shortfalls honestly.
-- [ ] Connect exact selected-person draft lineage/materialization, source invalidation and
-  authenticated human new-work recovery after semantic repair exhaustion.
-- [ ] After user-controlled native CLI HTTP401 recovery, run genuine bounded synthetic
-  full-Humanizer/qualification/stage acceptance before source pin and real model inputs.
-- [ ] Finish real pilot emails, feedback/restart/UI verification, final review and owned cleanup.
-
-Keep-awake54884 remains active until04:30EDT Sep11; no VM job active. One shared Chrome
-connection handles root browser work. Canonical handoff owns current resource/private batch
-IDs and limits. These are real partial imports, not a completed or approved campaign.
-
-## Goal and acceptance
-
-A natural-language outreach specification must produce a saved, reviewable campaign through
-reusable skills and actual application stages. This pilot targets venture-backed Series A-C
-startups with a qualifying funding announcement in the preceding three calendar years, and two
-current operations, strategy, chief-of-staff or adjacent contacts per company. Conversation and
-AI curiosity are the first-touch goals; possible employment is secondary.
-
-Success requires a real non-sending campaign in the local review UI, cited company and role
-evidence, explained contact rankings, personalized drafts, recorded humanizer and independent
-review results, and a restart/rerun that preserves progress without duplicating work. A hand-built
-list or manually polished set of emails is not pipeline acceptance.
-
-## Intake decisions
-
-- Proposed pilot size: eight companies and two people per company; awaiting user preference.
-- Geography and sectors are unanswered. Current provisional assumptions above supersede earlier NYC/AI-only suggestions.
-- Confirm whether latest funding must still be A-C, or any A-C round in the window qualifies.
-- Pin an as-of date per run; derive and retain the three-year window from that date.
-- Confirm current sender background, allowed projects/claims, exclusions, and virtual/in-person ask.
-- Existing prior drafts and resumes are source material, not automatically current approved claims.
-- Draft locally for review. No send, paid enrichment, mailbox mutation or production deployment.
-
-## Design decisions
-
-Reuse the existing campaign, evidence, revision and review services. Put common behavior in shared
-application commands, with skills guiding judgment and the runtime enforcing stage transitions.
-Keep business criteria configurable: this startup campaign is an acceptance case, not a hardcoded
-replacement for industry chats, alumni networking or other career outreach.
-
-Persist intake version, skill/template versions, source hashes, stage input/output hashes, attempt
-counts and review lineage. A changed brief or draft invalidates dependent reviews. Preserve human
-edits as immutable revisions; any suggested rewrite is a separate result.
-
-Humanizer is a required drafting stage. Retain its draft rewrite, remaining-style audit and final
-rewrite privately. Follow it with structural validation and independent factual/semantic review.
-Evidence IDs and hashes establish bindings; they do not prove semantic entailment or actual model
-execution. Do not manufacture a passed reviewer/humanizer receipt.
-
-Independent reviewers check company eligibility, current roles, contact rationale, supported sender
-claims, specificity and the actual ask. Allow at most two repair attempts for one failed item, then
-surface the unresolved issue. Do not relax criteria or invent a second contact to meet a quota.
-
-## Task list
-
-- [ ] 1. Save clarified intake and approved sender context through a reusable entrypoint.
-- [ ] 2. Review infrastructure, stage wiring, data contracts, skills and failure/recovery paths.
-- [ ] 3. Repair blockers in the existing pipeline; independently review each repair.
-- [ ] 4. Qualify companies with funding stage/date/source and explicit inclusion/exclusion reasons.
-- [ ] 5. Resolve and rank two current contacts per company with role and research evidence.
-- [ ] 6. Run personalization, mandatory humanizer, factual recheck and independent critique.
-- [ ] 7. Load the exact accepted revisions and evidence into the local dashboard for human feedback.
-- [ ] 8. Exercise interrupted/resumed runs, changed inputs, stale evidence and repeated actions.
-- [ ] 9. Record actual coverage, gaps, tests and cleanup; update the same draft PR when authorized.
-
-### First implementation slice: durable intake
-
-The first freeze covers P15 intake/run records in the existing SQLite store, a shared pipeline
-service, and the existing review app's authenticated intake action and status projection. Funding
-stages/windows, company counts and people per company are configurable; A-C/three years/two people
-are pilot input values. Preserve the original specification and outreach goal as unverified user
-input alongside the normalized fields. Existing campaign policy and sender-profile bindings remain
-authoritative.
-
-Unknown geography/sector produce `input_pending`; an explicit unrestricted scope is different.
-Complete intake produces `awaiting_research_adapter`. This slice launches no researcher, produces
-no qualified company/person, and records no model, humanizer or reviewer completion.
-
-Acceptance: actual HTTP/UI path, exact request replay/conflict, immutable changed-input versions,
-fresh-connection resume, calendar-year/leap-day boundaries, non-pilot parameter values, same-store
-and campaign binding, private text excluded from safe output/errors, and no invented stage success.
-Backend and frontend builders have separate file ownership; an independent reviewer checks the
-frozen combined diff before it is accepted.
-
-Accepted checkpoint: P15/service and the existing HTTP/UI save path passed independent review.
-The corrected UI separates campaign creation from saving a selected campaign's brief, preserves
-unsaved changes across switching, and retains a request ID after an ambiguous response. Corrupt
-latest state is shown as unavailable rather than replaced by older or empty state.
-
-Independent verification: 39 focused Python tests, nine JavaScript tests and four extra switching/
-retry probes passed. Root's broader three-file run had 41 passes and one Windows socket-abort
-failure; the exact affected authentication test then passed alone. Root's nine JavaScript tests
-passed. These overlapping counts are not additive.
-
-Actual already-open Chrome acceptance used one owned background DevTools MCP tab and a synthetic
-store. It created one campaign, saved unknown scopes as pending, then saved complete input as
-revision 2 without creating another campaign. Full reload restored the saved fields and honest
-adapter-waiting state. Expanded narrow layout had matching 417px client/scroll widths. The loaded
-script hash matched the reviewed source; screenshots remain unverified. The owned tab, MCP client,
-Node REPL and synthetic server were stopped; user Chrome was preserved.
-
-The bounded source-only VM runtime-design review completed and its output was hash-validated
-locally. Exact owned directory and service/lease units were verified absent after cleanup.
-Its recommendations are design evidence, not a working private model adapter. A separate desktop
-synthetic-only runtime feasibility probe and reusable template-copy review follow this checkpoint.
-
-## Review ownership and boundaries
-
-The infrastructure reviewer owns recovery, isolation, claims about tool access and production gaps.
-The flow reviewer owns real callable paths from intake through human review. The email-skill worker
-locates existing guidance and defines reusable voice/template inputs. Builders do not grade their
-own output; the orchestrator reconciles independent findings against actual behavior.
-
-Native workers currently have local source/tool access. Future VM reviews receive only approved
-source and synthetic fixtures through the existing bounded job lifecycle. Real contact records,
-source text and drafts remain desktop-local; VM workers do not inherit desktop connectors.
-Do not modify the separate main dashboard, global browser settings, VM production code, governance,
-applied migrations or evaluation manifests. No standing service or automatic sending is implied.
-
-## Initial gaps to verify
-
-The shipped workflow parks at an unavailable inspector. The current personalizer skill has no
-mandatory humanizer stage. Audit whether natural-language intake, research and contact verification
-are actual execution stages or depend on manual preparation; do not count a document as wiring.
-
-## Load list
-
-- `CLAUDE.md`, `governance/agent-rules.md`, `orgs/prospecting/contract.md`
-- Canonical local `handoffs/2026-09-09-prospecting-review-app.md` in the coordination worktree
-- `docs/superpowers/plans/2026-09-08-prospecting-end-to-end.md` (earlier implementation plan)
-- `skills/curated/prospecting-personalizer/SKILL.md` and `prompt-contract.md`
-- `skills/curated/humanizer/SKILL.md`
-- `scripts/prospecting/run_workflow.py`, `manager/`, `review_service.py`, `personalizer/`
+Private prospect data remains desktop-local except an explicitly authorized runtime transfer.
+No credential objects, paid API fallback, sends, cap increases or eval-manifest blessing.
+Normal read-only SQLite access may use WAL/SHM coordination files; export verification makes
+no domain/schema writes or migrations and does not use immutable mode on a changing store.
+Recorded P6 manifests and historical gates remain human-owned. Canonical handoff resides only
+under handoffs/ in the coordination worktree; this file is the live work plan.
