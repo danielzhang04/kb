@@ -84,3 +84,10 @@ subscription; billed cost unavailable	2.027881	opus	claude-opus-5	response verif
 subscription; billed cost unavailable	1.3900700000000001	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	native-fixture-repair-52	2026-09-11T19:50:24.790563+00:00	0
 subscription; billed cost unavailable	0.992891	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	import-preconditions-review-53	2026-09-11T19:50:24.790563+00:00	0
 subscription; billed cost unavailable	1.429761	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	capture-compiler-review-55	2026-09-11T19:50:24.790563+00:00	0
+subscription; billed cost unavailable	2.216474	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	selected-projection-repair-54	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.9350420000000002	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	pipeline-repair-continuity-56	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.4726280000000003	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	capture-compiler-repair-57	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.240232	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	selected-projection-tests-58	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.6624919999999999	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	pipeline-repair-scope-59	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.5788050000000002	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	capture-compiler-syntax-60	2026-09-11T20:08:54.636267+00:00	0
+subscription; billed cost unavailable	1.529657	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	selected-projection-patch-61	2026-09-11T20:08:54.636267+00:00	0

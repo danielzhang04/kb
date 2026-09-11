@@ -656,3 +656,7 @@ feedback into the next stage input; current evidence/context remains authority. 
 actual deterministic QA distinct from a model-reported pass. Independent review can
 misread units: verify claimed failures against API field names and execution before
 changing correct fixtures.
+
+### Validate returned patches before claiming progress
+
+Claude proposals can contain exact-context omissions and syntax errors despite correct design. Check output scope, source hashes and syntax before acceptance; return implementation corrections to the assigned Claude worker. A repeated cache-prime scan failure under desktop permissions is evidence against assuming sandbox permissions caused it; collect fixed operation metadata while preserving fail-closed checks.

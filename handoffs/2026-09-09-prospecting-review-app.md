@@ -1,3 +1,36 @@
+## Current checkpoint 2026-09-11T20:08:54.636267+00:00
+
+Goal active and incomplete. User reaffirmed Claude-only grunt work; root orchestrates,
+reviews, applies proposals and verifies. Accepted source HEAD remains beacefb4.
+
+Projection54 applied. Its first check had 71 pass / 3 fixture failures. Worker58 patch
+failed exact context; no partial changes. Corrected Claude61 applied; combined selected
+projection/selected ReviewService/legacy ReviewService check running (session86743).
+
+Repair56 rejected for writing tests outside allowed scope. Corrected Claude59 applied:
+bounded prior candidate and negative review history, humanizer-only; two repair cycles,
+QA and critic independence preserved. Combined check 103 passed / 3 failed in41.27s.
+Both new continuity tests passed. Two older lineage tests now receive earlier shared
+identity_source_proof_stale refusal; independent reviewer63 (session82009) evaluating
+precise precedence and narrow test repairs. Third cache-prime test sink_scan_incomplete
+also failed isolated with desktop permissions (2.37s); do not assume permission cause.
+Diagnostic worker64 (session5929) prepares synthetic-only sanitized operation metadata.
+No new actual model trial yet. Runtime pin remains None.
+
+Compiler57 rejected before applying because added test had syntax error. Corrected
+Claude60 applied, also split duplicate-packet provenance fixture. Compiler plus importer
+hash preconditions:60 passed29.73s. Independent compiler follow-up still needed.
+
+HTTP worker62 running (session14917): selected snapshot, typed materialize and explicit
+source-attest routes, immutable mapping serializer, real authenticated HTTP tests.
+No HTML changes yet. All development on existing source-only vCPU, verified responding
+model claude-opus-5. No real pilot migration, confirmation, readiness or sends.
+
+COORD checkpoint31a68c5f committed then pulled/rebased origin/ops (up to date). No push.
+Keepawake17176 bounded lease; browser unavailable. Next: collect63/64/62, resolve actual
+prime scan cause, finish selected views and HTTP/UI, independent compiler review/private
+export, actual model chain, old failures, small real non-sending case and final handoff.
+
 ## Current checkpoint 2026-09-11T19:50:24.790563+00:00
 
 Goal active, incomplete; user reaffirmed Claude-only grunt work and boss orchestration.
