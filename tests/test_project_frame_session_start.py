@@ -30,16 +30,16 @@ def git(cwd, *args):
     return r.stdout
 
 
-def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=False):
+def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=False, sweep_body=None):
     root = tmp_path / "kb_root"
     (root / "scripts").mkdir(parents=True)
     (root / "scripts" / "preamble.py").write_text(preamble_body, encoding="utf-8")
     if with_sweep:
-        (root / "scripts" / "handoffs_sweep.py").write_text(
+        body = sweep_body or (
             'import json, sys\n'
-            'print(json.dumps([{"file": "2020-01-01-kb-old.md", "reasons": ["30 days old"]}]))\n',
-            encoding="utf-8",
+            'print(json.dumps([{"file": "2020-01-01-kb-old.md", "reasons": ["30 days old"]}]))\n'
         )
+        (root / "scripts" / "handoffs_sweep.py").write_text(body, encoding="utf-8")
     return root
 
 
@@ -274,6 +274,28 @@ def test_missing_handoffs_sweep_is_tolerated(tmp_path):
     assert r.returncode == 0 and r.stderr == b""
     ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
     assert "## Stale handoffs" not in ctx
+
+
+def test_slow_sweep_omits_block_but_payload_still_arrives(tmp_path):
+    """Fix round 2, item 2: the sweep subprocess timeout is env-overridable via
+    KB_SWEEP_TIMEOUT_MS (default 2000ms), and when the sweep doesn't finish within it, the
+    hook simply omits the '## Stale handoffs' block -- it never blocks the rest of the
+    SessionStart payload on a slow/hung sweep."""
+    kb_root = make_kb_root(tmp_path, with_sweep=True, sweep_body="import time\ntime.sleep(5)\n")
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    started = time.monotonic()
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+        extra_env={"KB_SWEEP_TIMEOUT_MS": "300"},
+    )
+    elapsed = time.monotonic() - started
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Stale handoffs" not in ctx
+    assert "Deliver leads." in ctx  # the rest of the payload still arrives
+    assert elapsed < 5.0, elapsed  # did not wait out the sweep's full 5s sleep
 
 
 def test_no_stdin_and_malformed_json_fail_open(tmp_path):

@@ -161,6 +161,28 @@ def test_non_ascii_ops_handoff_parses_without_crash(tmp_path):
     assert "docs/does/not/exist.md" in rows[0]["reason"]
 
 
+def test_mixed_live_and_dead_load_paths_in_one_batch_check(tmp_path):
+    """Fix round 2, item 1: dead-Load-path checking is now one batched `git cat-file
+    --batch-check` process per ref (covering every distinct Load path across every
+    handoff), not one `cat-file -e` process per path per ref. This pins that the batch
+    correctly distinguishes a live path from a dead one within the SAME call: one handoff
+    whose Load list has both a real path and a nonexistent one must flag only the
+    nonexistent one."""
+    repo = make_repo(tmp_path)
+    (repo / "README.md").write_text("kept file", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add readme")
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2026-01-05-kb-thing.md").write_text(
+        "# thing\n## Load\n`README.md`\n`docs/does/not/exist.md`\n", encoding="utf-8"
+    )
+    r = run_sweep(repo, "--json", now="2026-01-05")
+    rows = json.loads(r.stdout)
+    reason = rows[0]["reason"]
+    assert "docs/does/not/exist.md" in reason
+    assert "README.md" not in reason
+
+
 def test_local_copy_wins_when_present_on_both_ops_and_local(tmp_path):
     """Fix round 1, item 4: when a filename exists on both `origin/ops:handoffs/` and the
     local checkout with divergent content, the local copy wins (matches CLAUDE.md's

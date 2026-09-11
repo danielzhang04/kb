@@ -33,14 +33,16 @@ class Handoff:
     text: str
 
 
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
+def _git(root: Path, *args: str, input_text: str | None = None) -> subprocess.CompletedProcess | None:
     """Run git, decoding output as UTF-8 (never the OS locale codepage -- on Windows that's
     often cp1252, which mangles non-ASCII handoff content and raises UnicodeDecodeError on byte
     sequences cp1252 has no mapping for). Returns None if git hangs past the timeout, so a caller
-    degrades to "unknown" instead of crashing."""
+    degrades to "unknown" instead of crashing. `input_text`, when given, is piped to stdin --
+    used for the batched `cat-file --batch-check` calls."""
     try:
         return subprocess.run(
             ["git", "-C", str(root), *args],
+            input=input_text,
             capture_output=True,
             text=True,
             encoding="utf-8",
@@ -49,6 +51,84 @@ def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
         )
     except subprocess.TimeoutExpired:
         return None
+
+
+def _batch_read_blobs(root: Path, refs: list[str]) -> dict[str, str]:
+    """Read blob content for a list of "<ref>:<path>" identifiers in ONE `git cat-file
+    --batch` process. Returns {identifier: text} for every identifier that resolved to a
+    blob; an identifier that doesn't exist is simply absent from the result.
+
+    Runs in raw bytes (not text) mode and slices each object's content by its reported
+    byte `<size>` rather than scanning for a text-mode line boundary -- `--batch`'s
+    success records are `<sha> SP <type> SP <size> LF <content> LF`, and content can itself
+    contain newlines or non-UTF-8 byte sequences, so a line-oriented text-mode read would
+    misparse it. `--batch` answers one record per input line, in the SAME order as the
+    input, so records are correlated to `refs` positionally rather than by re-parsing an
+    echoed identifier (which `--batch` only echoes back on a "missing" record, not on a
+    successful one)."""
+    if not refs:
+        return {}
+    stdin_data = ("\n".join(refs) + "\n").encode("utf-8")
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "cat-file", "--batch"],
+            input=stdin_data,
+            capture_output=True,
+            timeout=GIT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return {}
+    if result.returncode != 0:
+        return {}
+
+    out: dict[str, str] = {}
+    data = result.stdout
+    pos = 0
+    n = len(data)
+    for ref in refs:
+        eol = data.find(b"\n", pos)
+        if eol == -1:
+            break  # truncated/unexpected stream -- stop parsing defensively
+        header = data[pos:eol].decode("ascii", errors="replace")
+        pos = eol + 1
+        parts = header.split(" ")
+        if len(parts) == 2 and parts[1] == "missing":
+            continue  # this ref doesn't exist -- leave it out of `out`
+        if len(parts) != 3:
+            break  # malformed stream -- bail out defensively
+        _sha, _type, size_str = parts
+        try:
+            size = int(size_str)
+        except ValueError:
+            break
+        content = data[pos:pos + size]
+        pos += size
+        if data[pos:pos + 1] == b"\n":
+            pos += 1  # the single LF git appends after every object's content
+        out[ref] = content.decode("utf-8", errors="replace")
+    return out
+
+
+def _batch_check_exists(root: Path, ref: str, paths: list[str]) -> dict[str, bool]:
+    """One `git cat-file --batch-check` process answers "does `<ref>:<path>` exist" for
+    every path at once. Returns {path: bool}; a git failure or timeout maps every path to
+    False (degrades to "not found" on that ref, same posture as a single failed
+    `cat-file -e` used to). `--batch-check` answers one line per input line, in order, so
+    lines are correlated to `paths` positionally (its success line reports the resolved
+    sha, not the input path, so positional correlation is required either way)."""
+    if not paths:
+        return {}
+    stdin_data = "".join(f"{ref}:{p}\n" for p in paths)
+    result = _git(root, "cat-file", "--batch-check", input_text=stdin_data)
+    if result is None or result.returncode != 0:
+        return {p: False for p in paths}
+    lines = result.stdout.splitlines()
+    out: dict[str, bool] = {}
+    for p, line in zip(paths, lines):
+        out[p] = not line.endswith(" missing")
+    for p in paths[len(lines):]:
+        out[p] = False  # fewer output lines than inputs -- treat the rest as not found
+    return out
 
 
 def _now(env: dict) -> date:
@@ -72,25 +152,38 @@ def _local_handoff_names(root: Path) -> set[str]:
     return {p.name for p in d.glob("*.md")}
 
 
-def _read_handoff_text(root: Path, filename: str) -> str:
+def _read_handoff_text(root: Path, filename: str, ops_blobs: dict[str, str]) -> str:
+    """Local disk wins (see fix round 1: a checked-out, possibly-uncommitted local copy is
+    truth over the ops ref). `ops_blobs` is the already-fetched result of one batched
+    `_batch_read_blobs` call -- no per-file git process happens here."""
     local = root / "handoffs" / filename
     if local.is_file():
         try:
             return local.read_text(encoding="utf-8")
         except OSError:
             return ""
-    result = _git(root, "show", f"origin/ops:handoffs/{filename}")
-    return result.stdout if result is not None and result.returncode == 0 else ""
+    return ops_blobs.get(f"origin/ops:handoffs/{filename}", "")
 
 
 def collect_handoffs(root: Path) -> list[Handoff]:
-    names = sorted((_ops_handoff_names(root) | _local_handoff_names(root)) - {"README.md"})
+    ops_names = _ops_handoff_names(root)  # 1 process: ls-tree
+    local_names = _local_handoff_names(root)
+    names = sorted((ops_names | local_names) - {"README.md"})
+
+    # Batch-read every ops-listed handoff's content in ONE process, regardless of whether
+    # the local checkout also has a copy (the local copy wins in _read_handoff_text either
+    # way -- fetching the ops blob unconditionally keeps this a single call instead of
+    # branching per file).
+    ops_refs = [f"origin/ops:handoffs/{name}" for name in sorted(ops_names)]
+    ops_blobs = _batch_read_blobs(root, ops_refs)  # 1 process: cat-file --batch
+
     out = []
     for name in names:
         m = FILENAME_RE.match(name)
         handoff_date = date.fromisoformat(m.group(1)) if m else None
         scope = m.group(2) if m else None
-        out.append(Handoff(filename=name, handoff_date=handoff_date, scope=scope, text=_read_handoff_text(root, name)))
+        text = _read_handoff_text(root, name, ops_blobs)
+        out.append(Handoff(filename=name, handoff_date=handoff_date, scope=scope, text=text))
     return out
 
 
@@ -104,22 +197,23 @@ def _load_paths(text: str) -> list[str]:
     return BACKTICK_PATH_RE.findall(body)
 
 
-def _path_exists_on_ops_or_main(root: Path, rel_path: str) -> bool:
-    """STRICT: a Load path is real only if it exists on origin/ops or origin/main.
-    No working-tree fallback -- a path that exists only locally (uncommitted, or
-    committed to a work branch that never reached ops/main) is dead."""
-    for ref in ("origin/ops", "origin/main"):
-        result = _git(root, "cat-file", "-e", f"{ref}:{rel_path}")
-        if result is not None and result.returncode == 0:
-            return True
-    return False
-
-
 def flag(root: Path, handoffs: list[Handoff], today: date) -> list[dict]:
     by_scope: dict[str, list[Handoff]] = {}
     for h in handoffs:
         if h.scope:
             by_scope.setdefault(h.scope, []).append(h)
+
+    # STRICT: a Load path is real only if it exists on origin/ops or origin/main. No
+    # working-tree fallback -- a path that exists only locally (uncommitted, or committed
+    # to a work branch that never reached ops/main) is dead. Every distinct Load path
+    # across EVERY handoff is checked against EACH ref in exactly one batched process (2
+    # processes total for this whole run), instead of one `cat-file -e` process per
+    # path per ref.
+    load_paths_by_file: dict[str, list[str]] = {h.filename: _load_paths(h.text) for h in handoffs}
+    distinct_paths = sorted({p for paths in load_paths_by_file.values() for p in paths})
+    exists_on_ops = _batch_check_exists(root, "origin/ops", distinct_paths)
+    exists_on_main = _batch_check_exists(root, "origin/main", distinct_paths)
+    path_is_live = {p: exists_on_ops.get(p, False) or exists_on_main.get(p, False) for p in distinct_paths}
 
     flags: list[dict] = []
     for h in handoffs:
@@ -136,7 +230,7 @@ def flag(root: Path, handoffs: list[Handoff], today: date) -> list[dict]:
             if newer:
                 latest = sorted(newer, key=lambda o: o.handoff_date)[-1]
                 reasons.append(f"superseded by {latest.filename}")
-        dead = [p for p in _load_paths(h.text) if not _path_exists_on_ops_or_main(root, p)]
+        dead = [p for p in load_paths_by_file[h.filename] if not path_is_live.get(p, False)]
         if dead:
             reasons.append("dead Load path(s): " + ", ".join(dead))
         if reasons:

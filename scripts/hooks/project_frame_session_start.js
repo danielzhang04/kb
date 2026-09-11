@@ -38,7 +38,8 @@ const store = require("./lib/context_store.js");
 const pf = require("./lib/project_frame.js");
 
 const PREAMBLE_TIMEOUT_MS = 10000;
-const SWEEP_TIMEOUT_MS = 5000;
+const DEFAULT_SWEEP_TIMEOUT_MS = 2000; // fix round 2: handoffs_sweep.py is now O(1) git
+// processes and finishes in well under this on the real repo; env override for tests/tuning.
 
 /**
  * Run one repo-relative python script with the `py -3` / `python` fallback every other kb hook
@@ -76,10 +77,13 @@ function preambleVerdict(root) {
 /**
  * `scripts/handoffs_sweep.py --json`'s flagged rows, rendered as "<file>: <reason>" strings.
  * Tolerates absence, a nonzero exit, a timeout, or unparsable stdout by returning [] -- the sweep
- * is a nice-to-have annotation on the payload, never a precondition for emitting one.
+ * is a nice-to-have annotation on the payload, never a precondition for emitting one. `timeoutMs`
+ * defaults to `DEFAULT_SWEEP_TIMEOUT_MS`, overridable via `KB_SWEEP_TIMEOUT_MS` (see `main`) --
+ * on timeout `runPython` returns null (the sweep's spawnSync `result.error` is set, so no result
+ * is ever returned), which this function already treats the same as absence/failure: no block.
  */
-function handoffFlags(root) {
-  const result = runPython(["scripts/handoffs_sweep.py", "--json"], root, SWEEP_TIMEOUT_MS);
+function handoffFlags(root, timeoutMs) {
+  const result = runPython(["scripts/handoffs_sweep.py", "--json"], root, timeoutMs);
   if (!result || result.status !== 0 || !result.stdout) return [];
   let rows;
   try {
@@ -168,7 +172,9 @@ function main() {
   const preambleLine = "[preamble] " + preambleVerdict(root);
   let combined = preambleLine + "\n\n" + frameResult.text;
 
-  const flags = handoffFlags(root);
+  const overrideMs = Number(env.KB_SWEEP_TIMEOUT_MS);
+  const sweepTimeoutMs = Number.isFinite(overrideMs) && overrideMs > 0 ? overrideMs : DEFAULT_SWEEP_TIMEOUT_MS;
+  const flags = handoffFlags(root, sweepTimeoutMs);
   if (flags.length) {
     combined += "\n\n## Stale handoffs\n" + flags.map((f) => "- " + f).join("\n");
   }
