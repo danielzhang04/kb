@@ -3,6 +3,8 @@ import os
 import subprocess
 from pathlib import Path
 
+from scripts import handoffs_sweep as hs
+
 REPO = Path(__file__).resolve().parents[1]
 SCRIPT = REPO / "scripts" / "handoffs_sweep.py"
 
@@ -116,6 +118,33 @@ def test_table_mode_says_no_flags_when_clean(tmp_path):
     repo = make_repo(tmp_path)
     r = run_sweep(repo, now="2026-01-05")
     assert "No flagged handoffs." in r.stdout
+
+
+def test_batch_read_blobs_missing_identifier_with_space_does_not_desync(tmp_path):
+    """Fix round 3: `git cat-file --batch` emits a missing record as
+    `<verbatim identifier> missing`, and the identifier itself can contain spaces (e.g. a
+    handoffs filename with a space in it). The parser must detect "missing" by a SUFFIX
+    check (`header.endswith(" missing")`) BEFORE any space-based split -- splitting first
+    would over-count fields for a spacey identifier, fall into the malformed-header branch,
+    and (before this fix) `break` out of the whole batch, silently dropping every
+    subsequent ref. This calls `_batch_read_blobs` directly with three refs where the
+    SECOND is a missing identifier containing a space, and asserts the third ref's content
+    is still read (i.e. the parser did not desync/bail after the second record)."""
+    repo = make_repo(tmp_path)
+    (repo / "a.md").write_text("alpha", encoding="utf-8")
+    (repo / "c.md").write_text("charlie", encoding="utf-8")
+    git(repo, "add", "a.md", "c.md")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add a and c")
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    refs = [
+        f"{sha}:a.md",
+        f"{sha}:missing file with spaces.md",
+        f"{sha}:c.md",
+    ]
+    out = hs._batch_read_blobs(repo, refs)
+    assert out[f"{sha}:a.md"] == "alpha"
+    assert f"{sha}:missing file with spaces.md" not in out
+    assert out[f"{sha}:c.md"] == "charlie"
 
 
 def test_load_section_terminates_at_next_heading(tmp_path):

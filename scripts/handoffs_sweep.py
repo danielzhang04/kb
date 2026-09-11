@@ -65,7 +65,12 @@ def _batch_read_blobs(root: Path, refs: list[str]) -> dict[str, str]:
     misparse it. `--batch` answers one record per input line, in the SAME order as the
     input, so records are correlated to `refs` positionally rather than by re-parsing an
     echoed identifier (which `--batch` only echoes back on a "missing" record, not on a
-    successful one)."""
+    successful one).
+
+    A missing record is `<verbatim identifier> SP missing` -- and the identifier can
+    itself contain spaces (e.g. a handoffs filename with a space in it), so "missing" is
+    detected by a SUFFIX check before any space-based split, never by counting
+    space-separated fields."""
     if not refs:
         return {}
     stdin_data = ("\n".join(refs) + "\n").encode("utf-8")
@@ -91,16 +96,20 @@ def _batch_read_blobs(root: Path, refs: list[str]) -> dict[str, str]:
             break  # truncated/unexpected stream -- stop parsing defensively
         header = data[pos:eol].decode("ascii", errors="replace")
         pos = eol + 1
-        parts = header.split(" ")
-        if len(parts) == 2 and parts[1] == "missing":
-            continue  # this ref doesn't exist -- leave it out of `out`
+        if header.endswith(" missing"):
+            continue  # this ref doesn't exist -- leave it out of `out` (checked as a
+            # suffix, BEFORE any split, since the identifier itself can contain spaces)
+        # Only the last two space-separated fields are guaranteed to be <type> and <size>
+        # -- the sha is always a fixed-width hex string with no spaces, so this is safe
+        # even though we no longer assume exactly 3 fields.
+        parts = header.rsplit(" ", 2)
         if len(parts) != 3:
-            break  # malformed stream -- bail out defensively
+            continue  # malformed header for this ONE record -- skip just it, fail soft
         _sha, _type, size_str = parts
         try:
             size = int(size_str)
         except ValueError:
-            break
+            continue  # size wasn't numeric -- also malformed, skip just this record
         content = data[pos:pos + size]
         pos += size
         if data[pos:pos + 1] == b"\n":
