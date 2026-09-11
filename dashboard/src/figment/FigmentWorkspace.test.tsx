@@ -295,6 +295,24 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Recorded source footage; delivery review pending')).toBeTruthy();
   });
 
+  it('labels recorded native scene sources honestly without rendering private metadata', async () => {
+    const base = recordedBriefs();
+    const contentBriefs = { ...base, items: base.items.map((item) => ({ ...item, requiredAssetSlots: [{ role: 'scene', kind: 'nonpersona' as const }], requiredAssetCount: 1, assignment: 'recorded-native-source-snapshot' as const, privateNativePath: 'private/rulings/scene.json', reviewer: 'human-reviewer' })) };
+    const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
+    const rendered = render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.getByText('Recorded plan; scene images still need delivery review')).toBeTruthy();
+    expect(rendered.container.textContent).not.toMatch(/private\/rulings|human-reviewer|accept-native|sha256/i);
+  });
+
+  it('rejects an unknown content brief assignment state', async () => {
+    const base = recordedBriefs();
+    const contentBriefs = { ...base, items: base.items.map((item) => ({ ...item, assignment: 'recorded-native-source-review-approved' })) };
+    const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
+    render(<FigmentWorkspace fetchImpl={fetchImpl} />);
+    await screen.findByText('Figment records are unavailable.');
+  });
+
   it('keeps research artifacts visible for empty and unavailable brief inventories', async () => {
     for (const contentBriefs of [{ status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] }, { status: 'unavailable', reason: 'evidence-unavailable', items: [] }]) {
       const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;

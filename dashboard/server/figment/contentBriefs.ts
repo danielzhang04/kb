@@ -24,7 +24,7 @@ export interface ContentBriefItem {
   sourceDates: string[];
   observedMetrics: null;
   renderAs: 'text';
-  assignment: 'missing' | 'recorded-snapshot' | 'recorded-source-snapshot' | 'unavailable';
+  assignment: 'missing' | 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot' | 'unavailable';
 }
 export type ContentBriefsProjection =
   | { status: 'not-configured'; items: [] }
@@ -143,24 +143,46 @@ function videoAsset(value: unknown): boolean {
     && snapshotRef({ path: value.path, sha256: value.sha256 }) && typeof value.bytes === 'number' && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= 2 * 1024 * 1024 * 1024
     && entry(value.accepted_lineage) && entry(value.candidate_manifest) && asset(value.approved_still);
 }
-function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | 'recorded-source-snapshot' | null {
+function dimension(value: unknown): boolean { return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 && value <= 32768; }
+function nativeSourceAsset(value: unknown): boolean {
+  if (!object(value) || !keys(value, ['kind', 'scope', 'stage', 'cell_id', 'path', 'bytes', 'sha256', 'native_dimensions', 'delivery_target', 'delivery_quality', 'delivery_transform', 'retained', 'visual_ruling'])) return false;
+  const nativeDimensions = object(value.native_dimensions) ? value.native_dimensions : null;
+  const deliveryTarget = object(value.delivery_target) ? value.delivery_target : null;
+  const retained = object(value.retained) ? value.retained : null;
+  const visualRuling = object(value.visual_ruling) ? value.visual_ruling : null;
+  return value.kind === 'visually-ruled-nonpersona-still' && value.scope === 'source-material-only' && value.stage === 'native-source'
+    && text(value.cell_id, 256) !== null && snapshotRef({ path: value.path, sha256: value.sha256 }) && bytes(value.bytes)
+    && nativeDimensions !== null && keys(nativeDimensions, ['width', 'height']) && dimension(nativeDimensions.width) && dimension(nativeDimensions.height)
+    && deliveryTarget !== null && keys(deliveryTarget, ['aspect', 'width', 'height']) && text(deliveryTarget.aspect, 32) !== null && dimension(deliveryTarget.width) && dimension(deliveryTarget.height)
+    && value.delivery_quality === 'not-assessed' && value.delivery_transform === null
+    && retained !== null && keys(retained, ['path', 'bytes', 'sha256']) && snapshotRef({ path: retained.path, sha256: retained.sha256 }) && bytes(retained.bytes)
+    && visualRuling !== null && keys(visualRuling, ['path', 'bytes', 'sha256', 'authority', 'decision', 'decided_by', 'decided_at'])
+    && snapshotRef({ path: visualRuling.path, sha256: visualRuling.sha256 }) && bytes(visualRuling.bytes)
+    && visualRuling.authority === 'human-visual-ruling' && visualRuling.decision === 'accept-native'
+    && text(visualRuling.decided_by, 256) !== null && timestamp(visualRuling.decided_at);
+}
+function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot' | null {
   if (!object(value) || !keys(value, ['schema', 'not_promotable', 'provenance', 'brief', 'request', 'rulings', 'creator', 'assignments'])) return null;
   const briefRef = object(value.brief) ? value.brief : null;
   const motion = brief.slots.some((slot) => slot.taxonomyType === 'G');
-  if (value.schema !== (motion ? 'figment/content-asset-assignment@2' : 'figment/content-asset-assignment@1') || value.not_promotable !== true || text(value.provenance) === null || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
+  const nonpersona = brief.slots.some((slot) => slot.kind === 'nonpersona');
+  const expectedSchema = nonpersona ? 'figment/content-asset-assignment@3' : motion ? 'figment/content-asset-assignment@2' : 'figment/content-asset-assignment@1';
+  const v3Provenance = 'offline content-slot planning evidence; nonpersona images are native source material with delivery review pending; no new asset, batch, publication, or metric approval';
+  if ((nonpersona && (motion || brief.item.surface !== 'carousel' || !brief.slots.filter((slot) => slot.kind === 'nonpersona').every((slot) => slot.taxonomyType === 'C' || slot.taxonomyType === 'D' || slot.taxonomyType === 'E'))) || value.schema !== expectedSchema || value.not_promotable !== true || text(value.provenance) === null || (nonpersona && value.provenance !== v3Provenance) || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
   if (briefRef.sha256 !== briefSha256) return null;
   const imageIds = new Set<string>();
   for (const [index, row] of value.assignments.entries()) {
     const expected = brief.slots[index];
     const recordedAsset = object(row) && object(row.asset) ? row.asset : null;
     const isMotion = expected.taxonomyType === 'G';
-    const rawId = recordedAsset === null ? null : text(isMotion ? recordedAsset.candidate_id : recordedAsset.image_id, 256);
+    const isNativeNonpersona = expected.kind === 'nonpersona';
+    const rawId = recordedAsset === null ? null : isNativeNonpersona ? recordedAsset.sha256 : text(isMotion ? recordedAsset.candidate_id : recordedAsset.image_id, 256);
     // Namespaced like the Python producer (kind:id): a still and a video may share an id.
-    const imageId = rawId === null ? null : `${isMotion ? 'accepted-video-source' : 'approved-gen-still'}:${rawId}`;
-    if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || expected.kind !== 'persona' || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !(isMotion ? videoAsset(row.asset) : asset(row.asset)) || imageId === null || imageIds.has(imageId)) return null;
+    const imageId = rawId === null || typeof rawId !== 'string' ? null : `${isNativeNonpersona ? 'visually-ruled-nonpersona-still' : isMotion ? 'accepted-video-source' : 'approved-gen-still'}:${rawId}`;
+    if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !(isNativeNonpersona ? nativeSourceAsset(row.asset) : isMotion ? videoAsset(row.asset) : expected.kind === 'persona' && asset(row.asset)) || imageId === null || imageIds.has(imageId)) return null;
     imageIds.add(imageId);
   }
-  return motion ? 'recorded-source-snapshot' : 'recorded-snapshot';
+  return nonpersona ? 'recorded-native-source-snapshot' : motion ? 'recorded-source-snapshot' : 'recorded-snapshot';
 }
 function entries(root: Root): import('node:fs').Dirent[] | null {
   try {

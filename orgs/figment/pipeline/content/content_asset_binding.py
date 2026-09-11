@@ -37,6 +37,8 @@ SOURCE_KIND = "approved-gen-still"
 MOTION_SCHEMA = "figment/content-asset-assignment@2"
 MOTION_RULINGS_SCHEMA = "figment/content-slot-fit-rulings@2"
 VIDEO_SOURCE_KIND = "accepted-video-source"
+NONPERSONA_SCHEMA = "figment/content-asset-assignment@3"
+NONPERSONA_RULINGS_SCHEMA, NONPERSONA_SOURCE_KIND = "figment/content-slot-fit-rulings@3", "visually-ruled-nonpersona-still"
 SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 MAX_ATTRIBUTION = 256
 
@@ -79,6 +81,24 @@ def _timestamp(value: object, label: str) -> str:
     if parsed.tzinfo is None:
         raise ContentAssetBindingError(f"{label} must include a timezone")
     return text
+
+
+def _slot_attribution(row: dict[str, Any], *, v3: bool) -> dict[str, str]:
+    if not v3:
+        return {
+            "decision": "fit",
+            "decided_by": _text(row.get("decided_by"), "slot decided_by"),
+            "decided_at": _timestamp(row.get("decided_at"), "slot decided_at"),
+        }
+    nvr = _nonpersona_module()
+    try:
+        decided_by = nvr._text(
+            row.get("decided_by"), "slot decided_by", nvr.MAX_DECIDED_BY, nonempty=True,
+        )
+        decided_at = nvr._timestamp(row.get("decided_at"))
+    except Exception as exc:
+        raise ContentAssetBindingError("v3 slot-fit attribution is malformed") from exc
+    return {"decision": "fit", "decided_by": decided_by, "decided_at": decided_at}
 
 
 def _only_keys(value: dict[str, Any], allowed: set[str], label: str) -> None:
@@ -303,7 +323,12 @@ def _project_authority(root: Path, authority: object, image_id: str) -> dict[str
 
 def _validate_source(
     root: Path, creator: str, brief: dict[str, Any], source: dict[str, Any], train: Any,
+    *, slot: dict[str, Any] | None = None, brief_ref: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    if source.get("kind") == NONPERSONA_SOURCE_KIND:
+        if slot is None or brief_ref is None:
+            raise ContentAssetBindingError("nonpersona slot source requires its current brief slot")
+        return _validate_nonpersona_source(root, creator, source, slot, brief_ref)
     if source.get("kind") == VIDEO_SOURCE_KIND:
         return _validate_video_source(root, creator, brief, source, train)
     _only_keys(source, {"kind", "plan", "image_id"}, "slot source")
@@ -422,6 +447,121 @@ def _validate_video_source(
     }
 
 
+def _nonpersona_module() -> Any:
+    name = "figment_content_asset_nonpersona_authority"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("nonpersona_visual_ruling.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise ContentAssetBindingError("nonpersona visual ruling authority is unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise ContentAssetBindingError("nonpersona visual ruling authority is unavailable") from exc
+    return module
+
+
+def _ruled_entry(root: Path, relative: str, size: object, digest: object, label: str) -> dict[str, Any]:
+    if type(size) is not int or size <= 0 or not isinstance(digest, str) or not SHA256.fullmatch(digest):
+        raise ContentAssetBindingError(f"nonpersona {label} snapshot is malformed")
+    path = _safe_input(root, relative, f"nonpersona {label}")
+    if path.relative_to(root).as_posix() != relative:
+        raise ContentAssetBindingError(f"nonpersona {label} path is not root-relative")
+    checked = _safe_input(root, relative, f"nonpersona {label}")
+    if checked != path or path.stat().st_size != size or _sha256(path) != digest \
+            or _safe_input(root, relative, f"nonpersona {label}") != path \
+            or path.stat().st_size != size:
+        raise ContentAssetBindingError(f"nonpersona {label} bytes changed")
+    return {"path": relative, "bytes": size, "sha256": digest}
+
+
+def _validate_nonpersona_source(
+    root: Path, creator: str, source: dict[str, Any], slot: dict[str, Any],
+    brief_ref: dict[str, Any],
+) -> dict[str, Any]:
+    keys = {"kind", "ruling", "ruling_sha256"}
+    _only_keys(source, keys, "nonpersona slot source")
+    ruling_path, ruling_digest = source.get("ruling"), source.get("ruling_sha256")
+    if set(source) != keys or not isinstance(ruling_path, str) or not isinstance(ruling_digest, str) \
+            or not SHA256.fullmatch(ruling_digest):
+        raise ContentAssetBindingError("nonpersona slot source must bind ruling and ruling_sha256")
+    nvr = _nonpersona_module()
+    if slot.get("kind") != "nonpersona" or slot.get("taxonomy_type") not in nvr.prep.ALLOWED_NONPERSONA_TYPES:
+        raise ContentAssetBindingError("visually ruled sources bind only nonpersona C/D/E slots")
+    try:
+        ruled = nvr.validate_nonpersona_visual_ruling(
+            root=root, path=ruling_path, expected_sha256=ruling_digest,
+        )
+    except Exception as exc:
+        raise ContentAssetBindingError("nonpersona visual ruling authority rejected a slot source") from exc
+    strict = nvr.prep._strict_equal
+    if not isinstance(ruled, dict) or ruled.get("schema") != nvr.RESULT_SCHEMA \
+            or ruled.get("not_promotable") is not True:
+        raise ContentAssetBindingError("nonpersona visual ruling authority returned a malformed result")
+    if ruled.get("authority") != "human-visual-ruling" or ruled.get("decision") != "accept-native":
+        raise ContentAssetBindingError("nonpersona slot source requires a human accept-native visual ruling")
+    image = ruled.get("image")
+    if not strict(ruled.get("criteria"), nvr.ACCEPTING) or ruled.get("delivery_quality") != "not-assessed" \
+            or "delivery_transform" not in ruled or ruled["delivery_transform"] is not None \
+            or not isinstance(image, dict) or image.get("review_eligible") is not True:
+        raise ContentAssetBindingError("nonpersona visual ruling does not accept an untransformed native image")
+    current_slot = {key: slot.get(key) for key in ("index", "role", "taxonomy_type", "kind")}
+    if ruled.get("creator") != creator or not strict(ruled.get("brief"), brief_ref) \
+            or not strict(ruled.get("slot"), current_slot):
+        raise ContentAssetBindingError("nonpersona visual ruling does not bind the current brief slot and creator")
+    ruling = ruled.get("ruling")
+    if not isinstance(ruling, dict) or set(ruling) != {"path", "bytes", "sha256"} \
+            or ruling.get("path") != ruling_path \
+            or ruling.get("sha256") != ruling_digest:
+        raise ContentAssetBindingError("nonpersona visual ruling differs from the slot-fit ruling source")
+    native_dims, target, retained = (
+        ruled.get("native_dimensions"), ruled.get("delivery_target"), ruled.get("retained"),
+    )
+    if not isinstance(native_dims, dict) or set(native_dims) != {"width", "height"} \
+            or any(type(native_dims.get(key)) is not int or native_dims[key] <= 0
+                   for key in ("width", "height")) \
+            or not isinstance(target, dict) or set(target) != {"aspect", "width", "height"} \
+            or not isinstance(target.get("aspect"), str) or not target["aspect"].strip() \
+            or len(target["aspect"]) > 64 \
+            or any(type(target.get(key)) is not int or target[key] <= 0
+                   for key in ("width", "height")) \
+            or not isinstance(retained, dict) \
+            or set(retained) != {"out", "path", "bytes", "sha256"} \
+            or not isinstance(retained.get("out"), str) \
+            or not isinstance(retained.get("path"), str) or not isinstance(image.get("path"), str) \
+            or not isinstance(image.get("cell_id"), str) \
+            or type(image.get("width")) is not int or type(image.get("height")) is not int \
+            or image["width"] != native_dims["width"] or image["height"] != native_dims["height"]:
+        raise ContentAssetBindingError("nonpersona visual ruling image does not match its native dimensions")
+    out = retained["out"]
+    image_entry = _ruled_entry(
+        root, Path(out, image["path"]).as_posix(), image.get("bytes"), image.get("sha256"), "image",
+    )
+    retained_entry = _ruled_entry(
+        root, Path(out, retained["path"]).as_posix(), retained.get("bytes"), retained.get("sha256"),
+        "retained record",
+    )
+    return {
+        "kind": NONPERSONA_SOURCE_KIND, "scope": "source-material-only", "stage": "native-source",
+        "cell_id": image["cell_id"], **image_entry,
+        "native_dimensions": {"width": native_dims["width"], "height": native_dims["height"]},
+        "delivery_target": {
+            "aspect": target["aspect"], "width": target["width"], "height": target["height"],
+        },
+        "delivery_quality": "not-assessed", "delivery_transform": None,
+        "retained": retained_entry,
+        "visual_ruling": {
+            "path": ruling_path, "bytes": ruling.get("bytes"), "sha256": ruling_digest,
+            "authority": "human-visual-ruling", "decision": "accept-native",
+            "decided_by": ruled.get("decided_by"), "decided_at": ruled.get("decided_at"),
+        },
+    }
+
+
 def build_content_asset_binding(
     *, root: Path, brief_path: str | Path, request_path: str | Path,
     rulings_path: str | Path, output_path: str | Path,
@@ -449,8 +589,16 @@ def build_content_asset_binding(
     if not isinstance(brief_ref, dict):
         raise ContentAssetBindingError("slot-fit rulings brief binding is malformed")
     _only_keys(brief_ref, {"path", "sha256"}, "slot-fit rulings brief binding")
+    nonpersona = rulings.get("schema") == NONPERSONA_RULINGS_SCHEMA and any(
+        isinstance(slot, dict) and slot.get("kind") == "nonpersona" for slot in slots
+    )
+    if nonpersona and (has_motion or content.get("surface") != "carousel"):
+        raise ContentAssetBindingError("nonpersona v3 bindings require a carousel brief without motion")
+    expected_schema = NONPERSONA_RULINGS_SCHEMA if nonpersona else (
+        MOTION_RULINGS_SCHEMA if has_motion else RULINGS_SCHEMA
+    )
     if (
-        rulings.get("schema") != (MOTION_RULINGS_SCHEMA if has_motion else RULINGS_SCHEMA)
+        rulings.get("schema") != expected_schema
         or rulings.get("creator") != creator
         or brief_ref != current["brief"]
     ):
@@ -479,7 +627,7 @@ def build_content_asset_binding(
     train = _train_module()
     used_images: set[str] = set()
     assignments: list[dict[str, Any]] = []
-    source_inputs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    source_inputs: list[tuple[dict[str, Any], dict[str, Any], dict[str, Any]]] = []
     for slot in slots:
         assert isinstance(slot, dict)
         row = by_index[slot["index"]]
@@ -489,34 +637,46 @@ def build_content_asset_binding(
         }
         if any(row.get(key) != value for key, value in expected.items()):
             raise ContentAssetBindingError("slot-fit ruling does not match its exact brief slot")
-        if row.get("kind") != "persona":
+        nonpersona_row = nonpersona and row.get("kind") == "nonpersona"
+        if row.get("kind") != "persona" and not nonpersona_row:
             raise ContentAssetBindingError("nonpersona slots have no supported authority")
         if row.get("decision") != "fit":
             raise ContentAssetBindingError("every slot requires an explicit fit ruling")
-        attribution = {
-            "decision": "fit",
-            "decided_by": _text(row.get("decided_by"), "slot decided_by"),
-            "decided_at": _timestamp(row.get("decided_at"), "slot decided_at"),
-        }
+        attribution = _slot_attribution(row, v3=nonpersona)
         source = row.get("source")
         if not isinstance(source, dict):
             raise ContentAssetBindingError("slot source must be an object")
-        expected_kind = VIDEO_SOURCE_KIND if row.get("taxonomy_type") == "G" else SOURCE_KIND
-        if source.get("kind") != expected_kind:
-            raise ContentAssetBindingError("motion/video requires accepted-video-source; still slots require approved-gen-still")
-        asset = _validate_source(root, creator, brief, source, train)
-        image_id = asset.get("candidate_id") if expected_kind == VIDEO_SOURCE_KIND else asset.get("image_id")
+        if nonpersona_row:
+            expected_kind = NONPERSONA_SOURCE_KIND
+            if source.get("kind") != expected_kind:
+                raise ContentAssetBindingError("nonpersona slots require visually-ruled-nonpersona-still sources")
+        else:
+            expected_kind = VIDEO_SOURCE_KIND if row.get("taxonomy_type") == "G" else SOURCE_KIND
+            if source.get("kind") != expected_kind:
+                raise ContentAssetBindingError("motion/video requires accepted-video-source; still slots require approved-gen-still")
+        asset = _validate_source(
+            root, creator, brief, source, train, slot=slot, brief_ref=current["brief"],
+        )
+        if expected_kind == NONPERSONA_SOURCE_KIND:
+            image_id = asset.get("sha256")
+            if f"{expected_kind}:{image_id}" in used_images:
+                raise ContentAssetBindingError("each nonpersona slot must use a distinct image")
+        else:
+            image_id = asset.get("candidate_id") if expected_kind == VIDEO_SOURCE_KIND else asset.get("image_id")
         identity = f"{expected_kind}:{image_id}"
         if not isinstance(image_id, str) or identity in used_images:
             raise ContentAssetBindingError("each slot must use a distinct approved gen image id")
         used_images.add(identity)
-        source_inputs.append((source, asset))
+        source_inputs.append((slot, source, asset))
         assignments.append({**expected, "slot_fit": attribution, "asset": asset})
 
     result = {
-        "schema": MOTION_SCHEMA if has_motion else SCHEMA,
+        "schema": NONPERSONA_SCHEMA if nonpersona else (MOTION_SCHEMA if has_motion else SCHEMA),
         "not_promotable": True,
-        "provenance": "offline content-slot planning evidence; no new asset, batch, publication, or metric approval",
+        "provenance": (
+            "offline content-slot planning evidence; nonpersona images are native source material "
+            "with delivery review pending; no new asset, batch, publication, or metric approval"
+        ) if nonpersona else "offline content-slot planning evidence; no new asset, batch, publication, or metric approval",
         "brief": current["brief"],
         "request": current["request"],
         "rulings": {
@@ -530,8 +690,10 @@ def build_content_asset_binding(
     if len(encoded) > briefs.MAX_JSON_BYTES:
         raise ContentAssetBindingError("content asset assignment exceeds output size limit")
 
-    for source, captured in source_inputs:
-        if _validate_source(root, creator, brief, source, train) != captured:
+    for slot, source, captured in source_inputs:
+        if _validate_source(
+            root, creator, brief, source, train, slot=slot, brief_ref=current["brief"],
+        ) != captured:
             raise ContentAssetBindingError("approved gen evidence changed during asset binding")
     # Bind brief, request, and rulings last so the slow source pass above
     # cannot hide a concurrent edit behind an earlier check.
