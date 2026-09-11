@@ -6,7 +6,9 @@ import { createWindowsStudioPlanJob, type WindowsJob } from './windowsStudioPlan
 // confirmed empty BEFORE the promise settles. Windows: a stdin-gated node
 // wrapper is assigned to an owned Job Object before it receives the planner
 // packet, so the planner and all its CreateProcess descendants are job members
-// from birth; no job, no launch. POSIX: an owned detached process group. When
+// from birth; no job, no launch. POSIX: an owned detached process group; this
+// assumes the trusted planner never calls setsid/setpgid to leave the group
+// (containment, not a sandbox; no cgroup layer). When
 // tree termination cannot be confirmed the error carries
 // `terminationUncertain: true` so the caller keeps its allocation and stops
 // accepting requests.
@@ -121,6 +123,20 @@ export const studioPlanProcessDefaults: StudioPlanProcessDeps = {
   createJob: createWindowsStudioPlanJob,
 };
 
+/**
+ * Inherited environment for the Windows gate wrapper, minus NODE_OPTIONS (any
+ * case): a `--require`/`--import` preload would run code in the wrapper before
+ * it is assigned to the job. Everything else stays normal inherited config;
+ * values are never inspected or logged. The caller's env is not mutated.
+ */
+export function gateEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const copy: NodeJS.ProcessEnv = {};
+  for (const name of Object.keys(env)) {
+    if (name.toUpperCase() !== 'NODE_OPTIONS') copy[name] = env[name];
+  }
+  return copy;
+}
+
 function validOptions(options: StudioPlanProcessOptions): boolean {
   const positive = (n: number) => Number.isFinite(n) && n > 0;
   return positive(options.timeout) && positive(options.maxBuffer) && typeof options.cwd === 'string';
@@ -147,6 +163,7 @@ export function runStudioPlanProcessWith(
       child = win
         ? deps.spawn(process.execPath, ['-e', WINDOWS_WRAPPER_SOURCE], {
           cwd: options.cwd, shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'],
+          env: gateEnv(process.env),
         })
         : deps.spawn(command, [...args], {
           cwd: options.cwd,

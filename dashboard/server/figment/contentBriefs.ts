@@ -137,7 +137,9 @@ function asset(value: unknown): boolean {
 function videoAsset(value: unknown): boolean {
   if (!object(value) || !keys(value, ['kind', 'scope', 'candidate_id', 'path', 'sha256', 'bytes', 'accepted_lineage', 'candidate_manifest', 'approved_still'])) return false;
   const entry = (input: unknown): boolean => object(input) && keys(input, ['path', 'sha256', 'bytes']) && snapshotRef({ path: input.path, sha256: input.sha256 }) && bytes(input.bytes);
-  return value.kind === 'accepted-video-source' && value.scope === 'source-material-only' && text(value.candidate_id, 256) !== null
+  // The video authority's safe-name rule already forbids padding; refuse it here rather than normalize.
+  const candidateId = text(value.candidate_id, 256);
+  return value.kind === 'accepted-video-source' && value.scope === 'source-material-only' && candidateId !== null && candidateId.trim() === candidateId
     && snapshotRef({ path: value.path, sha256: value.sha256 }) && typeof value.bytes === 'number' && Number.isSafeInteger(value.bytes) && value.bytes > 0 && value.bytes <= 2 * 1024 * 1024 * 1024
     && entry(value.accepted_lineage) && entry(value.candidate_manifest) && asset(value.approved_still);
 }
@@ -152,7 +154,9 @@ function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'r
     const expected = brief.slots[index];
     const recordedAsset = object(row) && object(row.asset) ? row.asset : null;
     const isMotion = expected.taxonomyType === 'G';
-    const imageId = recordedAsset === null ? null : text(isMotion ? recordedAsset.candidate_id : recordedAsset.image_id, 256);
+    const rawId = recordedAsset === null ? null : text(isMotion ? recordedAsset.candidate_id : recordedAsset.image_id, 256);
+    // Namespaced like the Python producer (kind:id): a still and a video may share an id.
+    const imageId = rawId === null ? null : `${isMotion ? 'accepted-video-source' : 'approved-gen-still'}:${rawId}`;
     if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || expected.kind !== 'persona' || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !(isMotion ? videoAsset(row.asset) : asset(row.asset)) || imageId === null || imageIds.has(imageId)) return null;
     imageIds.add(imageId);
   }

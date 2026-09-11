@@ -4,6 +4,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { FigmentWorkspace } from './FigmentWorkspace';
 
 const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
+const PREPARE_UNAVAILABLE = 'Generation plan preparation is unavailable. A current selected checkpoint and source authority are required before a plan can be prepared.';
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
 const recordedBriefs = (hypothesis = 'A recorded planning hypothesis.') => ({ status: 'recorded' as const, recordKind: 'planning-snapshot' as const, currentSourceRevalidated: false as const, items: [{ briefId: 'summer-test', briefDate: '2026-09-08', creatorId: 'creator-a', surface: 'carousel' as const, templateId: 'CT-2', requiredAssetCount: 2, requiredAssetSlots: [{ role: 'hook', kind: 'persona' as const }, { role: 'payoff', kind: 'persona' as const }], hypothesis, intendedMetric: 'saves per reached account', sourceCount: 1, sourceDates: ['2026-09-07'], observedMetrics: null, renderAs: 'text' as const }] });
 
@@ -215,7 +216,7 @@ describe('FigmentWorkspace', () => {
     render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
     await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
     fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
-    await screen.findByText('Response lost');
+    expect((await screen.findByRole('alert')).textContent).toBe(PREPARE_UNAVAILABLE); expect(screen.queryByText('Response lost')).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
     await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
     expect(keys).toHaveLength(2); expect(keys[1]).toBe(keys[0]);
@@ -223,6 +224,33 @@ describe('FigmentWorkspace', () => {
     await waitFor(() => expect(keys).toHaveLength(3));
     expect(keys[2]).not.toBe(keys[0]);
     await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
+  });
+
+  it('shows fixed copy for malformed and non-JSON preparation failures and keeps the intent until a validated plan', async () => {
+    const prepared = { schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'b'.repeat(64) };
+    const keys: string[] = [];
+    const fetchImpl = vi.fn((url: string, options?: RequestInit) => {
+      if (url === '/api/figment') return response(projection);
+      keys.push(new Headers(options?.headers).get('Idempotency-Key')!);
+      if (keys.length === 1) return Promise.resolve(new Response('{"plan": <leaked server text', { status: 200, headers: { 'content-type': 'application/json' } }));
+      if (keys.length === 2) return Promise.resolve(new Response('upstream exploded: secret-detail', { status: 503, headers: { 'content-type': 'text/plain' } }));
+      return response(prepared);
+    }) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await waitFor(() => expect(keys).toHaveLength(1));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Prepare generation plan' })).toHaveProperty('disabled', false));
+    expect(screen.getByRole('alert').textContent).toBe(PREPARE_UNAVAILABLE);
+    expect(document.body.textContent).not.toMatch(/leaked|Unexpected token/);
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await waitFor(() => expect(keys).toHaveLength(2));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Prepare generation plan' })).toHaveProperty('disabled', false));
+    expect(screen.getByRole('alert').textContent).toBe(PREPARE_UNAVAILABLE);
+    expect(document.body.textContent).not.toMatch(/secret-detail|upstream/);
+    fireEvent.click(screen.getByRole('button', { name: 'Prepare generation plan' }));
+    await screen.findByText(/creator-001.*gen.*one prepared run.*\$2\.50/);
+    expect(keys).toHaveLength(3); expect(keys[1]).toBe(keys[0]); expect(keys[2]).toBe(keys[0]);
   });
 
   it('fetches only listed diagnostic PNG assets with their projection hash', async () => {

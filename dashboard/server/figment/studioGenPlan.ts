@@ -190,10 +190,13 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
     if (request.body !== undefined) return reply.code(400).send({ error: 'body-not-allowed' });
     const intent = request.headers['idempotency-key'];
     if (typeof intent !== 'string' || !INTENT.test(intent)) return reply.code(400).send({ error: 'invalid-idempotency-key' });
+    // Resolve the verified subject before any mutation; the intent is bound to it.
+    const session = verifiedSession(request);
+    if (session === undefined) return reply.code(401).send({ error: 'missing-session' });
     if (terminationUncertain) return reply.code(503).send({ error: 'preparation-unavailable' });
     if (active) return reply.code(429).send({ error: 'preparation-busy' });
     active = true;
-    const intentSha = sha256(intent);
+    const intentSha = sha256(JSON.stringify([session.claims.sub, intent]));
     let root: SafeRoot | null = null;
     let allocated: string | null = null;
     const cleanup = async (): Promise<void> => {
@@ -214,6 +217,7 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       const rootBytes = await sizeOf(root, plansRoot);
       if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
       let published = 0;
+      let unmarked = false;
       let replay: { saved: Marker; directory: string } | null = null;
       const entries = await opendir(plansRoot);
       let count = 0;
@@ -223,7 +227,7 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
         const bytes = await sizeOf(root, directory);
         if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
         const markerName = join(directory, 'published.json');
-        if (!await entryExists(markerName)) continue;
+        if (!await entryExists(markerName)) { unmarked = true; continue; }
         const markerPath = await safePath(root, markerName, 'file');
         const raw = markerPath === null ? null : await readBounded(markerPath);
         const saved = raw === null ? null : marker(JSON.parse(raw.toString('utf8')));
@@ -240,8 +244,17 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
         const raw = planPath === null ? null : await readBounded(planPath);
         if (raw === null || sha256(raw) !== replay.saved.plan_sha256) return reply.code(409).send({ error: 'idempotency-conflict' });
         const prepared = summary(JSON.parse(raw.toString('utf8')), replay.saved.id, replay.saved.plan_sha256);
-        return prepared ?? reply.code(409).send({ error: 'idempotency-conflict' });
+        if (prepared === null) return reply.code(409).send({ error: 'idempotency-conflict' });
+        // A prior audit may have failed after publication: audit again (at least
+        // once, same stable id) so a replay never becomes unaudited success.
+        await options.auditPrepared?.(session.claims.sub, prepared.id, prepared.planSha256);
+        return prepared;
       }
+      // An unmarked allocation survives only when its runner's termination was
+      // uncertain or cleanup failed, possibly in an earlier process. Nothing
+      // proves that process is gone, so refuse new dispatch; recovery remains
+      // explicit operator work.
+      if (unmarked) throw new Error('unmarked-allocation');
       if (published >= MAX_PUBLISHED) throw new Error('capacity');
       const id = randomUUID();
       allocated = join(plansRoot, id);
@@ -266,8 +279,6 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       if (await safePath(root, allocated, 'directory') === null) throw new Error('unsafe-publication');
       await publish(join(allocated, 'published.json'), JSON.stringify(publishedMarker));
       allocated = null;
-      const session = verifiedSession(request);
-      if (session === undefined) throw new Error('missing-session');
       await options.auditPrepared?.(session.claims.sub, id, planSha256);
       return prepared;
     } catch (error) {

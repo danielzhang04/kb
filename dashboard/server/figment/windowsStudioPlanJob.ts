@@ -47,17 +47,19 @@ function loadBindings() {
   const koffi = nodeRequire('koffi') as Koffi;
   const kernel32 = koffi.load('kernel32.dll');
   const H = 'void *';
+  // Win32 BOOL is a 4-byte int, not a C99 1-byte bool; nonzero is true.
+  const BOOL = 'int';
   const fn = (name: string, result: string, args: string[]) => kernel32.func('__stdcall', name, result, args);
   return {
     koffi,
     CreateJobObjectW: fn('CreateJobObjectW', H, [H, H]),
-    SetInformationJobObject: fn('SetInformationJobObject', 'bool', [H, 'int', H, 'uint32']),
-    QueryInformationJobObject: fn('QueryInformationJobObject', 'bool', [H, 'int', H, 'uint32', H]),
-    OpenProcess: fn('OpenProcess', H, ['uint32', 'bool', 'uint32']),
-    AssignProcessToJobObject: fn('AssignProcessToJobObject', 'bool', [H, H]),
-    IsProcessInJob: fn('IsProcessInJob', 'bool', [H, H, H]),
-    TerminateJobObject: fn('TerminateJobObject', 'bool', [H, 'uint32']),
-    CloseHandle: fn('CloseHandle', 'bool', [H]),
+    SetInformationJobObject: fn('SetInformationJobObject', BOOL, [H, 'int', H, 'uint32']),
+    QueryInformationJobObject: fn('QueryInformationJobObject', BOOL, [H, 'int', H, 'uint32', H]),
+    OpenProcess: fn('OpenProcess', H, ['uint32', BOOL, 'uint32']),
+    AssignProcessToJobObject: fn('AssignProcessToJobObject', BOOL, [H, H]),
+    IsProcessInJob: fn('IsProcessInJob', BOOL, [H, H, H]),
+    TerminateJobObject: fn('TerminateJobObject', BOOL, [H, 'uint32']),
+    CloseHandle: fn('CloseHandle', BOOL, [H]),
   };
 }
 
@@ -87,7 +89,7 @@ export function createWindowsStudioPlanJob(): WindowsJob | null {
   return {
     assign(pid) {
       if (!open || !Number.isInteger(pid) || pid <= 0) return false;
-      const proc = b.OpenProcess(PROCESS_ASSIGN_ACCESS, false, pid);
+      const proc = b.OpenProcess(PROCESS_ASSIGN_ACCESS, 0, pid);
       if (badHandle(b.koffi, proc)) return false;
       try {
         if (!b.AssignProcessToJobObject(job, proc)) return false;

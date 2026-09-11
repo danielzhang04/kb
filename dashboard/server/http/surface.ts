@@ -599,16 +599,32 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);
-      registerFigmentStudioGenPlan(authenticated, {
-        repoRoot: ctx.repoRoot,
-        ledgerDir: join(ctx.repoRoot, 'ledgers', 'cost'),
-        sessionConfig: ctx.sessionConfig,
-        auditPrepared: async (subject, id, planSha256) => {
-          await auditFn(ctx)(ctx.repoRoot, {
-            action: 'figment-gen-plan-prepare', owner: subject, target: id, riskTier: 'T1',
-            result: 'prepared', detail: { planSha256 },
-          }, { runGit: ctx.opsGit, now: ctx.now });
-        },
+      // Plan preparation allocates `_private` state and commits an audit row, so it is new work: its own
+      // child scope adds the admission + fleet preamble gate after the inherited session gate, and the hook
+      // cannot bleed onto sibling routes. Refusals are fixed strings — preamble output never leaves here.
+      authenticated.register(async (studio) => {
+        studio.addHook('preHandler', async (_req, reply) => {
+          const admission = ctx.admission('new-work');
+          if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
+          let runnable = false;
+          try {
+            runnable = assertFleetRunnable(ctx.repoRoot, ctx.runPreamble ?? defaultPreambleRunner).ok;
+          } catch {
+            runnable = false;
+          }
+          if (!runnable) return reply.code(503).send({ error: 'fleet-frozen' });
+        });
+        registerFigmentStudioGenPlan(studio, {
+          repoRoot: ctx.repoRoot,
+          ledgerDir: join(ctx.repoRoot, 'ledgers', 'cost'),
+          sessionConfig: ctx.sessionConfig,
+          auditPrepared: async (subject, id, planSha256) => {
+            await auditFn(ctx)(ctx.repoRoot, {
+              action: 'figment-gen-plan-prepare', owner: subject, target: id, riskTier: 'T1',
+              result: 'prepared', detail: { planSha256 },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          },
+        });
       });
       // P6 W6.1 [P6-C20]: v1 operator MUTATIONS join the operator authenticated scope — they SHOULD spend
       // the operator write budget and prove the session. The scope's operatorRouteOnlyGuard refuses the

@@ -367,7 +367,10 @@ def _video_entry(root: Path, value: object, label: str) -> dict[str, Any]:
 def _validate_video_source(
     root: Path, creator: str, brief: dict[str, Any], source: dict[str, Any], train: Any,
 ) -> dict[str, Any]:
-    _only_keys(source, {"kind", "accepted_video"}, "video slot source")
+    _only_keys(source, {"kind", "accepted_video", "accepted_video_sha256"}, "video slot source")
+    ruled_digest = source.get("accepted_video_sha256")
+    if not isinstance(ruled_digest, str) or not SHA256.fullmatch(ruled_digest):
+        raise ContentAssetBindingError("video slot source must bind accepted_video_sha256")
     accepted = _safe_input(root, source.get("accepted_video"), "accepted video record")
     # The sole video validator applies its own bounded record parser. The
     # smaller content-brief node budget cannot parse a full 81-frame subject.
@@ -384,7 +387,18 @@ def _validate_video_source(
     )}
     if entries["accepted_lineage"]["path"] != accepted.relative_to(root).as_posix():
         raise ContentAssetBindingError("accepted video authority returned a different record")
-    candidate = _read_json(root / entries["candidate_manifest"]["path"], "video candidate manifest")
+    if entries["accepted_lineage"]["sha256"] != ruled_digest:
+        raise ContentAssetBindingError("accepted video record differs from the slot-fit ruling digest")
+    # Parse through the sole video reader and require its exact byte snapshot
+    # to be the manifest captured above; no unhashed second open is trusted.
+    try:
+        candidate, _, parsed_entry = video._read_json(
+            root, Path(entries["candidate_manifest"]["path"]), "video candidate manifest",
+        )
+    except Exception as exc:
+        raise ContentAssetBindingError("accepted video candidate manifest is unreadable") from exc
+    if parsed_entry != entries["candidate_manifest"]:
+        raise ContentAssetBindingError("accepted video candidate manifest differs from its captured snapshot")
     provenance = candidate.get("provenance")
     first_frame = provenance.get("first_frame") if isinstance(provenance, dict) else None
     approved = first_frame.get("approved_gen") if isinstance(first_frame, dict) else None
@@ -516,13 +530,16 @@ def build_content_asset_binding(
     if len(encoded) > briefs.MAX_JSON_BYTES:
         raise ContentAssetBindingError("content asset assignment exceeds output size limit")
 
-    if _current_brief(root, request_path, brief_path) != current:
-        raise ContentAssetBindingError("brief producer inputs changed during asset binding")
-    if _sha256(rulings_file) != rulings_digest:
-        raise ContentAssetBindingError("slot-fit rulings changed during asset binding")
     for source, captured in source_inputs:
         if _validate_source(root, creator, brief, source, train) != captured:
             raise ContentAssetBindingError("approved gen evidence changed during asset binding")
+    # Bind brief, request, and rulings last so the slow source pass above
+    # cannot hide a concurrent edit behind an earlier check.
+    if _current_brief(root, request_path, brief_path) != current:
+        raise ContentAssetBindingError("brief producer inputs changed during asset binding")
+    final_rulings = _safe_input(root, rulings_path, "slot-fit rulings")
+    if final_rulings != rulings_file or _sha256(final_rulings) != rulings_digest:
+        raise ContentAssetBindingError("slot-fit rulings changed during asset binding")
 
     try:
         with output.open("xb") as handle:

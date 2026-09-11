@@ -301,6 +301,43 @@ def test_concurrent_accept_and_reject_create_only_one_terminal(
     assert len(terminals) == 1 and (store / "terminal-claim.json").is_file()
 
 
+def _deep(depth: int) -> object:
+    value: object = "x"
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+@pytest.mark.parametrize(("builder", "bloat", "message"), [
+    ("_attempt_record", "size", "video review attempt exceeds the bounded JSON output limit"),
+    ("_terminal_record", "size", "video terminal decision exceeds the bounded JSON output limit"),
+    ("_terminal_record", "depth", "video terminal decision JSON is too deep"),
+])
+@pytest.mark.parametrize("decision", ["accept", "reject"])
+def test_unpublishable_attempt_or_terminal_refuses_before_any_claim(
+    prepared_base: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+    builder: str, bloat: str, message: str, decision: str,
+) -> None:
+    root = _case(prepared_base, tmp_path, monkeypatch)
+    evaluation, store = _evaluation(root)
+    before = sorted(path.name for path in store.iterdir())
+    context = _context(root, _rulings(evaluation, "bloat-1", decision), "bloat.json")
+    monkeypatch.setattr(review, "_decision_context", lambda *args: copy.deepcopy(context))
+    original = getattr(review, builder)
+    padding = ["x" * 60_000] * 20 if bloat == "size" else _deep(review.video.MAX_JSON_DEPTH + 2)
+    monkeypatch.setattr(review, builder, lambda *args: {**original(*args), "padding": padding})
+    claims: list[bytes] = []
+    publications: list[str] = []
+    monkeypatch.setattr(review, "_claim_terminal", lambda *args: claims.append(args[-1]))
+    monkeypatch.setattr(review, "_exclusive_file", lambda *args: publications.append(args[-1]))
+    with pytest.raises(review.VideoReviewError, match=message):
+        review.apply_rulings(root=root, rulings=Path("bloat.json"), **_inputs())
+    assert claims == [] and publications == []
+    assert sorted(path.name for path in store.iterdir()) == before == ["evaluation-inputs.json"]
+    assert not (store / "terminal-claim.json").exists()
+    assert not (store / "attempt-bloat-1.json").exists()
+
+
 def test_cli_refuses_malformed_rulings_without_attempt_or_traceback(
     prepared_base: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],
 ) -> None:

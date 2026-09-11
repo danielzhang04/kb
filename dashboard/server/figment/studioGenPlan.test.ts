@@ -20,10 +20,10 @@ async function fixture(run?: RunStudioGenPlan, extra: Partial<StudioGenPlanOptio
   const script = join(repo, 'orgs', 'figment', 'pipeline', 'figment_train.py'); await mkdir(join(script, '..'), { recursive: true }); await writeFile(script, '# fixture', 'utf8');
   const ledger = join(repo, 'ledgers', 'cost'); await mkdir(ledger, { recursive: true });
   const runner = vi.fn(run ?? (async (_command, args) => { const out = args[args.indexOf('--out') + 1]; await writeFile(join(out, 'plan.json'), JSON.stringify(PLAN), 'utf8'); })) as RunStudioGenPlan;
-  const audit = vi.fn(async () => {}); const app = Fastify({ logger: false }); registerFigmentStudioGenPlan(app, { repoRoot: repo, ledgerDir: ledger, sessionConfig, runStudioGenPlan: runner, auditPrepared: audit, platform: 'win32', ...extra }); await app.ready();
+  const audit = vi.fn(async (_subject: string, _id: string, _sha: string) => {}); const app = Fastify({ logger: false }); registerFigmentStudioGenPlan(app, { repoRoot: repo, ledgerDir: ledger, sessionConfig, runStudioGenPlan: runner, auditPrepared: audit, platform: 'win32', ...extra }); await app.ready();
   return { app, repo, ledger, runner, audit };
 }
-function headers(intent = key): Record<string, string> { return { authorization: `Bearer ${mintSession('operator', sessionConfig).token}`, 'idempotency-key': intent }; }
+function headers(intent = key, subject = 'operator'): Record<string, string> { return { authorization: `Bearer ${mintSession(subject, sessionConfig).token}`, 'idempotency-key': intent }; }
 
 describe('Studio generation-plan preparation', () => {
   it('runs only the fixed planner into a stable published directory and returns no private fields', async () => {
@@ -38,12 +38,17 @@ describe('Studio generation-plan preparation', () => {
   });
 
   it('replays a matching marker without a second child and blocks one active preparation', async () => {
-    let release: (() => void) | undefined; const waiting = new Promise<void>((resolve) => { release = resolve; }); const { app, runner, audit } = await fixture(async (_command, args) => { await waiting; await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(PLAN), 'utf8'); });
-    const first = app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); await new Promise((resolve) => setImmediate(resolve)); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('B'.repeat(32)) })).statusCode).toBe(429); release?.(); expect((await first).statusCode).toBe(200); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(200); expect(runner).toHaveBeenCalledTimes(1); expect(audit).toHaveBeenCalledTimes(1); await app.close();
+    let release: (() => void) | undefined; const waiting = new Promise<void>((resolve) => { release = resolve; });
+    let entered: (() => void) | undefined; const runnerEntered = new Promise<void>((resolve) => { entered = resolve; });
+    const { app, runner, audit } = await fixture(async (_command, args) => { entered?.(); await waiting; await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(PLAN), 'utf8'); });
+    const first = app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); await runnerEntered; expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('B'.repeat(32)) })).statusCode).toBe(429); release?.(); const prepared = await first; expect(prepared.statusCode).toBe(200);
+    const replay = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); expect(replay.statusCode).toBe(200); expect(replay.json().id).toBe(prepared.json().id); expect(runner).toHaveBeenCalledTimes(1);
+    // Replay re-audits the same stable id (at-least-once).
+    expect(audit).toHaveBeenCalledTimes(2); expect(audit.mock.calls[1]).toEqual(audit.mock.calls[0]); await app.close();
   });
 
   it('refuses a replay marker whose opaque id does not bind its allocated directory', async () => {
-    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const root = join(repo, '_private', 'figment-studio', 'gen-plans'); const marker = join(root, id, 'published.json'); const plan = JSON.stringify(PLAN); await writeFile(marker, JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: '00000000-0000-4000-8000-000000000000', plan_sha256: createHash('sha256').update(plan).digest('hex'), intent_sha256: createHash('sha256').update(key).digest('hex'), created_utc: '2026-09-10T00:00:00.000Z' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503); expect(runner).toHaveBeenCalledTimes(1); await app.close();
+    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const root = join(repo, '_private', 'figment-studio', 'gen-plans'); const marker = join(root, id, 'published.json'); const plan = JSON.stringify(PLAN); await writeFile(marker, JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: '00000000-0000-4000-8000-000000000000', plan_sha256: createHash('sha256').update(plan).digest('hex'), intent_sha256: createHash('sha256').update(JSON.stringify(['operator', key])).digest('hex'), created_utc: '2026-09-10T00:00:00.000Z' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503); expect(runner).toHaveBeenCalledTimes(1); await app.close();
   });
 
   it('does not reuse a key when its published plan bytes are stale, and reserves two published plans', async () => {
@@ -86,16 +91,54 @@ describe('Studio preparation repair boundaries', () => {
     await app.close();
   });
 
-  it('retains a published plan on audit failure and replays without another compilation', async () => {
-    const audit = vi.fn(async () => { throw new Error('injected audit failure'); });
+  it('retains a published plan on audit failure and succeeds on replay only once audit succeeds', async () => {
+    let failures = 2;
+    const audit = vi.fn(async (_subject: string, _id: string, _sha: string) => { if (failures-- > 0) throw new Error('injected audit failure'); });
     const { app, repo, runner } = await fixture(undefined, { auditPrepared: audit });
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503);
+    expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' });
     const replay = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() });
     expect(replay.statusCode).toBe(200);
     expect(await readFile(join(repo, '_private', 'figment-studio', 'gen-plans', replay.json().id, 'published.json'), 'utf8')).toContain('figment/studio-gen-plan-marker@1');
     expect(runner).toHaveBeenCalledTimes(1);
-    expect(audit).toHaveBeenCalledTimes(1);
+    expect(audit).toHaveBeenCalledTimes(3);
+    expect(new Set(audit.mock.calls.map(([subject, id, sha]) => `${subject}|${id}|${sha}`))).toEqual(new Set([`operator|${replay.json().id}|${replay.json().planSha256}`]));
     await app.close();
+  });
+
+  it('binds the idempotency key to the verified session subject', async () => {
+    const { app, runner, audit } = await fixture();
+    const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers(key, 'operator') });
+    const other = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers(key, 'second-operator') });
+    expect(first.statusCode).toBe(200);
+    expect(other.statusCode).toBe(200);
+    expect(other.json().id).not.toBe(first.json().id);
+    expect(runner).toHaveBeenCalledTimes(2);
+    expect(audit.mock.calls.map(([subject]) => subject)).toEqual(['operator', 'second-operator']);
+    expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers(key, 'second-operator') })).json().id).toBe(other.json().id);
+    expect(runner).toHaveBeenCalledTimes(2);
+    await app.close();
+  });
+
+  it('keeps an uncertain allocation blocking new dispatch after the route is registered again', async () => {
+    let allocated = '';
+    const { app, repo, ledger, runner } = await fixture(async (_command, args) => {
+      allocated = args[args.indexOf('--out') + 1];
+      await writeFile(join(allocated, 'incomplete'), 'owned partial output');
+      throw new StudioPlanProcessError('timeout', true);
+    });
+    expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503);
+    await app.close();
+    // Simulated dashboard restart: a fresh instance with no in-memory flag.
+    const restartedRunner = vi.fn(async () => {}) as unknown as RunStudioGenPlan;
+    const restarted = Fastify({ logger: false });
+    registerFigmentStudioGenPlan(restarted, { repoRoot: repo, ledgerDir: ledger, sessionConfig, runStudioGenPlan: restartedRunner, auditPrepared: async () => {}, platform: 'win32' });
+    await restarted.ready();
+    expect((await restarted.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('B'.repeat(32)) })).json()).toEqual({ error: 'preparation-unavailable' });
+    expect(restartedRunner).not.toHaveBeenCalled();
+    expect(runner).toHaveBeenCalledTimes(1);
+    expect(await readFile(join(allocated, 'incomplete'), 'utf8')).toBe('owned partial output');
+    await restarted.close();
   });
 
   it('retains uncertain process output and refuses every later preparation on this handler', async () => {

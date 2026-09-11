@@ -1,5 +1,7 @@
 # Figment whole-plan progress - 2026-09-10
 
+**Superseding checkpoint (2026-09-11):** Five independent reviews completed; confirmed repairs are written. See [review triage](2026-09-11-independent-review-triage.md) and OPS/handoffs/2026-09-11-figment-review-checkpoint.md for current tests and exact next steps. Historical counts and pending-packet wording below describe the September10 checkpoint, not current worker status. Final independent repair review and full current video suite remain before technical readiness.
+
 The core CLI infrastructure is substantially built. There is not yet a complete usable production Studio or an accepted creator media pipeline. Components exist across mandate stages1-7; this does not mean those stages have all met their quality goals. Posting/measurement and optimization (stages8-9) remain deferred by the user's later instruction.
 
 | Workstream | Built and verified | Remaining |

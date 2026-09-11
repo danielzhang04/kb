@@ -167,44 +167,89 @@ def _record(root: Path, value: Any, label: str, maximum: int) -> dict[str, Any]:
     return current
 
 
-def _prompt_text(path: Path) -> str:
+def _frame_snapshot(root: Path, record: dict[str, Any]) -> tuple[dict[str, Any], bytes]:
+    """One bounded, link-free read whose exact bytes must match the captured frame record."""
+    label = "candidate frame"
+    relative = Path(record["path"])
+    try:
+        path = frames._within(root, relative, label)
+        before = os.lstat(path)
+        if frames._unsafe_link(path) or not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > frames.MAX_FRAME_BYTES:
+            raise VideoReviewError(f"{label} must be a regular file no larger than {frames.MAX_FRAME_BYTES} bytes")
+        with path.open("rb") as handle:
+            opened = os.fstat(handle.fileno())
+            raw = handle.read(frames.MAX_FRAME_BYTES + 1)
+            finished = os.fstat(handle.fileno())
+        after = os.lstat(path)
+        unsafe_after = frames._unsafe_link(path)
+    except VideoReviewError:
+        raise
+    except frames.FrameExtractError as exc:
+        raise VideoReviewError(str(exc)) from exc
+    except OSError as exc:
+        raise VideoReviewError(f"cannot read {label}") from exc
+    identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
+    if len(raw) > frames.MAX_FRAME_BYTES:
+        raise VideoReviewError(f"{label} must be a regular file no larger than {frames.MAX_FRAME_BYTES} bytes")
+    if unsafe_after or len(raw) != before.st_size or identity(before) != identity(opened) or identity(opened) != identity(finished) or identity(finished) != identity(after):
+        raise VideoReviewError(f"{label} changed while being read")
+    current = {"path": relative.as_posix(), "bytes": len(raw), "sha256": hashlib.sha256(raw).hexdigest()}
+    _same(current, {key: record.get(key) for key in ("path", "bytes", "sha256")}, label)
+    return current, raw
+
+
+def _prompt_source(raw: bytes) -> str:
+    """Parse the native prompt tEXt chunk from an already-hashed PNG byte buffer."""
     found: list[str] = []
     try:
-        with path.open("rb") as handle:
-            if handle.read(8) != PNG_SIGNATURE:
-                raise VideoReviewError("candidate frame is not a PNG")
-            while True:
-                header = handle.read(8)
-                if len(header) != 8:
+        if raw[:8] != PNG_SIGNATURE:
+            raise VideoReviewError("candidate frame is not a PNG")
+        offset = 8
+        while True:
+            header = raw[offset:offset + 8]
+            if len(header) != 8:
+                raise VideoReviewError("candidate PNG metadata is truncated")
+            length, kind = struct.unpack(">I4s", header)
+            if length > frames.MAX_FRAME_BYTES:
+                raise VideoReviewError("candidate PNG chunk is too large")
+            start = offset + 8
+            offset = start + length + 4
+            if kind in (b"tEXt", b"iTXt", b"zTXt"):
+                if length > MAX_PROMPT_BYTES:
+                    raise VideoReviewError("candidate PNG text metadata is too large")
+                if offset > len(raw):
                     raise VideoReviewError("candidate PNG metadata is truncated")
-                length, kind = struct.unpack(">I4s", header)
-                if length > frames.MAX_FRAME_BYTES:
-                    raise VideoReviewError("candidate PNG chunk is too large")
-                if kind in (b"tEXt", b"iTXt", b"zTXt"):
-                    if length > MAX_PROMPT_BYTES:
-                        raise VideoReviewError("candidate PNG text metadata is too large")
-                    payload = handle.read(length)
-                    if len(payload) != length or len(handle.read(4)) != 4:
-                        raise VideoReviewError("candidate PNG metadata is truncated")
-                    keyword, separator, remainder = payload.partition(b"\0")
-                    if separator and keyword == b"prompt":
-                        if kind == b"tEXt":
-                            found.append(remainder.decode("latin-1"))
-                        else:
-                            raise VideoReviewError("candidate prompt metadata must use the pinned native tEXt form")
-                else:
-                    handle.seek(length + 4, os.SEEK_CUR)
-                if kind == b"IEND":
-                    break
-    except (OSError, UnicodeError, struct.error) as exc:
+                keyword, separator, remainder = raw[start:start + length].partition(b"\0")
+                if separator and keyword == b"prompt":
+                    if kind == b"tEXt":
+                        found.append(remainder.decode("latin-1"))
+                    else:
+                        raise VideoReviewError("candidate prompt metadata must use the pinned native tEXt form")
+            if kind == b"IEND":
+                break
+    except (UnicodeError, struct.error) as exc:
         raise VideoReviewError("cannot read candidate PNG prompt metadata") from exc
     if len(found) != 1 or len(found[0].encode("utf-8")) > MAX_PROMPT_BYTES:
         raise VideoReviewError("candidate PNG must contain exactly one bounded prompt graph")
     return found[0]
 
 
+def _prompt_text(path: Path) -> str:
+    try:
+        with path.open("rb") as handle:
+            raw = handle.read(frames.MAX_FRAME_BYTES + 1)
+    except OSError as exc:
+        raise VideoReviewError("cannot read candidate PNG prompt metadata") from exc
+    if len(raw) > frames.MAX_FRAME_BYTES:
+        raise VideoReviewError("candidate frame is too large")
+    return _prompt_source(raw)
+
+
 def _prompt_graph(path: Path, expected_sha256: str) -> None:
-    source = _prompt_text(path)
+    _prompt_graph_source(_prompt_text(path), expected_sha256)
+
+
+def _prompt_graph_source(source: str, expected_sha256: str) -> None:
     if not video._depth_ok(source):
         raise VideoReviewError("candidate PNG prompt graph must be shallow")
     try:
@@ -302,13 +347,15 @@ def _subject(
     total = 0
     run_dir = run_path.parent.relative_to(root)
     for index, item in enumerate(run_files, start=1):
-        current = _record(root, {"path": (run_dir / item["path"]).as_posix(), "bytes": item["bytes"], "sha256": assembly_frames[index - 1].get("sha256")}, "candidate frame", frames.MAX_FRAME_BYTES)
+        # The prompt graph is parsed from the exact bytes that matched the captured hash.
+        current, raw = _frame_snapshot(root, {"path": (run_dir / item["path"]).as_posix(), "bytes": item["bytes"], "sha256": assembly_frames[index - 1].get("sha256")})
         current["index"] = index
         _same(current, assembly_frames[index - 1], "assembly frame")
         total += current["bytes"]
         if total > assembly.MAX_TOTAL_FRAME_BYTES:
             raise VideoReviewError("candidate frames exceed the aggregate byte limit")
-        _prompt_graph(root / Path(current["path"]), executed_sha256)
+        _prompt_graph_source(_prompt_source(raw), executed_sha256)
+        del raw
         current_frames.append(current)
 
     movie = _record(root, assembly_value.get("movie"), "candidate movie", frames.MAX_VIDEO_BYTES)
@@ -388,11 +435,15 @@ def prepare_review(
     repeated, repeated_destination = _subject(*arguments)
     if _canonical(before, "video review subject") != _canonical(repeated, "video review subject") or destination != repeated_destination:
         raise VideoReviewError("video review evidence changed during preparation")
-    created = False
     try:
-        destination.relative_to(root)
-        parent_relative = destination.parent.relative_to(root)
         destination_relative = destination.relative_to(root)
+    except ValueError as exc:
+        raise VideoReviewError("video candidate review directory is not below root") from exc
+    # Preflight the bounded serialization before any store directory exists.
+    _json_bytes(_evaluation_record(before, destination_relative.as_posix()), "video evaluation inputs")
+    created: tuple[int, int] | None = None
+    try:
+        parent_relative = destination.parent.relative_to(root)
         parent = frames._within(root, parent_relative, "review parent", must_exist=False)
         if not parent.exists():
             parent.mkdir()
@@ -400,34 +451,45 @@ def prepare_review(
         if destination.exists() or destination.is_symlink():
             raise VideoReviewError("video candidate review directory must be fresh")
         destination.mkdir()
-        created = True
+        created = _identity(os.lstat(destination))
         destination = frames._within(root, destination_relative, "review directory")
         final, final_destination = _subject(*arguments)
         if final_destination != destination or _canonical(before, "video review subject") != _canonical(final, "video review subject"):
             raise VideoReviewError("video review evidence changed before publication")
-        record = lineage.wrap_subject(
-            SCHEMA, final, status=STATUS,
-            candidate_id=final["candidate"]["id"],
-            review_directory=destination_relative.as_posix(),
-        )
-        _bounded(record, "video evaluation inputs")
-        target = destination / "evaluation-inputs.json"
-        with target.open("x", encoding="utf-8") as handle:
-            json.dump(record, handle, ensure_ascii=False, indent=2, sort_keys=True, allow_nan=False)
-            handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
+        record = _evaluation_record(final, destination_relative.as_posix())
+        _exclusive_file(root, destination / EVALUATION_NAME, record, "video evaluation inputs")
         return record
     except VideoReviewError:
-        if created:
-            frames._cleanup_owned_directory(root, destination)
+        if created is not None:
+            _cleanup_created(root, destination, created)
         raise
     except (OSError, frames.FrameExtractError) as exc:
-        if created:
-            frames._cleanup_owned_directory(root, destination)
+        if created is not None:
+            _cleanup_created(root, destination, created)
         raise VideoReviewError("cannot create fresh video review preparation") from exc
-    except Exception:
-        if created:
-            frames._cleanup_owned_directory(root, destination)
+    except BaseException:
+        # Interrupts also retract our fresh directory; a kill or power loss leaves an
+        # orphan that intentionally fails closed as a non-fresh store.
+        if created is not None:
+            _cleanup_created(root, destination, created)
         raise
+
+
+def _evaluation_record(subject: dict[str, Any], review_directory: str) -> dict[str, Any]:
+    return lineage.wrap_subject(
+        SCHEMA, subject, status=STATUS,
+        candidate_id=subject["candidate"]["id"], review_directory=review_directory,
+    )
+
+
+def _cleanup_created(root: Path, destination: Path, identity: tuple[int, int]) -> None:
+    """Remove only the exact directory this invocation created, never one that replaced it."""
+    try:
+        current = os.lstat(destination)
+    except OSError:
+        return
+    if stat.S_ISDIR(current.st_mode) and _identity(current) == identity:
+        frames._cleanup_owned_directory(root, destination)
 
 
 def _exact_keys(value: Any, keys: set[str], label: str) -> dict[str, Any]:
@@ -819,6 +881,23 @@ def _attempt_record(context: dict[str, Any], review_directory: str) -> dict[str,
     )
 
 
+def _terminal_record(context: dict[str, Any], review_directory: str, attempt_entry: dict[str, Any]) -> dict[str, Any]:
+    subject = context["subject"]
+    normalized = context["normalized"]
+    accept = normalized["decision"] == "accept"
+    return lineage.wrap_subject(
+        ACCEPTED_VIDEO_SCHEMA if accept else REJECTION_SCHEMA, subject,
+        status="accepted" if accept else "rejected",
+        candidate_id=subject["candidate"]["id"], review_directory=review_directory,
+        transition="video-candidate-acceptance" if accept else "video-candidate-rejection",
+        inputs=_subject_inputs(subject), evaluation_inputs=context["evaluation_entry"],
+        attempt={"id": normalized["attempt_id"], "record": attempt_entry},
+        rulings_sha256=_canonical(normalized, "normalized video rulings"),
+        attribution={"decided_by": normalized["decided_by"], "decided_at": normalized["decided_at"]},
+        movie=subject["assembly"]["movie"], approved_still=subject["approved_gen"]["frame"],
+    )
+
+
 def apply_rulings(
     *, root: Path, candidate_manifest: Path, run_receipt: Path,
     assembly_receipt: Path, extraction_receipt: Path, rulings: Path,
@@ -846,12 +925,22 @@ def apply_rulings(
     if len(inventory["attempts"]) >= MAX_ATTEMPTS:
         raise VideoReviewError("video review store has no remaining attempt capacity")
     claim_raw = _json_bytes(_claim_value(normalized, first["stamp"], review_relative), "video terminal claim")
+    # Serialize every record this decision publishes before any claim exists, so an
+    # oversized or overdeep attempt/terminal refuses without leaving fail-closed state.
+    attempt_raw = _json_bytes(_attempt_record(first, review_relative), "video review attempt")
+    attempt_entry = {
+        "path": attempt_path.relative_to(root).as_posix(), "bytes": len(attempt_raw),
+        "sha256": hashlib.sha256(attempt_raw).hexdigest(),
+    }
     if decision in ("accept", "reject"):
+        terminal_raw = _json_bytes(_terminal_record(first, review_relative, attempt_entry), "video terminal decision")
         _claim_terminal(root, claim_path, claim_raw)
     final = _decision_context(*arguments)
     if final["destination"] != destination or _context_sha256(first) != _context_sha256(final):
         raise VideoReviewError("video ruling evidence changed before publication")
     attempt = _attempt_record(final, review_relative)
+    if _json_bytes(attempt, "video review attempt") != attempt_raw:
+        raise VideoReviewError("video review attempt changed before publication")
     owned = _exclusive_file(root, attempt_path, attempt, "video review attempt")
     if decision == "parked":
         # A terminal claim that raced this append wins; retract the exact file we just linked.
@@ -859,21 +948,12 @@ def apply_rulings(
             _remove_owned(root, attempt_path, owned)
             raise VideoReviewError("video candidate gained a terminal claim; parked attempt refused")
         return attempt
-    _, _, attempt_entry = _read_json(root, attempt_path.relative_to(root), "video review attempt")
-    terminal_schema = ACCEPTED_VIDEO_SCHEMA if decision == "accept" else REJECTION_SCHEMA
-    terminal_status = "accepted" if decision == "accept" else "rejected"
+    _, _, published = _read_json(root, attempt_path.relative_to(root), "video review attempt")
+    _same(published, attempt_entry, "video review attempt publication")
     terminal_target = destination / (ACCEPTED_NAME if decision == "accept" else REJECTED_NAME)
-    subject = final["subject"]
-    terminal = lineage.wrap_subject(
-        terminal_schema, subject, status=terminal_status,
-        candidate_id=subject["candidate"]["id"], review_directory=review_relative,
-        transition="video-candidate-acceptance" if decision == "accept" else "video-candidate-rejection",
-        inputs=_subject_inputs(subject), evaluation_inputs=final["evaluation_entry"],
-        attempt={"id": normalized["attempt_id"], "record": attempt_entry},
-        rulings_sha256=attempt["rulings_sha256"],
-        attribution=attempt["attribution"], movie=subject["assembly"]["movie"],
-        approved_still=subject["approved_gen"]["frame"],
-    )
+    terminal = _terminal_record(final, review_relative, attempt_entry)
+    if _json_bytes(terminal, "video terminal decision") != terminal_raw:
+        raise VideoReviewError("video terminal decision changed before publication")
     # Final fresh check: evidence, our claim bytes, and our attempt bytes are unchanged.
     fresh = _decision_context(*arguments)
     if fresh["destination"] != destination or _context_sha256(first) != _context_sha256(fresh):

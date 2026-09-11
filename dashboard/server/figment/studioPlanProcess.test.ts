@@ -213,6 +213,35 @@ describe('Windows owned-job containment (fail closed)', () => {
     expect(error.terminationUncertain).toBe(true);
     expect(closes).toBe(1);
   });
+
+  it('spawns the gate wrapper without any inherited NODE_OPTIONS and leaves process.env intact', async () => {
+    const names = process.platform === 'win32' ? ['NODE_OPTIONS'] : ['NODE_OPTIONS', 'node_options', 'Node_Options'];
+    const saved = names.map((name) => [name, process.env[name]] as const);
+    for (const name of names) process.env[name] = '--require=./fixture-preload.cjs';
+    try {
+      let captured: NodeJS.ProcessEnv | undefined;
+      const job: WindowsJob = { assign: () => false, terminateAndConfirmEmpty: async () => true, close: () => {} };
+      const deps: StudioPlanProcessDeps = {
+        ...studioPlanProcessDefaults,
+        platform: 'win32',
+        createJob: () => job,
+        spawn: ((_command: string, _args: string[], options: { env?: NodeJS.ProcessEnv }) => {
+          captured = options.env;
+          return stuckWrapper();
+        }) as unknown as StudioPlanProcessDeps['spawn'],
+        closeGraceMs: 100,
+      };
+      await failure(runStudioPlanProcessWith(deps, node, [script, 'ok'], opts()));
+      expect(captured).toBeDefined();
+      expect(Object.keys(captured!).filter((name) => name.toUpperCase() === 'NODE_OPTIONS')).toEqual([]);
+      expect(Object.keys(captured!).length).toBeGreaterThan(0);
+      for (const name of names) expect(process.env[name]).toBe('--require=./fixture-preload.cjs');
+    } finally {
+      for (const [name, value] of saved) {
+        if (value === undefined) delete process.env[name]; else process.env[name] = value;
+      }
+    }
+  });
 });
 
 describe.runIf(process.platform === 'win32')('Windows owned job (real host)', () => {

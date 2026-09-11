@@ -12,6 +12,14 @@ from orgs.figment.pipeline.content import content_brief as briefs
 from orgs.figment.pipeline.content.tests.test_content_asset_binding import content_root, fake_gen, sha, write
 
 
+REAL_VIDEO_MODULE = binding._video_module
+
+
+def video_stub(validate):
+    # Only acceptance is stubbed; manifest parsing uses the sole video reader.
+    return SimpleNamespace(validate_accepted_video=validate, _read_json=REAL_VIDEO_MODULE()._read_json)
+
+
 def motion_case(tmp_path, monkeypatch):
     root = content_root(tmp_path)
     request = json.loads((root / "request.json").read_text())
@@ -36,20 +44,22 @@ def motion_case(tmp_path, monkeypatch):
         assert supplied_root == root and path == accepted.relative_to(root)
         calls.append(path)
         return copy.deepcopy(authority)
-    monkeypatch.setattr(binding, "_video_module", lambda: SimpleNamespace(validate_accepted_video=validate))
+    stub = video_stub(validate)
+    monkeypatch.setattr(binding, "_video_module", lambda: stub)
     ruled = write(root / "slot-rulings.json", {
         "schema": binding.MOTION_RULINGS_SCHEMA,
         "brief": {"path": "brief.json", "sha256": sha(root / "brief.json")}, "creator": "creator-002",
         "rulings": [{"slot_index": 1, "role": "motion", "taxonomy_type": "G", "kind": "persona",
                      "decision": "fit", "decided_by": "fixture-reviewer", "decided_at": "2026-09-10T22:00:00Z",
-                     "source": {"kind": binding.VIDEO_SOURCE_KIND, "accepted_video": "video/accepted-video.json"}}],
+                     "source": {"kind": binding.VIDEO_SOURCE_KIND, "accepted_video": "video/accepted-video.json",
+                                "accepted_video_sha256": sha(accepted)}}],
     })
     return root, authority, calls, ruled, entry
 
 
-def build(root):
+def build(root, output="assignment.json"):
     return binding.build_content_asset_binding(root=root, brief_path="brief.json", request_path="request.json",
-                                              rulings_path="slot-rulings.json", output_path="assignment.json")
+                                              rulings_path="slot-rulings.json", output_path=output)
 
 
 def test_motion_assignment_is_v2_source_only_and_rechecks_authority(tmp_path, monkeypatch):
@@ -63,20 +73,69 @@ def test_motion_assignment_is_v2_source_only_and_rechecks_authority(tmp_path, mo
     assert "delivery" not in asset and "approved" not in result
 
 
-@pytest.mark.parametrize("mutation", ["creator", "movie", "still", "record", "legacy", "wrong-kind"])
-def test_motion_assignment_refuses_mismatched_evidence(tmp_path, monkeypatch, mutation):
+@pytest.mark.parametrize(("mutation", "message"), [
+    ("creator", "different creator"),
+    ("movie", "video movie bytes changed"),
+    ("still", "still differs from brief-bound gen authority"),
+    ("record", "authority returned a different record"),
+    ("replaced-record", "differs from the slot-fit ruling digest"),
+    ("unbound-record", "must bind accepted_video_sha256"),
+    ("legacy", "motion/video requires v2"),
+    ("wrong-kind", "requires accepted-video-source"),
+])
+def test_motion_assignment_refuses_mismatched_evidence(tmp_path, monkeypatch, mutation, message):
     root, authority, _, ruled, entry = motion_case(tmp_path, monkeypatch)
     if mutation == "creator": authority["creator_id"] = "other"
     elif mutation == "movie": (root / "video/movie.mp4").write_bytes(b"changed")
     elif mutation == "still": authority["approved_still"] = entry(root / "gen/images/image-02.png")
     elif mutation == "record": authority["accepted_lineage"] = entry(write(root / "video/other.json", {}))
+    elif mutation == "replaced-record":
+        # Same path, new bytes, and an authority that vouches for them: the old ruling must not carry over.
+        authority["accepted_lineage"] = entry(write(root / "video/accepted-video.json", {"unit-test": "replaced"}))
     else:
         value = json.loads(ruled.read_text())
         if mutation == "legacy": value["schema"] = binding.RULINGS_SCHEMA
+        elif mutation == "unbound-record": del value["rulings"][0]["source"]["accepted_video_sha256"]
         else: value["rulings"][0]["source"]["kind"] = binding.SOURCE_KIND
         write(ruled, value)
-    with pytest.raises(binding.ContentAssetBindingError): build(root)
+    with pytest.raises(binding.ContentAssetBindingError, match=message): build(root)
     assert not (root / "assignment.json").exists()
+
+
+def test_motion_manifest_parse_must_equal_captured_snapshot(tmp_path, monkeypatch):
+    root, _, _, _, _ = motion_case(tmp_path, monkeypatch)
+    stub = binding._video_module()
+    real_read = stub._read_json
+    def swapped(supplied_root, relative, label):
+        manifest = root / "video/candidate.json"
+        manifest.write_bytes(manifest.read_bytes() + b" ")
+        return real_read(supplied_root, relative, label)
+    monkeypatch.setattr(stub, "_read_json", swapped)
+    with pytest.raises(binding.ContentAssetBindingError, match="candidate manifest differs from its captured snapshot"):
+        build(root)
+    assert not (root / "assignment.json").exists()
+
+
+@pytest.mark.parametrize(("target", "message"), [
+    ("brief.json", "brief producer inputs changed during asset binding"),
+    ("request.json", "brief producer inputs changed during asset binding"),
+    ("slot-rulings.json", "slot-fit rulings changed during asset binding"),
+])
+def test_motion_inputs_changed_during_second_authority_call_refuse(tmp_path, monkeypatch, target, message):
+    root, authority, _, _, _ = motion_case(tmp_path, monkeypatch)
+    build(root)
+    original = (root / "assignment.json").read_bytes()
+    calls = []
+    def validate(*_):
+        calls.append(True)
+        if len(calls) == 2:
+            # Semantically identical bytes: only the final digest checks can notice.
+            (root / target).write_bytes((root / target).read_bytes() + b"\n")
+        return copy.deepcopy(authority)
+    monkeypatch.setattr(binding, "_video_module", lambda: video_stub(validate))
+    with pytest.raises(binding.ContentAssetBindingError, match=message): build(root, "late-assignment.json")
+    assert len(calls) == 2 and not (root / "late-assignment.json").exists()
+    assert (root / "assignment.json").read_bytes() == original
 
 
 def test_motion_same_creator_different_reference_refuses(tmp_path, monkeypatch):
@@ -92,7 +151,7 @@ def test_motion_second_authority_refusal_leaves_no_assignment(tmp_path, monkeypa
         calls.append(True)
         if len(calls) == 2: raise ValueError("upstream acceptance revoked")
         return copy.deepcopy(authority)
-    monkeypatch.setattr(binding, "_video_module", lambda: SimpleNamespace(validate_accepted_video=validate))
+    monkeypatch.setattr(binding, "_video_module", lambda: video_stub(validate))
     with pytest.raises(binding.ContentAssetBindingError, match="authority rejected"): build(root)
     assert len(calls) == 2 and not (root / "assignment.json").exists()
 
@@ -129,7 +188,8 @@ def test_real_video_producer_to_content_cli_then_stale_movie_refuses(tmp_path):
         "brief": {"path": "brief.json", "sha256": sha(root / "brief.json")}, "creator": "creator-002",
         "rulings": [{"slot_index": 1, "role": "motion", "taxonomy_type": "G", "kind": "persona",
                      "decision": "fit", "decided_by": "fixture-reviewer", "decided_at": "2026-09-10T22:00:00Z",
-                     "source": {"kind": binding.VIDEO_SOURCE_KIND, "accepted_video": accepted.relative_to(root).as_posix()}}],
+                     "source": {"kind": binding.VIDEO_SOURCE_KIND, "accepted_video": accepted.relative_to(root).as_posix(),
+                                "accepted_video_sha256": authority["accepted_lineage"]["sha256"]}}],
     })
     argv = [sys.executable, "-I", "-B", str(Path(binding.__file__).resolve()), "--root", str(root),
             "--brief", "brief.json", "--request", "request.json", "--rulings", "slot-rulings.json", "--out"]
@@ -140,4 +200,5 @@ def test_real_video_producer_to_content_cli_then_stale_movie_refuses(tmp_path):
     with (root / authority["movie"]["path"]).open("ab") as handle: handle.write(b"changed")
     stale = subprocess.run([*argv, "stale-assignment.json"], capture_output=True, text=True, timeout=120)
     assert stale.returncode != 0 and not (root / "stale-assignment.json").exists()
+    assert "accepted video authority rejected a slot source" in stale.stderr
     assert (root / "assignment.json").read_bytes() == original

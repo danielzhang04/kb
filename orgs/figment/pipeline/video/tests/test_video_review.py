@@ -316,3 +316,72 @@ def test_mutation_before_final_publish_removes_owned_output(
         prepare(tmp_path, paths)
     destination = review._review_directory(Path(paths["candidate"]), str(paths["candidate_id"]))
     assert calls == 3 and not destination.exists()
+
+
+def test_oversized_evaluation_inputs_refuse_before_any_store_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = fixture(tmp_path, monkeypatch)
+    original = review._subject
+    def padded(*args: object, **kwargs: object) -> tuple[dict[str, object], Path]:
+        value, destination = original(*args, **kwargs)
+        return {**value, "padding": ["x" * 60_000] * 20}, destination
+    monkeypatch.setattr(review, "_subject", padded)
+    with pytest.raises(review.VideoReviewError, match="bounded JSON output limit"):
+        prepare(tmp_path, paths)
+    assert not (Path(paths["candidate"]).parent / review.REVIEW_DIRECTORY).exists()
+
+
+def test_interrupted_publication_removes_only_its_own_fresh_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = fixture(tmp_path, monkeypatch)
+    destination = review._review_directory(Path(paths["candidate"]), str(paths["candidate_id"]))
+    def interrupt(*args: object) -> tuple[int, int]:
+        assert destination.is_dir()
+        raise KeyboardInterrupt
+    monkeypatch.setattr(review, "_exclusive_file", interrupt)
+    with pytest.raises(KeyboardInterrupt):
+        prepare(tmp_path, paths)
+    assert not destination.exists()
+
+    original = review._subject
+    calls = 0
+    def replaced(*args: object, **kwargs: object) -> tuple[dict[str, object], Path]:
+        nonlocal calls
+        calls += 1
+        if calls == 3:
+            # Another process moves our directory aside and installs its own at the path.
+            destination.rename(destination.with_name("moved-aside"))
+            destination.mkdir()
+            (destination / "foreign.txt").write_text("not ours", encoding="utf-8")
+            raise KeyboardInterrupt
+        return original(*args, **kwargs)
+    monkeypatch.setattr(review, "_subject", replaced)
+    with pytest.raises(KeyboardInterrupt):
+        prepare(tmp_path, paths)
+    assert calls == 3 and (destination / "foreign.txt").is_file()
+
+
+def test_prompt_graph_is_parsed_only_from_the_hashed_frame_bytes(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = fixture(tmp_path, monkeypatch)
+    first = sorted((tmp_path / "run").glob("*.png"))[0]
+    prompt = review._prompt_text(first)
+    expected = review._canonical(json.loads(prompt), "candidate prompt graph")
+    captured = {"path": first.relative_to(tmp_path).as_posix(), "bytes": first.stat().st_size, "sha256": digest(first)}
+    current, raw = review._frame_snapshot(tmp_path, captured)
+    assert current == captured and hashlib.sha256(raw).hexdigest() == captured["sha256"]
+    info = PngImagePlugin.PngInfo(); info.add_text("prompt", prompt)
+    Image.new("RGB", (1280, 704), (9, 9, 9)).save(first, pnginfo=info)
+    review._prompt_graph(first, expected)  # the replacement carries a valid graph on its own
+    with pytest.raises(review.VideoReviewError, match="candidate frame does not match current evidence"):
+        review._frame_snapshot(tmp_path, captured)
+    parsed: list[str] = []
+    original = review._prompt_source
+    monkeypatch.setattr(review, "_prompt_source", lambda data: parsed.append(hashlib.sha256(data).hexdigest()) or original(data))
+    with pytest.raises(review.VideoReviewError, match="frame"):
+        prepare(tmp_path, paths)
+    assert parsed == []
+    assert not (Path(paths["candidate"]).parent / review.REVIEW_DIRECTORY).exists()

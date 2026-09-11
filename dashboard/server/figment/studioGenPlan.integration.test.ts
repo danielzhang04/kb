@@ -1,9 +1,9 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { appendFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Fastify, { type FastifyInstance } from 'fastify';
 import { mintSession } from '../auth/session.ts';
@@ -152,7 +152,13 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
     // Stale-authority negative: mutating the selected checkpoint's approval
     // provenance after the plan was compiled must make the real consumer
     // refuse before it ever reaches the (fake, sentinel-returning) harness.
-    const approvalPath = resolve(String(plan.training.chosen_checkpoint_approval));
+    // Mutate only a file the fixture wrote inside this test's own repo root.
+    const approvalRaw = String(plan.training.chosen_checkpoint_approval);
+    expect(isAbsolute(approvalRaw)).toBe(true);
+    const approvalPath = resolve(approvalRaw);
+    const ownedRoot = await realpath(repo);
+    const approvalRelative = relative(ownedRoot, await realpath(approvalPath));
+    expect(approvalRelative === '' || approvalRelative === '..' || approvalRelative.startsWith(`..${sep}`) || isAbsolute(approvalRelative)).toBe(false);
     await appendFile(approvalPath, ' ');
     const revalidate = await execFileP(python.command, [
       ...python.prefixArgs, FIXTURE_SCRIPT, 'revalidate', '--plan', planPath,

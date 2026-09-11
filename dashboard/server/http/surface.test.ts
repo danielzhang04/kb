@@ -202,6 +202,81 @@ describe('write surface — composition chain', () => {
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { origin: 'https://wrong.example', host: GOOD_HOST, authorization: `Bearer ${token()}`, 'idempotency-key': 'A'.repeat(32) } })).statusCode).toBe(403);
   });
 
+  describe('Studio generation-plan fleet gate', () => {
+    const studioPlans = join(REPO_A, '_private', 'figment-studio');
+    const genPlan = (withToken = true, origin = GOOD_ORIGIN) => ({
+      method: 'POST' as const,
+      url: '/api/figment/studio/gen-plan',
+      headers: {
+        origin, host: GOOD_HOST, 'idempotency-key': 'A'.repeat(32),
+        ...(withToken ? { authorization: `Bearer ${token()}` } : {}),
+      },
+    });
+
+    it('refuses a frozen fleet 503 with a fixed body before allocation or audit', async () => {
+      const audit = recordingAudit();
+      const runPreamble = vi.fn(frozenPreamble);
+      ({ app } = buildApp({ appendAudit: audit.fn, runPreamble }));
+      const res = await app.inject(genPlan());
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toEqual({ error: 'fleet-frozen' });
+      expect(res.body).not.toContain('STOP');
+      expect(runPreamble).toHaveBeenCalledWith(REPO_A);
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(join(REPO_A, 'ledgers', 'audit'))).toBe(false);
+    });
+
+    it('treats a throwing preamble as fleet-frozen without leaking the failure', async () => {
+      const audit = recordingAudit();
+      const runPreamble: PreambleRunner = () => { throw new Error('secret preamble detail'); };
+      ({ app } = buildApp({ appendAudit: audit.fn, runPreamble }));
+      const res = await app.inject(genPlan());
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toEqual({ error: 'fleet-frozen' });
+      expect(res.body).not.toContain('secret');
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(studioPlans)).toBe(false);
+    });
+
+    it('refuses a degraded outbox 503 before the preamble, allocation, or audit', async () => {
+      const audit = recordingAudit();
+      const runPreamble = vi.fn(okPreamble);
+      const degraded = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+      ({ app } = buildApp({ appendAudit: audit.fn, runPreamble, admission: (kind) => admit(kind, degraded) }));
+      const res = await app.inject(genPlan());
+      expect(res.statusCode).toBe(503);
+      expect(res.json()).toEqual({ error: 'outbox-degraded' });
+      expect(runPreamble).not.toHaveBeenCalled();
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(join(REPO_A, 'ledgers', 'audit'))).toBe(false);
+    });
+
+    it('keeps the inherited session and origin gates ahead of the fleet gate', async () => {
+      const runPreamble = vi.fn(frozenPreamble);
+      ({ app } = buildApp({ runPreamble }));
+      expect((await app.inject(genPlan(false))).statusCode).toBe(401);
+      expect((await app.inject(genPlan(true, 'https://wrong.example'))).statusCode).toBe(403);
+      expect(runPreamble).not.toHaveBeenCalled();
+    });
+
+    it('passes an admitted, runnable request through to the route handler', async () => {
+      // An invalid body is the handler's own first refusal: it proves the gate let the request through
+      // without allocating plan state or reaching any planner subprocess (REPO_A has no real planner).
+      const audit = recordingAudit();
+      const runPreamble = vi.fn(okPreamble);
+      ({ app } = buildApp({ appendAudit: audit.fn, runPreamble }));
+      const request = genPlan();
+      const res = await app.inject({ ...request, headers: { ...request.headers, 'content-type': 'application/json' }, payload: {} });
+      expect(res.statusCode).toBe(400);
+      expect(res.json()).toEqual({ error: 'body-not-allowed' });
+      expect(runPreamble).toHaveBeenCalledWith(REPO_A);
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(studioPlans)).toBe(false);
+    });
+  });
+
   it('constructs no PTY host, registry, or run store when the probe refused', () => {
     // An injected host is still refused: the capability decides, not the override. If composition ever
     // took the override before checking `capabilities.pty`, a probe-refused daemon would expose a host.

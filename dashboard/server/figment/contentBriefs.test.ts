@@ -60,6 +60,25 @@ describe('content brief inventory', () => {
     }
   });
 
+  it('namespaces asset ids by source kind and refuses padded candidate ids', async () => {
+    const item = await fixture();
+    const slots = (roles: Array<[string, string]>) => roles.map(([role, taxonomy_type], index) => ({ index: index + 1, role, taxonomy_type, kind: 'persona' }));
+    const writeBrief = async (roles: Array<[string, string]>): Promise<void> => { const brief = record(); (brief.content as Record<string, unknown>).required_asset_slots = slots(roles); await writeFile(item.brief, JSON.stringify(brief)); };
+    const old = (await assignment(item)).assignments as Array<Record<string, unknown>>;
+    const snapshot = (path: string) => ({ path, bytes: 10, sha256: 'a'.repeat(64) });
+    const motionAsset = (candidateId: string) => ({ kind: 'accepted-video-source', scope: 'source-material-only', candidate_id: candidateId, ...snapshot('private/movie.mp4'), accepted_lineage: snapshot('private/accepted-video.json'), candidate_manifest: snapshot('private/candidate.json'), approved_still: old[0].asset });
+    const motionRow = (candidateId: string, index = 1) => ({ ...old[0], slot_index: index, role: `motion-${index}`, taxonomy_type: 'G', asset: motionAsset(candidateId) });
+    const target = join(item.folder, 'assignment.json');
+    const project = async (rows: unknown[]) => { await writeFile(target, JSON.stringify({ ...(await assignment(item)), schema: 'figment/content-asset-assignment@2', assignments: rows })); return collectContentBriefs(item.repo); };
+    await writeBrief([['motion-1', 'G'], ['punchline', 'A']]);
+    expect(await project([motionRow('image-02'), old[1]])).toMatchObject({ status: 'recorded', items: [{ assignment: 'recorded-source-snapshot' }] });
+    await writeBrief([['motion-1', 'G'], ['motion-2', 'G']]);
+    expect(await project([motionRow('candidate-01'), motionRow('candidate-01', 2)])).toMatchObject({ status: 'recorded', items: [{ assignment: 'unavailable' }] });
+    await writeBrief([['motion-1', 'G']]);
+    expect(await project([motionRow('candidate-01')])).toMatchObject({ status: 'recorded', items: [{ assignment: 'recorded-source-snapshot' }] });
+    for (const padded of [' candidate-01', 'candidate-01 ', 'candidate-01\t']) expect(await project([motionRow(padded)])).toMatchObject({ status: 'recorded', items: [{ assignment: 'unavailable' }] });
+  });
+
   it('projects only bounded planning fields from one compiler-shaped brief', async () => {
     const item = await fixture();
     const projection = collectContentBriefs(item.repo);
