@@ -1,3 +1,22 @@
+## Routing and review update 2026-09-11T21:43:31.226027+00:00
+
+Claude session limit confirmed on99/100; provider says reset00:10UTC. Both refused before
+model work (assistant model synthetic sentinel, cost0), not completed reviews. User explicitly
+authorized Codex fallback and return to Claude20:30 America/New_York (00:30UTC September12).
+BuiltinCodexsubagents nowactive. Repo codex_dispatch.py was inspected but NOT run: its direct
+ops push conflicts with registeredworker governance. Native subagent loop remains under this
+one assigned card per card-schema granularity rule. Requested models are recorded; responding
+model identity is not independently exposed by the native collaboration API.
+
+Claude97 independent selected review READY. Low private-repr findings fixed by Codexluna99b
+exactly4decorators. Its speculative legacyURL finding is not a demonstrated bug: root inspected
+source_review.py lines175-180 HTTPS importer guard. Full selected/native combined checks running.
+Claude98 packet review READY; ergonomic packet-as-body hazard now underluna102 repair.
+Claude95 locator applied;75combinedchecks pass35.60s. Root approved dedicated test module via
+explicit scopeamendment after95 proposed it outside its initialtestpaths. Codexsol100breviews.
+Codexterra101adds fullpubliccapture/export/importCLIchain in one newtestfile. No livebrowser,
+realpilotmutations, sourceconfirmations, readiness or sends. No activeClaudeVMunitsremain.
+
 ## Current checkpoint 2026-09-11T21:35:24.078695+00:00
 
 Active infrastructure goal. Source HEAD99b13a85; coordination HEADd8de3442 before this

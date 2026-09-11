@@ -154,3 +154,12 @@ subscription; billed cost unavailable		gpt-6-astra	unverified	actual successful 
 subscription; billed cost unavailable		gpt-6-astra	unverified	actual successful runtime; usage unavailable; usd0 placeholder	native-72403fe041cd4bcaa8f34a8969520efa-factcheck-5	2026-09-11T21:35:24.078695+00:00	0
 subscription; billed cost unavailable		gpt-6-astra	unverified	actual successful runtime; usage unavailable; usd0 placeholder	native-72403fe041cd4bcaa8f34a8969520efa-critic-6	2026-09-11T21:35:24.078695+00:00	0
 subscription; billed cost unavailable		gpt-6-astra	unverified	actual successful runtime; usage unavailable; usd0 placeholder	native-public-prepare-94-canary	2026-09-11T21:35:24.078695+00:00	0
+subscription; billed cost unavailable	2.40352	opus	claude-opus-5	verified assistant model; CLI list estimate only; usd0 placeholder	capture-span-locator-95	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable	4.2443715	opus	claude-opus-5	verified assistant model; CLI list estimate only; usd0 placeholder	selected-freeze-review-97	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable	1.164723	opus	claude-opus-5	verified assistant model; CLI list estimate only; usd0 placeholder	packet-submit-review-98	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable	0	sonnet	<synthetic>	provider limit; no model work	private-view-repr-99	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable	0	opus	<synthetic>	provider limit; no model work	locator-review-100	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable		gpt-5.6-luna	unverified; native collaboration route	dispatched authorized Claude-limit fallback; usage unavailable; usd0 placeholder	private_view_repr_99b	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable		gpt-5.6-sol	unverified; native collaboration route	dispatched authorized Claude-limit fallback; usage unavailable; usd0 placeholder	locator_review_100b	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified; native collaboration route	dispatched authorized Claude-limit fallback; usage unavailable; usd0 placeholder	capture_cli_chain_101	2026-09-11T21:43:31.226027+00:00	0
+subscription; billed cost unavailable		gpt-5.6-luna	unverified; native collaboration route	dispatched authorized Claude-limit fallback; usage unavailable; usd0 placeholder	packet_submit_repair_102	2026-09-11T21:43:31.226027+00:00	0

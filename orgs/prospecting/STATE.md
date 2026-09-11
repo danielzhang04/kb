@@ -10,3 +10,7 @@ locator active;96 packet-submit applied under tests. Existing CLI/skill supplies
 Supported browser unavailable; real pilot untouched; no sends or source-confirmation decisions.
 Claude preferred; user authorizes Codex fallback at limits, return to Claude20:30 New York.
 Canonical handoff and delivery task list contain exact evidence and remaining work.
+
+Claude limit reached; Codex fallback active (luna102, sol100b, terra101). Return to Claude
+newwork00:30UTC. Selected97READY, reprrepair99b applied; locator75tests and packet26tests
+pass, independentreview refinements continue. Full selected/native check running.
