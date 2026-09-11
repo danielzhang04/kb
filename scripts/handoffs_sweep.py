@@ -20,7 +20,12 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 STALE_DAYS = 14
 GIT_TIMEOUT_S = 10
 FILENAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+)-.+\.md$")
-LOAD_HEADING_RE = re.compile(r"^##\s+Load(?:\s+list)?\s*$", re.MULTILINE | re.IGNORECASE)
+# Prefix-tolerant: real handoffs write "## Load list (in order)" and the exact-match regex
+# this replaces matched none of them -- every such handoff was silently treated as having NO
+# Load list at all, so its dead paths were never flagged. The `\b` after Load keeps
+# "## Loading notes" out; `.*$` consumes the rest of the heading LINE only, so `m.end()`
+# still lands at the newline and the section body starts exactly where it always did.
+LOAD_HEADING_RE = re.compile(r"^##\s+Load(?:\s+list)?\b.*$", re.MULTILINE | re.IGNORECASE)
 NEXT_HEADING_RE = re.compile(r"^##\s+", re.MULTILINE)
 BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`")
 
@@ -140,10 +145,21 @@ def _batch_check_exists(root: Path, ref: str, paths: list[str]) -> dict[str, boo
     return out
 
 
-def _now(env: dict) -> date:
+def _parse_date(value: str) -> date | None:
+    """A calendar-shaped string that is not a real date (2026-13-45 -- a typo, or a handoff
+    filename whose leading digits only LOOK like one) is "no date", never a traceback. This
+    script's whole job is to be safely runnable on whatever is sitting in handoffs/, and it is
+    spawned by the SessionStart hook, so a crash here is a crash in front of a user's keystroke."""
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _now(env: dict) -> date | None:
     override = (env.get("KB_HANDOFFS_NOW") or "").strip()
     if override:
-        return date.fromisoformat(override)
+        return _parse_date(override)  # unparseable override -> no age checks, not a crash
     return datetime.now(timezone.utc).date()
 
 
@@ -189,7 +205,7 @@ def collect_handoffs(root: Path) -> list[Handoff]:
     out = []
     for name in names:
         m = FILENAME_RE.match(name)
-        handoff_date = date.fromisoformat(m.group(1)) if m else None
+        handoff_date = _parse_date(m.group(1)) if m else None
         scope = m.group(2) if m else None
         text = _read_handoff_text(root, name, ops_blobs)
         out.append(Handoff(filename=name, handoff_date=handoff_date, scope=scope, text=text))
@@ -206,7 +222,9 @@ def _load_paths(text: str) -> list[str]:
     return BACKTICK_PATH_RE.findall(body)
 
 
-def flag(root: Path, handoffs: list[Handoff], today: date) -> list[dict]:
+def flag(root: Path, handoffs: list[Handoff], today: date | None) -> list[dict]:
+    """`today` is None when KB_HANDOFFS_NOW was set to something unparseable: age checks are then
+    skipped entirely, while the scope/supersession and dead-Load-path checks still run."""
     by_scope: dict[str, list[Handoff]] = {}
     for h in handoffs:
         if h.scope:
@@ -227,7 +245,7 @@ def flag(root: Path, handoffs: list[Handoff], today: date) -> list[dict]:
     flags: list[dict] = []
     for h in handoffs:
         reasons: list[str] = []
-        if h.handoff_date is not None:
+        if today is not None and h.handoff_date is not None:
             age_days = (today - h.handoff_date).days
             if age_days > STALE_DAYS:
                 reasons.append(f"{age_days} days old (> {STALE_DAYS})")

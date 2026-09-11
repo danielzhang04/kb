@@ -230,3 +230,73 @@ def test_local_copy_wins_when_present_on_both_ops_and_local(tmp_path):
     by_file = {row["file"]: row["reason"] for row in rows}
     assert "docs/only-in-local-version.md" in by_file["2026-01-05-kb-dup.md"]
     assert "docs/only-in-ops-version.md" not in by_file["2026-01-05-kb-dup.md"]
+
+
+def test_calendar_shaped_but_impossible_filename_date_does_not_crash(tmp_path):
+    """F4. `2026-13-45-kb-bad.md` matches FILENAME_RE's digit shape but is not a real date, and
+    the unguarded `date.fromisoformat` turned it into a traceback and exit 1 -- from a script the
+    SessionStart hook spawns on every session. It is now treated as "no date": never age-flagged,
+    still scope- and Load-checked.
+
+    Red on revert: returncode 1 and unparseable stdout."""
+    repo = make_repo(tmp_path)
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2026-13-45-kb-bad.md").write_text(
+        "# bad\n## Load list\n`docs/does/not/exist.md`\n", encoding="utf-8"
+    )
+    (repo / "handoffs" / "2026-01-05-kb-good.md").write_text("# good\n", encoding="utf-8")
+    r = run_sweep(repo, "--json", now="2026-01-05")
+    assert r.returncode == 0, r.stderr
+    rows = json.loads(r.stdout)
+    by_file = {row["file"]: row["reason"] for row in rows}
+    # Still inspected, just never age-flagged.
+    assert "dead Load path" in by_file["2026-13-45-kb-bad.md"]
+    assert "days old" not in by_file["2026-13-45-kb-bad.md"]
+    # And the table and --delete renderers survive the same input.
+    assert run_sweep(repo, now="2026-01-05").returncode == 0
+    assert run_sweep(repo, "--delete", now="2026-01-05").returncode == 0
+
+
+def test_unparseable_now_override_skips_age_checks_instead_of_crashing(tmp_path):
+    """F4, the other unguarded fromisoformat: KB_HANDOFFS_NOW. An unparseable override means "no
+    today" -- age checks are skipped, the rest of the sweep still runs."""
+    repo = make_repo(tmp_path)
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2020-01-01-kb-ancient.md").write_text(
+        "# ancient\n## Load list\n`docs/does/not/exist.md`\n", encoding="utf-8"
+    )
+    r = run_sweep(repo, "--json", now="not-a-date")
+    assert r.returncode == 0, r.stderr
+    rows = json.loads(r.stdout)
+    assert "days old" not in rows[0]["reason"]
+    assert "dead Load path" in rows[0]["reason"]
+
+
+def test_annotated_load_heading_is_found(tmp_path):
+    """M2. Real handoffs write `## Load list (in order)`; the exact-match heading regex matched
+    none of them, so those handoffs were treated as having no Load list at all and their dead
+    paths were never flagged.
+
+    Red on revert: no row, because the Load section is never located."""
+    repo = make_repo(tmp_path)
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2026-01-05-kb-thing.md").write_text(
+        "# thing\n## Load list (in order)\n`docs/does/not/exist.md`\n"
+        "## Next\n`docs/not/in/the/load/list.md`\n",
+        encoding="utf-8",
+    )
+    r = run_sweep(repo, "--json", now="2026-01-05")
+    rows = json.loads(r.stdout)
+    assert "docs/does/not/exist.md" in rows[0]["reason"]
+    assert "docs/not/in/the/load/list.md" not in rows[0]["reason"]
+
+
+def test_load_heading_prefix_does_not_swallow_an_unrelated_heading(tmp_path):
+    """`\\b` after Load: `## Loading notes` is NOT a Load list."""
+    repo = make_repo(tmp_path)
+    set_ops_main_refs(repo)
+    (repo / "handoffs" / "2026-01-05-kb-thing.md").write_text(
+        "# thing\n## Loading notes\n`docs/does/not/exist.md`\n", encoding="utf-8"
+    )
+    r = run_sweep(repo, "--json", now="2026-01-05")
+    assert json.loads(r.stdout) == []
