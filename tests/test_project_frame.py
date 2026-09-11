@@ -216,3 +216,90 @@ def test_read_ops_file_stderr_stays_empty_without_origin_ops(tmp_path):
     r = subprocess.run(["node", "-e", body], capture_output=True, env=os.environ)
     assert r.returncode == 0
     assert r.stderr == b""
+
+
+# ── Fix wave 2026-09-11 ──────────────────────────────────────────────────────────────────────
+
+
+def _seed_store_summary(store_dir, session_id, summary):
+    """Write a '## Resumed-session summary' into a session store through context_store.js's own
+    writeStore -- exactly what context_lifecycle_pre_compact.js does just before a compaction."""
+    lib = REPO / "scripts" / "hooks" / "lib" / "context_store.js"
+    body = (
+        f'const store = require({json.dumps(str(lib))}); '
+        f'store.writeStore({json.dumps(session_id)}, '
+        f'[{{heading: "Resumed-session summary", body: {json.dumps(summary)}}}]);'
+    )
+    run_node(body, {"KB_CONTEXT_STORE_DIR": str(store_dir)})
+
+
+def test_rollup_includes_the_stores_resumed_session_summary(ops_repo, tmp_path):
+    """F1: a boss session gets `rollup` and is the session that compacts most often. Serving the
+    PreCompact hook's summary only in `full` mode meant that write was never replayed to the
+    sessions that produced it -- red on revert (the summary is simply absent from the text)."""
+    store_dir = tmp_path / "ctxstore"
+    summary = "PRIOR-TURN-MARKER: dispatched the fix wave and graded it."
+    _seed_store_summary(store_dir, "boss-session", summary)
+
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{mode:"rollup", cwd:{json.dumps(str(ops_repo))}, '
+        f'sessionId:"boss-session", env:{{KB_CONTEXT_STORE_DIR:{json.dumps(str(store_dir))}}}}}); '
+        f'process.stdout.write(r.text);'
+    )
+    text = run_node(body)
+    assert "Resumed-session summary: " + summary in text
+    assert "prospecting: Batch 2 running." in text  # the rollup lines are not displaced by it
+    assert len(text) <= 1500
+
+
+def test_full_mode_still_includes_the_resumed_session_summary(ops_repo, tmp_path):
+    store_dir = tmp_path / "ctxstore"
+    summary = "PRIOR-TURN-MARKER-FULL"
+    _seed_store_summary(store_dir, "worker-session", summary)
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{project:"prospecting", mode:"full", cwd:{json.dumps(str(ops_repo))}, '
+        f'sessionId:"worker-session", env:{{KB_CONTEXT_STORE_DIR:{json.dumps(str(store_dir))}}}}}); '
+        f'process.stdout.write(r.text);'
+    )
+    assert summary in run_node(body)
+
+
+def test_budget_override_lowers_the_cap_but_can_never_raise_it(ops_repo):
+    """F2 needs frame() to accept a budget the caller has already spent part of. The override only
+    ever LOWERS: MODE_BUDGETS[mode] stays the hard ceiling."""
+    def framed(budget):
+        body = (
+            f'const pf = require({json.dumps(str(LIB))}); '
+            f'const r = pf.frame({{project:"prospecting", mode:"full", '
+            f'cwd:{json.dumps(str(ops_repo))}, budget:{budget}, env:{{}}}}); '
+            f'process.stdout.write(String(r.text.length));'
+        )
+        return int(run_node(body))
+
+    assert framed(400) <= 400
+    assert framed(99999) <= 7000  # an over-large override cannot lift the mode ceiling
+    assert framed(0) == 0         # a fully-spent budget renders nothing rather than throwing
+
+
+def test_kb_project_override_is_ignored_when_it_is_not_a_project_id(ops_repo):
+    """M1: KB_PROJECT flows into the `orgs/<project>/GOAL.md` string handed to `git show`. Anything
+    that is not a plain project id is ignored, and the branch resolver still gets its chance."""
+    git(ops_repo, "checkout", "-q", "-b", "claude/prospecting-p8")
+    for bad in ("../../etc/passwd", "Prospecting", "pros pecting", "-x", "a;b", "orgs/prospecting"):
+        result = call(
+            f'activeProject({{cwd:{json.dumps(str(ops_repo))}}}, {{KB_PROJECT:{json.dumps(bad)}}})',
+            ops_repo,
+        )
+        assert result == "prospecting", bad  # fell through to the branch, never honoured `bad`
+
+
+def test_kb_project_override_is_ignored_on_a_boss_branch_too(ops_repo):
+    """Same rule with no branch fallback available: the answer is null, never the bad value."""
+    git(ops_repo, "checkout", "-q", "-b", "claude/boss-2026-09-11")
+    result = call(
+        f'activeProject({{cwd:{json.dumps(str(ops_repo))}}}, {{KB_PROJECT:"../../secrets"}})',
+        ops_repo,
+    )
+    assert result is None

@@ -10,7 +10,9 @@
  * so no separate frame() modes exist for them):
  *   - `full`   (SessionStart startup/resume/clear): GOAL all sections + STATE all sections + the
  *     project's handoff filenames/Load lists + the store's `## Resumed-session summary`.
- *   - `rollup` (no active project): one line per project.
+ *   - `rollup` (no active project): one line per project, plus the store's
+ *     `## Resumed-session summary` -- a boss session gets `rollup` and is the session that
+ *     compacts most often, so withholding the summary here made the PreCompact write dead.
  *
  * Reads: `git -C <cwd> branch --show-current` and `git -C <cwd> show origin/ops:<path>`, both
  * with a 2 s timeout. NEVER fetches — origin/ops is read as a local ref, exactly as the
@@ -42,6 +44,9 @@ const GUARD_LINE = io.GUARD_LINE;
  *  but a single-word handoff-filename scope token (see handoffs/README.md's scope list). Extend
  *  this table as new aliases are needed; it is deliberately small and explicit. */
 const HANDOFF_SCOPE_ALIASES = Object.freeze({ "faceless-youtube": "fyt" });
+
+/** A project id is a directory name under orgs/: lowercase alphanumerics and hyphens only. */
+const PROJECT_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 const HANDOFF_NAME_RE = /^(\d{4}-\d{2}-\d{2})-([a-z0-9]+)-.+\.md$/;
 const UPDATED_RE = /^_Updated:\s*([^_\n]+?)_?\s*$/m;
@@ -99,7 +104,14 @@ function projectFromBranch(branch, ids) {
 function activeProject(event, env) {
   const e = env || process.env;
   if (typeof e.KB_PROJECT === "string" && e.KB_PROJECT.trim()) {
-    return e.KB_PROJECT.trim();
+    // The override only ever names a project id, and a project id is a directory name under
+    // orgs/. Anything else (a path traversal, a shell fragment, an absolute path, whitespace)
+    // is IGNORED rather than honoured -- it would otherwise flow straight into the
+    // `orgs/<project>/GOAL.md` strings readOpsFile hands to `git show`. Ignoring beats erroring:
+    // the branch resolver below still gets its chance, which is the fail-open posture this whole
+    // module is held to.
+    const candidate = e.KB_PROJECT.trim();
+    if (PROJECT_ID_RE.test(candidate)) return candidate;
   }
   const cwd = event && typeof event.cwd === "string" && event.cwd ? event.cwd : null;
   if (!cwd) return null;
@@ -221,12 +233,40 @@ function renderFramed(entries, budget) {
   return { text, sections: entries };
 }
 
+/**
+ * The session store's `## Resumed-session summary`, as a labelled entry, or null when there is
+ * none. BOTH modes append it (fix wave F1): a boss session gets `rollup`, and a boss session is
+ * exactly the session that compacts most often -- serving the summary only in `full` meant the
+ * PreCompact hook's write was never replayed to the sessions that produced it.
+ */
+function resumedSummaryEntry(sessionId, env) {
+  const sessionSections = sessionId ? store.readStore(sessionId, env) : [];
+  const resumed = store.sectionBody(sessionSections, store.HEADINGS.RESUMED_SUMMARY);
+  return resumed ? { label: "Resumed-session summary", body: resumed } : null;
+}
+
+/**
+ * Resolve the char budget for one frame() call. `opts.budget` is an OVERRIDE the caller uses when
+ * it has to spend part of the mode's allowance on text of its own (see
+ * project_frame_session_start.js, which reserves room for its `[preamble]` line and the
+ * `## Stale handoffs` block BEFORE calling in, so the tail of the frame is never cut off
+ * afterwards). It can only ever LOWER the budget: `MODE_BUDGETS[mode]` stays the hard ceiling,
+ * and a non-numeric/negative override falls back to it (0 is honoured, and renders an empty
+ * frame rather than throwing).
+ */
+function resolveBudget(mode, requested) {
+  const ceiling = MODE_BUDGETS[mode];
+  const n = Number(requested);
+  if (!Number.isFinite(n)) return ceiling;
+  return Math.max(0, Math.min(Math.floor(n), ceiling));
+}
+
 function frame(opts) {
   const o = opts || {};
   const env = o.env || process.env;
   const cwd = o.cwd;
   const mode = Object.prototype.hasOwnProperty.call(MODE_BUDGETS, o.mode) ? o.mode : "rollup";
-  const budget = MODE_BUDGETS[mode];
+  const budget = resolveBudget(mode, o.budget);
 
   if (mode === "rollup") {
     const entries = [];
@@ -237,6 +277,8 @@ function frame(opts) {
       const updated = updatedStamp(stateText) || "unknown";
       entries.push({ label: null, body: `${id}: ${now} (updated ${updated})` });
     }
+    const rollupResumed = resumedSummaryEntry(o.sessionId, env);
+    if (rollupResumed) entries.push(rollupResumed);
     return renderFramed(entries, budget);
   }
 
@@ -263,9 +305,8 @@ function frame(opts) {
     const loadList = loadListFor(cwd, name);
     entries.push({ label: `Handoff ${name}`, body: loadList || "(no Load list found)" });
   }
-  const sessionSections = o.sessionId ? store.readStore(o.sessionId, env) : [];
-  const resumed = store.sectionBody(sessionSections, store.HEADINGS.RESUMED_SUMMARY);
-  if (resumed) entries.push({ label: "Resumed-session summary", body: resumed });
+  const resumed = resumedSummaryEntry(o.sessionId, env);
+  if (resumed) entries.push(resumed);
 
   return renderFramed(entries, budget);
 }
@@ -280,4 +321,5 @@ module.exports = {
   parseSections,
   projectHandoffs,
   readOpsFile,
+  sectionBodyByPrefix,
 };

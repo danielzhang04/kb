@@ -38,6 +38,10 @@ const store = require("./lib/context_store.js");
 const pf = require("./lib/project_frame.js");
 
 const PREAMBLE_TIMEOUT_MS = 10000;
+/** Blank line between top-level payload blocks, and the list separator inside the flags block.
+ *  Named constants because F2 BUDGETS their cost rather than guessing at it. */
+const NEWLINE = "\n";
+const SEPARATOR = "\n\n";
 const DEFAULT_SWEEP_TIMEOUT_MS = 2000; // fix round 2: handoffs_sweep.py is now O(1) git
 // processes and finishes in well under this on the real repo; env override for tests/tuning.
 
@@ -108,8 +112,9 @@ function handoffFlags(root, timeoutMs) {
 /**
  * Write this session's governing sections from the active project's GOAL.md/STATE.md, WITHOUT
  * touching any section this hook does not own. A no-op when there is no session, no project, or
- * neither ops file yields any of the three headings -- `readStore`/`upsertSection`/`writeStore`
- * already fail open on IO trouble, so this never throws even when the store directory cannot be
+ * neither ops file yields any of the three headings -- `updateStore` (and the locked
+ * `readStore`/`upsertSection`/`writeStore` inside it) already fails open on IO trouble and on
+ * lock contention, so this never throws and never hangs even when the store directory cannot be
  * created.
  */
 function writeGoverningSections(sessionId, project, cwd, env) {
@@ -119,16 +124,30 @@ function writeGoverningSections(sessionId, project, cwd, env) {
   const goalSections = goalText ? pf.parseSections(goalText) : [];
   const stateSections = stateText ? pf.parseSections(stateText) : [];
 
-  const northStar = store.sectionBody(goalSections, store.HEADINGS.NORTH_STAR);
-  const invariants = store.sectionBody(goalSections, store.HEADINGS.INVARIANTS);
-  const currentGate = store.sectionBody(stateSections, store.HEADINGS.CURRENT_GATE);
+  // PREFIX-matched, not exact: spec §1 spells GOAL.md/STATE.md headings "exact, prefix-matched",
+  // and a real STATE.md carries annotated headings like "## Current gate (P8)". frame() has always
+  // read them through pf.sectionBodyByPrefix; this writer used store.sectionBody (exact by design,
+  // and pinned that way by U8's tests), so an annotated heading silently wrote NOTHING into the
+  // store and U7/U9 re-grounding lost the very section the frame was showing on screen.
+  const northStar = pf.sectionBodyByPrefix(goalSections, store.HEADINGS.NORTH_STAR);
+  const invariants = pf.sectionBodyByPrefix(goalSections, store.HEADINGS.INVARIANTS);
+  const currentGate = pf.sectionBodyByPrefix(stateSections, store.HEADINGS.CURRENT_GATE);
   if (!northStar && !invariants && !currentGate) return;
 
-  let sections = store.readStore(sessionId, env);
-  if (northStar) sections = store.upsertSection(sections, store.HEADINGS.NORTH_STAR, northStar);
-  if (invariants) sections = store.upsertSection(sections, store.HEADINGS.INVARIANTS, invariants);
-  if (currentGate) sections = store.upsertSection(sections, store.HEADINGS.CURRENT_GATE, currentGate);
-  store.writeStore(sessionId, sections, env);
+  // ONE LOCKED read-modify-write: the PreCompact sibling and the PostToolUse activity tracker
+  // write the same file, and an interleaved read->write between them dropped whole sections.
+  // The git/ops reads above stay OUTSIDE the lock -- only the store touch is serialized.
+  store.updateStore(
+    sessionId,
+    (sections) => {
+      let next = sections;
+      if (northStar) next = store.upsertSection(next, store.HEADINGS.NORTH_STAR, northStar);
+      if (invariants) next = store.upsertSection(next, store.HEADINGS.INVARIANTS, invariants);
+      if (currentGate) next = store.upsertSection(next, store.HEADINGS.CURRENT_GATE, currentGate);
+      return next;
+    },
+    env,
+  );
 }
 
 function main() {
@@ -167,22 +186,38 @@ function main() {
 
   const mode = project ? "full" : "rollup";
   const budget = pf.MODE_BUDGETS[mode];
-  const frameResult = pf.frame({ project, mode, cwd, sessionId, env });
 
+  // ORDER IS LOAD-BEARING. The preamble line and the '## Stale handoffs' block are computed FIRST
+  // and their cost is subtracted from the frame's budget, so frame() fills only what is actually
+  // left. The previous order -- frame() fills the whole MODE_BUDGETS[mode], then append, then
+  // truncate the combined string -- cut the TAIL: on a real session that silently dropped the
+  // stale-handoff flags and the end of '## Infra' first, which is exactly backwards. frame()'s own
+  // truncateLastFirst already sheds the least important sections from the inside, where it knows
+  // where the section boundaries are; a blind tail cut does not.
   const preambleLine = "[preamble] " + preambleVerdict(root);
-  let combined = preambleLine + "\n\n" + frameResult.text;
-
   const overrideMs = Number(env.KB_SWEEP_TIMEOUT_MS);
   const sweepTimeoutMs = Number.isFinite(overrideMs) && overrideMs > 0 ? overrideMs : DEFAULT_SWEEP_TIMEOUT_MS;
   const flags = handoffFlags(root, sweepTimeoutMs);
-  if (flags.length) {
-    combined += "\n\n## Stale handoffs\n" + flags.map((f) => "- " + f).join("\n");
-  }
+  const flagsBlock = flags.length
+    ? SEPARATOR + "## Stale handoffs" + NEWLINE + flags.map((f) => "- " + f).join(NEWLINE)
+    : "";
 
-  // Hard cap on the WHOLE payload (preamble line + frame + stale-handoffs block), never just the
-  // frame body -- frame() already capped itself to `budget`, but the preamble line and the
-  // handoff-sweep block are added on top of that and must not push the total over budget.
-  const payload = io.truncateTo(combined, budget);
+  const frameResult = pf.frame({
+    project,
+    mode,
+    cwd,
+    sessionId,
+    env,
+    budget: budget - preambleLine.length - SEPARATOR.length - flagsBlock.length,
+  });
+
+  const combined = preambleLine + SEPARATOR + frameResult.text + flagsBlock;
+
+  // A GUARD, not the strategy: the reservation above already keeps the total inside `budget` in
+  // every normal case, so this only fires when the preamble line and the flags block ALONE overrun
+  // the mode budget (a pathological preamble failure message plus dozens of flagged handoffs).
+  // Kept because the emitted payload is contractually capped at MODE_BUDGETS[mode]; never relied on.
+  const payload = combined.length <= budget ? combined : io.truncateTo(combined, budget);
 
   io.emitContext("SessionStart", payload);
 }

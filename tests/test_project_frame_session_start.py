@@ -410,3 +410,122 @@ def test_seeded_resumed_summary_and_recent_activity_survive_the_write(tmp_path):
     assert section_body(sections, "North star") == "Deliver leads."
     assert section_body(sections, "Invariants") == "Never fabricate."
     assert section_body(sections, "Current gate") == "Review."
+
+
+# ── Fix wave 2026-09-11 ──────────────────────────────────────────────────────────────────────
+
+THREE_FLAGS_SWEEP = (
+    "import json\n"
+    "print(json.dumps(["
+    '{"file": "2020-01-01-kb-alpha.md", "reasons": ["900 days old (> 14)"]},'
+    '{"file": "2020-01-02-kb-bravo.md", "reasons": ["superseded by 2026-09-01-kb-later.md"]},'
+    '{"file": "2020-01-03-kb-charlie.md", "reasons": ["dead Load path(s): docs/gone.md"]}'
+    "]))\n"
+)
+
+
+def make_oversized_project_repo(tmp_path, name="big_proj", project="prospecting"):
+    """A project whose GOAL.md + STATE.md bodies comfortably exceed the 7000-char `full` budget on
+    their own, so frame() is guaranteed to be doing real truncation."""
+    repo = tmp_path / name
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "checkout", "-q", "-b", "main")
+    (repo / "README.md").write_text("x", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    orgs = repo / "orgs" / project
+    orgs.mkdir(parents=True)
+    filler = "\n".join(f"goal filler line {i:04d} " + "x" * 60 for i in range(80))   # ~6.3k
+    state_filler = "\n".join(f"state filler line {i:04d} " + "y" * 60 for i in range(80))
+    (orgs / "GOAL.md").write_text(
+        f"## North star\nDeliver leads.\n{filler}\n## Invariants\nNever fabricate.\n{filler}\n",
+        encoding="utf-8",
+    )
+    (orgs / "STATE.md").write_text(
+        f"_Updated: 2026-09-10 12:00_\n## Now\nBatch 2.\n{state_filler}\n"
+        f"## Current gate\nReview.\n## Infra\nTAIL-OF-INFRA-MARKER\n",
+        encoding="utf-8",
+    )
+    git(repo, "add", "orgs")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed")
+    git(repo, "checkout", "-q", "-b", f"claude/{project}-p8")
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    git(repo, "update-ref", "refs/remotes/origin/ops", sha)
+    return repo
+
+
+def test_oversized_frame_keeps_the_stale_handoffs_tail_intact(tmp_path):
+    """F2 (critical). frame() used to fill the WHOLE MODE_BUDGETS[mode]; the '[preamble]' line and
+    the '## Stale handoffs' block were appended afterwards and the combined string was cut to
+    budget -- from the TAIL, so the flags and the end of the frame were the first things lost. The
+    costs are now reserved BEFORE frame() is called.
+
+    Red on revert: the payload ends mid-flag (or mid-frame) instead of on the third flag line."""
+    kb_root = make_kb_root(tmp_path, with_sweep=True, sweep_body=THREE_FLAGS_SWEEP)
+    repo = make_oversized_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+
+    expected_tail = (
+        "## Stale handoffs\n"
+        "- 2020-01-01-kb-alpha.md: 900 days old (> 14)\n"
+        "- 2020-01-02-kb-bravo.md: superseded by 2026-09-01-kb-later.md\n"
+        "- 2020-01-03-kb-charlie.md: dead Load path(s): docs/gone.md"
+    )
+    assert ctx.endswith(expected_tail), repr(ctx[-200:])
+    assert ctx.startswith("[preamble]")
+    assert ctx.index("[preamble]") < ctx.index(GUARD_MARKER) < ctx.index("Deliver leads.")
+    assert len(ctx) <= 7000, len(ctx)
+    assert "..." in ctx  # the frame really was truncated -- the fixture is doing its job
+
+
+def test_annotated_governing_headings_are_written_to_the_store(tmp_path):
+    """F3. The store write read GOAL/STATE through store.sectionBody (EXACT heading match) while
+    frame() read the same files through sectionBodyByPrefix. A real STATE.md writes
+    '## Current gate (P8)', so the section shown in the frame was silently absent from the store
+    that U7 re-grounding and U9 subagent load read.
+
+    Red on revert: the three bodies are missing from the store file."""
+    kb_root = make_kb_root(tmp_path)
+    repo = tmp_path / "annotated"
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "checkout", "-q", "-b", "main")
+    (repo / "README.md").write_text("x", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+    orgs = repo / "orgs" / "prospecting"
+    orgs.mkdir(parents=True)
+    (orgs / "GOAL.md").write_text(
+        "## North star (P8 arc)\nDeliver leads.\n"
+        "## Invariants (never violate)\nNever fabricate.\n",
+        encoding="utf-8",
+    )
+    (orgs / "STATE.md").write_text(
+        "_Updated: 2026-09-10 12:00_\n## Now\nBatch 2.\n## Current gate (P8)\nReview.\n",
+        encoding="utf-8",
+    )
+    git(repo, "add", "orgs")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed")
+    git(repo, "checkout", "-q", "-b", "claude/prospecting-p8")
+    git(repo, "update-ref", "refs/remotes/origin/ops", git(repo, "rev-parse", "HEAD").strip())
+
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+
+    sections = read_store_sections(store_dir, "s1")
+    # The store's headings stay the RESERVED spellings (U7/U9 match on those), carrying the bodies
+    # found under the annotated GOAL.md/STATE.md headings.
+    assert section_body(sections, "North star") == "Deliver leads."
+    assert section_body(sections, "Invariants") == "Never fabricate."
+    assert section_body(sections, "Current gate") == "Review."
