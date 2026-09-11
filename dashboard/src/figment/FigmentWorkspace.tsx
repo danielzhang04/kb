@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { renderMarkdown } from '../lib/markdown';
+import { StudioGenPlans } from './StudioGenPlans';
 import './figment.css';
 
 type ReviewState = 'unreviewed' | 'stale' | 'approved' | 'unknown';
@@ -8,7 +9,6 @@ type Tab = 'creators' | 'assets' | 'plans' | 'training' | 'records' | 'research'
 interface RecordRow { path: string; type: string; creator: string | null; reviewState: ReviewState; machineGateState: MachineGateState; schema: string | null; }
 interface ResearchArtifact { area: 'research' | 'book'; name: string; bytes: number; modifiedAt: string; }
 interface TesterPreview { schema: 'figment/plan-preview@1'; offlinePreview: true; notPromotable: true; creator: 'creator-001'; stage: 'tester'; runCount: number; declaredCeilingUsd: number; manifestSha256: string; }
-interface StudioGenPlan { schema: 'figment/studio-gen-plan@1'; id: string; status: 'prepared'; creator: 'creator-001'; stage: 'gen'; runCount: 1; declaredCeilingUsd: number; planSha256: string; }
 interface DeclaredReference { creator: string; name: string; bytes: number; sha256: string; width: number; height: number; modifiedAt: string; }
 interface GeneratedInput { name: string; bytes: number; sha256: string; width: number; height: number; sourceReference: string; sourceSha256: string; generatedOn: string | null; reviewStatus: string; visualReview: Record<string, string>; }
 type LocalTraining = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; historical: true; preparation: { source: 'anchors/g01.jpg'; originalObservations: 1; repeatCount: 1; targetResolution: [number, number]; effectiveBucket: [number, number]; cpuCudaMasked: true; cpuVerifiedTeardown: true; tokenizerLoads: Array<{ id: string; probeTokenCount: number }> } };
@@ -197,8 +197,6 @@ function validTesterPreview(value: unknown): TesterPreview | null {
   return object(value) && value.schema === 'figment/plan-preview@1' && value.offlinePreview === true && value.notPromotable === true && value.creator === 'creator-001' && value.stage === 'tester' && finite(value.runCount) && value.runCount >= 1 && value.runCount <= 8 && finite(value.declaredCeilingUsd) && value.declaredCeilingUsd <= 50 && sha256(value.manifestSha256) ? value as unknown as TesterPreview : null;
 }
 
-function validStudioGenPlan(value: unknown): StudioGenPlan | null { return object(value) && value.schema === 'figment/studio-gen-plan@1' && string(value.id) && /^[0-9a-f-]{36}$/.test(value.id) && value.status === 'prepared' && value.creator === 'creator-001' && value.stage === 'gen' && value.runCount === 1 && finite(value.declaredCeilingUsd) && value.declaredCeilingUsd <= 50 && sha256(value.planSha256) ? value as unknown as StudioGenPlan : null; }
-
 function bytes(value: number): string { return value < 1024 ? `${value} B` : value < 1048576 ? `${Math.round(value / 1024)} KB` : `${(value / 1048576).toFixed(1)} MB`; }
 function approval(state: ReviewState): string { return state === 'approved' ? 'Approved' : state === 'stale' ? 'Stale' : state === 'unreviewed' ? 'Unreviewed' : 'Approval unknown'; }
 function diagnostic(d: Projection['diagnostic']): string { return d.status === 'diagnostic-not-promotable' ? 'Diagnostic evidence — not promotable' : d.status === 'not-configured' ? 'No diagnostic root configured' : `Diagnostic evidence unavailable: ${d.reason.replaceAll('-', ' ')}`; }
@@ -233,8 +231,7 @@ function Records({ rows, truncated }: { rows: RecordRow[]; truncated: boolean })
 }
 
 function Plans({ plans, token, fetchImpl }: { plans: Projection['plans']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
-  const prepareIntent = useRef<string | null>(null);
-  const [preview, setPreview] = useState<TesterPreview | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null); const [prepared, setPrepared] = useState<StudioGenPlan | null>(null); const [preparePending, setPreparePending] = useState(false); const [prepareError, setPrepareError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<TesterPreview | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null);
   const generateTesterPreview = (): void => {
     setPending(true); setError(null); setPreview(null);
     void fetchImpl('/api/figment/plan-preview/tester', { ...requestOptions(token), method: 'POST' }).then(async (response) => {
@@ -243,21 +240,7 @@ function Plans({ plans, token, fetchImpl }: { plans: Projection['plans']; token?
       setPreview(decoded);
     }).catch((cause) => setError(cause instanceof Error ? cause.message : 'The offline tester preview is unavailable.')).finally(() => setPending(false));
   };
-  const prepareGenPlan = (): void => {
-    setPreparePending(true); setPrepareError(null); setPrepared(null);
-    if (prepareIntent.current === null) {
-      const bytes = new Uint8Array(24); crypto.getRandomValues(bytes);
-      prepareIntent.current = Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
-    }
-    // Every failure — refusal, network loss, malformed body — shows one fixed message: fetch/JSON errors
-    // can carry response text. The intent key survives until a validated plan, so a retry replays it.
-    void fetchImpl('/api/figment/studio/gen-plan', { method: 'POST', headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), 'Idempotency-Key': prepareIntent.current } }).then(async (response) => {
-      const payload: unknown = await response.json(); const decoded = response.ok ? validStudioGenPlan(payload) : null;
-      if (decoded === null) throw new Error('invalid-gen-plan');
-      prepareIntent.current = null; setPrepared(decoded);
-    }).catch(() => setPrepareError('Generation plan preparation is unavailable. A current selected checkpoint and source authority are required before a plan can be prepared.')).finally(() => setPreparePending(false));
-  };
-  return <><p className="figment__inert">Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.</p><section className="figment__preview"><h2>Prepare generation plan</h2><p>Prepares one local generation plan only. It requires a current selected checkpoint and source authority; it does not launch a run or create an approval.</p><button type="button" className="mc-btn" onClick={prepareGenPlan} disabled={preparePending}>{preparePending ? 'Preparing generation plan…' : 'Prepare generation plan'}</button>{prepareError ? <p className="figment__reader-error" role="alert">{prepareError}</p> : null}{prepared ? <p role="status">{prepared.creator} · {prepared.stage} · one prepared run · declared ${prepared.declaredCeilingUsd.toFixed(2)} · plan {prepared.planSha256.slice(0, 12)}</p> : null}</section><section className="figment__preview"><h2>Tester plan preview</h2><p>Builds a fresh, local-only tester plan for creator-001 with pin verification skipped. It cannot run a pod, create an approval, or promote a checkpoint.</p><button type="button" className="mc-btn" onClick={generateTesterPreview} disabled={pending}>{pending ? 'Building preview…' : 'Preview tester plan'}</button>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}{preview ? <p role="status">{preview.creator} · {preview.stage} · {preview.runCount} planned run{preview.runCount === 1 ? '' : 's'} · declared ${preview.declaredCeilingUsd.toFixed(2)} · manifest {preview.manifestSha256.slice(0, 12)}</p> : null}</section>{plans.items.length ? <div className="figment__plans">{plans.items.map((plan) => <article className="figment__plan" key={plan.path}><h2>{plan.creator}{plan.variant ? ` · ${plan.variant}` : ''}</h2><code className="figment__record-path">{plan.path}</code><p>Declared ceiling: ${plan.declaredCeilingUsd.toFixed(2)}</p><ul>{plan.stages.map((stage) => <li key={stage.name}><strong>{stage.name}</strong> · {stage.runCount} run{stage.runCount === 1 ? '' : 's'} · declared ${stage.declaredCeilingUsd?.toFixed(2) ?? 'unavailable'}</li>)}</ul></article>)}</div> : <p className="figment__empty">No frozen Figment plans are available.</p>}{plans.truncated ? <p className="figment__notice">The plan list reached its safe display limit.</p> : null}</>;
+  return <><p className="figment__inert">Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.</p><StudioGenPlans token={token} fetchImpl={fetchImpl} /><section className="figment__preview"><h2>Tester plan preview</h2><p>Builds a fresh, local-only tester plan for creator-001 with pin verification skipped. It cannot run a pod, create an approval, or promote a checkpoint.</p><button type="button" className="mc-btn" onClick={generateTesterPreview} disabled={pending}>{pending ? 'Building preview…' : 'Preview tester plan'}</button>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}{preview ? <p role="status">{preview.creator} · {preview.stage} · {preview.runCount} planned run{preview.runCount === 1 ? '' : 's'} · declared ${preview.declaredCeilingUsd.toFixed(2)} · manifest {preview.manifestSha256.slice(0, 12)}</p> : null}</section>{plans.items.length ? <div className="figment__plans">{plans.items.map((plan) => <article className="figment__plan" key={plan.path}><h2>{plan.creator}{plan.variant ? ` · ${plan.variant}` : ''}</h2><code className="figment__record-path">{plan.path}</code><p>Declared ceiling: ${plan.declaredCeilingUsd.toFixed(2)}</p><ul>{plan.stages.map((stage) => <li key={stage.name}><strong>{stage.name}</strong> · {stage.runCount} run{stage.runCount === 1 ? '' : 's'} · declared ${stage.declaredCeilingUsd?.toFixed(2) ?? 'unavailable'}</li>)}</ul></article>)}</div> : <p className="figment__empty">No frozen Figment plans are available.</p>}{plans.truncated ? <p className="figment__notice">The plan list reached its safe display limit.</p> : null}</>;
 }
 
 function DeclaredReferences({ references, token, fetchImpl }: { references: Projection['references']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {

@@ -4,7 +4,7 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: [
-      'server/**/*.test.ts',
+      'server/**/*.test.{ts,tsx}',
       'src/**/*.test.{ts,tsx}',
       'public/**/*.test.ts',
       // D3.3 — the Broker daemon lives in the sibling top-level `broker/` dir but JOINS this workspace
