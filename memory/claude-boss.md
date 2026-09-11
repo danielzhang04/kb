@@ -339,3 +339,8 @@
   with `git ls-remote origin ops`, never from the message.
 - **Rate-limit resume:** an opus review died on the 5 am session-limit reset with nothing lost — the
   SDD ledger + review package let the same dispatch re-run verbatim ten hours later.
+- **`claude -p` hides non-blocking hook stderr.** The Stop hook's warn-only line never reaches the parent
+  process in headless mode; verify warn-only hooks by feeding the event JSON by hand. Blocking (exit 2)
+  hooks are the only ones a headless run surfaces. Live-proved the whole armed family this way: one
+  headless parent dispatching one haiku child gave audit rows, inherited spawn context, activity ring,
+  throttle counter; PreCompact + compact re-ground simulated on the real transcript.

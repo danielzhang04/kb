@@ -27,8 +27,11 @@ Written by the boss session (Fable 5.1). Active work only — delete on pickup/c
   transcript grep as fallback; handoffs flagged by `scripts/handoffs_sweep.py` are deleted at boss session close.
 - `orgs/atlas/STATE.md` is pre-existing and fails `scripts/project_frame_lint.py` (72 lines, missing sections, no
   timestamp) — reshape before wiring the lint into CI.
-- Live-verify the model-verify hooks after merge: dispatch one haiku subagent from a session on the merged settings and
-  confirm the audit row (`%LOCALAPPDATA%\kb-model-audit\` / dashboard ModelAudit panel).
+- DONE 2026-09-11 17:10 ET — every armed path live-proven (headless session 74ea841c on prospecting-p8 with the branch
+  settings): model-verify audit rows (requested haiku, observed claude-haiku-4-5, verdict match), SubagentStart inherited
+  `[kb spawn context]` + North star into the child transcript, PostToolUse activity ring + throttle counter, Stop hook
+  "STATE.md stale (4d)" warning, PreCompact summary written from the real transcript and replayed by the compact
+  re-ground (all four sections in 1700 chars), frame hook silent on compact. Audit log: `%LOCALAPPDATA%\kb-context-lifecycle\model-audit.jsonl`.
 - Deferred (can-ship, ledgered): compact-time concurrency between U7 and the frame hook (one stale compaction, self-heals);
   Stop hook up to 3 git calls; sweep `--json` always exits 0; sweep should skip a handoff referenced by a surviving
   handoff's `## Load` list (2026-09-02 dashboard handoff kept by hand for that reason).
