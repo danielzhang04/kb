@@ -7,6 +7,7 @@ import json
 import math
 import os
 from pathlib import Path
+import re
 import sqlite3
 import stat
 import sys
@@ -29,13 +30,28 @@ from .person_research_service import (
     PersonResearchService,
 )
 from .store import open_store
+from .qualification_service import (
+    QualificationError,
+    QualificationStartRequest,
+    QualificationService,
+)
+from .ranking_service import (
+    RankingError,
+    RankingService,
+    RankingStartRequest,
+)
 
 
 MAX_INPUT_BYTES = 20 * 1024
 MAX_FUNDING_IMPORT_BYTES = 1024 * 1024
 MAX_PERSON_IMPORT_BYTES = 1024 * 1024
+MAX_QUALIFICATION_START_BYTES = 20 * 1024
+MAX_RANK_START_BYTES = 20 * 1024
 MAX_JSON_DEPTH = 32
 _REPARSE = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+_QUALIFICATION_BATCH_ID = re.compile(r"pqba_[0-9a-f]{32}\Z")
+_RANKING_BATCH_ID = re.compile(r"prrb_[0-9a-f]{32}\Z")
+_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _FIELDS = frozenset({
     "request_id", "campaign_id", "as_of_date", "funding_stage_min", "funding_stage_max",
     "funding_window_years", "funding_stage_interpretation", "geography", "sector",
@@ -65,6 +81,15 @@ _PERSON_CANDIDATE_FIELDS = frozenset({
     "funding_result_id", "company_id", "first_name", "full_name", "title",
     "profile_url", "source_url", "body_ref", "captured_at",
 })
+_QUALIFICATION_FIELDS = frozenset({
+    "request_id", "run_id", "expected_intake_hash", "funding_batch_id",
+    "funding_batch_hash", "person_batch_id", "person_batch_hash",
+    "predecessor_batch_id", "predecessor_hash",
+})
+_RANK_FIELDS = frozenset({
+    "request_id", "run_id", "expected_intake_hash", "qualification_batch_id",
+    "qualification_batch_hash", "predecessor_batch_id", "predecessor_hash",
+})
 _CLI_CODES = frozenset({
     "funding_import_duplicate_key", "funding_import_invalid",
     "funding_import_json_invalid", "funding_import_json_too_deep",
@@ -76,6 +101,16 @@ _CLI_CODES = frozenset({
     "person_import_json_invalid", "person_import_json_too_deep",
     "person_import_schema_invalid", "person_import_snapshot_required",
     "person_import_too_large", "person_projection_missing", "person_scope_missing",
+    "pipeline_context_stale", "qualification_projection_missing",
+    "qualification_scope_missing", "qualification_start_duplicate_key",
+    "qualification_start_invalid", "qualification_start_json_invalid",
+    "qualification_start_json_too_deep", "qualification_start_schema_invalid",
+    "qualification_start_snapshot_required", "qualification_start_too_large",
+    "rank_projection_missing", "rank_scope_missing", "rank_start_duplicate_key",
+    "rank_start_invalid",
+    "rank_start_json_invalid", "rank_start_json_too_deep",
+    "rank_start_schema_invalid", "rank_start_snapshot_required",
+    "rank_start_too_large",
     "store_invalid", "store_private_root_required",
 })
 _FUNDING_CODES = frozenset({
@@ -108,6 +143,32 @@ _PERSON_CODES = frozenset({
     "pipeline_context_stale", "predecessor_conflict", "request_conflict",
     "research_scope_too_large", "snapshot_store_required", "source_changed",
     "source_stale", "source_too_large", "store_state_invalid", "transaction_active",
+})
+_QUALIFICATION_CODES = frozenset({
+    "aware_now_required", "claimed_attempt_missing", "funding_batch_missing",
+    "invalid_funding_batch", "invalid_intake_hash", "invalid_person_batch",
+    "invalid_predecessor", "invalid_request", "invalid_request_id", "invalid_run_id",
+    "invalid_stage_binding",
+    "invalid_time", "lease_active", "lease_expired", "lease_lost",
+    "person_batch_missing", "person_history_ambiguous", "pipeline_context_stale",
+    "predecessor_conflict", "qualification_adapter_failed",
+    "qualification_adapter_unavailable", "qualification_already_complete",
+    "qualification_attempt_failed", "qualification_attempts_exhausted",
+    "qualification_conflict", "qualification_context_stale",
+    "qualification_context_unchanged", "qualification_in_progress",
+    "qualification_incomplete", "qualification_input_invalid",
+    "qualification_input_too_large", "qualification_item_missing",
+    "qualification_output_invalid", "request_conflict", "snapshot_store_required",
+    "source_changed", "source_stale", "store_state_invalid", "transaction_active",
+})
+_RANK_CODES = frozenset({
+    "aware_now_required", "invalid_intake_hash", "invalid_predecessor",
+    "invalid_qualification_batch", "invalid_request", "invalid_request_id",
+    "invalid_run_id", "pipeline_context_stale", "predecessor_conflict",
+    "funding_batch_missing", "person_batch_missing", "qualification_incomplete",
+    "qualification_missing",
+    "ranking_context_unchanged", "request_conflict", "role_policy_unsupported",
+    "source_changed", "source_stale", "store_state_invalid", "transaction_active",
 })
 
 
@@ -537,6 +598,55 @@ def _read_person_import(store: Path, input_path: Path) -> PersonResearchRequest:
     ))
 
 
+def _qualification_request(value: Any) -> QualificationStartRequest:
+    if type(value) is not dict or set(value) != _QUALIFICATION_FIELDS:
+        raise CliError("qualification_start_schema_invalid")
+    return QualificationStartRequest(
+        value["request_id"], value["run_id"], value["expected_intake_hash"],
+        value["funding_batch_id"], value["funding_batch_hash"],
+        value["person_batch_id"], value["person_batch_hash"],
+        value["predecessor_batch_id"], value["predecessor_hash"],
+    )
+
+
+def _read_qualification_start(
+    store: Path, input_path: Path,
+) -> QualificationStartRequest:
+    return _qualification_request(_read_private_json(
+        store, input_path,
+        invalid_code="qualification_start_invalid",
+        snapshot_code="qualification_start_snapshot_required",
+        too_large_code="qualification_start_too_large",
+        duplicate_code="qualification_start_duplicate_key",
+        json_code="qualification_start_json_invalid",
+        depth_code="qualification_start_json_too_deep",
+        limit=MAX_QUALIFICATION_START_BYTES,
+    ))
+
+
+def _rank_request(value: Any) -> RankingStartRequest:
+    if type(value) is not dict or set(value) != _RANK_FIELDS:
+        raise CliError("rank_start_schema_invalid")
+    return RankingStartRequest(
+        value["request_id"], value["run_id"], value["expected_intake_hash"],
+        value["qualification_batch_id"], value["qualification_batch_hash"],
+        value["predecessor_batch_id"], value["predecessor_hash"],
+    )
+
+
+def _read_rank_start(store: Path, input_path: Path) -> RankingStartRequest:
+    return _rank_request(_read_private_json(
+        store, input_path,
+        invalid_code="rank_start_invalid",
+        snapshot_code="rank_start_snapshot_required",
+        too_large_code="rank_start_too_large",
+        duplicate_code="rank_start_duplicate_key",
+        json_code="rank_start_json_invalid",
+        depth_code="rank_start_json_too_deep",
+        limit=MAX_RANK_START_BYTES,
+    ))
+
+
 def _safe_output(result: object, safe: object) -> dict[str, object]:
     return {
         "run_id": safe.run_id,
@@ -630,6 +740,179 @@ def _safe_person_scope_output(projection: object) -> dict[str, object]:
     }
 
 
+def _safe_qualification_scope_output(
+    connection: sqlite3.Connection, run_id: str,
+) -> dict[str, object]:
+    """Return only the exact current upstream and predecessor identifiers."""
+    connection.execute("BEGIN")
+    try:
+        intake = PipelineService(connection).get_safe_projection(run_id)
+        funding = FundingResearchService(connection).get_safe_projection(run_id)
+        people = PersonResearchService(connection).get_safe_projection(run_id)
+        if funding is None or people is None:
+            raise CliError("qualification_scope_missing")
+        if (
+            funding.run_id != intake.run_id or people.run_id != intake.run_id
+            or funding.intake_hash != intake.intake_hash
+            or people.intake_hash != intake.intake_hash
+            or people.funding_batch_id != funding.batch_id
+            or people.funding_batch_hash != funding.batch_hash
+        ):
+            raise CliError("pipeline_context_stale")
+        predecessor = connection.execute(
+            """SELECT batch_id,batch_hash
+                 FROM prospecting_qualification_batch
+                WHERE run_id=? ORDER BY rowid DESC LIMIT 1""",
+            (run_id,),
+        ).fetchone()
+        if predecessor is not None and (
+            type(predecessor[0]) is not str
+            or _QUALIFICATION_BATCH_ID.fullmatch(predecessor[0]) is None
+            or type(predecessor[1]) is not str
+            or _SHA256.fullmatch(predecessor[1]) is None
+        ):
+            raise CliError("pipeline_context_stale")
+        output = {
+            "run_id": intake.run_id,
+            "intake_hash": intake.intake_hash,
+            "campaign_policy_hash": intake.campaign_policy_hash,
+            "funding_batch_id": funding.batch_id,
+            "funding_batch_hash": funding.batch_hash,
+            "person_batch_id": people.batch_id,
+            "person_batch_hash": people.batch_hash,
+            "predecessor_batch_id": None if predecessor is None else str(predecessor[0]),
+            "predecessor_hash": None if predecessor is None else str(predecessor[1]),
+            "state": "qualification_scope_ready",
+        }
+        connection.rollback()
+        return output
+    except BaseException:
+        connection.rollback()
+        raise
+
+
+def _qualification_counts(projection: object) -> dict[str, int]:
+    return {
+        "items": len(projection.items),
+        "machine_reviewed": sum(item.state == "machine_reviewed" for item in projection.items),
+        "source_supported_companies": sum(
+            item.company_outcome == "source_supported" for item in projection.items
+        ),
+        "source_supported_people": sum(
+            item.person_counts["current_role_supported"] for item in projection.items
+        ),
+    }
+
+
+def _safe_qualification_start_output(
+    result: object, request: QualificationStartRequest,
+) -> dict[str, object]:
+    return {
+        "batch_id": result.batch_id,
+        "batch_hash": result.batch_hash,
+        "run_id": result.run_id,
+        "intake_hash": request.expected_intake_hash,
+        "funding_batch_id": request.funding_batch_id,
+        "funding_batch_hash": request.funding_batch_hash,
+        "person_batch_id": request.person_batch_id,
+        "person_batch_hash": request.person_batch_hash,
+        "state": result.state,
+        "counts": dict(result.counts),
+        "replayed": result.replayed,
+    }
+
+
+def _safe_qualification_projection_output(projection: object) -> dict[str, object]:
+    return {
+        "batch_id": projection.batch_id,
+        "batch_hash": projection.batch_hash,
+        "run_id": projection.run_id,
+        "intake_hash": projection.intake_hash,
+        "funding_batch_id": projection.funding_batch_id,
+        "funding_batch_hash": projection.funding_batch_hash,
+        "person_batch_id": projection.person_batch_id,
+        "person_batch_hash": projection.person_batch_hash,
+        "state": projection.state,
+        "counts": _qualification_counts(projection),
+        "items": [
+            {
+                "item_id": item.item_id,
+                "state": item.state,
+                "candidate_count": item.candidate_count,
+                "context_codes": list(item.context_codes),
+            }
+            for item in projection.items
+        ],
+    }
+
+
+def _safe_rank_start_output(
+    result: object, request: RankingStartRequest,
+) -> dict[str, object]:
+    return {
+        "batch_id": result.batch_id,
+        "batch_hash": result.batch_hash,
+        "run_id": result.run_id,
+        "intake_hash": request.expected_intake_hash,
+        "qualification_batch_id": request.qualification_batch_id,
+        "qualification_batch_hash": request.qualification_batch_hash,
+        "state": result.state,
+        "counts": dict(result.counts),
+        "replayed": result.replayed,
+    }
+
+
+def _safe_rank_scope_output(
+    connection: sqlite3.Connection, run_id: str,
+) -> dict[str, object]:
+    """Return current validated P19 and the opaque latest P20 predecessor."""
+    connection.execute("BEGIN")
+    try:
+        qualification = QualificationService(connection).get_supported_scope(run_id)
+        if qualification is None:
+            raise CliError("rank_scope_missing")
+        predecessor = connection.execute(
+            """SELECT batch_id,batch_hash
+                 FROM prospecting_ranking_batch
+                WHERE run_id=? ORDER BY rowid DESC LIMIT 1""",
+            (run_id,),
+        ).fetchone()
+        if predecessor is not None and (
+            type(predecessor[0]) is not str
+            or _RANKING_BATCH_ID.fullmatch(predecessor[0]) is None
+            or type(predecessor[1]) is not str
+            or _SHA256.fullmatch(predecessor[1]) is None
+        ):
+            raise CliError("pipeline_context_stale")
+        output = {
+            "run_id": qualification.run_id,
+            "intake_hash": qualification.intake_hash,
+            "qualification_batch_id": qualification.batch_id,
+            "qualification_batch_hash": qualification.batch_hash,
+            "predecessor_batch_id": None if predecessor is None else str(predecessor[0]),
+            "predecessor_hash": None if predecessor is None else str(predecessor[1]),
+            "state": "ranking_scope_ready",
+        }
+        connection.rollback()
+        return output
+    except BaseException:
+        connection.rollback()
+        raise
+
+
+def _safe_rank_projection_output(projection: object) -> dict[str, object]:
+    return {
+        "batch_id": projection.batch_id,
+        "batch_hash": projection.batch_hash,
+        "run_id": projection.run_id,
+        "intake_hash": projection.intake_hash,
+        "qualification_batch_id": projection.qualification_batch_id,
+        "qualification_batch_hash": projection.qualification_batch_hash,
+        "state": projection.state,
+        "counts": dict(projection.counts),
+    }
+
+
 def _error_code(error: BaseException) -> str:
     value = str(error)
     if isinstance(error, CliError) and value in _CLI_CODES:
@@ -639,6 +922,10 @@ def _error_code(error: BaseException) -> str:
     if isinstance(error, FundingResearchError) and value in _FUNDING_CODES:
         return value
     if isinstance(error, PersonResearchError) and value in _PERSON_CODES:
+        return value
+    if isinstance(error, QualificationError) and value in _QUALIFICATION_CODES:
+        return value
+    if isinstance(error, RankingError) and value in _RANK_CODES:
         return value
     return "operation_failed"
 
@@ -653,18 +940,32 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--person-import")
     mode.add_argument("--person-project")
     mode.add_argument("--person-scope")
+    mode.add_argument("--qualification-scope")
+    mode.add_argument("--qualification-start")
+    mode.add_argument("--qualification-project")
+    mode.add_argument("--rank-start")
+    mode.add_argument("--rank-project")
+    mode.add_argument("--rank-scope")
     try:
         args = parser.parse_args(argv)
         store, identity = _approved_store(Path(args.store))
         request = None
         funding_request = None
         person_request = None
+        qualification_request = None
+        rank_request = None
         if args.input is not None:
             request = _read_input(store, Path(args.input))
         elif args.funding_import is not None:
             funding_request = _read_funding_import(store, Path(args.funding_import))
         elif args.person_import is not None:
             person_request = _read_person_import(store, Path(args.person_import))
+        elif args.qualification_start is not None:
+            qualification_request = _read_qualification_start(
+                store, Path(args.qualification_start),
+            )
+        elif args.rank_start is not None:
+            rank_request = _read_rank_start(store, Path(args.rank_start))
         store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)
         connection = open_store(store)
         try:
@@ -690,6 +991,36 @@ def main(argv: list[str] | None = None) -> int:
                 if projection is None:
                     raise CliError("person_scope_missing")
                 output = _safe_person_scope_output(projection)
+            elif args.qualification_scope is not None:
+                output = _safe_qualification_scope_output(
+                    connection, args.qualification_scope,
+                )
+            elif qualification_request is not None or args.qualification_project is not None:
+                qualification = QualificationService(connection)
+                if qualification_request is not None:
+                    result = qualification.start_or_resume(qualification_request)
+                    output = _safe_qualification_start_output(
+                        result, qualification_request,
+                    )
+                else:
+                    projection = qualification.get_projection(
+                        args.qualification_project,
+                    )
+                    if projection is None:
+                        raise CliError("qualification_projection_missing")
+                    output = _safe_qualification_projection_output(projection)
+            elif args.rank_scope is not None:
+                output = _safe_rank_scope_output(connection, args.rank_scope)
+            elif rank_request is not None or args.rank_project is not None:
+                ranking = RankingService(connection)
+                if rank_request is not None:
+                    result = ranking.start_or_resume(rank_request)
+                    output = _safe_rank_start_output(result, rank_request)
+                else:
+                    safe = ranking.get_safe_projection(args.rank_project)
+                    if safe is None:
+                        raise CliError("rank_projection_missing")
+                    output = _safe_rank_projection_output(safe)
             else:
                 people = PersonResearchService(connection)
                 if person_request is not None:
@@ -706,7 +1037,10 @@ def main(argv: list[str] | None = None) -> int:
             json.dumps(output, sort_keys=True, separators=(",", ":")) + "\n"
         )
         return 0
-    except (CliError, FundingResearchError, PersonResearchError, PipelineError) as error:
+    except (
+        CliError, FundingResearchError, PersonResearchError, PipelineError,
+        QualificationError, RankingError,
+    ) as error:
         code = _error_code(error)
     except (OSError, OverflowError, RecursionError, RuntimeError, sqlite3.Error, TypeError, ValueError):
         code = "operation_failed"

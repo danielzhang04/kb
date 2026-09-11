@@ -1,6 +1,6 @@
 ---
 name: prospecting-intake
-description: Turn a natural-language prospecting brief into a private typed intake, then import operator-captured funding and current-role evidence for provisional factcheck. Use for starting, safely retrying, or inspecting this local prospecting pipeline; this draft does not qualify people or perform outreach.
+description: Turn a natural-language prospecting brief into a private typed intake, import operator-captured evidence, run source-bound qualification, and order supported roles. Use for starting, safely retrying, or inspecting this local prospecting pipeline; this draft does not perform outreach.
 ---
 
 # Prospecting intake and evidence capture
@@ -70,5 +70,43 @@ python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlit
 ```
 
 Keep person and source details in the private store. Report only returned opaque batch and funding IDs, hashes, state, and counts. `awaiting_person_qualification_factcheck` means current-role pages were imported provisionally. It does not select or rank people, confirm the source as a human, create contact data, or authorize drafting or outreach. Company factcheck, ranking to the requested per-company count, humanization, criticism, human approval, and sending remain later gated work. Local source-bound drafting can precede human source confirmation; confirmation remains mandatory before readiness and outbound steps.
+
+Retrieve the current qualification inputs after the person import:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --qualification-scope <opaque-run-id>
+```
+
+This returns the exact current intake, campaign policy, funding, and person hashes, plus the prior qualification batch ID and hash when one exists. It contains no company or person identity. Create a private qualification-start manifest beneath the selected store's `snapshots/` directory with exactly `request_id`, `run_id`, `expected_intake_hash`, `funding_batch_id`, `funding_batch_hash`, `person_batch_id`, `person_batch_hash`, `predecessor_batch_id`, and `predecessor_hash`. Copy every non-request field from the current scope and retain one canonical UUID for replay. A replacement needs a new UUID and the returned predecessor values.
+
+Start or replay the source-bound qualification batch:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --qualification-start <selected-store-parent>/snapshots/<qualification-start.json>
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --qualification-project <opaque-run-id>
+```
+
+`awaiting_qualification_adapter` is a real pending state. The start command does not run a model and must not be described as a completed factcheck. The projection returns only opaque item IDs, states, candidate counts, context codes, and batch aggregate counts. For each pending item, create and retain a separate canonical request UUID and invoke the accepted private qualification runtime:
+
+```text
+python -m scripts.prospecting.qualification_stage_cli --store <existing-private-store.sqlite> --item-id <opaque-item-id> --request-id <canonical-uuid>
+```
+
+Do not invent, edit, or import a qualification result. The stage controller binds the actual runtime result to the exact saved source bytes. Re-run the qualification projection after each item. Stop on `qualification_failed`, exhausted attempts, missing context, stale or changed sources, or any other fixed refusal. `machine_reviewed` means the bounded machine source review completed; it is neither human source confirmation nor outreach approval. When a newer funding or person replacement makes the batch stale, retrieve a fresh qualification scope and start a replacement against the returned predecessor instead of reusing old results.
+
+After every qualification item is machine reviewed, retrieve the current ranking inputs:
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --rank-scope <opaque-run-id>
+```
+
+This validates the current machine-reviewed qualification sources and returns only its exact batch ID and hash plus the latest opaque ranking predecessor, if one exists. It remains usable for a replacement when the prior ranking projection has correctly become stale. Create a private rank-start manifest with exactly `request_id`, `run_id`, `expected_intake_hash`, `qualification_batch_id`, `qualification_batch_hash`, `predecessor_batch_id`, and `predecessor_hash`. Copy every non-request value from the rank scope and retain its canonical request UUID for exact replay.
+
+```text
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --rank-start <selected-store-parent>/snapshots/<rank-start.json>
+python -m scripts.prospecting.pipeline_cli --store <existing-private-store.sqlite> --rank-project <opaque-run-id>
+```
+
+The ranker orders only exact source-supported current employments against the saved role-family policy, deduplicates exact person IDs, and preserves deficits. It does not score personal affinity or sender background and must not be called optimal. `deterministic_role_ordered` does not create campaign selections, contact data, drafts, approvals, or sends. A stale rank projection requires new source qualification and a new ranking batch; an exact old request may replay its original opaque batch receipt without making that historical batch current.
 
 This learned skill is a sandboxed draft until separately reviewed and promoted.

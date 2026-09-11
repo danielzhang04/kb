@@ -1,8 +1,39 @@
 # Repeatable startup outreach pilot
 
 Status: active overnight execution; see refreshed phases below. End-to-end pilot is not complete.
-Source baseline: `53b29992` on `codex/prospecting-session-20260909`.
+Accepted source checkpoint: `107e4d33` on `codex/prospecting-session-20260909`.
 The canonical coordination handoff owns current publication and runtime status.
+
+## Infrastructure-first clarification - 2026-09-10 evening
+
+The user clarified that consistent, adaptable infrastructure is the deliverable; research
+and emails are acceptance cases. Complete a synthetic end-to-end chain and a small real
+non-sending campaign before expanding the provisional eight-company quota. Additional
+companies should exercise new behavior, not replace missing acquisition or stage wiring.
+Root owns planning, coordination, browser relay and acceptance review. Workers own research
+preparation and implementation; an independent worker reviews frozen changes. Source-only
+VM jobs use explicit staged skills and bounded receipts, not implicit desktop tool parity.
+
+The user permits any existing background or projects in drafts. Verify factual details and
+dates from existing materials; historical experience must not be described as a current role.
+Keep claims in the private sender/evidence path and invalidate downstream review when changed.
+
+- [x] Accept P19 qualification runtime integration and P20 exact-person role ordering.
+- [ ] Complete qualification/rank CLI and skill, including fresh-session predecessor recovery.
+- [ ] Add the smallest durable acquisition/capture progress seam; avoid manual manifest glue.
+- [ ] Connect exact selected employment and proof through drafts, P13 and P16 without fake
+  P8 approval, affinity or broad fill rows. Preserve edits; fence explicit regeneration.
+- [ ] Implement the reviewed atomic human-edit restart after bounded repair exhaustion.
+- [ ] Prove full synthetic workflow and actual model stages after native auth recovery.
+- [ ] Exercise a small real campaign, changed inputs, source drift and interrupted recovery.
+- [ ] Verify remote source-worker lifecycle and document remaining runtime/tool boundaries.
+- [ ] Complete independent review, the existing PR publication gate, handoff and owned cleanup.
+
+Important tests: stale ranking can recover its predecessor through a safe scope command;
+unrelated employments cannot enter drafts; changed selection/proof invalidates identical copy;
+retries preserve human edits and pending suggestions; no contact is needed merely to draft;
+synthetic receipts never count as actual Humanizer or critic execution. Prior dated checkpoints
+below describe historical acceptance and are superseded by this current plan where they differ.
 
 ## Overnight execution refresh - 2026-09-09
 
@@ -22,13 +53,14 @@ restart/replay safety. Synthetic tests and a polished dashboard alone are insuff
 - [x] Phase A: durable P15 intake, source-bound templates and private CLI/learned intake skill.
 - [x] Phase B: P16 durable editorial controller and shared review/approval/scheduler/executor
   gates; sourced draft-first local review. Human confirmation remains required for readiness.
-- [ ] Phase C: actual bounded skill execution. Shared source-disabled P16 runtime accepted;
-  qualification extension in progress. Native HTTP401 awaits user-controlled recovery. No
+- [ ] Phase C: actual bounded skill execution. Shared source-disabled P16 runtime and
+  qualification extension accepted. Native HTTP401 awaits user-controlled recovery. No
   login/logout, auth-store access, blind model retries or paid fallback. Synthetic transport
   tests do not establish genuine full Humanizer output or real-data runtime acceptance.
 - [ ] Phase D: research qualification, exact-person ranking and draft materialization. P17/P18
-  capture and P19 qualification controller accepted. P20 bounded role ordering is in progress;
-  materialization follows separately. Three companies/seven candidates imported provisionally.
+  capture, P19 qualification controller and P20 bounded role ordering accepted; selected draft
+  materialization and reusable acquisition follow. Three companies/seven candidates recorded
+  provisionally, with five person imports and two source-unknown outcomes.
 - [ ] Phase E: complete actual first sourced-email feedback loop and authenticated new-work
   recovery for exhausted unchanged lineages. Preserve separate source, text acceptance and
   readiness decisions; exact source/sender/intake changes invalidate dependent reviews.
@@ -47,10 +79,10 @@ with a qualifying announcement in the three calendar years ending on the intake 
 Record these as orchestrator assumptions, not user answers. Missing latest-round coverage remains
 unknown, not a pass. Do not invent a second contact or relax criteria to fill a quota.
 
-Sender claims may initially use only the user's supplied current statements: building with AI,
-curiosity about internal AI use/products and the company or person's path, and interest in a coffee
-chat. Employment is secondary. Historical resume/draft material is candidate context until current
-claims are selected. Unanswered preferences do not justify manufacturing human approval or sending.
+Sender claims may use the user's supplied statements and verified existing background/projects,
+as authorized on Sep10. Retain the distinction between historical and current facts. AI curiosity
+and a coffee chat remain primary; employment is secondary. Unanswered preferences do not justify
+manufacturing human approval or sending.
 
 ### Permission and execution boundaries
 

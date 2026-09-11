@@ -14,13 +14,26 @@ import scripts.prospecting.pipeline_cli as pipeline_cli
 from scripts.prospecting.funding_research_service import FundingResearchError
 from scripts.prospecting.pipeline_cli import (
     MAX_FUNDING_IMPORT_BYTES, MAX_INPUT_BYTES, MAX_JSON_DEPTH,
-    MAX_PERSON_IMPORT_BYTES,
+    MAX_PERSON_IMPORT_BYTES, MAX_QUALIFICATION_START_BYTES, MAX_RANK_START_BYTES,
 )
 from scripts.prospecting.pipeline_service import PipelineService
+from scripts.prospecting.person_research_service import PersonResearchService
+from scripts.prospecting.qualification_service import QualificationService
 from scripts.prospecting.store import open_store
 from scripts.prospecting.tests.test_pipeline_service import CAMPAIGN_ID, _seed_campaign
 from scripts.prospecting.tests.test_review_app_integration import (
     _bootstrap, _request as _http_request, _start,
+)
+from scripts.prospecting.tests.test_person_research_service import (
+    NOW as RESEARCH_NOW,
+    STAMP as RESEARCH_STAMP,
+    _person as _captured_person,
+    _request as _person_service_request,
+    _seed as _seed_research,
+)
+from scripts.prospecting.tests.test_qualification_service import (
+    _Adapter as _QualificationAdapter,
+    _supported_payload,
 )
 
 
@@ -43,6 +56,29 @@ PERSON_PROJECTION_FIELDS = PERSON_OUTPUT_FIELDS - {"replayed"}
 PERSON_SCOPE_FIELDS = {
     "run_id", "intake_hash", "funding_batch_id", "funding_batch_hash",
     "state", "requested_company_cap", "companies",
+}
+QUALIFICATION_SCOPE_FIELDS = {
+    "run_id", "intake_hash", "campaign_policy_hash", "funding_batch_id",
+    "funding_batch_hash", "person_batch_id", "person_batch_hash",
+    "predecessor_batch_id", "predecessor_hash", "state",
+}
+QUALIFICATION_OUTPUT_FIELDS = {
+    "batch_id", "batch_hash", "run_id", "intake_hash", "funding_batch_id",
+    "funding_batch_hash", "person_batch_id", "person_batch_hash", "state",
+    "counts", "replayed",
+}
+QUALIFICATION_PROJECTION_FIELDS = (
+    QUALIFICATION_OUTPUT_FIELDS - {"replayed"}
+) | {"items"}
+RANK_OUTPUT_FIELDS = {
+    "batch_id", "batch_hash", "run_id", "intake_hash",
+    "qualification_batch_id", "qualification_batch_hash", "state", "counts",
+    "replayed",
+}
+RANK_PROJECTION_FIELDS = RANK_OUTPUT_FIELDS - {"replayed"}
+RANK_SCOPE_FIELDS = {
+    "run_id", "intake_hash", "qualification_batch_id",
+    "qualification_batch_hash", "predecessor_batch_id", "predecessor_hash", "state",
 }
 
 
@@ -150,6 +186,19 @@ def _run_person_scope(
         [
             sys.executable, "-B", "-m", "scripts.prospecting.pipeline_cli",
             "--store", str(store), "--person-scope", run_id, *extra,
+        ],
+        cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
+    )
+
+
+def _run_mode(
+    store: Path, option: str, value: str | Path, environment: dict[str, str],
+    *extra: str,
+) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable, "-B", "-m", "scripts.prospecting.pipeline_cli",
+            "--store", str(store), option, str(value), *extra,
         ],
         cwd=ROOT, env=environment, text=True, capture_output=True, check=False,
     )
@@ -272,6 +321,61 @@ def _person_cli_setup(tmp_path: Path):
     scoped = _run_person_scope(store, str(intake["run_id"]), environment)
     assert scoped.returncode == 0 and scoped.stderr == ""
     return store, snapshots, environment, intake, json.loads(funding.stdout), json.loads(scoped.stdout)
+
+
+def _qualification_cli_setup(tmp_path: Path):
+    root = tmp_path / "local" / "kb-prospecting"
+    root.mkdir(parents=True)
+    store = root / "store.sqlite"
+    connection = open_store(store)
+    started, funding, selected = _seed_research(connection, root)
+    people = PersonResearchService(
+        connection, now=lambda: RESEARCH_STAMP,
+    ).import_current_people(_person_service_request(
+        started, funding, selected, (_captured_person(root, selected),),
+    ))
+    connection.close()
+    environment = dict(os.environ, LOCALAPPDATA=str(tmp_path / "local"))
+    return store, root / "snapshots", environment, started, funding, selected, people
+
+
+def _qualification_manifest(scope: dict[str, object], request_id: str | None = None):
+    return {
+        "request_id": request_id or str(uuid.uuid4()),
+        "run_id": scope["run_id"],
+        "expected_intake_hash": scope["intake_hash"],
+        "funding_batch_id": scope["funding_batch_id"],
+        "funding_batch_hash": scope["funding_batch_hash"],
+        "person_batch_id": scope["person_batch_id"],
+        "person_batch_hash": scope["person_batch_hash"],
+        "predecessor_batch_id": scope["predecessor_batch_id"],
+        "predecessor_hash": scope["predecessor_hash"],
+    }
+
+
+def _rank_manifest(
+    qualification: dict[str, object], request_id: str | None = None,
+    predecessor: dict[str, object] | None = None,
+):
+    return {
+        "request_id": request_id or str(uuid.uuid4()),
+        "run_id": qualification["run_id"],
+        "expected_intake_hash": qualification["intake_hash"],
+        "qualification_batch_id": qualification.get(
+            "qualification_batch_id", qualification.get("batch_id"),
+        ),
+        "qualification_batch_hash": qualification.get(
+            "qualification_batch_hash", qualification.get("batch_hash"),
+        ),
+        "predecessor_batch_id": (
+            qualification.get("predecessor_batch_id")
+            if predecessor is None else predecessor["batch_id"]
+        ),
+        "predecessor_hash": (
+            qualification.get("predecessor_hash")
+            if predecessor is None else predecessor["batch_hash"]
+        ),
+    }
 
 
 def _assert_private_failure(result: subprocess.CompletedProcess[str], source: Path) -> str:
@@ -928,3 +1032,378 @@ def test_person_scope_translates_stale_source_without_private_projection(
     assert captured.out == ""
     assert captured.err == "pipeline_cli_error:source_stale\n"
     assert CANARY not in captured.err
+
+
+def test_qualification_scope_start_project_replay_and_source_replacement_are_safe(
+    tmp_path: Path,
+) -> None:
+    (
+        store, snapshots, environment, started, funding, selected, people,
+    ) = _qualification_cli_setup(tmp_path)
+    scoped = _run_mode(store, "--qualification-scope", started.run_id, environment)
+    assert scoped.returncode == 0 and scoped.stderr == ""
+    scope = json.loads(scoped.stdout)
+    assert set(scope) == QUALIFICATION_SCOPE_FIELDS
+    assert scope == {
+        "run_id": started.run_id,
+        "intake_hash": started.intake_hash,
+        "campaign_policy_hash": started.campaign_policy_hash,
+        "funding_batch_id": funding.batch_id,
+        "funding_batch_hash": funding.batch_hash,
+        "person_batch_id": people.batch_id,
+        "person_batch_hash": people.batch_hash,
+        "predecessor_batch_id": None,
+        "predecessor_hash": None,
+        "state": "qualification_scope_ready",
+    }
+    manifest = _qualification_manifest(scope)
+    source = _write(snapshots, manifest, "qualification/start.json")
+    first = _run_mode(store, "--qualification-start", source, environment)
+    replay = _run_mode(store, "--qualification-start", source, environment)
+    project = _run_mode(store, "--qualification-project", started.run_id, environment)
+    assert all(value.returncode == 0 for value in (first, replay, project))
+    assert all(value.stderr == "" for value in (first, replay, project))
+    first_value = json.loads(first.stdout)
+    replay_value = json.loads(replay.stdout)
+    projected = json.loads(project.stdout)
+    assert set(first_value) == QUALIFICATION_OUTPUT_FIELDS
+    assert set(projected) == QUALIFICATION_PROJECTION_FIELDS
+    assert first_value["state"] == "awaiting_qualification_adapter"
+    assert first_value["counts"]["items"] == 1
+    assert first_value["replayed"] is False
+    assert replay_value == {**first_value, "replayed": True}
+    assert projected["batch_id"] == first_value["batch_id"]
+    assert projected["batch_hash"] == first_value["batch_hash"]
+    assert len(projected["items"]) == 1
+    assert set(projected["items"][0]) == {
+        "item_id", "state", "candidate_count", "context_codes",
+    }
+    assert projected["items"][0]["item_id"].startswith("pqit_")
+
+    connection = open_store(store)
+    replacement = PersonResearchService(
+        connection, now=lambda: RESEARCH_STAMP,
+    ).import_current_people(_person_service_request(
+        started, funding, selected,
+        (_captured_person(root=store.parent, selected=selected, slug="replacement"),),
+        request_id="fefefefe-fefe-4efe-8efe-fefefefefefe",
+        predecessor=people,
+    ))
+    connection.close()
+    stale = _run_mode(store, "--qualification-project", started.run_id, environment)
+    assert _assert_private_failure(stale, store) == "pipeline_context_stale"
+    late_replay = _run_mode(store, "--qualification-start", source, environment)
+    assert late_replay.returncode == 0 and late_replay.stderr == ""
+    assert json.loads(late_replay.stdout) == replay_value
+    latest_scope_result = _run_mode(
+        store, "--qualification-scope", started.run_id, environment,
+    )
+    latest_scope = json.loads(latest_scope_result.stdout)
+    assert latest_scope_result.returncode == 0 and latest_scope_result.stderr == ""
+    assert latest_scope["person_batch_id"] == replacement.batch_id
+    assert latest_scope["person_batch_hash"] == replacement.batch_hash
+    assert latest_scope["predecessor_batch_id"] == first_value["batch_id"]
+    assert latest_scope["predecessor_hash"] == first_value["batch_hash"]
+    private_values = (
+        CANARY, "Nimbus Systems", "Avery Example", "Head of Operations",
+        "profile.test", "captures/",
+    )
+    public = scoped.stdout + first.stdout + replay.stdout + project.stdout + late_replay.stdout
+    assert all(value not in public for value in private_values)
+
+    changed = dict(manifest)
+    changed["person_batch_hash"] = "b" * 64
+    refused_source = _write(snapshots, changed, "qualification/changed.json")
+    refused = _run_mode(store, "--qualification-start", refused_source, environment)
+    assert _assert_private_failure(refused, refused_source) == "request_conflict"
+
+
+def test_completed_qualification_rank_start_project_and_exact_late_replay_are_safe(
+    tmp_path: Path,
+) -> None:
+    (
+        store, snapshots, environment, started, funding, selected, people,
+    ) = _qualification_cli_setup(tmp_path)
+    scope = json.loads(_run_mode(
+        store, "--qualification-scope", started.run_id, environment,
+    ).stdout)
+    qualification_source = _write(
+        snapshots, _qualification_manifest(scope), "ranking/qualification.json",
+    )
+    qualification_start = _run_mode(
+        store, "--qualification-start", qualification_source, environment,
+    )
+    assert qualification_start.returncode == 0 and qualification_start.stderr == ""
+
+    connection = open_store(store)
+    qualification_service = QualificationService(
+        connection,
+        adapters={"qualification_factcheck": _QualificationAdapter(_supported_payload)},
+        now=lambda: RESEARCH_NOW,
+    )
+    qualification = qualification_service.get_projection(started.run_id)
+    assert qualification is not None
+    for index, item in enumerate(qualification.items):
+        qualification_service.run_next(
+            item.item_id, f"eeeeeeee-eeee-4eee-8eee-{index:012x}",
+        )
+    connection.close()
+
+    qualification_project = _run_mode(
+        store, "--qualification-project", started.run_id, environment,
+    )
+    assert qualification_project.returncode == 0 and qualification_project.stderr == ""
+    qualification_value = json.loads(qualification_project.stdout)
+    assert qualification_value["state"] == "machine_reviewed"
+    assert qualification_value["counts"]["machine_reviewed"] == 1
+
+    initial_rank_scope_result = _run_mode(
+        store, "--rank-scope", started.run_id, environment,
+    )
+    assert initial_rank_scope_result.returncode == 0
+    initial_rank_scope = json.loads(initial_rank_scope_result.stdout)
+    assert set(initial_rank_scope) == RANK_SCOPE_FIELDS
+    assert initial_rank_scope["qualification_batch_id"] == qualification_value["batch_id"]
+    assert initial_rank_scope["qualification_batch_hash"] == qualification_value["batch_hash"]
+    assert initial_rank_scope["predecessor_batch_id"] is None
+    assert initial_rank_scope["predecessor_hash"] is None
+    rank_manifest = _rank_manifest(initial_rank_scope)
+    rank_source = _write(snapshots, rank_manifest, "ranking/start.json")
+    first = _run_mode(store, "--rank-start", rank_source, environment)
+    replay = _run_mode(store, "--rank-start", rank_source, environment)
+    project = _run_mode(store, "--rank-project", started.run_id, environment)
+    assert all(value.returncode == 0 for value in (first, replay, project))
+    assert all(value.stderr == "" for value in (first, replay, project))
+    first_value = json.loads(first.stdout)
+    replay_value = json.loads(replay.stdout)
+    projected = json.loads(project.stdout)
+    assert set(first_value) == RANK_OUTPUT_FIELDS
+    assert set(projected) == RANK_PROJECTION_FIELDS
+    assert first_value["state"] == "deterministic_role_ordered"
+    assert first_value["counts"] == {
+        "companies": 1, "eligible_people": 1, "selected_people": 1,
+        "people_shortfall": 1, "companies_with_shortfall": 1,
+    }
+    assert replay_value == {**first_value, "replayed": True}
+    assert projected == {key: value for key, value in first_value.items() if key != "replayed"}
+
+    connection = open_store(store)
+    replacement = PersonResearchService(
+        connection, now=lambda: RESEARCH_STAMP,
+    ).import_current_people(_person_service_request(
+        started, funding, selected,
+        (_captured_person(root=store.parent, selected=selected, slug="rank-replacement"),),
+        request_id="abababab-abab-4bab-8bab-abababababab",
+        predecessor=people,
+    ))
+    connection.close()
+    stale = _run_mode(store, "--rank-project", started.run_id, environment)
+    assert _assert_private_failure(stale, store) == "pipeline_context_stale"
+    late_replay = _run_mode(store, "--rank-start", rank_source, environment)
+    assert late_replay.returncode == 0 and late_replay.stderr == ""
+    assert json.loads(late_replay.stdout) == replay_value
+
+    qualification_scope_b_result = _run_mode(
+        store, "--qualification-scope", started.run_id, environment,
+    )
+    assert qualification_scope_b_result.returncode == 0
+    qualification_scope_b = json.loads(qualification_scope_b_result.stdout)
+    assert qualification_scope_b["person_batch_id"] == replacement.batch_id
+    qualification_b_source = _write(
+        snapshots, _qualification_manifest(qualification_scope_b),
+        "ranking/qualification-b.json",
+    )
+    qualification_b_start = _run_mode(
+        store, "--qualification-start", qualification_b_source, environment,
+    )
+    assert qualification_b_start.returncode == 0 and qualification_b_start.stderr == ""
+    connection = open_store(store)
+    qualification_service = QualificationService(
+        connection,
+        adapters={"qualification_factcheck": _QualificationAdapter(_supported_payload)},
+        now=lambda: RESEARCH_NOW,
+    )
+    qualification_b = qualification_service.get_projection(started.run_id)
+    assert qualification_b is not None
+    for index, item in enumerate(qualification_b.items):
+        qualification_service.run_next(
+            item.item_id, f"dddddddd-dddd-4ddd-8ddd-{index:012x}",
+        )
+    connection.close()
+
+    rank_scope_result = _run_mode(store, "--rank-scope", started.run_id, environment)
+    assert rank_scope_result.returncode == 0 and rank_scope_result.stderr == ""
+    rank_scope = json.loads(rank_scope_result.stdout)
+    assert set(rank_scope) == RANK_SCOPE_FIELDS
+    assert rank_scope["qualification_batch_id"] == qualification_b.batch_id
+    assert rank_scope["qualification_batch_hash"] == qualification_b.batch_hash
+    assert rank_scope["predecessor_batch_id"] == first_value["batch_id"]
+    assert rank_scope["predecessor_hash"] == first_value["batch_hash"]
+    assert rank_scope["state"] == "ranking_scope_ready"
+    rank_b_source = _write(
+        snapshots, _rank_manifest(rank_scope), "ranking/replacement.json",
+    )
+    rank_b_result = _run_mode(store, "--rank-start", rank_b_source, environment)
+    current_b_result = _run_mode(store, "--rank-project", started.run_id, environment)
+    replay_a_again = _run_mode(store, "--rank-start", rank_source, environment)
+    assert all(value.returncode == 0 for value in (
+        rank_b_result, current_b_result, replay_a_again,
+    ))
+    rank_b = json.loads(rank_b_result.stdout)
+    current_b = json.loads(current_b_result.stdout)
+    assert rank_b["batch_id"] != first_value["batch_id"]
+    assert current_b == {
+        key: value for key, value in rank_b.items() if key != "replayed"
+    }
+    assert json.loads(replay_a_again.stdout) == replay_value
+
+    connection = open_store(store)
+    body_ref = connection.execute(
+        """SELECT source_snapshot.body_ref
+             FROM prospecting_person_candidate
+             JOIN source_snapshot USING(snapshot_id)
+            WHERE prospecting_person_candidate.batch_id=?""",
+        (replacement.batch_id,),
+    ).fetchone()[0]
+    connection.close()
+    (snapshots / str(body_ref)).write_text(
+        f"{CANARY} changed after qualification", encoding="utf-8",
+    )
+    stale_scope = _run_mode(store, "--rank-scope", started.run_id, environment)
+    assert _assert_private_failure(stale_scope, store) == "source_changed"
+
+    public = (
+        first.stdout + replay.stdout + project.stdout + late_replay.stdout
+        + rank_scope_result.stdout + rank_b_result.stdout + current_b_result.stdout
+        + replay_a_again.stdout
+    )
+    assert all(value not in public for value in (
+        CANARY, "Nimbus Systems", "Avery Example", "Head of Operations", "profile.test",
+    ))
+
+
+@pytest.mark.parametrize(
+    ("option", "folder", "raw", "code"),
+    (
+        (
+            "--qualification-start", "qualification",
+            b'{"request_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",'
+            b'"request_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',
+            "qualification_start_duplicate_key",
+        ),
+        (
+            "--qualification-start", "qualification",
+            b'{"sentinel":"PRIVATE-CANARY-SENTINEL"}',
+            "qualification_start_schema_invalid",
+        ),
+        (
+            "--rank-start", "ranking",
+            b'{"request_id":"aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",'
+            b'"request_id":"bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"}',
+            "rank_start_duplicate_key",
+        ),
+        (
+            "--rank-start", "ranking",
+            b'{"sentinel":"PRIVATE-CANARY-SENTINEL"}',
+            "rank_start_schema_invalid",
+        ),
+    ),
+)
+def test_qualification_and_rank_manifests_reject_duplicates_and_unknown_fields_privately(
+    tmp_path: Path, option: str, folder: str, raw: bytes, code: str,
+) -> None:
+    store, snapshots, environment = _paths(tmp_path)
+    source = _write_raw(snapshots, raw, f"{folder}/invalid.json")
+    assert _assert_private_failure(
+        _run_mode(store, option, source, environment), source,
+    ) == code
+
+
+@pytest.mark.parametrize(
+    ("option", "limit", "code"),
+    (
+        ("--qualification-start", MAX_QUALIFICATION_START_BYTES, "qualification_start_too_large"),
+        ("--rank-start", MAX_RANK_START_BYTES, "rank_start_too_large"),
+    ),
+)
+def test_qualification_and_rank_manifests_are_bounded_before_store_migration(
+    tmp_path: Path, option: str, limit: int, code: str,
+) -> None:
+    root = tmp_path / "local" / "kb-prospecting"
+    snapshots = root / "snapshots"
+    snapshots.mkdir(parents=True)
+    store = root / "uninitialized.sqlite"
+    store.write_bytes(b"")
+    source = _write_raw(
+        snapshots,
+        b'{"sentinel":"PRIVATE-CANARY-SENTINEL","padding":"' + b"x" * limit,
+        f"{option.removeprefix('--')}/oversized.json",
+    )
+    environment = dict(os.environ, LOCALAPPDATA=str(tmp_path / "local"))
+    assert _assert_private_failure(
+        _run_mode(store, option, source, environment), source,
+    ) == code
+    assert store.read_bytes() == b""
+    assert not Path(f"{store}-wal").exists()
+    assert not Path(f"{store}-shm").exists()
+
+
+@pytest.mark.parametrize(
+    ("option", "folder", "depth_code", "snapshot_code"),
+    (
+        (
+            "--qualification-start", "qualification",
+            "qualification_start_json_too_deep", "qualification_start_snapshot_required",
+        ),
+        (
+            "--rank-start", "ranking",
+            "rank_start_json_too_deep", "rank_start_snapshot_required",
+        ),
+    ),
+)
+def test_qualification_and_rank_manifests_enforce_depth_and_snapshot_containment(
+    tmp_path: Path, option: str, folder: str, depth_code: str, snapshot_code: str,
+) -> None:
+    store, snapshots, environment = _paths(tmp_path)
+    deep_raw = (
+        b"[" * (MAX_JSON_DEPTH + 1) + json.dumps(CANARY).encode()
+        + b"]" * (MAX_JSON_DEPTH + 1)
+    )
+    deep = _write_raw(snapshots, deep_raw, f"{folder}/deep.json")
+    assert _assert_private_failure(
+        _run_mode(store, option, deep, environment), deep,
+    ) == depth_code
+    outside = _write_raw(tmp_path, b"{}", f"outside-{folder}.json")
+    assert _assert_private_failure(
+        _run_mode(store, option, outside, environment), outside,
+    ) == snapshot_code
+
+
+def test_qualification_and_rank_modes_are_mutually_exclusive_and_missing_is_fixed(
+    tmp_path: Path,
+) -> None:
+    store, snapshots, environment, started, _funding, _selected, _people = (
+        _qualification_cli_setup(tmp_path)
+    )
+    missing_qualification = _run_mode(
+        store, "--qualification-project", started.run_id, environment,
+    )
+    assert _assert_private_failure(
+        missing_qualification, store,
+    ) == "qualification_projection_missing"
+    missing_rank = _run_mode(store, "--rank-project", started.run_id, environment)
+    assert _assert_private_failure(missing_rank, store) == "qualification_missing"
+    missing_rank_scope = _run_mode(store, "--rank-scope", started.run_id, environment)
+    assert _assert_private_failure(missing_rank_scope, store) == "rank_scope_missing"
+    source = _write(
+        snapshots,
+        _qualification_manifest(json.loads(_run_mode(
+            store, "--qualification-scope", started.run_id, environment,
+        ).stdout)),
+        "qualification/conflicting.json",
+    )
+    conflict = _run_mode(
+        store, "--qualification-start", source, environment,
+        "--rank-project", started.run_id,
+    )
+    assert _assert_private_failure(conflict, source) == "invalid_arguments"
