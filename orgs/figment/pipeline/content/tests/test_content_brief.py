@@ -140,6 +140,105 @@ def test_rejects_request_controlled_persona_path_or_self_referential_reference(t
         build_content_brief(root, "request.json", "out.json")
 
 
+@pytest.mark.parametrize("bad", ["bad\nline", "bad\ttab", "bad\x00null", "bad\x7fdel"])
+def test_rejects_control_characters_matching_dashboard_consumer(tmp_path: Path, bad: str):
+    root = _root(tmp_path)
+    _write_request(root, _request(hypothesis=bad))
+    with pytest.raises(ContentBriefError, match="control characters"):
+        build_content_brief(root, "request.json", "out.json")
+    assert not (root / "out.json").exists()
+
+
+def test_rejects_oversized_citation_before_output(tmp_path: Path):
+    root = _root(tmp_path)
+    overlong_citation = "https://example.test/" + ("a" * 2048)
+    _write_request(root, _request(sources=[{"citation": overlong_citation, "observed_date": "2026-09-07"}]))
+    with pytest.raises(ContentBriefError, match="bounded nonempty text"):
+        build_content_brief(root, "request.json", "out.json")
+    assert not (root / "out.json").exists()
+
+
+def test_accepts_citation_at_the_exact_2048_bound(tmp_path: Path):
+    root = _root(tmp_path)
+    citation = "https://example.test/" + ("a" * (2048 - len("https://example.test/")))
+    assert len(citation) == 2048
+    _write_request(root, _request(sources=[{"citation": citation, "observed_date": "2026-09-07"}]))
+    result = build_content_brief(root, "request.json", "out.json")
+    assert result["sources"][0]["citation"] == citation
+
+
+def test_accepts_legitimate_non_ascii_hypothesis_and_metric(tmp_path: Path):
+    root = _root(tmp_path)
+    _write_request(root, _request(
+        hypothesis="A café aesthetic with an emoji \U0001f4ce resonates.",
+        intended_metric="taux de sauvegarde par compte atteint",
+    ))
+    result = build_content_brief(root, "request.json", "out.json")
+    assert result["hypothesis"] == "A café aesthetic with an emoji \U0001f4ce resonates."
+    assert result["intended_metric"] == "taux de sauvegarde par compte atteint"
+
+
+def test_accepts_hypothesis_at_the_existing_4096_bound(tmp_path: Path):
+    root = _root(tmp_path)
+    hypothesis = "a" * 4096
+    _write_request(root, _request(hypothesis=hypothesis))
+    result = build_content_brief(root, "request.json", "out.json")
+    assert result["hypothesis"] == hypothesis
+
+
+def test_hypothesis_boundary_uses_utf16_code_units_like_the_hub(tmp_path: Path):
+    root = _root(tmp_path)
+    emoji = "\U0001f600"
+    hypothesis_at_bound = emoji * 2048  # 2048 codepoints, 4096 UTF-16 units
+    _write_request(root, _request(hypothesis=hypothesis_at_bound))
+    result = build_content_brief(root, "request.json", "out.json")
+    assert result["hypothesis"] == hypothesis_at_bound
+
+    hypothesis_over_bound = emoji * 2049  # 2049 codepoints, 4098 UTF-16 units
+    _write_request(root, _request(hypothesis=hypothesis_over_bound))
+    with pytest.raises(ContentBriefError, match="overlong text"):
+        build_content_brief(root, "request.json", "out2.json")
+    assert not (root / "out2.json").exists()
+
+
+def test_citation_boundary_uses_utf16_code_units_like_the_hub(tmp_path: Path):
+    root = _root(tmp_path)
+    prefix = "https://example.test/"
+    emoji = "\U0001f600"
+    remaining_units = compiler.MAX_CITATION - len(prefix)
+    emoji_count = remaining_units // 2
+    pad = remaining_units - emoji_count * 2
+    citation_at_bound = prefix + emoji * emoji_count + "a" * pad
+    _write_request(root, _request(sources=[{"citation": citation_at_bound, "observed_date": "2026-09-07"}]))
+    result = build_content_brief(root, "request.json", "out.json")
+    assert result["sources"][0]["citation"] == citation_at_bound
+
+    citation_over_bound = citation_at_bound + emoji
+    _write_request(root, _request(sources=[{"citation": citation_over_bound, "observed_date": "2026-09-07"}]))
+    with pytest.raises(ContentBriefError, match="bounded nonempty text"):
+        build_content_brief(root, "request.json", "out2.json")
+    assert not (root / "out2.json").exists()
+
+
+@pytest.mark.parametrize("bad", ["bad\nline", "bad\ttab", "bad\x00null", "bad\x7fdel"])
+def test_rejects_control_characters_in_intended_metric(tmp_path: Path, bad: str):
+    root = _root(tmp_path)
+    _write_request(root, _request(intended_metric=bad))
+    with pytest.raises(ContentBriefError, match="control characters"):
+        build_content_brief(root, "request.json", "out.json")
+    assert not (root / "out.json").exists()
+
+
+@pytest.mark.parametrize("bad", ["bad\nline", "bad\ttab", "bad\x00null", "bad\x7fdel"])
+def test_rejects_control_characters_in_citation(tmp_path: Path, bad: str):
+    root = _root(tmp_path)
+    citation = f"https://example.test/{bad}"
+    _write_request(root, _request(sources=[{"citation": citation, "observed_date": "2026-09-07"}]))
+    with pytest.raises(ContentBriefError, match="control characters"):
+        build_content_brief(root, "request.json", "out.json")
+    assert not (root / "out.json").exists()
+
+
 def test_cli_writes_only_a_fresh_bounded_record(tmp_path: Path):
     root = _root(tmp_path)
     _write_request(root, _request())

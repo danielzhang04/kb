@@ -39,6 +39,8 @@ CONTENT_DIR = Path(__file__).resolve().parent
 MAX_JSON_BYTES = 256 * 1024
 MAX_REFERENCE_BYTES = 64 * 1024 * 1024
 MAX_TEXT = 4_096
+MAX_CITATION = 2_048
+MAX_ROLE = 80
 MAX_SOURCES = 16
 MAX_DEPTH = 32
 REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
@@ -136,7 +138,7 @@ def _bounded_file(path: Path, label: str, maximum: int) -> None:
 def _check_shape(value: Any, label: str, depth: int = 0) -> None:
     if depth > MAX_DEPTH:
         raise ContentBriefError(f"{label} exceeds nesting limit")
-    if isinstance(value, str) and len(value) > MAX_TEXT:
+    if isinstance(value, str) and _utf16_length(value) > MAX_TEXT:
         raise ContentBriefError(f"{label} contains overlong text")
     if isinstance(value, dict):
         for key, child in value.items():
@@ -150,10 +152,22 @@ def _check_shape(value: Any, label: str, depth: int = 0) -> None:
             _check_shape(child, label, depth + 1)
 
 
-def _required_string(data: dict[str, Any], key: str) -> str:
+def _has_control_char(value: str) -> bool:
+    """Match the dashboard consumer's plain(): reject code points <32 or ==127."""
+    return any(ord(ch) < 32 or ord(ch) == 127 for ch in value)
+
+
+def _utf16_length(value: str) -> int:
+    """Count UTF-16 code units, matching the TS hub's string.length (surrogate pairs count as 2)."""
+    return sum(2 if ord(ch) > 0xFFFF else 1 for ch in value)
+
+
+def _required_string(data: dict[str, Any], key: str, maximum: int = MAX_TEXT) -> str:
     value = data.get(key)
-    if not isinstance(value, str) or not value.strip() or len(value) > MAX_TEXT:
+    if not isinstance(value, str) or not value.strip() or _utf16_length(value) > maximum:
         raise ContentBriefError(f"{key} must be bounded nonempty text")
+    if _has_control_char(value):
+        raise ContentBriefError(f"{key} must not contain control characters")
     return value.strip()
 
 
@@ -224,7 +238,10 @@ def _assets(request: dict[str, Any], template: dict[str, Any], types: dict[str, 
             raise ContentBriefError(f"asset slot {index} must be persona")
         if expected_persona is False and kind != "nonpersona":
             raise ContentBriefError(f"asset slot {index} must be nonpersona")
-        result.append({"index": index, "role": expected_slot.get("role"), "taxonomy_type": type_id, "kind": kind})
+        role = expected_slot.get("role")
+        if not isinstance(role, str) or not role or _utf16_length(role) > MAX_ROLE or _has_control_char(role):
+            raise ContentBriefError(f"asset slot {index} template role is invalid")
+        result.append({"index": index, "role": role, "taxonomy_type": type_id, "kind": kind})
     return result
 
 
@@ -286,7 +303,7 @@ def _compile_content_brief(root: Path, request_file: Path) -> dict[str, Any]:
         if not isinstance(source, dict):
             raise ContentBriefError("each source must be an object")
         _only_keys(source, {"citation", "observed_date"}, "source")
-        citation = _required_string(source, "citation")
+        citation = _required_string(source, "citation", MAX_CITATION)
         if not citation.startswith("https://"):
             raise ContentBriefError("each citation must be an https URL")
         normal_sources.append({"citation": citation, "observed_date": _date(source.get("observed_date"), "source.observed_date")})
