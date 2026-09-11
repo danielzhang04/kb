@@ -8,6 +8,14 @@ from .evidence import EvidenceRecord, copy_eligible
 
 ALLOWED_SOURCES = frozenset({"evidence", "sender", "policy"})
 RECIPIENT_SLOTS = frozenset({"first_name", "company", "role", "topic", "school", "why_them", "recipient_hook"})
+# The sender's own name/sign-off identifies the author; it is not a substantive
+# sender claim (no credential, metric, or experience assertion), so it never
+# consumes recipient-specific ratio budget. Membership is decided by an exact,
+# known authoritative source_ref only -- never by suffix, case, or whitespace
+# variation, and never by the free-form slot alias a model chooses.
+SENDER_IDENTITY_REFS = frozenset({
+    "sender.sender_name", "sender_profile.sender_name", "sender.signature",
+})
 REFERRAL = re.compile(
     r"\b(?:refer(?:ral|s|red|ring)?|intro me|introduce me|put me in touch|introduc(?:e|tion)|resume review|job commitment)\b",
     re.I,
@@ -60,6 +68,11 @@ def _normalized_text(value: str) -> str:
     return " ".join(value.casefold().split())
 
 
+def _sender_identity_ref(source_ref: str) -> bool:
+    """True only for an exact known sender identity ref (identity/sign-off)."""
+    return source_ref in SENDER_IDENTITY_REFS
+
+
 def _sentences(value: str) -> tuple[str, ...]:
     return tuple(match.group().strip() for match in re.finditer(r"[^.!?]+[.!?]+|[^.!?]+$", value, re.S))
 
@@ -88,8 +101,14 @@ def validate_revision(
     if not campaign_id.strip():
         failures.add("campaign_missing")
     evidence_by_id = {item.evidence_id: item for item in evidence}
-    recipient_points = 0
-    sender_points = 0
+    # Credit is counted over distinct substantive claims. Sender claims are
+    # keyed by (exact source_ref, normalized value), so a duplicated alias of
+    # one claim cannot double-charge it, while two distinct refs sharing the
+    # same value are still charged separately. Recipient claims are keyed by
+    # normalized value only (ref-independent), so a duplicated alias cannot
+    # manufacture recipient credit.
+    recipient_claims: set[str] = set()
+    sender_claims: set[tuple[str, str]] = set()
     person_specific = False
     used_evidence_ids: set[str] = set()
     rendered = subject + "\n" + body
@@ -99,8 +118,8 @@ def validate_revision(
         if binding.source_kind not in ALLOWED_SOURCES:
             failures.add("slot_source_invalid")
             continue
-        if binding.source_kind == "sender" and name.startswith("sender"):
-            sender_points += 1
+        if binding.source_kind == "sender" and not _sender_identity_ref(binding.source_ref):
+            sender_claims.add((binding.source_ref, _normalized_text(binding.value)))
         if binding.source_kind == "evidence":
             used_evidence_ids.add(binding.source_ref)
             item = evidence_by_id.get(binding.source_ref)
@@ -118,7 +137,7 @@ def validate_revision(
             if not _entailed(binding.value, item.claim):
                 failures.add("evidence_not_entailing")
             if name in RECIPIENT_SLOTS:
-                recipient_points += 1
+                recipient_claims.add(_normalized_text(binding.value))
             person_specific = person_specific or (
                 name in {"why_them", "recipient_hook"} and _entailed(binding.value, item.claim)
             )
@@ -159,6 +178,7 @@ def validate_revision(
         or not (used_evidence_ids - policy.prior_evidence_ids)
     ):
         failures.add("follow_up_value")
+    sender_points, recipient_points = len(sender_claims), len(recipient_claims)
     if sender_points and recipient_points < 3 * sender_points:
         failures.add("recipient_sender_ratio")
     ordered = tuple(sorted(failures))

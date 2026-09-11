@@ -234,3 +234,77 @@ def test_whitespace_only_campaign_binding_fails() -> None:
 def test_score_is_zero_to_one_hundred_and_thresholded() -> None:
     checked = result()
     assert checked.qa_score == 100 and 0 <= checked.qa_score <= 100
+
+
+@pytest.mark.parametrize("alias", ["signature", "sender_name", "sign_off"])
+@pytest.mark.parametrize(
+    "ref",
+    ["sender.sender_name", "sender_profile.sender_name", "sender.signature"],
+)
+def test_identity_sender_name_binding_is_alias_independent_and_unpenalized(
+    alias: str, ref: str,
+) -> None:
+    values = {key: value for key, value in bindings().items() if key != "signature"}
+    values[alias] = SlotBinding("Daniel", "sender", ref)
+
+    assert result(slot_bindings=values).passed
+
+
+@pytest.mark.parametrize(
+    "ref",
+    [
+        "sender_profile.sender_name ", " sender.sender_name",
+        "Sender.sender_name", "SENDER_PROFILE.SENDER_NAME",
+        "x.sender_name", "sender_name", "sender.sender_name.suffix",
+        "sender.signature ", " sender.signature",
+        "Sender.signature", "SENDER.SIGNATURE",
+        "x.signature", "signature", "sender.signature.suffix",
+    ],
+)
+def test_non_exact_sender_name_ref_variants_count_as_substantive(ref: str) -> None:
+    """Only the three exact authoritative identity refs are excluded; every
+    malformed, prefixed, cased, or whitespace-padded variant of
+    ``sender_name``/``signature`` still consumes recipient-relative ratio
+    budget."""
+    values = {key: value for key, value in bindings().items() if key != "signature"}
+    values["signature"] = SlotBinding("Daniel", "sender", ref)
+
+    assert "recipient_sender_ratio" in result(slot_bindings=values).failure_codes
+
+
+def test_substantive_sender_proof_counts_under_any_slot_alias() -> None:
+    proof = bindings()["sender_proof"]
+    values = {key: value for key, value in bindings().items() if key != "sender_proof"}
+    values["signature_block"] = SlotBinding(proof.value, "sender", proof.source_ref)
+
+    assert result(slot_bindings=values).passed
+
+    values["closing_note"] = SlotBinding(
+        "I would value your perspective on the choices that shaped your path",
+        "sender", "sender_profile.sender_background",
+    )
+
+    assert "recipient_sender_ratio" in result(slot_bindings=values).failure_codes
+
+
+def test_duplicate_sender_aliases_of_one_claim_count_once() -> None:
+    proof = bindings()["sender_proof"]
+    values = bindings()
+    values["sender_proof_again"] = SlotBinding(proof.value, "sender", proof.source_ref)
+
+    assert result(slot_bindings=values).passed
+
+
+def test_duplicate_recipient_aliases_cannot_manufacture_ratio_credit() -> None:
+    values = bindings()
+    company = values["company"]
+    for alias in ("role", "topic", "school", "recipient_hook"):
+        values[alias] = SlotBinding(company.value, "evidence", company.source_ref)
+    values["sender_two"] = SlotBinding(
+        "I would value your perspective on the choices that shaped your path",
+        "sender", "sender_profile.sender_background",
+    )
+
+    checked = result(slot_bindings=values)
+
+    assert "recipient_sender_ratio" in checked.failure_codes
