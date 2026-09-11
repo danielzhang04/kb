@@ -288,6 +288,31 @@ def test_stale_lock_is_recovered_without_breaking_injection(tmp_path):
     assert not lock.exists()
 
 
+def test_default_source_is_the_session_store_when_no_goal_state_path(tmp_path, monkeypatch):
+    store_dir = tmp_path / "ctxstore"
+    write_body = (
+        'const store = require(' + json.dumps(str(REPO / "scripts" / "hooks" / "lib" / "context_store.js")) + ');\n'
+        'store.writeStore("store-session", ['
+        '{heading: "North star", body: "Ship the frame."},'
+        '{heading: "Invariants", body: "Never spend real money."},'
+        '{heading: "Current gate", body: "Daniel reviews the plan."}'
+        ']);'
+    )
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    subprocess.run(["node", "-e", write_body], check=True, env=env, capture_output=True)
+
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir), "KB_REGROUND_STATE_DIR": str(tmp_path / "state")}
+    env.pop("KB_GOAL_STATE_PATH", None)
+    payload = {**EVENT, "session_id": "store-session"}
+    r = subprocess.run(["node", str(HOOK)], input=json.dumps(payload).encode(), capture_output=True, env=env)
+
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = context_of(r)
+    assert "North star: Ship the frame." in ctx
+    assert "Invariants: Never spend real money." in ctx
+    assert "Current gate: Daniel reviews the plan." in ctx
+
+
 def test_two_processes_contending_for_one_state_lock_inject_without_mutating_state(tmp_path):
     state_dir = tmp_path / "state"
     write_state(state_dir, {SESSION: {"lastInjectionMs": NOW, "toolCallsSinceInjection": 0}})
