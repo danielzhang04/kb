@@ -433,6 +433,11 @@ def status():
 def lease_status():
     z=run(['systemctl','show',unit+'-lease.timer','--property=LoadState,ActiveState,SubState,Result'],False)
     return dict(line.split('=',1) for line in z.stdout.splitlines() if '=' in line)
+def unit_state(name):
+    z=run(['systemctl','show',name,'--property=LoadState,ActiveState'],False)
+    return dict(line.split('=',1) for line in z.stdout.splitlines() if '=' in line)
+def units_absent():
+    return all(unit_state(name)=={'LoadState':'not-found','ActiveState':'inactive'} for name in (unit+'.service',unit+'-lease.timer',unit+'-lease.service'))
 def valid_existing(s,l):
     validate_status(s)
     group=s['ControlGroup']; expected='/system.slice/'+unit+'.service'; group_owned=(group==expected or (not group and s['ActiveState']=='active' and s['SubState']=='exited')); service=(s['LoadState']=='loaded' and ((s['ActiveState']=='active' and s['SubState'] in ('running','exited')) or (s['ActiveState'],s['SubState']) in (('failed','failed'),('inactive','dead'))) and group_owned)
@@ -451,6 +456,38 @@ def quiescent(s):
         if group!='/system.slice/'+unit+'.service': raise ValueError('unexpected control group')
         events=pathlib.Path('/sys/fs/cgroup'+group+'/cgroup.events')
         if events.exists() and 'populated 1' in events.read_text(): raise ValueError('job descendants still running')
+def lease_script():
+    # Owned transient reclaim: no SSH, no shell, argv lists only. It must prove the worker
+    # is stopped and that its own control group holds no descendants before it deletes the
+    # marker-proven root, then clears that single unit's residual failed state so a later
+    # cleanup can verify absence instead of refusing forever.
+    # Fail closed: a failed or malformed query, any state outside the exact permitted
+    # stopped or not-found tuples, a foreign or populated control group, or an absent or
+    # mismatched owner marker keeps the root and exits nonzero, deleting nothing.
+    # Guards raise explicitly and never assert: PYTHONOPTIMIZE must not remove them.
+    return '\n'.join(["import os,pathlib,shutil,subprocess",
+        "unit="+repr(unit+'.service'),
+        "job="+repr(job),
+        "p=pathlib.Path("+repr(str(root))+")",
+        "stopped=(('not-found','inactive','dead'),('loaded','inactive','dead'),('loaded','failed','failed'))",
+        "subprocess.run(['systemctl','stop',unit],check=False)",
+        "q=subprocess.run(['systemctl','show',unit,'--property=LoadState,ActiveState,SubState,ControlGroup'],stdout=subprocess.PIPE,stderr=subprocess.DEVNULL,text=True,check=False,timeout=30)",
+        "if q.returncode!=0: raise SystemExit(1)",
+        "s=dict(line.split('=',1) for line in q.stdout.splitlines() if '=' in line)",
+        "if set(s)!={'LoadState','ActiveState','SubState','ControlGroup'}: raise SystemExit(1)",
+        "if (s['LoadState'],s['ActiveState'],s['SubState']) not in stopped: raise SystemExit(1)",
+        "group=s['ControlGroup']",
+        "if group:",
+        "    if group!='/system.slice/'+unit: raise SystemExit(1)",
+        "    events=pathlib.Path('/sys/fs/cgroup'+group+'/cgroup.events')",
+        "    if events.exists() and 'populated 1' in events.read_text(): raise SystemExit(1)",
+        "if p.is_symlink() or p.exists():",
+        "    if p.is_symlink() or not p.is_dir() or p.stat().st_uid!=0: raise SystemExit(1)",
+        "    marker=p/'owner'",
+        "    if marker.is_symlink() or not marker.exists() or marker.read_text()!=job: raise SystemExit(1)",
+        "    if os.path.ismount(p/'output'): subprocess.run(['/usr/bin/umount',str(p/'output')],check=True)",
+        "    shutil.rmtree(p)",
+        "subprocess.run(['systemctl','reset-failed',unit],check=False)"])
 if action=='start':
     if r['state'] not in ('prepared','started','start-failed'): raise ValueError('invalid start state')
     if root.exists() or root.is_symlink():
@@ -460,12 +497,14 @@ if action=='start':
     deadline=r['deadline_seconds']; window=r['collection_seconds']
     account=pwd.getpwnam('kb-shell')
     # Lease cleanup is independent of SSH and armed before launching the worker.
-    cleanup="import pathlib,shutil,subprocess,os; p=pathlib.Path("+repr(str(root))+"); subprocess.run(['systemctl','stop',"+repr(unit+'.service')+"],check=False); s=subprocess.run(['systemctl','show',"+repr(unit+'.service')+",'--property=ActiveState','--value'],capture_output=True,text=True).stdout.strip(); assert s not in ('active','activating','deactivating'); assert not p.is_symlink() and p.is_dir() and p.stat().st_uid==0 and (p/'owner').read_text()=="+repr(job)+"; subprocess.run(['/usr/bin/umount',str(p/'output')],check=True) if os.path.ismount(p/'output') else None; shutil.rmtree(p)"
+    cleanup=lease_script()
     lease_armed=False; created=False
     try:
         root.mkdir(mode=0o711); created=True
         (root/'owner').write_text(job); (root/'owner').chmod(0o600)
-        run(['systemd-run','--quiet','--unit='+unit+'-lease','--on-active='+str(deadline+window)+'s','--timer-property=AccuracySec=1s','--property=Type=oneshot','/usr/bin/python3','-c',cleanup])
+        # RemainAfterElapse=no lets the elapsed transient timer, and the lease service it
+        # triggers, unload themselves instead of pinning units_absent() false forever.
+        run(['systemd-run','--quiet','--unit='+unit+'-lease','--on-active='+str(deadline+window)+'s','--timer-property=AccuracySec=1s','--timer-property=RemainAfterElapse=no','--property=Type=oneshot','/usr/bin/python3','-c',cleanup])
         lease_armed=True
         (root/'input').mkdir(mode=0o755); (root/'output').mkdir(mode=0o700); os.chown(root/'output',account.pw_uid,account.pw_gid)
         run(['/usr/bin/mount','-t','tmpfs','-o','size=16M,nr_inodes=1024,nosuid,nodev,noexec,mode=0700,uid='+str(account.pw_uid)+',gid='+str(account.pw_gid),'tmpfs',str(root/'output')])
@@ -541,15 +580,30 @@ elif action in ('collect','collect-failure'):
             data=p.read_bytes(); evidence[name]={'data':base64.b64encode(data).decode(),'sha256':hashlib.sha256(data).hexdigest()}
     print(json.dumps({'status':s,'files':records,'evidence':evidence}))
 elif action=='cleanup':
-    if r['state'] not in ('start-failed','collected','failed-collected','cleaned'): raise ValueError('invalid cleanup state')
-    if not root.exists() and not root.is_symlink(): print(json.dumps({'cleaned':True,'already_absent':True})); sys.exit(0)
+    if r['state'] not in ('started','start-failed','collected','failed-collected','cleaned'): raise ValueError('invalid cleanup state')
+    # A disconnected terminal that missed the collection window may still hold a live,
+    # started job: only the same absent-root-and-all-three-units-absent proof already
+    # trusted for an already-reclaimed lease may clear it. Anything else refuses without
+    # touching root, job, or units -- a still-present owned root or a live job is never
+    # destroyed, killed, or discarded on this path.
+    if r['state']=='started':
+        if root.exists() or root.is_symlink() or not units_absent():
+            print(json.dumps({'error':'cleanup_unverified'})); sys.exit(4)
+        print(json.dumps({'cleaned':True,'already_absent':True})); sys.exit(0)
+    # Without the owner marker nothing proves unit ownership: verify absence, never force it.
+    if not root.exists() and not root.is_symlink():
+        if not units_absent(): print(json.dumps({'error':'cleanup_unverified'})); sys.exit(4)
+        print(json.dumps({'cleaned':True,'already_absent':True})); sys.exit(0)
     owned(); run(['systemctl','stop',unit+'.service'],False)
     quiescent(status())
-    run(['systemctl','stop',unit+'-lease.timer',unit+'-lease.service'],False)
+    # Disarm the timer first; a lease run already in progress owns teardown and is never killed.
+    run(['systemctl','stop',unit+'-lease.timer'],False)
+    if unit_state(unit+'-lease.service').get('ActiveState') not in ('inactive','failed'): print(json.dumps({'error':'cleanup_incomplete'})); sys.exit(4)
     owned()
     if os.path.ismount(root/'output'): run(['/usr/bin/umount',str(root/'output')])
     shutil.rmtree(root)
     run(['systemctl','reset-failed',unit+'.service',unit+'-lease.service'],False)
+    if root.exists() or root.is_symlink() or not units_absent(): print(json.dumps({'error':'cleanup_incomplete'})); sys.exit(4)
     print(json.dumps({'cleaned':True}))
 else: raise ValueError('invalid action')
 '''
@@ -599,7 +653,8 @@ def remote(receipt: dict, action: str) -> dict:
         raise RemoteActionError("vm_response_invalid")
     if result.returncode:
         code = response.get("error")
-        if code not in {"start_rejected", "partial_start", "recovery_required"}:
+        if code not in {"start_rejected", "partial_start", "recovery_required",
+                        "cleanup_unverified", "cleanup_incomplete"}:
             code = "vm_action_failed"
         raise RemoteActionError(code, response)
     return response
@@ -613,6 +668,24 @@ def _stage_root(receipt_path: Path, destination: Path | None) -> Path:
         if Path(os.path.abspath(destination)) != Path(os.path.abspath(expected)):
             raise ValueError("collection destination is not receipt owned")
     return expected
+
+
+def _output_tree(root: Path, manifest: dict, changed: list[dict]) -> dict[str, str]:
+    """Map every validated output path to its digest; files not reported changed equal their base."""
+    from scripts.prospecting.dev_jobs import _scan_outputs
+    changed_hashes = {item["path"]: item["sha256"] for item in changed}
+    tree = {}
+    for name in _scan_outputs(root, set(manifest["allowed_outputs"])):
+        base = manifest["output_base"][name]
+        if name in changed_hashes:
+            tree[name] = changed_hashes[name]
+        elif base is not None:
+            tree[name] = base["sha256"]
+        else:
+            raise ValueError("collection output changed during validation")
+    if not changed_hashes.keys() <= tree.keys():
+        raise ValueError("collection output changed during validation")
+    return tree
 
 
 def start(receipt_path: Path) -> dict:
@@ -788,6 +861,9 @@ def collect(receipt_path: Path, destination: Path | None = None, *, failure_only
                 os.fsync(out.fileno())
         hashes[name] = digest
     validation = validate_outputs(destination, receipt["manifest"])
+    # Preexisting local files are never deleted; the whole tree must be this response.
+    if _output_tree(destination, receipt["manifest"], validation) != hashes:
+        raise ValueError("collection output differs from current response")
     receipt.update(state="collected", collection_directory="output",
                    output_hashes=hashes, evidence_hashes=evidence_hashes, remote_status=status_value)
     _validate_receipt(receipt)
@@ -797,7 +873,7 @@ def collect(receipt_path: Path, destination: Path | None = None, *, failure_only
 
 def cleanup(receipt_path: Path) -> dict:
     receipt = load_receipt(receipt_path)
-    if receipt["state"] not in {"start-failed", "collected", "failed-collected", "cleaned"}:
+    if receipt["state"] not in {"started", "start-failed", "collected", "failed-collected", "cleaned"}:
         raise ValueError("invalid cleanup transition")
     response = remote(receipt, "cleanup")
     if type(response) is not dict or set(response) not in ({"cleaned"}, {"cleaned", "already_absent"}):
@@ -805,6 +881,11 @@ def cleanup(receipt_path: Path) -> dict:
     if response["cleaned"] is not True or (
         "already_absent" in response and response["already_absent"] is not True
     ):
+        raise ValueError("invalid cleanup response")
+    # A 'started' receipt can only be recovered through the absent-root-and-all-units
+    # proof; it must never regress into the destructive owned-teardown branch's plain
+    # {"cleaned": true} reply, since that branch is never taken for a started receipt.
+    if receipt["state"] == "started" and response.get("already_absent") is not True:
         raise ValueError("invalid cleanup response")
     receipt["state"] = "cleaned"
     _validate_receipt(receipt)

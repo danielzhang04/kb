@@ -53,8 +53,28 @@ Collection is idempotent only if existing local files have identical hashes. Its
 destination is the receipt's sibling `output` directory; if `--destination` is supplied,
 it must name that exact directory and is rejected before SSH or local writes otherwise.
 Cleanup requires a successful local validation, failure evidence, or a typed partial
-start. A separately armed transient timer cleans abandoned jobs
-after deadline plus collection window. This timer survives SSH disconnects; like other
+start. A `started` receipt that missed the collection window because of a disconnected
+terminal may be cleaned only when the exact same absent-root-and-all-three-units-absent
+proof already trusted for an already-reclaimed lease holds for it too; any other remote
+answer refuses without touching the root, the job, or any unit, so `cleanup` can never
+delete a still-present owned root or discard a still-active or uncollected job on this
+path. A separately armed transient timer cleans abandoned jobs after deadline plus
+collection window. That lease run stops the worker, then refuses unless a successful
+`systemctl show` reports the worker in an exact stopped or not-found state and its own
+control group, when still present, holds no descendants. It then refuses unless the root
+is a root-owned directory whose marker matches this job, unmounts and removes only that
+tree, and clears that one worker unit's residual failed state so a later `cleanup` can
+verify absence instead of refusing. A failed query, an unexpected state, a foreign or
+populated control group, or an absent or mismatched marker each keeps the root and fails
+the lease run, which deletes nothing. An already absent root is a no-op that still clears
+the owned unit. The timer is armed with `RemainAfterElapse=no` so the elapsed transient
+timer, and the lease service it triggers, unload themselves rather than blocking that
+verification. A lease run that fails stays loaded and failed on purpose: `cleanup` then
+reports `cleanup_unverified` instead of forcing removal of units it cannot prove it owns,
+and an operator must inspect and `systemctl reset-failed` that lease unit. After a natural
+lease the owned root is gone, so `status` fails rather than returning a typed reclaimed
+code; the receipt and `cleanup` remain the recovery path.
+This timer survives SSH disconnects; like other
 transient systemd state, it does not promise recovery across a VM reboot. A retained
 desktop receipt identifies the exact resources for recovery after reboot.
 
