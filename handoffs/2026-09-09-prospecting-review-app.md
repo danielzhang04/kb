@@ -1,3 +1,27 @@
+## Current release/approval checkpoint 2026-09-11T22:30:45.066626+00:00
+
+Source HEAD97df0409 commits qualification110/fixture112/new accepted runtime118.
+Actual public prepare118 passed at22:24:37UTC in10,198ms:4adapters exact e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814,
+capability invalidated, runtime root deleted,0stagecalls. Postpin adapter suite36passed7.89s.
+
+The real item's remaining attempt was NOT EXECUTED. Automatic approval review rejected
+exec_command before CreateProcess: private pilot prospect/source payload transfer to native
+model runtime needs explicit destination/data approval. Requested request ID
+ d69e6f57-abf9-4e69-83cc-89315f93dc22 is unused. No new attempt or artifact was created.
+An asynchronous user approval question is pending for sending saved pilot prospect/source
+context to the existing native Codex runtime for bounded nonsending qualification. Do not
+retry this or another real-data native call indirectly while pending; no elapsed-time consent.
+Continue independent source/synthetic/release work. Original first item still1of2attemptsused.
+
+Export verifier120 is independently READY122: URI escaping prevents#truncation/wrong DB;
+mode=ro/query_only uses normal locking/WAL and exact identity checks, with exception cleanup.
+Rejected116conditionalimmutable was REMOVED after119 proved stale-read race. 37CLI/verifier
+checks pass21.33s; missing/older schemas remain unchanged. Normal WAL/SHM coordination sidecars
+are possible; no domain/schema writes/migrations. Task124 finaldocs/skillscan active.
+
+Task123 full project synthetic suite running; task121 concretePR181text prepared privately.
+No publication/merge yet. Browser still unavailable. No confirmations/approvals/sends.
+
 ## Native reacceptance checkpoint 2026-09-11T22:25:25.453813+00:00
 
 Qualification110 and supplemental fixture112 independently READY115;170 combined checks
