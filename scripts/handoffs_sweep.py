@@ -21,7 +21,7 @@ STALE_DAYS = 14
 GIT_TIMEOUT_S = 10
 FILENAME_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})-([a-z0-9]+)-.+\.md$")
 LOAD_HEADING_RE = re.compile(r"^##\s+Load(?:\s+list)?\s*$", re.MULTILINE | re.IGNORECASE)
-NEXT_HEADING_RE = re.compile(r"^##\s+")
+NEXT_HEADING_RE = re.compile(r"^##\s+", re.MULTILINE)
 BACKTICK_PATH_RE = re.compile(r"`([A-Za-z0-9_./-]+\.[A-Za-z0-9]+)`")
 
 
@@ -33,10 +33,22 @@ class Handoff:
     text: str
 
 
-def _git(root: Path, *args: str) -> subprocess.CompletedProcess:
-    return subprocess.run(
-        ["git", "-C", str(root), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT_S
-    )
+def _git(root: Path, *args: str) -> subprocess.CompletedProcess | None:
+    """Run git, decoding output as UTF-8 (never the OS locale codepage -- on Windows that's
+    often cp1252, which mangles non-ASCII handoff content and raises UnicodeDecodeError on byte
+    sequences cp1252 has no mapping for). Returns None if git hangs past the timeout, so a caller
+    degrades to "unknown" instead of crashing."""
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_TIMEOUT_S,
+        )
+    except subprocess.TimeoutExpired:
+        return None
 
 
 def _now(env: dict) -> date:
@@ -48,7 +60,7 @@ def _now(env: dict) -> date:
 
 def _ops_handoff_names(root: Path) -> set[str]:
     result = _git(root, "ls-tree", "--name-only", "origin/ops:handoffs")
-    if result.returncode != 0:
+    if result is None or result.returncode != 0:
         return set()
     return {line.strip() for line in result.stdout.splitlines() if line.strip().endswith(".md")}
 
@@ -68,7 +80,7 @@ def _read_handoff_text(root: Path, filename: str) -> str:
         except OSError:
             return ""
     result = _git(root, "show", f"origin/ops:handoffs/{filename}")
-    return result.stdout if result.returncode == 0 else ""
+    return result.stdout if result is not None and result.returncode == 0 else ""
 
 
 def collect_handoffs(root: Path) -> list[Handoff]:
@@ -97,7 +109,8 @@ def _path_exists_on_ops_or_main(root: Path, rel_path: str) -> bool:
     No working-tree fallback -- a path that exists only locally (uncommitted, or
     committed to a work branch that never reached ops/main) is dead."""
     for ref in ("origin/ops", "origin/main"):
-        if _git(root, "cat-file", "-e", f"{ref}:{rel_path}").returncode == 0:
+        result = _git(root, "cat-file", "-e", f"{ref}:{rel_path}")
+        if result is not None and result.returncode == 0:
             return True
     return False
 
