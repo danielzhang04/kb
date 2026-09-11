@@ -54,13 +54,22 @@ function readEvent() {
 function warnStaleState(event, root) {
   try {
     const pf = require("./lib/project_frame.js");
+    // activeProject() reads event.cwd directly (project_frame.js); this local `cwd` fallback to
+    // `root` only matters below for readOpsFile, e.g. when KB_PROJECT is set but the event
+    // carries no cwd — activeProject can still resolve via KB_PROJECT alone in that case.
     const cwd = typeof event.cwd === "string" && event.cwd ? event.cwd : root;
     const project = pf.activeProject(event, process.env);
     if (!project) return;
     const stateText = pf.readOpsFile(cwd, `orgs/${project}/STATE.md`, process.env);
     if (!stateText) return;
     const m = /^_Updated:\s*(\d{4}-\d{2}-\d{2})/m.exec(stateText);
-    if (!m) return;
+    if (!m) {
+      process.stderr.write(
+        `[delivery-gate WARN] STATE.md stale — update orgs/${project}/STATE.md before closing ` +
+          `(no parsable _Updated: line). (warn-only; not blocking)\n`
+      );
+      return;
+    }
     const updatedMs = Date.parse(m[1] + "T00:00:00Z");
     if (!Number.isFinite(updatedMs)) return;
     const ageDays = (Date.now() - updatedMs) / (24 * 60 * 60 * 1000);

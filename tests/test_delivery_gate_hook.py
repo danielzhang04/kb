@@ -29,7 +29,10 @@ def _project_repo(tmp_path, updated_date):
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
     orgs = repo / "orgs" / "prospecting"
     orgs.mkdir(parents=True)
-    (orgs / "STATE.md").write_text(f"_Updated: {updated_date}_\n## Now\nx\n", encoding="utf-8")
+    state_body = (
+        f"_Updated: {updated_date}_\n## Now\nx\n" if updated_date is not None else "## Now\nx\n"
+    )
+    (orgs / "STATE.md").write_text(state_body, encoding="utf-8")
     _git(repo, "add", "orgs")
     _git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed")
     _git(repo, "checkout", "-q", "-b", "claude/prospecting-p8")
@@ -61,6 +64,14 @@ def test_silent_when_no_project_resolves(tmp_path):
     r = _run_with_event(tmp_path, {"cwd": str(tmp_path)})
     assert r.returncode == 0
     assert b"STATE.md stale" not in r.stderr
+
+
+def test_warns_when_state_has_no_updated_line(tmp_path):
+    repo = _project_repo(tmp_path, None)
+    r = _run_with_event(tmp_path, {"cwd": str(repo)})
+    assert r.returncode == 0
+    assert b"STATE.md stale" in r.stderr
+    assert b"no parsable _Updated: line" in r.stderr
 
 def test_warns_when_memory_untouched(tmp_path):
     (tmp_path / "memory").mkdir()
