@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb model-verify SubagentStop hook — INERT (not wired into any settings file).
+ * kb model-verify SubagentStop hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Purpose:
  *   Close the loop its PreToolUse sibling opens. That hook records which model a dispatch ASKED for;
@@ -9,7 +9,7 @@
  *   `"model":`, never trust the dispatch argument — performed automatically instead of by hand.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. Arming snippet and decision-notes:
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SubagentStop. Decision-notes:
  *   docs/proposals/spawn-model-verify-hooks.md.
  *
  * ── WHICH TRANSCRIPT (verified against the installed harness) ───────────────────────────────────

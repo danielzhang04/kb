@@ -77,6 +77,21 @@ const GUARD_LINE = require("./hook_io.js").GUARD_LINE;
 /** Ring-buffer depth for '## Recent activity'. Oldest entries fall off the front. */
 const ACTIVITY_LIMIT = 20;
 
+/**
+ * Cross-process store lock (see {@link withStoreLock}).
+ *
+ * STALE: shorter than regrounding_hook.js's 60 s because the critical section here is a single
+ * read + render + rename of a small file -- a lock older than five seconds was abandoned by a
+ * crashed writer, not held by a slow one. RETRIES/RETRY_MS bound the wait at ~10 short attempts
+ * before the caller gives up on the lock entirely and writes anyway (fail OPEN): a hook that
+ * HANGS on a lock is a worse failure than a hook that races, because every one of these writers
+ * sits in front of a user's keystroke.
+ */
+const STORE_LOCK_STALE_MS = 5000;
+const STORE_LOCK_RETRIES = 10;
+const STORE_LOCK_RETRY_MS = 25;
+const STORE_LOCK_SUFFIX = ".lock";
+
 /** Per-entry cap, ported from ECC's truncateSummary default. */
 const ACTIVITY_MAX_CHARS = 220;
 
@@ -99,6 +114,114 @@ function sessionPath(sessionId, env) {
     return null;
   }
   return path.join(storeDir(env), sessionId + FILE_SUFFIX);
+}
+
+/** `<storeDir>/<sessionId>.lock`, next to the store file it guards. Null for an unsafe id. */
+function lockPath(sessionId, env) {
+  const file = sessionPath(sessionId, env);
+  return file ? file.slice(0, file.length - FILE_SUFFIX.length) + STORE_LOCK_SUFFIX : null;
+}
+
+/** Block this thread for `ms` without a dependency and without a busy spin. */
+function sleepMs(ms) {
+  try {
+    Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+  } catch (_err) {
+    /* SharedArrayBuffer unavailable -> skip the backoff and retry immediately; never throw */
+  }
+}
+
+/** Exclusive-create attempt. "acquired" | "exists" (someone holds it) | "error" (can't lock here). */
+function tryCreateLock(filename) {
+  try {
+    fs.closeSync(fs.openSync(filename, "wx"));
+    return "acquired";
+  } catch (err) {
+    return err && err.code === "EEXIST" ? "exists" : "error";
+  }
+}
+
+/**
+ * Run `fn` holding this session's store lock, and ALWAYS run `fn`.
+ *
+ * WHY THIS EXISTS. Three armed hooks write one store file: project_frame_session_start.js
+ * (governing sections, at SessionStart), context_lifecycle_pre_compact.js ('## Resumed-session
+ * summary', at PreCompact) and context_lifecycle_activity_tracker.js ('## Recent activity', on
+ * EVERY tool call). Each one is a read-modify-write of the WHOLE file, so two that interleave
+ * their reads before either renames silently drop the other's section -- and the activity
+ * tracker, firing per tool call, makes that overlap routine rather than theoretical.
+ *
+ * FAIL OPEN, DELIBERATELY. Same exclusive-create pattern as `acquireStateLock` in
+ * regrounding_hook.js, with a shorter staleness window. Contention past {@link
+ * STORE_LOCK_RETRIES} short retries runs `fn` UNLOCKED rather than waiting or refusing: these
+ * hooks sit in front of a user's keystroke, so the worst acceptable outcome is the race we
+ * already had, and a hang is not on the menu. A lock file older than {@link STORE_LOCK_STALE_MS}
+ * belonged to a crashed writer and is broken. `fn`'s own throw propagates (callers wrap in
+ * io.run), but the lock is released first.
+ */
+function withStoreLock(sessionId, fn, env) {
+  const filename = lockPath(sessionId, env);
+  let release = null;
+  if (filename) {
+    try {
+      fs.mkdirSync(path.dirname(filename), { recursive: true });
+    } catch (_err) {
+      /* unwritable store dir: the write itself will fail open too -- just run unlocked */
+    }
+    for (let attempt = 0; attempt < STORE_LOCK_RETRIES; attempt += 1) {
+      const outcome = tryCreateLock(filename);
+      if (outcome === "acquired") {
+        release = () => {
+          try {
+            fs.unlinkSync(filename);
+          } catch (_err) {
+            /* a stray lock is broken by the staleness window on the next writer */
+          }
+        };
+        break;
+      }
+      if (outcome === "error") break; // cannot lock HERE at all -> do not burn the retries
+      try {
+        if (Date.now() - fs.statSync(filename).mtimeMs > STORE_LOCK_STALE_MS) {
+          fs.unlinkSync(filename);
+          continue; // retake it immediately, without paying the backoff
+        }
+      } catch (_err) {
+        /* the holder released between our open and our stat -- next attempt takes it */
+      }
+      sleepMs(STORE_LOCK_RETRY_MS);
+    }
+  }
+  try {
+    return fn();
+  } finally {
+    if (release) release();
+  }
+}
+
+/**
+ * The ONLY safe way to change a store: read, mutate, write, all inside {@link withStoreLock}.
+ * `mutator` takes the parsed sections and returns the new array. Returns true when the store was
+ * written; false on a bad mutator, a mutator that returned a non-array, a throwing mutator, or an
+ * IO failure inside writeStore. Never throws.
+ */
+function updateStore(sessionId, mutator, env) {
+  if (typeof mutator !== "function") {
+    return false;
+  }
+  return withStoreLock(
+    sessionId,
+    () => {
+      let next;
+      try {
+        next = mutator(readStore(sessionId, env));
+      } catch (_err) {
+        return false; // a caller's mutator must never take the hook down
+      }
+      return Array.isArray(next) ? writeStore(sessionId, next, env) : false;
+    },
+    env,
+  );
 }
 
 /** Strip ANSI SGR noise (ECC did this via utils.stripAnsi; inlined to keep the hooks dependency-free). */
@@ -348,10 +471,17 @@ function appendActivity(sessionId, entry, env) {
   if (!summarized) {
     return false;
   }
-  const sections = readStore(sessionId, env);
-  const entries = activityEntries(sections).concat([summarized]).slice(-ACTIVITY_LIMIT);
-  const body = entries.map((line) => "- " + line).join("\n");
-  return writeStore(sessionId, upsertSection(sections, HEADINGS.RECENT_ACTIVITY, body), env);
+  // Locked: this is the highest-frequency writer of the three (one call per tool use), so it is
+  // the one most likely to be mid-read when another hook renames its own copy into place.
+  return updateStore(
+    sessionId,
+    (sections) => {
+      const entries = activityEntries(sections).concat([summarized]).slice(-ACTIVITY_LIMIT);
+      const body = entries.map((line) => "- " + line).join("\n");
+      return upsertSection(sections, HEADINGS.RECENT_ACTIVITY, body);
+    },
+    env,
+  );
 }
 
 module.exports = {
@@ -371,6 +501,8 @@ module.exports = {
   sessionPath,
   storeDir,
   summarize,
+  updateStore,
   upsertSection,
+  withStoreLock,
   writeStore,
 };

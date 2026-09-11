@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb re-grounding hook — INERT (not wired into any settings file).
+ * kb re-grounding hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 session-start STALE-REPLAY GUARD (concept, not code)
@@ -12,16 +12,14 @@
  *   additionalContext after compaction and at a bounded cadence during a session.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. The exact
- *   settings snippet that WOULD arm it lives in the "Implemented design" section of
- *   docs/proposals/regrounding-hook.md.
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SessionStart (matcher
+ *   "compact"), UserPromptSubmit, and PostToolUse. See docs/proposals/regrounding-hook.md.
  *
  * Contract:
- *   - Reads env: KB_GOAL_STATE_PATH (default:
- *     <KB_ROOT or repo root resolved from this script>/docs/plans/
- *     2026-08-18-agent-platform-GOAL-STATE.md), KB_ROOT,
- *     KB_REGROUND_STATE_DIR, KB_REGROUND_EVERY_CALLS, and
- *     KB_REGROUND_EVERY_MINUTES.
+ *   - Reads env: KB_GOAL_STATE_PATH (default: the event's session_id resolved through
+ *     lib/context_store.js's sessionPath() — the live per-session context store; a missing/
+ *     non-string session_id means there is no default source), KB_ROOT, KB_CONTEXT_STORE_DIR,
+ *     KB_REGROUND_STATE_DIR, KB_REGROUND_EVERY_CALLS, and KB_REGROUND_EVERY_MINUTES.
  *   - Reads stdin JSON ({hook_event_name, session_id, source, ...}).
  *   - Emits to stdout, always exit 0, stderr always empty:
  *       {"hookSpecificOutput":{"hookEventName":"<triggering event>",
@@ -41,13 +39,25 @@ const fs = require("fs");
 const path = require("path");
 const kbPaths = require("./lib/kb_paths.js");
 const io = require("./lib/hook_io.js");
+const store = require("./lib/context_store.js");
 
 // The stdin/stdout/fail-open boilerplate lives in lib/hook_io.js — one copy shared by every kb hook.
 // Its contract is this file's contract, unchanged: fs.writeSync(1), always exit 0, never stderr.
 const noop = io.noop;
 
-// Sections lifted from the source file, in this fixed emission order.
-const WANTED_SECTIONS = ["North star", "Invariants"];
+// Sections lifted from the source file, in this fixed emission order. "Current gate" so a
+// re-grounded turn also carries which gate the arc is sitting on, not just the static north
+// star/invariants — see docs/superpowers/plans/2026-09-11-project-frame-hooks.md Task 3.
+//
+// "Resumed-session summary" is LAST, and it is the whole reason the PreCompact sibling's write
+// is ever read back. THE COMPACTION PATH, END TO END: context_lifecycle_pre_compact.js writes
+// '## Resumed-session summary' into the session store just before the context is thrown away;
+// after the compaction the ONLY hook that fires is this one (SessionStart matcher "compact" --
+// project_frame_session_start.js deliberately stays silent there), so a section missing from
+// this list is a section the compacted session never gets back. Position matters: `fitSections`
+// water-fills, so the three governing sections keep their share and the summary takes what is
+// left of the 1700-char cap rather than crowding them out.
+const WANTED_SECTIONS = ["North star", "Invariants", "Current gate", "Resumed-session summary"];
 
 // Hard cap on the emitted additionalContext, in characters.
 // 1700 fits the current source whole (North star 941 + Invariants 526 + labels and
@@ -304,11 +314,14 @@ function currentTimeMs() {
   return Date.now();
 }
 
-function loadBlock() {
-  const root = process.env.KB_ROOT || path.resolve(__dirname, "..", "..");
-  const sourcePath =
-    process.env.KB_GOAL_STATE_PATH ||
-    path.join(root, "docs", "plans", "2026-08-18-agent-platform-GOAL-STATE.md");
+function defaultSourcePath(event) {
+  const key = sessionKey(event);
+  return key ? store.sessionPath(key, process.env) : null;
+}
+
+function loadBlock(event) {
+  const sourcePath = process.env.KB_GOAL_STATE_PATH || defaultSourcePath(event);
+  if (!sourcePath) return null;
 
   let source = null;
   try {
@@ -332,7 +345,7 @@ function main() {
   }
 
   const key = sessionKey(event);
-  const block = loadBlock();
+  const block = loadBlock(event);
   if (!block) noop();
 
   // A missing id must never make unrelated sessions share mutable state. It is deliberately

@@ -1,6 +1,6 @@
 # Proposal: re-grounding hook (for Daniel to arm, if ever)
 
-**Status:** PROPOSAL — inert, NOT wired into any live settings file.
+**Status:** ARMED 2026-09-11 — see docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md
 **Rework ruling (Daniel, 2026-08-19):** The implemented design below uses post-compact
 injection plus a per-session trigger-and-throttle state file; it does not cause compaction.
 **Built:** 2026-08-18; reworked 2026-08-19, Agent Platform U7. Code:

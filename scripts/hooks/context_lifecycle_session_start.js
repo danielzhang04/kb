@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb context-lifecycle SessionStart hook — INERT (not wired into any settings file).
+ * kb context-lifecycle SessionStart hook — INERT — superseded on SessionStart by project_frame_session_start.js (2026-09-11).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 session-start context injection + STALE-REPLAY GUARD (concept, not code)

@@ -13,6 +13,8 @@ paused mid-flight — nothing else. Delete a handoff (`git rm`) when:
 - the work it describes is completed, or
 - a terminal picks it up to resume the work — the picker deletes it on pickup.
   If the picker later pauses before finishing, it writes a NEW dated handoff.
+- a handoff flagged by `scripts/handoffs_sweep.py` (older than 14 days, superseded within its
+  scope, or with a dead Load path) is deleted at the next boss session close.
 
 Git history preserves every deleted handoff; nothing is ever lost. A handoff
 superseded by a newer one for the same workstream is deleted, not kept beside it.

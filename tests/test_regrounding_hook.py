@@ -288,6 +288,31 @@ def test_stale_lock_is_recovered_without_breaking_injection(tmp_path):
     assert not lock.exists()
 
 
+def test_default_source_is_the_session_store_when_no_goal_state_path(tmp_path, monkeypatch):
+    store_dir = tmp_path / "ctxstore"
+    write_body = (
+        'const store = require(' + json.dumps(str(REPO / "scripts" / "hooks" / "lib" / "context_store.js")) + ');\n'
+        'store.writeStore("store-session", ['
+        '{heading: "North star", body: "Ship the frame."},'
+        '{heading: "Invariants", body: "Never spend real money."},'
+        '{heading: "Current gate", body: "Daniel reviews the plan."}'
+        ']);'
+    )
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    subprocess.run(["node", "-e", write_body], check=True, env=env, capture_output=True)
+
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir), "KB_REGROUND_STATE_DIR": str(tmp_path / "state")}
+    env.pop("KB_GOAL_STATE_PATH", None)
+    payload = {**EVENT, "session_id": "store-session"}
+    r = subprocess.run(["node", str(HOOK)], input=json.dumps(payload).encode(), capture_output=True, env=env)
+
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = context_of(r)
+    assert "North star: Ship the frame." in ctx
+    assert "Invariants: Never spend real money." in ctx
+    assert "Current gate: Daniel reviews the plan." in ctx
+
+
 def test_two_processes_contending_for_one_state_lock_inject_without_mutating_state(tmp_path):
     state_dir = tmp_path / "state"
     write_state(state_dir, {SESSION: {"lastInjectionMs": NOW, "toolCallsSinceInjection": 0}})
@@ -313,3 +338,45 @@ def test_two_processes_contending_for_one_state_lock_inject_without_mutating_sta
     assert all(process.wait() == 0 and stderr == b"" for process, (_stdout, stderr) in zip(processes, outputs))
     assert all(json.loads(stdout)["hookSpecificOutput"]["additionalContext"] for stdout, _stderr in outputs)
     assert state_record(state_dir, SESSION) == {"lastInjectionMs": NOW, "toolCallsSinceInjection": 0}
+
+
+def test_post_compact_reground_replays_the_precompact_summary(tmp_path):
+    """F1, the critical one. context_lifecycle_pre_compact.js writes '## Resumed-session summary'
+    into the session store, and after a compaction THIS hook (SessionStart matcher "compact") is
+    the only one that fires -- project_frame_session_start.js deliberately stays silent there. With
+    "Resumed-session summary" missing from WANTED_SECTIONS the summary was written and never read
+    by anything, so compaction lost exactly the state it was written to preserve.
+
+    Red on revert: drop the section from WANTED_SECTIONS and the marker below is absent."""
+    store_dir = tmp_path / "ctxstore"
+    store_lib = REPO / "scripts" / "hooks" / "lib" / "context_store.js"
+    summary = "- user: rerun the tester on runs/c001-tf4 - assistant: [tool: Bash]"
+    write_body = (
+        "const store = require(" + json.dumps(str(store_lib)) + ");\n"
+        "store.writeStore(\"compacted-session\", ["
+        '{heading: "North star", body: "Ship the frame."},'
+        '{heading: "Invariants", body: "Never spend real money."},'
+        '{heading: "Current gate", body: "Daniel reviews the plan."},'
+        "{heading: \"Resumed-session summary\", body: " + json.dumps(summary) + "}"
+        "]);"
+    )
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    subprocess.run(["node", "-e", write_body], check=True, env=env, capture_output=True)
+
+    env = {
+        **os.environ,
+        "KB_CONTEXT_STORE_DIR": str(store_dir),
+        "KB_REGROUND_STATE_DIR": str(tmp_path / "state"),
+    }
+    env.pop("KB_GOAL_STATE_PATH", None)
+    payload = {"hook_event_name": "SessionStart", "source": "compact", "session_id": "compacted-session"}
+    r = subprocess.run(["node", str(HOOK)], input=json.dumps(payload).encode(), capture_output=True, env=env)
+
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = context_of(r)
+    assert "Resumed-session summary: " + summary in ctx
+    # The three governing sections still survive alongside it, un-crowded-out.
+    assert "North star: Ship the frame." in ctx
+    assert "Invariants: Never spend real money." in ctx
+    assert "Current gate: Daniel reviews the plan." in ctx
+    assert len(ctx) <= MAX_CONTEXT_CHARS

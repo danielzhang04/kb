@@ -1,6 +1,6 @@
 # Proposal: spawn context-load + model-verify hooks — SubagentStart + PreToolUse-on-dispatch (Agent|Task) + SubagentStop (for Daniel to arm, if ever)
 
-**Status:** PROPOSAL — inert, NOT wired into any live settings file.
+**Status:** ARMED 2026-09-11 — see docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md
 **Built:** 2026-08-18, Agent Platform Wave 1, unit U9. Code:
 `scripts/hooks/lib/hook_io.js`, `scripts/hooks/lib/model_audit.js`,
 `scripts/hooks/subagent_context_load.js`, `scripts/hooks/model_verify_pretooluse.js`,

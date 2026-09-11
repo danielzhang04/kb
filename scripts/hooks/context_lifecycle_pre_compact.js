@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /*
- * kb context-lifecycle PreCompact hook — INERT (not wired into any settings file).
+ * kb context-lifecycle PreCompact hook — ARMED 2026-09-11 via .claude/settings.json (project scope).
  *
  * Provenance:
  *   pattern: ecc@2.0.0 pre-compact write-side-effect (concept, not code)
@@ -20,7 +20,7 @@
  *   tests/test_context_lifecycle_pre_compact.py asserts this source contains no spawn/exec at all.
  *
  * Status:
- *   INERT. Nothing in .claude/settings*.json references this file. Arming snippet + decision-notes:
+ *   ARMED 2026-09-11 via .claude/settings.json (project scope) — PreCompact. See
  *   docs/proposals/context-lifecycle-hooks.md.
  *
  * Contract:
@@ -121,8 +121,12 @@ function main() {
     emitNoop(); // nothing extractable -> leave whatever the store already holds untouched
   }
 
-  const sections = store.readStore(sessionId);
-  store.writeStore(sessionId, store.upsertSection(sections, store.HEADINGS.RESUMED_SUMMARY, summary));
+  // Locked read-modify-write: compaction fires while the PostToolUse activity tracker may still
+  // be writing the same file, and an unlocked read here dropped '## Recent activity' (or had this
+  // summary dropped by the tracker) roughly whenever the two overlapped.
+  store.updateStore(sessionId, (sections) =>
+    store.upsertSection(sections, store.HEADINGS.RESUMED_SUMMARY, summary),
+  );
   emitNoop();
 }
 
