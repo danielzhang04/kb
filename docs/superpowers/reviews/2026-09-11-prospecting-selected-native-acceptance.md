@@ -65,5 +65,11 @@ send rows. Requested model was gpt-6-astra; the responding model identity remain
 The corresponding editorial trial
 `16f17d9de7e74fd4ba2a61c5d9a0db49` ran from2026-09-11T22:21:36.095472Z to
 2026-09-11T22:22:38.457216Z and reached `human_review` with three calls, three artifacts, and
-no repair. Cleanup completed. The public pin/canary for this replacement bundle remains
-pending and is not claimed by these trials.
+no repair. Cleanup completed.
+
+The accepted public pin is `e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814`.
+On 2026-09-11T22:24:37.294504UTC, its same-process canary returned all 4 adapters
+in10,198ms; the capability was invalidated and the runtime root was then deleted,
+with zero stage calls recorded. Source qualification was `97df0409`. This acceptance
+covers the exact pin and canary evidence only; it does not broaden capability or
+outreach authority.

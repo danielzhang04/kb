@@ -42,17 +42,18 @@ All commands below run as:
 
 Every call takes `--store PATH` plus exactly one mode:
 
-- `--session-start FILE` open a capture session bound to a run.
-- `--enqueue FILE` add one packet to a session.
-- `--claim SESSION_ID` lease the next runnable task in that session,
-  writing a private packet file under `snapshots/capture-packets`;
-  returns `packet_ref`. You never choose which `task_id` you get.
-- `--submit FILE` record a successful capture.
-- `--finish FILE` close a claimed attempt with a failure code.
-- `--progress SESSION_ID` list task states and attempt counts.
-- `--verify TASK_ID` re-check a stored capture against its receipt.
+- `--session-start FILE` opens a capture session bound to a run.
+- `--enqueue FILE` adds one packet to a session.
+- `--claim SESSION_ID` leases the next runnable task in that session,
+  writes a private packet under `snapshots/capture-packets`, and returns
+  `packet_ref`. You never choose which `task_id` you get.
+- `--submit-packet FILE` records a successful capture using that owned claim
+  packet; use it instead of manually transcribing the legacy submit fields.
+- `--finish FILE` closes a claimed attempt with a failure code.
+- `--progress SESSION_ID` lists task states and attempt counts.
+- `--verify TASK_ID` re-checks a stored capture against its receipt.
 
-## Exact input schemas
+## Exact capture inputs
 
 Each input file is one JSON object with exactly the listed keys, no more
 and no fewer; every value is a string unless noted.
@@ -62,80 +63,92 @@ and no fewer; every value is a string unless noted.
   `task_cap` (int, 1..32).
 - enqueue: `request_id`, `session_id`, `task_kind`, `query`, `url`.
   For `search_visible_results` set `query`, and `url` must be null.
-  For `open_https_capture_visible_text` set an `https` `url` with a real
+  For `open_https_capture_visible_text` set an `https` URL with a real
   DNS name, and `query` must be null.
-- submit: `task_id`, `lease_token`, `body_ref`, `source_url`,
-  `retrieved_at` (ISO 8601 with offset, never in the future).
+- submit-packet: `packet_ref`, `body_ref`, `source_url`, `retrieved_at`.
+  The packet reference is the one `--claim` wrote; do not put a query, URL,
+  lease token, or captured body in the process arguments.
 - finish: `task_id`, `lease_token`, `error_code`.
 
-`body_ref` is a relative path under the store's `snapshots/` directory to
-a regular UTF-8 text file you wrote yourself holding the exact visible
-text, at most 2 MiB. `task_id` and `lease_token` come only from the
-packet file `--claim` just wrote for the attempt you are acting on; copy
-them character for character, along with the packet's query or URL.
+`body_ref` is a relative path under the store's `snapshots/` directory to a
+regular UTF-8 text file holding the exact visible text, at most 2 MiB. Read
+the private claim packet before acting; copy its values character for
+character only into the private submit-packet wrapper.
 
-## Fixed limits
+## Fixed limits and failures
 
 - 32 tasks per session, or the lower `task_cap` you chose.
 - 3 attempts per task.
 - 300 second maximum lease; an expired lease is reclaimed and its token
   stops working.
 - Packets are deduplicated per session by content.
-
-## Fixed failure codes
-
-`tab_closed`, `navigation_failed`, `challenge`, `no_result`,
-`relay_unavailable`. These five are the only accepted `error_code`
-values. Pick the one matching what the tab actually did.
+- `tab_closed`, `navigation_failed`, `challenge`, `no_result`, and
+  `relay_unavailable` are the only accepted `error_code` values.
 
 ## Retrying honestly
 
-- To retry a specific failed task, run `--claim SESSION_ID` again. It
-  leases the next runnable task in ordinal order, which may be that task
-  or may be a different one; it does not take a `task_id`. Inspect the
-  private packet file after claiming to see which `task_id` you actually
-  got before acting.
-- Never enqueue a duplicate packet and never mint a fresh `request_id`
-  for the same work to gain extra attempts; per-task attempt counts are
-  the budget and must be preserved. Exhausting 3 attempts means the task
-  is failed; report that.
-- After `navigation_failed` you may enqueue a genuinely different URL as
-  a new task when a better source exists and session cap remains. The
-  original task keeps its own record and may still be claimed and
-  retried on its own remaining attempts.
+- To retry a failed task, run `--claim SESSION_ID` again. It leases the next
+  runnable task in ordinal order, which may be a different task. Inspect its
+  private packet before acting.
+- Never enqueue a duplicate packet or mint a fresh `request_id` for the same
+  work to reset its attempt budget. Exhausting three attempts means failure.
+- After `navigation_failed`, you may enqueue a genuinely different URL when a
+  better source exists and the session cap remains. The original task retains
+  its own remaining attempts.
 
 ## Redirects and URL matching
 
-For `open_https_capture_visible_text` tasks, the `source_url` you submit
-must match the task's packet URL exactly. If the tab lands elsewhere, do
-not submit it: finish the attempt with `navigation_failed`, and if
-warranted enqueue the landing URL as its own task.
-For `search_visible_results` tasks there is no single page URL to match;
-follow the CLI's existing query and `source_url` validation on submit
-instead of inventing an exact-match rule for search captures.
+For `open_https_capture_visible_text`, submitted `source_url` must exactly
+match the packet URL. If the tab lands elsewhere, finish that attempt with
+`navigation_failed`, then, if warranted, enqueue the landing URL separately.
+Search captures have no single expected page URL; follow the CLI validation
+instead of inventing an exact-match rule.
 
-## What a capture proves, and what it does not
+## Capture meaning
 
-A committed, verified receipt proves only that the CLI accepted the
-bytes you supplied, at the URL and time you supplied, and that those
-bytes still hash-match the stored snapshot. It does not, by itself, prove
-that the supported Chrome window actually observed that page or those
-search results; that observation is separate evidence carried only by
-the fact that you, running in the desktop session, performed the tab
-action yourself. Never treat a stored, hash-verified receipt alone as
-proof of browser execution, and never fabricate one from data you did
-not see on screen.
+A verified receipt proves only that the CLI accepted supplied bytes, URL, and
+time and that those bytes still hash-match the snapshot. It does not itself
+prove browser observation, qualification, approval, ranking, scoring, or
+outreach. The browser path is currently unavailable; do not fake it or claim
+live capture was tested.
 
-A capture, once genuinely observed and stored, is still only evidence:
-not qualification, approval, ranking, scoring or outreach, and it grants
-no downstream authority. Do not treat task state or byte counts as a
-decision, and do not invent approval gates or workflow steps that this
-tooling does not define.
+## Compile and import after capture
 
-## Current state
+Read [the acquisition runbook](../../../orgs/prospecting/runbook-acquisition.md)
+for the private annotation schemas and the exact downstream sequence:
+`--submit-packet`, optional `capture_import_cli --locate`,
+`--compile-funding` or `--compile-people`, then explicit
+`pipeline_cli --funding-import` or `--person-import`.
 
-The broker and the downstream compiler are not implemented yet; wiring
-them is follow-up work and remains pending. Hand-written JSON input
-files driving this CLI are today's working path, not the final
-architecture, so keep sessions small and record what you learn for the
-next iteration.
+Only a private store path and opaque identifiers may be arguments. Queries,
+URLs, excerpts, names, profiles, text, and annotation values stay in private
+files and never enter stdout, logs, Git, or a VM sink. Locate offsets and
+opaque example IDs are illustrative: substitute exact receipt references and
+located Unicode-codepoint spans from the selected store.
+
+Each compile export retains a request plus a manifest that names its exact
+bytes and capture occurrences. Export is neither import nor browser proof;
+the importer separately rechecks context and source hashes. No artifacts are
+garbage-collected here, and neither capture nor import grants send authority.
+
+## Recovery verification of a retained export
+
+When recovery needs to check a compile result before an optional explicit
+import, use only the selected store's private manifest file:
+
+`python -B -m scripts.prospecting.capture_import_cli --store PATH --verify-export FILE`
+
+`FILE` must be the exact unlinked
+`snapshots/capture-imports/man_<opaque>.body` path returned by the compile
+response. Do not pass manifest fields, request contents, source URLs, or other
+private values as arguments. A successful envelope contains only `status`
+(`verified`), `kind`, `request_id`, `capture_count`, and `request_sha256`.
+
+This is consistency checking of a retained manifest/request pair against the
+selected store's current capture and context records. It is not a
+cryptographic manifest signature or annotation-file attestation, browser
+proof, import, approval, readiness, send, or qualification decision. The mode
+is read-only at the connection level: it opens the existing SQLite file with
+`mode=ro`, enables query-only enforcement, performs no domain/schema writes or
+migrations, and may use SQLite's normal WAL/SHM coordination files. Use the
+separate pipeline import command only when import is explicitly intended.

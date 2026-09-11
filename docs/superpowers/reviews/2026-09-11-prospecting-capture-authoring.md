@@ -24,6 +24,15 @@ test in1.47s: session, task, claim, packet submission, funding compile/import/re
 person scope, people compile/import/replay, source mutation refusal and no delivery authority.
 Root reviewed that test and its clock-only service substitutions.
 
+The follow-up verifier review found that `--verify-export` had been using the
+ordinary migrating store opener. The accepted repair uses an existing SQLite
+`mode=ro` connection with query-only enforcement for verification only; it performs
+no domain/schema writes or migrations and allows only SQLite's normal WAL/SHM
+coordination files. Worker120 ran37 tests over21.33s, including ordinary SQLite
+URI/read-only behavior, `#` and WAL race cases, and older/missing-schema refusals;
+independent review122 was READY. These checks cover the verifier path; they are
+not a claim of the full repository suite.
+
 Claude identities were verified from assistant log fields. Codex fallback requested
 gpt-5.6-luna, gpt-5.6-sol and gpt-5.6-terra as appropriate; the native collaboration API
 does not independently expose responding model identity. No invented model verification.
