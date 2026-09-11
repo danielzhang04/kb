@@ -808,3 +808,23 @@
   same drift. Unbounded: a third identical card now sits in inbox.
 - Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on the approvals ref keyed to my
   card, so no step-4b verification needed this run.
+
+## 2026-09-11 nightly-review (cloud)
+- preamble PASS; pyyaml ok; sync_skills --check in sync (exit 0). Dispatched 1 card
+  (6aa39cda nightly-review, kb, routed claude-sonnet-5) and self-executed it (dashboards
+  regenerated, this memory line, cost row).
+- GOTCHA (cost me a cleanup): cards.transition(c,'working', '.') with queue_root '.' writes to
+  ./working/ NOT ./queue/working/ — STATE_DIR values are bare ('working','inbox','done'), so the
+  queue_root MUST be 'queue', not '.'. It also silently created a stray repo-root working/ dir and
+  unlinked the card from queue/inbox. Fixed by mv into queue/working/ + rmdir. ALWAYS pass
+  queue_root='queue' to cards.save/transition from repo root.
+- daemon-dirs gate: sync_daemon_dirs.py STILL absent from ops (present on main). Ran main's copy
+  refs-fallback -> exit 1, same single ops-only extra orgs/kb-ops/workflows/acceptance-run.md.
+  Filed wake-daniel-2026-09-11-sync-daemon-dirs-drift, cross-referencing the open 08-15/08-30/09-10
+  priors; the nightly duplication continues (now a 4th open card) — amend step 2b to skip when an
+  open card already tracks the same drift if Daniel wants it stopped.
+- Queue: inbox 53, working 3 (6a6bc3dd kb-ops halted-terminal lingering; d126c410 figment
+  long-running terminal card w/ MALFORMED yaml action: unquoted colon -> cards.parse ScannerError,
+  flagged for figment-expand; 6aa39cda tonight's, done at commit), done 1579, approvals 1.
+- Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on approvals ref keyed to my card,
+  so no step-4b verification needed this run.
