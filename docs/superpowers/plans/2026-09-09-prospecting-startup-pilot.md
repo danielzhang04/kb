@@ -24,7 +24,9 @@ real case. Tests identify infrastructure gaps; a prospect quota is not the deliv
 - [x] Diagnose real qualification's dynamic source-binding refusal; add closed diagnostics.
 - [x] Validate exact wrapper contract on genuine synthetic current/potential-conflict history.
 - [x] Run all four actual native adapters on one new bundle and verify public pin/canary cleanup.
-- [ ] Finish whole-project synthetic regression and classify remaining failures (task123 running).
+- [x] Finish whole-project synthetic regression and classify remaining failures.
+  2,082 passed / 5 failed; two environment-sensitive cases passed focused reruns.
+  Three recorded P6/P1/P2/P4 gate checks remain human-owned and unresolved.
 - [ ] Continue the bounded real P19 batch and deterministic P20 ranking when explicitly authorized.
   Automatic approval review rejected private prospect/source transfer before the retry executed.
   The first item's remaining attempt is intact; the asynchronous approval request is pending.
@@ -40,7 +42,9 @@ qualification97df0409; export verifier9e8dfe4e; operator/acceptance docs4637171b
 Selected/native combined320 checks and36 actual-HTML UI state checks passed. Acquisition168
 combined checks passed before the final read-only connection repairs; those repairs passed37
 CLI/verifier checks and independent review122. Qualification/native combined170 checks passed;
-postpin adapter suite36 passed. All130 unpublished committed files passed PII scan.
+postpin adapter suite36 passed. All130 unpublished committed files passed PII scan. Full project suite:2,082 passed,5failed,
+0errors/0skips in1,245.491s;2 environment-sensitive cases passed focused reruns in2.33s.
+The3 unresolved recorded gate/manifest checks are not claimed green.
 
 Current accepted runtime bundle:
 `e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814`.
