@@ -32,8 +32,11 @@ real case. Tests identify infrastructure gaps; a prospect quota is not the deliv
   The first item's remaining attempt is intact; the asynchronous approval request is pending.
 - [ ] Verify visible private UI, changed input/source and restart with supported browser access.
   Browser inventory is empty; do not substitute an unapproved acquisition transport.
-- [ ] Refresh concrete draft PR181 and coordination PR180 with accepted source and evidence.
-- [ ] Save current canonical handoff and reusable lessons; clean only owned finished resources.
+- [x] Publish reviewed source and coordination commits to existing PR branches.
+  PR181 title/body updated. PR180 summary edit was rejected before execution by automatic
+  approval review; explicit approval for that prepared summary is pending.
+- [x] Save current canonical handoff and reusable lessons; confirm test workers have exited.
+  Retain native evidence, real pilot backups and pre-existing scratch roots. Keepawake remains bounded.
 
 ## Accepted evidence
 
