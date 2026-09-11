@@ -8,7 +8,8 @@ from datetime import datetime
 from hashlib import sha256
 import json
 from pathlib import Path
-from typing import Any
+from types import MappingProxyType
+from typing import TYPE_CHECKING, Any
 
 from scripts.prospecting.affinity.source_review import (
     SnapshotProof,
@@ -18,6 +19,12 @@ from scripts.prospecting.affinity.source_review import (
 from scripts.prospecting.personalizer.evidence import EvidenceDraft, EvidenceError, insert_evidence
 
 from .score import Affinity, Signal
+
+if TYPE_CHECKING:  # pragma: no cover - typing only, never a runtime import
+    # scripts.prospecting.selected_person_source imports qualification_service, which
+    # (via pipeline_stage_service) imports this module.  A runtime import here would
+    # close that cycle, so the resolver record is only referenced as a type.
+    from scripts.prospecting.selected_person_source import SelectedPersonSource
 
 
 CLAIM_TEMPLATES: Mapping[str, str] = {
@@ -61,7 +68,7 @@ class BoundFacts:
     values: Mapping[str, str]
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class CurrentRoleProof:
     campaign_id: str
     person_id: str
@@ -76,7 +83,7 @@ class CurrentRoleProof:
     attested: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class AttestedCurrentRoleSource:
     campaign_id: str
     person_id: str
@@ -88,6 +95,45 @@ class AttestedCurrentRoleSource:
     snapshot_id: str
     role_excerpt: str
     name_excerpt: str
+
+
+@dataclass(frozen=True, repr=False)
+class SelectedSourceIdentity:
+    """Local rows bound to one exact P22 selected-person source context.
+
+    Every field is reached through the identifiers carried by the resolver record:
+    the selected company, the selected employment row by primary key, and the
+    selected P18 candidate observation.  No latest-employment fallback exists.
+
+    ``repr`` is disabled: this record carries the person's name, employer, title
+    and a raw source excerpt, none of which may leak into logs or test/assertion
+    failure output through the default dataclass repr.  Equality and frozen value
+    semantics are unchanged.
+    """
+
+    person_id: str
+    company_id: str
+    employment_id: str
+    first_name: str
+    full_name: str
+    company_name: str
+    title: str
+    snapshot_id: str
+    excerpt: str
+    observed_at: str | None
+    confidence: float
+
+
+# The only claims the selected-person path may mint.  Each states nothing beyond the
+# name, employer and title that the bound candidate excerpt was already validated to
+# contain, so no caller can hand this module a free-form, unsupported claim.
+SELECTED_CLAIM_TEMPLATES: Mapping[str, str] = MappingProxyType({
+    "first_name": "Known as {first_name} at {firm}",
+    "company": "Works at {firm} as {title}",
+    "role": "Holds the {title} role at {firm}",
+    "recipient_hook": "Holds the {title} role at {firm}",
+    "topic": "Works at {firm} as {title}",
+})
 
 
 def _value(row: object, name: str, default: Any = None) -> Any:
@@ -783,6 +829,138 @@ def _record_signal_evidence(connection, person_id: str, campaign_id: str,
             return
 
 
+def _insert_or_verify(connection, draft: EvidenceDraft, confidence_floor: float) -> None:
+    """Insert one evidence row, tolerating only a byte-identical prior insert.
+
+    Shared by the P8 per-recipient mint loop and by the narrow P22 selected-person
+    path so both keep exactly one duplicate/idempotency rule.
+    """
+    try:
+        insert_evidence(connection, draft, confidence_floor)
+    except EvidenceError as error:
+        if str(error) != "duplicate_evidence_id":
+            raise
+        stored = connection.execute(
+            """SELECT person_id,claim,url,observed_at,retrieved_at,excerpt,
+                      confidence,expires_at,allowed_for_copy
+                 FROM evidence WHERE evidence_id=?""",
+            (draft.evidence_id,),
+        ).fetchone()
+        snapshot = connection.execute(
+            """SELECT source_url,retrieved_at,expires_at
+                 FROM source_snapshot WHERE snapshot_id=?""", (draft.source_ref,),
+        ).fetchone()
+        compatible = stored is not None and snapshot is not None and (
+            str(_value(stored, "person_id")), str(_value(stored, "claim")),
+            str(_value(stored, "url")), _value(stored, "observed_at"),
+            str(_value(stored, "retrieved_at")), str(_value(stored, "excerpt")),
+            float(_value(stored, "confidence")), str(_value(stored, "expires_at")),
+            bool(_value(stored, "allowed_for_copy")),
+        ) == (
+            draft.person_id, draft.claim, str(_value(snapshot, "source_url")),
+            draft.observed_at, str(_value(snapshot, "retrieved_at")), draft.excerpt,
+            draft.confidence, str(_value(snapshot, "expires_at")), draft.allowed_for_copy,
+        )
+        if not compatible:
+            raise ValueError("duplicate_evidence_conflict") from error
+
+
+def selected_person_identity(connection, selected: "SelectedPersonSource") -> SelectedSourceIdentity:
+    """Bind one already-resolved P22 selected source to its exact local identity rows.
+
+    The employment row is fetched by the bound employment_id (open row only), so an
+    unrelated later employment for the same person, or another person at the same
+    company, is irrelevant here.  No fill_person/fill_firm/contact/approval state is
+    read or required.
+    """
+    for name in (
+        "campaign_id", "person_id", "company_id", "employment_id", "title",
+        "candidate_observation_id", "employment_observation_id", "snapshot_id",
+        "excerpt", "source_context_digest",
+    ):
+        value = getattr(selected, name, None)
+        if type(value) is not str or not value:
+            raise ValueError("selected_source_invalid")
+    person = connection.execute(
+        "SELECT first_name,full_name FROM person WHERE person_id=?", (selected.person_id,),
+    ).fetchone()
+    company = connection.execute(
+        "SELECT name FROM company WHERE company_id=?", (selected.company_id,),
+    ).fetchone()
+    employment = connection.execute(
+        """SELECT person_id,company_id,title,valid_to,source_observation_id
+             FROM employment WHERE employment_id=?""",
+        (selected.employment_id,),
+    ).fetchone()
+    if person is None or company is None or employment is None:
+        raise ValueError("selected_source_identity_mismatch")
+    if (
+        str(_value(employment, "person_id")) != selected.person_id
+        or str(_value(employment, "company_id")) != selected.company_id
+        or _value(employment, "valid_to") is not None
+        or _normal(_value(employment, "title")) != _normal(selected.title)
+        or str(_value(employment, "source_observation_id")) != selected.employment_observation_id
+    ):
+        raise ValueError("selected_source_identity_mismatch")
+    source = _observation(connection, selected.candidate_observation_id)
+    if source is None or (
+        source.entity_type != "person"
+        or source.entity_id != selected.person_id
+        or source.field != "source_review_candidate"
+        or source.snapshot_id != selected.snapshot_id
+        or source.excerpt != " ".join(selected.excerpt.split())[:240]
+    ):
+        raise ValueError("selected_source_identity_mismatch")
+    title = str(_value(employment, "title"))
+    first_name = str(_value(person, "first_name"))
+    full_name = str(_value(person, "full_name"))
+    company_name = str(_value(company, "name"))
+    if not _names(source.excerpt, full_name, company_name, title) or not _names(full_name, first_name):
+        raise ValueError("selected_source_identity_mismatch")
+    return SelectedSourceIdentity(
+        selected.person_id, selected.company_id, selected.employment_id,
+        first_name, full_name, company_name, title, selected.snapshot_id,
+        source.excerpt, source.observed_at, source.confidence,
+    )
+
+
+def mint_selected_person_evidence(
+    connection, selected: "SelectedPersonSource", slots: Sequence[str], *,
+    confidence_floor: float = 0.7,
+) -> Mapping[str, str]:
+    """Mint canonical identity claims for one exact qualified selected source.
+
+    The caller names slots only; every claim text is derived here from the validated
+    identity through :data:`SELECTED_CLAIM_TEMPLATES`, so this path carries no
+    authority to assert anything beyond the bound name, employer and title.  It never
+    constructs an Affinity, never reads person_affinity/fill state, and cites only the
+    single hardened snapshot and candidate observation the resolver validated.  The
+    evidence_id includes ``selected.source_context_digest``, so a different selection
+    cannot silently reuse an earlier selection's rows.
+    """
+    identity = selected_person_identity(connection, selected)
+    wanted = tuple(sorted(set(slots)))
+    if not wanted or any(slot not in SELECTED_CLAIM_TEMPLATES for slot in wanted):
+        raise ValueError("selected_claim_unsupported")
+    evidence_ids: dict[str, str] = {}
+    for slot in wanted:
+        claim = SELECTED_CLAIM_TEMPLATES[slot].format(
+            first_name=identity.first_name, firm=identity.company_name, title=identity.title,
+        )
+        evidence_id = sha256(
+            "|".join((
+                "selected-person-evidence-v1", identity.person_id, selected.campaign_id,
+                selected.source_context_digest, slot, claim,
+            )).encode()
+        ).hexdigest()
+        _insert_or_verify(connection, EvidenceDraft(
+            evidence_id, identity.person_id, claim, identity.snapshot_id,
+            identity.observed_at, identity.excerpt, identity.confidence, True,
+        ), confidence_floor)
+        evidence_ids[slot] = evidence_id
+    return MappingProxyType(evidence_ids)
+
+
 def mint_evidence(connection, person_id: str, campaign_id: str, affinity: Affinity,
                   slots: Mapping[str, str], now: datetime, confidence_floor: float = 0.7,
                   selected_company_id: str | None = None, *,
@@ -825,34 +1003,7 @@ def mint_evidence(connection, person_id: str, campaign_id: str, affinity: Affini
             False if slot in {"path_transition", "role_level"} else
             COPY_ALLOWED_BY_CLASS.get(primary.klass if primary else identity_class, False),
         )
-        try:
-            insert_evidence(connection, draft, confidence_floor)
-        except EvidenceError as error:
-            if str(error) != "duplicate_evidence_id":
-                raise
-            stored = connection.execute(
-                """SELECT person_id,claim,url,observed_at,retrieved_at,excerpt,
-                          confidence,expires_at,allowed_for_copy
-                     FROM evidence WHERE evidence_id=?""",
-                (evidence_id,),
-            ).fetchone()
-            snapshot = connection.execute(
-                """SELECT source_url,retrieved_at,expires_at
-                     FROM source_snapshot WHERE snapshot_id=?""", (source.snapshot_id,),
-            ).fetchone()
-            compatible = stored is not None and snapshot is not None and (
-                str(_value(stored, "person_id")), str(_value(stored, "claim")),
-                str(_value(stored, "url")), _value(stored, "observed_at"),
-                str(_value(stored, "retrieved_at")), str(_value(stored, "excerpt")),
-                float(_value(stored, "confidence")), str(_value(stored, "expires_at")),
-                bool(_value(stored, "allowed_for_copy")),
-            ) == (
-                person_id, claim, str(_value(snapshot, "source_url")), source.observed_at,
-                str(_value(snapshot, "retrieved_at")), source.excerpt, source.confidence,
-                str(_value(snapshot, "expires_at")), draft.allowed_for_copy,
-            )
-            if not compatible:
-                raise ValueError("duplicate_evidence_conflict") from error
+        _insert_or_verify(connection, draft, confidence_floor)
         evidence_ids[slot] = evidence_id
         for signal in matched_signals:
             if source.observation_id in signal.observation_ids:

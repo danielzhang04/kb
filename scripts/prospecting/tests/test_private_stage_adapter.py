@@ -59,6 +59,35 @@ def _executable_capability(tmp_path: Path) -> adapter._Capability:
     )
 
 
+def test_live_process_command_explicitly_selects_keyring_and_ignores_user_config(
+    tmp_path: Path,
+) -> None:
+    argv = adapter._command(
+        Path("codex.exe"), tmp_path / "attempt", tmp_path / "state",
+        tmp_path / "schema.json", tmp_path / "output.json", port=None,
+    )
+
+    configs = [argv[index + 1] for index, value in enumerate(argv) if value == "--config"]
+
+    assert "--ignore-user-config" in argv
+    assert 'cli_auth_credentials_store="keyring"' in configs
+    assert not any(item.startswith("cli_auth_credentials_store=\"ephemeral\"") for item in configs)
+
+
+def test_prime_process_command_stays_ephemeral_and_cannot_select_keyring(
+    tmp_path: Path,
+) -> None:
+    argv = adapter._command(
+        Path("codex.exe"), tmp_path / "attempt", tmp_path / "state",
+        tmp_path / "schema.json", tmp_path / "output.json", port=54321,
+    )
+
+    configs = [argv[index + 1] for index, value in enumerate(argv) if value == "--config"]
+
+    assert 'cli_auth_credentials_store="ephemeral"' in configs
+    assert not any(item.startswith("cli_auth_credentials_store=\"keyring\"") for item in configs)
+
+
 def test_exact_four_schemas_and_full_skills_are_bound() -> None:
     assert set(adapter._SCHEMAS) == {
         "humanizer", "post_humanization_factcheck", "independent_critic",
@@ -216,8 +245,38 @@ def test_public_stage_path_is_source_disabled_before_bootstrap(
         called = True
         raise AssertionError
 
+    monkeypatch.setattr(adapter, "ACCEPTED_RUNTIME_BUNDLE_SHA256", None)
     monkeypatch.setattr(adapter, "_bootstrap", forbidden)
     monkeypatch.setattr(runtime, "_codex_executable", forbidden)
+    with pytest.raises(adapter.PrivateStageRuntimeError, match="^live_runtime_not_accepted$"):
+        with adapter.prepare_stage_adapters((tmp_path / "store.sqlite").resolve()):
+            pass
+    assert called is False
+
+
+def test_public_stage_path_refuses_mismatched_pin_before_bootstrap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A non-None pin that does not match the live bundle must still refuse."""
+    executable = tmp_path / "codex.exe"
+    executable.write_bytes(b"synthetic executable")
+    executable_hash = hashlib.sha256(executable.read_bytes()).hexdigest()
+    cli_version = "0.synthetic"
+    actual = adapter._digest(adapter._bundle_manifest(executable_hash, cli_version))
+    mismatched = "f" * 64
+    assert mismatched != actual
+    called = False
+
+    def forbidden(*_args: object, **_kwargs: object):
+        nonlocal called
+        called = True
+        raise AssertionError
+
+    monkeypatch.setattr(adapter, "ACCEPTED_RUNTIME_BUNDLE_SHA256", mismatched)
+    monkeypatch.setattr(runtime, "_codex_executable", lambda _selected: executable)
+    monkeypatch.setattr(runtime, "_sha_file", lambda _path: executable_hash)
+    monkeypatch.setattr(runtime, "_cli_version", lambda _path: cli_version)
+    monkeypatch.setattr(adapter, "_bootstrap", forbidden)
     with pytest.raises(adapter.PrivateStageRuntimeError, match="^live_runtime_not_accepted$"):
         with adapter.prepare_stage_adapters((tmp_path / "store.sqlite").resolve()):
             pass
@@ -526,4 +585,313 @@ def test_stage_sink_scan_detects_standalone_final_body_fragment(
     monkeypatch.setattr(runtime, "_run_owned_windows_process", complete)
     with pytest.raises(adapter.PrivateStageRuntimeError, match="^prohibited_content_logged$"):
         adapter._execute_stage(capability, job, adapter._stage_assets()[job.stage])
+    assert capability.invalidated.is_set()
+
+
+def test_live_and_prime_config_changes_invalidate_the_reviewed_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    original_live = adapter._live_config_items
+    monkeypatch.setattr(
+        adapter, "_live_config_items",
+        lambda: original_live() + ('synthetic_live_only_field="1"',),
+    )
+    live_changed = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    assert live_changed != before
+    monkeypatch.setattr(adapter, "_live_config_items", original_live)
+
+    original_prime = adapter._prime_config_items
+    monkeypatch.setattr(
+        adapter, "_prime_config_items",
+        lambda port: original_prime(port) + ('synthetic_prime_only_field="1"',),
+    )
+    prime_changed = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    assert prime_changed != before
+    assert prime_changed != live_changed
+
+
+def test_canary_schema_change_invalidates_the_reviewed_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    monkeypatch.setattr(runtime, "SYNTHETIC_SCHEMA", runtime.SYNTHETIC_SCHEMA + b" ")
+    after = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    assert after != before
+
+
+def test_preflight_envelope_hash_is_bound_to_canaries_with_a_placeholder_bundle(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    monkeypatch.setattr(runtime, "OUTPUT_CANARY", "SYNTHETIC_DIFFERENT_OUTPUT_CANARY")
+    after = adapter._digest(adapter._bundle_manifest("a" * 64, "0.synthetic"))
+    assert after != before
+    expected_hash = hashlib.sha256(
+        adapter._preflight_envelope(adapter._MANIFEST_BUNDLE_PLACEHOLDER)
+    ).hexdigest()
+    assert adapter._preflight_envelope_manifest_hash() == expected_hash
+
+
+def test_prime_config_has_exactly_one_model_context_window_entry() -> None:
+    items = adapter._prime_config_items(54321)
+    context_entries = [item for item in items if item.startswith("model_context_window=")]
+    assert context_entries == [f"model_context_window={adapter._PRIME_MODEL_CONTEXT_WINDOW}"]
+
+
+def test_live_and_prime_config_items_stay_separated_on_auth_and_provider_fields() -> None:
+    live_items = adapter._live_config_items()
+    prime_items = adapter._prime_config_items(0)
+
+    assert 'cli_auth_credentials_store="keyring"' in live_items
+    assert 'cli_auth_credentials_store="keyring"' not in prime_items
+    assert 'cli_auth_credentials_store="ephemeral"' in prime_items
+    assert 'cli_auth_credentials_store="ephemeral"' not in live_items
+    assert 'model_provider="openai"' in live_items
+    assert 'model_provider="openai"' not in prime_items
+    assert 'model_provider="loopback"' in prime_items
+    assert 'model_provider="loopback"' not in live_items
+
+
+def test_execute_stage_does_not_delete_preexisting_unowned_attempt_directory(
+    tmp_path: Path,
+) -> None:
+    capability = _executable_capability(tmp_path)
+    raw = b"{}"
+    job = StageJob(
+        "item-synthetic", "attempt-synthetic", "worker-synthetic", "humanizer", 0,
+        hashlib.sha256(raw).hexdigest(), raw,
+    )
+    reserved = tmp_path / job.attempt_id
+    reserved.mkdir()
+    marker = reserved / "owner.txt"
+    marker.write_text("preexisting sibling", encoding="utf-8")
+
+    with pytest.raises(adapter.PrivateStageRuntimeError, match="^runtime_io_failed$"):
+        adapter._execute_stage(capability, job, adapter._stage_assets()[job.stage])
+
+    assert reserved.exists()
+    assert marker.read_text(encoding="utf-8") == "preexisting sibling"
+
+
+def _qualification_payload() -> dict:
+    return {
+        "company": {
+            "identity_consistency": "consistent", "location": "Synthetic City",
+            "sector": "Synthetic sector", "funding_events": [{
+                "source_key": "source-a", "authority": "issuer",
+                "entailment": "supports_exact_stage_date", "stage": "series_a",
+                "announced_at": "2026-09-10", "uncertainty_codes": [],
+            }],
+            "coverage_assessment": "bounded_current_search",
+            "source_agreement": "consistent", "uncertainty_codes": [],
+        },
+        "people": [{
+            "candidate_id": "candidate-a", "page_kind": "current_company_team",
+            "role_statement": "current", "observed_name": "Synthetic Person",
+            "observed_company": "Synthetic Company", "observed_title": "Operations",
+            "title_granularity": "exact", "continuity": "current_statement",
+            "source_keys": ["source-person-a"], "uncertainty_codes": [],
+        }],
+    }
+
+
+def _differences(left: object, right: object, path: tuple = ()) -> list[tuple]:
+    if isinstance(left, dict) and isinstance(right, dict):
+        found: list[tuple] = []
+        for key in sorted(set(left) | set(right), key=str):
+            if key not in right:
+                found.append((path + (key,), left[key], None))
+            elif key not in left:
+                found.append((path + (key,), None, right[key]))
+            else:
+                found.extend(_differences(left[key], right[key], path + (key,)))
+        return found
+    if isinstance(left, list) and isinstance(right, list) and len(left) == len(right):
+        found = []
+        for index, (one, other) in enumerate(zip(left, right)):
+            found.extend(_differences(one, other, path + (index,)))
+        return found
+    return [] if left == right else [(path, left, right)]
+
+
+def _node_at(value: object, path: tuple) -> object:
+    for key in path:
+        value = value[key]
+    return value
+
+
+def test_provider_wire_schema_omits_only_unique_items_on_array_nodes() -> None:
+    assets = adapter._stage_assets()
+    removed: dict[str, list[tuple]] = {}
+    for stage, asset in assets.items():
+        assert asset.schema == adapter._SCHEMAS[stage]
+        original = json.loads(asset.schema)
+        derived = json.loads(asset.provider_schema)
+        validator_for(derived).check_schema(derived)
+        differences = _differences(original, derived)
+        for path, left, right in differences:
+            assert path[-1] == "uniqueItems"
+            assert (left, right) == (True, None)
+            assert _node_at(original, path[:-1])["type"] == "array"
+        removed[stage] = [path for path, _left, _right in differences]
+        assert b"uniqueItems" not in asset.provider_schema
+        assert derived["additionalProperties"] is False
+    assert len(removed["qualification_factcheck"]) >= 3
+    assert b"uniqueItems" in assets["qualification_factcheck"].schema
+    for stage in ("humanizer", "post_humanization_factcheck", "independent_critic"):
+        assert removed[stage] == []
+        assert assets[stage].provider_schema == assets[stage].schema
+    again = adapter._stage_assets()
+    for stage, asset in assets.items():
+        assert again[stage].schema == asset.schema
+        assert again[stage].provider_schema == asset.provider_schema
+
+
+def test_derivation_keeps_literal_unique_items_property_names_and_enum_data() -> None:
+    source = adapter._schema_bytes({
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object", "additionalProperties": False,
+        "required": ["uniqueItems", "values"],
+        "properties": {
+            "uniqueItems": {"enum": ["uniqueItems", "keep"]},
+            "values": {
+                "type": "array", "uniqueItems": True, "minItems": 1,
+                "maxItems": 4, "items": {"type": "string", "minLength": 1},
+            },
+        },
+    })
+    derived = json.loads(adapter._provider_schema_bytes(source))
+
+    assert derived["required"] == ["uniqueItems", "values"]
+    assert set(derived["properties"]) == {"uniqueItems", "values"}
+    assert derived["properties"]["uniqueItems"]["enum"] == ["uniqueItems", "keep"]
+    assert "uniqueItems" not in derived["properties"]["values"]
+    assert derived["properties"]["values"]["minItems"] == 1
+    assert derived["properties"]["values"]["maxItems"] == 4
+    assert derived["properties"]["values"]["items"] == {"type": "string", "minLength": 1}
+    assert json.loads(source)["properties"]["values"]["uniqueItems"] is True
+
+
+def test_local_validation_still_refuses_duplicates_the_wire_schema_permits(
+    tmp_path: Path,
+) -> None:
+    asset = adapter._stage_assets()["qualification_factcheck"]
+    wire = json.loads(asset.provider_schema)
+    output = tmp_path / "output.json"
+
+    duplicate_uncertainty = _qualification_payload()
+    duplicate_uncertainty["company"]["uncertainty_codes"] = [
+        "location_unclear", "location_unclear",
+    ]
+    duplicate_sources = _qualification_payload()
+    duplicate_sources["people"][0]["source_keys"] = [
+        "source-person-a", "source-person-a",
+    ]
+    for payload in (duplicate_uncertainty, duplicate_sources):
+        output.write_bytes(json.dumps(payload, separators=(",", ":")).encode())
+        with pytest.raises(adapter.PrivateStageRuntimeError, match="^stage_output_invalid$"):
+            adapter._validate_output(output, asset.schema)
+        # The provider subset alone cannot express this refusal; the full local
+        # schema is what keeps it closed.
+        validator_for(wire)(wire).validate(payload)
+
+    valid = _qualification_payload()
+    output.write_bytes(json.dumps(valid, separators=(",", ":")).encode())
+    assert adapter._validate_output(output, asset.schema) == valid
+
+
+def test_provider_schema_derivation_change_moves_the_runtime_pin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    before = adapter._bundle_manifest("a" * 64, "0.synthetic")
+    assert set(before["provider_schemas"]) == set(adapter._SCHEMAS)
+    assert before["provider_wire_policy"]["excluded_array_keywords"] == ["uniqueItems"]
+    assert before["provider_schemas"]["qualification_factcheck"] == hashlib.sha256(
+        adapter._stage_assets()["qualification_factcheck"].provider_schema,
+    ).hexdigest()
+    assert (
+        before["provider_schemas"]["qualification_factcheck"]
+        != before["schemas"]["qualification_factcheck"]
+    )
+    for stage in ("humanizer", "post_humanization_factcheck", "independent_critic"):
+        assert before["provider_schemas"][stage] == before["schemas"][stage]
+
+    original = adapter._provider_schema_bytes
+    monkeypatch.setattr(
+        adapter, "_provider_schema_bytes",
+        lambda value: adapter._schema_bytes({
+            **json.loads(original(value)), "title": "synthetic wire revision",
+        }),
+    )
+    after = adapter._bundle_manifest("a" * 64, "0.synthetic")
+
+    assert adapter._digest(after) != adapter._digest(before)
+    assert after["schemas"] == before["schemas"]
+    assert after["provider_schemas"] != before["provider_schemas"]
+
+
+def test_execute_stage_writes_wire_schema_and_validates_full_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = _executable_capability(tmp_path)
+    asset = adapter._stage_assets()["qualification_factcheck"]
+    raw = b"{}"
+    job = StageJob(
+        "pqit_" + "a" * 32, "pqat_" + "b" * 32, "pqwj_" + "c" * 32,
+        "qualification_factcheck", 0, hashlib.sha256(raw).hexdigest(), raw,
+    )
+    payload = _qualification_payload()
+    written: list[bytes] = []
+
+    def complete(*_args: object, **kwargs: object) -> runtime._ProcessOutcome:
+        attempt = tmp_path / job.attempt_id
+        written.append((attempt / "schema.json").read_bytes())
+        (attempt / "output.json").write_bytes(
+            json.dumps(payload, separators=(",", ":")).encode(),
+        )
+        observer = kwargs["stdout_observer"]
+        observer(b'{"type":"thread.started"}\n{"type":"turn.started"}\n')
+        observer(b'{"type":"item.completed","item":{"type":"agent_message"}}\n')
+        observer(b'{"type":"turn.completed"}\n')
+        return runtime._ProcessOutcome(0, False, False)
+
+    monkeypatch.setattr(runtime, "_run_owned_windows_process", complete)
+    result = adapter._execute_stage(capability, job, asset)
+
+    assert result.payload == payload
+    assert written == [asset.provider_schema]
+    assert b"uniqueItems" not in written[0]
+    assert b"uniqueItems" in asset.schema
+    assert asset.schema == adapter._SCHEMAS["qualification_factcheck"]
+    assert not capability.invalidated.is_set()
+
+
+def test_execute_stage_refuses_duplicate_output_even_though_wire_allows_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    capability = _executable_capability(tmp_path)
+    asset = adapter._stage_assets()["qualification_factcheck"]
+    raw = b"{}"
+    job = StageJob(
+        "pqit_" + "a" * 32, "pqat_" + "b" * 32, "pqwj_" + "c" * 32,
+        "qualification_factcheck", 0, hashlib.sha256(raw).hexdigest(), raw,
+    )
+    payload = _qualification_payload()
+    payload["people"][0]["source_keys"] = ["source-person-a", "source-person-a"]
+
+    def complete(*_args: object, **kwargs: object) -> runtime._ProcessOutcome:
+        attempt = tmp_path / job.attempt_id
+        (attempt / "output.json").write_bytes(
+            json.dumps(payload, separators=(",", ":")).encode(),
+        )
+        observer = kwargs["stdout_observer"]
+        observer(b'{"type":"thread.started"}\n{"type":"turn.started"}\n')
+        observer(b'{"type":"item.completed","item":{"type":"agent_message"}}\n')
+        observer(b'{"type":"turn.completed"}\n')
+        return runtime._ProcessOutcome(0, False, False)
+
+    monkeypatch.setattr(runtime, "_run_owned_windows_process", complete)
+    with pytest.raises(adapter.PrivateStageRuntimeError, match="^stage_output_invalid$"):
+        adapter._execute_stage(capability, job, asset)
     assert capability.invalidated.is_set()

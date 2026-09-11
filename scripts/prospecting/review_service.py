@@ -14,6 +14,7 @@ import hashlib
 import json
 import re
 import sqlite3
+from typing import TYPE_CHECKING
 import uuid
 
 from scripts.prospecting.personalizer.qa import QaResult
@@ -46,7 +47,23 @@ from scripts.prospecting.review_qa import (
     StoredReviewQa,
     propagate_revision_qa_context,
 )
+from scripts.prospecting.selected_review_projection import (
+    SelectedPersonProjection,
+    SelectedPipelineProjection,
+    build_selected_pipeline_projection,
+)
 from scripts.prospecting.store import approval_scope_hash
+
+
+if TYPE_CHECKING:  # pragma: no cover - typing only; runtime imports stay lazy.
+    from scripts.prospecting.selected_draft_service import (
+        SelectedDraftReceipt,
+        SelectedDraftRequest,
+    )
+    from scripts.prospecting.selected_source_review import (
+        SelectedSourceAttestationReceipt,
+        SelectedSourceAttestationRequest,
+    )
 
 
 MAX_SUBJECT = 998
@@ -60,6 +77,43 @@ _PREPARE_BLOCKERS = frozenset({
     "approved_fit_spec_invalid", "campaign_not_draft", "copy_profile_missing",
     "copy_profile_invalid", "intent_unsupported", "ask_type_unsupported",
     "ask_minutes_unsupported", "evidence_identity_source_mismatch",
+})
+# The exact fixed refusal codes this boundary may forward unchanged from the two
+# selected services.  Anything outside these sets collapses to one generic code, so
+# no dynamic store or driver text can ever reach a local UI response.
+_SELECTED_DRAFT_CODES = frozenset({
+    "invalid_request", "invalid_request_id", "invalid_campaign_id", "invalid_run_id",
+    "invalid_person_rank_id", "invalid_ranking_batch_hash", "invalid_revision_id",
+    "invalid_binding_hash", "regeneration_expectations_incomplete",
+    "regeneration_context_unchanged", "predecessor_binding_missing",
+    "predecessor_binding_stale", "stale_expected_revision",
+    "expected_revision_unrelated", "selected_draft_superseded",
+    "selected_draft_regeneration_required", "selected_revision_already_bound",
+    "unbound_revision_present", "human_edit_unresolved", "pipeline_work_active",
+    "agent_suggestion_pending", "selected_binding_missing",
+    "selected_binding_scope_mismatch", "selected_source_stale",
+    "selected_render_context_stale", "render_context_stale", "source_changed",
+    "source_stale", "revision_missing", "revision_lineage_unverified",
+    "revision_lineage_ambiguous", "revision_lineage_cycle",
+    "revision_lineage_scope_mismatch", "revision_lineage_too_deep",
+    "binding_integrity_failed", "request_conflict", "transaction_active",
+    "store_busy", "store_state_invalid", "selected_draft_cleanup_failed",
+    "aware_now_required",
+})
+_SELECTED_ATTESTATION_CODES = frozenset({
+    "invalid_request", "invalid_request_id", "invalid_campaign_id",
+    "invalid_person_id", "invalid_revision_id", "invalid_source_context_digest",
+    "invalid_observation_id", "source_attestation_required", "request_conflict",
+    "attestation_integrity_failed", "selected_draft_missing",
+    "stale_expected_revision", "selected_scope_mismatch", "source_context_conflict",
+    "source_candidate_conflict", "selected_binding_missing", "selected_binding_stale",
+    "selected_binding_scope_mismatch", "selected_source_identity_mismatch",
+    "selected_source_invalid", "selected_source_stale", "source_changed",
+    "source_stale", "selected_render_context_stale", "revision_missing",
+    "revision_lineage_unverified", "revision_lineage_ambiguous",
+    "revision_lineage_cycle", "revision_lineage_scope_mismatch",
+    "revision_lineage_too_deep", "transaction_active", "store_busy",
+    "store_state_invalid", "attestation_cleanup_failed", "aware_now_required",
 })
 
 
@@ -94,7 +148,7 @@ class SenderProfileView:
     sender_name: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class CampaignView:
     request_id: str | None
     campaign_id: str
@@ -146,8 +200,18 @@ class FundingBatchView:
     companies: tuple[FundingCompanyView, ...] = ()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class PersonView:
+    """One person row for the local review list.
+
+    ``repr`` is disabled.  This record carries a full name, a LinkedIn URL, an
+    email address and a title, none of which may leak into logs or assertion
+    output through the default dataclass repr.  The suppression covers exactly
+    this record's own fields; :class:`IdentitySourceView` suppresses its own repr
+    separately and that nested suppression never covered the fields listed above.
+    Equality and frozen value semantics are unchanged.
+    """
+
     person_id: str
     full_name: str
     title: str | None
@@ -163,10 +227,25 @@ class PersonView:
     identity_source_state: str = "not_selected"
     identity_sources: tuple["IdentitySourceView", ...] = ()
     current_observation_id: str | None = None
+    # P25 forward-projection fields.  They are safe opaque identifiers for a local
+    # UI to hand back to the selected services, never authority of their own: the
+    # owning command revalidates every one of them.
+    person_rank_id: str | None = None
+    run_id: str | None = None
+    ranking_batch_hash: str | None = None
+    source_context_digest: str | None = None
+    projection_error_code: str | None = None
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class IdentitySourceView:
+    """One source candidate row.
+
+    ``repr`` is disabled: this record carries a raw source excerpt and the source
+    URL, neither of which may leak into logs or assertion output through the default
+    dataclass repr.  Equality and frozen value semantics are unchanged.
+    """
+
     observation_id: str
     snapshot_id: str
     source_url: str
@@ -176,8 +255,10 @@ class IdentitySourceView:
     is_current: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class CandidateHistoryView:
+    """One prior review candidate.  ``repr`` is disabled: it carries draft copy."""
+
     candidate_id: str
     parent_revision_id: str
     subject: str
@@ -188,8 +269,10 @@ class CandidateHistoryView:
     is_current_parent: bool
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class EvidenceView:
+    """One cited evidence row.  ``repr`` is disabled: it carries claim text/URL."""
+
     evidence_id: str
     claim: str
     url: str
@@ -197,8 +280,14 @@ class EvidenceView:
     retrieved_at: str
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class DraftView:
+    """One draft projection.
+
+    ``repr`` is disabled: this record carries the draft copy, any pending candidate
+    copy and (through :class:`IdentitySourceView`) a raw source excerpt.
+    """
+
     person_id: str
     full_name: str
     revision_id: str
@@ -223,9 +312,21 @@ class DraftView:
     current_observation_id: str | None = None
     contact_state: str = "missing"
     source_error_code: str | None = None
+    # The exact revision this projection resolved its source proof through.
+    source_revision_id: str | None = None
+    # The exact selected source context digest of that same single proof.  It is
+    # None on the legacy path and on every stale/error return: an unavailable proof
+    # never claims the digest of whatever selection happens to be latest.
+    source_context_digest: str | None = None
+    # True whenever this projection was produced by the selected seam at all --
+    # for a resolved selected proof and for every selected refusal alike.  It is
+    # False only on the genuinely legacy (proof-is-None) path, so a consumer can
+    # tell "the selected source is unavailable" from "this draft is legacy" and
+    # never offers legacy verification for an unavailable selected root.
+    selected_source_scope: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ScheduleView:
     delivery_id: str
     person_id: str
@@ -653,6 +754,95 @@ class ReviewService:
             return False
         return self._usable_projection_source(role) and self._usable_projection_source(name)
 
+    def _aware_now(self) -> datetime:
+        """This service's clock as an aware datetime for the selected services."""
+        return _utc_time(self.now())
+
+    @staticmethod
+    def _fixed_code(error: BaseException, allowed: frozenset[str], fallback: str) -> str:
+        """Forward one known fixed code only; never dynamic store or driver text."""
+        code = error.args[0] if len(error.args) == 1 else None
+        return code if type(code) is str and code in allowed else fallback
+
+    def _selected_scope_active(self, campaign_id: str, person_id: str) -> bool:
+        """True when P22 already binds a selected draft for this exact person.
+
+        A plain existence read of the binding table: no lineage walk, no resolver
+        call and no authority of any kind is created here.  A store that predates
+        P22 entirely carries no binding table and is genuinely legacy.
+        """
+        try:
+            if self.connection.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='selected_draft_binding'",
+            ).fetchone() is None:
+                return False
+            return self.connection.execute(
+                """SELECT 1 FROM selected_draft_binding
+                    WHERE campaign_id=? AND person_id=? LIMIT 1""",
+                (campaign_id, person_id),
+            ).fetchone() is not None
+        except sqlite3.Error:
+            raise ReviewError("store_state_invalid") from None
+
+    def materialize_selected_draft(
+        self, request: "SelectedDraftRequest",
+    ) -> "SelectedDraftReceipt":
+        """Forward one exact selected-draft intent to the existing P22 service.
+
+        This boundary adds no authority: it neither relaxes nor supplies any
+        expectation, never confirms a source, and owns no table.  Refusals are
+        mapped onto fixed :class:`ReviewError` codes.
+        """
+        from scripts.prospecting.selected_draft_service import (
+            SelectedDraftError,
+            SelectedDraftRequest,
+            SelectedDraftService,
+        )
+
+        if not isinstance(request, SelectedDraftRequest):
+            raise ReviewError("invalid_selected_draft_request")
+        try:
+            return SelectedDraftService(
+                self.connection, now=self._aware_now,
+            ).materialize(request)
+        except SelectedDraftError as error:
+            raise ReviewError(self._fixed_code(
+                error, _SELECTED_DRAFT_CODES, "selected_draft_unavailable",
+            )) from None
+        except sqlite3.Error:
+            raise ReviewError("store_state_invalid") from None
+
+    def attest_selected_source(
+        self, request: "SelectedSourceAttestationRequest",
+    ) -> "SelectedSourceAttestationReceipt":
+        """Forward one explicit human selected-source confirmation to P24.
+
+        Confirmation is never automatic here: ``attested`` must already be exactly
+        ``True`` in the caller's request, and this method never sets, defaults or
+        infers it.  A rendered draft, a resolvable selection or a qualified person
+        confer nothing.
+        """
+        from scripts.prospecting.selected_source_review import (
+            SelectedSourceAttestationRequest,
+            SelectedSourceReviewError,
+            SelectedSourceReviewService,
+        )
+
+        if not isinstance(request, SelectedSourceAttestationRequest):
+            raise ReviewError("invalid_source_attestation_request")
+        if request.attested is not True:
+            raise ReviewError("source_attestation_required")
+        try:
+            return SelectedSourceReviewService(
+                self.connection, now=self._aware_now,
+            ).attest(request)
+        except SelectedSourceReviewError as error:
+            raise ReviewError(self._fixed_code(
+                error, _SELECTED_ATTESTATION_CODES, "source_attestation_unavailable",
+            )) from None
+        except sqlite3.Error:
+            raise ReviewError("store_state_invalid") from None
+
     def verify_current_role_source(self, request: VerifyIdentitySourceRequest) -> VerifyIdentitySourceResult:
         request_id = _request_id(request.request_id)
         campaign_id = _safe_id(request.campaign_id, "invalid_campaign_id")
@@ -661,6 +851,11 @@ class ReviewService:
         observation_id = _safe_id(request.observation_id, "invalid_observation_id")
         if request.attested is not True:
             raise ReviewError("source_attestation_required")
+        if self._selected_scope_active(campaign_id, person_id):
+            # P22/P24 own this person's source context.  The legacy path must never
+            # rewrite the employment row or mint replacement name/role observations
+            # underneath a selected binding, so it fails closed before any write.
+            raise ReviewError("selected_source_scope_active")
         payload = {"campaign_id": campaign_id, "person_id": person_id,
                    "expected_observation_id": expected, "observation_id": observation_id,
                    "attested": True}
@@ -757,6 +952,10 @@ class ReviewService:
             raise ReviewError("invalid_source_body") from None
         if len(body) > MAX_SOURCE_BYTES:
             raise ReviewError("source_body_too_large")
+        if self._selected_scope_active(campaign_id, person_id):
+            # Fails closed before the importer runs: no snapshot may be added into a
+            # selected context through the legacy path.
+            raise ReviewError("selected_source_scope_active")
         scope = self._identity_scope(campaign_id, person_id)
         if identity_excerpt(
             request.body, str(scope["full_name"]), str(scope["company_name"]), str(scope["title"]),
@@ -963,15 +1162,88 @@ class ReviewService:
             companies=companies,
         )
 
+    def _company_name(self, company_id: str) -> str | None:
+        row = self.connection.execute(
+            "SELECT name FROM company WHERE company_id=?", (company_id,),
+        ).fetchone()
+        return None if row is None else str(row[0])
+
+    def _selected_pipeline_people(
+        self, campaign_id: str,
+    ) -> tuple[SelectedPipelineProjection, Mapping[str, SelectedPersonProjection]]:
+        """Project the current selected ranking once, keyed by person.
+
+        The projection only reads.  An unavailable pipeline, ranking, source or
+        hint read is reported through the projection's own explicit ``error_code``
+        rather than raised, so legacy campaigns and legacy rows keep listing
+        exactly as before.
+        """
+        try:
+            projection = build_selected_pipeline_projection(
+                self.connection, campaign_id, now=self._aware_now(),
+            )
+        except sqlite3.Error:
+            raise ReviewError("store_state_invalid") from None
+        return projection, {
+            person.person_id: person
+            for company in projection.companies
+            for person in company.people
+        }
+
+    def get_selected_pipeline(self, campaign_id: str) -> SelectedPipelineProjection:
+        """Forward projection of the current selected ranking for one campaign.
+
+        This adds no authority: it materializes nothing, confirms no source and
+        writes nothing.  Its regeneration expectations are display hints only, and
+        ``has_prior_binding`` states only that a binding already exists -- never
+        that regeneration is required.  ``SelectedDraftService`` revalidates every
+        pin and owns every refusal.
+        """
+        self._campaign(campaign_id)
+        return self._selected_pipeline_people(campaign_id)[0]
+
+    def _selected_pipeline_fields(
+        self, person_id: str, pipeline: SelectedPersonProjection,
+    ) -> tuple[str | None, str | None, str | None, str | None, str | None, str, str | None]:
+        """Exact selected company/title/contact for one projected person.
+
+        A person the current ranking selected but whose shared-resolver call (or
+        hint read) failed is reported honestly as unavailable: no latest-employment
+        title, no unrelated company and no unscoped contact is substituted for
+        missing proof.
+        """
+        if pipeline.state != "available":
+            return None, None, None, None, None, "source_unavailable", None
+        contact = self.connection.execute(
+            """SELECT contact_id,email,state FROM contact_point
+                WHERE person_id=? AND employer_company_id=?
+                ORDER BY COALESCE(verified_at,retrieved_at,'') DESC,contact_id DESC LIMIT 1""",
+            (person_id, pipeline.company_id),
+        ).fetchone()
+        return (
+            pipeline.title, self._company_name(pipeline.company_id),
+            None if contact is None else str(contact["contact_id"]),
+            None if contact is None else str(contact["email"]),
+            None if contact is None else str(contact["state"]),
+            # Selection alone never confers a confirmed source: only an explicit
+            # human P24 attestation may ever read as ready.
+            "confirmation_required",
+            pipeline.employment_observation_id,
+        )
+
     def list_people(self, campaign_id: str) -> tuple[PersonView, ...]:
         self._campaign(campaign_id)
+        projection, selected_pipeline = self._selected_pipeline_people(campaign_id)
+        extra_ids = tuple(sorted(selected_pipeline))
+        extra_sql = "".join(" UNION SELECT ?" for _ in extra_ids)
         rows = self.connection.execute(
             """WITH ids(person_id) AS (
                    SELECT person_id FROM fit_score WHERE campaign_id=?
                    UNION SELECT person_id FROM eligibility_decision WHERE campaign_id=?
                    UNION SELECT person_id FROM fill_person WHERE campaign_id=?
                    UNION SELECT person_id FROM revision WHERE campaign_id=?
-                   UNION SELECT person_id FROM enrollment WHERE campaign_id=?
+                   UNION SELECT person_id FROM enrollment WHERE campaign_id=?"""
+            + extra_sql + """
                )
                SELECT p.person_id,p.full_name,p.linkedin_url,
                  (SELECT e.title FROM employment AS e WHERE e.person_id=p.person_id AND e.valid_to IS NULL
@@ -992,12 +1264,16 @@ class ReviewService:
                  EXISTS(SELECT 1 FROM fill_person AS fp WHERE fp.campaign_id=? AND fp.person_id=p.person_id AND fp.substituted=0) AS selected
                FROM ids JOIN person AS p ON p.person_id=ids.person_id
                ORDER BY p.full_name,p.person_id""",
-            (campaign_id, campaign_id, campaign_id, campaign_id, campaign_id,
-             campaign_id, campaign_id, campaign_id),
+            (campaign_id,) * 5 + extra_ids + (campaign_id,) * 3,
         ).fetchall()
         result = []
         for row in rows:
-            selected = bool(row["selected"])
+            person_id = str(row["person_id"])
+            pipeline = selected_pipeline.get(person_id)
+            legacy_selected = bool(row["selected"])
+            # A person the current ranking selected is already selected for review,
+            # before any materialization and without any fill/affinity/contact row.
+            selected = legacy_selected or pipeline is not None
             title = None if row["title"] is None else str(row["title"])
             company = None if row["company"] is None else str(row["company"])
             sources: tuple[IdentitySourceView, ...] = ()
@@ -1006,9 +1282,10 @@ class ReviewService:
             contact_id = None if row["contact_id"] is None else str(row["contact_id"])
             email = None if row["email"] is None else str(row["email"])
             contact_state = None if row["contact_state"] is None else str(row["contact_state"])
-            if selected:
+            legacy_bound = False
+            if legacy_selected:
                 try:
-                    scope = self._identity_scope(campaign_id, str(row["person_id"]))
+                    scope = self._identity_scope(campaign_id, person_id)
                     title, company = str(scope["title"]), str(scope["company_name"])
                     current_observation_id = str(scope["source_observation_id"])
                     contact = self.connection.execute(
@@ -1020,13 +1297,21 @@ class ReviewService:
                     contact_id = None if contact is None else str(contact["contact_id"])
                     email = None if contact is None else str(contact["email"])
                     contact_state = None if contact is None else str(contact["state"])
-                    sources = self._identity_sources(campaign_id, str(row["person_id"]))
+                    sources = self._identity_sources(campaign_id, person_id)
                     identity_source_state = (
                         "source_ready" if any(item.is_current for item in sources)
                         else "confirmation_required" if sources else "source_missing"
                     )
+                    legacy_bound = True
                 except ReviewError:
                     identity_source_state = "source_missing"
+            if pipeline is not None and not legacy_bound:
+                # Scoped to exactly this projected person: unrelated legacy rows are
+                # never rewritten by the selected projection.
+                (
+                    title, company, contact_id, email, contact_state,
+                    identity_source_state, current_observation_id,
+                ) = self._selected_pipeline_fields(person_id, pipeline)
             if selected:
                 state = "selected"
             elif contact_state == "valid" and row["eligibility_state"] != "ineligible":
@@ -1036,7 +1321,7 @@ class ReviewService:
             else:
                 state = "discovered"
             result.append(PersonView(
-                person_id=str(row["person_id"]), full_name=str(row["full_name"]),
+                person_id=person_id, full_name=str(row["full_name"]),
                 title=title, company=company,
                 linkedin_url=None if row["linkedin_url"] is None else str(row["linkedin_url"]),
                 fit_score=None if row["fit_score"] is None else int(row["fit_score"]),
@@ -1044,6 +1329,13 @@ class ReviewService:
                 contact_id=contact_id, email=email, contact_state=contact_state,
                 selected=selected, state=state, identity_source_state=identity_source_state,
                 identity_sources=sources, current_observation_id=current_observation_id,
+                person_rank_id=None if pipeline is None else pipeline.person_rank_id,
+                run_id=None if pipeline is None else projection.run_id,
+                ranking_batch_hash=None if pipeline is None else projection.ranking_batch_hash,
+                source_context_digest=(
+                    None if pipeline is None else pipeline.source_context_digest
+                ),
+                projection_error_code=None if pipeline is None else pipeline.error_code,
             ))
         return tuple(result)
 
@@ -1234,9 +1526,11 @@ class ReviewService:
         editorial_state = "review_required" if candidate is not None or gate_code else (
             str(editorial[0]) if editorial is not None else "review_required"
         )
-        identity_state, identity_source, current_observation_id, contact_state, source_error = (
-            self._draft_delivery_context(campaign_id, person_id)
-        )
+        (
+            identity_state, identity_source, current_observation_id, contact_state,
+            source_error, source_revision_id, source_context_digest,
+            selected_source_scope,
+        ) = self._draft_delivery_context(campaign_id, person_id, revision_id)
         return DraftView(
             person_id=person_id, full_name=str(person[0]), revision_id=revision_id,
             revision_hash=str(row["hash"]), step=int(row["step"]),
@@ -1256,12 +1550,123 @@ class ReviewService:
             current_observation_id=current_observation_id,
             contact_state=contact_state,
             source_error_code=source_error,
+            source_revision_id=source_revision_id,
+            source_context_digest=source_context_digest,
+            selected_source_scope=selected_source_scope,
+        )
+
+    def _selected_delivery_context(
+        self, campaign_id: str, person_id: str, revision_id: str,
+    ) -> tuple[
+        str, IdentitySourceView | None, str | None, str, str | None, str | None,
+        str | None, bool,
+    ] | None:
+        """Resolve the exact selected proof for one displayed revision.
+
+        ``None`` means the shared seam reported a genuinely unselected (legacy)
+        root, which is the only case where the legacy P13 proof may be consulted.
+        No lineage is walked here: :func:`selected_revision_role_proof` is the single
+        shared resolver, and nothing in this method writes or confirms anything.
+
+        Every value below -- including the source context digest and the employment
+        observation id -- comes from that one shared proof.  No independent
+        latest-selection or latest-employment query runs here.  Every return from
+        this method, success or refusal, reports ``True`` for the selected-scope
+        marker: reaching this method at all means the displayed revision belongs to
+        a selected root.
+        """
+        from scripts.prospecting.selected_source_review import (
+            SelectedSourceReviewError,
+            selected_revision_role_proof,
+        )
+
+        try:
+            proof = selected_revision_role_proof(
+                self.connection, revision_id, self._aware_now(),
+            )
+        except SelectedSourceReviewError as error:
+            return (
+                "source_unavailable", None, None, "missing",
+                self._fixed_code(
+                    error, _SELECTED_ATTESTATION_CODES, "selected_source_unavailable",
+                ),
+                revision_id,
+                None,
+                True,
+            )
+        except ReviewError as error:
+            return (
+                "source_unavailable", None, None, "missing", str(error), revision_id,
+                None, True,
+            )
+        except (AttributeError, KeyError, sqlite3.Error, TypeError, ValueError):
+            return (
+                "source_unavailable", None, None, "missing",
+                "selected_source_unavailable", revision_id,
+                None,
+                True,
+            )
+        if proof is None:
+            return None
+        if proof.campaign_id != campaign_id or proof.person_id != person_id:
+            return (
+                "source_unavailable", None, None, "missing",
+                "selected_scope_mismatch", revision_id,
+                None,
+                True,
+            )
+        contact = self.connection.execute(
+            """SELECT state FROM contact_point
+                WHERE person_id=? AND employer_company_id=?
+                ORDER BY COALESCE(verified_at,retrieved_at,'') DESC,contact_id DESC LIMIT 1""",
+            (person_id, proof.company_id),
+        ).fetchone()
+        source = IdentitySourceView(
+            proof.candidate_observation_id, proof.snapshot_id, proof.source_url,
+            proof.excerpt, proof.retrieved_at, proof.expires_at, proof.attested,
+        )
+        # A pending selected proof stays visibly pending and is never current: only
+        # an immutable P24 attestation makes ``attested``/``is_current`` true.
+        #
+        # ``current_observation_id`` and ``source_context_digest`` are read straight
+        # off this exact proof record, never re-derived from an independent
+        # employment or selection query.  ``getattr`` keeps a legacy-shaped proof
+        # honest: it reports None rather than inventing metadata it does not carry.
+        return (
+            "source_ready" if proof.attested else "confirmation_required",
+            source,
+            getattr(proof, "employment_observation_id", None),
+            "missing" if contact is None else str(contact["state"]),
+            None,
+            revision_id,
+            getattr(proof, "source_context_digest", None),
+            True,
         )
 
     def _draft_delivery_context(
-        self, campaign_id: str, person_id: str,
-    ) -> tuple[str, IdentitySourceView | None, str | None, str, str | None]:
-        """Project exact source proof and contact state without changing either."""
+        self, campaign_id: str, person_id: str, revision_id: str | None = None,
+    ) -> tuple[
+        str, IdentitySourceView | None, str | None, str, str | None, str | None,
+        str | None, bool,
+    ]:
+        """Project exact source proof and contact state without changing either.
+
+        ``revision_id`` is the exact revision the caller displays.  When given, the
+        selected proof is resolved for that revision alone through the shared seam,
+        and the legacy proof below is reached only for a genuinely unselected root.
+        Selected staleness is surfaced as ``source_unavailable`` with its fixed code
+        -- never silently replaced by whatever latest legacy employment exists.
+
+        The legacy proof carries no selected source context, so this path always
+        reports a ``None`` digest rather than borrowing an unrelated one, and it is
+        the only path that reports ``False`` for the selected-scope marker.
+        """
+        if revision_id is not None:
+            selected = self._selected_delivery_context(
+                campaign_id, person_id, revision_id,
+            )
+            if selected is not None:
+                return selected
         try:
             scope = self._identity_scope(campaign_id, person_id)
             proof = current_role_source_proof(
@@ -1283,15 +1688,24 @@ class ReviewService:
                 str(scope["source_observation_id"]),
                 "missing" if contact is None else str(contact["state"]),
                 None,
+                revision_id,
+                None,
+                False,
             )
         except ReviewError as error:
-            return "source_unavailable", None, None, "missing", str(error)
+            return (
+                "source_unavailable", None, None, "missing", str(error), revision_id,
+                None, False,
+            )
         except (AttributeError, KeyError, sqlite3.Error, TypeError, ValueError) as error:
             code = str(error)
             allowed = {"current_role_proof_missing", "current_role_proof_invalid"}
             return (
                 "source_unavailable", None, None, "missing",
                 code if code in allowed else "source_proof_unavailable",
+                revision_id,
+                None,
+                False,
             )
 
     def list_drafts(self, campaign_id: str) -> tuple[DraftView, ...]:

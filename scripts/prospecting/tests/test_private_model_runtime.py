@@ -14,6 +14,8 @@ import time
 
 import pytest
 
+from jsonschema.validators import validator_for
+
 from scripts.prospecting.personalizer import private_runtime as runtime
 
 
@@ -57,6 +59,16 @@ def _pinned_input(
     path = directory / name
     path.write_bytes(data)
     return path, runtime._sha(data)
+
+
+def test_synthetic_schema_properties_declare_explicit_types_for_strict_providers() -> None:
+    schema = json.loads(runtime.SYNTHETIC_SCHEMA)
+    properties = schema["properties"]
+
+    assert properties["result"]["type"] == "string"
+    assert properties["canary_seen"]["type"] == "boolean"
+    assert properties["output_canary"]["type"] == "string"
+    validator_for(schema).check_schema(schema)
 
 
 def test_builder_rejects_non_synthetic_bytes_without_rendering_them() -> None:

@@ -16,6 +16,7 @@ from scripts.prospecting.affinity.evidence_bridge import (
     attested_current_role_source,
     current_role_source_proof,
 )
+from scripts.prospecting.affinity.templates_v2 import check_bands
 from scripts.prospecting.personalizer.evidence import EvidenceRecord
 from scripts.prospecting.personalizer.qa import (
     RECIPIENT_SLOTS,
@@ -49,6 +50,21 @@ MAX_LIST = 32
 MAX_STAGE_INPUT_BYTES = 1024 * 1024
 MAX_STAGE_OUTPUT_BYTES = 256 * 1024
 MAX_RESET_LINEAGE = 256
+# Bounded repair continuity for the humanizer repair job only: it may see the
+# exact previous candidate plus at most this many prior *negative* review
+# artifacts, drawn only from this item and only from the immediately preceding
+# cycles. This is a fixed backward window, not a lineage walk, and it never
+# widens the repair budget or relaxes any deterministic check.
+MAX_REPAIR_HISTORY_CYCLES = 2
+MAX_REPAIR_HISTORY_ARTIFACTS = 4
+# The only sender_profile columns that are scalar persona text a stage model may
+# copy verbatim. The internal identifier (sender_profile_id) and the raw stored
+# JSON column (approved_metrics) are deliberately excluded: they are context for
+# staleness checks, not copyable claims.
+COPY_ELIGIBLE_SENDER_FIELDS = (
+    "sender_name", "sender_school", "sender_focus", "sender_background",
+    "sender_operating_proof",
+)
 _HUMAN_EDIT_LINK_SQL = """
     SELECT lineage.parent_revision_id,lineage.candidate_id,lineage.request_id,
            parent.subject AS parent_subject,parent.body AS parent_body
@@ -148,8 +164,18 @@ class RejectionResult:
     replayed: bool = False
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, repr=False)
 class ReviewProjection:
+    """One human-review projection; ``repr`` is disabled for the whole record.
+
+    Both halves carry private text.  ``source_proof`` is a real
+    :class:`CurrentRoleProof`, which still carries its raw source excerpt and
+    source_url, and the suggestion fields are proposed recipient-facing subject and
+    body copy.  The default dataclass repr would print all of it into logs and into
+    test/assertion failure output, so it is suppressed for the entire record rather
+    than field by field.  Equality and frozen value semantics are unchanged.
+    """
+
     item: ItemProjection
     source_proof: CurrentRoleProof | None
     suggestion_id: str | None
@@ -351,6 +377,91 @@ def _qa_context_payload(connection: sqlite3.Connection, revision_id: str) -> dic
     }
 
 
+def _validated_copy_profile(value: object) -> dict[str, list[int]] | None:
+    """Validate an optional P8 copy profile; legacy campaigns without one keep None."""
+    if value is None:
+        return None
+    if not isinstance(value, Mapping):
+        raise PipelineStageError("pipeline_context_stale")
+    profile: dict[str, list[int]] = {}
+    for name in ("subject_chars", "body_words"):
+        band = value.get(name)
+        if (
+            not isinstance(band, (list, tuple)) or len(band) != 2
+            or any(isinstance(item, bool) or type(item) is not int for item in band)
+            or band[0] < 0 or band[0] > band[1]
+        ):
+            raise PipelineStageError("pipeline_context_stale")
+        profile[name] = [int(band[0]), int(band[1])]
+    return profile
+
+
+def _campaign_copy_profile(
+    connection: sqlite3.Connection, campaign_id: str,
+) -> dict[str, list[int]] | None:
+    row = _query(
+        connection, "SELECT policy_json FROM campaign WHERE campaign_id=?", (campaign_id,),
+    ).fetchone()
+    if row is None:
+        raise PipelineStageError("pipeline_context_stale")
+    try:
+        policy = json.loads(str(row["policy_json"]))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        raise PipelineStageError("pipeline_context_stale") from None
+    if not isinstance(policy, Mapping):
+        raise PipelineStageError("pipeline_context_stale")
+    return _validated_copy_profile(policy.get("copy_profile"))
+
+
+def _copy_eligible_sender_refs(sender_profile: Mapping[str, object]) -> dict[str, str]:
+    """Return the exact copy-eligible ``sender_profile.<field>`` refs and values.
+
+    This is the single definition shared by the catalog offered to stage models and
+    by the authoritative map the post-fact-check decoder validates against, so the
+    two can never drift. Anything outside :data:`COPY_ELIGIBLE_SENDER_FIELDS` (the
+    internal identifier, the raw approved_metrics JSON, any future column) is not
+    offered and is rejected if a fact-checker tries to bind it anyway.
+    """
+    values: dict[str, str] = {}
+    for name in COPY_ELIGIBLE_SENDER_FIELDS:
+        value = sender_profile.get(name)
+        if type(value) is not str or not value:
+            continue
+        values[f"sender_profile.{name}"] = value
+    return values
+
+
+def _binding_catalog(
+    qa_context: Mapping[str, object], sender_profile: Mapping[str, object],
+) -> dict[str, object]:
+    """The exact refs and values a stage model may copy; anything else is invented."""
+    bindings = qa_context["bindings"]
+    if not isinstance(bindings, Mapping):
+        raise PipelineStageError("revision_qa_context_invalid")
+    return {
+        "rule": (
+            "Copy source_ref and value exactly from this catalog, or use an exact "
+            "evidence_id from the supplied evidence; never invent or reformat a "
+            "source_ref. Internal identifiers and raw stored JSON are deliberately "
+            "absent from this catalog and must never be bound or copied into the copy. "
+            "These are the permitted sources, not a list of values to add."
+        ),
+        "qa_context_bindings": [
+            {
+                "slot": name, "value": row["value"],
+                "source_kind": row["source_kind"], "source_ref": row["source_ref"],
+            }
+            for name, row in sorted(bindings.items())
+        ],
+        "sender_profile_refs": [
+            {
+                "source_kind": "sender", "source_ref": ref, "value": value,
+            }
+            for ref, value in sorted(_copy_eligible_sender_refs(sender_profile).items())
+        ],
+    }
+
+
 def _source_context(
     connection: sqlite3.Connection, item: sqlite3.Row, revision: sqlite3.Row,
     now: datetime,
@@ -384,13 +495,20 @@ def _source_context(
     proof = _model_identity_proof(
         connection, revision, _now(now),
     )
+    qa_context = _qa_context_payload(connection, str(revision["revision_id"]))
+    sender_profile = dict(sender)
     return {
         "revision_hash": revision["hash"],
         "evidence_manifest_hash": item["evidence_manifest_hash"],
-        "qa_context": _qa_context_payload(connection, str(revision["revision_id"])),
-        "sender_profile": dict(sender),
+        "qa_context": qa_context,
+        "binding_catalog": _binding_catalog(qa_context, sender_profile),
+        "copy_profile": _campaign_copy_profile(connection, str(item["campaign_id"])),
+        "sender_profile": sender_profile,
         "campaign_brief": None if brief is None else dict(brief),
         "intake": dict(intake),
+        # ``proof.attested`` is deliberately absent from this projection: confirming
+        # the exact source must not move the approved-context hash, so a human
+        # confirmation can never invalidate already-produced model artifacts.
         "current_role_proof": None if proof is None else {
             "campaign_id": proof.campaign_id,
             "person_id": proof.person_id,
@@ -419,7 +537,17 @@ def current_role_source_binding(
     person_id: str,
     now: datetime,
 ) -> tuple[sqlite3.Row, sqlite3.Row]:
-    """Resolve the same current identity facts used by ReviewService and bind P13."""
+    """Resolve the same current identity facts used by ReviewService and bind P13.
+
+    This is the *legacy* (P13) binding and its signature is deliberately unchanged:
+    it is keyed by campaign/person only, so it cannot name an exact revision. A
+    public caller that needs the selected (P22/P24) source for an exact revision
+    must never guess one from the newest employment row; it goes through
+    :func:`_identity_current` / ``selected_revision_role_proof`` with the exact
+    ``revision_id`` instead. Inside this module the only caller is
+    :func:`_identity_current`, which consults the selected proof first and falls
+    back here only for a legacy (non-selected) revision.
+    """
     previous_row_factory = connection.row_factory
     connection.row_factory = sqlite3.Row
     try:
@@ -455,9 +583,64 @@ def current_role_source_binding(
         connection.row_factory = previous_row_factory
 
 
+def _selected_role_proof(
+    connection: sqlite3.Connection, revision: sqlite3.Row, now: datetime,
+) -> CurrentRoleProof | None:
+    """Return the exact P22/P24 selected-source proof for this exact revision.
+
+    ``None`` means a legacy (non-selected) root, exactly as the shared P22 resolver
+    defines it, and only then may the legacy P13 route be consulted at all. Any
+    selected staleness -- changed source bytes, expiry, selection drift or
+    render-context drift -- fails closed here with a fixed code and is never
+    downgraded into the legacy proof/binding path.
+
+    The import is local by necessity: ``selected_source_review`` reaches this module
+    through ``selected_draft_service`` -> ``selected_person_render`` ->
+    ``selected_person_source`` -> the qualification/pipeline chain, so a
+    module-level import would close an import cycle.
+    """
+    from scripts.prospecting.selected_source_review import (
+        SelectedSourceReviewError,
+        selected_revision_role_proof,
+    )
+
+    previous_row_factory = connection.row_factory
+    try:
+        return selected_revision_role_proof(
+            connection, str(revision["revision_id"]), _now(now),
+        )
+    except PipelineStageError:
+        raise
+    except SelectedSourceReviewError:
+        # A fixed resolver code only: never dynamic driver/source text, and never
+        # a silent fallback to the legacy identity route.
+        raise PipelineStageError("identity_source_proof_stale") from None
+    except (sqlite3.Error, KeyError, IndexError, TypeError, ValueError, UnicodeError):
+        raise PipelineStageError("identity_source_proof_stale") from None
+    finally:
+        try:
+            connection.row_factory = previous_row_factory
+        except (AttributeError, TypeError, sqlite3.Error):
+            # Restoring a caller's factory must never mask or replace the outcome.
+            pass
+
+
 def _identity_current(
     connection: sqlite3.Connection, revision: sqlite3.Row, now: datetime,
 ) -> bool:
+    """True only when this exact revision carries a *confirmed* current-role source.
+
+    Every readiness, review-chain, approval and executor path reaches identity
+    through this one gate, so a selected draft becomes current for all of them at
+    the same instant: when a human attested the exact selected source, never when
+    it merely resolves.
+    """
+    try:
+        proof = _selected_role_proof(connection, revision, now)
+    except PipelineStageError:
+        return False
+    if proof is not None:
+        return bool(proof.attested)
     try:
         current_role_source_binding(
             connection, str(revision["campaign_id"]), str(revision["person_id"]), now,
@@ -470,6 +653,16 @@ def _identity_current(
 def _model_identity_proof(
     connection: sqlite3.Connection, revision: sqlite3.Row, now: datetime,
 ) -> CurrentRoleProof | None:
+    """The proof model stages may see for this exact revision.
+
+    A pending (``attested`` false) selected proof is deliberately allowed: model
+    stages may run on a draft whose source a human has not confirmed yet. Only a
+    legacy root (``None`` from the selected resolver) permits the old
+    ``current_role_source_proof`` fallback.
+    """
+    proof = _selected_role_proof(connection, revision, now)
+    if proof is not None:
+        return proof
     try:
         return current_role_source_proof(
             connection, str(revision["campaign_id"]), str(revision["person_id"]), now,
@@ -572,6 +765,18 @@ def _candidate_value_and_qa(
             str(candidate["ask"]), bindings, evidence, parent_context.policy,
             str(candidate["person_id"]), str(candidate["campaign_id"]), _now(now),
         )
+        copy_profile = _campaign_copy_profile(connection, str(item["campaign_id"]))
+        if copy_profile is not None:
+            bands = check_bands(
+                str(human_payload["final_subject"]), str(human_payload["final_body"]),
+                copy_profile,
+            )
+            if bands:
+                codes = tuple(sorted(set(qa.failure_codes) | set(bands)))
+                qa = QaResult(
+                    False, max(0, 100 - 20 * len(codes)),
+                    {**dict(qa.checks), "copy_profile": False}, codes, qa.self_critique,
+                )
         value = RevisionInput(
             str(candidate["person_id"]), str(candidate["campaign_id"]), int(candidate["step"]),
             str(human_payload["final_subject"]), str(human_payload["final_body"]),
@@ -1121,6 +1326,86 @@ class PipelineStageService:
         ).fetchone()
         return None if item is None else self.get_review_projection(str(item["item_id"]))
 
+    def _previous_candidate(self, item: sqlite3.Row) -> dict[str, object] | None:
+        """The exact latest prior humanizer candidate for this item, or ``None``.
+
+        Only recipient-facing copy and its two hashes are exposed. The producer
+        ``draft``/``audit`` fields are deliberately withheld, so this projection
+        can never become a route for producer self-assessment to reach any other
+        stage. Scoped to this item and to strictly earlier cycles.
+
+        A stored payload that is not a JSON object, or whose ``final_subject`` /
+        ``final_body`` are not strings, is a corrupt artifact: it fails closed
+        with the fixed ``candidate_context_invalid`` code rather than being
+        coerced with ``str()`` into plausible-looking copy.
+        """
+        row = self.connection.execute(
+            """SELECT cycle,output_hash,proposed_revision_hash,payload_json
+                 FROM prospecting_stage_artifact
+                WHERE item_id=? AND stage='humanizer' AND cycle<?
+                ORDER BY cycle DESC,created_at DESC,artifact_id DESC LIMIT 1""",
+            (item["item_id"], item["repair_cycle"]),
+        ).fetchone()
+        if row is None:
+            return None
+        try:
+            payload = json.loads(str(row["payload_json"]))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            raise PipelineStageError("candidate_context_invalid") from None
+        if type(payload) is not dict:
+            raise PipelineStageError("candidate_context_invalid")
+        subject, body = payload.get("final_subject"), payload.get("final_body")
+        if type(subject) is not str or type(body) is not str:
+            raise PipelineStageError("candidate_context_invalid")
+        return {
+            "cycle": int(row["cycle"]),
+            "artifact_hash": row["output_hash"],
+            "proposed_revision_hash": row["proposed_revision_hash"],
+            "final_subject": subject,
+            "final_body": body,
+        }
+
+    def _repair_history(self, item: sqlite3.Row) -> list[dict[str, object]]:
+        """Bounded prior negative review artifacts for this item's earlier cycles.
+
+        Rows are restricted to this exact item, to fact-check/critic stages, to
+        negative decisions, and to the last :data:`MAX_REPAIR_HISTORY_CYCLES`
+        cycles strictly before the current one; at most
+        :data:`MAX_REPAIR_HISTORY_ARTIFACTS` rows are returned. The newest rows
+        win when the window somehow holds more, and the returned order is the
+        stable ``(cycle, stage, artifact_id)`` order regardless of selection.
+        """
+        cycle = int(item["repair_cycle"])
+        rows = self.connection.execute(
+            """SELECT artifact_id,stage,cycle,decision,output_hash,payload_json
+                 FROM prospecting_stage_artifact
+                WHERE item_id=? AND cycle<? AND cycle>=?
+                  AND stage IN ('post_humanization_factcheck','independent_critic')
+                  AND decision IN ('fail','repair')
+                ORDER BY cycle DESC,created_at DESC,artifact_id DESC LIMIT ?""",
+            (
+                item["item_id"], cycle, max(0, cycle - MAX_REPAIR_HISTORY_CYCLES),
+                MAX_REPAIR_HISTORY_ARTIFACTS,
+            ),
+        ).fetchall()
+        history: list[dict[str, object]] = []
+        for row in sorted(
+            rows,
+            key=lambda value: (int(value["cycle"]), str(value["stage"]), str(value["artifact_id"])),
+        ):
+            try:
+                payload = json.loads(str(row["payload_json"]))
+            except (TypeError, ValueError, json.JSONDecodeError):
+                raise PipelineStageError("candidate_context_invalid") from None
+            if type(payload) is not dict:
+                raise PipelineStageError("candidate_context_invalid")
+            history.append({
+                "cycle": int(row["cycle"]), "stage": str(row["stage"]),
+                "decision": str(row["decision"]), "artifact_hash": row["output_hash"],
+                "payload": payload,
+            })
+        return history
+
     def _stage_input(self, item: sqlite3.Row, stage: str) -> bytes:
         revision = _revision(self.connection, item["base_revision_id"])
         evidence = [dict(row) for row in _evidence_rows(self.connection, revision)]
@@ -1165,6 +1450,15 @@ class PipelineStageService:
                 (item["item_id"], item["repair_cycle"] - 1),
             ).fetchone()
             value["repair_from"] = None if repair is None else {"stage": repair[0], "output_hash": repair[1], "payload": json.loads(repair[2])}
+            if stage == "humanizer":
+                # Bounded continuity for the repair producer only: the exact
+                # previous candidate plus the still-open earlier objections, so a
+                # repair cycle revises its own latest work instead of silently
+                # restarting from the original saved draft. Both are untrusted
+                # data; ``approved_context`` above stays the only authority, and
+                # every deterministic check still runs unchanged afterwards.
+                value["previous_candidate"] = self._previous_candidate(item)
+                value["repair_history"] = self._repair_history(item)
         return _bounded_stage_input(value)
 
     def run_next(self, item_id: str, request_id: str) -> ItemProjection:
@@ -1410,9 +1704,12 @@ class PipelineStageService:
         for row in approved["qa_context"]["bindings"].values():
             if row["source_kind"] in {"sender", "policy"}:
                 authoritative[(str(row["source_kind"]), str(row["source_ref"]))] = str(row["value"])
-        for name, value in approved["sender_profile"].items():
-            if value is not None:
-                authoritative[("sender", f"sender_profile.{name}")] = str(value)
+        # Same single definition as the offered catalog: only copy-eligible persona
+        # fields are authoritative sender sources. Approved qa_context refs recorded
+        # by earlier renderers (including combined sender_profile:<id> proof refs)
+        # stay authoritative exactly as recorded.
+        for ref, value in _copy_eligible_sender_refs(approved["sender_profile"]).items():
+            authoritative[("sender", ref)] = value
         source_mismatch = any(
             row["source_kind"] in {"sender", "policy"}
             and authoritative.get((row["source_kind"], row["source_ref"])) != row["value"]

@@ -365,6 +365,81 @@ def _required_sender_field(value: object) -> str:
     return value.strip()
 
 
+@dataclass(frozen=True, repr=False)
+class CampaignRenderContext:
+    """The saved campaign row and its exact referenced sender profile.
+
+    ``repr`` is disabled: this record carries the sender's name, focus and
+    operating-proof text, which must not leak into a default dataclass repr
+    surfaced by logs or test failure output.  Equality and frozen value
+    semantics are unchanged.
+    """
+
+    campaign_id: str
+    intent: str
+    policy: Mapping[str, object]
+    copy_profile: Mapping[str, object]
+    subject_band: tuple[int, int]
+    body_band: tuple[int, int]
+    ask_minutes: int
+    sender_profile_id: str
+    sender_name: str
+    sender_focus: str
+    sender_operating_proof: str
+
+
+def load_campaign_render_context(connection, campaign_id: str) -> CampaignRenderContext:
+    """Load the current campaign and the exact sender_profile row it references.
+
+    Shared by legacy P8 drafting and by the narrow P22 selected-person render so that
+    neither path can invent copy bands, an ask length, an intent or sender facts: all
+    of them come from saved state only.  The P8-only approved fit-spec gate is
+    deliberately *not* part of this helper and stays in :func:`_draft_campaign`.
+    """
+    campaign = connection.execute(
+        """SELECT campaign.intent,campaign.policy_json,campaign.ask_type,
+                  campaign.ask_minutes,campaign.sender_profile_id,campaign.status,
+                  sender.sender_name,sender.sender_focus,sender.sender_operating_proof
+             FROM campaign
+             LEFT JOIN sender_profile AS sender
+               ON sender.sender_profile_id=campaign.sender_profile_id
+            WHERE campaign.campaign_id=?""",
+        (campaign_id,),
+    ).fetchone()
+    if campaign is None:
+        raise DraftError("unknown_campaign")
+    if _value(campaign, "status") != "draft":
+        raise DraftError("campaign_not_draft")
+    intent = _value(campaign, "intent")
+    if intent not in SUPPORTED_INTENTS:
+        raise DraftError("intent_unsupported")
+    try:
+        policy_json = json.loads(str(_value(campaign, "policy_json")))
+        copy_profile = policy_json["copy_profile"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise DraftError("copy_profile_missing") from error
+    if not isinstance(copy_profile, Mapping):
+        raise DraftError("copy_profile_missing")
+    try:
+        subject_band = _band(copy_profile.get("subject_chars"), "subject_chars")
+        body_band = _band(copy_profile.get("body_words"), "body_words")
+    except ValueError as error:
+        raise DraftError("copy_profile_invalid") from error
+    if _value(campaign, "ask_type") != "informational_call":
+        raise DraftError("ask_type_unsupported")
+    ask_minutes = _value(campaign, "ask_minutes")
+    if isinstance(ask_minutes, bool) or not isinstance(ask_minutes, int) or not 10 <= ask_minutes <= 20:
+        raise DraftError("ask_minutes_unsupported")
+    return CampaignRenderContext(
+        campaign_id, str(intent), policy_json, copy_profile, subject_band, body_band,
+        int(ask_minutes),
+        _required_sender_field(_value(campaign, "sender_profile_id")),
+        _required_sender_field(_value(campaign, "sender_name")),
+        _required_sender_field(_value(campaign, "sender_focus")),
+        _required_sender_field(_value(campaign, "sender_operating_proof")),
+    )
+
+
 def _approved_fit(connection, campaign_id: str, policy: Mapping[str, object]) -> tuple[str, int]:
     fit_hash = policy.get("fit_spec_hash")
     if (
@@ -424,45 +499,18 @@ def _draft_campaign(connection, campaign_id: str, step: int, *, anchors, now: da
         raise DraftError("model_version_unsupported")
     if anchors is None:
         raise DraftError("sender_anchors_missing")
-    campaign = connection.execute(
-        """SELECT campaign.intent,campaign.policy_json,campaign.ask_type,
-                  campaign.ask_minutes,campaign.sender_profile_id,campaign.status,
-                  sender.sender_name,sender.sender_focus,sender.sender_operating_proof
-             FROM campaign
-             LEFT JOIN sender_profile AS sender
-               ON sender.sender_profile_id=campaign.sender_profile_id
-            WHERE campaign.campaign_id=?""",
-        (campaign_id,),
-    ).fetchone()
-    if campaign is None:
-        raise DraftError("unknown_campaign")
-    if _value(campaign, "status") != "draft":
-        raise DraftError("campaign_not_draft")
-    campaign_intent = _value(campaign, "intent")
-    if campaign_intent not in SUPPORTED_INTENTS:
-        raise DraftError("intent_unsupported")
-    try:
-        policy_json = json.loads(str(_value(campaign, "policy_json")))
-        copy_profile = policy_json["copy_profile"]
-    except (KeyError, TypeError, json.JSONDecodeError) as error:
-        raise DraftError("copy_profile_missing") from error
-    if not isinstance(copy_profile, Mapping):
-        raise DraftError("copy_profile_missing")
-    try:
-        subject_band = _band(copy_profile.get("subject_chars"), "subject_chars")
-        body_band = _band(copy_profile.get("body_words"), "body_words")
-    except ValueError as error:
-        raise DraftError("copy_profile_invalid") from error
-    fit_hash, minimum_fit = _approved_fit(connection, campaign_id, policy_json)
-    if _value(campaign, "ask_type") != "informational_call":
-        raise DraftError("ask_type_unsupported")
-    ask_minutes = _value(campaign, "ask_minutes")
-    if isinstance(ask_minutes, bool) or not isinstance(ask_minutes, int) or not 10 <= ask_minutes <= 20:
-        raise DraftError("ask_minutes_unsupported")
-    sender_profile_id = _required_sender_field(_value(campaign, "sender_profile_id"))
-    sender_name = _required_sender_field(_value(campaign, "sender_name"))
-    sender_focus = _required_sender_field(_value(campaign, "sender_focus"))
-    sender_proof = _required_sender_field(_value(campaign, "sender_operating_proof"))
+    context = load_campaign_render_context(connection, campaign_id)
+    campaign_intent = context.intent
+    copy_profile = context.copy_profile
+    subject_band, body_band = context.subject_band, context.body_band
+    # The approved fit-spec gate stays a P8-only prerequisite and is intentionally
+    # not part of the shared campaign render context.
+    fit_hash, minimum_fit = _approved_fit(connection, campaign_id, context.policy)
+    ask_minutes = context.ask_minutes
+    sender_profile_id = context.sender_profile_id
+    sender_name = context.sender_name
+    sender_focus = context.sender_focus
+    sender_proof = context.sender_operating_proof
     registry = load_registry_v2()
     rows = connection.execute(
         """SELECT fill.person_id,person.first_name,company.company_id,company.name AS firm,

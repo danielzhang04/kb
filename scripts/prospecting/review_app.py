@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import argparse
-from dataclasses import asdict, is_dataclass
+from collections.abc import Mapping
+from dataclasses import fields, is_dataclass
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.cookies import SimpleCookie
@@ -59,6 +60,8 @@ from scripts.prospecting.review_service import (
     ReviewService,
     VerifyIdentitySourceRequest,
 )
+from scripts.prospecting.selected_draft_service import SelectedDraftRequest
+from scripts.prospecting.selected_source_review import SelectedSourceAttestationRequest
 from scripts.prospecting.store import open_store, resolve_store_path
 
 
@@ -71,6 +74,24 @@ REQUEST_SECONDS = 5
 HTML_PATH = Path(__file__).with_name("review_app.html")
 _ENTITY_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _LOCAL_REVIEW_ACTOR = "human:local-review"
+# Root refusals from the selected projection that mean the local pipeline is
+# legitimately not ranked yet, rather than that an existing selected ranking is
+# stale or malformed.  ``qualification_missing`` is the exact code
+# ``RankingService`` raises when a run simply has no qualification batch to rank.
+# ``RankingService._scope`` resolves the qualification scope first, though, and
+# that path reaches ``QualificationService._context`` before any qualification
+# batch is looked up: a run with no funding or person research batch yet refuses
+# earlier with ``funding_batch_missing`` / ``person_batch_missing``, which
+# ``_scope`` re-raises verbatim.  All three name the same fact -- the research
+# prerequisite has not run, so nothing can have been selected yet.  Every other
+# unavailable code (stale context, changed or expired source, invalid stored
+# state, unsupported policy, or the generic fallback) keeps its own visible
+# refusal below, and none of them is ever suppressed here.
+_SELECTED_NOT_RANKED_CODES = frozenset({
+    "funding_batch_missing", "person_batch_missing", "qualification_missing",
+})
+# The only local pipeline states that precede research entirely.
+_PRE_RESEARCH_PIPELINE_STATES = frozenset({"awaiting_research_adapter", "input_pending"})
 _SECURITY_HEADERS = {
     "Cache-Control": "no-store",
     "Content-Security-Policy": (
@@ -123,9 +144,16 @@ def _source_importer(connection: object) -> Callable[[str, str, str, bytes], str
 
 
 def _jsonable(value: object) -> object:
+    # ``asdict`` deep-copies every field, which fails outright on the immutable
+    # ``MappingProxyType`` counts the selected projection exposes.  The dataclass's
+    # own declared fields are traversed instead, so no arbitrary ``__dict__`` is
+    # read and the primitive-only response schema is preserved.
     if is_dataclass(value) and not isinstance(value, type):
-        return {key: _jsonable(item) for key, item in asdict(value).items()}
-    if isinstance(value, dict):
+        return {
+            field.name: _jsonable(getattr(value, field.name))
+            for field in fields(value)
+        }
+    if isinstance(value, Mapping):
         return {str(key): _jsonable(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [_jsonable(item) for item in value]
@@ -150,15 +178,46 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
     people = snapshot["people"]
     pending = [item for item in drafts if item.get("candidate_state") in {"pending_qa", "qa_failed"}]
     review = [item for item in drafts if item.get("editorial_state") != "ready"]
+    selected = snapshot.get("selected_pipeline")
+    selected_state = selected.get("state") if isinstance(selected, dict) else None
+    selected_code = selected.get("error_code") if isinstance(selected, dict) else None
+    selected_counts = selected.get("counts") if isinstance(selected, dict) else None
+    selected_counts = selected_counts if isinstance(selected_counts, dict) else {}
+    available = selected_counts.get("available_people")
+    unavailable = selected_counts.get("unavailable_people")
+    available = available if type(available) is int else 0
+    unavailable = unavailable if type(unavailable) is int else 0
+    pipeline = snapshot.get("pipeline")
+    pipeline_state = pipeline.get("state") if isinstance(pipeline, dict) else None
+    # A run that has not reached qualification has nothing to rank: that is a
+    # prerequisite, not a stale or malformed selected ranking.  The allowance is
+    # deliberately narrow and needs all of an explicit not-yet-ranked code, a
+    # pre-research local pipeline, and nothing reviewed yet.  It never widens to
+    # an older ranking, never suppresses another code, and never relaxes any
+    # owning-service guard.
+    not_ranked_yet = (
+        type(selected_code) is str
+        and selected_code in _SELECTED_NOT_RANKED_CODES
+        and pipeline_state in _PRE_RESEARCH_PIPELINE_STATES
+        and not people
+        and not drafts
+    )
     if pending:
         return {"title": "Resolve the pending draft review", "detail": "The edited candidate has not produced a validated revision.", "label": f"{len(pending)} blocked"}
     if any(item.get("editorial_gate_code") for item in drafts):
         return {"title": "Waiting for humanizer and independent review", "detail": "Required review stages are not connected yet. You can keep editing saved drafts.", "label": "Readiness blocked"}
     if review:
         return {"title": "Review saved drafts", "detail": "Editorial readiness never grants sending authority.", "label": f"{len(review)} to review"}
+    if selected_state == "unavailable" and not not_ranked_yet:
+        # The current selected ranking could not be read.  It is reported as such;
+        # no earlier ranking is shown in its place.
+        return {
+            "title": "Selected ranking is unavailable",
+            "detail": "The current selected ranking could not be read. No earlier ranking is shown in its place.",
+            "label": selected_code if type(selected_code) is str else "Needs attention",
+        }
     if not people:
-        pipeline = snapshot.get("pipeline")
-        if isinstance(pipeline, dict) and pipeline.get("state") == "input_pending":
+        if pipeline_state == "input_pending":
             missing = pipeline.get("pending_fields") or []
             return {"title": "Complete the research brief", "detail": "Research has not started. Complete the remaining inputs before an adapter can be considered.", "label": f"{len(missing)} inputs needed"}
         funding = snapshot.get("funding")
@@ -170,12 +229,24 @@ def _next_action(snapshot: dict[str, object]) -> dict[str, str]:
                 "detail": "Captured funding sources are saved. Factual review and person research are still pending.",
                 "label": f"{count} candidate{'' if count == 1 else 's'}",
             }
-        if isinstance(pipeline, dict) and pipeline.get("state") == "awaiting_research_adapter":
+        if pipeline_state == "awaiting_research_adapter":
             return {"title": "Brief saved; research is not connected yet", "detail": "The local intake is durable. No research is running.", "label": "Awaiting adapter"}
-        if isinstance(pipeline, dict) and pipeline.get("state") == "unavailable":
+        if pipeline_state == "unavailable":
             return {"title": "Pipeline status unavailable", "detail": "Campaign review remains available. Refresh after the local pipeline record is repaired.", "label": "Needs attention"}
         return {"title": "Run the existing candidate workflow", "detail": "No discovery is launched by this review app.", "label": "People empty"}
     if not drafts:
+        if available:
+            return {
+                "title": "Prepare the selected drafts",
+                "detail": "Preparing a draft binds that exact selected person. Source confirmation stays pending until you confirm it.",
+                "label": f"{available} selected",
+            }
+        if unavailable:
+            return {
+                "title": "Selected people are missing current proof",
+                "detail": "The exact source behind every selected person is unavailable. No earlier ranking or unrelated record is shown in its place.",
+                "label": f"{unavailable} unavailable",
+            }
         campaign = snapshot.get("campaign")
         if isinstance(campaign, dict) and campaign.get("next_action") == "review_sources":
             return {"title": "Add a current-role source", "detail": "A saved source page is required before a proof-pending local draft can be prepared.", "label": "Source needed"}
@@ -408,6 +479,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "control": None,
             "pipeline": None,
             "funding": None,
+            "selected_pipeline": None,
             "editorial_pipeline": [],
             "unmet_inputs": [],
         }
@@ -426,6 +498,13 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 schedule=[_jsonable(item) for item in self.server.review.list_schedule(campaign_id)],
                 activity=[_jsonable(item) for item in self.server.review.list_activity(campaign_id)],
             )
+            if isinstance(self.server.review, ReviewService):
+                # The exact typed selected projection for the chosen campaign.  An
+                # unavailable ranking or a shortfall stays visible in its own state
+                # and is never replaced by an older ranking.
+                snapshot["selected_pipeline"] = _jsonable(
+                    self.server.review.get_selected_pipeline(campaign_id),
+                )
             try:
                 snapshot["control"] = _jsonable(self.server.control.status(campaign_id))
             except (ControlReviewError, ControlError) as error:
@@ -611,6 +690,49 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 self._json(
                     HTTPStatus.OK,
                     self.server.review.verify_current_role_source(VerifyIdentitySourceRequest(**value)),
+                )
+                return
+            if path == "/api/selected-drafts/materialize":
+                value = _require_object(
+                    payload,
+                    {
+                        "request_id", "campaign_id", "run_id", "person_rank_id",
+                        "expected_ranking_batch_hash",
+                    },
+                    {"expected_revision_id", "expected_predecessor_binding_hash"},
+                )
+                if (
+                    ("expected_revision_id" in value)
+                    != ("expected_predecessor_binding_hash" in value)
+                ):
+                    # The owning service requires both regeneration pins or neither.
+                    # This boundary supplies no expectation and defaults none.
+                    raise ValueError("request_schema")
+                result = self.server.review.materialize_selected_draft(
+                    SelectedDraftRequest(**value),
+                )
+                self._json(
+                    HTTPStatus.CREATED
+                    if not result.replayed and result.state in {"bound", "regenerated"}
+                    else HTTPStatus.OK,
+                    result,
+                )
+                return
+            if path == "/api/selected-sources/attest":
+                value = _require_object(payload, {
+                    "request_id", "campaign_id", "person_id", "expected_revision_id",
+                    "expected_source_context_digest",
+                    "expected_candidate_observation_id", "attested",
+                })
+                # ``attested`` is required and explicit here: it is never defaulted to
+                # True, and no actor is supplied by this API.
+                if type(value["attested"]) is not bool:
+                    raise ValueError("request_schema")
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.review.attest_selected_source(
+                        SelectedSourceAttestationRequest(**value),
+                    ),
                 )
                 return
             if path == "/api/editorial/start":

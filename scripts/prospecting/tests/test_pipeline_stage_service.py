@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 import json
 from pathlib import Path
@@ -366,6 +366,404 @@ def test_post_factcheck_rejects_unapproved_sender_binding(tmp_path: Path) -> Non
         "SELECT payload_json FROM prospecting_stage_artifact WHERE stage='post_humanization_factcheck'"
     ).fetchone()[0])
     assert "binding_source_mismatch" in payload["qa_failure_codes"]
+
+
+@dataclass
+class CapturingAdapter:
+    binding: StageBinding
+    payload: Mapping[str, object]
+    inputs: list[dict] = field(default_factory=list)
+
+    def execute(self, job: StageJob) -> StageResult:
+        self.inputs.append(json.loads(job.input_json))
+        return StageResult(self.payload)
+
+
+def _set_copy_profile(
+    connection, *, subject: tuple[int, int] = (1, 200),
+    body: tuple[int, int] = (1, 200),
+) -> dict[str, list[int]]:
+    """Attach an exact P8 copy profile to the synthetic campaign policy."""
+    row = connection.execute(
+        "SELECT policy_json FROM campaign WHERE campaign_id='campaign-a'",
+    ).fetchone()
+    try:
+        policy = json.loads(str(row[0]))
+    except (TypeError, ValueError):
+        policy = {}
+    if not isinstance(policy, dict):
+        policy = {}
+    profile = {"subject_chars": list(subject), "body_words": list(body)}
+    policy["copy_profile"] = profile
+    connection.execute(
+        "UPDATE campaign SET policy_json=? WHERE campaign_id='campaign-a'",
+        (json.dumps(policy, sort_keys=True),),
+    )
+    connection.commit()
+    return profile
+
+
+def _sender_bound_parent(connection) -> tuple[str, str]:
+    """A current revision whose recorded context carries the exact sender binding."""
+    sender_claim = "Example background"
+    body = f"Hello. {POINT}. Product Built. Example Built. {sender_claim}. {ASK}"
+    parent = build_revision(connection, RevisionInput(
+        "person-a", "campaign-a", 0, "Sender-bound example", body,
+        "why_them", "bespoke", None, ASK, ("evidence-a",), (POINT,), (),
+        "networking", 1, "fixture-prompt", "fixture-model",
+        QaResult(True, 100, {"fixture": True}, ()),
+    ))
+    record_revision_qa_context(
+        connection, parent.revision_id,
+        {
+            "why_them": SlotBinding(POINT, "evidence", "evidence-a"),
+            "topic": SlotBinding("Product Built", "evidence", "evidence-a"),
+            "recipient_hook": SlotBinding("Example Built", "evidence", "evidence-a"),
+            "sender_claim": SlotBinding(
+                sender_claim, "sender", "sender_profile.sender_background",
+            ),
+            "ask": SlotBinding(ASK, "policy", "policy.ask"),
+        },
+        QaPolicy("networking", 0, "informational_call", 1, 120, 0.7),
+        inherited_from_revision_id=None, created_at=NOW,
+    )
+    connection.commit()
+    return parent.revision_id, sender_claim
+
+
+@pytest.mark.parametrize("case", [
+    "exact_catalog_refs", "invented_sender_ref", "second_question",
+    "subject_out_of_band",
+])
+def test_factcheck_binds_supplied_catalog_and_enforces_copy_profile(
+    tmp_path: Path, case: str,
+) -> None:
+    connection, _revision = _seed(tmp_path)
+    profile = _set_copy_profile(
+        connection, subject=(36, 50) if case == "subject_out_of_band" else (1, 200),
+    )
+    parent_revision_id, sender_claim = _sender_bound_parent(connection)
+    final_subject = "A natural sender-bound subject"
+    final_body = (
+        f"Hello there. {POINT}. Product Built. Example Built. {sender_claim}. {ASK}"
+    )
+    if case == "second_question":
+        final_body = (
+            f"Hello there. {POINT}. Product Built. Example Built. {sender_claim}. "
+            f"Does that sound reasonable? {ASK}"
+        )
+    adapters = _adapters()
+    humanizer = CapturingAdapter(_binding("humanizer"), {
+        "draft": final_body, "audit": "Synthetic audit.",
+        "final_subject": final_subject, "final_body": final_body,
+    })
+    adapters["humanizer"] = humanizer
+    bindings = [
+        {"slot": "why_them", "value": POINT,
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "topic", "value": "Product Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "recipient_hook", "value": "Example Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "sender_claim", "value": sender_claim,
+         "source_kind": "sender", "source_ref": "sender_profile.sender_background"},
+        {"slot": "ask", "value": ASK,
+         "source_kind": "policy", "source_ref": "policy.ask"},
+    ]
+    if case == "invented_sender_ref":
+        bindings.append({
+            "slot": "sender_proof", "value": sender_claim, "source_kind": "sender",
+            "source_ref": "sender_profile:sender",
+        })
+    adapters["post_humanization_factcheck"].payload = {
+        "decision": "pass", "bindings": bindings, "uncertainty": [], "shortfalls": [],
+    }
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", parent_revision_id, f"catalog-{case}-start",
+    )
+    service.run_next(item.item_id, f"catalog-{case}-human")
+
+    result = service.run_next(item.item_id, f"catalog-{case}-fact")
+
+    context = humanizer.inputs[0]["approved_context"]
+    assert context["copy_profile"] == profile
+    assert {
+        "source_kind": "sender", "source_ref": "sender_profile.sender_background",
+        "value": sender_claim,
+    } in context["binding_catalog"]["sender_profile_refs"]
+    assert {
+        "slot": "sender_claim", "value": sender_claim, "source_kind": "sender",
+        "source_ref": "sender_profile.sender_background",
+    } in context["binding_catalog"]["qa_context_bindings"]
+    payload = json.loads(connection.execute(
+        "SELECT payload_json FROM prospecting_stage_artifact "
+        "WHERE item_id=? AND stage='post_humanization_factcheck'",
+        (item.item_id,),
+    ).fetchone()[0])
+    assert payload["reported_decision"] == "pass"
+    if case == "exact_catalog_refs":
+        assert (payload["decision"], payload["qa_failure_codes"]) == ("pass", [])
+        assert result.state == "awaiting_critic_adapter"
+    else:
+        expected = {
+            "invented_sender_ref": "binding_source_mismatch",
+            "second_question": "extra_question",
+            "subject_out_of_band": "subject_chars_out_of_band",
+        }[case]
+        assert payload["decision"] == "fail"
+        assert expected in payload["qa_failure_codes"]
+        assert result.state == "awaiting_humanizer_adapter"
+
+
+def test_copy_profile_mutation_invalidates_approved_context(tmp_path: Path) -> None:
+    connection, revision = _seed(tmp_path)
+    _set_copy_profile(connection)
+    adapters = _adapters()
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "profile-start",
+    )
+    service.run_next(item.item_id, "profile-human")
+    _set_copy_profile(connection, subject=(20, 60))
+
+    with pytest.raises(PipelineStageError, match="^pipeline_context_stale$"):
+        service.run_next(item.item_id, "profile-fact")
+
+    assert adapters["post_humanization_factcheck"].calls == 0
+
+
+def _persona_bound_parent(connection) -> tuple[str, dict[str, str]]:
+    """A current revision whose recorded context mixes evidence and sender refs.
+
+    The recorded sender refs deliberately include both a plain persona field and a
+    legitimate earlier-renderer combined ``sender_profile:<id>`` proof ref.
+    """
+    persona = {
+        "sender_school": "Example University",
+        "sender_focus": "Example operating focus",
+        "sender_operating_proof": "Example shipped proof",
+        "sender_background": "Example background",
+    }
+    connection.execute(
+        """UPDATE sender_profile
+              SET sender_school=?,sender_focus=?,sender_operating_proof=?,
+                  sender_background=?
+            WHERE sender_profile_id='sender-a'""",
+        (persona["sender_school"], persona["sender_focus"],
+         persona["sender_operating_proof"], persona["sender_background"]),
+    )
+    combined = f"{persona['sender_focus']} {persona['sender_operating_proof']}"
+    body = (
+        f"Hello. {POINT}. Product Built. Example Built. "
+        f"{persona['sender_school']}. {combined}. {ASK}"
+    )
+    parent = build_revision(connection, RevisionInput(
+        "person-a", "campaign-a", 0, "Persona-bound example", body,
+        "why_them", "bespoke", None, ASK, ("evidence-a",), (POINT,), (combined,),
+        "networking", 1, "fixture-prompt", "fixture-model",
+        QaResult(True, 100, {"fixture": True}, ()),
+    ))
+    record_revision_qa_context(
+        connection, parent.revision_id,
+        {
+            "why_them": SlotBinding(POINT, "evidence", "evidence-a"),
+            "topic": SlotBinding("Product Built", "evidence", "evidence-a"),
+            "recipient_hook": SlotBinding("Example Built", "evidence", "evidence-a"),
+            "shared_school": SlotBinding(
+                persona["sender_school"], "sender", "sender_profile.sender_school",
+            ),
+            "sender_proof": SlotBinding(combined, "sender", "sender_profile:sender-a"),
+            "ask": SlotBinding(ASK, "policy", "policy.ask"),
+        },
+        QaPolicy("networking", 0, "informational_call", 1, 120, 0.7),
+        inherited_from_revision_id=None, created_at=NOW,
+    )
+    connection.commit()
+    return parent.revision_id, {**persona, "combined_proof": combined}
+
+
+@pytest.mark.parametrize(
+    "case", ["internal_id_ref", "raw_metrics_ref", "persona_and_legacy_proof"],
+)
+def test_factcheck_binds_only_copy_eligible_persona_sender_refs(
+    tmp_path: Path, case: str,
+) -> None:
+    connection, _revision = _seed(tmp_path)
+    parent_revision_id, persona = _persona_bound_parent(connection)
+    final_body = (
+        f"Hello there. {POINT}. Product Built. Example Built. "
+        f"{persona['sender_school']}. {persona['combined_proof']}. {ASK}"
+    )
+    adapters = _adapters()
+    humanizer = CapturingAdapter(_binding("humanizer"), {
+        "draft": final_body, "audit": "Synthetic audit.",
+        "final_subject": "A natural persona-bound subject", "final_body": final_body,
+    })
+    adapters["humanizer"] = humanizer
+    bindings = [
+        {"slot": "why_them", "value": POINT,
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "topic", "value": "Product Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "recipient_hook", "value": "Example Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "shared_school", "value": persona["sender_school"],
+         "source_kind": "sender", "source_ref": "sender_profile.sender_school"},
+        {"slot": "sender_proof", "value": persona["combined_proof"],
+         "source_kind": "sender", "source_ref": "sender_profile:sender-a"},
+        {"slot": "ask", "value": ASK,
+         "source_kind": "policy", "source_ref": "policy.ask"},
+    ]
+    if case == "internal_id_ref":
+        bindings.append({
+            "slot": "sender_identifier",
+            "value": _sender_profile_value(connection, "sender_profile_id"),
+            "source_kind": "sender", "source_ref": "sender_profile.sender_profile_id",
+        })
+    elif case == "raw_metrics_ref":
+        bindings.append({
+            "slot": "sender_metrics",
+            "value": _sender_profile_value(connection, "approved_metrics"),
+            "source_kind": "sender", "source_ref": "sender_profile.approved_metrics",
+        })
+    adapters["post_humanization_factcheck"].payload = {
+        "decision": "pass", "bindings": bindings, "uncertainty": [], "shortfalls": [],
+    }
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", parent_revision_id, f"persona-{case}-start",
+    )
+    service.run_next(item.item_id, f"persona-{case}-human")
+
+    result = service.run_next(item.item_id, f"persona-{case}-fact")
+
+    catalog = humanizer.inputs[0]["approved_context"]["binding_catalog"]
+    refs = {row["source_ref"] for row in catalog["sender_profile_refs"]}
+    assert refs == {
+        f"sender_profile.{name}" for name in (
+            "sender_name", "sender_school", "sender_focus", "sender_background",
+            "sender_operating_proof",
+        )
+    }
+    assert "sender_profile.sender_profile_id" not in refs
+    assert "sender_profile.approved_metrics" not in refs
+    payload = json.loads(connection.execute(
+        "SELECT payload_json FROM prospecting_stage_artifact "
+        "WHERE item_id=? AND stage='post_humanization_factcheck'",
+        (item.item_id,),
+    ).fetchone()[0])
+    if case == "persona_and_legacy_proof":
+        assert "binding_source_mismatch" not in payload["qa_failure_codes"]
+        assert payload["bindings"]["shared_school"] == {
+            "value": persona["sender_school"], "source_kind": "sender",
+            "source_ref": "sender_profile.sender_school",
+        }
+        assert payload["bindings"]["sender_proof"] == {
+            "value": persona["combined_proof"], "source_kind": "sender",
+            "source_ref": "sender_profile:sender-a",
+        }
+    else:
+        assert payload["decision"] == "fail"
+        assert "binding_source_mismatch" in payload["qa_failure_codes"]
+        assert result.state == "awaiting_humanizer_adapter"
+
+
+@pytest.mark.parametrize("policy_json", ['"text"', "[]", "null", "12"])
+def test_non_mapping_campaign_policy_refuses_start_before_model_calls(
+    tmp_path: Path, policy_json: str,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    adapters = _adapters()
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    connection.execute(
+        "UPDATE campaign SET policy_json=? WHERE campaign_id='campaign-a'",
+        (policy_json,),
+    )
+    connection.commit()
+
+    with pytest.raises(PipelineStageError, match="^pipeline_context_stale$"):
+        service.start_from_saved_revision(
+            "campaign-a", revision.revision_id, "non-mapping-start",
+        )
+
+    assert adapters["humanizer"].calls == 0
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_pipeline_item",
+    ).fetchone()[0] == 0
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_stage_attempt",
+    ).fetchone()[0] == 0
+
+
+def test_unparseable_campaign_policy_refuses_run_before_model_calls(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    adapters = _adapters()
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "unparseable-start",
+    )
+    # The schema CHECK normally prevents unparseable policy JSON; an already
+    # corrupted store must still fail closed rather than silently disabling
+    # copy-profile enforcement.
+    connection.execute("PRAGMA ignore_check_constraints=ON")
+    connection.execute(
+        "UPDATE campaign SET policy_json='{not json' WHERE campaign_id='campaign-a'",
+    )
+    connection.commit()
+    connection.execute("PRAGMA ignore_check_constraints=OFF")
+
+    with pytest.raises(PipelineStageError, match="^pipeline_context_stale$"):
+        service.run_next(item.item_id, "unparseable-run")
+
+    assert adapters["humanizer"].calls == 0
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_stage_attempt",
+    ).fetchone()[0] == 0
+
+
+def test_valid_policy_without_copy_profile_keeps_legacy_unbanded_behaviour(
+    tmp_path: Path,
+) -> None:
+    connection, revision = _seed(tmp_path)
+    connection.execute(
+        "UPDATE campaign SET policy_json=? WHERE campaign_id='campaign-a'",
+        (json.dumps({"other_policy_field": True}),),
+    )
+    connection.commit()
+    adapters = _adapters()
+    humanizer = CapturingAdapter(_binding("humanizer"), adapters["humanizer"].payload)
+    adapters["humanizer"] = humanizer
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", revision.revision_id, "legacy-profile-start",
+    )
+    service.run_next(item.item_id, "legacy-profile-human")
+
+    result = service.run_next(item.item_id, "legacy-profile-fact")
+
+    assert humanizer.inputs[0]["approved_context"]["copy_profile"] is None
+    assert result.state == "awaiting_critic_adapter"
 
 
 @pytest.mark.parametrize("payload", [
@@ -851,6 +1249,17 @@ def test_late_adapter_result_expires_attempt_and_new_request_recovers(tmp_path: 
     assert adapter.calls == 2
 
 
+def _pipeline_row_counts(connection) -> tuple[int, ...]:
+    """Exact item/attempt/artifact counts, for a refusal-writes-nothing check."""
+    return tuple(
+        connection.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
+        for table in (
+            "prospecting_pipeline_item", "prospecting_stage_attempt",
+            "prospecting_stage_artifact",
+        )
+    )
+
+
 def test_lineage_root_rejects_dual_parent_tables(tmp_path: Path) -> None:
     connection, revision = _seed(tmp_path)
     service = PipelineStageService(
@@ -879,12 +1288,23 @@ def test_lineage_root_rejects_dual_parent_tables(tmp_path: Path) -> None:
          "malformed-request", "campaign-a", "person-a", 0, NOW),
     )
     connection.commit()
+    before = _pipeline_row_counts(connection)
 
-    with pytest.raises(PipelineStageError, match="^revision_lineage_ambiguous$"):
+    # The public entry point refuses earlier than the lineage-root guard: the
+    # forged edge cites no valid candidate/review-request provenance, so the
+    # shared selected-source walker cannot verify it and the exact source proof
+    # for this revision fails closed with a fixed code before any lineage-root
+    # classification is reached.
+    with pytest.raises(PipelineStageError, match="^identity_source_proof_stale$"):
         service.start_from_saved_revision(
             "campaign-a", accepted.revision_id, "ambiguous-start",
         )
+
+    # The lineage guard itself still classifies the dual-parent edge exactly.
+    with pytest.raises(PipelineStageError, match="^revision_lineage_ambiguous$"):
+        service._lineage_root(accepted.revision_id)
     assert connection.in_transaction is False
+    assert _pipeline_row_counts(connection) == before
 
 
 def test_lineage_root_rejects_cross_table_cycle(tmp_path: Path) -> None:
@@ -915,12 +1335,20 @@ def test_lineage_root_rejects_cross_table_cycle(tmp_path: Path) -> None:
          "cycle-request", "campaign-a", "person-a", 0, NOW),
     )
     connection.commit()
+    before = _pipeline_row_counts(connection)
 
-    with pytest.raises(PipelineStageError, match="^revision_lineage_cycle$"):
+    # Same precedence as the dual-parent case: the unverifiable forged edge on
+    # the parent step makes the exact selected-source proof unresolvable first.
+    with pytest.raises(PipelineStageError, match="^identity_source_proof_stale$"):
         service.start_from_saved_revision(
             "campaign-a", accepted.revision_id, "cycle-start",
         )
+
+    # The lineage guard itself still detects the exact cross-table cycle.
+    with pytest.raises(PipelineStageError, match="^revision_lineage_cycle$"):
+        service._lineage_root(accepted.revision_id)
     assert connection.in_transaction is False
+    assert _pipeline_row_counts(connection) == before
 
 
 @pytest.mark.parametrize(
@@ -1491,3 +1919,89 @@ def test_re_exhaustion_requires_another_changed_human_edit(tmp_path: Path) -> No
     )] == [
         (first.item_id, edit_one.revision_id), (second.item_id, edit_two.revision_id),
     ]
+
+
+def _sender_profile_value(connection, field: str) -> str:
+    return str(connection.execute(
+        f"SELECT {field} FROM sender_profile WHERE sender_profile_id='sender-a'",
+    ).fetchone()[0])
+
+
+@pytest.mark.parametrize(
+    "case",
+    ["identity_slot_sender_name", "identity_slot_signature", "two_substantive_claims"],
+)
+def test_sender_ratio_judges_substantive_claims_not_model_slot_aliases(
+    tmp_path: Path, case: str,
+) -> None:
+    connection, _revision = _seed(tmp_path)
+    connection.execute(
+        "UPDATE sender_profile SET sender_focus=? WHERE sender_profile_id='sender-a'",
+        ("Example operating focus",),
+    )
+    connection.commit()
+    parent_revision_id, sender_claim = _sender_bound_parent(connection)
+    signature = _sender_profile_value(connection, "sender_name")
+    identity_slot = (
+        "sender_name" if case == "identity_slot_sender_name" else "signature"
+    )
+    tail = " Example operating focus." if case == "two_substantive_claims" else ""
+    final_body = (
+        f"Hello there. {POINT}. Product Built. Example Built. {sender_claim}.{tail} "
+        f"{ASK}\n\n{signature}"
+    )
+    adapters = _adapters()
+    adapters["humanizer"].payload = {
+        "draft": final_body, "audit": "Synthetic audit.",
+        "final_subject": "A natural sender-bound subject", "final_body": final_body,
+    }
+    fact_bindings = [
+        {"slot": "why_them", "value": POINT,
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "topic", "value": "Product Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "recipient_hook", "value": "Example Built",
+         "source_kind": "evidence", "source_ref": "evidence-a"},
+        {"slot": "sender_claim", "value": sender_claim,
+         "source_kind": "sender", "source_ref": "sender_profile.sender_background"},
+        {"slot": "ask", "value": ASK,
+         "source_kind": "policy", "source_ref": "policy.ask"},
+        {"slot": identity_slot, "value": signature,
+         "source_kind": "sender", "source_ref": "sender_profile.sender_name"},
+    ]
+    if case == "two_substantive_claims":
+        fact_bindings.append({
+            "slot": "sign_off_proof", "value": "Example operating focus",
+            "source_kind": "sender", "source_ref": "sender_profile.sender_focus",
+        })
+    adapters["post_humanization_factcheck"].payload = {
+        "decision": "pass", "bindings": fact_bindings,
+        "uncertainty": [], "shortfalls": [],
+    }
+    service = PipelineStageService(
+        connection, adapters=adapters,
+        now=lambda: datetime.fromisoformat(NOW.replace("Z", "+00:00")),
+    )
+    item = service.start_from_saved_revision(
+        "campaign-a", parent_revision_id, f"ratio-{case}-start",
+    )
+    service.run_next(item.item_id, f"ratio-{case}-human")
+
+    result = service.run_next(item.item_id, f"ratio-{case}-fact")
+
+    payload = json.loads(connection.execute(
+        "SELECT payload_json FROM prospecting_stage_artifact "
+        "WHERE item_id=? AND stage='post_humanization_factcheck'",
+        (item.item_id,),
+    ).fetchone()[0])
+    assert payload["bindings"][identity_slot] == {
+        "value": signature, "source_kind": "sender",
+        "source_ref": "sender_profile.sender_name",
+    }
+    if case == "two_substantive_claims":
+        assert payload["decision"] == "fail"
+        assert "recipient_sender_ratio" in payload["qa_failure_codes"]
+        assert result.state == "awaiting_humanizer_adapter"
+    else:
+        assert (payload["decision"], payload["qa_failure_codes"]) == ("pass", [])
+        assert result.state == "awaiting_critic_adapter"

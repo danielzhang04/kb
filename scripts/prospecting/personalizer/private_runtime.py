@@ -45,9 +45,9 @@ SYNTHETIC_SCHEMA = json.dumps(
         "additionalProperties": False,
         "required": ["result", "canary_seen", "output_canary"],
         "properties": {
-            "result": {"const": "synthetic_ok"},
-            "canary_seen": {"const": True},
-            "output_canary": {"const": OUTPUT_CANARY},
+            "result": {"type": "string", "const": "synthetic_ok"},
+            "canary_seen": {"type": "boolean", "const": True},
+            "output_canary": {"type": "string", "const": OUTPUT_CANARY},
         },
     },
     sort_keys=True,
