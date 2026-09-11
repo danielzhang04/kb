@@ -1,3 +1,9 @@
+# Current checkpoint 2026-09-11 19:36 UTC
+
+Capture accessoraccepted9a1d0b77:40tests+independentREADY. SelectedReviewService119tests
+pass; importerhashpreconditions109testspass, bothuncommitted. Workers50/51/52active.
+Nativefixture48failedoffline beforemodel;52fixing. Realpilotstillunopened. Handofflatestwins.
+
 # Current checkpoint 2026-09-11 19:30 UTC
 
 Active, incomplete. Review35 findings reproduced; repair41 and ReviewService42 running.

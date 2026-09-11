@@ -1,3 +1,31 @@
+## Latest checkpoint 2026-09-11 19:36 UTC
+
+AcceptedHEAD9a1d0b77: capture accessor43/44 with40tests17.56s and independent49READY.
+Exact receipt/task/hash/run/intake/session metadata, no authority or private repr.
+
+Selected repairs41+test47 and ReviewService45 applied. Core42 rejected before application
+for malformed Python;45 corrected it. Root119 combined selected/review/legacy tests passed
+114.59s. Selected source pending/attested/stale views now use exact displayed revision;
+legacy source mutation blocked for selected binding. Full ranking/list integration50 active.
+Some patch envelopes/pathnames/overescaped quotes normalized mechanically to allowedpaths;
+no implementation authored inline. Worker48 input testdelta47 reconciled as isolated assertion.
+
+Import46 applied with optional expected_content_sha256 in P17/P18/CLI;109 combinedtests
+passed90.39s. Actualbytes read once and checked beforeimportwrites, unchanged requestidentity.
+Independent review of46 stillneeded; compiler51 uses new API, active.
+
+Nativefixture48 applied replacingoldP8 with realselected syntheticpipeline. Offline5pass7errors:
+existing P17writes operator-public-capture-v1 but oldharnessallowlist omitsit. Root also rejected
+weakstage-start test that accepts anyrecognized error and missingexplicitP24pendingcheck.
+Repair52active; no actualnative trial hasrun since resume. Acceptedruntimepin remainsNone.
+
+Active Claude workers50(selectedview),51(compiler),52(nativefixture); handles6476/31705/43555.
+All source-only onexistingvCPU. No test/server/native process now. Keepawake17176active.
+No realpilotstore migration, sourcepublication, merge or send. Browserunavailable asabove.
+Remaining: acceptselectedview+HTTP/UI/materialization; compiler+privateexport/broker; actual
+nativepositivechain; inheritedfixturefailures; smallrealnonsending+UI; finalreview/publication.
+User reiterated bossorchestrator role: every implementation/testauthoring goes toClaude.
+
 ## Resume checkpoint 2026-09-11 19:30 UTC
 
 The host clock advanced from the prior09:30 checkpoint to19:13 on resume. Do not claim
