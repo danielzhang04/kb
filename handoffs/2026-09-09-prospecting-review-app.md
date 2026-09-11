@@ -1,3 +1,37 @@
+## Resume checkpoint 2026-09-11 19:30 UTC
+
+The host clock advanced from the prior09:30 checkpoint to19:13 on resume. Do not claim
+continuous execution in that interval. Preamble passed. Worker29 has assistant response
+claude-opus-5 but no structured result; its exact systemd unit is not-found/inactive.
+No proposal applied. Replaced with smaller ReviewService core42, source-only vCPU.
+
+Independent35 REQUEST CHANGES: root actual synthetic probe reproduced A->B->A context
+regeneration returning store_state_invalid, preserving two bindings; ReviewProjection
+repr leaked both legacy source and suggestion copy. Repair41 requests fixed
+selected_revision_already_bound plus whole-projection repr suppression/tests. Root accepts
+explicit genuinely changed context as a new bounded P16 generation; no-op cannot reset;
+correct misleading budget docstring. Original attestation receipt head is historical,
+so future UI must not label reused receipt.revision_id as current head.
+
+Design40 reviewed, not accepted wholesale: (hash,url,time) is NOT a unique capture receipt
+join across sessions. Compiler must explicitly describe provenance and pin imported bytes.
+Accessor43 applied after exact hash checks; it omitted tests, so follow-up44 is required.
+No capture compiler/importer implementation yet. Workers41/42/44 active; exact local handles
+89454/90465/66264. No real pilot migration/model stage/server this resumed checkpoint.
+
+One repair41 launch was rejected by automatic approval review for unverified destination/
+payload trust. Exact five source/test files passed snapshot validation and PII scan with
+zero findings; assigned card explicitly specifies existing source-only vCPU. Retry through
+same launcher was approved and is running. No bypass or private-data egress.
+
+Supported CUA inventory remains apps[]/browsers[] at19:20. Earlier Windows computer-use
+plugin initialization failed before import with Node runtime missing path (os error3),
+including one reset and retry; node.exe itself exists. No UI/browser action succeeded.
+Do not conflate unavailable automation with model signin: actual keyring canary passed.
+
+Original keep-awake lease expired with active:false. Verified PID absent and no stopmarker;
+renewed same bounded12h helper, PID17176. No global power changes. Goal remains active.
+
 # Prospecting infrastructure handoff
 
 Updated 2026-09-11 09:25 UTC. ACTIVE and incomplete. User authorized continued asynchronous

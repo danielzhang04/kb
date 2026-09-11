@@ -1,3 +1,11 @@
+# Current checkpoint 2026-09-11 19:30 UTC
+
+Active, incomplete. Review35 findings reproduced; repair41 and ReviewService42 running.
+Capture accessor43 applied pending44 executable tests. Worker29 ended without usable
+result. Supported browser unavailable; actual model auth previously proved working.
+Keepawake renewed after expiry PID17176. No real pilot migration or sends.
+See newest canonical handoff checkpoint; older checkpoint below is historical.
+
 # Prospecting state
 
 Updated2026-09-11. Active asynchronous infrastructure work; not complete.
