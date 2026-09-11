@@ -1569,6 +1569,7 @@ def _detail_manifest(
 def _render_training_config(
     trigger: str, steps: int, save_every: int, *,
     dop_enabled: bool = False, dop_multiplier: float = 1.0, dop_class: str = "person",
+    training_seed: int | None = None,
 ) -> dict[str, Any]:
     renderer = _render_module()
     intermediate_count = len(_checkpoint_steps(steps, save_every))
@@ -1591,6 +1592,21 @@ def _render_training_config(
     rendered = renderer.render(AI_TEMPLATE_PATH.read_text(encoding="utf-8"), context)
     config = renderer.yaml.safe_load(rendered)
     renderer.apply_dop_trigger_word(config, trigger)
+    # Optional trainer seed: the pinned ai-toolkit (BaseTrainProcess) reads
+    # `config.process[0].training_seed` and seeds torch/CUDA/Python `random` before it
+    # builds the model and dataloader. NumPy and CUDA kernels stay nondeterministic, so
+    # this pins the seed, not the outcome. `None` adds no key, so every existing caller
+    # keeps rendering exactly the config it always has; the template is untouched.
+    if training_seed is not None:
+        if type(training_seed) is not int or not 0 <= training_seed < 2**32:
+            raise FigmentTrainError("training_seed must be an integer in [0, 2**32)")
+        try:
+            process = config["config"]["process"][0]
+        except (KeyError, IndexError, TypeError) as exc:
+            raise FigmentTrainError("rendered training config has no process to seed") from exc
+        if not isinstance(process, dict):
+            raise FigmentTrainError("rendered training config has no process to seed")
+        process["training_seed"] = training_seed
     try:
         renderer.validate_rendered_pod_paths(config)
     except ValueError as exc:

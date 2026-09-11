@@ -31,6 +31,14 @@ FIGMENT_TRAIN_PATH = PIPELINE / "figment_train.py"
 
 SCHEMA = "figment/experimental-train-plan@1"
 REVIEW_SCHEMA = "figment/experimental-dataset-review@1"
+REVIEW_SCHEMA_V2 = "figment/experimental-dataset-review@2"
+# Each accepted curation generation pairs with exactly one review generation; mixed
+# pairs are refused.  `@2` review rows additionally bind the record row's `transform`.
+REVIEW_SCHEMA_FOR_CURATION = {
+    "figment/single-seed-dataset@1": REVIEW_SCHEMA,
+    "figment/single-seed-dataset@2": REVIEW_SCHEMA_V2,
+}
+TRAINING_SEED_LIMIT = 2**32
 PURPOSE = "single-g01-training-diagnostic"
 MIN_TRAIN_ROWS = 20
 MAX_REVIEW_BYTES = 256 * 1024
@@ -167,7 +175,7 @@ def _load_current_subject(dataset_dir: Path, lineage: Any) -> tuple[dict[str, An
     if (not isinstance(recorded_entry, dict)
             or recorded_entry.get("sha256") != hashlib.sha256(record_raw).hexdigest()):
         raise ExperimentalTrainError("single-seed curation record changed after lineage validation")
-    if record.get("schema") != "figment/single-seed-dataset@1":
+    if record.get("schema") not in REVIEW_SCHEMA_FOR_CURATION:
         raise ExperimentalTrainError("experimental training requires the single-seed curation schema")
     return subject, record, record_raw
 
@@ -241,8 +249,12 @@ def _entry_matches(value: Any, expected: dict[str, Any]) -> bool:
 
 def _validate_review(review: dict[str, Any], *, creator: str, subject: dict[str, Any], curation: dict[str, Any], lineage: Any) -> None:
     required = {"schema", "creator", "purpose", "not_promotable", "reviewer", "dataset_subject_sha256", "rows"}
-    if set(review) != required or review.get("schema") != REVIEW_SCHEMA or review.get("creator") != creator:
+    expected_schema = REVIEW_SCHEMA_FOR_CURATION.get(curation.get("schema"))
+    if review.get("schema") in REVIEW_SCHEMA_FOR_CURATION.values() and review.get("schema") != expected_schema:
+        raise ExperimentalTrainError("experimental review generation does not match the curation generation")
+    if set(review) != required or expected_schema is None or review.get("schema") != expected_schema or review.get("creator") != creator:
         raise ExperimentalTrainError("experimental review has an unsupported schema or creator")
+    binds_transform = expected_schema == REVIEW_SCHEMA_V2
     if review.get("purpose") != PURPOSE or review.get("not_promotable") is not True:
         raise ExperimentalTrainError("experimental review is not explicitly non-promotable")
     reviewer = review.get("reviewer")
@@ -256,6 +268,8 @@ def _validate_review(review: dict[str, Any], *, creator: str, subject: dict[str,
         raise ExperimentalTrainError("experimental review must bind every one of at least 20 training rows")
     seen: set[str] = set()
     expected_fields = {"id", "image", "caption", "source", "evidence_assertion", "state", "adult_presentation", "clothing", "real_person_likeness", "resemblance", "image_defects", "caption_accuracy"}
+    if binds_transform:
+        expected_fields.add("transform")
     for row in rows:
         if not isinstance(row, dict) or set(row) != expected_fields:
             raise ExperimentalTrainError("experimental review row has unexpected fields")
@@ -275,6 +289,13 @@ def _validate_review(review: dict[str, Any], *, creator: str, subject: dict[str,
                 or source.get("logical_path") != expected_source.get("logical_path")
                 or source.get("sha256") != expected_source.get("sha256")):
             raise ExperimentalTrainError("experimental review row does not bind its curation source")
+        # `source` above is always the parent; the observations below describe the
+        # materialized (possibly cropped) image bound by `image.sha256`.  An `@2` row
+        # states its framing exactly: null for identity, else the record's transform.
+        # Lineage alone proves those pixels equal parent + transform.
+        if binds_transform and (json.dumps(row.get("transform"), sort_keys=True)
+                                != json.dumps(curation_row.get("transform"), sort_keys=True)):
+            raise ExperimentalTrainError("experimental review row does not bind its curation transform")
         if row.get("evidence_assertion") is not True:
             raise ExperimentalTrainError("experimental review row lacks its evidence assertion")
         if row.get("state") != "observed":
@@ -295,19 +316,33 @@ def _validate_review(review: dict[str, Any], *, creator: str, subject: dict[str,
         raise ExperimentalTrainError("experimental review does not cover every curation row")
 
 
-def _recipe(creator: str, personas_root: Path, train_module: Any) -> dict[str, Any]:
+def _check_training_seed(value: Any) -> None:
+    if value is not None and (type(value) is not int or not 0 <= value < TRAINING_SEED_LIMIT):
+        raise ExperimentalTrainError("training seed must be an integer in [0, 2**32)")
+
+
+def _recipe(
+    creator: str, personas_root: Path, train_module: Any, *, training_seed: int | None = None,
+) -> dict[str, Any]:
+    """Render the pinned persona recipe; a declared seed is recorded and rendered.
+
+    ``training_seed`` appears in the recipe only when declared, so plans compiled
+    without one recompute byte-for-byte as before.
+    """
+    _check_training_seed(training_seed)
     try:
         persona, training, _pins = train_module._load_inputs(creator, Path(personas_root))
         config = train_module._render_training_config(
             training["trigger"], training["steps"], training["save_every"],
             dop_enabled=training["dop_enabled"], dop_multiplier=training["dop_multiplier"], dop_class=training["dop_class"],
+            **({} if training_seed is None else {"training_seed": training_seed}),
         )
         persona_path = Path(personas_root) / creator / "persona.yaml"
         pins_path = Path(train_module.PINS_PATH)
         template_path = Path(train_module.AI_TEMPLATE_PATH)
     except (AttributeError, KeyError, ValueError) as exc:
         raise ExperimentalTrainError("existing pinned training recipe is invalid") from exc
-    return {
+    recipe = {
         "persona_sha256": _sha256(persona_path),
         "tensor_pins_sha256": _sha256(pins_path),
         "training_template_sha256": _sha256(template_path),
@@ -317,12 +352,20 @@ def _recipe(creator: str, personas_root: Path, train_module: Any) -> dict[str, A
         "rendered_training_config": config,
         "persona_id": persona["id"],
     }
+    if training_seed is not None:
+        recipe["training_seed"] = training_seed
+    return recipe
 
 
 def _canonical(value: dict[str, Any]) -> bytes:
     copy = dict(value)
     copy.pop("frozen_sha256", None)
     return json.dumps(copy, sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+
+
+def _exact_json(value: Any) -> str:
+    """Serialize so int/float/bool differ, unlike plain dict equality."""
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
 def _review_snapshot(review: dict[str, Any], raw: bytes) -> dict[str, str]:
@@ -375,7 +418,7 @@ def _decode_review_snapshot(plan: dict[str, Any]) -> tuple[dict[str, Any], bytes
             or inputs.get("review_sha256") != digest):
         raise ExperimentalTrainError("experimental review snapshot hash disagrees with the plan")
     _check_json(review, "experimental review snapshot")
-    if not isinstance(review, dict) or review != frozen.get("review"):
+    if not isinstance(review, dict) or _exact_json(review) != _exact_json(frozen.get("review")):
         raise ExperimentalTrainError("experimental review snapshot disagrees with parsed frozen review")
     return review, raw
 
@@ -416,7 +459,11 @@ def revalidate_experimental_plan(
     lineage = _lineage_module()
     subject, curation, curation_raw = _load_current_subject(dataset_dir, lineage)
     _validate_review(review, creator=creator, subject=subject, curation=curation, lineage=lineage)
-    recipe = _recipe(creator, Path(personas_root), train_module or _figment_train_module())
+    # Recompute with the recorded declared seed (absent on older plans).  A recorded
+    # bool/out-of-range seed is refused by `_recipe`; a recorded null yields a recipe
+    # without the key and is refused by the full-recipe comparison below.
+    recipe = _recipe(creator, Path(personas_root), train_module or _figment_train_module(),
+                     training_seed=recipe_recorded.get("training_seed"))
     if recipe.get("persona_id") != creator:
         raise ExperimentalTrainError("pinned training recipe belongs to another creator")
     _validate_creator_seed_and_trigger(
@@ -430,10 +477,10 @@ def revalidate_experimental_plan(
         "train_row_count": subject["count"],
     }
     if (any(inputs.get(key) != value for key, value in expected_inputs.items())
-            or frozen.get("review") != review
-            or frozen.get("dataset_subject") != subject
-            or frozen.get("curation") != curation
-            or recipe_recorded != recipe):
+            or _exact_json(frozen.get("review")) != _exact_json(review)
+            or _exact_json(frozen.get("dataset_subject")) != _exact_json(subject)
+            or _exact_json(frozen.get("curation")) != _exact_json(curation)
+            or _exact_json(recipe_recorded) != _exact_json(recipe)):
         raise ExperimentalTrainError("experimental plan inputs changed after compilation")
     return {
         "creator": creator,
@@ -470,6 +517,7 @@ def _write_fresh(path: Path, value: dict[str, Any]) -> None:
 def build_experimental_training_plan(
     creator: str, dataset_dir: Path, review_path: Path, out: Path, *,
     personas_root: Path | None = None, private_root: Path = PRIVATE_ROOT, train_module: Any | None = None,
+    training_seed: int | None = None,
 ) -> dict[str, Any]:
     """Build a fresh private plan without starting a provider or accepting a checkpoint."""
     if not isinstance(creator, str) or not SAFE_ID.fullmatch(creator):
@@ -481,7 +529,7 @@ def build_experimental_training_plan(
     subject, curation, curation_raw = _load_current_subject(Path(dataset_dir), lineage)
     review, review_raw = _read_bounded_json(Path(review_path), "experimental review")
     _validate_review(review, creator=creator, subject=subject, curation=curation, lineage=lineage)
-    recipe = _recipe(creator, personas_root, train_module or _figment_train_module())
+    recipe = _recipe(creator, personas_root, train_module or _figment_train_module(), training_seed=training_seed)
     if recipe["persona_id"] != creator:
         raise ExperimentalTrainError("pinned training recipe belongs to another creator")
     _validate_creator_seed_and_trigger(creator, subject, curation, personas_root=personas_root, recipe=recipe)
@@ -527,6 +575,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--out", required=True, type=Path, help="fresh path relative to --private-root")
     parser.add_argument("--private-root", type=Path, default=PRIVATE_ROOT)
     parser.add_argument("--personas-root", type=Path, default=ROOT / "orgs" / "figment" / "personas")
+    parser.add_argument("--training-seed", type=int, default=None,
+                        help="optional trainer seed in [0, 2**32); recorded and rendered only when given")
     return parser
 
 
@@ -536,6 +586,7 @@ def main(argv: list[str] | None = None) -> int:
         plan = build_experimental_training_plan(
             args.creator, args.dataset_dir, args.review, args.out,
             personas_root=args.personas_root, private_root=args.private_root,
+            training_seed=args.training_seed,
         )
     except ExperimentalTrainError as exc:
         print(f"experimental training plan refused: {exc}")

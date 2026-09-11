@@ -452,3 +452,550 @@ def test_explicit_existing_acceptance_stages_curation_evidence_with_dataset(tmp_
     assert (staged / "dataset_curation.json").is_file()
     assert (staged / "curation-request.json").is_file()
     assert (staged / "curation-variation-19.provenance.json").is_file()
+
+
+# ---------------------------------------------------------------------------
+# Adversarial coverage for version 2 declared crop curation.
+# ---------------------------------------------------------------------------
+
+CROP_BOX = [2, 1, 9, 6]  # left, top, right, bottom on a 12x8 nonuniform parent
+
+
+def _nonuniform_image(path: Path, size: tuple[int, int] = (12, 8)) -> None:
+    width, height = size
+    img = Image.new("RGB", size)
+    pixels = img.load()
+    for y in range(height):
+        for x in range(width):
+            pixels[x, y] = (x * 17 % 256, y * 29 % 256, (x + 3 * y) % 256)
+    img.save(path)
+
+
+def _v2_root(tmp_path: Path, *, transform=CROP_BOX, image_size=(12, 8)):
+    """A fresh personas+curation root with one derivative entry declaring a v2 crop."""
+    personas = tmp_path / "personas"
+    anchor = personas / "creator-001" / "anchors" / "g01.jpg"
+    anchor.parent.mkdir(parents=True)
+    image(anchor, (20, 30, 40))
+    root = tmp_path / "curation"
+    sources = root / "sources"
+    sources.mkdir(parents=True)
+    derivative = sources / "tee-turn.png"
+    _nonuniform_image(derivative, image_size)
+    provenance = sources / "tee-turn.provenance.json"
+    provenance.write_text(json.dumps({
+        "schema": "figment/generated-input-experiment@1",
+        "creator": "creator-001",
+        "source": {
+            "reference": "anchors/g01.jpg", "sha256": sha(anchor),
+            "role": "sole original reference; no prior generated candidate supplied",
+        },
+        # Provenance hash must be refreshed for the nonuniform pixels before the
+        # real producer is called, or staging validation fails before curation runs.
+        "output": {"file": derivative.name, "sha256": sha(derivative)},
+        "review": {"status": "reviewed", "training_eligible": True},
+    }), encoding="utf-8")
+    derivative_entry: dict = {
+        "id": "tee-turn", "kind": "derivative", "split": "train",
+        "image": derivative.name, "provenance": provenance.name,
+        "caption": "creator001krea2 woman, charcoal tee, slight head turn",
+        "variation": {"wardrobe": "charcoal tee", "pose": "slight head turn"},
+    }
+    if transform is not None:
+        derivative_entry["transform"] = {"op": "crop", "box": list(transform)}
+    request = root / "request.json"
+    request.write_text(json.dumps({
+        "schema": curate.REQUEST_SCHEMA_V2,
+        "creator": "creator-001",
+        "trigger": "creator001krea2",
+        "canonical_seed": {"path": "anchors/g01.jpg", "sha256": sha(anchor)},
+        "entries": [
+            {
+                "id": "seed-g01", "kind": "seed", "split": "train",
+                "caption": "creator001krea2 woman, reference portrait",
+                "variation": {"role": "source seed"},
+            },
+            derivative_entry,
+        ],
+    }), encoding="utf-8")
+    return personas, root, request, derivative
+
+
+def test_v2_crop_produces_declared_pixels_and_retains_full_parent(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+
+    record = curate.curate_single_seed_dataset(request, out, personas_root=personas)
+
+    assert record["schema"] == curate.DATASET_SCHEMA_V2
+    assert record["entries"][1]["transform"] == {
+        "op": "crop", "box": CROP_BOX, "parent_size": [12, 8], "output_size": [7, 5],
+    }
+    # The retained snapshot stays the full uncropped parent; only the numbered
+    # trainer image is the declared crop.
+    with Image.open(out / "curation-tee-turn.source") as retained:
+        assert retained.size == (12, 8)
+    with Image.open(derivative) as full, Image.open(out / "02.png") as trainer:
+        expected = full.convert("RGB").crop(tuple(CROP_BOX))
+        assert trainer.size == (7, 5)
+        assert trainer.tobytes() == expected.tobytes()
+    subject = lineage.dataset_subject(out)
+    assert subject["count"] == 2
+
+
+def test_lineage_rejects_shifted_crop_box_against_unchanged_pixels(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    # Shift the declared box by one pixel without touching the materialized PNG:
+    # the box is only metadata, so this must be caught by decoding, not hashing.
+    record["entries"][1]["transform"]["box"] = [3, 1, 10, 6]
+    record["entries"][1]["transform"]["output_size"] = [7, 5]
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="not the retained parent plus declared transform"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_rejects_full_parent_substituted_for_declared_crop(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    trainer_path = out / "02.png"
+    with Image.open(derivative) as full:
+        full.convert("RGB").save(trainer_path, format="PNG")
+    # Update the manifest hash so the run reaches pixel validation instead of
+    # failing on the earlier, cheaper hash-mismatch check.
+    manifest_path = out / "dataset_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for row in manifest["files"]:
+        if row["image"] == "02.png":
+            row["sha256"] = sha(trainer_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="not the retained parent plus declared transform"):
+        lineage.dataset_subject(out)
+
+
+@pytest.mark.parametrize("mutation, message", [
+    ("missing-key", "crop transform is malformed"),
+    ("extra-key", "crop transform is malformed"),
+    ("bad-op", "crop transform is malformed"),
+    ("out-of-bounds", "positive proper subrectangle"),
+    ("inverted", "positive proper subrectangle"),
+    ("full-frame", "not the full parent frame"),
+    ("boolean-box", "box must be four integers"),
+])
+def test_curation_refuses_malformed_or_full_frame_crop_declarations(tmp_path, mutation, message):
+    personas, root, request, _ = _v2_root(tmp_path, transform=None)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    entry = value["entries"][1]
+    if mutation == "missing-key":
+        entry["transform"] = {"op": "crop"}
+    elif mutation == "extra-key":
+        entry["transform"] = {"op": "crop", "box": CROP_BOX, "note": "unexpected"}
+    elif mutation == "bad-op":
+        entry["transform"] = {"op": "rotate", "box": CROP_BOX}
+    elif mutation == "out-of-bounds":
+        entry["transform"] = {"op": "crop", "box": [2, 1, 13, 6]}
+    elif mutation == "inverted":
+        entry["transform"] = {"op": "crop", "box": [9, 1, 2, 6]}
+    elif mutation == "full-frame":
+        entry["transform"] = {"op": "crop", "box": [0, 0, 12, 8]}
+    else:
+        entry["transform"] = {"op": "crop", "box": [2, 1, 9, True]}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match=message):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_curation_refuses_transform_on_seed_or_eval_rows(tmp_path):
+    personas, root, request, _ = _v2_root(tmp_path, transform=None)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    value["entries"][0]["transform"] = {"op": "crop", "box": CROP_BOX}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(curate.CurationError, match="transform is allowed only on derivative train rows"):
+        curate.curate_single_seed_dataset(request, tmp_path / "seed-crop", personas_root=personas)
+    assert not (tmp_path / "seed-crop").exists()
+
+    # The seed transform from the first case must not leak into the eval case,
+    # or this would still be exercising the seed-row gate, not the eval-row one.
+    value = json.loads(request.read_text(encoding="utf-8"))
+    del value["entries"][0]["transform"]
+    value["entries"][1]["split"] = "eval"
+    value["entries"][1]["transform"] = {"op": "crop", "box": CROP_BOX}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    with pytest.raises(curate.CurationError, match="transform is allowed only on derivative train rows"):
+        curate.curate_single_seed_dataset(request, tmp_path / "eval-crop", personas_root=personas)
+    assert not (tmp_path / "eval-crop").exists()
+
+
+def test_curation_refuses_transform_declared_under_v1_request_schema(tmp_path):
+    personas, root, request, _ = _v2_root(tmp_path, transform=CROP_BOX)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    value["schema"] = curate.REQUEST_SCHEMA
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match="an @1 curation request cannot declare a transform"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_lineage_refuses_injected_v1_transform_on_an_otherwise_valid_v1_record(tmp_path):
+    personas, _, request, _ = request_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema"] == curate.DATASET_SCHEMA
+    record["entries"][1]["transform"] = {
+        "op": "crop", "box": CROP_BOX, "parent_size": [12, 8], "output_size": [7, 5],
+    }
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="@1 curation rows must not carry a transform"):
+        lineage.dataset_subject(out)
+
+
+def _v2_duplicate_row(out: Path, original: dict, *, suffix: str, split: str) -> tuple[dict, Path, Path]:
+    duplicate = json.loads(json.dumps(original))
+    duplicate["id"] = f"tee-turn-{suffix}"
+    duplicate["split"] = split
+    duplicate.pop("materialization", None)
+    new_source = out / f"curation-tee-turn-{suffix}.source"
+    new_source.write_bytes((out / original["source"]["snapshot"]).read_bytes())
+    duplicate["source"]["snapshot"] = new_source.name
+    new_provenance = out / f"curation-tee-turn-{suffix}.provenance.json"
+    new_provenance.write_bytes((out / original["provenance"]["snapshot"]).read_bytes())
+    duplicate["provenance"]["snapshot"] = new_provenance.name
+    return duplicate, new_source, new_provenance
+
+
+def test_lineage_refuses_v2_parent_reused_within_train(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    original = record["entries"][1]
+    # Same parent bytes, new retained-snapshot filename, still declared train.
+    duplicate, new_source, new_provenance = _v2_duplicate_row(out, original, suffix="again", split="train")
+    record["snapshot_inventory"].extend([
+        {"name": new_source.name, "bytes": new_source.stat().st_size, "sha256": sha(new_source)},
+        {"name": new_provenance.name, "bytes": new_provenance.stat().st_size, "sha256": sha(new_provenance)},
+    ])
+    record["entries"].append(duplicate)
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="repeats a parent source hash"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_refuses_v2_parent_reused_across_train_and_eval(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    original = record["entries"][1]
+    # An eval row never carries a transform; the same parent bytes reused in
+    # eval must hit the cross-split leak gate before any transform check.
+    duplicate, new_source, new_provenance = _v2_duplicate_row(out, original, suffix="eval", split="eval")
+    duplicate.pop("transform", None)
+    record["snapshot_inventory"].extend([
+        {"name": new_source.name, "bytes": new_source.stat().st_size, "sha256": sha(new_source)},
+        {"name": new_provenance.name, "bytes": new_provenance.stat().st_size, "sha256": sha(new_provenance)},
+    ])
+    record["entries"].append(duplicate)
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="across train and eval"):
+        lineage.dataset_subject(out)
+
+
+def test_curation_refuses_crop_on_a_rotated_exif_parent(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path, transform=None)
+    img = Image.new("RGB", (12, 8))
+    exif = img.getexif()
+    exif[0x0112] = 6
+    img.save(derivative, exif=exif)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    provenance_path = root / "sources" / value["entries"][1]["provenance"]
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["output"]["sha256"] = sha(derivative)
+    provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
+    value["entries"][1]["transform"] = {"op": "crop", "box": CROP_BOX}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match="non-identity EXIF orientation"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_producer_refusal_leaves_no_published_dataset_directory(tmp_path):
+    personas, root, request, _ = _v2_root(tmp_path)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    value["entries"][1]["transform"] = {"op": "crop", "box": [0, 0, 12, 8]}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match="not the full parent frame"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+
+    assert not out.exists()
+    assert list(out.parent.glob("single-seed-curation-*")) == []
+    assert list(out.parent.glob("single-seed-crops-*")) == []
+
+
+def test_curation_refuses_boolean_box_component_disguised_as_valid_integer(tmp_path):
+    personas, root, request, _ = _v2_root(tmp_path, transform=None)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    # True == 1 under Python's loose numeric equality, so a naive comparison
+    # could accept this as a valid subrectangle; isinstance must reject it.
+    value["entries"][1]["transform"] = {"op": "crop", "box": [2, True, 9, 6]}
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match="box must be four integers"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_lineage_refuses_shifted_request_transform_after_hashes_refreshed(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    request_snapshot = out / "curation-request.json"
+    stored = json.loads(request_snapshot.read_text(encoding="utf-8"))
+    # Only the retained request's declared box moves; the record's own
+    # transform and the trainer pixels are left exactly as produced.
+    stored["entries"][1]["transform"]["box"] = [3, 1, 10, 6]
+    request_snapshot.write_text(json.dumps(stored), encoding="utf-8")
+    refreshed = sha(request_snapshot)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["request"]["sha256"] = refreshed
+    for row in record["snapshot_inventory"]:
+        if row["name"] == "curation-request.json":
+            row["sha256"] = refreshed
+            row["bytes"] = request_snapshot.stat().st_size
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="request transform is malformed or differs"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_refuses_boolean_smuggled_into_retained_request_box(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    request_snapshot = out / "curation-request.json"
+    stored = json.loads(request_snapshot.read_text(encoding="utf-8"))
+    # True == 1 under loose numeric equality; the request transform check
+    # must reject a bool standing in for a box coordinate.
+    stored["entries"][1]["transform"]["box"][1] = True
+    request_snapshot.write_text(json.dumps(stored), encoding="utf-8")
+    refreshed = sha(request_snapshot)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["request"]["sha256"] = refreshed
+    for row in record["snapshot_inventory"]:
+        if row["name"] == "curation-request.json":
+            row["sha256"] = refreshed
+            row["bytes"] = request_snapshot.stat().st_size
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="request transform is malformed or differs"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_refuses_record_schema_v2_bound_to_retained_v1_request(tmp_path):
+    personas, _, request, _ = request_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema"] == curate.DATASET_SCHEMA
+    # The retained request is still schema @1 and declares no transform; only
+    # the record is bumped to @2. The shared validator must refuse this even
+    # though every individual hash below still matches its own bytes.
+    record["schema"] = curate.DATASET_SCHEMA_V2
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="@2 request does not match"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_refuses_record_only_crop_addition_even_with_consistent_pixels(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path, transform=None)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["schema"] == curate.DATASET_SCHEMA_V2
+    parent_path = out / record["entries"][1]["source"]["snapshot"]
+    with Image.open(parent_path) as parent:
+        cropped = parent.convert("RGB").crop(tuple(CROP_BOX))
+    trainer_path = out / record["entries"][1]["materialization"]["image"]
+    cropped.save(trainer_path, format="PNG")
+    manifest_path = out / "dataset_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for row in manifest["files"]:
+        if row["image"] == trainer_path.name:
+            row["sha256"] = sha(trainer_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    # The retained request never declared a crop for this row; adding one only
+    # in the record, even with a correctly rendered and hash-consistent output,
+    # must not be accepted as evidence of a reviewed transform.
+    record["entries"][1]["transform"] = {
+        "op": "crop", "box": CROP_BOX, "parent_size": [12, 8], "output_size": [7, 5],
+    }
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="disagree on transform presence"):
+        lineage.dataset_subject(out)
+
+
+def test_lineage_refuses_record_only_crop_removal_with_full_parent_output(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    trainer_path = out / record["entries"][1]["materialization"]["image"]
+    parent_path = out / record["entries"][1]["source"]["snapshot"]
+    with Image.open(parent_path) as parent:
+        parent.convert("RGB").save(trainer_path, format="PNG")
+    manifest_path = out / "dataset_manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for row in manifest["files"]:
+        if row["image"] == trainer_path.name:
+            row["sha256"] = sha(trainer_path)
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    # The retained request still declares the crop; removing it only from the
+    # record while shipping the full uncropped parent as output must not pass.
+    del record["entries"][1]["transform"]
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="disagree on transform presence"):
+        lineage.dataset_subject(out)
+
+
+def _tiff_disguised_as_png(path: Path, size: tuple[int, int] = (12, 8)) -> None:
+    if path.exists():
+        with Image.open(path) as existing:
+            pixels = existing.convert("RGB")
+    else:
+        pixels = Image.new("RGB", size, (5, 6, 7))
+    pixels.save(path, format="TIFF")
+
+
+def test_producer_refuses_disguised_tiff_content_named_png(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path, transform=None)
+    _tiff_disguised_as_png(derivative)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    provenance_path = root / "sources" / value["entries"][1]["provenance"]
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["output"]["sha256"] = sha(derivative)
+    provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    # A .png-named file whose actual container is TIFF must be refused by
+    # format, not silently decoded because Pillow can still open it.
+    with pytest.raises(curate.CurationError, match="cannot inspect derivative"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_lineage_refuses_disguised_tiff_after_hashes_rebind_before_pixel_checks(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    snapshot_path = out / "curation-tee-turn.source"
+    _tiff_disguised_as_png(snapshot_path, size=(12, 8))
+    changed = sha(snapshot_path)
+    provenance_snapshot_name = "curation-tee-turn.provenance.json"
+    provenance_path = out / provenance_snapshot_name
+    provenance = json.loads(provenance_path.read_text(encoding="utf-8"))
+    provenance["output"]["sha256"] = changed
+    provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
+    provenance_hash = sha(provenance_path)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["entries"][1]["source"]["sha256"] = changed
+    record["entries"][1]["source"]["snapshot_sha256"] = changed
+    record["entries"][1]["source"]["bytes"] = snapshot_path.stat().st_size
+    record["entries"][1]["provenance"]["sha256"] = provenance_hash
+    for row in record["snapshot_inventory"]:
+        if row["name"] == snapshot_path.name:
+            row["sha256"] = changed
+            row["bytes"] = snapshot_path.stat().st_size
+        elif row["name"] == provenance_snapshot_name:
+            row["sha256"] = provenance_hash
+            row["bytes"] = provenance_path.stat().st_size
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    # Every hash above is now self-consistent; only the pixel container is
+    # wrong, so format decoding must be the gate that trips, not a hash gate.
+    with pytest.raises(lineage.LineageError, match="cannot inspect single-seed retained image"):
+        lineage.dataset_subject(out)
+
+
+def test_v2_producer_refuses_unknown_row_key(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path, transform=None)
+    value = json.loads(request.read_text(encoding="utf-8"))
+    value["entries"][1]["unexpected"] = "nope"
+    request.write_text(json.dumps(value), encoding="utf-8")
+    out = tmp_path / "dataset"
+
+    with pytest.raises(curate.CurationError, match="unknown key"):
+        curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    assert not out.exists()
+
+
+def test_lineage_refuses_unknown_key_in_retained_v2_request_row(tmp_path):
+    personas, root, request, derivative = _v2_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+    request_snapshot = out / "curation-request.json"
+    stored = json.loads(request_snapshot.read_text(encoding="utf-8"))
+    stored["entries"][1]["unexpected"] = "nope"
+    request_snapshot.write_text(json.dumps(stored), encoding="utf-8")
+    refreshed = sha(request_snapshot)
+    record_path = out / "dataset_curation.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    record["request"]["sha256"] = refreshed
+    for row in record["snapshot_inventory"]:
+        if row["name"] == "curation-request.json":
+            row["sha256"] = refreshed
+            row["bytes"] = request_snapshot.stat().st_size
+    record_path.write_text(json.dumps(record), encoding="utf-8")
+
+    with pytest.raises(lineage.LineageError, match="unknown key"):
+        lineage.dataset_subject(out)
+
+
+def test_producer_refuses_actual_pillow_decompression_bomb(tmp_path, monkeypatch):
+    personas, _, request, derivative = request_root(tmp_path)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+
+    with pytest.raises(curate.CurationError, match="cannot inspect"):
+        curate.curate_single_seed_dataset(request, tmp_path / "dataset", personas_root=personas)
+    assert not (tmp_path / "dataset").exists()
+
+
+def test_lineage_refuses_actual_pillow_decompression_bomb_on_retained_image(tmp_path, monkeypatch):
+    personas, _, request, derivative = request_root(tmp_path)
+    out = tmp_path / "dataset"
+    curate.curate_single_seed_dataset(request, out, personas_root=personas)
+
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 10)
+    with pytest.raises(lineage.LineageError, match="cannot inspect single-seed retained image"):
+        lineage.dataset_subject(out)

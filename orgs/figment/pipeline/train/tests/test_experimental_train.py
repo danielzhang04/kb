@@ -39,7 +39,11 @@ def image(path: Path, color: tuple[int, int, int]) -> None:
     Image.new("RGB", (24, 16), color).save(path)
 
 
-def make_dataset(tmp_path: Path, *, count: int = 20) -> tuple[Path, Path]:
+CROP_BOX = [2, 1, 20, 15]
+
+
+def make_dataset(tmp_path: Path, *, count: int = 20, crops: dict[int, list[int]] | None = None) -> tuple[Path, Path]:
+    """`crops` maps derivative numbers to boxes and switches to the `@2` request."""
     tmp_path.mkdir(parents=True, exist_ok=True)
     personas = tmp_path / "personas"
     anchor = personas / "creator-001" / "anchors" / "g01.jpg"
@@ -72,9 +76,11 @@ def make_dataset(tmp_path: Path, *, count: int = 20) -> tuple[Path, Path]:
             "caption": f"creator001krea2 woman, opaque-clothed variation {number}",
             "variation": {"coverage": f"variation-{number}"},
         })
+        if crops and number in crops:
+            entries[-1]["transform"] = {"op": "crop", "box": crops[number]}
     request = tmp_path / "request.json"
     request.write_text(json.dumps({
-        "schema": curate.REQUEST_SCHEMA,
+        "schema": "figment/single-seed-curation-request@2" if crops else curate.REQUEST_SCHEMA,
         "creator": "creator-001", "trigger": "creator001krea2",
         "canonical_seed": {"path": "anchors/g01.jpg", "sha256": sha(anchor)},
         "entries": entries,
@@ -84,9 +90,12 @@ def make_dataset(tmp_path: Path, *, count: int = 20) -> tuple[Path, Path]:
     return dataset, personas
 
 
-def make_review(dataset: Path, path: Path, *, state: str = "observed", adult: str = "observed-unambiguous-adult") -> Path:
+def make_review(dataset: Path, path: Path, *, state: str = "observed", adult: str = "observed-unambiguous-adult",
+                schema: str | None = None) -> Path:
+    """Review generation follows the curation record unless `schema` forces a mixed pair."""
     subject = lineage.dataset_subject(dataset)
     curation = json.loads((dataset / "dataset_curation.json").read_text(encoding="utf-8"))
+    schema = schema or experimental.REVIEW_SCHEMA_FOR_CURATION[curation["schema"]]
     rows = []
     for entry, data in zip(curation["entries"], subject["files"], strict=True):
         source = entry["source"]
@@ -104,8 +113,10 @@ def make_review(dataset: Path, path: Path, *, state: str = "observed", adult: st
             "image_defects": "no-observed-blocking-defect",
             "caption_accuracy": "observed-caption-matches-image",
         })
+        if schema == experimental.REVIEW_SCHEMA_V2:
+            rows[-1]["transform"] = entry.get("transform")
     path.write_text(json.dumps({
-        "schema": experimental.REVIEW_SCHEMA,
+        "schema": schema,
         "creator": "creator-001",
         "purpose": experimental.PURPOSE,
         "not_promotable": True,
@@ -133,17 +144,27 @@ class Recipe:
                                 "dop_enabled": False, "dop_multiplier": 1.0, "dop_class": "person"}, {}
 
     @staticmethod
-    def _render_training_config(*_args, **_kwargs):
-        return {"dataset": {"path": "/workspace/ComfyUI/input/creator001krea2"}}
+    def _render_training_config(*_args, training_seed=None, **_kwargs):
+        config = {"dataset": {"path": "/workspace/ComfyUI/input/creator001krea2"}}
+        if training_seed is not None:  # mirrors the real renderer's only seeded key
+            config["config"] = {"process": [{"training_seed": training_seed}]}
+        return config
 
 
-def build(tmp_path: Path, dataset: Path, personas: Path, review: Path):
+def build(tmp_path: Path, dataset: Path, personas: Path, review: Path, *, out: str = "plan", **kwargs):
     private = tmp_path / "private"
     private.mkdir(exist_ok=True)
     return experimental.build_experimental_training_plan(
-        "creator-001", dataset, review, Path("plan"), personas_root=personas,
-        private_root=private, train_module=Recipe(tmp_path),
+        "creator-001", dataset, review, Path(out), personas_root=personas,
+        private_root=private, train_module=Recipe(tmp_path), **kwargs,
     ), private
+
+
+def rehashed(plan: dict, mutate) -> dict:
+    value = json.loads(json.dumps(plan))
+    mutate(value)
+    value["frozen_sha256"] = hashlib.sha256(experimental._canonical(value)).hexdigest()
+    return value
 
 
 def test_builds_private_frozen_nonpromotable_plan_and_production_loader_rejects(tmp_path):
@@ -297,6 +318,102 @@ def test_refuses_curation_record_mutated_after_lineage_validation(tmp_path, monk
     monkeypatch.setattr(experimental, "_lineage_module", MutatingLineage)
     with pytest.raises(experimental.ExperimentalTrainError, match="changed after lineage"):
         build(tmp_path, dataset, personas, review)
+
+
+def test_v2_crop_review_builds_seeded_plan_that_revalidates_and_refuses_seed_tamper(tmp_path):
+    dataset, personas = make_dataset(tmp_path, crops={3: CROP_BOX})
+    review = make_review(dataset, tmp_path / "review.json")
+    plan, _private = build(tmp_path, dataset, personas, review, training_seed=7)
+
+    curation = plan["frozen_inputs"]["curation"]
+    crop = next(row for row in curation["entries"] if row["id"] == "variation-3")
+    reviewed = {row["id"]: row for row in plan["frozen_inputs"]["review"]["rows"]}
+    assert curation["schema"] == "figment/single-seed-dataset@2"
+    assert plan["frozen_inputs"]["review"]["schema"] == experimental.REVIEW_SCHEMA_V2
+    assert crop["transform"] == {"op": "crop", "box": CROP_BOX, "parent_size": [24, 16], "output_size": [18, 14]}
+    assert reviewed["variation-3"]["transform"] == crop["transform"]
+    assert reviewed["seed-g01"]["transform"] is None and reviewed["variation-4"]["transform"] is None
+    # Observations bind the materialized crop bytes, never the parent snapshot.
+    assert reviewed["variation-3"]["image"]["sha256"] != crop["source"]["sha256"]
+    assert plan["training_recipe"]["training_seed"] == 7
+    assert plan["training_recipe"]["rendered_training_config"]["config"]["process"][0]["training_seed"] == 7
+    context = experimental.revalidate_experimental_plan(plan, personas_root=personas, train_module=Recipe(tmp_path))
+    assert context["recipe"] == plan["training_recipe"]
+
+    def process(value):
+        return value["training_recipe"]["rendered_training_config"]["config"]["process"][0]
+
+    for mutate, message in [
+        (lambda value: value["training_recipe"].update(training_seed=8), "changed after compilation"),
+        (lambda value: process(value).update(training_seed=8), "changed after compilation"),
+        (lambda value: value["training_recipe"].pop("training_seed"), "changed after compilation"),
+        (lambda value: value["training_recipe"].update(training_seed=None), "changed after compilation"),
+        (lambda value: value["training_recipe"].update(training_seed=True), "training seed"),
+        # Frozen-record int/float/bool mutations that stay == under plain dict equality;
+        # only exact-JSON comparison catches them while recomputed inputs stay unchanged.
+        (lambda value: process(value).update(training_seed=7.0), "changed after compilation"),
+        (lambda value: value["frozen_inputs"]["curation"]["entries"][3]["transform"].update(
+            box=[CROP_BOX[0], True, CROP_BOX[2], CROP_BOX[3]]), "changed after compilation"),
+        (lambda value: value["frozen_inputs"]["dataset_subject"].update(count=20.0), "changed after compilation"),
+    ]:
+        with pytest.raises(experimental.ExperimentalTrainError, match=message):
+            experimental.revalidate_experimental_plan(
+                rehashed(plan, mutate), personas_root=personas, train_module=Recipe(tmp_path),
+            )
+
+
+def test_refuses_mixed_generations_and_v2_review_rows_that_do_not_bind_the_crop(tmp_path):
+    legacy, personas = make_dataset(tmp_path / "v1")
+    review = make_review(legacy, tmp_path / "v1" / "review.json", schema=experimental.REVIEW_SCHEMA_V2)
+    with pytest.raises(experimental.ExperimentalTrainError, match="generation"):
+        build(tmp_path / "v1", legacy, personas, review)
+
+    dataset, personas = make_dataset(tmp_path / "v2", crops={3: CROP_BOX})
+    review = make_review(dataset, tmp_path / "v2" / "review.json", schema=experimental.REVIEW_SCHEMA)
+    with pytest.raises(experimental.ExperimentalTrainError, match="generation"):
+        build(tmp_path / "v2", dataset, personas, review)
+
+    base = json.loads(make_review(dataset, tmp_path / "v2" / "base.json").read_text(encoding="utf-8"))
+    crop = next(row for row in base["rows"] if row["id"] == "variation-3")
+    transform, missing = crop["transform"], object()
+    for index, (row_id, key, replacement, message) in enumerate([
+        ("variation-3", "transform", None, "curation transform"),
+        ("variation-3", "transform", {**transform, "box": [3, 1, 20, 15]}, "curation transform"),
+        ("variation-3", "transform", {**transform, "box": [2, True, 20, 15]}, "curation transform"),
+        ("variation-3", "transform", {"op": "crop", "box": transform["box"]}, "curation transform"),
+        ("variation-4", "transform", transform, "curation transform"),
+        ("variation-3", "transform", missing, "unexpected fields"),
+        ("variation-3", "image", {**crop["image"], "sha256": crop["source"]["sha256"]}, "image and caption"),
+    ]):
+        value = json.loads(json.dumps(base))
+        row = next(row for row in value["rows"] if row["id"] == row_id)
+        if replacement is missing:
+            del row[key]
+        else:
+            row[key] = replacement
+        path = tmp_path / "v2" / f"review-{index}.json"
+        path.write_text(json.dumps(value), encoding="utf-8")
+        with pytest.raises(experimental.ExperimentalTrainError, match=message):
+            build(tmp_path / "v2", dataset, personas, path)
+
+
+def test_training_seed_is_optional_exact_uint32_and_absent_when_undeclared(tmp_path):
+    dataset, personas = make_dataset(tmp_path)
+    review = make_review(dataset, tmp_path / "review.json")
+    legacy, _private = build(tmp_path, dataset, personas, review)
+    assert "training_seed" not in legacy["training_recipe"]
+    assert "config" not in legacy["training_recipe"]["rendered_training_config"]  # no seed kwarg reached the renderer
+    for seed in (0, 2**32 - 1):
+        plan, _private = build(tmp_path, dataset, personas, review, out=f"seed-{seed}", training_seed=seed)
+        assert plan["training_recipe"]["training_seed"] == seed
+        experimental.revalidate_experimental_plan(plan, personas_root=personas, train_module=Recipe(tmp_path))
+    for seed in (-1, 2**32, True, False, 7.0, "7"):
+        with pytest.raises(experimental.ExperimentalTrainError, match="training seed"):
+            build(tmp_path, dataset, personas, review, out="refused", training_seed=seed)
+
+    required = ["--creator", "creator-001", "--dataset-dir", "d", "--review", "r", "--out", "o"]
+    assert experimental.build_parser().parse_args(required).training_seed is None
+    assert experimental.build_parser().parse_args([*required, "--training-seed", "7"]).training_seed == 7
 
 
 def test_real_creator_recipe_loads_and_renders_offline():

@@ -31,6 +31,14 @@ LINEAGE_PATH = HERE.parent / "lineage.py"
 
 REQUEST_SCHEMA = "figment/single-seed-curation-request@1"
 DATASET_SCHEMA = "figment/single-seed-dataset@1"
+# @2 adds an optional crop transform on derivative train rows; @1 requests keep
+# producing byte-identical @1 records.
+REQUEST_SCHEMA_V2 = "figment/single-seed-curation-request@2"
+DATASET_SCHEMA_V2 = "figment/single-seed-dataset@2"
+# @2 decodes only these formats so a disguised TIFF/EPS is refused before load;
+# @1 keeps Pillow's default format detection.
+IMAGE_FORMATS = ("PNG", "JPEG", "WEBP")
+EXIF_ORIENTATION = 0x0112
 EVALUATION_SCOPE = "within-identity-diagnostic-not-independent-reference-validation"
 MAX_REQUEST_BYTES = 128 * 1024
 MAX_PROVENANCE_BYTES = 128 * 1024
@@ -188,14 +196,15 @@ def _source_file(sources: Path, value: Any, expression: re.Pattern[str], label: 
     return path
 
 
-def _image_size(path: Path, label: str) -> int:
+def _image_size(path: Path, label: str, formats: tuple[str, ...] | None = None) -> tuple[int, int, int]:
+    """Return ``(bytes, width, height)`` after bounded header and decode checks."""
     try:
         if _is_reparse(path) or not path.is_file():
             raise CurationError(f"{label} is missing or linked: {path.name}")
         size = path.stat().st_size
         if size <= 0 or size > MAX_IMAGE_BYTES:
             raise CurationError(f"{label} is oversized: {path.name}")
-        with Image.open(path) as image:
+        with Image.open(path, formats=formats) as image:
             width, height = image.size
             if (width <= 0 or height <= 0 or width > MAX_DIMENSION or height > MAX_DIMENSION
                     or width * height > MAX_PIXELS):
@@ -203,9 +212,50 @@ def _image_size(path: Path, label: str) -> int:
             image.verify()
     except CurationError:
         raise
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
         raise CurationError(f"cannot inspect {label}: {path.name}") from exc
-    return size
+    return size, width, height
+
+
+def _exif_orientation(path: Path) -> Any:
+    try:
+        with Image.open(path, formats=IMAGE_FORMATS) as image:
+            return image.getexif().get(EXIF_ORIENTATION)
+    except (OSError, ValueError) as exc:
+        raise CurationError(f"cannot inspect crop parent orientation: {path.name}") from exc
+
+
+def _request_transform(value: Any, *, image: Path, width: int, height: int) -> dict[str, Any]:
+    """Validate a request crop against the parent's native decoded grid."""
+    if not isinstance(value, dict) or set(value) != {"op", "box"} or value.get("op") != "crop":
+        raise CurationError("crop transform is malformed: it must be exactly {op: crop, box: [l, t, r, b]}")
+    try:
+        left, top, right, bottom = _load_lineage().single_seed_crop_box(value["box"], width, height)
+    except ValueError as exc:
+        raise CurationError(f"crop transform rejected: {exc}") from exc
+    # The builder never applies EXIF rotation; a rotated parent would put the
+    # reviewed box somewhere else in the stored pixel grid.
+    if _exif_orientation(image) not in (None, 1):
+        raise CurationError("crop parent must not carry a non-identity EXIF orientation")
+    return {
+        "op": "crop", "box": [left, top, right, bottom],
+        "parent_size": [width, height], "output_size": [right - left, bottom - top],
+    }
+
+
+def _render_crop(snapshot: Path, destination: Path, transform: dict[str, Any]) -> None:
+    """Render a declared crop from the retained snapshot, never the staging file."""
+    try:
+        with Image.open(snapshot, formats=IMAGE_FORMATS) as parent:
+            # The snapshot must still be the grid the box was validated against;
+            # this also bounds the decode before convert() touches pixels.
+            if list(parent.size) != transform["parent_size"]:
+                raise CurationError(f"crop parent changed before its retained snapshot was copied: {snapshot.name}")
+            parent.convert("RGB").crop(tuple(transform["box"])).save(destination, format="PNG")
+    except CurationError:
+        raise
+    except (OSError, ValueError) as exc:
+        raise CurationError(f"cannot render declared crop from retained snapshot: {snapshot.name}") from exc
 
 
 def _copy_snapshot(source: Path, destination: Path, *, maximum: int | None = None) -> dict[str, Any]:
@@ -252,14 +302,17 @@ def _validate_provenance(
         raise CurationError("rejected derivative cannot be made eligible by this compiler")
 
 
-def _request_entries(request: dict[str, Any], *, sources: Path, seed: Path) -> tuple[str, list[dict[str, Any]]]:
+def _request_entries(
+    request: dict[str, Any], *, sources: Path, seed: Path, transforms_allowed: bool = False,
+) -> tuple[str, list[dict[str, Any]]]:
     creator = request.get("creator")
     trigger = request.get("trigger")
     seed_record = request.get("canonical_seed")
     entries = request.get("entries")
     if creator != "creator-001" or not isinstance(trigger, str) or not TOKEN_RE.fullmatch(trigger):
         raise CurationError("request must name creator-001 and one bounded trigger token")
-    seed_bytes = _image_size(seed, "canonical seed")
+    formats = IMAGE_FORMATS if transforms_allowed else None
+    seed_bytes, _, _ = _image_size(seed, "canonical seed", formats)
     if not isinstance(seed_record, dict) or seed_record.get("path") != "anchors/g01.jpg" or seed_record.get("sha256") != _sha256(seed, label="canonical seed"):
         raise CurationError("request canonical_seed must exactly match current anchors/g01.jpg")
     if not isinstance(entries, list) or not entries or len(entries) > MAX_ENTRIES:
@@ -274,6 +327,8 @@ def _request_entries(request: dict[str, Any], *, sources: Path, seed: Path) -> t
     for raw in entries:
         if not isinstance(raw, dict):
             raise CurationError("each curation entry must be an object")
+        if transforms_allowed and not set(raw) <= {"id", "kind", "split", "caption", "variation", "image", "provenance", "transform"}:
+            raise CurationError("an @2 curation entry contains an unknown key")
         entry_id = raw.get("id")
         kind = raw.get("kind")
         split = raw.get("split")
@@ -281,6 +336,12 @@ def _request_entries(request: dict[str, Any], *, sources: Path, seed: Path) -> t
             raise CurationError("curation entry ids must be unique bounded identifiers")
         if kind not in ("seed", "derivative") or split not in ("train", "eval"):
             raise CurationError("curation entries need kind seed|derivative and split train|eval")
+        if "transform" in raw:
+            if not transforms_allowed:
+                raise CurationError("an @1 curation request cannot declare a transform; use request @2")
+            if kind != "derivative" or split != "train":
+                # g01 appears once unchanged; eval rows are never materialized.
+                raise CurationError("transform is allowed only on derivative train rows")
         caption = _plain_text(raw.get("caption"), "caption", MAX_CAPTION_BYTES)
         if not caption.startswith(trigger + " "):
             raise CurationError("every caption must start with the declared trigger token")
@@ -299,7 +360,7 @@ def _request_entries(request: dict[str, Any], *, sources: Path, seed: Path) -> t
             provenance_name = raw.get("provenance")
             image = _source_file(sources, image_name, SOURCE_NAME_RE, "image")
             provenance = _source_file(sources, provenance_name, PROVENANCE_NAME_RE, "provenance")
-            image_bytes = _image_size(image, "derivative")
+            image_bytes, width, height = _image_size(image, "derivative", formats)
             provenance_bytes = provenance.stat().st_size
             if provenance_bytes <= 0 or provenance_bytes > MAX_PROVENANCE_BYTES:
                 raise CurationError(f"derivative provenance is missing or oversized: {provenance.name}")
@@ -319,6 +380,8 @@ def _request_entries(request: dict[str, Any], *, sources: Path, seed: Path) -> t
                 "bytes": image_bytes, "path": image,
             }
             row["provenance_path"] = provenance
+            if "transform" in raw:
+                row["transform"] = _request_transform(raw["transform"], image=image, width=width, height=height)
             if split == "train":
                 derivative_train_rows += 1
         materialized.append(row)
@@ -336,11 +399,12 @@ def curate_single_seed_dataset(request_path: Path, out_dir: Path, *, personas_ro
     request_path = _safe_file(request_root, (raw_request_path.name,), "curation request")
     sources = _safe_root(request_root / "sources", "curation sources root")
     request, request_sha256 = _bounded_json(request_path, MAX_REQUEST_BYTES, "curation request")
-    if request.get("schema") != REQUEST_SCHEMA:
+    if request.get("schema") not in (REQUEST_SCHEMA, REQUEST_SCHEMA_V2):
         raise CurationError("wrong single-seed curation request schema")
+    transforms_allowed = request["schema"] == REQUEST_SCHEMA_V2
     persona_root = _safe_root(Path(personas_root), "personas root")
     seed = _safe_file(persona_root, ("creator-001", "anchors", "g01.jpg"), "canonical anchors/g01.jpg")
-    trigger, entries = _request_entries(request, sources=sources, seed=seed)
+    trigger, entries = _request_entries(request, sources=sources, seed=seed, transforms_allowed=transforms_allowed)
     raw_out = Path(out_dir)
     if not raw_out.name:
         raise CurationError("curation output must be a new direct child of an existing directory")
@@ -348,8 +412,12 @@ def curate_single_seed_dataset(request_path: Path, out_dir: Path, *, personas_ro
     out_dir = out_parent / raw_out.name
     if out_dir.exists() or _is_reparse(out_dir):
         raise CurationError(f"refusing to overwrite curation output: {out_dir}")
-    with tempfile.TemporaryDirectory(prefix="single-seed-curation-", dir=out_parent) as temporary_name:
+    # Rendered crops live in a sibling scratch directory, never inside the
+    # draft, so no stray image or curation-* file enters the exact inventory.
+    with tempfile.TemporaryDirectory(prefix="single-seed-curation-", dir=out_parent) as temporary_name, \
+            tempfile.TemporaryDirectory(prefix="single-seed-crops-", dir=out_parent) as crops_name:
         temporary = Path(temporary_name)
+        crops = Path(crops_name)
         snapshots: list[dict[str, Any]] = []
         request_snapshot = _copy_snapshot(request_path, temporary / "curation-request.json", maximum=MAX_REQUEST_BYTES)
         if request_snapshot["sha256"] != request_sha256:
@@ -376,6 +444,11 @@ def curate_single_seed_dataset(request_path: Path, out_dir: Path, *, personas_ro
                 provenance_snapshot = _copy_snapshot(row["provenance_path"], temporary / provenance_snapshot_name, maximum=MAX_PROVENANCE_BYTES)
                 snapshots.append(provenance_snapshot)
                 stored["provenance"] = {"snapshot": provenance_snapshot_name, "sha256": provenance_snapshot["sha256"]}
+                if transforms_allowed:
+                    # @2 binds the original staged filename; @1 record bytes stay frozen.
+                    stored["provenance"]["logical_path"] = row["provenance_path"].name
+            if "transform" in row:
+                stored["transform"] = dict(row["transform"])
             if row["split"] == "train":
                 train_index += 1
                 stem = f"{train_index:0{image_width}d}"
@@ -385,10 +458,14 @@ def curate_single_seed_dataset(request_path: Path, out_dir: Path, *, personas_ro
                 # The ordinary builder must consume only this retained snapshot,
                 # never a staging path that can change after its provenance hash
                 # was captured. Eval rows deliberately never enter this list.
-                approved.append({"image": str(temporary / source_snapshot_name), "caption": row["caption"]})
+                builder_input = temporary / source_snapshot_name
+                if "transform" in row:
+                    builder_input = crops / f"{stem}.png"
+                    _render_crop(temporary / source_snapshot_name, builder_input, row["transform"])
+                approved.append({"image": str(builder_input), "caption": row["caption"]})
             record_entries.append(stored)
         record = {
-            "schema": DATASET_SCHEMA,
+            "schema": DATASET_SCHEMA_V2 if transforms_allowed else DATASET_SCHEMA,
             "creator": "creator-001",
             "trigger": trigger,
             "request": {"snapshot": "curation-request.json", "sha256": request_snapshot["sha256"]},
@@ -416,7 +493,9 @@ def curate_single_seed_dataset(request_path: Path, out_dir: Path, *, personas_ro
         output_total = 0
         for row in manifest["files"]:
             image_path = temporary / row["image"]
-            output_total += _image_size(image_path, "materialized training image")
+            output_total += _image_size(
+                image_path, "materialized training image", IMAGE_FORMATS if transforms_allowed else None,
+            )[0]
             if output_total > MAX_TOTAL_OUTPUT_BYTES:
                 raise CurationError("materialized training images exceed the aggregate byte limit")
         approved_path.unlink()

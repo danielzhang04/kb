@@ -35,8 +35,17 @@ def digest(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
-    """Use real train pins/recipe with synthetic first-generation fixture images."""
+def make_real_recipe_plan(
+    tmp_path: Path, *, cropped: bool = False, training_seed: int | None = None,
+) -> tuple[dict, Path, Path]:
+    """Use real train pins/recipe with synthetic first-generation fixture images.
+
+    ``cropped=True`` switches variation-1 to a version 2 request row with an actual
+    crop transform (nonuniform proper subrectangle of the 24x16 fixture image) and
+    emits matching version 2 review rows (crop row binds its real image hash and
+    transform; every other row binds a null transform). Legacy callers that omit
+    both keyword arguments get byte-identical behavior to the prior fixture.
+    """
     anchor = production.PERSONAS_ROOT / "creator-001" / "anchors" / "g01.jpg"
     assert anchor.is_file()
     source = tmp_path / "sources"; source.mkdir()
@@ -45,9 +54,16 @@ def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
         "caption": "creator001krea2 woman, reference portrait",
         "variation": {"role": "source-seed"},
     }]
+    crop_box = [2, 1, 20, 15]
     for number in range(1, 20):
         image_path = source / f"variation-{number}.png"
-        Image.new("RGB", (24, 16), (number, number + 20, number + 40)).save(image_path)
+        fixture_image = Image.new("RGB", (24, 16), (number, number + 20, number + 40))
+        if cropped and number == 1:
+            # The crop parent must be nonuniform so cropped vs. uncropped bytes actually differ.
+            for x in range(24):
+                for y in range(16):
+                    fixture_image.putpixel((x, y), ((number + x) % 256, (number + y + 3) % 256, (number + x + y) % 256))
+        fixture_image.save(image_path)
         provenance = source / f"variation-{number}.provenance.json"
         provenance.write_text(json.dumps({
             "schema": "figment/generated-input-experiment@1", "creator": "creator-001",
@@ -56,15 +72,19 @@ def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
             "output": {"file": image_path.name, "sha256": digest(image_path)},
             "review": {"status": "reviewed", "training_eligible": True},
         }), encoding="utf-8")
-        entries.append({
+        entry = {
             "id": f"variation-{number}", "kind": "derivative", "split": "train",
             "image": image_path.name, "provenance": provenance.name,
             "caption": f"creator001krea2 woman, opaque-clothed fixture variation {number}",
             "variation": {"coverage": f"fixture-{number}"},
-        })
+        }
+        if cropped and number == 1:
+            entry["transform"] = {"op": "crop", "box": crop_box}
+        entries.append(entry)
     request = tmp_path / "request.json"
     request.write_text(json.dumps({
-        "schema": curate.REQUEST_SCHEMA, "creator": "creator-001", "trigger": "creator001krea2",
+        "schema": "figment/single-seed-curation-request@2" if cropped else curate.REQUEST_SCHEMA,
+        "creator": "creator-001", "trigger": "creator001krea2",
         "canonical_seed": {"path": "anchors/g01.jpg", "sha256": digest(anchor)}, "entries": entries,
     }), encoding="utf-8")
     dataset = tmp_path / "dataset"
@@ -73,7 +93,7 @@ def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
     curation = json.loads((dataset / "dataset_curation.json").read_text(encoding="utf-8"))
     rows = []
     for curation_row, file_row in zip(curation["entries"], subject["files"], strict=True):
-        rows.append({
+        row = {
             "id": curation_row["id"],
             "image": {"name": file_row["image"]["name"], "sha256": file_row["image"]["sha256"]},
             "caption": {"name": file_row["caption"]["name"], "sha256": file_row["caption"]["sha256"]},
@@ -82,10 +102,14 @@ def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
             "adult_presentation": "observed-unambiguous-adult", "clothing": "observed-opaque-intact",
             "real_person_likeness": "no-observed-concern", "resemblance": "observed-unresolved",
             "image_defects": "no-observed-blocking-defect", "caption_accuracy": "observed-caption-matches-image",
-        })
+        }
+        if cropped:
+            row["transform"] = curation_row.get("transform")
+        rows.append(row)
     review = tmp_path / "review.json"
+    review_schema = experimental.REVIEW_SCHEMA_V2 if cropped else experimental.REVIEW_SCHEMA
     review.write_text(json.dumps({
-        "schema": experimental.REVIEW_SCHEMA, "creator": "creator-001",
+        "schema": review_schema, "creator": "creator-001",
         "purpose": experimental.PURPOSE, "not_promotable": True,
         "reviewer": {"kind": "agent", "id": "fixture-reviewer"},
         "dataset_subject_sha256": lineage.canonical_sha256(subject), "rows": rows,
@@ -95,9 +119,9 @@ def make_real_recipe_plan(tmp_path: Path) -> tuple[dict, Path, Path]:
     plan = experimental.build_experimental_training_plan(
         "creator-001", dataset, review, Path(executor.PLAN_ROOT_NAME) / "fixture", personas_root=production.PERSONAS_ROOT,
         private_root=private, train_module=production,
+        **({} if training_seed is None else {"training_seed": training_seed}),
     )
     return plan, private / executor.PLAN_ROOT_NAME / "fixture" / "experimental-plan.json", private
-
 
 def test_default_prepare_stages_only_train_media_and_never_writes_production_records(tmp_path):
     _plan, plan_path, private = make_real_recipe_plan(tmp_path)
@@ -364,3 +388,108 @@ def test_refuses_mutated_retained_image_before_runner(tmp_path):
     with pytest.raises(executor.ExperimentalExecuteError, match="revalidation"):
         executor.execute_experimental_plan(plan_path, Path("mutated"), private_root=private, dry_run=True, train_module=production)
     assert not (private / "mutated").exists()
+
+
+def _crop_row_image_name(plan: dict, *, row_id: str = "variation-1") -> str:
+    curation_entries = plan["frozen_inputs"]["curation"]["entries"]
+    subject_files = plan["frozen_inputs"]["dataset_subject"]["files"]
+    index = next(i for i, entry in enumerate(curation_entries) if entry["id"] == row_id)
+    return subject_files[index]["image"]["name"]
+
+
+@pytest.mark.parametrize("mode", ["prepare", "dry_run"])
+def test_v2_crop_and_explicit_seed_stage_actual_crop_bytes_and_render_config_seed(tmp_path, mode):
+    plan, plan_path, private = make_real_recipe_plan(tmp_path, cropped=True, training_seed=20260911)
+    dataset = Path(json.loads(plan_path.read_text(encoding="utf-8"))["inputs"]["dataset_locator"])
+    cropped_name = _crop_row_image_name(plan)
+    parent_bytes = (tmp_path / "sources" / "variation-1.png").read_bytes()
+    expected_crop = Image.open(dataset / cropped_name).tobytes()
+    persona_path = production.PERSONAS_ROOT / "creator-001" / "persona.yaml"
+    persona_before = digest(persona_path)
+
+    result = executor.execute_experimental_plan(
+        plan_path, Path(f"crop-and-seed-{mode}"), private_root=private,
+        dry_run=(mode == "dry_run"), train_module=production,
+    )
+
+    assert result["status"] == ("dry-run-complete" if mode == "dry_run" else "prepared")
+    output = private / f"crop-and-seed-{mode}"
+    staged_path = output / "dataset" / cropped_name
+    staged_bytes = Image.open(staged_path).tobytes()
+    assert staged_bytes == expected_crop
+    assert staged_bytes != Image.open(tmp_path / "sources" / "variation-1.png").tobytes()
+    assert staged_path.read_bytes() != parent_bytes
+
+    receipt = json.loads((output / "experimental-execution.json").read_text(encoding="utf-8"))
+    inventory = receipt["staged_train_inventory"]
+    assert len(inventory) == 20
+    dataset_files = list((output / "dataset").iterdir())
+    assert len(dataset_files) == 42
+    assert {path.name for path in dataset_files} - {row["image"]["name"] for row in inventory} - {row["caption"]["name"] for row in inventory} == {"training.json", "_dataset.ready"}
+    assert not list(output.rglob("dataset-approval.json"))
+    assert not list(output.rglob("accepted-checkpoint.json"))
+
+    config = json.loads((output / "dataset" / "training.json").read_text(encoding="utf-8"))
+    assert config["config"]["process"][0]["training_seed"] == 20260911
+    config_hash = hashlib.sha256((output / "dataset" / "training.json").read_bytes()).hexdigest()
+    inventory_doc = json.loads((output / "staging-inventory.json").read_text(encoding="utf-8"))
+    assert inventory_doc["training_config_sha256"] == config_hash
+    manifest = json.loads((output / "runpod-manifest.json").read_text(encoding="utf-8"))
+    assert manifest["experimental_training_config_sha256"] == config_hash
+    assert receipt["manifest_sha256"] == hashlib.sha256((output / "runpod-manifest.json").read_bytes()).hexdigest()
+    assert digest(persona_path) == persona_before
+
+
+def test_crop_mutation_after_plan_compilation_refuses_before_runner_or_dispatch(tmp_path):
+    plan, plan_path, private = make_real_recipe_plan(tmp_path, cropped=True, training_seed=20260911)
+    dataset = Path(json.loads(plan_path.read_text(encoding="utf-8"))["inputs"]["dataset_locator"])
+    cropped_name = _crop_row_image_name(plan)
+    Image.new("RGB", (18, 14), (250, 5, 5)).save(dataset / cropped_name)
+
+    def runner(**_kwargs):
+        raise AssertionError("must not call harness")
+
+    with pytest.raises(executor.ExperimentalExecuteError, match="revalidation refused"):
+        executor.execute_experimental_plan(
+            plan_path, Path("crop-mutated"), private_root=private, execute=True,
+            train_module=production, runner=runner,
+        )
+    assert not (private / "crop-mutated").exists()
+    assert not (private / executor.ADMISSION_ROOT_NAME).exists()
+    assert not (private / "experimental-train-dispatch").exists()
+
+
+def test_source_mutation_after_revalidation_refuses_at_copy_before_runner(tmp_path, monkeypatch):
+    plan, plan_path, private = make_real_recipe_plan(tmp_path, cropped=True, training_seed=20260911)
+    dataset = Path(json.loads(plan_path.read_text(encoding="utf-8"))["inputs"]["dataset_locator"])
+    cropped_name = _crop_row_image_name(plan)
+
+    real_experimental = executor._experimental_module()
+    real_revalidate = real_experimental.revalidate_experimental_plan
+    state = {"calls": 0}
+
+    class Wrapped:
+        def __getattr__(self, item):
+            return getattr(real_experimental, item)
+
+        def revalidate_experimental_plan(self, plan_arg, **kwargs):
+            context = real_revalidate(plan_arg, **kwargs)
+            state["calls"] += 1
+            if state["calls"] == 1:
+                # Mutate only after the real revalidation has already passed once,
+                # so the failure below must come from the staging copy hash check.
+                Image.new("RGB", (18, 14), (7, 8, 9)).save(dataset / cropped_name)
+            return context
+
+    wrapped = Wrapped()
+    monkeypatch.setattr(executor, "_experimental_module", lambda: wrapped)
+
+    def runner(**_kwargs):
+        raise AssertionError("must not call harness")
+
+    with pytest.raises(executor.ExperimentalExecuteError, match="hash no longer matches"):
+        executor.execute_experimental_plan(
+            plan_path, Path("copy-check"), private_root=private, dry_run=True,
+            train_module=production, runner=runner,
+        )
+    assert not (private / "copy-check").exists()

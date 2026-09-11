@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import re
@@ -17,6 +18,17 @@ APPROVAL_SCHEMA = "figment/approval-lineage@1"
 EVALUATION_SCHEMA = "figment/evaluation-inputs@1"
 DATASET_APPROVAL_SCHEMA = "figment/dataset-approval@1"
 SINGLE_SEED_DATASET_SCHEMA = "figment/single-seed-dataset@1"
+# @2 adds one optional crop transform on derivative train rows; @1 stays frozen.
+SINGLE_SEED_DATASET_SCHEMA_V2 = "figment/single-seed-dataset@2"
+SINGLE_SEED_TRANSFORM_KEYS = frozenset({"op", "box", "parent_size", "output_size"})
+SINGLE_SEED_REQUEST_ROW_KEYS = frozenset({
+    "id", "kind", "split", "caption", "variation", "image", "provenance", "transform",
+})
+SINGLE_SEED_REQUEST_SCHEMA_V2 = "figment/single-seed-curation-request@2"
+# @2 decodes only these formats so a disguised TIFF/EPS is refused before load;
+# @1 keeps Pillow's default format detection.
+SINGLE_SEED_V2_FORMATS = ("PNG", "JPEG", "WEBP")
+EXIF_ORIENTATION = 0x0112
 SINGLE_SEED_EVALUATION_SCOPE = "within-identity-diagnostic-not-independent-reference-validation"
 SINGLE_SEED_TRIGGER_RE = re.compile(r"[a-z0-9][a-z0-9_-]{0,63}")
 SINGLE_SEED_ID_RE = re.compile(r"[a-z][a-z0-9-]{0,63}")
@@ -200,10 +212,12 @@ def _single_seed_read_json(path: Path, *, name: str) -> tuple[dict[str, Any], di
     return value, entry
 
 
-def _single_seed_image_entry(path: Path, *, name: str) -> dict[str, Any]:
+def _single_seed_image_entry(
+    path: Path, *, name: str, formats: tuple[str, ...] | None = None,
+) -> dict[str, Any]:
     entry = _single_seed_file_entry(path, name=name, maximum=SINGLE_SEED_MAX_IMAGE_BYTES)
     try:
-        with Image.open(path) as image:
+        with Image.open(path, formats=formats) as image:
             width, height = image.size
             if (width <= 0 or height <= 0 or width > SINGLE_SEED_MAX_DIMENSION
                     or height > SINGLE_SEED_MAX_DIMENSION or width * height > SINGLE_SEED_MAX_PIXELS):
@@ -213,7 +227,7 @@ def _single_seed_image_entry(path: Path, *, name: str) -> dict[str, Any]:
             raise LineageError(f"single-seed retained image changed while inspected: {name}")
     except LineageError:
         raise
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
         raise LineageError(f"cannot inspect single-seed retained image: {name}") from exc
     return entry
 
@@ -241,6 +255,136 @@ def _single_seed_caption_text(path: Path, *, name: str) -> str:
         raise LineageError(f"cannot read single-seed caption: {name}") from exc
 
 
+def _single_seed_int_list(value: Any, length: int) -> bool:
+    return (isinstance(value, list) and len(value) == length
+            and all(not isinstance(item, bool) and isinstance(item, int) for item in value))
+
+
+def single_seed_crop_box(box: Any, width: int, height: int) -> tuple[int, int, int, int]:
+    """Validate a Pillow half-open crop box as a proper subrectangle of its parent.
+
+    Shared by the curation producer so request and record obey one rule.
+    """
+    if not _single_seed_int_list(box, 4):
+        raise LineageError("single-seed crop transform is malformed: box must be four integers")
+    left, top, right, bottom = box
+    if not (0 <= left < right <= width and 0 <= top < bottom <= height):
+        raise LineageError("single-seed crop box must be a positive proper subrectangle within parent bounds")
+    if (left, top, right, bottom) == (0, 0, width, height):
+        # A full-frame "crop" would be an unmarked original masquerading as a transform.
+        raise LineageError("single-seed crop box must be a proper subrectangle, not the full parent frame")
+    return left, top, right, bottom
+
+
+def _single_seed_decode(path: Path, entry: dict[str, Any]) -> Image.Image:
+    """Decode exactly the bytes whose hash is already bound, under the decoded limits."""
+    name = entry["name"]
+    try:
+        if (_single_seed_is_reparse(path) or not path.is_file()
+                or not 0 < path.stat().st_size <= SINGLE_SEED_MAX_IMAGE_BYTES):
+            raise LineageError(f"single-seed pixel input is missing, linked, or oversized: {name}")
+        with path.open("rb") as handle:
+            raw = handle.read(SINGLE_SEED_MAX_IMAGE_BYTES + 1)
+        if len(raw) != entry["bytes"] or hashlib.sha256(raw).hexdigest() != entry["sha256"]:
+            raise LineageError(f"single-seed pixel input changed after hashing: {name}")
+        image = Image.open(io.BytesIO(raw), formats=SINGLE_SEED_V2_FORMATS)
+        width, height = image.size
+        if (width <= 0 or height <= 0 or width > SINGLE_SEED_MAX_DIMENSION
+                or height > SINGLE_SEED_MAX_DIMENSION or width * height > SINGLE_SEED_MAX_PIXELS):
+            raise LineageError(f"single-seed pixel input exceeds decoded limits: {name}")
+        image.load()
+        return image
+    except LineageError:
+        raise
+    except (OSError, ValueError, Image.DecompressionBombError) as exc:
+        raise LineageError(f"cannot decode single-seed pixel input: {name}") from exc
+
+
+def _single_seed_verify_train_pixels(
+    dataset_dir: Path, parent_entry: dict[str, Any], output_entry: dict[str, Any], transform: dict[str, Any] | None,
+) -> None:
+    """Prove one trainer image is its retained parent, converted to RGB, plus any declared crop."""
+    parent = _single_seed_decode(dataset_dir / parent_entry["name"], parent_entry)
+    expected = parent.convert("RGB")
+    if transform is not None:
+        # The builder never applies EXIF rotation, so a box is only meaningful
+        # in the stored pixel grid when the parent declares no rotation.
+        if parent.getexif().get(EXIF_ORIENTATION) not in (None, 1):
+            raise LineageError("single-seed crop parent carries a non-identity EXIF orientation")
+        width, height = parent.size
+        left, top, right, bottom = single_seed_crop_box(transform["box"], width, height)
+        if transform["parent_size"] != [width, height] or transform["output_size"] != [right - left, bottom - top]:
+            raise LineageError("single-seed crop transform sizes do not match its parent and box")
+        expected = expected.crop((left, top, right, bottom))
+    output = _single_seed_decode(dataset_dir / output_entry["name"], output_entry)
+    if output.mode != "RGB" or output.size != expected.size or output.tobytes() != expected.tobytes():
+        raise LineageError(
+            f"single-seed trainer pixels are not the retained parent plus declared transform: {output_entry['name']}"
+        )
+
+
+def _single_seed_strict_equal(left: Any, right: Any) -> bool:
+    """JSON equality that never lets a bool, int, or float stand in for another."""
+    if type(left) is not type(right):
+        return False
+    if isinstance(left, dict):
+        return left.keys() == right.keys() and all(_single_seed_strict_equal(left[key], right[key]) for key in left)
+    if isinstance(left, list):
+        return len(left) == len(right) and all(_single_seed_strict_equal(a, b) for a, b in zip(left, right))
+    return left == right
+
+
+def _single_seed_filename_matches(requested: Any, recorded: Any) -> bool:
+    # The producer records the resolved staged filename, so only the platform's
+    # own case normalization may separate it from the requested spelling.
+    return (isinstance(requested, str) and isinstance(recorded, str) and bool(requested)
+            and Path(requested).name == requested and Path(recorded).name == recorded
+            and os.path.normcase(requested) == os.path.normcase(recorded))
+
+
+def _single_seed_verify_request(dataset_dir: Path, record: dict[str, Any], request_entry: dict[str, Any]) -> None:
+    """Bind the retained @2 request's content, not only its hash, to the record it produced."""
+    request, parsed_entry = _single_seed_read_json(dataset_dir / "curation-request.json", name="curation-request.json")
+    if parsed_entry != request_entry:
+        raise LineageError("single-seed curation request changed while parsed")
+    seed = record["canonical_seed"]
+    requested_seed = request.get("canonical_seed")
+    rows = record["entries"]
+    requested_rows = request.get("entries")
+    if (request.get("schema") != SINGLE_SEED_REQUEST_SCHEMA_V2
+            or not _single_seed_strict_equal(request.get("creator"), record["creator"])
+            or not _single_seed_strict_equal(request.get("trigger"), record["trigger"])
+            or not isinstance(requested_seed, dict)
+            or not _single_seed_strict_equal(requested_seed.get("path"), seed["path"])
+            or not _single_seed_strict_equal(requested_seed.get("sha256"), seed["sha256"])
+            or not isinstance(requested_rows, list) or len(requested_rows) != len(rows)):
+        raise LineageError("single-seed @2 request does not match its curation record")
+    for requested, row in zip(requested_rows, rows):
+        if (not isinstance(requested, dict)
+                or not set(requested) <= {"id", "kind", "split", "caption", "variation", "image", "provenance", "transform"}):
+            raise LineageError("single-seed @2 request row contains an unknown key")
+        if not all(
+                _single_seed_strict_equal(requested.get(key), row[key])
+                for key in ("id", "kind", "split", "caption", "variation")):
+            raise LineageError("single-seed @2 request rows do not match curation entries in order")
+        if ("transform" in requested) != ("transform" in row):
+            raise LineageError("single-seed @2 request and record disagree on transform presence")
+        if "transform" in requested:
+            declared = requested["transform"]
+            if (not isinstance(declared, dict) or set(declared) != {"op", "box"}
+                    or not _single_seed_strict_equal(declared["op"], "crop")
+                    or not _single_seed_int_list(declared["box"], 4)
+                    or not _single_seed_strict_equal(declared["op"], row["transform"]["op"])
+                    or not _single_seed_strict_equal(declared["box"], row["transform"]["box"])):
+                raise LineageError("single-seed @2 request transform is malformed or differs from its record")
+        if row["kind"] == "seed":
+            if "image" in requested or "provenance" in requested:
+                raise LineageError("single-seed @2 request seed row names a staged file")
+        elif (not _single_seed_filename_matches(requested.get("image"), row["source"]["logical_path"])
+                or not _single_seed_filename_matches(requested.get("provenance"), row["provenance"].get("logical_path"))):
+            raise LineageError("single-seed @2 request filenames do not match recorded source or provenance")
+
+
 def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[str, Any]]) -> dict[str, Any] | None:
     """Return immutable single-seed evidence when this is a curated dataset.
 
@@ -253,8 +397,10 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
     if not record_path.exists():
         return None
     record, record_entry = _single_seed_read_json(record_path, name=record_path.name)
-    if not isinstance(record, dict) or record.get("schema") != SINGLE_SEED_DATASET_SCHEMA:
+    if not isinstance(record, dict) or record.get("schema") not in (
+            SINGLE_SEED_DATASET_SCHEMA, SINGLE_SEED_DATASET_SCHEMA_V2):
         raise LineageError("single-seed curation record has the wrong schema")
+    transforms_allowed = record["schema"] == SINGLE_SEED_DATASET_SCHEMA_V2
     if record.get("creator") != "creator-001":
         raise LineageError("single-seed curation record has the wrong creator")
     seed = record.get("canonical_seed")
@@ -303,6 +449,7 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
         raise LineageError("single-seed curation request snapshot is not bound")
     seen_ids: set[str] = set()
     seen_source_hashes: dict[str, str] = {}
+    parent_hashes: set[str] = set()
     expected_snapshot_names = {"curation-request.json"}
     has_seed = False
     derivative_train_rows = 0
@@ -315,6 +462,19 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
         kind, split, source = row.get("kind"), row.get("split"), row.get("source")
         if kind not in ("seed", "derivative") or split not in ("train", "eval") or not isinstance(source, dict):
             raise LineageError("single-seed curation entries have invalid kind, split, or source")
+        transform = row.get("transform")
+        if "transform" in row:
+            # @1 never wrote this key; refusing it keeps an injected crop from
+            # being silently ignored by the frozen generation.
+            if not transforms_allowed:
+                raise LineageError("single-seed @1 curation rows must not carry a transform")
+            if kind != "derivative" or split != "train":
+                raise LineageError("single-seed transform is allowed only on derivative train rows")
+            if (not isinstance(transform, dict) or set(transform) != SINGLE_SEED_TRANSFORM_KEYS
+                    or transform.get("op") != "crop" or not _single_seed_int_list(transform.get("box"), 4)
+                    or not _single_seed_int_list(transform.get("parent_size"), 2)
+                    or not _single_seed_int_list(transform.get("output_size"), 2)):
+                raise LineageError("single-seed crop transform is malformed")
         caption = row.get("caption")
         variation = row.get("variation")
         if (not isinstance(caption, str) or not caption.startswith(trigger + " ")
@@ -342,7 +502,9 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
                 or found is None or found["sha256"] != snapshot_hash or found["bytes"] != source_bytes):
             raise LineageError("single-seed curation source snapshot is not bound")
         expected_snapshot_names.add(snapshot)
-        image_entry = _single_seed_image_entry(dataset_dir / snapshot, name=snapshot)
+        image_entry = _single_seed_image_entry(
+            dataset_dir / snapshot, name=snapshot, formats=SINGLE_SEED_V2_FORMATS if transforms_allowed else None,
+        )
         if image_entry != found:
             raise LineageError("single-seed retained image changed while inspected")
         if kind == "seed":
@@ -395,6 +557,12 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
                 raise LineageError("single-seed derivative provenance is not an eligible first-generation g01 output")
             if split == "train":
                 derivative_train_rows += 1
+        if transforms_allowed:
+            # Parent groups are keyed by bytes, never names: each parent occurs
+            # once across every split, so a crop cannot duplicate its own source.
+            if source_hash in parent_hashes:
+                raise LineageError("single-seed @2 curation repeats a parent source hash")
+            parent_hashes.add(source_hash)
         materialization = row.get("materialization")
         if split == "train":
             curated_train_rows.append(row)
@@ -408,10 +576,16 @@ def _single_seed_curation_subject(dataset_dir: Path, dataset_entries: list[dict[
                         dataset_dir / expected["caption"]["name"], name=expected["caption"]["name"],
                     ) != caption + "\n"):
                 raise LineageError("single-seed curation does not bind train entry order to dataset outputs")
+            if transforms_allowed:
+                _single_seed_verify_train_pixels(dataset_dir, found, expected["image"], transform)
         elif materialization is not None:
             raise LineageError("single-seed eval entry must not be materialized as trainer media")
     if not has_seed or derivative_train_rows < 1 or len(curated_train_rows) != len(dataset_entries):
         raise LineageError("single-seed curation lacks the required train seed, derivative, or exact output mapping")
+    if transforms_allowed:
+        _single_seed_verify_request(
+            dataset_dir, record, next(item for item in snapshots if item["name"] == "curation-request.json"),
+        )
     actual_curation_names = {
         path.name for path in dataset_dir.iterdir() if path.name.startswith("curation-")
     }
