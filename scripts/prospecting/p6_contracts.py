@@ -209,7 +209,10 @@ def validate_runtime_contracts() -> tuple[str, ...]:
         "stager_stage": (SshStager.stage, ("self", "path", "host", "timeout")),
         "stager_cleanup": (SshStager.cleanup, ("self", "host", "remote", "timeout")),
         "attach_gmail": (attach_gmail, ("executor", "backend")),
-        "attach_campaigner": (attach_campaigner, ("executor", "backend", "persist_inbound", "inject", "now")),
+        "attach_campaigner": (
+            attach_campaigner,
+            ("executor", "backend", "persist_inbound", "inject", "now", "clock"),
+        ),
         "linearized_draft": (execute_linearized_draft, ("context", "delivery_id")),
         "gmail_draft": (execute_gmail_draft, ("connection", "gmail", "revision_id", "contact_id", "mailbox_id")),
     }

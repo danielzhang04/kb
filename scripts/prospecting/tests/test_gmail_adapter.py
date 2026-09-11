@@ -25,6 +25,7 @@ from scripts.prospecting.gmail_adapter import (
     deterministic_message_id,
 )
 from scripts.prospecting.store import ExecRequest, insert_exec_request, open_store
+from scripts.prospecting import store as store_module
 from scripts.prospecting.tests.synthetic_fixtures import legacy_fixture
 
 
@@ -233,6 +234,10 @@ def test_attached_gmail_adapter_processes_registered_t0_operations(monkeypatch, 
 
 def test_attached_gmail_adapter_leaves_gmail_send_unregistered(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setenv("KB_PROSPECTING_NO_NETWORK", "1")
+    # Legacy adapter-registration guard predates the P16 editorial-readiness
+    # gate; this narrow per-test patch exercises the no-adapter rejection
+    # path only and does not exercise or assert P16 revision-readiness.
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
     connection = open_store(tmp_path / "gmail-send-unregistered.sqlite")
     _seed_send_graph(connection)
     request = _send_request("req_0000000000000005")

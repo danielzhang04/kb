@@ -8,6 +8,7 @@ from pathlib import Path
 
 from scripts.prospecting.campaigner.fake_gmail import ArrivalPoint, FakeGmail
 from scripts.prospecting.executor import Executor
+from scripts.prospecting import executor_campaigner
 from scripts.prospecting.executor_campaigner import build_live_service
 from scripts.prospecting.gate import manifest_path, validate_files
 from scripts.prospecting import store
@@ -137,6 +138,10 @@ def _ten_touch_store() -> sqlite3.Connection:
 
 def test_ten_touch_live_shaped_fake_run(record_property, monkeypatch) -> None:
     monkeypatch.setattr('scripts.prospecting.executor_campaigner.ZoneInfo', lambda _name: timezone.utc)
+    # Legacy P4 fake-gmail draft cadence predates the P16 editorial-readiness
+    # gate; this narrow per-test patch exercises T0 draft/threading
+    # mechanics only and does not exercise or assert P16 revision-readiness.
+    monkeypatch.setattr(executor_campaigner, '_revision_ready', lambda *_args: True)
     connection, gmail = _ten_touch_store(), FakeGmail()
     now = lambda: '2026-09-03T13:00:00+00:00'
     executor = Executor(connection)

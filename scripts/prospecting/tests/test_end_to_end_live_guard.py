@@ -9,7 +9,9 @@ from scripts.prospecting.approval.followups_t1 import is_p6_send_shape
 from scripts.prospecting.approval.release_t1 import attach_t1_send, queue_due_t1
 from scripts.prospecting.campaigner.release import ReleaseResult
 from scripts.prospecting.executor import Executor
+from scripts.prospecting import executor_campaigner
 from scripts.prospecting.executor_campaigner import build_live_service
+from scripts.prospecting import store as store_module
 from scripts.prospecting.tests.p6_support import SendFakeGmail, migrated_t1_store
 from scripts.prospecting.tests.synthetic_fixtures import legacy_fixture
 
@@ -44,6 +46,11 @@ def test_higher_tier_paths_are_inert(tmp_path) -> None:
 
 
 def test_t1_d0_send_and_followup_draft_are_idempotent(tmp_path, monkeypatch) -> None:
+    # Legacy T1 send/draft mechanics predate the P16 editorial-readiness
+    # gate; this narrow per-test patch exercises idempotent send/draft
+    # behavior only and does not exercise or assert P16 revision-readiness.
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
+    monkeypatch.setattr(executor_campaigner, "_revision_ready", lambda *_args: True)
     fixture = migrated_t1_store(tmp_path / "live-flow.sqlite")
     db, gmail = fixture.connection, SendFakeGmail()
     executor = Executor(db)
@@ -85,7 +92,11 @@ def test_t1_d0_send_and_followup_draft_are_idempotent(tmp_path, monkeypatch) -> 
     ).fetchone()[0] == 1
 
 
-def test_t1_google_warning_in_global_mailbox_stops_send(tmp_path) -> None:
+def test_t1_google_warning_in_global_mailbox_stops_send(tmp_path, monkeypatch) -> None:
+    # Legacy T1 breaker mechanics predate the P16 editorial-readiness gate;
+    # this narrow per-test patch exercises the breaker-stops-send behavior
+    # only and does not exercise or assert P16 revision-readiness itself.
+    monkeypatch.setattr(store_module, "_require_revision_ready", lambda *_args: None)
     fixture = migrated_t1_store(tmp_path / "global-warning.sqlite")
     db, gmail = fixture.connection, SendFakeGmail()
     gmail.inject_inbox_message(

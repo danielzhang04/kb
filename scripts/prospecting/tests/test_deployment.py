@@ -25,6 +25,7 @@ from scripts.prospecting.p6_contracts import (
     verify_prerequisites,
 )
 from scripts.prospecting.store import open_store
+from scripts.prospecting import executor_campaigner
 from scripts.prospecting.tests.p6_support import (
     LocalCampaignerTransport,
     build_p6_refire_store,
@@ -529,6 +530,10 @@ def test_scheduler_refire_is_a_noop(tmp_path: Path, record_property, monkeypatch
 
 def test_scheduler_wake_does_not_catch_up_past_caps(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setattr("scripts.prospecting.executor_campaigner.ZoneInfo", lambda _name: timezone.utc)
+    # Legacy scheduler-wake cadence predates the P16 editorial-readiness
+    # gate; this narrow per-test patch exercises cap-bounded draft
+    # mechanics only and does not exercise or assert P16 revision-readiness.
+    monkeypatch.setattr(executor_campaigner, "_revision_ready", lambda *_args: True)
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
     fixture = build_p6_refire_store(tmp_path)
     fixture.connection.execute("UPDATE campaign SET daily_cap=1,hourly_cap=1")
