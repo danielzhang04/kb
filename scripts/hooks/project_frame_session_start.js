@@ -60,25 +60,17 @@ function runPython(args, cwd, timeoutMs) {
   return null; // neither interpreter is on PATH
 }
 
-/** First non-blank line of a block of text, trimmed. Null when there isn't one. */
-function firstNonEmptyLine(text) {
-  if (typeof text !== "string") return null;
-  const line = text
-    .split(/\r?\n/)
-    .map((l) => l.trim())
-    .find((l) => l.length > 0);
-  return line || null;
-}
-
 /**
  * "The first non-empty line of stdout+stderr, or 'unavailable'." Never throws, never blocks past
  * `timeoutMs` (spawnSync enforces it), and never surfaces a raw error object into the payload --
- * only text the preamble itself printed, or the fixed fallback.
+ * only text the preamble itself printed, or the fixed fallback. Reuses lib/project_frame.js's
+ * exported `firstLine` (already used there for a STATE.md's `## Now` line) instead of carrying a
+ * near-duplicate trim-and-find-first-non-blank-line helper here.
  */
 function preambleVerdict(root) {
   const result = runPython(["scripts/preamble.py"], root, PREAMBLE_TIMEOUT_MS);
   const text = result ? (result.stdout || "") + (result.stderr || "") : "";
-  return firstNonEmptyLine(text) || "unavailable";
+  return pf.firstLine(text) || "unavailable";
 }
 
 /**
@@ -143,6 +135,11 @@ function main() {
 
   const env = process.env;
   const root = env.KB_ROOT || path.resolve(__dirname, "..", "..");
+  // `cwd` here is only the working-tree root passed to writeGoverningSections/frame() for git/file
+  // reads (falls back to `root` when the harness sends none). `pf.activeProject` below reads
+  // `event.cwd` directly and strictly -- it does NOT fall back to this `cwd` or to `root` -- so a
+  // SessionStart event with no `cwd` at all resolves no project and this hook emits `rollup` by
+  // design, not by accident.
   const cwd = typeof event.cwd === "string" && event.cwd ? event.cwd : root;
 
   // No session id -> nothing this hook can usefully do (same posture as the INERT

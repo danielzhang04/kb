@@ -273,6 +273,7 @@ function frame(opts) {
 module.exports = {
   MODE_BUDGETS,
   activeProject,
+  firstLine,
   frame,
   listProjects,
   loadListFor,

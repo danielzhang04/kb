@@ -19,6 +19,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 HOOK = REPO / "scripts" / "hooks" / "project_frame_session_start.js"
+STORE_LIB = REPO / "scripts" / "hooks" / "lib" / "context_store.js"
 
 GUARD_MARKER = "[kb re-grounding]"
 
@@ -100,6 +101,40 @@ def run_hook(event, kb_root, store_dir, extra_env=None, raw=None):
     }
     payload = raw if raw is not None else json.dumps(event).encode()
     return subprocess.run(["node", str(HOOK)], input=payload, capture_output=True, env=env)
+
+
+def seed_store(store_dir, session_id, sections):
+    """Write a session's store file directly via lib/context_store.js's own `writeStore`, exactly
+    the way the PreCompact/PostToolUse siblings would have before this hook ever runs -- the
+    fixture for the no-clobber test below. `sections` is a list of {"heading", "body"} dicts."""
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    body = (
+        f'const store = require({json.dumps(str(STORE_LIB))}); '
+        f'store.writeStore({json.dumps(session_id)}, {json.dumps(sections)});'
+    )
+    r = subprocess.run(["node", "-e", body], capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr
+
+
+def read_store_sections(store_dir, session_id):
+    """The session store's sections, read back through lib/context_store.js's own `readStore` --
+    parses the file exactly the way every real consumer (U7 regrounding, U9 subagent load) does,
+    rather than re-parsing the markdown by hand in this test."""
+    env = {**os.environ, "KB_CONTEXT_STORE_DIR": str(store_dir)}
+    body = (
+        f'const store = require({json.dumps(str(STORE_LIB))}); '
+        f'process.stdout.write(JSON.stringify(store.readStore({json.dumps(session_id)})));'
+    )
+    r = subprocess.run(["node", "-e", body], capture_output=True, env=env)
+    assert r.returncode == 0, r.stderr
+    return json.loads(r.stdout.decode("utf-8"))
+
+
+def section_body(sections, heading):
+    for section in sections:
+        if section.get("heading") == heading:
+            return section.get("body")
+    return None
 
 
 def test_full_payload_on_startup(tmp_path):
@@ -309,3 +344,47 @@ def test_session_start_completes_within_five_seconds(tmp_path):
     elapsed = time.monotonic() - started
     assert r.returncode == 0
     assert elapsed < 5.0, elapsed
+
+
+def test_seeded_resumed_summary_and_recent_activity_survive_the_write(tmp_path):
+    """The read-modify-write no-clobber guarantee, end to end: this hook owns only
+    '## North star', '## Invariants', '## Current gate'. A '## Resumed-session summary' (written
+    by the PreCompact sibling) and a '## Recent activity' (written by the PostToolUse activity
+    tracker) that already exist in the session's store BEFORE this hook runs must come out
+    byte-identical to what was seeded -- and the three governing sections must land in that SAME
+    file alongside them, not in a separate write that dropped what was already there."""
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    session_id = "s1"
+
+    resumed_body = "Prior turn resumed context, verbatim, byte for byte."
+    activity_body = "- did X\n- did Y\n- did Z"
+    seed_store(
+        store_dir,
+        session_id,
+        [
+            {"heading": "Resumed-session summary", "body": resumed_body},
+            {"heading": "Recent activity", "body": activity_body},
+        ],
+    )
+
+    r = run_hook(
+        {
+            "hook_event_name": "SessionStart",
+            "source": "startup",
+            "session_id": session_id,
+            "cwd": str(repo),
+        },
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+
+    sections = read_store_sections(store_dir, session_id)
+    # (a) the two pre-existing sections this hook does not own: byte-identical to what was seeded.
+    assert section_body(sections, "Resumed-session summary") == resumed_body
+    assert section_body(sections, "Recent activity") == activity_body
+    # (b) the three governing sections this hook DOES own: freshly written, in the same file.
+    assert section_body(sections, "North star") == "Deliver leads."
+    assert section_body(sections, "Invariants") == "Never fabricate."
+    assert section_body(sections, "Current gate") == "Review."
