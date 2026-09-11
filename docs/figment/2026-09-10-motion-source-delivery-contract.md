@@ -1,6 +1,6 @@
 # Accepted motion source assignment and later delivery evidence
 
-Status: motion-source adapter and hub projection implemented and locally tested September10; independent review pending. Delivery transformation remains design only. Video terminal authority is implemented and locally tested in `2ef9f36a`, pending independent review. This document grants no new acceptance, transformation, publication or platform permission.
+Status (2026-09-11): the motion-source adapter, hub projection, and video terminal authority (`2ef9f36a`) are part of the bounded repair diff reviewed and found READY; see the [repair checkpoint review](2026-09-11-repair-checkpoint-review.md) for current test evidence and reviewer scope. Delivery transformation remains design only. This document grants no new acceptance, transformation, publication or platform permission.
 
 ## Smallest next slice
 
@@ -32,7 +32,7 @@ For an initial delivery contract, allow observation reuse only for the identical
 | Native source assigned to vertical reel | Display source-only status; no fit, crop, retime, audio or publication claim. |
 | Malformed motion assignment beside valid brief | Keep brief visible, assignment unavailable. |
 
-After the producer and reader change, run real producer/consumer positive and stale-source negatives, the content and hub suites, typecheck/build, then independent integration/security review. Existing video independent review is still outstanding. Do not relabel the new slice READY based on this design critique.
+After the producer and reader change, run real producer/consumer positive and stale-source negatives, the content and hub suites, typecheck/build, then independent integration/security review. The existing video independent review has since completed as part of the bounded repair diff (`ec58decf`); see the [repair checkpoint review](2026-09-11-repair-checkpoint-review.md). Do not relabel the new slice READY based on this design critique.
 
 ## Adversarial design feedback
 
@@ -43,4 +43,4 @@ Evidence: MAIN/_private/figment-claude-sonnet-delivery-contract-generic-20260910
 
 ## Local implementation evidence
 
-The existing content adapter now accepts v2 motion-source rulings, invokes the sole video validator, joins the underlying approved still against brief identity, and rechecks current authority before writing a v2 source-only assignment. The collector/UI accept the explicit new state while preserving v1 still behavior. Content56PASS before final integration correction; final10motion testsPASS; hub44PASS/typecheck/buildPASS. Exact synthetic producer records passed the real collector. The real CLI join first exposed a too-small duplicate content-parser budget on the full81-frame approval subject; delegating bounded parsing to the sole video validator fixed it. See [whole-plan progress](2026-09-10-whole-plan-progress.md). This remains locally verified, not independently READY or production media acceptance.
+The existing content adapter now accepts v2 motion-source rulings, invokes the sole video validator, joins the underlying approved still against brief identity, and rechecks current authority before writing a v2 source-only assignment. The collector/UI accept the explicit new state while preserving v1 still behavior. Content56PASS before final integration correction; final10motion testsPASS; hub44PASS/typecheck/buildPASS. Exact synthetic producer records passed the real collector. The real CLI join first exposed a too-small duplicate content-parser budget on the full81-frame approval subject; delegating bounded parsing to the sole video validator fixed it. See [whole-plan progress](2026-09-10-whole-plan-progress.md). This evidence is historical (2026-09-10); see the [repair checkpoint review](2026-09-11-repair-checkpoint-review.md) for current review status. Neither confirms production media acceptance.

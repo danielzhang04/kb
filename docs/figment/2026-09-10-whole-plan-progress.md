@@ -1,40 +1,55 @@
-# Figment whole-plan progress - 2026-09-10
+# Figment whole-plan progress
 
-**Superseding checkpoint (2026-09-11):** Five independent reviews completed; confirmed repairs are written. See [review triage](2026-09-11-independent-review-triage.md) and OPS/handoffs/2026-09-11-figment-review-checkpoint.md for current tests and exact next steps. Historical counts and pending-packet wording below describe the September10 checkpoint, not current worker status. Final independent repair review and full current video suite remain before technical readiness.
+**Current status (2026-09-11):** the bounded repair diff `150978d8..ec58decf` (Studio,
+video terminal authority, motion-source binding, HTTP surface) is reviewed READY, with
+the full video suite passing (187 passed in 392.98s) — see the
+[repair checkpoint review](2026-09-11-repair-checkpoint-review.md). The Studio
+stored-plan inventory/scope server slice is independently READY and committed locally at
+`749abdca` — see the [inventory server review](2026-09-11-studio-inventory-server-review.md).
+The Studio UI (`StudioGenPlans`) has 41 component tests, 33 workspace tests, a real
+planner/API/UI join pass, and typecheck/build all passing, reviewed READY — see the
+[Studio resume UI review](2026-09-11-studio-resume-ui-review.md). This bounded slice is
+complete; full Studio input/launch/review remains incomplete. The identity/coverage
+diagnostic (V4, ten clothed images) completed with independently verified pod teardown
+(estimated $0.247567; arc $30.877297/$50): LoRA shows stronger resemblance cues to `g01`
+than the no-LoRA control, but every output still misses shoulders-up framing and facial
+proportions still differ — see the [held-out diagnostic review](2026-09-11-heldout-diagnostic-review.md).
+The face-coverage/drift audit on that same set has since run (33/33 records, two
+independent Opus visual reviews): it supports further investigation but rejects blanket
+crop-based training, pending full-image inspection of a low-concern shortlist — see the
+[face-coverage review](2026-09-11-face-coverage-review.md). The creator still has no selected checkpoint, accepted still, or accepted video. Earlier
+counts below the workstream table describe prior checkpoints and are superseded where
+they conflict with this paragraph.
 
-The core CLI infrastructure is substantially built. There is not yet a complete usable production Studio or an accepted creator media pipeline. Components exist across mandate stages1-7; this does not mean those stages have all met their quality goals. Posting/measurement and optimization (stages8-9) remain deferred by the user's later instruction.
+The core CLI infrastructure is substantially built. There is not yet a complete usable
+production Studio or an accepted creator media pipeline. Components exist across
+mandate stages 1-7; this does not mean those stages have all met their quality goals.
+Posting/measurement and optimization (stages 8-9) remain deferred by the user's later
+instruction.
 
 | Workstream | Built and verified | Remaining |
 | --- | --- | --- |
 | Research book | Six chapters plus source, package, capability and experiment audits | Continuous refresh and production-proven recommendations |
-| Identity/dataset | Canonical persona/provenance, curation and materialization;20train/2eval research rows | Desired early20s appearance and consistent identity across varied views; balanced close-face coverage |
-| Training/tester | Real1250-step training, five checkpoints and five tester outputs; receipts and teardown verified | All five outputs were culled; no selected checkpoint |
+| Identity/dataset | Canonical persona/provenance, curation and materialization; 20 train/2 eval research rows; V4 ten-image diagnostic with verified teardown; face-coverage/drift audit run and reviewed | Full-image inspection of the audit's low-concern shortlist; desired early-20s appearance, shoulders-up framing, and consistent identity across varied views |
+| Training/tester | Real 1250-step training, five checkpoints, five tester outputs, all culled; V4 diagnostic shows a visible LoRA effect but no proportion match | No selected checkpoint; framing and proportion gap unresolved |
 | Still generation | Planner, base/detail/upscale paths, grading/rulings and current-source approval checks; real fixture joins | Accepted held-out still set meeting identity/register/texture requirements |
-| Video | Native generation/assembly/extraction; candidate preparation independently reviewed; terminal rulings/validator locally tested | Independent terminal-authority review; actual accepted full-playback video; production temporal/detail passes |
-| Content system | Compiled research briefs, approved-still assignments and read views; motion-source assignment now locally tested | Independent motion integration review; finished-video rendering/delivery QA; non-persona assets; ongoing research loop |
-| Studio | Lifecycle/research/QA views, offline preview and protected generation-plan preparation | Input editing, governed launch/review controls, authenticated deployment and complete operator journey |
+| Video | Native generation/assembly/extraction; repair diff READY with full 187-test suite passing | Actual accepted full-playback video; production temporal/detail passes |
+| Content system | Compiled research briefs, approved-still assignments, motion-source assignment and producer/collector join reviewed complete through the `ec58decf` repair checkpoint | Finished-video rendering/delivery QA; non-persona assets; ongoing research loop |
+| Studio | Lifecycle/research/QA views, offline preview, stored-plan inventory/scope server (READY), `StudioGenPlans` UI (component/workspace tests, real planner/API/UI join, typecheck/build all pass, READY) | Input editing; governed launch/review controls; authenticated deployment; complete operator journey |
 | Accounts/measurement | Deferred | Official integrations, scheduling, publication, analytics and optimization; no current work scheduled |
-
-## Test evidence, without adding overlapping suites
-
-- Studio preparation:137PASS, typecheck/buildPASS, including actual default Windows process executor, fixed planner arguments, fresh/stale consumer behavior, storage/idempotency/auth/UI cases.
-- Video:177full-suitePASS before the final bounded terminal-claim read fix, then5targetedPASS after it, including real producer/CLI integration. The independent source review is pending.
-- Content:56PASS after the first motion adapter change (47previous cases plus9new unit cases). The final motion-specific suite then passed10tests, including real accepted-gen -> candidate -> local movie -> video rulings -> content CLI, followed by changed-movie refusal. These counts overlap.
-- Latest hub:44PASS, typecheck/buildPASS. The exact synthetic producer brief/assignment bytes also passed the real collector as `recorded-source-snapshot`.
-- Earlier content/still, candidate/preparation, gen-freshness and assignment-view slices have independent reviews. Current Studio/video-terminal/motion slices do not yet have completed independent code reviews. No deployed end-to-end browser journey or production quality acceptance is claimed.
-
-## Work continued in this checkpoint
-
-The existing content adapter now consumes the sole accepted-video validator, cross-checks its approved still against the brief persona/reference, and writes explicit v2 source-material-only assignments for motion. The existing collector and UI recognize that version and retain the old still record behavior. Mutation/refusal tests preserve prior outputs. The real producer test caught an adapter bug: the smaller content parser rejected a valid81-frame approval record. The adapter now delegates that record's bounded validation to the sole video authority, preserving its limits.
-
-Evidence: MAIN/_private/figment-motion-binding-root-20260910-v3.xml (56PASS), v6.xml (10PASS), figment-motion-hub-root-20260910-v1.xml (44PASS), and figment-motion-hub-real-20260910-v1/result.json. Failed setup/import/schema attempts are preserved separately; no provider action occurred.
 
 ## Remaining sequence
 
-1. Complete independent Studio/video code review against the two newly prepared immutable packets. Exact-payload approval question is pending; prior denied packets are not retried or replaced.
-2. Independently review the new motion assignment and real producer/collector join. Implement final delivery evidence/rendering only under a separate bounded contract.
-3. Obtain acceptable media through a discriminating identity/appearance experiment. The current all-cull disposition remains authoritative; the two-image alternate seed audition is closed, not a new training set. The private paired checkpoint diagnostic remains separately blocked on exact upload consent.
-4. Build the remaining Studio input/launch/review controls around the existing CLI and authority boundaries, then exercise refusal/resume and the complete operator journey.
-5. Add non-persona asset generation/QA, delivery transformations and research refresh where actual producers/consumers exist. Instagram remains deferred.
+1. The face-coverage/drift audit on the V4 diagnostic set has run and is reviewed; see the
+   [face-coverage review](2026-09-11-face-coverage-review.md). Root inspected the five shortlisted originals. Declared-crop provenance is now
+   being implemented for a controlled experiment; no retrain or promotion decision follows
+   from the audit alone.
+2. Finished-video delivery evidence/rendering only under a separate bounded contract.
+3. The brief text compiler/collector mismatch is fixed and reviewed at `a3d87a8c`;
+   see the [content input contract review](2026-09-11-content-input-contract-review.md).
+   Build the remaining Studio input/launch/review controls around the existing CLI and
+   authority boundaries, then exercise refusal/resume and the complete operator journey.
+4. Add non-persona asset generation/QA, delivery transformations, and research refresh
+   where actual producers/consumers exist. Instagram remains deferred.
 
-Recorded RunPod arc remains$30.629730/$50. Keep-awake was verified armed about22:44UTC with a finite lease through about08:31Eastern September11. A power lease is not evidence of an active model worker.
+Recorded RunPod arc is $30.877297/$50.

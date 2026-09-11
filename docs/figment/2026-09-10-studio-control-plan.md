@@ -156,12 +156,8 @@ Sources: [MANDATE.md:49](../../orgs/figment/MANDATE.md#L49),
 [plan preview:140](../../dashboard/server/figment/planPreview.ts#L140), and
 [content brief compiler:397](../../orgs/figment/pipeline/content/content_brief.py#L397).
 
-## Root verification checkpoint ? 2026-09-10
+## Current status — 2026-09-11
 
-Implemented and locally verified; independent route/security review remains pending. Windows execution now uses an owned Job Object, assigns a waiting wrapper before dispatching the planner, and confirms the entire job empty on every terminal path. Missing job support or failed assignment refuses dispatch. Uncertain termination retains the allocation and latches preparation unavailable. Directory traversal is bounded by entry/depth/byte limits; partial publication markers are preserved, and cleanup finishes before an error response is sent. The UI retains its request key after a failed/lost response until a valid success is decoded (within the mounted Plans view).
+This Studio control (Windows Job Object execution, stale-authority refusal, capacity/marker handling, and UI request-key retry) is part of the bounded repair diff reviewed and found READY; see the [repair checkpoint review](2026-09-11-repair-checkpoint-review.md) for current test evidence and reviewer scope. This does not claim deployment, launch/review controls, or production quality acceptance.
 
-Final affected suite: **137 PASS**, `MAIN/_private/figment-studio-final-20260910-v2.xml`. This covers the actual default Windows executor with a synthetic upstream authority fixture, the real planner/control/fresh-consumer join followed by stale-authority refusal, storage/publication failure cases, process descendants, HTTP boundaries and UI retries. Typecheck and production build passed. No production creator authority or provider call is fabricated.
-
-Preserved RED: the first combined run had136PASS/1FAIL because synthetic training/tester setup ran inside the production 30-second planner timeout. An isolated rerun passed; the test now prepares its synthetic upstream history before invoking the timed planner, matching production's already-existing authority. Production limits are unchanged. Earlier host testing found an orphaned-grandchild false success; the Job Object repair closes it and all14 process tests pass.
-
-Automatic approval review rejected the exact Studio route/test source transfer to Claude. Root completed the local repair; independent transfer consent remains pending. This checkpoint does not claim deployment, launch/review controls or production quality acceptance.
+The design sections above (decision, source findings, prerequisite, durable control contract, and implemented preparation scope) remain the authoritative contract. The "Root verification checkpoint — 2026-09-10" evidence that previously appeared here is superseded and removed; treat it as history from before the 2026-09-11 repair review.
