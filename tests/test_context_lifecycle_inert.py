@@ -9,6 +9,7 @@ context_store.js (never itself a registered command). This file's job shifts fro
 nothing is armed" to "prove exactly the right split holds".
 """
 import json
+import re
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -30,8 +31,25 @@ def _settings():
     return json.loads(SETTINGS.read_text(encoding="utf-8"))
 
 
+def _hook_path_prefix(settings: dict) -> str:
+    """The absolute path prefix the COMMITTED settings use for kb hook commands, read back out of
+    the settings file itself instead of hardcoded here.
+
+    The committed value points at the main checkout, so a hardcoded copy of it failed this whole
+    module in every worktree and on every other machine -- while what these tests actually assert
+    is only that each hook is registered exactly once, under the right event, at whatever single
+    prefix the settings file really uses."""
+    for blocks in settings.get("hooks", {}).values():
+        for block in blocks:
+            for entry in block.get("hooks", []):
+                m = re.match(r'node "(.*)/scripts/hooks/[^"]+"$', entry.get("command", "") or "")
+                if m:
+                    return m.group(1)
+    raise AssertionError("no kb hook command found in .claude/settings.json")
+
+
 def _command_for(path: Path) -> str:
-    return f'node "C:/Users/danie/kb/scripts/hooks/{path.name}"'
+    return f'node "{_hook_path_prefix(_settings())}/scripts/hooks/{path.name}"'
 
 
 def _entries(data, event):

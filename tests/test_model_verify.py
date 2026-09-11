@@ -28,6 +28,23 @@ ROUTING = REPO / "governance" / "model-routing.yaml"
 SESSION = "session-under-test"
 
 
+def _hook_path_prefix(settings: dict) -> str:
+    """The absolute path prefix the COMMITTED settings use for kb hook commands, read back out of
+    the settings file itself instead of hardcoded here.
+
+    The committed value points at the main checkout, so a hardcoded copy of it failed this whole
+    module in every worktree and on every other machine -- while what these tests actually assert
+    is only that each hook is registered exactly once, under the right event, at whatever single
+    prefix the settings file really uses."""
+    for blocks in settings.get("hooks", {}).values():
+        for block in blocks:
+            for entry in block.get("hooks", []):
+                m = re.match(r'node "(.*)/scripts/hooks/[^"]+"$', entry.get("command", "") or "")
+                if m:
+                    return m.group(1)
+    raise AssertionError("no kb hook command found in .claude/settings.json")
+
+
 def audit_file(tmp_path: Path) -> Path:
     return tmp_path / "audit" / "model-audit.jsonl"
 
@@ -486,8 +503,10 @@ def test_the_u9_model_hooks_are_armed_at_the_committed_path():
     settings_text = settings_path.read_text(encoding="utf-8")
     data = json.loads(settings_text)
 
+    prefix = _hook_path_prefix(data)
+
     def cmd(name):
-        return f'node "C:/Users/danie/kb/scripts/hooks/{name}"'
+        return f'node "{prefix}/scripts/hooks/{name}"'
 
     def entries(event):
         out = []
