@@ -624,7 +624,7 @@ The native login worked outside the parent sandbox via OS keyring, but the adapt
 
 ## 2026-09-11 - Model output needs the verifier contract
 
-A live canary and valid output schema did not prove editorial success: three actual factchecks reportedpass but deterministicQArefused invented senderreferenceIDs and extraquestions. Supply exact binding references, body/subjectlimits and askconstraints to model stages; keep validatorsstrict. Realistic synthetic authored senderfacts make a qualitytrial meaningful. Treat an agent prose claim without returned source as no implementation; split large timed-out proposals. Verify exact stagedpaths in sparseworktrees before commit, since gitadd can omit out-of-cone tests.
+A live canary and valid output schema did not prove editorial success: three actual factchecks reportedpass but deterministicQArefused invented senderreferenceIDs and extraquestions. Supply exact binding references, body/subjectlimits and askconstraints to model stages; keep validatorsstrict. Realistic synthetic authored senderfacts make a qualitytrial meaningful. Treat an agent prose claim without returned source as no implementation; split large timed-out proposals. A real P19 failure exposed dynamic source bindings absent from a one-person fixture despite valid provider JSON schema. Next time native schema passes but semantic validation rejects, I will add closed diagnostic categories and a genuine supplemental-history fixture before another real attempt; keep every validator and attempt limit unchanged. Verify exact stagedpaths in sparseworktrees before commit, since gitadd can omit out-of-cone tests.
 
 ### 2026-09-11T06:32:59.647046+00:00 - Review actual patches and distinguish quality from runtime
 
@@ -685,3 +685,13 @@ A fourth adapter can reject a schema even when authentication and three editoria
 work. Bind provider wire schema and strict local schema separately, validate all adapters
 on the same bundle, then check the public pinned entry point and cleanup. Native success
 is execution evidence; an unknown qualification is not positive source support.
+
+## 2026-09-11 - Read-only verification still needs concurrency semantics
+
+A verifier used an ordinary opener that migrated the database; changing to a hand-built
+SQLite URI then misparsed a valid Windows#filename and created a sibling store. Trying
+immutable mode to suppress coordination files introduced a stale-WAL race. Next time I see
+a read-only path wrapping a mutating opener, I will use URI encoding, mode=ro/query_only,
+exact file identity, and ordinary locking; I will test concurrent commits and schema invariants
+separately from optional WAL/SHM coordination. Signal: tests assert zero files and tempt an
+immutable flag on a store whose quiescence is not enforced.

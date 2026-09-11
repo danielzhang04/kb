@@ -194,3 +194,7 @@ subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized Claud
 subscription; billed cost unavailable		gpt-5.6-sol	unverified	authorized Claude-limit fallback; usage unavailable; usd0 placeholder	capture_acceptance_review_122	2026-09-11T22:30:45.066626+00:00	0
 subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized Claude-limit fallback; usage unavailable; usd0 placeholder	full_regression_123	2026-09-11T22:30:45.066626+00:00	0
 subscription; billed cost unavailable		gpt-5.6-luna	unverified	authorized Claude-limit fallback; usage unavailable; usd0 placeholder	accepted_docs_124	2026-09-11T22:30:45.066626+00:00	0
+subscription; billed cost unavailable		gpt-5.6-luna	unverified	authorized fallback; usage unavailable; usd0 placeholder	owned_resource_audit_125	2026-09-11T22:48:37.144352+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	nested_gate_diagnosis_126	2026-09-11T22:48:37.144352+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	pr181_update_127	2026-09-11T22:48:37.144352+00:00	0
+subscription; billed cost unavailable		gpt-5.6-terra	unverified	authorized fallback; usage unavailable; usd0 placeholder	final_verification_docs_128	2026-09-11T22:54:30.847924+00:00	0

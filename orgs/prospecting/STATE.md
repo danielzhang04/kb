@@ -1,19 +1,23 @@
 # Prospecting current state
 
-Updated 2026-09-11T22:30:45.066626+00:00
+Updated 2026-09-11T22:54:30.847924+00:00
 
-Goal active after user resume. Source HEAD97df0409: durable capture/selected/restart flows,
-closed qualification diagnostics, richer synthetic history and accepted new runtime.
-All4 actual adapters and public canary pass new bundle e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814;
-170 combined checks plus36 postpin checks pass. Actual qualification returned unknown outcomes.
-Export verifier120 independently READY122 with37focusedchecks; docs124 and fullsuite123 active.
+Source35ac5517 is published to draftPR181. Recoverable intake/capture/P17/P18/P19/P20,
+selected drafts/source review, restart and exact native runtime are implemented and independently
+reviewed. Acquisition runbook and skill are validated. PII guards passed. Nothing merged/deployed.
 
-Private pilot backed up/migrated P24; P19 first item failed its first attempt before repair.
-Automatic approval review blocked its second native call BEFORE execution because explicit
-private prospect/source-data transfer approval is required. Async user question pending;
-remaining attempt is intact. No approval/source-confirmation/readiness/send decisions.
-Supported browser unavailable; actual visible UI proof remains pending. Independent work continues.
+Whole-project verification:2,082passed,5failed,0errors/0skips in1,245.491s. Two environment-sensitive
+cases passed focused reruns;3recordedP1/P6manifest/gate checks remain human-owned and unresolved.
+No product regression was demonstrated; the fullsuite is not claimedgreen. Accepted focused
+checks:320selected/native,36UI,168acquisition plus37finalverifier,170qualification/native,36postpin.
+Newbundlee07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814 passedall4actual
+adapters andpubliccanary withcompletecleanup. Qualification outcomesunknown, editorialhuman_review.
 
-Draft PR181 body prepared; source/coordination not yet published this phase. Claude quota
-fallback is Codex; return new work to Claude at00:30UTC September12 (20:30 New York).
-See canonical handoff for exact IDs, evidence, worker states and next steps.
+Remaining: explicitapproval totransfer privatepilotprospect/sourcecontext toexistingCodexruntime;
+supportedbrowserforvisibleUIacceptance; humanrecorded-gaterefresh/release review. Realretry was
+blockedbeforeexecution byautomaticapprovalreview; firstP19itemstill1of2attemptsused,0artifacts.
+No confirmations/approvals/readiness/sends. Independent source/testworkcomplete, no active tests.
+
+Claude fallbackpolicy: newworkreturns toClaudeat00:30UTCSeptember12(20:30NewYork) ifworkresumes;
+sourceonlyexistingvCPU preserved. CoordinationPR180 carriescurrenthandoff andledgers.
+Canonicalhandoff: handoffs/2026-09-11-prospecting-infrastructure.md.
