@@ -79,3 +79,8 @@ subscription; billed cost unavailable	2.003873	opus	claude-opus-5	response verif
 subscription; billed cost unavailable	0.187503	sonnet	claude-sonnet-5	response verified; acceptance separate; usd0 accounting placeholder	selected-reversion-test-47	2026-09-11T19:37:10.563674+00:00	0
 subscription; billed cost unavailable	1.8104809999999996	opus	claude-opus-5	response verified; acceptance separate; usd0 accounting placeholder	native-selected-fixture-48	2026-09-11T19:37:10.563674+00:00	0
 subscription; billed cost unavailable	0.6813859999999999	opus	claude-opus-5	response verified; acceptance separate; usd0 accounting placeholder	capture-accessor-review-49	2026-09-11T19:37:10.563674+00:00	0
+subscription; billed cost unavailable	2.6753709999999997	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	selected-review-projection-50	2026-09-11T19:50:24.790563+00:00	0
+subscription; billed cost unavailable	2.027881	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	capture-import-compiler-51	2026-09-11T19:50:24.790563+00:00	0
+subscription; billed cost unavailable	1.3900700000000001	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	native-fixture-repair-52	2026-09-11T19:50:24.790563+00:00	0
+subscription; billed cost unavailable	0.992891	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	import-preconditions-review-53	2026-09-11T19:50:24.790563+00:00	0
+subscription; billed cost unavailable	1.429761	opus	claude-opus-5	response verified; root acceptance separate; usd0 placeholder	capture-compiler-review-55	2026-09-11T19:50:24.790563+00:00	0

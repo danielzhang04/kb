@@ -645,3 +645,14 @@ ancestry walk. Test real controller acceptance/reset separately from directly co
 corruption fixtures. For static import exceptions, match exact file paths and inspect
 both from-import modules and aliases, including relative imports; a basename whitelist
 and alias-only scan each admitted concrete forbidden cases despite passing initial tests.
+
+## 2026-09-11 - Repair loops must preserve the work being repaired
+
+An actual selected-draft trial exposed a controller defect invisible to happy-path stage
+stubs: after a critic repair improved copy, a later factcheck failure caused the next
+Humanizer to receive the original revision and only the last negative result. The draft
+regressed and the same critique recurred. Bound prior candidate and relevant negative
+feedback into the next stage input; current evidence/context remains authority. Keep
+actual deterministic QA distinct from a model-reported pass. Independent review can
+misread units: verify claimed failures against API field names and execution before
+changing correct fixtures.

@@ -1,30 +1,45 @@
-## Latest checkpoint 2026-09-11 19:36 UTC
+## Current checkpoint 2026-09-11T19:50:24.790563+00:00
 
-AcceptedHEAD9a1d0b77: capture accessor43/44 with40tests17.56s and independent49READY.
-Exact receipt/task/hash/run/intake/session metadata, no authority or private repr.
+Goal active, incomplete; user reaffirmed Claude-only grunt work and boss orchestration.
+Accepted sourceHEADbeacefb4 (after9a1d0b77 accessor). Import46 expectedbyte preconditions
+accepted after109tests90.39s and independent53READY. Accessor40tests+49READY accepted.
+Selected binding/P24/P16/ReviewService45+repairs41/47 remain uncommitted,119combined
+selected/legacyreviewtests passed114.59s. No realpilotstore migration or send.
 
-Selected repairs41+test47 and ReviewService45 applied. Core42 rejected before application
-for malformed Python;45 corrected it. Root119 combined selected/review/legacy tests passed
-114.59s. Selected source pending/attested/stale views now use exact displayed revision;
-legacy source mutation blocked for selected binding. Full ranking/list integration50 active.
-Some patch envelopes/pathnames/overescaped quotes normalized mechanically to allowedpaths;
-no implementation authored inline. Worker48 input testdelta47 reconciled as isolated assertion.
+Nativefixture48+52 now14offlinechecks passed19.30s (P17allowlist, actualpendingP24proof,
+actualsuccessfulstage start). Actual synthetic trial9cdef8feb4b94c3faac2cc946d3fd5e7 ran
+19:39:46-19:42:17UTC:8calls,2repairs, parked. Runtimeauth works; binary0.154.0 hashbe96b992;
+bundle557e65e1f7eb8b3b51350e4146154fb1c19cb7b655ec53bd8839dc6841369ac1 matchedprecheck.
+Cleanupdeleted runtime, capabilityinvalidated, connectionclosed. Acceptedruntimepin None.
+Actualproductrequestedgpt-6-astra, respondingmodelunverified. No positivechainaccepted.
 
-Import46 applied with optional expected_content_sha256 in P17/P18/CLI;109 combinedtests
-passed90.39s. Actualbytes read once and checked beforeimportwrites, unchanged requestidentity.
-Independent review of46 stillneeded; compiler51 uses new API, active.
+ROOT DIAGNOSIS from guarded synthetic SQLite artifacts: cycle0critic calledout duplicate
+role/company sentences andgeneric topics. Cycle1humanizer improvedtopic butdeterministic
+factcheckQAfailed body_words_out_of_band/word_count despite modelreportedpass. Cycle2
+revertedtooriginalduplicatecopy. _stage_input alwaysoriginalrevision andonlypreviouscycle
+latestnegative repair_from; earliercritic andpreviouscandidate lost. Claude56active toadd
+boundedpreviouscandidate+repair_history andpromptcontinuity/interiorbandmargin, preserving
+allbindings,QA,2repairbudget andcriticindependence. No blindactualretrybeforefix.
 
-Nativefixture48 applied replacingoldP8 with realselected syntheticpipeline. Offline5pass7errors:
-existing P17writes operator-public-capture-v1 but oldharnessallowlist omitsit. Root also rejected
-weakstage-start test that accepts anyrecognized error and missingexplicitP24pendingcheck.
-Repair52active; no actualnative trial hasrun since resume. Acceptedruntimepin remainsNone.
+Compiler51 applied,23tests passed11.86s. Independent55REQUESTCHANGES: D1 fundingdatefinding
+FALSE (reviewer readlookbackyears asmonths; actualtests/sourcecontradict). D2/D3 earlyduplicate
+page/eventrefusal improve diagnostics; D4realcollection/stringbounds; D5addbodyref/expiry/
+compiler_version to returnedprivatemapping. Repair57active. MappingstillinRAM, no durable
+importreceipt/exportyet. No authority or browsertruth inferred.
 
-Active Claude workers50(selectedview),51(compiler),52(nativefixture); handles6476/31705/43555.
-All source-only onexistingvCPU. No test/server/native process now. Keepawake17176active.
-No realpilotstore migration, sourcepublication, merge or send. Browserunavailable asabove.
-Remaining: acceptselectedview+HTTP/UI/materialization; compiler+privateexport/broker; actual
-nativepositivechain; inheritedfixturefailures; smallrealnonsending+UI; finalreview/publication.
-User reiterated bossorchestrator role: every implementation/testauthoring goes toClaude.
+Projection50 UNAPPLIED, sentback54: PersonView repr stillleakedname/email; flagcalled
+regeneration_required merelymeantbindingexists; SQLerrorsinhints silentlylookedmissing.
+54mustsuppressrepr,renamehas_prior_binding,projectfixedunavailability onqueryfailure.
+Expected3files selected_review_projection.py/review_service.py/test_selected_review_projection.py.
+
+Activeworkers54/56/57 withhandles74078/81621/25231. Currentactualtrial/tests finished.
+No serverrunning. Keepawake17176active boundedlease. Browserinventorystill unavailable.
+COORDrebase brieflyfailedwritingoneGitobject; exact rebase--continue succeeded WITHOUT
+permissionchanges. COORDcurrentd3ce2c5a beforethischeckpoint, noongoingrebase.
+
+Next: apply/test54;repair/test57+indepfollowup;repair/test56+actualnativechain; HTTP/UI+
+materialization andprivatecompilerexport/broker; reconcileoldfixturefailures; realnonsending
+pilot/UI andfinalreview/publication. Sourcechangesuncommittedexceptacceptedleafcommits.
 
 ## Resume checkpoint 2026-09-11 19:30 UTC
 
