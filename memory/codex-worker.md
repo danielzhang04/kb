@@ -634,3 +634,14 @@ Two source-only worker reports claimed validator/prompt/test changes absent from
 ## 2026-09-11 - Shared invariants need every real producer
 
 A canonical claim-counting fix passed focused tests and independent review but broke nine legacy CLI cases: its exact identity-ref allowlist omitted sender.signature, a real producer alias for sender_name. Compare representative existing producers before accepting a shared invariant change; prefer exact documented references over slot-name or value heuristics. Baseline27CLI tests passed; currentfullsuite exposedregression. Freshrequestreusinganimmutable result stillneedsitsown durable request/hashreceipt; attestation22 missedthat despite15passingtests. Use ordinaryTEMP foroutside-private fixtures andMAIN/_privateforprivate-scopedfixtures; movingeverytesttoonebasetemp changes what the test actually exercises.
+
+## 2026-09-11 - Recoverability and narrow exceptions need executable checks
+
+Validate a known missing output root before charging a bounded attempt; retain lease-first
+ordering for the actual export and honest post-commit recovery. A safe refusal can still
+leave a workflow permanently stuck: explicit regeneration needs both the edited current
+head and predecessor binding, with an immutable supersession receipt and one shared
+ancestry walk. Test real controller acceptance/reset separately from directly constructed
+corruption fixtures. For static import exceptions, match exact file paths and inspect
+both from-import modules and aliases, including relative imports; a basename whitelist
+and alias-only scan each admitted concrete forbidden cases despite passing initial tests.

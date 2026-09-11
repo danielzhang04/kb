@@ -54,3 +54,16 @@ subscription; billed cost unavailable	1.991563	opus	claude-opus-5	response model
 subscription; billed cost unavailable	3.5847780000000005	opus	claude-opus-5	response verified; source acceptance separate	p22-binding-repair-21	2026-09-11T07:04:17.945664+00:00	0
 subscription; billed cost unavailable	2.4304720000000004	opus	claude-opus-5	response verified; source acceptance separate	p22-selected-attestation-22	2026-09-11T07:04:17.945664+00:00	0
 subscription; billed cost unavailable	0	opus	<synthetic>	HTTP429 sessionlimit reset09UTC; syntheticerror notmodelresponse	p22-binding-review-23	2026-09-11T07:04:17.945664+00:00	0
+subscription; billed cost unavailable	0	sonnet	<synthetic>	HTTP429 same09UTCreset; error notmodelresponse; usd0 placeholder	native-legacy-identity-27	2026-09-11T07:56:53.811148+00:00	0
+subscription; billed cost unavailable	0.171412	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	native-legacy-identity-28	2026-09-11T09:08:01.371626+00:00	0
+subscription; billed cost unavailable	0.09242700000000001	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	native-signature-tests-32	2026-09-11T09:08:01.371626+00:00	0
+subscription; billed cost unavailable	1.6115419999999998	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p24-replay-repair-24	2026-09-11T09:08:01.371626+00:00	0
+subscription; billed cost unavailable	2.3467279999999997	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p22-binding-review-25	2026-09-11T09:08:01.371626+00:00	0
+subscription; billed cost unavailable	3.134561	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p22-pipeline-wire-26	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	1.130119	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p23-cli-review-30	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	0.175371	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	p23-skill-correct-31	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	0.555132	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	contract-boundary-fix-33	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	2.141361	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p22-edited-regeneration-34	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	0.29992100000000005	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	p23-claim-precheck-36	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	0.9782949999999999	opus	claude-opus-5	response verified; source acceptance separate; usd0 accounting placeholder	p22-regeneration-finish-37	2026-09-11T09:25:44.799975+00:00	0
+subscription; billed cost unavailable	0.156641	sonnet	claude-sonnet-5	response verified; source acceptance separate; usd0 accounting placeholder	ast-boundary-repair-38	2026-09-11T09:25:44.799975+00:00	0

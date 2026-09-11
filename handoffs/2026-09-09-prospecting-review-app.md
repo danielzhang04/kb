@@ -1,24 +1,46 @@
 # Prospecting infrastructure handoff
 
-Updated 2026-09-11 07:25 UTC. ACTIVE and incomplete. User authorized continued asynchronous
+Updated 2026-09-11 09:25 UTC. ACTIVE and incomplete. User authorized continued asynchronous
 work with verified Claude-only development workers on the existing source-only vCPU.
 Root plans, reviews, applies, tests, operates the browser and coordinates. No sends.
 
+## Worker-limit confirmation - 07:55 UTC
+
+One bounded Sonnet attempt27 also returned HTTP429 with the same09:00UTC reset.
+Both authorized worker models are limited; no further attempts before reset.
+Replacement request28 is prepared, without a receipt. Preamble passed.
+
 ## Exact next step
 
-Claude returned HTTP429, session limit resetting09:00UTC. Do not retry before then or
-switch provider/key. At reset run preamble, then dispatch existing ORCH requests:
-- native-legacy-identity-27 (Sonnet): confirmed canonical signature-reference regression.
-- p24-replay-repair-24 (Opus): immutable request ledger for reused source attestations.
-- p22-binding-review-25 (Opus): independent renderer/binding review.
-After27 finishes, start p22-pipeline-wire-26 (Opus). All four requests exist, no receipts yet.
-Use run_vm_proposal.py; verify actual assistant response models and exact input/target hashes.
-Priorreview23 returned a synthetic error, not a real model response or review.
+Workers35(finalselected review),29(ReviewService),40(capturecompiler design) active on
+existing vCPU. Owned helper sessions34163/39114/16206 respectively. All earlier workers
+finished and model responses ledgered. Current selected binding/P16/P24 freeze55tests
+passed44.65s. Native signature28/32 fix plusP24ledger136tests passed37.02s; earlier185tests
+passed35.28s. New accepted sourcecommita20ca752 captureCLI/tests/learnedskill/reviewnote;
+15CLItests passed6.61s, skillscan0findings, stagedPIIguard/diffcheck passed.
+
+Independent25 says READY but confirms edited-head regeneration deadend and missing real
+agent/P21tests. Root requires recovery for user goal: request34 must explicitly pin current
+edited head plus predecessorbinding and preserve superseded history, no blind rerender.
+Current34+37 uses immutable selected_draft_request as supersession receipt and adds optional
+SelectedDraftReceipt.superseded_revision_id. Both current editedhead and predecessorbinding
+must be pinned. Shared _lineage_root validates source/regeneration ancestry; no secondwalk,
+new lineage type orP21reset. AgentedgeSQL nowchecks childhash/decision/proposedhash/body.
+ActualP16agentaccept and realexhaustion/P21reset7tests passed13.64s, then55combined passed.
+
+Contract33+38 (uncommitted) updates exact P6clock signature and narrowly scopes AST imports
+to exacttrustedfilepaths;20tests passed0.30s. Rootprobe caught three holes in33: privileged
+module from-import, relative from-dot import and nested matchingbasename eachreturnedempty.
+38 fixes allthree withrealregressions. No productionpermission widening ormanifest edits.
+Acquisition skill31 is applied/committed (141lines; rootkeptusefulschemas despite125line
+draftingpreference). CorrectSESSION_ID claim andseparatebrowserobservation claim.
+Use run_vm_proposal.py, verify actual response models and exact source/target hashes.
+The source plan is one current checklist, with stale duplicate checkpoints removed.
 
 ## Scope and workspace
 
 DELIVERY: C:/Users/danie/kb/_private/codex-worktrees/prospecting-session-20260909,
-branch codex/prospecting-session-20260909, acceptedHEAD05179f11.
+branch codex/prospecting-session-20260909, acceptedHEADa20ca752.
 COORD: C:/Users/danie/kb/_private/codex-worktrees/boss-remote-context-20260908,
 branch codex/boss-remote-context-20260908. Pull/rebase origin ops before coordination writes.
 Codex coordination reaches ops only via PR; never direct pushops.
@@ -40,6 +62,9 @@ Accepted commits:
 - 20ced599 exact selected-person resolver;9focused/52combined tests, independent READY.
 - 05179f11 durable capture core/schema23/tests/review note;76combined capture/funding/person
   tests passed30.80s after final reserved-domain cleanup, independent Opus READY.
+- a20ca752 captureCLI/tests/learnedskill/reviewnote. Independent30found snapshotsroot
+  validation afterclaim couldburn boundedattempts;36hoistedvalidation beforeclaim while
+  keeping actualexport aftercommittedlease. Realpreclaimoutage/postcommitfailure tests15pass.
 
 Desktop nativeCLI0.154.0 works with explicit live keyring selection. Sandbox login status
 differed from real desktop context; ignore-user-config had selected the wrong backend.
@@ -57,13 +82,15 @@ supersedes independent native review18 READY.
 
 - Initial schema22 indexed implicit rowid; migration failed. Repair21 removed the index
   term, hardened transactions/closed errors and corrected a test count;34tests now pass.
-- P24 fresh requestB reusing attestationA is never persisted. Actual SQL probe:
+- FIXED24: P24 fresh requestB reusing attestationA was never persisted. PriorSQLprobe:
   second_request_rows0; changedB yields source_context_conflict instead of request_conflict.
   Every successful requestUUID needs its own immutable hash/result record, even on reuse.
-  Proposal remains unaccepted; repair24 queued.
-- QA identity references omit canonical sender.signature. LegacyCLI maps it exactly to
+  Immutable selected_source_attestation_request nowrecordsallUUIDs. Exacthistoricalreplay
+  checksledgerintegrity beforecurrenthead/source; currentproofstillstale-refuses. In55passfreeze.
+- FIXED28/32: QA identity references omitted canonical sender.signature. LegacyCLI maps it exactly to
   sender_name, so it is wrongly charged as a second substantive claim. Nine CLI tests fail;
-  all27 pass on accepted05179f11. Repair27 must retain exact-reference and alias guards.
+  all27 passed on baseline05179f11. Exactcanonicalrefadded; signature-specificaliases/case/
+  whitespace/suffix regressions pass. No valueheuristic orrevision-source-ref change.
 - Four actual synthetic desktop trials ran Humanizer/factcheck; later trials reached the
   critic and parked after bounded repairs. The old P8 unit fixture has disconnected canned
   climate labels. These are negative-quality/recovery evidence, not positive acceptance.
@@ -72,8 +99,11 @@ supersedes independent native review18 READY.
   responding model unverified. Actual harness receipts remain in the native acceptance root.
 - CUA apps[]/browsers[]; supported createBrowserTab(chrome,about:blank) returned
   Browser is not available: chrome. No tab created. Do not use alternate automation.
-- Acquisition skill19/20 rejected;21 remains unapplied: claim takes SESSION_ID, nottask_id;
-  stored bytes do not independently prove what a browser showed. Domain-only21 patch accepted.
+- Acquisition skill19/20/21 superseded by corrected31 committedwithCLI. Storedbytes still
+  do not independently prove what a browser showed. Browserinventory retried09:12 empty.
+- Regeneration34 initial44pass2fail: sqlite3.Row-versus-tuple comparison; directlywritten
+  agentfixture falsely usedparentasP21root.37fixedtuplecomparison andindependentbadchildren
+  sharingtrueboundroot/item acrosscycles, preservingrealtriggers.55combinednowpass.
 
 ## Full verification and remaining failures
 
@@ -95,9 +125,11 @@ ban includes authorized trusted native adapters; launcher teardown timeout. Do n
 manifests or weaken production readiness. Existing T1/approval tests show narrow unit
 isolation; retain unmocked modern approval/executor integration coverage.
 
-Launcher failure now precise: test_store::test_24_launcher_script_serves_readonly timed
-out at process.wait(timeout10) during teardown. Owned PowerShell32280/python46724 were
-command-scope verified, stopped child first, and verified absent. Cause remains unresolved.
+Launcher failure: test_store::test_24_launcher_script_serves_readonly timed out at
+process.wait(timeout10) after taskkill during teardown. Owned processes were verified and
+removed. One isolated rerun with required desktop process permissions passed4.28s, including
+teardown and closed-port assertion. Environment-sensitive cleanup is the leading explanation;
+the original ignored taskkill stderr was not retained, so exact original cause is unproven.
 
 ## Current files and untried work
 
@@ -108,8 +140,8 @@ research_capture_cli.py and tests; native runtime/stage/QA/controller changes an
 manual_private_stage_acceptance.py (defaultno-op; genuine synthetic internal harness).
 No real store is to be opened against these unaccepted migrations.
 
-TODO: P22review and real agent/P21 source-lineage tests; P24replay repair/review;
-ReviewService/P16/HTTP/UI exactselected proof/confirmation; draft materialization CLI/UI;
+TODO: independentfinalreview35 forselected/P24/P16 freeze; ReviewService29 andHTTP/UI
+exactselected proof/confirmation; draft materialization CLI/UI;
 acquisition broker and deterministic P17/P18 manifest compiler; coherent actual native
 fullchain acceptance, small real nonsending workflow, final publication review and handoff.
 
@@ -121,7 +153,7 @@ excludes attested so confirming identical source does not invalidate completed m
 
 ## Runtime and private state
 
-No active worker, pytest, native stage or server at this checkpoint. KeepawakePID34284
+Workers35/29/40 active; no test/native stage/server currently. KeepawakePID34284
 active on original12h lease; MAIN/_private/prospecting-awake-20260911.json has heartbeat/expiry.
 Stop using its own .stop marker only at completion; preserve other projects' helpers.
 Real pilot MAIN/_private/prospecting-startup-pilot-20260909 remains unopenedP19:
@@ -142,5 +174,5 @@ are accounting placeholders and CLI list-price estimates are recorded separately
 - DELIVERY/docs/superpowers/plans/2026-09-09-prospecting-startup-pilot.md
 - DELIVERY/scripts/prospecting/selected_draft_service.py, selected_source_review.py
 - DELIVERY/scripts/prospecting/personalizer/qa.py, private_stage_adapter.py
-- ORCH requests24/25/26/27, full-suite-failures.json and verified-model receipts
+- ORCH requests24/25/26/28, full-suite-failures.json and verified-model receipts
 - memory/codex-worker.md; save-session/code-review/security-review skills

@@ -2,10 +2,12 @@
 
 Updated2026-09-11. Active asynchronous infrastructure work; not complete.
 
-Accepted source05179f11 on codex/prospecting-session-20260909: P21human-edit restart,
+Accepted sourcea20ca752 on codex/prospecting-session-20260909: P21human-edit restart,
 VM recovery, exact-selected source resolver, durable capture core. Capture76tests and
 independent review passed. Local selected binding/renderer34tests and attestation15tests
-pass, but remain unaccepted pending review and a confirmed attestation request-replay fix.
+pass. Selected/P24/P16 including repairedattestationreplay andedited-head regeneration now
+pass55combinedtests; independentfinalreview35active. CaptureCLIaccepted afterreviewrepair,
+15tests andskillscan0findings. P6clock/ASTcontractrepairs20tests pass, uncommitted.
 
 Desktop authentication is restored through the existing OS keyring. Actual synthetic
 canary passed. Full native editorial trials correctly parked on unsuitable old fixture
@@ -14,10 +16,13 @@ copy; positive selected-draft acceptance and runtime pin remain pending.
 Broad synthetic suite1772passed24failed. New legacy signature-reference regression
 confirmed against27passing baseline CLI tests. Other failures include older readiness
 fixtures, stale contract/eval references, recorded gate manifests, environment assumptions
-and a launcher teardown timeout. Owned failed-test processes were cleaned up.
+and a launcher teardown timeout. The isolated launcher test passed4.28s with desktop
+process cleanup permissions; the original cleanup error was not retained. Owned failed-test
+processes were cleaned up. The source plan is now one current checklist.
 
-Claude subscription session limit resets09:00UTC. No alternate provider or key.
-Root has prepared requests27/24/25 and then26 for the reset. Supported Chrome is unavailable.
+Claude subscription reset succeeded09:00UTC. Signature repair185tests passed; extra edge
+tests andP24ledger136tests passed. Workers35(finalreview),29(ReviewService),40(compilerdesign)
+active. Supported Chrome remains unavailable. No alternate provider or key.
 Independent source work continues; no real pilot store opened or migrated this continuation.
 
 Next: narrow signature fix; durable attestation request ledger; independent selected
