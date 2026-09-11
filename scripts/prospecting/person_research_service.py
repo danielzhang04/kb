@@ -74,6 +74,7 @@ class PersonCapture:
     source_url: str
     body_ref: str
     captured_at: str
+    expected_content_sha256: str | None = None
 
 
 @dataclass(frozen=True, repr=False)
@@ -329,6 +330,11 @@ def _prepare(request: object, root: Path) -> tuple[PersonResearchRequest, tuple[
             captured.contents.decode("utf-8", errors="strict")
         except UnicodeError:
             raise PersonResearchError("invalid_candidate") from None
+        content_hash = sha256(captured.contents).hexdigest()
+        if candidate.expected_content_sha256 is not None and _hash(
+            candidate.expected_content_sha256, "invalid_candidate",
+        ) != content_hash:
+            raise PersonResearchError("source_changed")
         total += len(captured.contents)
         if total > MAX_OPERATOR_SNAPSHOT_BYTES:
             raise PersonResearchError("batch_too_large")
@@ -347,11 +353,11 @@ def _prepare(request: object, root: Path) -> tuple[PersonResearchRequest, tuple[
         )
         prepared.append(_Prepared(
             supplied, str(source_url), profile_url, captured_at, captured.contents,
-            sha256(captured.contents).hexdigest(), identity_hash,
+            content_hash, identity_hash,
         ))
         request_candidates.append({
             **identity, "body_ref": captured.body_ref, "captured_at": captured_at,
-            "content_sha256": sha256(captured.contents).hexdigest(),
+            "content_sha256": content_hash,
         })
     normalized = PersonResearchRequest(
         request_id, request.run_id, intake_hash, str(funding_batch), funding_hash,

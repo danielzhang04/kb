@@ -88,6 +88,7 @@ class CapturedPage:
     source_kind: str
     captured_at: str
     coverage: CoverageInput | None = None
+    expected_content_sha256: str | None = None
 
 
 @dataclass(frozen=True, repr=False)
@@ -426,6 +427,11 @@ def _prepare_request(
                 contents.decode("utf-8", errors="strict")
             except UnicodeError:
                 raise FundingResearchError("invalid_page") from None
+            content_sha256 = sha256(contents).hexdigest()
+            if page.expected_content_sha256 is not None and _sha(
+                page.expected_content_sha256, "invalid_page",
+            ) != content_sha256:
+                raise FundingResearchError("source_changed")
             source_url = _url(page.source_url, "invalid_source_url")
             kind = page.source_kind
             if type(kind) is not str or kind not in SOURCE_KINDS:
@@ -451,7 +457,7 @@ def _prepare_request(
                 raise FundingResearchError("batch_too_large")
             pages.append(_Page(
                 ref, str(page.source_url), source_url, kind, captured_at, coverage,
-                contents, sha256(contents).hexdigest(),
+                contents, content_sha256,
             ))
         events: list[FundingEventInput] = []
         used_pages: set[int] = set()

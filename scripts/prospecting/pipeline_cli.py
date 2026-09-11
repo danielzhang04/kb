@@ -68,6 +68,7 @@ _CANDIDATE_FIELDS = frozenset({
 _PAGE_REQUIRED_FIELDS = frozenset({
     "body_ref", "source_url", "source_kind", "captured_at",
 })
+_PAGE_OPTIONAL_FIELDS = frozenset({"coverage", "expected_content_sha256"})
 _COVERAGE_FIELDS = frozenset({
     "query", "searched_at", "status", "result_count", "result_cap",
 })
@@ -81,6 +82,7 @@ _PERSON_CANDIDATE_FIELDS = frozenset({
     "funding_result_id", "company_id", "first_name", "full_name", "title",
     "profile_url", "source_url", "body_ref", "captured_at",
 })
+_PERSON_CANDIDATE_OPTIONAL_FIELDS = frozenset({"expected_content_sha256"})
 _QUALIFICATION_FIELDS = frozenset({
     "request_id", "run_id", "expected_intake_hash", "funding_batch_id",
     "funding_batch_hash", "person_batch_id", "person_batch_hash",
@@ -509,9 +511,11 @@ def _funding_request(value: Any) -> FundingResearchRequest:
             raise CliError("funding_import_schema_invalid")
         pages: list[CapturedPage] = []
         for page_value in candidate_value["pages"]:
-            if type(page_value) is not dict or frozenset(page_value) not in {
-                _PAGE_REQUIRED_FIELDS, _PAGE_REQUIRED_FIELDS | {"coverage"},
-            }:
+            if type(page_value) is not dict or not (
+                _PAGE_REQUIRED_FIELDS
+                <= frozenset(page_value)
+                <= _PAGE_REQUIRED_FIELDS | _PAGE_OPTIONAL_FIELDS
+            ):
                 raise CliError("funding_import_schema_invalid")
             coverage_value = page_value.get("coverage")
             coverage = None
@@ -526,6 +530,7 @@ def _funding_request(value: Any) -> FundingResearchRequest:
             pages.append(CapturedPage(
                 page_value["body_ref"], page_value["source_url"],
                 page_value["source_kind"], page_value["captured_at"], coverage,
+                page_value.get("expected_content_sha256"),
             ))
         events: list[FundingEventInput] = []
         for event_value in candidate_value["events"]:
@@ -568,7 +573,11 @@ def _person_request(value: Any) -> PersonResearchRequest:
         raise CliError("person_import_schema_invalid")
     candidates: list[PersonCapture] = []
     for candidate_value in candidates_value:
-        if type(candidate_value) is not dict or set(candidate_value) != _PERSON_CANDIDATE_FIELDS:
+        if type(candidate_value) is not dict or not (
+            _PERSON_CANDIDATE_FIELDS
+            <= frozenset(candidate_value)
+            <= _PERSON_CANDIDATE_FIELDS | _PERSON_CANDIDATE_OPTIONAL_FIELDS
+        ):
             raise CliError("person_import_schema_invalid")
         candidates.append(PersonCapture(
             candidate_value["funding_result_id"], candidate_value["company_id"],
@@ -576,6 +585,7 @@ def _person_request(value: Any) -> PersonResearchRequest:
             candidate_value["title"], candidate_value["profile_url"],
             candidate_value["source_url"], candidate_value["body_ref"],
             candidate_value["captured_at"],
+            candidate_value.get("expected_content_sha256"),
         ))
     return PersonResearchRequest(
         value["request_id"], value["run_id"], value["expected_intake_hash"],
