@@ -32,6 +32,10 @@ _QUALIFICATION_CODES = frozenset({
     "snapshot_store_required", "source_changed", "source_stale", "store_state_invalid",
     "transaction_active",
 })
+_DIAGNOSTIC_CODES = frozenset({
+    "payload_contract", "funding_source_binding", "funding_observation_binding",
+    "candidate_binding", "person_source_binding",
+})
 
 
 class QualificationStageCliError(ValueError):
@@ -72,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--item-id", required=True)
     parser.add_argument("--request-id", required=True)
     cleanup_code: str | None = None
+    diagnostic_code: str | None = None
     qualification_adapter: object | None = None
     try:
         args = parser.parse_args(argv)
@@ -103,6 +108,12 @@ def main(argv: list[str] | None = None) -> int:
     except QualificationError as error:
         candidate = str(error)
         code = candidate if candidate in _QUALIFICATION_CODES else "operation_failed"
+        diagnostic = getattr(error, "diagnostic_code", None)
+        if (
+            code == "qualification_output_invalid"
+            and type(diagnostic) is str and diagnostic in _DIAGNOSTIC_CODES
+        ):
+            diagnostic_code = diagnostic
         direct_cleanup = getattr(error, "cleanup_code", None)
         if direct_cleanup in {"runtime_cleanup_failed", "stage_runtime_cleanup_failed"}:
             cleanup_code = direct_cleanup
@@ -116,6 +127,8 @@ def main(argv: list[str] | None = None) -> int:
         elif qualification_adapter is not None:
             cleanup_code = take_adapter_cleanup_code(qualification_adapter)
     sys.stderr.write(f"qualification_stage_cli_error:{code}\n")
+    if diagnostic_code is not None:
+        sys.stderr.write(f"qualification_stage_cli_diagnostic:{diagnostic_code}\n")
     if cleanup_code in {"runtime_cleanup_failed", "stage_runtime_cleanup_failed"}:
         sys.stderr.write(f"qualification_stage_cli_cleanup:{cleanup_code}\n")
     return 2

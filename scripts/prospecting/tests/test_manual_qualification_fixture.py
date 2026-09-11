@@ -200,6 +200,48 @@ def test_prepare_fixture_writes_no_contact_fill_or_approval_rows(prepared) -> No
     assert harness._counts(connection, *harness.ZERO_TABLES) == (0,) * len(harness.ZERO_TABLES)
 
 
+def test_supplemental_fixture_uses_real_import_history_and_binds_all_source_kinds(
+    tmp_path: Path,
+) -> None:
+    connection, fixture = harness._prepare_fixture(tmp_path / "supplemental", supplemental=True)
+    try:
+        assert fixture.supplemental is True
+        assert fixture.candidate_count == 2
+        assert harness._counts(connection, *harness.ZERO_QUALIFICATION_TABLES) == (0,) * len(
+            harness.ZERO_QUALIFICATION_TABLES
+        )
+        assert harness._counts(connection, "person", "employment", "prospecting_person_candidate") == (2, 2, 3)
+        service = QualificationService(connection, adapters={}, now=lambda: NOW)
+        batch = service.start_or_resume(_qualification_request(
+            fixture.started, fixture.funding, fixture.people,
+            request_id="eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee",
+        ))
+        assert batch.state == "awaiting_qualification_adapter"
+        item = service.get_projection(fixture.run_id).items[0]
+        assert item.candidate_count == 2
+        rows = connection.execute(
+            """SELECT origin_kind,context_relation,source_kind,binding_kind,count(*)
+                 FROM prospecting_qualification_source WHERE item_id=?
+                 GROUP BY origin_kind,context_relation,source_kind,binding_kind
+                 ORDER BY origin_kind,context_relation,source_kind,binding_kind""",
+            (item.item_id,),
+        ).fetchall()
+        assert {
+            tuple(row) for row in rows
+        } == {
+            ("funding", "current", "issuer", "company_identity", 1),
+            ("funding", "current", "issuer", "funding_event", 1),
+            ("funding", "current", "search_coverage", "coverage", 1),
+            ("person", "current", None, None, 2),
+            ("person", "potential_conflict", None, None, 1),
+        }
+        assert harness._counts(
+            connection, "prospecting_qualification_attempt", "prospecting_qualification_artifact",
+        ) == (0, 0)
+    finally:
+        connection.close()
+
+
 def test_stage_start_without_adapter_waits_with_fixed_code_and_no_attempts(prepared) -> None:
     """No adapter exists at all, so no model is reachable from pytest."""
     connection, fixture = prepared

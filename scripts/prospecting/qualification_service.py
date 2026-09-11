@@ -77,10 +77,23 @@ _ATTEMPT_FAILURE_CODES = frozenset({
     "qualification_output_invalid", "source_changed", "source_stale",
     "store_state_invalid",
 })
+_PAYLOAD_DIAGNOSTICS = frozenset({
+    "payload_contract", "funding_source_binding", "funding_observation_binding",
+    "candidate_binding", "person_source_binding",
+})
 
 
 class QualificationError(ValueError):
     """Stable-code refusal at the qualification boundary."""
+
+
+def _payload_invalid(diagnostic: str | None = None) -> QualificationError:
+    """Keep the durable refusal stable while attaching safe local diagnosis."""
+    error = QualificationError("qualification_output_invalid")
+    if diagnostic is not None:
+        assert diagnostic in _PAYLOAD_DIAGNOSTICS
+        setattr(error, "diagnostic_code", diagnostic)
+    return error
 
 
 @dataclass(frozen=True, repr=False)
@@ -1027,16 +1040,16 @@ class QualificationService:
         try:
             encoded = _canonical(payload).encode("utf-8")
         except QualificationError:
-            raise QualificationError("qualification_output_invalid") from None
+            raise _payload_invalid("payload_contract") from None
         if len(encoded) > MAX_OUTPUT_BYTES or type(payload) is not dict or set(payload) != {"company", "people"}:
-            raise QualificationError("qualification_output_invalid")
+            raise _payload_invalid("payload_contract")
         company = payload["company"]
         people = payload["people"]
         if type(company) is not dict or set(company) != {
             "identity_consistency", "location", "sector", "funding_events",
             "coverage_assessment", "source_agreement", "uncertainty_codes",
         } or type(people) is not list:
-            raise QualificationError("qualification_output_invalid")
+            raise _payload_invalid("payload_contract")
         self._enum(company["identity_consistency"], _CONSISTENCY)
         self._enum(company["coverage_assessment"], _COVERAGE)
         self._enum(company["source_agreement"], _AGREEMENT)
@@ -1078,7 +1091,7 @@ class QualificationService:
                 raise QualificationError("qualification_output_invalid")
             source = source_rows.get(finding["source_key"])
             if source is None or source["origin_kind"] != "funding" or source["binding_kind"] != "funding_event":
-                raise QualificationError("qualification_output_invalid")
+                raise _payload_invalid("funding_source_binding")
             if finding["source_key"] in found_event_keys:
                 raise QualificationError("qualification_output_invalid")
             found_event_keys.add(str(finding["source_key"]))
@@ -1094,7 +1107,7 @@ class QualificationService:
             value = _object(observation["value"] if observation is not None else None)
             event = value.get("event")
             if type(event) is not dict or finding["stage"] != event.get("stage") or finding["announced_at"] != event.get("announced_at"):
-                raise QualificationError("qualification_output_invalid")
+                raise _payload_invalid("funding_observation_binding")
             if finding["entailment"] == "contradicts":
                 has_company_contradiction = True
             if (
@@ -1121,7 +1134,7 @@ class QualificationService:
                         <= FUNDING_STAGES.index(str(intake.funding_stage_max))
                     )
         if found_event_keys != required_event_keys:
-            raise QualificationError("qualification_output_invalid")
+            raise _payload_invalid("funding_source_binding")
         identity = _object(self.connection.execute(
             "SELECT candidate_identity_json FROM prospecting_funding_company WHERE result_id=?",
             (item["funding_result_id"],),
@@ -1140,7 +1153,7 @@ class QualificationService:
         )
         expected_ids = _array(item["candidate_ids_json"])
         if len(people) != len(expected_ids):
-            raise QualificationError("qualification_output_invalid")
+            raise _payload_invalid("candidate_binding")
         person_results: list[dict[str, object]] = []
         seen: set[str] = set()
         for finding in people:
@@ -1152,7 +1165,7 @@ class QualificationService:
                 raise QualificationError("qualification_output_invalid")
             candidate_id = finding["candidate_id"]
             if type(candidate_id) is not str or candidate_id not in expected_ids or candidate_id in seen:
-                raise QualificationError("qualification_output_invalid")
+                raise _payload_invalid("candidate_binding")
             seen.add(candidate_id)
             self._enum(finding["page_kind"], _PAGE_KIND)
             self._enum(finding["role_statement"], _ROLE_STATEMENT)
@@ -1174,7 +1187,7 @@ class QualificationService:
                 or source_rows[key]["subject_candidate_id"] != candidate_id
                 for key in source_keys
             ):
-                raise QualificationError("qualification_output_invalid")
+                raise _payload_invalid("person_source_binding")
             candidate = self.connection.execute(
                 "SELECT candidate_identity_json FROM prospecting_person_candidate WHERE candidate_id=?",
                 (candidate_id,),
@@ -1220,7 +1233,7 @@ class QualificationService:
                 "title_granularity": finding["title_granularity"], "continuity": finding["continuity"],
             })
         if seen != set(expected_ids):
-            raise QualificationError("qualification_output_invalid")
+            raise _payload_invalid("candidate_binding")
         derived = {
             "company_outcome": company_outcome,
             "company_uncertainty_codes": sorted(set(company_uncertainty) | event_uncertainty),
@@ -1390,10 +1403,15 @@ class QualificationService:
                 raise QualificationError("qualification_context_stale")
             try:
                 payload, derived = self._validate_payload(item, result.payload)
-            except QualificationError:
+            except QualificationError as error:
+                if (
+                    str(error) == "qualification_output_invalid"
+                    and getattr(error, "diagnostic_code", None) is None
+                ):
+                    raise _payload_invalid("payload_contract") from None
                 raise
             except (KeyError, TypeError, ValueError, UnicodeError, RecursionError):
-                raise QualificationError("qualification_output_invalid") from None
+                raise _payload_invalid("payload_contract") from None
             timestamp = _now(self.now()).isoformat()
             updated = self.connection.execute(
                 """UPDATE prospecting_qualification_attempt

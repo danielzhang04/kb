@@ -44,9 +44,7 @@ REQUESTED_MODEL = "gpt-6-astra"
 REQUESTED_REASONING = "low"
 HUMANIZER_VERSION = "2.8.2"
 HUMANIZER_SHA256 = "5e9456ab8b4f5d4a60e9affe4125490d2132ef4158d3551803511e2f0a7d1d16"
-ACCEPTED_RUNTIME_BUNDLE_SHA256: str | None = (
-    "4958ed4701004d397002635a3e34f05afe1fbbfbe7ad23adb0f40eba45f1109a"
-)
+ACCEPTED_RUNTIME_BUNDLE_SHA256: str | None = "e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814"
 _DEADLINE_SECONDS = 90
 _PRIME_MODEL_CONTEXT_WINDOW = 114_000
 _EVENT_TOTAL_BYTES = 2 * 1024 * 1024
@@ -454,10 +452,14 @@ _PROMPTS = MappingProxyType({
     ),
     "qualification_factcheck": (
         "Apply the supplied qualification fact-check skill to every supplied company and "
-        "person source, including current and predecessor text. Return the exact schema "
-        "object with one finding per required funding source and person candidate, all "
-        "required source keys, and explicit uncertainty where currentness or support is "
-        "incomplete. Do not browse, infer human attestation, rank people, or authorize copy."
+        "person source. Return funding findings for exactly the sources whose binding_kind "
+        "is funding_event, copying stage and announced_at exactly from each "
+        "sources[].observation.event; "
+        "cite no other funding source there. Return one person finding per candidate and "
+        "cite every supplied person source assigned to that exact current candidate ID, including current, "
+        "historical, predecessor, and potential-conflict sources. Return the exact schema "
+        "object with explicit uncertainty where currentness or support is incomplete. Do not "
+        "browse, infer human attestation, rank people, or authorize copy."
     ),
 })
 

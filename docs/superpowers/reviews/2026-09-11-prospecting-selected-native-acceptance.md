@@ -43,3 +43,27 @@ model identity. No private output text is included in this acceptance record.
 This source pin enables only the exact runtime bundle and same-process canary path.
 It does not approve prospects, attest source observation, permit outreach, or bless recorded
 evaluation manifests. Private manual harnesses default to no execution and require opt-in.
+
+## Current accepted runtime bundle
+
+This acceptance supersedes runtime bundle
+`4958ed4701004d397002635a3e34f05afe1fbbfbe7ad23adb0f40eba45f1109a` for the source-binding
+qualification repair. Independent115 marked the repair READY; root ran170 combined
+qualification/native checks in62.61s. The accepted bundle is
+`e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814` with CLI0.154.0 and
+binary `be96b992178b1e467c225800da0d65f2c86d5eba1ef0b14632f65db381cbdfde`.
+
+The richer synthetic qualification trial
+`9f9b3d139d3641f1b423a147b31e8501` ran from2026-09-11T22:20:36.647993Z to
+2026-09-11T22:21:11.087426Z and reached `machine_reviewed` in one attempt with one artifact.
+Its two people and company outcomes were unknown. It accepted current-person and
+potential-conflict bindings plus one each of funding identity, event, and coverage binding;
+it does not demonstrate a predecessor-relation binding. Its returned context included
+`supplemental_source_binding_required`. Cleanup completed with no authority, readiness, or
+send rows. Requested model was gpt-6-astra; the responding model identity remains unverified.
+
+The corresponding editorial trial
+`16f17d9de7e74fd4ba2a61c5d9a0db49` ran from2026-09-11T22:21:36.095472Z to
+2026-09-11T22:22:38.457216Z and reached `human_review` with three calls, three artifacts, and
+no repair. Cleanup completed. The public pin/canary for this replacement bundle remains
+pending and is not claimed by these trials.

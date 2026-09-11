@@ -208,6 +208,45 @@ def test_cli_preserves_context_cleanup_evidence_on_the_primary_error(
     )
 
 
+@pytest.mark.parametrize(
+    ("diagnostic", "expected"),
+    (
+        ("funding_source_binding", "qualification_stage_cli_diagnostic:funding_source_binding\n"),
+        ("private source URL must not escape", ""),
+        ([], ""),
+        ({}, ""),
+    ),
+)
+def test_cli_emits_only_allowlisted_payload_diagnostics(
+    monkeypatch, tmp_path, capsys, diagnostic: object, expected: str,
+) -> None:
+    store = tmp_path / "store.sqlite"
+    _paths(monkeypatch, store)
+
+    @contextmanager
+    def prepared(_store):
+        yield {"qualification_factcheck": object()}
+
+    class Service:
+        def __init__(self, _connection, *, adapters):
+            pass
+
+        def run_next(self, _item_id, _request_id):
+            error = QualificationError("qualification_output_invalid")
+            setattr(error, "diagnostic_code", diagnostic)
+            raise error
+
+    monkeypatch.setattr(cli, "prepare_stage_adapters", prepared)
+    monkeypatch.setattr(cli, "open_store", lambda _store: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(cli, "QualificationService", Service)
+    assert cli.main([
+        "--store", str(store), "--item-id", ITEM, "--request-id", REQUEST,
+    ]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == "qualification_stage_cli_error:qualification_output_invalid\n" + expected
+
+
 def test_cli_rejects_noncanonical_ids_without_opening_the_store(
     monkeypatch, tmp_path, capsys,
 ) -> None:

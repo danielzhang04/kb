@@ -254,6 +254,12 @@ def test_public_stage_path_is_source_disabled_before_bootstrap(
     assert called is False
 
 
+def test_qualification_source_binding_prompt_covers_supplemental_relations() -> None:
+    prompt = adapter._PROMPTS["qualification_factcheck"]
+    assert "exactly the sources whose binding_kind is funding_event" in prompt
+    assert "historical, predecessor, and potential-conflict" in prompt
+
+
 def test_public_stage_path_refuses_mismatched_pin_before_bootstrap(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
 ) -> None:

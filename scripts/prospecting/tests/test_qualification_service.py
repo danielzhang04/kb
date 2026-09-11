@@ -379,6 +379,45 @@ def test_wrong_or_unbound_source_citation_is_rejected(tmp_path: Path) -> None:
     assert connection.execute("SELECT count(*) FROM prospecting_qualification_artifact").fetchone()[0] == 0
 
 
+@pytest.mark.parametrize(
+    ("diagnostic", "mutation"),
+    (
+        ("payload_contract", lambda value: value["company"].update(identity_consistency=[])),
+        ("funding_source_binding", lambda value: value["company"]["funding_events"][0].update(source_key="qsrc_unbound")),
+        ("funding_observation_binding", lambda value: value["company"]["funding_events"][0].update(stage="series_a")),
+        ("candidate_binding", lambda value: value["people"][0].update(candidate_id="pqc_unbound")),
+        ("person_source_binding", lambda value: value["people"][0].update(source_keys=[])),
+    ),
+)
+def test_payload_refusals_keep_the_durable_code_and_attach_only_safe_diagnostics(
+    tmp_path: Path, diagnostic: str, mutation,
+) -> None:
+    connection, started, funding, _selected, people = _ready_store(tmp_path)
+
+    def payload(job):
+        value = _supported_payload(job)
+        mutation(value)
+        return value
+
+    service = QualificationService(
+        connection, adapters={"qualification_factcheck": _Adapter(payload)}, now=lambda: NOW,
+    )
+    service.start_or_resume(_qualification_request(started, funding, people))
+    item_id = service.get_projection(started.run_id).items[0].item_id
+    with pytest.raises(QualificationError) as refused:
+        service.run_next(item_id, "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee")
+    assert str(refused.value) == "qualification_output_invalid"
+    assert getattr(refused.value, "diagnostic_code") == diagnostic
+    attempt = connection.execute(
+        "SELECT state,failure_code FROM prospecting_qualification_attempt WHERE item_id=?",
+        (item_id,),
+    ).fetchone()
+    assert tuple(attempt) == ("failed", "qualification_output_invalid")
+    assert connection.execute(
+        "SELECT count(*) FROM prospecting_qualification_artifact WHERE item_id=?", (item_id,),
+    ).fetchone()[0] == 0
+
+
 def test_event_uncertainty_cannot_support_company_or_people(tmp_path: Path) -> None:
     connection, started, funding, _selected, people = _ready_store(tmp_path)
 

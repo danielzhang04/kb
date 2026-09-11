@@ -194,6 +194,7 @@ class _Fixture(NamedTuple):
     started: Any
     funding: Any
     people: Any
+    supplemental: bool
 
 
 class _HarnessError(Exception):
@@ -400,7 +401,7 @@ def _new_run_root() -> Path:
         raise _HarnessError("run_root_unavailable") from None
 
 
-def _verify_scope(connection: Any, people: Any) -> int:
+def _verify_scope(connection: Any, people: Any, *, supplemental: bool = False) -> int:
     """Refuse before any model call unless the fixture is the exact empty scope."""
     rows = connection.execute(
         "SELECT source_url,allowlist_version FROM source_snapshot",
@@ -415,16 +416,93 @@ def _verify_scope(connection: Any, people: Any) -> int:
         raise _HarnessError("fixture_identity_mismatch")
     if _counts(connection, *ZERO_QUALIFICATION_TABLES) != (0,) * len(ZERO_QUALIFICATION_TABLES):
         raise _HarnessError("fixture_qualification_not_empty")
-    if _counts(connection, *(table for table, _count in EXPECTED_SCOPE)) != tuple(
+    if supplemental:
+        if _counts(connection, "person", "employment", "prospecting_person_candidate") != (2, 2, 3):
+            raise _HarnessError("fixture_row_scope_invalid")
+    elif _counts(connection, *(table for table, _count in EXPECTED_SCOPE)) != tuple(
         count for _table, count in EXPECTED_SCOPE
     ):
         raise _HarnessError("fixture_row_scope_invalid")
-    if int(people.counts["imported"]) != 1 or int(people.counts["source_unknown"]) != 0:
+    if (
+        int(people.counts["imported"]) != (2 if supplemental else 1)
+        or int(people.counts["source_unknown"]) != 0
+    ):
         raise _HarnessError("fixture_row_scope_invalid")
     return len(rows)
 
 
-def _prepare_fixture(run_root: Path) -> tuple[Any, _Fixture]:
+def _prepare_supplemental_fixture(run_root: Path) -> tuple[Any, Any, Any, Any, Any]:
+    """Create richer P15/P17/P18 provenance only through real import services."""
+    from scripts.prospecting.funding_research_service import (
+        CapturedPage, CompanyCapture, CoverageInput, FundingEventInput,
+        FundingResearchRequest, FundingResearchService,
+    )
+    from scripts.prospecting.person_research_service import (
+        PersonCapture, PersonResearchRequest, PersonResearchService,
+    )
+    from scripts.prospecting.pipeline_service import PipelineService, PipelineStartRequest, ScopeSpec
+    from scripts.prospecting.store import open_store
+    from scripts.prospecting.tests.test_person_research_service import (
+        CAMPAIGN_ID, POLICY_HASH, STAMP, _write,
+    )
+
+    connection = open_store(run_root / STORE_NAME)
+    connection.execute(
+        "INSERT INTO sender_profile VALUES(?,?,?,?,?,?,?)",
+        ("sender-synthetic", "Synthetic Sender", None, "software", "operations", "tools", "{}"),
+    )
+    connection.execute(
+        """INSERT INTO campaign(
+               campaign_id,intent,sender_profile_id,policy_json,ask_type,ask_minutes,tone,
+               template_family,cadence,send_window,timezone,daily_cap,hourly_cap,
+               firm_collision_cap,approval_tier,mailbox_id,evidence_rules,credit_budget,status,policy_hash)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+        (CAMPAIGN_ID, "networking", "sender-synthetic", "{}", "informational_call", 15,
+         "warm", "networking-v1", "[]", "09:00-17:00", "America/New_York", 25, 6,
+         2, "T0", "mailbox-synthetic", "{}", 0, "draft", POLICY_HASH),
+    )
+    started = PipelineService(connection, now=lambda: STAMP).start_or_resume(PipelineStartRequest(
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", CAMPAIGN_ID, "2026-09-09",
+        "series_a", "series_c", 3, "latest_known", ScopeSpec("any"), ScopeSpec("any"),
+        1, 2, ("operations", "strategy"), "Synthetic supplemental qualification", "Coffee chat",
+    ))
+    event = "Nimbus Systems announced series_b on 2025-05-01."
+    request = FundingResearchRequest(
+        "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb", started.run_id, started.intake_hash,
+        None, None, (CompanyCapture(
+            "Nimbus Systems", "https://nimbus.test/", "United States", "software",
+            (
+                CapturedPage(_write(run_root, "identity.txt", "Nimbus Systems is a software company."),
+                             "https://nimbus.test/about", "issuer", STAMP),
+                CapturedPage(_write(run_root, "event.txt", event), "https://nimbus.test/funding", "issuer", STAMP),
+                CapturedPage(_write(run_root, "coverage.txt", "Nimbus Systems funding results."),
+                             "https://search.test/nimbus", "search_coverage", STAMP,
+                             CoverageInput("Nimbus Systems funding", STAMP, "found", 1, 20)),
+            ), (FundingEventInput(1, "series_b", "2025-05-01", event),),
+        ),),
+    )
+    funding = FundingResearchService(connection, now=lambda: STAMP).import_and_classify(request)
+    selected = FundingResearchService(connection, now=lambda: STAMP).get_projection(started.run_id).companies[0]
+    first = PersonResearchService(connection, now=lambda: STAMP).import_current_people(PersonResearchRequest(
+        "cccccccc-cccc-4ccc-8ccc-cccccccccccc", started.run_id, started.intake_hash,
+        funding.batch_id, funding.batch_hash, None, None, (selected.result_id,), (PersonCapture(
+            selected.result_id, selected.company_id, "Avery", "Avery Example", "Head of Operations",
+            None, "https://history.test/avery", _write(run_root, "prior.txt", "Avery Example joined another organization."), STAMP,
+        ),),
+    ))
+    people = PersonResearchService(connection, now=lambda: STAMP).import_current_people(PersonResearchRequest(
+        "dddddddd-dddd-4ddd-8ddd-dddddddddddd", started.run_id, started.intake_hash,
+        funding.batch_id, funding.batch_hash, first.batch_id, first.batch_hash, (selected.result_id,), (
+            PersonCapture(selected.result_id, selected.company_id, "Avery", "Avery Example", "Head of Operations",
+                          None, "https://nimbus.test/team/avery", _write(run_root, "avery.txt", "Avery Example is Head of Operations at Nimbus Systems."), STAMP),
+            PersonCapture(selected.result_id, selected.company_id, "Blake", "Blake Example", "VP Strategy",
+                          None, "https://nimbus.test/team/blake", _write(run_root, "blake.txt", "Blake Example is VP Strategy at Nimbus Systems."), STAMP),
+        ),
+    ))
+    return connection, started, funding, selected, people
+
+
+def _prepare_fixture(run_root: Path, *, supplemental: bool = False) -> tuple[Any, _Fixture]:
     """Build the genuine P15-P18 fixture with the real shared test helper."""
     from scripts.prospecting.tests.test_qualification_service import NOW, _ready_store
 
@@ -432,14 +510,20 @@ def _prepare_fixture(run_root: Path) -> tuple[Any, _Fixture]:
     try:
         try:
             run_root.mkdir(parents=True, exist_ok=True)
-            connection, started, funding, _selected, people = _ready_store(run_root)
+            if supplemental:
+                connection, started, funding, _selected, people = _prepare_supplemental_fixture(run_root)
+            else:
+                connection, started, funding, _selected, people = _ready_store(run_root)
         except Exception:
             raise _HarnessError("fixture_preparation_failed") from None
-        source_count = _verify_scope(connection, people)
+        source_count = (
+            _verify_scope(connection, people, supplemental=True)
+            if supplemental else _verify_scope(connection, people)
+        )
         return connection, _Fixture(
             started.run_id, started.intake_hash, funding.batch_id, funding.batch_hash,
             people.batch_id, people.batch_hash, int(people.counts["imported"]),
-            source_count, NOW, started, funding, people,
+            source_count, NOW, started, funding, people, supplemental,
         )
     except BaseException:
         if connection is not None:
@@ -450,7 +534,18 @@ def _prepare_fixture(run_root: Path) -> tuple[Any, _Fixture]:
         raise
 
 
-def _run() -> int:
+def _source_summary(connection: Any) -> list[dict[str, object]]:
+    rows = connection.execute(
+        """SELECT origin_kind,binding_kind,context_relation,count(*)
+             FROM prospecting_qualification_source
+             GROUP BY origin_kind,binding_kind,context_relation
+             ORDER BY origin_kind,binding_kind,context_relation""",
+    ).fetchall()
+    return [{"origin_kind": str(row[0]), "binding_kind": str(row[1]),
+             "context_relation": str(row[2]), "count": int(row[3])} for row in rows]
+
+
+def _run(*, supplemental: bool = False) -> int:
     try:
         from scripts.prospecting.personalizer import private_runtime as runtime
         from scripts.prospecting.personalizer import private_stage_adapter as native
@@ -497,7 +592,7 @@ def _run() -> int:
             "reserve_chars": RUNTIME_PATH_RESERVE_CHARS,
             "limit_chars": MAX_RUNTIME_PATH_CHARS,
         }
-        connection, fixture = _prepare_fixture(run_root)
+        connection, fixture = _prepare_fixture(run_root, supplemental=supplemental)
         report["fixture"] = {
             "run_id": fixture.run_id, "intake_hash": fixture.intake_hash,
             "funding_batch_id": fixture.funding_batch_id,
@@ -506,6 +601,7 @@ def _run() -> int:
             "person_batch_hash": fixture.person_batch_hash,
             "candidate_count": fixture.candidate_count,
             "source_snapshot_count": fixture.source_count,
+            "supplemental": fixture.supplemental,
         }
         report["fixture_time_utc"] = fixture.now.isoformat()
         report["fixture_time_is_future"] = fixture.now > wall_started
@@ -542,6 +638,7 @@ def _run() -> int:
             fixture.started, fixture.funding, fixture.people,
             request_id=START_REQUEST_ID,
         ))
+        report["source_summary"] = _source_summary(connection)
         report["batch"] = {
             "batch_id": batch.batch_id, "batch_hash": batch.batch_hash,
             "state": batch.state, "counts": dict(batch.counts),
@@ -662,6 +759,10 @@ def main(argv: list[str] | None = None) -> int:
         "--run", action="store_true",
         help="opt in to exactly one actual native qualification fact-check trial",
     )
+    parser.add_argument(
+        "--supplemental", action="store_true",
+        help="with --run, prepare the richer synthetic provenance fixture",
+    )
     options = parser.parse_args(sys.argv[1:] if argv is None else argv)
     if not options.run:
         _emit({
@@ -670,7 +771,7 @@ def main(argv: list[str] | None = None) -> int:
             "qualification_calls": 0,
         })
         return 0
-    return _run()
+    return _run(supplemental=True) if options.supplemental else _run()
 
 
 if __name__ == "__main__":
