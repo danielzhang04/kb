@@ -1,6 +1,7 @@
 """Private-file CLI exporting compiled P23 captures as ordinary P17/P18 requests.
 
-This desktop-only adapter turns one private annotation file into exactly two
+In its compile modes (``--compile-funding`` / ``--compile-people``) this
+desktop-only adapter turns one private annotation file into exactly two
 durable private files under the selected store's own ``snapshots/`` directory:
 
 * one *ordinary* P17 or P18 import request JSON, in exactly the schema the
@@ -73,6 +74,52 @@ code having written nothing at all:
   references would need, so the compiler's full candidate ceiling is not
   reachable through this CLI.  That is a stated limit, not a claim of parity.
 
+Span location (``--locate``)
+----------------------------
+
+``--locate FILE`` answers exactly one authoring question: *where, in this one
+already-verified capture, does this exact literal string occur?*  It exists so
+an operator no longer has to count Unicode codepoints by hand before writing an
+``excerpt``/``full_name``/``title`` span.
+
+The input file is a strict JSON object with exactly these keys::
+
+    {"session_id": str, "run_id": str, "expected_intake_hash": str,
+     "capture": {"task_id": str, "expected_receipt_id": str,
+                 "expected_content_sha256": str},
+     "needles": [str, ...]}
+
+``capture`` is exactly the existing ``CaptureRef`` shape the compile modes
+already accept, and the scope triple is checked against the resolved capture by
+the same ``_resolve`` path the compile modes use: wrong session, wrong run,
+stale intake hash, wrong receipt or wrong content hash all refuse with their
+existing fixed codes, and an expired capture refuses with ``capture_expired``.
+
+Limits, all validated before the store is opened: 1..32 needles, each needle
+1..1000 UTF-8 bytes, trimmed, non-empty, control-character free and distinct.
+Matching is literal: no case folding, no Unicode normalization, no whitespace
+collapsing, no fuzzy or regular-expression matching, no HTML awareness.  Every
+occurrence is reported, including occurrences that overlap each other; a needle
+that matches more than once is reported as ``multiple_matches`` and this CLI
+never picks one of them for the operator.  At most 64 matches per needle and
+256 matches in total: an over-wide result is *refused* with the fixed code
+``match_budget_exceeded``, before any artefact is written, rather than being
+truncated and presented as complete.
+
+The result is written as exactly one fresh, opaque, never-overwritten private
+artefact under ``snapshots/capture-imports/``, using the same ``copy_owned``
+primitive and the same measure-then-write discipline as the compile modes: the
+serialized artefact is sized against ``MAX_LOCATE_ARTEFACT_BYTES`` before the
+file is created, and an over-large one is refused with ``export_too_large``
+having written nothing.  The artefact records the exact capture provenance
+(task/receipt/snapshot/content hash/body ref/retrieval time/expiry), the
+decoded body's codepoint length, and one entry per needle carrying its input
+ordinal, its ``no_match``/``single_match``/``multiple_matches`` state and all
+its half-open ``{"start","end"}`` codepoint spans.  It deliberately does **not**
+carry the needle text or any captured text: the operator maps ordinals back
+onto their own input file.  No pipeline, import, session, task or authority row
+is written, and no other CLI mode is affected.
+
 Storage and quota
 -----------------
 
@@ -83,10 +130,14 @@ computed by ``affinity.source_review._owned_snapshot_usage`` from *database
 rows* whose ``allowlist_version`` is ``operator-local-v1``, and this CLI
 writes no row at all, so repeated exports cannot starve the person importer.
 
-No private value ever reaches process arguments, stdout or stderr: queries,
-URLs, captured text, names and file paths stay inside the private files.
-stdout carries only a fixed status, the export kind, the ``exported`` flag,
-the opaque store-relative artefact references, their SHA-256 digests and plain
+No private *value* reaches stdout or stderr: queries, URLs, captured text,
+needles, names and spans stay inside the private files.  The one private thing
+that does travel as a process argument is the operator-chosen path of the
+private input file itself, which this CLI reads and never echoes; earlier
+wording here claimed that file paths never reach arguments, which was wrong.
+stdout carries only a fixed status, the export kind, the ``exported`` flag, the
+store-relative artefact references (private paths, but opaque random names that
+name no company, person, query or URL), their SHA-256 digests and plain
 counters.  Failures print one fixed code with no traceback.
 
 The manifest does not bind a digest of the annotation file.  The reused
@@ -115,6 +166,9 @@ from .capture_import_compiler import (
     ExcerptSpan,
     FundingCompileRequest,
     FundingEventAnnotation,
+    LocateRequest,
+    MAX_NEEDLES,
+    MAX_NEEDLE_BYTES,
     PageAnnotation,
     PersonAnnotation,
     PersonCompileRequest,
@@ -139,6 +193,7 @@ from .store import open_store
 
 
 MAX_COMPILE_INPUT_BYTES = 256 * 1024
+MAX_LOCATE_INPUT_BYTES = 64 * 1024
 # The emitted request must be readable by the existing import parsers, so its
 # bound is theirs rather than an independent ceiling invented here.
 MAX_FUNDING_REQUEST_BYTES = MAX_FUNDING_IMPORT_BYTES
@@ -158,9 +213,22 @@ MAX_MANIFEST_HEADER_BYTES = 8 * 1024
 MAX_MANIFEST_BYTES = (
     MAX_MANIFEST_HEADER_BYTES + MAX_MANIFEST_OCCURRENCES * MAX_MANIFEST_ENTRY_BYTES
 )
+# One locate artefact holds at most MAX_NEEDLES entries; each entry is one
+# ordinal, one fixed state word and at most MAX_MATCHES_PER_NEEDLE two-integer
+# span objects.  This per-entry allowance is generous rather than a derived
+# worst case: the artefact's actual serialized size is measured against
+# MAX_LOCATE_ARTEFACT_BYTES before the file is created, and an oversized
+# artefact is refused (export_too_large) with nothing written.
+MAX_LOCATE_ENTRY_BYTES = 4 * 1024
+MAX_LOCATE_HEADER_BYTES = 8 * 1024
+MAX_LOCATE_ARTEFACT_BYTES = (
+    MAX_LOCATE_HEADER_BYTES + MAX_NEEDLES * MAX_LOCATE_ENTRY_BYTES
+)
 EXPORT_NAMESPACE = "capture-imports"
 FUNDING_KIND = "funding"
 PEOPLE_KIND = "people"
+LOCATE_KIND = "locate"
+LOCATE_ARTEFACT_KIND = "capture-locate-report"
 MANIFEST_KIND = "capture-import-manifest"
 _FUNDING_INPUT_FIELDS = frozenset({
     "request_id", "session_id", "run_id", "expected_intake_hash",
@@ -185,12 +253,18 @@ _PERSON_FIELDS = frozenset({
     "capture", "funding_result_id", "company_id", "first_name", "full_name",
     "title", "profile_url",
 })
+_LOCATE_INPUT_FIELDS = frozenset({
+    "session_id", "run_id", "expected_intake_hash", "capture", "needles",
+})
 _CLI_CODES = frozenset({
     "compile_input_duplicate_key", "compile_input_invalid",
     "compile_input_json_invalid", "compile_input_json_too_deep",
     "compile_input_schema_invalid", "compile_input_snapshot_required",
     "compile_input_too_large", "export_failed", "export_too_large",
-    "invalid_arguments", "store_invalid", "store_private_root_required",
+    "invalid_arguments", "locate_input_duplicate_key", "locate_input_invalid",
+    "locate_input_json_invalid", "locate_input_json_too_deep",
+    "locate_input_schema_invalid", "locate_input_snapshot_required",
+    "locate_input_too_large", "store_invalid", "store_private_root_required",
 })
 _COMPILE_CODES = frozenset({
     "batch_too_large", "candidate_pool_too_large", "capture_expired",
@@ -200,28 +274,35 @@ _COMPILE_CODES = frozenset({
     "invalid_capture_text", "invalid_company", "invalid_coverage",
     "invalid_expected_content_sha256", "invalid_expected_receipt_id",
     "invalid_funding_batch", "invalid_funding_event", "invalid_intake_hash",
-    "invalid_page", "invalid_person", "invalid_predecessor", "invalid_request",
+    "invalid_needle", "invalid_page", "invalid_person", "invalid_predecessor",
+    "invalid_request",
     "invalid_request_id", "invalid_research_scope", "invalid_run_id",
     "invalid_session", "invalid_source_kind", "invalid_span",
-    "person_scope_mismatch", "pipeline_context_stale", "receipt_mismatch",
+    "match_budget_exceeded", "person_scope_mismatch", "pipeline_context_stale",
+    "receipt_mismatch",
     "research_scope_too_large", "run_missing", "session_missing",
     "snapshot_store_required", "snapshot_store_unavailable", "source_changed",
     "source_too_large", "store_busy", "store_state_invalid",
 })
 
 
-def _object(value: Any, fields: frozenset[str]) -> dict[str, Any]:
+def _object(
+    value: Any, fields: frozenset[str], code: str = "compile_input_schema_invalid",
+) -> dict[str, Any]:
     """Accept exactly one JSON object with exactly the named keys."""
     if type(value) is not dict or set(value) != set(fields):
-        raise CliError("compile_input_schema_invalid")
+        raise CliError(code)
     return value
 
 
-def _text(value: Any, *, optional: bool = False) -> str | None:
+def _text(
+    value: Any, *, optional: bool = False,
+    code: str = "compile_input_schema_invalid",
+) -> str | None:
     if optional and value is None:
         return None
     if type(value) is not str:
-        raise CliError("compile_input_schema_invalid")
+        raise CliError(code)
     return value
 
 
@@ -255,10 +336,12 @@ def _whole(value: Any) -> int:
     return value
 
 
-def _bounded_list(value: Any, maximum: int) -> list[Any]:
+def _bounded_list(
+    value: Any, maximum: int, code: str = "compile_input_schema_invalid",
+) -> list[Any]:
     """Bound one collection *before* any element is looked at or iterated."""
     if type(value) is not list or len(value) > maximum:
-        raise CliError("compile_input_schema_invalid")
+        raise CliError(code)
     return value
 
 
@@ -267,11 +350,12 @@ def _span(value: Any) -> ExcerptSpan:
     return ExcerptSpan(_whole(item["start"]), _whole(item["end"]))
 
 
-def _capture_ref(value: Any) -> CaptureRef:
-    item = _object(value, _CAPTURE_FIELDS)
+def _capture_ref(value: Any, code: str = "compile_input_schema_invalid") -> CaptureRef:
+    item = _object(value, _CAPTURE_FIELDS, code)
     return CaptureRef(
-        _text(item["task_id"]), _text(item["expected_receipt_id"]),
-        _text(item["expected_content_sha256"]),
+        _text(item["task_id"], code=code),
+        _text(item["expected_receipt_id"], code=code),
+        _text(item["expected_content_sha256"], code=code),
     )
 
 
@@ -323,16 +407,19 @@ def _person(value: Any) -> PersonAnnotation:
     )
 
 
-def _private_json(store: Path, input_path: Path) -> Any:
+def _private_json(
+    store: Path, input_path: Path, *, prefix: str = "compile_input",
+    limit: int = MAX_COMPILE_INPUT_BYTES,
+) -> Any:
     return _read_private_json(
         store, input_path,
-        invalid_code="compile_input_invalid",
-        snapshot_code="compile_input_snapshot_required",
-        too_large_code="compile_input_too_large",
-        duplicate_code="compile_input_duplicate_key",
-        json_code="compile_input_json_invalid",
-        depth_code="compile_input_json_too_deep",
-        limit=MAX_COMPILE_INPUT_BYTES,
+        invalid_code=f"{prefix}_invalid",
+        snapshot_code=f"{prefix}_snapshot_required",
+        too_large_code=f"{prefix}_too_large",
+        duplicate_code=f"{prefix}_duplicate_key",
+        json_code=f"{prefix}_json_invalid",
+        depth_code=f"{prefix}_json_too_deep",
+        limit=limit,
     )
 
 
@@ -360,6 +447,46 @@ def _read_person_input(store: Path, input_path: Path) -> PersonCompileRequest:
         _text(value["predecessor_hash"], optional=True),
         tuple(_text(result_id) for result_id in result_ids),
         tuple(_person(person) for person in people),
+    )
+
+
+def _needle(value: Any) -> str:
+    """Accept one literal needle, bounded and shaped before the store opens."""
+    text = _text(value, code="locate_input_schema_invalid")
+    if (
+        not text or text != text.strip()
+        or any(character < " " or character == "\x7f" for character in text)
+    ):
+        raise CliError("locate_input_schema_invalid")
+    try:
+        if not 1 <= len(text.encode("utf-8")) <= MAX_NEEDLE_BYTES:
+            raise CliError("locate_input_schema_invalid")
+    except UnicodeError:
+        raise CliError("locate_input_schema_invalid") from None
+    return text
+
+
+def _read_locate_input(store: Path, input_path: Path) -> LocateRequest:
+    """Validate the whole locate request's shape and limits before any DB open."""
+    value = _object(
+        _private_json(store, input_path, prefix="locate_input", limit=MAX_LOCATE_INPUT_BYTES),
+        _LOCATE_INPUT_FIELDS, "locate_input_schema_invalid",
+    )
+    raw = _bounded_list(value["needles"], MAX_NEEDLES, "locate_input_schema_invalid")
+    if not raw:
+        raise CliError("locate_input_schema_invalid")
+    needles: list[str] = []
+    for item in raw:
+        needle = _needle(item)
+        if needle in needles:
+            raise CliError("locate_input_schema_invalid")
+        needles.append(needle)
+    return LocateRequest(
+        _text(value["session_id"], code="locate_input_schema_invalid"),
+        _text(value["run_id"], code="locate_input_schema_invalid"),
+        _text(value["expected_intake_hash"], code="locate_input_schema_invalid"),
+        _capture_ref(value["capture"], "locate_input_schema_invalid"),
+        tuple(needles),
     )
 
 
@@ -569,6 +696,70 @@ def _export(
     }
 
 
+def _locate_counts(located: object) -> dict[str, int]:
+    states = [item.state for item in located.needles]
+    return {
+        "needles": len(states),
+        "no_match": states.count("no_match"),
+        "single_match": states.count("single_match"),
+        "multiple_matches": states.count("multiple_matches"),
+        "matches": sum(len(item.spans) for item in located.needles),
+    }
+
+
+def _locate_payload(located: object, request: LocateRequest) -> dict[str, object]:
+    """Private artefact: exact provenance and spans, never needles or text."""
+    return {
+        "kind": LOCATE_ARTEFACT_KIND,
+        "compiler_version": located.compiler_version,
+        "session_id": request.session_id,
+        "run_id": request.run_id,
+        "expected_intake_hash": request.expected_intake_hash,
+        "capture": {
+            "task_id": located.task_id,
+            "receipt_id": located.receipt_id,
+            "snapshot_id": located.snapshot_id,
+            "content_sha256": located.content_sha256,
+            "body_ref": located.body_ref,
+            "retrieved_at": located.retrieved_at,
+            "expires_at": located.expires_at,
+        },
+        "text_codepoints": located.text_length,
+        "needles": [
+            {
+                "ordinal": item.ordinal,
+                "state": item.state,
+                "match_count": len(item.spans),
+                "spans": [
+                    {"start": span.start, "end": span.end} for span in item.spans
+                ],
+            }
+            for item in located.needles
+        ],
+    }
+
+
+def _export_locate(
+    root: Path, located: object, request: LocateRequest,
+) -> dict[str, object]:
+    """Size the single locate artefact, then write it once, never overwriting."""
+    contents = _canonical(_locate_payload(located, request))
+    if len(contents) > MAX_LOCATE_ARTEFACT_BYTES:
+        raise CliError("export_too_large")
+    created: list[tuple[Path, tuple[int, int]]] = []
+    artefact_ref = _write_owned(
+        root, "loc_" + uuid.uuid4().hex, contents, MAX_LOCATE_ARTEFACT_BYTES, created,
+    )
+    return {
+        "status": "located",
+        "kind": LOCATE_KIND,
+        "exported": True,
+        "artefact_ref": artefact_ref,
+        "artefact_sha256": sha256(contents).hexdigest(),
+        "counts": _locate_counts(located),
+    }
+
+
 def _error_code(error: BaseException) -> str:
     value = str(error)
     if isinstance(error, CliError) and value in _CLI_CODES:
@@ -584,15 +775,19 @@ def main(argv: list[str] | None = None) -> int:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--compile-funding")
     mode.add_argument("--compile-people")
+    mode.add_argument("--locate")
     try:
         args = parser.parse_args(argv)
         store, identity = _approved_store(Path(args.store))
         if args.compile_funding is not None:
             kind = FUNDING_KIND
             compile_request = _read_funding_input(store, Path(args.compile_funding))
-        else:
+        elif args.compile_people is not None:
             kind = PEOPLE_KIND
             compile_request = _read_person_input(store, Path(args.compile_people))
+        else:
+            kind = LOCATE_KIND
+            compile_request = _read_locate_input(store, Path(args.locate))
         root = _safe_existing_directory(store.parent / "snapshots", "export_failed")
         store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)
         connection = open_store(store)
@@ -601,14 +796,19 @@ def main(argv: list[str] | None = None) -> int:
             if kind == FUNDING_KIND:
                 compiled = compiler.compile_funding(compile_request)
                 request_payload = _funding_payload(compiled.request)
-            else:
+            elif kind == PEOPLE_KIND:
                 compiled = compiler.compile_people(compile_request)
                 request_payload = _person_payload(compiled.request)
+            else:
+                located = compiler.locate_spans(compile_request)
         finally:
             connection.close()
-        output = _export(
-            root, kind, compiled, compile_request.session_id, request_payload,
-        )
+        if kind == LOCATE_KIND:
+            output = _export_locate(root, located, compile_request)
+        else:
+            output = _export(
+                root, kind, compiled, compile_request.session_id, request_payload,
+            )
         sys.stdout.write(
             json.dumps(output, sort_keys=True, separators=(",", ":")) + "\n"
         )

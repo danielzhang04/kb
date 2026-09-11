@@ -15,12 +15,22 @@ packet under ``snapshots/capture-packets`` with a fresh, exclusive, opaque
 filename.  When that export fails the committed lease is deliberately left in
 place until it expires and is reclaimed: a succeeded SQL claim is never rolled
 back by this CLI.
+
+``--submit-packet`` is a convenience over ``--submit``: instead of restating
+the private task id and lease token, the operator names one packet file this
+CLI itself exported under this same store's ``snapshots/capture-packets``.
+Reading that packet identifies the bytes this store wrote at claim time; it is
+no evidence of browsing, of authentication, or of any stronger observation,
+and the existing ``CaptureService`` remains the sole authority
+for the task's current lease, expiry, reclaim and captured-body checks.
 """
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
+import re
 import sqlite3
 import sys
 from typing import Any
@@ -30,12 +40,18 @@ from .pipeline_cli import (
     CliError,
     _Parser,
     _approved_store,
+    _finite_float,
+    _invalid_constant,
     _read_private_json,
+    _reject_duplicate,
+    _reject_excess_depth,
     _safe_existing_directory,
     _safe_existing_file,
 )
 from .research_capture_service import (
+    CAPTURE_KINDS,
     MAX_LEASE_SECONDS,
+    SEARCH_KIND,
     CaptureClaimRequest,
     CaptureError,
     CaptureFinishRequest,
@@ -44,7 +60,7 @@ from .research_capture_service import (
     CaptureSubmitRequest,
     CaptureTaskRequest,
 )
-from .source_capture import SourceCaptureError, cleanup_owned, copy_owned
+from .source_capture import SourceCaptureError, cleanup_owned, copy_owned, read_owned
 from .store import open_store
 
 
@@ -59,12 +75,25 @@ _TASK_FIELDS = frozenset({"request_id", "session_id", "task_kind", "query", "url
 _SUBMIT_FIELDS = frozenset({
     "task_id", "lease_token", "body_ref", "source_url", "retrieved_at",
 })
+_SUBMIT_PACKET_FIELDS = frozenset({
+    "packet_ref", "body_ref", "source_url", "retrieved_at",
+})
+_PACKET_FIELDS = frozenset({
+    "task_id", "attempt_id", "attempt_no", "lease_token", "lease_epoch",
+    "task_kind", "expires_at", "query", "url",
+})
+_PACKET_REF = re.compile(r"capture-packets/pkt_([0-9a-f]{32})\.body\Z")
 _FINISH_FIELDS = frozenset({"task_id", "lease_token", "error_code"})
 _CLI_CODES = frozenset({
     "capture_input_duplicate_key", "capture_input_invalid",
     "capture_input_json_invalid", "capture_input_json_too_deep",
     "capture_input_schema_invalid", "capture_input_snapshot_required",
-    "capture_input_too_large", "invalid_arguments", "packet_export_failed",
+    "capture_input_too_large", "capture_packet_duplicate_key",
+    "capture_packet_invalid", "capture_packet_json_invalid",
+    "capture_packet_json_too_deep", "capture_packet_ref_invalid",
+    "capture_packet_schema_invalid", "capture_packet_too_large",
+    "capture_packet_body_ref_invalid",
+    "invalid_arguments", "packet_export_failed",
     "store_invalid", "store_private_root_required",
 })
 _CAPTURE_CODES = frozenset({
@@ -144,6 +173,95 @@ def _read_finish(store: Path, input_path: Path) -> CaptureFinishRequest:
     return CaptureFinishRequest(
         _string(value["task_id"]), _string(value["lease_token"]),
         _string(value["error_code"]),
+    )
+
+
+def _packet_ref(value: Any) -> str:
+    """Accept only this store's own claim-packet reference shape."""
+    if type(value) is not str:
+        raise CliError("capture_packet_ref_invalid")
+    match = _PACKET_REF.fullmatch(value)
+    if match is None:
+        raise CliError("capture_packet_ref_invalid")
+    return value
+
+
+def _owned_packet(store: Path, packet_ref: str) -> Any:
+    """Read one currently owned packet's bytes from this store's snapshots."""
+    root = _safe_existing_directory(store.parent / "snapshots", "capture_packet_invalid")
+    try:
+        contents = read_owned(root, packet_ref, maximum=MAX_PACKET_BYTES).contents
+    except SourceCaptureError as error:
+        raise CliError(
+            "capture_packet_too_large" if str(error) == "too_large"
+            else "capture_packet_invalid"
+        ) from None
+    _reject_excess_depth(contents, "capture_packet_json_too_deep")
+    try:
+        return json.loads(
+            contents.decode("utf-8"),
+            object_pairs_hook=lambda pairs: _reject_duplicate(
+                pairs, "capture_packet_duplicate_key",
+            ),
+            parse_constant=lambda value: _invalid_constant(
+                value, "capture_packet_json_invalid",
+            ),
+            parse_float=lambda value: _finite_float(
+                value, "capture_packet_json_invalid",
+            ),
+        )
+    except CliError:
+        raise
+    except (
+        UnicodeDecodeError, json.JSONDecodeError, OverflowError, RecursionError,
+        ValueError,
+    ):
+        raise CliError("capture_packet_json_invalid") from None
+
+
+def _packet_lease(value: Any) -> tuple[str, str]:
+    """Validate the exact envelope ``_export_packet`` writes, nothing more."""
+    if type(value) is not dict or set(value) != set(_PACKET_FIELDS):
+        raise CliError("capture_packet_schema_invalid")
+    for key in ("task_id", "attempt_id", "lease_token", "task_kind", "expires_at"):
+        if type(value[key]) is not str or not value[key]:
+            raise CliError("capture_packet_schema_invalid")
+    for key in ("attempt_no", "lease_epoch"):
+        if type(value[key]) is not int or value[key] < 1:
+            raise CliError("capture_packet_schema_invalid")
+    if value["task_kind"] not in CAPTURE_KINDS:
+        raise CliError("capture_packet_schema_invalid")
+    named, absent = (
+        ("query", "url") if value["task_kind"] == SEARCH_KIND else ("url", "query")
+    )
+    if type(value[named]) is not str or not value[named] or value[absent] is not None:
+        raise CliError("capture_packet_schema_invalid")
+    return value["task_id"], value["lease_token"]
+
+
+def _read_submit_packet(store: Path, input_path: Path) -> CaptureSubmitRequest:
+    """Build the existing submit request from one owned claim packet.
+
+    The packet only supplies the task id and lease token the operator would
+    otherwise retype; it grants no authority.  ``CaptureService`` still
+    decides whether that lease is current, expired, reclaimed or lost.
+    """
+    value = _exact(_private_json(store, input_path), _SUBMIT_PACKET_FIELDS)
+    body_ref = _string(value["body_ref"])
+    components = body_ref.replace("\\", "/").split("/")
+    first = next((component for component in components if component not in {"", "."}), None)
+    if first is not None and (
+        first.casefold() == PACKET_NAMESPACE.casefold() if os.name == "nt"
+        else first == PACKET_NAMESPACE
+    ):
+        raise CliError("capture_packet_body_ref_invalid")
+    source_url = _string(value["source_url"])
+    retrieved_at = _string(value["retrieved_at"])
+    task_id, lease_token = _packet_lease(
+        _owned_packet(store, _packet_ref(value["packet_ref"])),
+    )
+    return CaptureSubmitRequest(
+        task_id, lease_token, body_ref, source_url, retrieved_at,
     )
 
 
@@ -290,6 +408,7 @@ def main(argv: list[str] | None = None) -> int:
     mode.add_argument("--enqueue")
     mode.add_argument("--claim")
     mode.add_argument("--submit")
+    mode.add_argument("--submit-packet")
     mode.add_argument("--finish")
     mode.add_argument("--progress")
     mode.add_argument("--verify")
@@ -306,6 +425,8 @@ def main(argv: list[str] | None = None) -> int:
             task_request = _read_enqueue(store, Path(args.enqueue))
         elif args.submit is not None:
             submit_request = _read_submit(store, Path(args.submit))
+        elif args.submit_packet is not None:
+            submit_request = _read_submit_packet(store, Path(args.submit_packet))
         elif args.finish is not None:
             finish_request = _read_finish(store, Path(args.finish))
         store, _identity = _safe_existing_file(store, "store_invalid", expected=identity)

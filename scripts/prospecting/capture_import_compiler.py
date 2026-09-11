@@ -54,6 +54,18 @@ Honest limits
   names the recipe that produced it; the P17/P18 request identity itself is
   unchanged -- the ordinals live only on this private envelope and never enter
   the emitted requests or their importer request hashes.
+* ``locate_spans`` is a read-only *authoring aid* only.  It returns exact
+  half-open Unicode codepoint spans of literal needle occurrences inside one
+  already-verified capture, so an operator no longer has to count codepoints by
+  hand before writing an annotation.  It performs **no** fuzzy matching, no
+  case folding, no Unicode normalization, no whitespace collapsing and no
+  HTML-aware search: a needle matches only where the decoded body contains it
+  byte-for-byte after strict UTF-8 decoding.  It never chooses between
+  ambiguous matches: every occurrence is returned, including occurrences that
+  overlap each other, and a needle with several matches is reported as such
+  rather than silently resolved to the first.  Locating confers no authority
+  and produces no request: a located span is still an untrusted operator claim
+  until it is compiled and imported.
 * Repeated use of one page across different people is permitted.  No global
   dedupe is applied here; the importers enforce their own scoped duplicate
   rules.
@@ -115,11 +127,16 @@ MAX_METADATA_BYTES = 240
 MAX_STAGE_BYTES = 64
 MAX_URL_BYTES = 2048
 MAX_RESEARCH_RESULT_IDS = MAX_PERSON_CANDIDATES
+MAX_NEEDLES = 32
+MAX_NEEDLE_BYTES = 1000
+MAX_MATCHES_PER_NEEDLE = 64
+MAX_TOTAL_MATCHES = 256
 COMPILER_VERSION = "capture-import-compiler-v1"
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _SHA = re.compile(r"[0-9a-f]{64}\Z")
 _DATE = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}\Z")
 _RESULT_PREFIX = "pfrr_"
+_MATCH_STATES = ("no_match", "single_match", "multiple_matches")
 _PASSTHROUGH_CODES = frozenset({
     "capture_missing", "capture_expired", "receipt_mismatch", "content_sha256_mismatch",
     "source_changed", "source_too_large", "invalid_body_ref", "store_state_invalid",
@@ -218,6 +235,48 @@ class PersonCompileRequest:
     predecessor_hash: str | None
     research_result_ids: tuple[str, ...]
     people: tuple[PersonAnnotation, ...]
+
+
+@dataclass(frozen=True, repr=False)
+class LocateRequest:
+    """One read-only request to locate literal needles in one exact capture."""
+
+    session_id: str
+    run_id: str
+    expected_intake_hash: str
+    capture: CaptureRef
+    needles: tuple[str, ...]
+
+
+@dataclass(frozen=True, repr=False)
+class LocatedNeedle:
+    """Every exact match of one needle, in ascending start order.
+
+    ``ordinal`` is the needle's position in the caller's own request, so the
+    caller can map a result back onto its private input without this type ever
+    carrying the needle text itself.  ``state`` is exactly one of
+    ``no_match``, ``single_match`` or ``multiple_matches``.
+    """
+
+    ordinal: int
+    state: str
+    spans: tuple[ExcerptSpan, ...]
+
+
+@dataclass(frozen=True, repr=False)
+class LocatedCapture:
+    """Exact capture provenance plus per-needle spans, for private export."""
+
+    task_id: str
+    receipt_id: str
+    snapshot_id: str
+    content_sha256: str
+    body_ref: str
+    retrieved_at: str
+    expires_at: str
+    text_length: int
+    needles: tuple[LocatedNeedle, ...]
+    compiler_version: str = COMPILER_VERSION
 
 
 @dataclass(frozen=True, repr=False)
@@ -587,11 +646,75 @@ class CaptureImportCompiler:
             tuple(refs),
         )
 
+    def locate_spans(self, request: object) -> LocatedCapture:
+        """Locate exact literal needles inside one already-verified capture.
+
+        This reuses ``_resolve`` unchanged, so the capture must belong to the
+        caller's exact session, run and intake hash, must match the caller's
+        expected receipt id and content hash, must not have expired, and its
+        owned body is re-read and re-hashed before a single character is
+        searched.  The search itself is literal: ``str.find`` over the strict
+        UTF-8 decoding of those exact bytes.  Overlapping occurrences are all
+        returned (searching resumes one codepoint after each hit, not after the
+        match), and no match is ever preferred over another.
+
+        Returned spans are half-open Unicode codepoint offsets into that
+        decoded text, i.e. exactly the offsets ``ExcerptSpan`` already means,
+        so a located span can be pasted into an annotation unchanged.  Neither
+        the needles nor any captured text is returned.
+        """
+        if not isinstance(request, LocateRequest):
+            raise CaptureCompileError("invalid_request")
+        session_id = _identifier(request.session_id, "invalid_session")
+        run_id = _identifier(request.run_id, "invalid_run_id")
+        intake_hash = _sha(request.expected_intake_hash, "invalid_intake_hash")
+        if (
+            type(request.needles) is not tuple or not request.needles
+            or len(request.needles) > MAX_NEEDLES
+        ):
+            raise CaptureCompileError("invalid_needle")
+        seen: set[str] = set()
+        needles: list[str] = []
+        for needle in request.needles:
+            value = _bounded_text(needle, "invalid_needle", maximum=MAX_NEEDLE_BYTES)
+            if value in seen:
+                raise CaptureCompileError("invalid_needle")
+            seen.add(value)
+            needles.append(value)
+        cache: dict[tuple[str, str, str], tuple[ResolvedCapture, str, int]] = {}
+        resolved, text, _size = self._resolve(
+            request.capture, session_id, run_id, intake_hash, cache,
+            maximum=MAX_CAPTURE_BYTES,
+        )
+        located: list[LocatedNeedle] = []
+        total = 0
+        for ordinal, needle in enumerate(needles):
+            spans: list[ExcerptSpan] = []
+            index = text.find(needle)
+            while index >= 0:
+                # Refuse an over-wide result outright rather than truncating
+                # it, which would silently claim a complete answer.
+                if len(spans) >= MAX_MATCHES_PER_NEEDLE or total >= MAX_TOTAL_MATCHES:
+                    raise CaptureCompileError("match_budget_exceeded")
+                spans.append(ExcerptSpan(index, index + len(needle)))
+                total += 1
+                index = text.find(needle, index + 1)
+            located.append(LocatedNeedle(
+                ordinal, _MATCH_STATES[min(len(spans), 2)], tuple(spans),
+            ))
+        return LocatedCapture(
+            resolved.task_id, resolved.receipt_id, resolved.snapshot_id,
+            resolved.content_sha256, resolved.body_ref, resolved.retrieved_at,
+            resolved.expires_at, len(text), tuple(located),
+        )
+
 
 __all__ = [
     "COMPILER_VERSION", "CaptureCompileError", "CaptureImportCompiler", "CaptureRef",
     "CompanyAnnotation", "CompiledCaptureRef", "CompiledFundingRequest",
     "CompiledPersonRequest", "CoverageAnnotation", "ExcerptSpan",
-    "FundingCompileRequest", "FundingEventAnnotation", "PageAnnotation",
+    "FundingCompileRequest", "FundingEventAnnotation", "LocateRequest",
+    "LocatedCapture", "LocatedNeedle", "MAX_MATCHES_PER_NEEDLE",
+    "MAX_NEEDLES", "MAX_NEEDLE_BYTES", "MAX_TOTAL_MATCHES", "PageAnnotation",
     "PersonAnnotation", "PersonCompileRequest",
 ]
