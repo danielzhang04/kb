@@ -31,7 +31,7 @@ import json
 import os
 import re
 import stat
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 
@@ -73,7 +73,15 @@ def _relative(value: object, name: str) -> Path:
     if not isinstance(value, str) or not value or len(value) > 512:
         raise ContentBriefError(f"{name} must be a bounded nonempty relative path")
     path = Path(value)
-    if path.is_absolute() or path.drive or "\\" in value or any(part in {"", ".", ".."} for part in path.parts):
+    windows_path = PureWindowsPath(value)
+    if (
+        any(
+            candidate.is_absolute() or candidate.drive or candidate.root or candidate.anchor
+            for candidate in (path, windows_path)
+        )
+        or "\\" in value
+        or any(part in {"", ".", ".."} for part in path.parts)
+    ):
         raise ContentBriefError(f"{name} must be a normalized root-relative path")
     return path
 

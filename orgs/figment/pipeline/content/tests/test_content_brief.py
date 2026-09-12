@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -49,6 +49,13 @@ def _request(**changes: object) -> dict:
 
 def _write_request(root: Path, request: dict) -> None:
     (root / "request.json").write_text(json.dumps(request), encoding="utf-8")
+
+
+def _rooted_without_drive(path: Path) -> str:
+    absolute = path.resolve()
+    rooted = absolute.as_posix()[len(absolute.drive):]
+    assert rooted.startswith("/") and PureWindowsPath(rooted).root
+    return rooted
 
 
 def test_compiles_carousel_with_exact_local_lineage_and_null_metrics(tmp_path: Path):
@@ -120,6 +127,49 @@ def test_rejects_drive_relative_path_and_oversized_canonical_reference(tmp_path:
     monkeypatch.setattr(compiler, "MAX_REFERENCE_BYTES", 4)
     with pytest.raises(ContentBriefError, match="canonical_reference"):
         build_content_brief(root, "request.json", "out.json")
+
+
+@pytest.mark.parametrize("bad_request", [
+    PureWindowsPath("C:relative.json").as_posix(),
+    PureWindowsPath("C:/absolute.json").as_posix(),
+    PureWindowsPath("//server/share/request.json").as_posix(),
+    str(PureWindowsPath("nested/request.json")),
+])
+def test_public_api_rejects_windows_path_syntax_before_read(
+    tmp_path: Path, bad_request: str,
+) -> None:
+    root = _root(tmp_path)
+    with pytest.raises(ContentBriefError, match="root-relative"):
+        build_content_brief(root, bad_request, "out.json")
+    assert not (root / "out.json").exists()
+
+
+def test_rooted_no_drive_paths_cannot_read_or_write_outside_root(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    outside_request = tmp_path / "owned-outside-request.json"
+    outside_request.write_bytes(b"{")
+    with pytest.raises(ContentBriefError, match="root-relative"):
+        build_content_brief(root, _rooted_without_drive(outside_request), "out.json")
+    assert outside_request.read_bytes() == b"{"
+    assert not (root / "out.json").exists()
+
+    _write_request(root, _request())
+    outside_output = tmp_path / "owned-outside-output.json"
+    with pytest.raises(ContentBriefError, match="root-relative"):
+        build_content_brief(root, "request.json", _rooted_without_drive(outside_output))
+    assert not outside_output.exists()
+
+
+def test_public_api_accepts_ordinary_normalized_relative_paths(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    request_dir = root / "requests"
+    output_dir = root / "out"
+    request_dir.mkdir()
+    output_dir.mkdir()
+    (request_dir / "request.json").write_text(json.dumps(_request()), encoding="utf-8")
+    result = build_content_brief(root, "requests/request.json", "out/brief.json")
+    assert result["schema"] == "figment/content-brief@1"
+    assert (output_dir / "brief.json").is_file()
 
 
 def test_rejects_request_controlled_persona_path_or_self_referential_reference(tmp_path: Path):
