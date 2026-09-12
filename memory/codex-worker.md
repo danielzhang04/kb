@@ -756,3 +756,18 @@ Scope process cleanup to the exact child command; broad command-line substring s
 can match the cleanup shell itself. Reject documentation that changes run labels into test
 counts; verify against parsed JUnit before publication. Read/write UTF-8 explicitly in
 Windows orchestration scripts; default cp1252 can fail on existing memory files.
+
+## 2026-09-12 - Close evidence gaps without changing acceptance scope
+
+A fresh inspector can request desktop checks through a source-only relay. Keep its own
+session/raw judgments separate from developers and boss review. Preserve judgment but
+use the mandated writer's actual time if the worker supplies a future timestamp.
+Never sequence commit/publication after a guard before inspecting its exit. Safe role
+metadata does not turn an email scanner failure into a pass; record both facts honestly.
+Scope synthetic fixture repositories explicitly when basetemp is inside a real shared
+private root; an open-store sentinel proves refusal before mutation. Full-suite terminal
+JUnit, not focused retries, closes broad regression. Reconcile stale status paragraphs
+while preserving history. Four native adapters include qualification plus three editorial
+roles; deterministic initial drafting does not imply unavailable native refinement.
+Use SQLite uri=True for read-only URLs, -X utf8 for Windows report output, and account for
+sparse checkout removing directory materialization before writing completed cards.
