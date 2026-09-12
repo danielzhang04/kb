@@ -1,5 +1,9 @@
 # Prospecting current state
 
+Active follow-up: UI/UX refinement assigned2026-09-12; card01M29VGYQJ9KSTR8S7D37YKG02,
+KB-family design, clear input/save contracts and campaign setup/back-end consistency.
+Opus185/Sonnet186 audits running; prior infrastructure completion below is the baseline.
+
 Updated 2026-09-12T04:37:21.798672+00:00. The assigned infrastructure implementation and validation are complete.
 Final publication is on the existing draft PR181 (source) and PR180 (coordination).
 Accepted implementation f9da2881, generated P1 record67218ba5, final source documentation74406c4d is published;
