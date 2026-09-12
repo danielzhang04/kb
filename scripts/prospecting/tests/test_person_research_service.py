@@ -44,23 +44,31 @@ def _write(root: Path, name: str, text: str) -> str:
     return f"captures/{name}"
 
 
-def _seed(connection: sqlite3.Connection, root: Path, *, requested_companies: int = 1):
-    connection.execute(
-        "INSERT INTO sender_profile VALUES(?,?,?,?,?,?,?)",
-        ("sender-synthetic", "Synthetic Sender", None, "software", "operations", "tools", "{}"),
-    )
-    connection.execute(
+def _seed(
+    connection: sqlite3.Connection,
+    root: Path,
+    *,
+    requested_companies: int = 1,
+    campaign_id: str = CAMPAIGN_ID,
+    seed_campaign: bool = True,
+):
+    if seed_campaign:
+        connection.execute(
+            "INSERT INTO sender_profile VALUES(?,?,?,?,?,?,?)",
+            ("sender-synthetic", "Synthetic Sender", None, "software", "operations", "tools", "{}"),
+        )
+        connection.execute(
         """INSERT INTO campaign(
                campaign_id,intent,sender_profile_id,policy_json,ask_type,ask_minutes,tone,
                template_family,cadence,send_window,timezone,daily_cap,hourly_cap,
                firm_collision_cap,approval_tier,mailbox_id,evidence_rules,credit_budget,status,policy_hash)
            VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
-        (CAMPAIGN_ID, "networking", "sender-synthetic", "{}", "informational_call", 15,
+        (campaign_id, "networking", "sender-synthetic", "{}", "informational_call", 15,
          "warm", "networking-v1", "[]", "09:00-17:00", "America/New_York", 25, 6,
          2, "T0", "mailbox-synthetic", "{}", 0, "draft", POLICY_HASH),
-    )
+        )
     started = PipelineService(connection, now=lambda: STAMP).start_or_resume(PipelineStartRequest(
-        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", CAMPAIGN_ID, "2026-09-09",
+        "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", campaign_id, "2026-09-09",
         "series_a", "series_c", 3, "latest_known", ScopeSpec("any"), ScopeSpec("any"),
         requested_companies, 2, ("operations", "strategy", "chief_of_staff"),
         "Synthetic current people research", "Coffee chat",

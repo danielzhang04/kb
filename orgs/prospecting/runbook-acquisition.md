@@ -292,3 +292,21 @@ people importer rechecks the funding batch context, selected scope, and source
 hashes. Replaying unchanged request bytes is an idempotent replay, not a new
 research decision. Qualification is a separate workflow and is outside this
 runbook.
+
+## Selected-draft format configuration
+
+Before the first selected draft is rendered, the local review service exposes a
+metadata-only status endpoint at
+`GET /api/campaigns/<campaign_id>/selected-draft-format`. A local, CSRF-bound
+`POST` to the same endpoint takes only `campaign_id` and the status response's
+`policy_state_hash` as `expected_policy_state_hash`. It can add the reviewed selected-draft format
+profile when status is `missing`.
+
+The profile sets the 36-50-character subject and 75-125-word body bands. It
+leaves the campaign's informational-call ask and cadence unchanged, preserves
+the P15-P20 target-policy hash, does not approve, render, import, or send, and
+is separate from P8 fit approval. The operation is idempotent once configured.
+It refuses when rendering, review, approval, or executor work already exists;
+use the fixed status/error codes to resolve that state rather than editing
+stored policy JSON. Materializing a selected draft remains a separate P22
+operation with its existing source, ranking, and review guards.

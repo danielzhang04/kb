@@ -14,6 +14,7 @@ import json
 from pathlib import Path
 import re
 import secrets
+import sqlite3
 import time
 from typing import Any, Callable
 from urllib.parse import parse_qs, urlsplit
@@ -89,6 +90,12 @@ _LOCAL_REVIEW_ACTOR = "human:local-review"
 # refusal below, and none of them is ever suppressed here.
 _SELECTED_NOT_RANKED_CODES = frozenset({
     "funding_batch_missing", "person_batch_missing", "qualification_missing",
+})
+_SELECTED_DRAFT_FORMAT_CODES = frozenset({
+    "campaign_missing", "campaign_state_invalid", "invalid_campaign_id",
+    "invalid_policy_state_hash", "policy_state_stale", "policy_hash_changed",
+    "selected_draft_format_locked", "ask_type_unsupported",
+    "ask_minutes_unsupported", "store_busy", "transaction_active",
 })
 # The only local pipeline states that precede research entirely.
 _PRE_RESEARCH_PIPELINE_STATES = frozenset({"awaiting_research_adapter", "input_pending"})
@@ -455,10 +462,31 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if path == "/api/review" and self._authorized():
                 self._review_snapshot(query)
                 return
+            format_prefix = "/api/campaigns/"
+            format_suffix = "/selected-draft-format"
+            if (
+                path.startswith(format_prefix) and path.endswith(format_suffix)
+                and self._authorized()
+            ):
+                campaign_id = path[len(format_prefix):-len(format_suffix)]
+                if query or "/" in campaign_id:
+                    self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                    return
+                self._json(
+                    HTTPStatus.OK,
+                    self.server.campaigns.selected_draft_format_status(campaign_id),
+                )
+                return
             if path == "/favicon.ico" and not query:
                 self._bytes(HTTPStatus.NO_CONTENT, b"", "image/x-icon")
                 return
             self._error(HTTPStatus.UNAUTHORIZED if not self._authorized() else HTTPStatus.NOT_FOUND, "session_required" if not self._authorized() else "route_missing")
+        except CampaignError as error:
+            code = str(error)
+            self._error(
+                HTTPStatus.NOT_FOUND if code == "campaign_missing" else HTTPStatus.UNPROCESSABLE_ENTITY,
+                code if code in _SELECTED_DRAFT_FORMAT_CODES else "selected_draft_format_unavailable",
+            )
         except ReviewError as error:
             code = str(error)
             status = HTTPStatus.NOT_FOUND if code.endswith("_missing") else HTTPStatus.UNPROCESSABLE_ENTITY
@@ -480,6 +508,7 @@ class ReviewHandler(BaseHTTPRequestHandler):
             "pipeline": None,
             "funding": None,
             "selected_pipeline": None,
+            "selected_draft_format": None,
             "editorial_pipeline": [],
             "unmet_inputs": [],
         }
@@ -505,6 +534,32 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 snapshot["selected_pipeline"] = _jsonable(
                     self.server.review.get_selected_pipeline(campaign_id),
                 )
+            if isinstance(self.server.campaigns, CampaignService):
+                try:
+                    snapshot["selected_draft_format"] = _jsonable(
+                        self.server.campaigns.selected_draft_format_status(campaign_id),
+                    )
+                except CampaignError as error:
+                    code = str(error)
+                    snapshot["selected_draft_format"] = {
+                        "campaign_id": campaign_id,
+                        "state": "unavailable",
+                        "code": (
+                            code if code in _SELECTED_DRAFT_FORMAT_CODES
+                            else "selected_draft_format_unavailable"
+                        ),
+                    }
+                except sqlite3.Error:
+                    # A driver-level failure (e.g. a legacy schema missing the
+                    # selected-draft-format tables, or a failed lookup) is never
+                    # stringified or forwarded: it carries no owning-service
+                    # fixed code and may include raw driver/path text.  Every
+                    # other review section stays visible below.
+                    snapshot["selected_draft_format"] = {
+                        "campaign_id": campaign_id,
+                        "state": "unavailable",
+                        "code": "selected_draft_format_unavailable",
+                    }
             try:
                 snapshot["control"] = _jsonable(self.server.control.status(campaign_id))
             except (ControlReviewError, ControlError) as error:
@@ -691,6 +746,27 @@ class ReviewHandler(BaseHTTPRequestHandler):
                     HTTPStatus.OK,
                     self.server.review.verify_current_role_source(VerifyIdentitySourceRequest(**value)),
                 )
+                return
+            format_prefix = "/api/campaigns/"
+            format_suffix = "/selected-draft-format"
+            if path.startswith(format_prefix) and path.endswith(format_suffix):
+                campaign_id = path[len(format_prefix):-len(format_suffix)]
+                value = _require_object(
+                    payload, {"campaign_id", "expected_policy_state_hash"},
+                )
+                if campaign_id != value["campaign_id"] or "/" in campaign_id:
+                    raise ValueError("request_schema")
+                try:
+                    result = self.server.campaigns.configure_selected_draft_format(
+                        campaign_id, value["expected_policy_state_hash"],
+                    )
+                except CampaignError as error:
+                    code = str(error)
+                    raise CampaignError(
+                        code if code in _SELECTED_DRAFT_FORMAT_CODES
+                        else "selected_draft_format_unavailable"
+                    ) from None
+                self._json(HTTPStatus.OK, result)
                 return
             if path == "/api/selected-drafts/materialize":
                 value = _require_object(

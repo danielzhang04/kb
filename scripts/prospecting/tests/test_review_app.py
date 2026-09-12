@@ -55,7 +55,11 @@ from scripts.prospecting.review_service import (
     SenderProfileView,
     ReviewService,
 )
-from scripts.prospecting.manager.campaigns import CampaignService
+from scripts.prospecting.manager.campaigns import (
+    CampaignError,
+    CampaignService,
+    SelectedDraftFormatStatus,
+)
 from scripts.prospecting.store import open_store
 from scripts.prospecting.tests.p6_support import migrated_t1_store
 
@@ -198,6 +202,22 @@ class FakeCampaigns:
     def create(self, **value):
         self.seen.append(value)
         return Result()
+
+    def selected_draft_format_status(self, campaign_id):
+        if campaign_id != CAMPAIGN:
+            raise CampaignError("campaign_missing")
+        return SelectedDraftFormatStatus(
+            campaign_id, "a" * 64, "b" * 64, "missing", False,
+        )
+
+    def configure_selected_draft_format(self, campaign_id, expected_policy_state_hash):
+        if campaign_id != CAMPAIGN:
+            raise CampaignError("campaign_missing")
+        if expected_policy_state_hash != "b" * 64:
+            raise CampaignError("policy_state_stale")
+        return SelectedDraftFormatStatus(
+            campaign_id, "a" * 64, "c" * 64, "configured", True,
+        )
 
 
 class FakeControl:
@@ -1141,3 +1161,152 @@ def test_draft_preparer_maps_anchor_details_to_a_fixed_blocker(
     monkeypatch.setattr(review_app, "load_anchors", fail)
     with pytest.raises(ValueError, match="^sender_anchors_missing$"):
         _draft_preparer(object(), tmp_path / "sender-anchors.json")(CAMPAIGN, 0)
+
+
+def test_selected_draft_format_http_is_csrf_bound_and_metadata_only(app) -> None:
+    server, _review, _campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    headers = {"Cookie": cookie, "Content-Type": "application/json", "X-CSRF-Token": csrf}
+    status, _headers, raw = request(
+        server, "GET", f"/api/campaigns/{CAMPAIGN}/selected-draft-format",
+        headers={"Cookie": cookie},
+    )
+    assert status == 200
+    assert json.loads(raw) == {
+        "campaign_id": CAMPAIGN, "policy_hash": "a" * 64,
+        "policy_state_hash": "b" * 64, "state": "missing", "changed": False,
+    }
+    payload = {"campaign_id": CAMPAIGN, "expected_policy_state_hash": "b" * 64}
+    status, _headers, raw = request(
+        server, "POST", f"/api/campaigns/{CAMPAIGN}/selected-draft-format",
+        body=json.dumps(payload).encode(), headers={"Cookie": cookie, "Content-Type": "application/json"},
+    )
+    assert (status, json.loads(raw)) == (403, {"error": "csrf_invalid"})
+    status, _headers, raw = request(
+        server, "POST", f"/api/campaigns/{CAMPAIGN}/selected-draft-format",
+        body=json.dumps(payload).encode(), headers=headers,
+    )
+    assert (status, json.loads(raw)["state"], json.loads(raw)["changed"]) == (200, "configured", True)
+    status, _headers, raw = request(
+        server, "POST", f"/api/campaigns/{CAMPAIGN}/selected-draft-format",
+        body=json.dumps({**payload, "expected_policy_state_hash": "d" * 64}).encode(), headers=headers,
+    )
+    assert (status, json.loads(raw)) == (422, {"error": "policy_state_stale"})
+
+
+def test_review_snapshot_isolates_legacy_selected_format_unavailability(tmp_path: Path) -> None:
+    seeded = migrated_t1_store(tmp_path / "legacy.sqlite", tier="T0")
+    database = Path(seeded.connection.execute("PRAGMA database_list").fetchone()[2])
+    seeded.connection.close()
+    connection = sqlite3.connect(database, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    server = create_server(ReviewService(connection), CampaignService(connection), port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", "/api/review?campaign_id=camp_0000000000000001",
+            headers={"Cookie": cookie},
+        )
+        snapshot = json.loads(raw)
+        assert status == 200
+        assert snapshot["campaign"]["campaign_id"] == "camp_0000000000000001"
+        assert snapshot["selected_draft_format"] == {
+            "campaign_id": "camp_0000000000000001",
+            "state": "unavailable", "code": "campaign_missing",
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        connection.close()
+
+
+def test_review_snapshot_exposes_malformed_selected_format_as_unavailable(tmp_path: Path) -> None:
+    from scripts.prospecting.tests.test_campaigns import BRIEF, MAILBOX_ID, _profile
+
+    database = tmp_path / "malformed.sqlite"
+    seeded = open_store(database)
+    _profile(seeded, PROFILE)
+    CampaignService(
+        seeded, campaign_id_factory=lambda: CAMPAIGN,
+    ).create(
+        request_id="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa", brief_text=BRIEF,
+        sender_profile_id=PROFILE, mailbox_id=MAILBOX_ID,
+        require_first_draft_compatible=True,
+    )
+    policy = json.loads(seeded.execute(
+        "SELECT policy_json FROM campaign WHERE campaign_id=?", (CAMPAIGN,),
+    ).fetchone()[0])
+    policy["copy_profile"] = {"body_words": [75.0, 125], "subject_chars": [36, 50]}
+    seeded.execute(
+        "UPDATE campaign SET policy_json=? WHERE campaign_id=?",
+        (json.dumps(policy, sort_keys=True, separators=(",", ":")), CAMPAIGN),
+    )
+    seeded.commit()
+    seeded.close()
+    connection = sqlite3.connect(database, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    server = create_server(ReviewService(connection), CampaignService(connection), port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", f"/api/review?campaign_id={CAMPAIGN}", headers={"Cookie": cookie},
+        )
+        snapshot = json.loads(raw)
+        assert status == 200 and snapshot["campaign"]["campaign_id"] == CAMPAIGN
+        assert snapshot["selected_draft_format"] == {
+            "campaign_id": CAMPAIGN, "state": "unavailable", "code": "campaign_state_invalid",
+        }
+        assert "people" in snapshot and "drafts" in snapshot
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        connection.close()
+
+
+def test_review_snapshot_hides_synthetic_sqlite_driver_detail_on_selected_draft_format_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seeded = migrated_t1_store(tmp_path / "driver-error.sqlite", tier="T0")
+    database = Path(seeded.connection.execute("PRAGMA database_list").fetchone()[2])
+    seeded.connection.close()
+    connection = sqlite3.connect(database, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    campaigns = CampaignService(connection)
+    sentinel = "synthetic-private-looking-sqlite-detail-9f3c2a"
+
+    def _raise(_campaign_id):
+        raise sqlite3.OperationalError(sentinel)
+
+    monkeypatch.setattr(campaigns, "selected_draft_format_status", _raise)
+    server = create_server(ReviewService(connection), campaigns, port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        status, _headers, raw = request(
+            server, "GET", "/api/review?campaign_id=camp_0000000000000001",
+            headers={"Cookie": cookie},
+        )
+        assert status == 200
+        assert sentinel.encode() not in raw
+        snapshot = json.loads(raw)
+        assert snapshot["campaign"]["campaign_id"] == "camp_0000000000000001"
+        assert snapshot["selected_draft_format"] == {
+            "campaign_id": "camp_0000000000000001",
+            "state": "unavailable", "code": "selected_draft_format_unavailable",
+        }
+        assert "people" in snapshot and "drafts" in snapshot and "schedule" in snapshot
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        connection.close()

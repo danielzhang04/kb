@@ -21,6 +21,9 @@ import scripts.prospecting.selected_person_render as render_module
 from scripts.prospecting.personalizer.qa import QaResult
 from scripts.prospecting.review_qa import StoredReviewQa
 from scripts.prospecting.review_service import EditDraftRequest, ReviewService
+from scripts.prospecting.manager.campaigns import CampaignService
+from scripts.prospecting.person_research_service import PersonResearchService
+from scripts.prospecting.ranking_service import RankingService
 from scripts.prospecting.selected_draft_service import (
     SelectedDraftError,
     SelectedDraftRequest,
@@ -38,6 +41,14 @@ from scripts.prospecting.tests.test_selected_person_render import (
     _counts,
     _render_ready,
 )
+from scripts.prospecting.tests.test_campaigns import (
+    BRIEF, MAILBOX_ID, PROFILE_ID, REQUEST_ONE, _profile,
+)
+from scripts.prospecting.tests.test_person_research_service import (
+    CAMPAIGN_ID, _person, _request as _people_request, _seed,
+)
+from scripts.prospecting.tests.test_selected_person_source import _qualify, _resolve
+from scripts.prospecting.tests.test_ranking_service import _rank_request
 from scripts.prospecting.tests.test_selected_person_source import NOW, STAMP
 
 
@@ -1048,4 +1059,44 @@ def test_restored_earlier_render_context_refuses_to_bind_one_revision_twice(
     ).person_id == source.person_id
     assert _head(connection, source.campaign_id, source.person_id) == second.revision_id
     assert _counts(connection, "revision", *P22_TABLES) == (2, 2, 2)
+    connection.close()
+
+
+def test_selected_pipeline_can_configure_format_after_p20_before_p22(tmp_path: Path) -> None:
+    """The genuine P15–P20 fixture remains renderable without P8 fit approval."""
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection, PROFILE_ID)
+    campaigns = CampaignService(
+        connection, campaign_id_factory=lambda: CAMPAIGN_ID, now=lambda: STAMP,
+    )
+    created = campaigns.create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    started, funding, selected = _seed(
+        connection, tmp_path, campaign_id=CAMPAIGN_ID, seed_campaign=False,
+    )
+    people = PersonResearchService(connection, now=lambda: STAMP).import_current_people(
+        _people_request(started, funding, selected, (_person(tmp_path, selected),)),
+    )
+    qualification = _qualify(connection, started, funding, people)
+    ranking = RankingService(connection, now=lambda: NOW).start_or_resume(
+        _rank_request(started, qualification),
+    )
+    projection = RankingService(connection, now=lambda: NOW).get_projection(started.run_id)
+    person = projection.companies[0].people[0]
+    source = _resolve(connection, started, ranking, person.person_rank_id)
+    missing = campaigns.selected_draft_format_status(CAMPAIGN_ID)
+    configured = campaigns.configure_selected_draft_format(CAMPAIGN_ID, missing.policy_state_hash)
+
+    assert (missing.state, configured.state, configured.policy_hash) == (
+        "missing", "configured", created.policy_hash,
+    )
+    assert source.ranking_batch_hash == ranking.batch_hash == projection.batch_hash
+    assert connection.execute(
+        "SELECT count(*) FROM campaign_fit_spec WHERE campaign_id=?", (CAMPAIGN_ID,),
+    ).fetchone()[0] == 0
+    result = _service(connection).materialize(_request(source))
+    assert (result.state, result.replayed) == ("bound", False)
+    assert _counts(connection, *LEGACY_TABLES) == (0,) * len(LEGACY_TABLES)
     connection.close()

@@ -126,6 +126,17 @@ class CampaignSession:
         return value
 
 
+@dataclass(frozen=True)
+class SelectedDraftFormatStatus:
+    """Opaque state for the optional P22 rendering-format configuration."""
+
+    campaign_id: str
+    policy_hash: str
+    policy_state_hash: str
+    state: str
+    changed: bool
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -219,15 +230,35 @@ def _validate_saved_policy(policy: object) -> dict[str, object]:
         raise CampaignError("campaign_state_invalid")
     _saved_drafting(policy)
     p8 = keys & _P8_EXTENSION_KEYS
-    if p8 and p8 != _P8_EXTENSION_KEYS:
+    if "fit_spec_hash" in p8 and p8 != _P8_EXTENSION_KEYS:
         raise CampaignError("campaign_state_invalid")
-    if p8 and (
+    if "copy_profile" in p8 and not _is_copy_profile_default(policy["copy_profile"]):
+        raise CampaignError("campaign_state_invalid")
+    if "fit_spec_hash" in p8 and (
         type(policy["fit_spec_hash"]) is not str
         or re.fullmatch(r"[0-9a-f]{64}", policy["fit_spec_hash"]) is None
-        or policy["copy_profile"] != COPY_PROFILE_DEFAULT
     ):
         raise CampaignError("campaign_state_invalid")
     return policy
+
+
+def _is_copy_profile_default(value: object) -> bool:
+    """Require the exact JSON form of the reviewed P22/P8 profile.
+
+    Python equality would accept values such as ``75.0`` or ``True`` for integer
+    bands.  Compare canonical JSON instead so persisted configuration remains a
+    strict, versioned format contract.
+    """
+    if type(value) is not dict:
+        return False
+    try:
+        return json.dumps(
+            value, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        ) == json.dumps(
+            COPY_PROFILE_DEFAULT, sort_keys=True, separators=(",", ":"), ensure_ascii=False,
+        )
+    except (TypeError, ValueError):
+        return False
 
 
 def _policy_state_hash(policy: Mapping[str, object]) -> str:
@@ -596,6 +627,124 @@ class CampaignService:
             raise CampaignError("invalid_campaign_id")
         return _session(self.connection, campaign_id)
 
+    def selected_draft_format_status(self, campaign_id: str) -> SelectedDraftFormatStatus:
+        """Return only opaque state for the optional selected-draft copy profile."""
+        policy, policy_hash, _status = self._selected_draft_format_context(campaign_id)
+        return SelectedDraftFormatStatus(
+            campaign_id, policy_hash, _policy_state_hash(policy),
+            "configured" if "copy_profile" in policy else "missing", False,
+        )
+
+    def configure_selected_draft_format(
+        self, campaign_id: str, expected_policy_state_hash: str,
+    ) -> SelectedDraftFormatStatus:
+        """Install the canonical P22 format once, without changing target policy.
+
+        This is deliberately separate from P8 fit approval.  It is safe only before
+        any render, review, selected-source attestation, approval, or a direct
+        campaign-scoped vendor execution request exists for the campaign; once
+        present the canonical profile is a monotonic no-op on retries.
+        Acquisition finder pages and snapshots do not bind copy semantics and
+        correctly do not lock this format.
+        """
+        if type(campaign_id) is not str or _CAMPAIGN_ID.fullmatch(campaign_id) is None:
+            raise CampaignError("invalid_campaign_id")
+        if type(expected_policy_state_hash) is not str or re.fullmatch(
+            r"[0-9a-f]{64}", expected_policy_state_hash,
+        ) is None:
+            raise CampaignError("invalid_policy_state_hash")
+        try:
+            if self.connection.in_transaction:
+                raise CampaignError("transaction_active")
+        except CampaignError:
+            raise
+        except (AttributeError, TypeError, sqlite3.Error):
+            raise CampaignError("campaign_state_invalid") from None
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+        except sqlite3.OperationalError:
+            raise CampaignError("store_busy") from None
+        except (AttributeError, TypeError, sqlite3.Error):
+            raise CampaignError("campaign_state_invalid") from None
+        try:
+            policy, policy_hash, status = self._selected_draft_format_context(campaign_id)
+            state_hash = _policy_state_hash(policy)
+            if "copy_profile" in policy:
+                self.connection.commit()
+                return SelectedDraftFormatStatus(
+                    campaign_id, policy_hash, state_hash, "configured", False,
+                )
+            if expected_policy_state_hash != state_hash:
+                raise CampaignError("policy_state_stale")
+            if status != "draft":
+                raise CampaignError("selected_draft_format_locked")
+            _require_first_draft_policy(policy)
+            self._assert_selected_draft_format_unused(campaign_id)
+            updated = dict(policy)
+            updated["copy_profile"] = dict(COPY_PROFILE_DEFAULT)
+            _validate_saved_policy(updated)
+            normalized = compile_target_policy(
+                updated, lambda value: _resolve_company_id(self.connection, value),
+            )
+            if normalized.policy_hash != policy_hash:
+                raise CampaignError("policy_hash_changed")
+            self.connection.execute(
+                "UPDATE campaign SET policy_json=? WHERE campaign_id=?",
+                (json.dumps(updated, sort_keys=True, separators=(",", ":")), campaign_id),
+            )
+            try:
+                self.connection.commit()
+            except (AttributeError, TypeError, sqlite3.Error):
+                if not self._rollback_selected_draft_format():
+                    raise CampaignError("campaign_state_invalid") from None
+                raise CampaignError("campaign_state_invalid") from None
+            return SelectedDraftFormatStatus(
+                campaign_id, policy_hash, _policy_state_hash(updated), "configured", True,
+            )
+        except CampaignError:
+            if not self._rollback_selected_draft_format():
+                raise CampaignError("campaign_state_invalid") from None
+            raise
+        except (sqlite3.Error, TypeError, ValueError, json.JSONDecodeError):
+            self._rollback_selected_draft_format()
+            raise CampaignError("campaign_state_invalid") from None
+
+    def _selected_draft_format_context(
+        self, campaign_id: str,
+    ) -> tuple[dict[str, object], str, str]:
+        if type(campaign_id) is not str or _CAMPAIGN_ID.fullmatch(campaign_id) is None:
+            raise CampaignError("invalid_campaign_id")
+        session = _session(self.connection, campaign_id)
+        return dict(session.target_policy), session.policy_hash, session.status
+
+    def _rollback_selected_draft_format(self) -> bool:
+        try:
+            self.connection.rollback()
+            return True
+        except (AttributeError, TypeError, sqlite3.Error):
+            return False
+
+    def _assert_selected_draft_format_unused(self, campaign_id: str) -> None:
+        """Reject configuration after work whose copy semantics must remain fixed."""
+        checks = (
+            ("revision", "SELECT 1 FROM revision WHERE campaign_id=? LIMIT 1"),
+            ("review_candidate", "SELECT 1 FROM review_candidate WHERE campaign_id=? LIMIT 1"),
+            ("selected_draft_binding", "SELECT 1 FROM selected_draft_binding WHERE campaign_id=? LIMIT 1"),
+            ("selected_source_attestation", "SELECT 1 FROM selected_source_attestation WHERE campaign_id=? LIMIT 1"),
+            ("approval", "SELECT 1 FROM approval WHERE campaign_id=? LIMIT 1"),
+            ("exec_request", "SELECT 1 FROM exec_request WHERE CASE WHEN json_valid(payload) THEN json_extract(payload, '$.campaign_id') END=? LIMIT 1"),
+        )
+        tables = {
+            str(row[0]) for row in self.connection.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'",
+            )
+        }
+        if any(table not in tables for table, _query in checks):
+            raise CampaignError("campaign_state_invalid")
+        for _table, query in checks:
+            if self.connection.execute(query, (campaign_id,)).fetchone() is not None:
+                raise CampaignError("selected_draft_format_locked")
+
 
 __all__ = [
     "COMPILER_VERSION",
@@ -603,5 +752,6 @@ __all__ = [
     "CampaignService",
     "CampaignSession",
     "DraftingSettings",
+    "SelectedDraftFormatStatus",
     "MAX_BRIEF_BYTES",
 ]

@@ -1543,3 +1543,90 @@ test("D2: the People view never derives selected source confirmation from the pe
   assert.doesNotMatch(detail, /data-import-source/);
   assert.equal(app.requests.length, 0);
 });
+
+test("selected draft format renders explicit missing, configured, and unavailable states without posting", () => {
+  const app = harness();
+  app.requests.shift();
+  const missing = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"missing",policy_state_hash:"' + "a".repeat(64) + '"},"A")');
+  const configured = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"configured",policy_state_hash:"' + "b".repeat(64) + '"},"A")');
+  const unavailable = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"unavailable",code:"copy_profile_missing"},"A")');
+  assert.match(missing, /Configure draft format/);
+  assert.match(missing, /36.*50 subject characters and 75.*125 body words/);
+  assert.match(configured, /Draft format configured/);
+  assert.doesNotMatch(configured, /data-selected-format/);
+  assert.match(unavailable, /Draft format unavailable/);
+  assert.equal(app.requests.length, 0);
+});
+
+function selectedFormatSnapshot(campaignId, hash) {
+  return {...snapshot(campaignId), selected_draft_format: {
+    campaign_id: campaignId, state: "missing", policy_state_hash: hash,
+  }};
+}
+
+test("selected draft format posts only after an explicit current click and stays pending through refresh", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "c".repeat(64);
+  app.evaluate('state.campaign="A"; state.campaignGeneration=4; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  const error = app.document.getElementById("campaignError");
+  error.textContent = "Configure a draft format for this campaign first.";
+  error.classList.add("show");
+  app.document.emit("click", button);
+  assert.equal(error.textContent, "", "a valid explicit click clears the prior prerequisite error");
+  assert.equal(error.classList.contains("show"), false);
+  assert.equal(button.disabled, true);
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/campaigns/A/selected-draft-format");
+  assert.deepEqual(JSON.parse(post.init.body), {campaign_id: "A", expected_policy_state_hash: hash});
+  assert.equal(post.init.headers["X-CSRF-Token"], "csrf-test");
+  app.reply(post, {campaign_id: "A", state: "configured", changed: true});
+  await tick(); await tick();
+  const refresh = app.requests.shift();
+  assert.ok(refresh.url.includes("campaign_id=A"));
+  assert.equal(button.disabled, true, "the action stays pending until the current snapshot refresh completes");
+  app.reply(refresh, selectedFormatSnapshot("A", hash));
+  await tick(); await tick();
+  assert.equal(button.disabled, false);
+});
+
+test("selected draft format rejects stale clicks and stale completions without posting or refreshing", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "d".repeat(64);
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  app.evaluate('state.campaign="B"; state.campaignGeneration=5; state.data=' + JSON.stringify(selectedFormatSnapshot("B", hash)));
+  const error = app.document.getElementById("campaignError");
+  error.textContent = "Other campaign error";
+  error.classList.add("show");
+  app.document.emit("click", button);
+  assert.equal(app.requests.length, 0, "a button from another campaign cannot mutate the current campaign");
+  assert.equal(error.textContent, "Other campaign error", "a stale click cannot clear another campaign's error");
+  assert.equal(error.classList.contains("show"), true);
+  assert.equal(button.disabled, false);
+
+  app.evaluate('state.campaign="A"; state.campaignGeneration=6; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  app.evaluate('state.campaign="B"; state.campaignGeneration=7; state.data=' + JSON.stringify(selectedFormatSnapshot("B", hash)));
+  app.reply(post, {campaign_id: "A", state: "configured", changed: true});
+  await tick(); await tick();
+  assert.equal(app.requests.length, 0, "a stale success never refreshes the new campaign");
+  assert.equal(app.document.getElementById("campaignError").textContent, "");
+});
+
+test("selected draft format failure restores the explicit action without refresh", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "e".repeat(64);
+  app.evaluate('state.campaign="A"; state.campaignGeneration=1; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  app.reply(post, {error: "copy_profile_invalid"}, false);
+  await tick(); await tick();
+  assert.equal(button.disabled, false);
+  assert.match(app.document.getElementById("campaignError").textContent, /saved draft format is invalid/);
+  assert.equal(app.requests.length, 0);
+});

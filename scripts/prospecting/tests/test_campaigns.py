@@ -14,6 +14,7 @@ from scripts.prospecting.manager.campaigns import (
 from scripts.prospecting.p2_store import compile_target_policy
 from scripts.prospecting.personalizer.cli import _campaign_policy
 from scripts.prospecting.store import open_store
+from scripts.prospecting.tests.test_affinity_fitspec import _queue_any_exec_request
 
 
 PROFILE_ID = "22222222-2222-4222-8222-222222222222"
@@ -529,3 +530,112 @@ def test_invalid_drafting_configuration_never_mutates(
             drafting=drafting,
         )
     assert _counts(connection) == (0, 0)
+
+
+def test_selected_draft_format_is_canonical_monotonic_and_preserves_target_hash(tmp_path: Path) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    created = service.create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    before = connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone()
+    status = service.selected_draft_format_status(CAMPAIGN_ONE)
+    assert (status.state, status.changed, status.policy_hash) == ("missing", False, created.policy_hash)
+    with pytest.raises(CampaignError, match="^policy_state_stale$"):
+        service.configure_selected_draft_format(CAMPAIGN_ONE, "0" * 64)
+    assert connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone() == before
+
+    configured = service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+    row = connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone()
+    policy = json.loads(row["policy_json"])
+    assert (configured.state, configured.changed, row["policy_hash"]) == (
+        "configured", True, created.policy_hash,
+    )
+    assert policy["copy_profile"] == {
+        "body_words": [75, 125], "subject_chars": [36, 50],
+        "ask_minutes": 20, "third_touch": None,
+    }
+    assert "fit_spec_hash" not in policy
+    assert policy["ask_minutes"] == created.target_policy["ask_minutes"]
+
+    replay = service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+    assert (replay.state, replay.changed, replay.policy_state_hash) == (
+        "configured", False, configured.policy_state_hash,
+    )
+    assert connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone() == row
+
+
+def test_selected_draft_format_refuses_corrupt_state_and_missing_required_guard_table(tmp_path: Path) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    service.create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    status = service.selected_draft_format_status(CAMPAIGN_ONE)
+    connection.execute("UPDATE campaign SET ask_minutes=11 WHERE campaign_id=?", (CAMPAIGN_ONE,))
+    with pytest.raises(CampaignError, match="^campaign_state_invalid$"):
+        service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+    connection.execute("UPDATE campaign SET ask_minutes=15 WHERE campaign_id=?", (CAMPAIGN_ONE,))
+    connection.execute("DROP TABLE selected_draft_binding")
+    with pytest.raises(CampaignError, match="^campaign_state_invalid$"):
+        service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+
+
+def test_selected_draft_format_reports_busy_without_mutating(tmp_path: Path) -> None:
+    database = tmp_path / "store.sqlite"
+    connection = open_store(database)
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    service.create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    status = service.selected_draft_format_status(CAMPAIGN_ONE)
+    before = connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone()
+    blocker = sqlite3.connect(database, timeout=0)
+    try:
+        blocker.execute("BEGIN EXCLUSIVE")
+        with pytest.raises(CampaignError, match="^store_busy$"):
+            service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+    finally:
+        blocker.rollback()
+        blocker.close()
+    assert connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone() == before
+
+
+def test_selected_draft_format_refuses_a_valid_campaign_scoped_exec_request(tmp_path: Path) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    service.create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    status = service.selected_draft_format_status(CAMPAIGN_ONE)
+    before = connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone()
+    _queue_any_exec_request(connection, CAMPAIGN_ONE)
+
+    with pytest.raises(CampaignError, match="^selected_draft_format_locked$"):
+        service.configure_selected_draft_format(CAMPAIGN_ONE, status.policy_state_hash)
+
+    assert connection.execute(
+        "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
+    ).fetchone() == before
