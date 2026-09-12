@@ -25,12 +25,14 @@ does not publish, generate, or run content.
 from __future__ import annotations
 
 import argparse
+import copy
 import datetime as dt
 import hashlib
 import json
 import os
 import re
 import stat
+import tempfile
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
@@ -46,6 +48,9 @@ MAX_DEPTH = 32
 REPARSE_POINT = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
 FORBIDDEN_KEYS = ("approv", "accept", "decision", "promot", "publish", "post")
 CREATOR_ID = re.compile(r"[a-z0-9]+(?:-[a-z0-9]+)*\Z")
+EDIT_KEYS = {"brief_date", "hypothesis", "intended_metric"}
+STRICT_DATE = re.compile(r"\A\d{4}-\d{2}-\d{2}\Z")
+REVISION_PUBLICATION_SCHEMA = "figment/content-brief-revision-publication@1"
 
 
 class ContentBriefError(ValueError):
@@ -438,16 +443,279 @@ def build_content_brief(root: Path, request_path: str | Path, output_path: str |
     return record
 
 
-def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Compile one offline Figment content brief JSON record.")
-    parser.add_argument("--root", required=True, help="root containing the request and creator files")
-    parser.add_argument("--request", required=True, help="root-relative request JSON")
-    parser.add_argument("--out", required=True, help="fresh root-relative brief JSON")
-    args = parser.parse_args(argv)
+def _strict_date(value: object, name: str) -> str:
+    if not isinstance(value, str) or not STRICT_DATE.fullmatch(value):
+        raise ContentBriefError(f"{name} must be a canonical YYYY-MM-DD date")
     try:
-        build_content_brief(Path(args.root), args.request, args.out)
-    except ContentBriefError as exc:
-        parser.error(str(exc))
+        dt.date.fromisoformat(value)
+    except ValueError as exc:
+        raise ContentBriefError(f"{name} must be a canonical YYYY-MM-DD date") from exc
+    return value
+
+
+def _revision_base(value: object) -> Path:
+    relative = _relative(value, "revise-base")
+    if (
+        len(relative.parts) != 3
+        or relative.parts[0] != "content"
+        or relative.parts[1] != "briefs"
+        or len(relative.parts[2]) > 128
+        or not CREATOR_ID.fullmatch(relative.parts[2])
+    ):
+        raise ContentBriefError("revise-base must be content/briefs/<normalized-id>")
+    return relative
+
+
+def _revision_text(edits: dict[str, Any], key: str) -> str:
+    value = edits.get(key)
+    if not isinstance(value, str) or not value or value != value.strip():
+        raise ContentBriefError(f"{key} must be nonempty already-trimmed text")
+    if _utf16_length(value) > MAX_TEXT:
+        raise ContentBriefError(f"{key} exceeds the bounded text length")
+    if _has_control_char(value) or any(0xD800 <= ord(character) <= 0xDFFF for character in value):
+        raise ContentBriefError(f"{key} contains an unsupported character")
+    return value
+
+
+def _read_bounded_bytes(path: Path, label: str) -> bytes:
+    try:
+        with path.open("rb") as handle:
+            value = handle.read(MAX_JSON_BYTES + 1)
+    except OSError as exc:
+        raise ContentBriefError(f"{label} could not be read") from exc
+    if len(value) > MAX_JSON_BYTES:
+        raise ContentBriefError(f"{label} exceeds {MAX_JSON_BYTES} bytes")
+    return value
+
+
+def _path_identity(path: Path) -> tuple[int, int]:
+    info = path.stat()
+    return info.st_dev, info.st_ino
+
+
+def _fresh_revision_target(root: Path, value: object, base: Path) -> tuple[Path, Path, Path]:
+    relative = _relative(value, "out-dir")
+    if relative == base or base in relative.parents or relative in base.parents:
+        raise ContentBriefError("out-dir must not equal or nest with revise-base")
+    parent = root
+    for part in relative.parts[:-1]:
+        parent = parent / part
+        if not parent.is_dir() or _is_reparse(parent):
+            raise ContentBriefError("out-dir parent is missing or traverses a link")
+    target = root / relative
+    if target.exists() or _is_reparse(target):
+        raise ContentBriefError("out-dir must be fresh")
+    return relative, parent, target
+
+
+def _cleanup_owned_revision(
+    staging: Path,
+    staging_identity: tuple[int, int],
+    created: list[Path],
+    identities: dict[Path, tuple[int, int]],
+) -> None:
+    """Best-effort nonrecursive cleanup after proving every owned identity first."""
+    try:
+        if _path_identity(staging) != staging_identity or _is_reparse(staging):
+            return
+        entries = list(staging.iterdir())
+        if set(entries) != set(created):
+            return
+        for path in entries:
+            if _is_reparse(path) or not path.is_file() or _path_identity(path) != identities.get(path):
+                return
+    except OSError:
+        return
+    for path in reversed(created):
+        try:
+            os.unlink(path)
+        except OSError:
+            return
+    try:
+        if _path_identity(staging) == staging_identity:
+            staging.rmdir()
+    except OSError:
+        pass
+
+
+def revise_content_brief(
+    root: Path, base_dir: str, edits_path: str, out_dir: str,
+) -> dict[str, Any]:
+    """Publish a bounded creator-001 revision by one exclusive Windows directory rename.
+
+    The returned publication descriptor carries hashes from staging validation. It is
+    deliberately not a final-path revalidation proof; callers needing that proof must
+    call ``revalidate_content_brief`` on its published request and brief paths.
+
+    Supported publication model: CPython on Windows, a non-UNC local filesystem,
+    sibling staging and target directories on one volume, and no hostile concurrent
+    writer. The operation does not promise power-loss durability or couple the
+    filesystem commit atomically to Python returning.
+    """
+    if os.name != "nt":
+        raise ContentBriefError("revision publication is supported only on Windows")
+    root = Path(root)
+    if root.drive.startswith("\\\\"):
+        raise ContentBriefError("revision publication requires a local non-UNC root")
+    root = _safe_root(root)
+
+    base_relative = _revision_base(base_dir)
+    base_request_relative = (base_relative / "request.json").as_posix()
+    base_brief_relative = (base_relative / "brief.json").as_posix()
+    initial_base_proof = revalidate_content_brief(root, base_request_relative, base_brief_relative)
+    if initial_base_proof["record"]["creator"]["id"] != "creator-001":
+        raise ContentBriefError("revision is only permitted for the creator-001 base")
+
+    base_request_file = _safe_existing(root, base_request_relative, "revise-base request")
+    base_request_bytes = _read_bounded_bytes(base_request_file, "revise-base request")
+    if hashlib.sha256(base_request_bytes).hexdigest() != initial_base_proof["request"]["sha256"]:
+        raise ContentBriefError("base request changed while loading")
+    try:
+        base_request = json.loads(base_request_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise ContentBriefError("revise-base request is not valid JSON") from exc
+    _check_shape(base_request, "revise-base request")
+    if not isinstance(base_request, dict):
+        raise ContentBriefError("revise-base request must be an object")
+
+    edits_file = _safe_existing(root, edits_path, "edits")
+    edits = _read_json(edits_file, "edits")
+    _forbid_claims(edits)
+    _only_keys(edits, EDIT_KEYS, "edits")
+    missing = EDIT_KEYS - set(edits)
+    if missing:
+        raise ContentBriefError(f"edits is missing required fields: {', '.join(sorted(missing))}")
+
+    revised_request = copy.deepcopy(base_request)
+    revised_request["brief_date"] = _strict_date(edits.get("brief_date"), "brief_date")
+    revised_request["hypothesis"] = _revision_text(edits, "hypothesis")
+    revised_request["intended_metric"] = _revision_text(edits, "intended_metric")
+    request_bytes = (json.dumps(revised_request, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    if len(request_bytes) > MAX_JSON_BYTES:
+        raise ContentBriefError("revised request exceeds output size limit")
+
+    final_relative, final_parent, final_path = _fresh_revision_target(root, out_dir, base_relative)
+    staging: Path | None = None
+    staging_identity: tuple[int, int] | None = None
+    created: list[Path] = []
+    identities: dict[Path, tuple[int, int]] = {}
+    try:
+        try:
+            staging = Path(tempfile.mkdtemp(prefix=f".{final_path.name}.staging-", dir=final_parent))
+            staging_identity = _path_identity(staging)
+        except OSError as exc:
+            raise ContentBriefError("revision staging directory could not be created") from exc
+        if _is_reparse(staging):
+            raise ContentBriefError("revision staging directory must not be a link")
+
+        request_path = staging / "request.json"
+        try:
+            with request_path.open("xb") as handle:
+                request_identity = _path_identity(request_path)
+                created.append(request_path)
+                identities[request_path] = request_identity
+                handle.write(request_bytes)
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError as exc:
+            raise ContentBriefError("revised request could not be written") from exc
+
+        request_relative = request_path.relative_to(root).as_posix()
+        brief_path = staging / "brief.json"
+        brief_relative = brief_path.relative_to(root).as_posix()
+        try:
+            build_content_brief(root, request_relative, brief_relative)
+            created.append(brief_path)
+            identities[brief_path] = _path_identity(brief_path)
+        except OSError as exc:
+            raise ContentBriefError("revised brief could not be compiled") from exc
+
+        try:
+            staged_proof = revalidate_content_brief(root, request_relative, brief_relative)
+            final_base_proof = revalidate_content_brief(root, base_request_relative, base_brief_relative)
+        except OSError as exc:
+            raise ContentBriefError("revision inputs could not be revalidated") from exc
+        if final_base_proof != initial_base_proof:
+            raise ContentBriefError("base changed while the revision was being built")
+        try:
+            if _path_identity(staging) != staging_identity:
+                raise ContentBriefError("revision staging directory identity changed")
+            if _path_identity(request_path) != identities[request_path] or _path_identity(brief_path) != identities[brief_path]:
+                raise ContentBriefError("revision staging file identity changed")
+            if {entry.name for entry in staging.iterdir()} != {"request.json", "brief.json"}:
+                raise ContentBriefError("revision staging directory must contain exactly the request and brief")
+        except OSError as exc:
+            raise ContentBriefError("revision staging directory could not be verified") from exc
+
+        final_request_relative = (final_relative / "request.json").as_posix()
+        final_brief_relative = (final_relative / "brief.json").as_posix()
+        publication = {
+            "schema": REVISION_PUBLICATION_SCHEMA,
+            "base": final_base_proof,
+            "record": staged_proof["record"],
+            "prepublication_validation": {
+                "request_sha256": staged_proof["request"]["sha256"],
+                "brief_sha256": staged_proof["brief"]["sha256"],
+                "dependencies": staged_proof["dependencies"],
+            },
+            "publication": {
+                "directory": final_relative.as_posix(),
+                "request": {
+                    "path": final_request_relative,
+                    "sha256": staged_proof["request"]["sha256"],
+                },
+                "brief": {
+                    "path": final_brief_relative,
+                    "sha256": staged_proof["brief"]["sha256"],
+                },
+                "final_paths_revalidated": False,
+            },
+        }
+        try:
+            os.rename(staging, final_path)
+        except FileExistsError as exc:
+            raise ContentBriefError("out-dir must remain fresh during publication") from exc
+        except OSError as exc:
+            raise ContentBriefError("revision directory could not be published") from exc
+    except BaseException:
+        if staging is not None and staging_identity is not None:
+            try:
+                _cleanup_owned_revision(staging, staging_identity, created, identities)
+            except BaseException:
+                pass
+        raise
+    return publication
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="Compile or revise one offline Figment content brief JSON record.")
+    parser.add_argument("--root", required=True, help="root containing the request and creator files")
+    parser.add_argument("--request", help="root-relative request JSON")
+    parser.add_argument("--out", help="fresh root-relative brief JSON")
+    parser.add_argument("--revise-base", help="root-relative content/briefs/<id> directory to revise")
+    parser.add_argument("--edits", help="root-relative edits JSON")
+    parser.add_argument("--out-dir", help="fresh root-relative output directory for the revision")
+    args = parser.parse_args(argv)
+    build_mode = args.request is not None or args.out is not None
+    revision_mode = args.revise_base is not None or args.edits is not None or args.out_dir is not None
+    if build_mode and revision_mode:
+        parser.error("--request/--out and --revise-base/--edits/--out-dir are mutually exclusive")
+    if build_mode:
+        if args.request is None or args.out is None:
+            parser.error("--request and --out are both required")
+        try:
+            build_content_brief(Path(args.root), args.request, args.out)
+        except ContentBriefError as exc:
+            parser.error(str(exc))
+    elif revision_mode:
+        if args.revise_base is None or args.edits is None or args.out_dir is None:
+            parser.error("--revise-base, --edits, and --out-dir are all required")
+        try:
+            revise_content_brief(Path(args.root), args.revise_base, args.edits, args.out_dir)
+        except ContentBriefError as exc:
+            parser.error(str(exc))
+    else:
+        parser.error("either --request/--out or --revise-base/--edits/--out-dir is required")
     return 0
 
 
