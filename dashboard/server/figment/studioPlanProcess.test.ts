@@ -9,6 +9,8 @@ import {
   StudioPlanProcessError,
   killOwnedTree,
   runStudioPlanProcess,
+  runStudioPlanProcessCapture,
+  runStudioPlanProcessCaptureWith,
   runStudioPlanProcessWith,
   studioPlanProcessDefaults,
   type StudioPlanProcessDeps,
@@ -25,6 +27,12 @@ const fs = require('node:fs');
 const [mode, pidFile] = process.argv.slice(2);
 if (mode === 'ok') process.exit(0);
 if (mode === 'fail') { process.stderr.write('SECRET-STDERR C:/private/path'); process.exit(3); }
+if (mode === 'capture-ok') {
+  process.stdout.write(Buffer.from([0, 1, 2, 255, 254]));
+  process.stdout.write('-chunk-two-');
+  process.stderr.write('separate-stderr-not-in-stdout');
+  process.exit(0);
+}
 const stdio = mode === 'orphan-ignore' ? 'ignore' : 'inherit';
 const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio });
 g.on('spawn', () => {
@@ -240,6 +248,194 @@ describe('Windows owned-job containment (fail closed)', () => {
       for (const [name, value] of saved) {
         if (value === undefined) delete process.env[name]; else process.env[name] = value;
       }
+    }
+  });
+});
+
+// A controllable fake child in the same spirit as stuckWrapper: real EventEmitter
+// stdout/stderr so tests can drive exact data/exit/close ordering that a real
+// process cannot guarantee. Only used for the timing-sensitive capture races
+// below; every other capture behavior is exercised against the real fixture.
+function fakeCaptureChild(): { child: ChildProcess; stdout: EventEmitter; stderr: EventEmitter } {
+  const stdout = new EventEmitter();
+  const stderr = new EventEmitter();
+  const child = Object.assign(new EventEmitter(), {
+    pid: 434343, exitCode: null, signalCode: null, stdin: null, stdout, stderr, kill: () => true,
+  });
+  process.nextTick(() => child.emit('spawn'));
+  return { child: child as unknown as ChildProcess, stdout, stderr };
+}
+
+// A job stub whose terminateAndConfirmEmpty stays pending until resolved by the
+// test, so the capture path's "await tree confirmation" window can be probed.
+function deferredJob(): { job: WindowsJob; resolve: (v: boolean) => void; closes: number; called: boolean } {
+  const state = { closes: 0, called: false };
+  let resolveFn: (v: boolean) => void = () => {};
+  const pending = new Promise<boolean>((res) => { resolveFn = res; });
+  const job: WindowsJob = {
+    assign: () => true,
+    terminateAndConfirmEmpty: async () => { state.called = true; return pending; },
+    close: () => { state.closes += 1; },
+  };
+  return {
+    job,
+    resolve: resolveFn,
+    get closes() { return state.closes; },
+    get called() { return state.called; },
+  } as unknown as { job: WindowsJob; resolve: (v: boolean) => void; closes: number; called: boolean };
+}
+
+// Resolves once the fake child's scheduled 'spawn' event has actually fired,
+// so tests can sequence exit/close after production has recorded spawned=true
+// (fakeCaptureChild defers 'spawn' to process.nextTick).
+function waitForSpawn(child: ChildProcess): Promise<void> {
+  return new Promise((resolve) => child.once('spawn', () => resolve()));
+}
+
+describe('runStudioPlanProcessCapture', () => {
+  it('resolves with exactly the binary/chunked stdout Buffer, excluding stderr, after clean exit + close + owned-tree confirmation', async () => {
+    const pidFile = nextPidFile();
+    const result = await runStudioPlanProcessCapture(node, [script, 'capture-ok', pidFile], opts());
+    expect(Buffer.isBuffer(result.stdout)).toBe(true);
+    expect(result.stdout.equals(Buffer.concat([
+      Buffer.from([0, 1, 2, 255, 254]),
+      Buffer.from('-chunk-two-'),
+    ]))).toBe(true);
+    const text = result.stdout.toString('latin1');
+    expect(text).not.toContain('separate-stderr-not-in-stdout');
+  });
+
+  it('leaves the existing void API resolving undefined, not a capture object', async () => {
+    await expect(runStudioPlanProcess(node, [script, 'ok', nextPidFile()], opts())).resolves.toBeUndefined();
+  });
+
+  it('rejects with output_overflow and no attached stdout/body when combined stdout+stderr exceed the cap', async () => {
+    const pidFile = nextPidFile();
+    const run = runStudioPlanProcessCapture(node, [script, 'overflow', pidFile], opts({ maxBuffer: 1_000, timeout: 15_000 }));
+    const error = await run.then(() => null, (e: unknown) => e);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    const err = error as StudioPlanProcessError & { stdout?: unknown; body?: unknown };
+    expect(err.code).toBe('output_overflow');
+    expect(err.stdout).toBeUndefined();
+    expect((err as { body?: unknown }).body).toBeUndefined();
+    const pids = readPids(pidFile);
+    expect(await goneWithin(pids.child)).toBe(true);
+    expect(await goneWithin(pids.grandchild)).toBe(true);
+  }, 20_000);
+
+  it('rejects nonzero exit with the existing typed error, without exposing stdout/stderr or fixture strings', async () => {
+    const error = await runStudioPlanProcessCapture(node, [script, 'fail', nextPidFile()], opts())
+      .then(() => null, (e: unknown) => e as StudioPlanProcessError);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    expect(error!.code).toBe('exit_nonzero');
+    expect(error!.message).not.toMatch(/SECRET|private|fixture/);
+    expect((error as unknown as { stdout?: unknown }).stdout).toBeUndefined();
+  });
+
+  it('rejects on timeout with the existing typed error, without exposing stdout/stderr', async () => {
+    const pidFile = nextPidFile();
+    const error = await runStudioPlanProcessCapture(node, [script, 'sleep', pidFile], opts({ timeout: 3_000 }))
+      .then(() => null, (e: unknown) => e as StudioPlanProcessError);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    expect(error!.code).toBe('timeout');
+    expect((error as unknown as { stdout?: unknown }).stdout).toBeUndefined();
+    const pids = readPids(pidFile);
+    expect(await goneWithin(pids.child)).toBe(true);
+    expect(await goneWithin(pids.grandchild)).toBe(true);
+  }, 20_000);
+
+  it('rejects containment_failed, with no capture result, on a clean exit whose tree termination cannot be confirmed', async () => {
+    const deps: StudioPlanProcessDeps = {
+      ...studioPlanProcessDefaults,
+      killTree: async (child: ChildProcess, platform: NodeJS.Platform, job: WindowsJob | null) => {
+        await killOwnedTree(child, platform, job);
+        return false; // synthetic: kill/confirm ran, confirmation withheld
+      },
+      closeGraceMs: 500,
+    };
+    const pidFile = nextPidFile();
+    const error = await runStudioPlanProcessCaptureWith(deps, node, [script, 'ok', pidFile], opts())
+      .then(() => null, (e: unknown) => e as StudioPlanProcessError);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    expect(error!.code).toBe('containment_failed');
+    expect((error as unknown as { stdout?: unknown }).stdout).toBeUndefined();
+  }, 20_000);
+
+  describe('fake-event timing races (see report.md assumptions)', () => {
+    it('preserves stdout data emitted after exit(0) but before close', async () => {
+      const { child, stdout } = fakeCaptureChild();
+      const deps: StudioPlanProcessDeps = {
+        ...studioPlanProcessDefaults,
+        platform: 'win32',
+        createJob: () => ({ assign: () => true, terminateAndConfirmEmpty: async () => true, close: () => {} }),
+        spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+        closeGraceMs: 500,
+      };
+      const run = runStudioPlanProcessCaptureWith(deps, node, [script, 'ok'], opts());
+      await waitForSpawn(child);
+      stdout.emit('data', Buffer.from('before-exit-'));
+      (child as unknown as { exitCode: number }).exitCode = 0;
+      child.emit('exit', 0, null);
+      // Data that arrives strictly between exit and close must not be dropped.
+      stdout.emit('data', Buffer.from('after-exit-before-close'));
+      child.emit('close', 0, null);
+      const result = await run;
+      expect(result.stdout.toString('utf8')).toBe('before-exit-after-exit-before-close');
+    });
+
+    it('turns a pending successful finalize into a failure when overflow arrives while awaiting tree confirmation', async () => {
+      const { child, stdout } = fakeCaptureChild();
+      const helper = deferredJob();
+      const { job, resolve } = helper;
+      const deps: StudioPlanProcessDeps = {
+        ...studioPlanProcessDefaults,
+        platform: 'win32',
+        createJob: () => job,
+        spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+        closeGraceMs: 5_000,
+      };
+      const run = runStudioPlanProcessCaptureWith(deps, node, [script, 'ok'], opts({ maxBuffer: 32 }));
+      await waitForSpawn(child);
+      stdout.emit('data', Buffer.from('ok-so-far'));
+      (child as unknown as { exitCode: number }).exitCode = 0;
+      child.emit('exit', 0, null);
+      // Tree confirmation begins on exit; confirm it has been entered before
+      // injecting overflow data so the overflow genuinely lands on a pending
+      // (not yet started, not yet resolved) successful finalize.
+      expect(helper.called).toBe(true);
+      stdout.emit('data', Buffer.from('x'.repeat(64)));
+      child.emit('close', 0, null);
+      resolve(true);
+      const error = await run.then(() => null, (e: unknown) => e as StudioPlanProcessError);
+      expect(error).toBeInstanceOf(StudioPlanProcessError);
+      expect(error!.code).toBe('output_overflow');
+      expect((error as unknown as { stdout?: unknown }).stdout).toBeUndefined();
+    });
+
+    for (const stream of ['stdout', 'stderr'] as const) {
+      it(`rejects with output_overflow and no captured body when only ${stream} exceeds the cap`, async () => {
+        const { child, stdout, stderr } = fakeCaptureChild();
+        const job: WindowsJob = { assign: () => true, terminateAndConfirmEmpty: async () => true, close: () => {} };
+        const deps: StudioPlanProcessDeps = {
+          ...studioPlanProcessDefaults,
+          platform: 'win32',
+          createJob: () => job,
+          spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+          closeGraceMs: 500,
+        };
+        const run = runStudioPlanProcessCaptureWith(deps, node, [script, 'ok'], opts({ maxBuffer: 32 }));
+        await waitForSpawn(child);
+        const emitter = stream === 'stdout' ? stdout : stderr;
+        emitter.emit('data', Buffer.from('x'.repeat(65)));
+        (child as unknown as { exitCode: number }).exitCode = 0;
+        child.emit('exit', 0, null);
+        child.emit('close', 0, null);
+        const error = await run.then(() => null, (e: unknown) => e as StudioPlanProcessError);
+        expect(error).toBeInstanceOf(StudioPlanProcessError);
+        expect(error!.code).toBe('output_overflow');
+        expect((error as unknown as { stdout?: unknown }).stdout).toBeUndefined();
+        expect((error as unknown as { body?: unknown }).body).toBeUndefined();
+      });
     }
   });
 });

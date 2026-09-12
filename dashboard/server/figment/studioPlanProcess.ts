@@ -142,16 +142,22 @@ function validOptions(options: StudioPlanProcessOptions): boolean {
   return positive(options.timeout) && positive(options.maxBuffer) && typeof options.cwd === 'string';
 }
 
-/** Test seam: same runner with injected platform/spawn/killTree/grace. */
-export function runStudioPlanProcessWith(
+/** Opt-in capture result: stdout bytes only, never stderr body. */
+export type StudioPlanProcessCaptureResult = { stdout: Buffer };
+
+// Shared internal runner behind both the discarding (void) and capturing
+// variants. `capture` only toggles whether stdout chunks are retained; every
+// other behavior (containment, timers, error classes) is identical.
+function runStudioPlanProcessCore(
   deps: StudioPlanProcessDeps,
   command: string,
   args: readonly string[],
   options: StudioPlanProcessOptions,
-): Promise<void> {
+  capture: boolean,
+): Promise<StudioPlanProcessCaptureResult | undefined> {
   if (!validOptions(options)) return Promise.reject(new StudioPlanProcessError('invalid_options', false));
   const win = deps.platform === 'win32';
-  return new Promise<void>((resolve, reject) => {
+  return new Promise<StudioPlanProcessCaptureResult | undefined>((resolve, reject) => {
     let job: WindowsJob | null = null;
     if (win) {
       try { job = deps.createJob(); } catch { job = null; }
@@ -183,6 +189,8 @@ export function runStudioPlanProcessWith(
     let terminating = false;
     let closed = false;
     let bytes = 0;
+    let overflowed = false;
+    const stdoutChunks: Buffer[] = [];
     const closeWaiters: Array<() => void> = [];
     const settle = (error?: StudioPlanProcessError) => {
       if (settled) return;
@@ -190,7 +198,8 @@ export function runStudioPlanProcessWith(
       clearTimeout(timer);
       // Closing the only handle: KILL_ON_JOB_CLOSE backstops any member left.
       job?.close();
-      if (error) reject(error); else resolve();
+      if (error) { reject(error); return; }
+      resolve(capture ? { stdout: Buffer.concat(stdoutChunks) } : undefined);
     };
     const waitClosed = (ms: number) => new Promise<boolean>((done) => {
       if (closed) { done(true); return; }
@@ -213,8 +222,11 @@ export function runStudioPlanProcessWith(
         child.stderr?.destroy();
       }
       const uncertain = !(confirmed && closedInTime);
-      if (failure === null) settle(uncertain ? new StudioPlanProcessError('containment_failed', true) : undefined);
-      else settle(new StudioPlanProcessError(failure, uncertain));
+      // Overflow may land during these awaits (after exit, before close): a
+      // pending success finalize must not resolve once that happens.
+      const effectiveFailure = failure === null && overflowed ? 'output_overflow' : failure;
+      if (effectiveFailure === null) settle(uncertain ? new StudioPlanProcessError('containment_failed', true) : undefined);
+      else settle(new StudioPlanProcessError(effectiveFailure, uncertain));
     };
     // Wrapper spawned but never contained: it has launched nothing (still
     // blocked on stdin). Kill it and confirm it closed within the grace bound.
@@ -228,13 +240,24 @@ export function runStudioPlanProcessWith(
       settle(new StudioPlanProcessError('containment_failed', !closedInTime));
     };
     const timer = setTimeout(() => { void finalize('timeout'); }, options.timeout);
-    const onData = (chunk: Buffer) => {
-      bytes += chunk.length;
-      if (bytes > options.maxBuffer) void finalize('output_overflow');
+    // Combined stdout+stderr bytes count against the cap; only stdout bytes
+    // are ever retained, and never the chunk that first crosses the cap.
+    const onData = (chunk: Buffer, isStdout: boolean) => {
+      if (overflowed) return;
+      const total = bytes + chunk.length;
+      if (total > options.maxBuffer) {
+        overflowed = true;
+        bytes = total;
+        void finalize('output_overflow');
+        return;
+      }
+      bytes = total;
+      if (capture && isStdout) stdoutChunks.push(chunk);
     };
-    // Keep draining (and discarding) so a held pipe cannot stall termination.
-    child.stdout?.on('data', onData);
-    child.stderr?.on('data', onData);
+    // Keep draining (and discarding/capturing) so a held pipe cannot stall
+    // termination, and so a stdout tail after exit but before close is kept.
+    child.stdout?.on('data', (chunk: Buffer) => onData(chunk, true));
+    child.stderr?.on('data', (chunk: Buffer) => onData(chunk, false));
     child.stdin?.on('error', () => { /* wrapper gone; its exit drives finalize */ });
     child.once('spawn', () => {
       spawned = true;
@@ -260,10 +283,39 @@ export function runStudioPlanProcessWith(
   });
 }
 
+/** Test seam: same runner with injected platform/spawn/killTree/grace. */
+export function runStudioPlanProcessWith(
+  deps: StudioPlanProcessDeps,
+  command: string,
+  args: readonly string[],
+  options: StudioPlanProcessOptions,
+): Promise<void> {
+  return runStudioPlanProcessCore(deps, command, args, options, false).then(() => undefined);
+}
+
 export function runStudioPlanProcess(
   command: string,
   args: readonly string[],
   options: StudioPlanProcessOptions,
 ): Promise<void> {
   return runStudioPlanProcessWith(studioPlanProcessDefaults, command, args, options);
+}
+
+/** Test seam: same runner with injected platform/spawn/killTree/grace. */
+export function runStudioPlanProcessCaptureWith(
+  deps: StudioPlanProcessDeps,
+  command: string,
+  args: readonly string[],
+  options: StudioPlanProcessOptions,
+): Promise<StudioPlanProcessCaptureResult> {
+  return runStudioPlanProcessCore(deps, command, args, options, true) as Promise<StudioPlanProcessCaptureResult>;
+}
+
+/** Opt-in variant of {@link runStudioPlanProcess} that resolves with captured stdout bytes. */
+export function runStudioPlanProcessCapture(
+  command: string,
+  args: readonly string[],
+  options: StudioPlanProcessOptions,
+): Promise<StudioPlanProcessCaptureResult> {
+  return runStudioPlanProcessCaptureWith(studioPlanProcessDefaults, command, args, options);
 }
