@@ -1,6 +1,6 @@
 # Bounded Studio Claude work order
 
-Status: prepared locally for specific consent; no dispatch under this work order has occurred. This is a proposed scope, not evidence that approval has been granted.
+Status: user approved this bounded work order with Yes continue on September12. Approved original7319-byte document SHA4d7bde97e8bb65a6d6f5d45dd8b91463cd674ad42175d5e5ac86e9c5354bc01f is preserved at commit21db032d. The revised Sonnet implementation and exact Opus packet launches cleared automatic approval, then both returned weekly rate_limit before any real assistant work. Native Codex workers now perform the same bounded implementation/tests/review under the user standing fallback instruction. Reported Claude reset is9PM America/New_York; do not claim actual Sonnet/Opus work from init-model messages.
 
 ## Result
 
