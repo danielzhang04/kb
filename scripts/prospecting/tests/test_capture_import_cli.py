@@ -22,6 +22,7 @@ from pathlib import Path
 import pytest
 
 import scripts.prospecting.capture_import_cli as capture_import_cli
+import scripts.prospecting.pipeline_cli as pipeline_cli
 from scripts.prospecting.affinity.source_review import _owned_snapshot_usage
 from scripts.prospecting.capture_import_cli import (
     EXPORT_NAMESPACE,
@@ -124,6 +125,24 @@ def _rebind(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """Restore the environment bindings after a ``monkeypatch.undo``."""
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "local"))
     monkeypatch.setattr(capture_import_cli, "CaptureImportCompiler", _ClockedCompiler)
+
+
+def _synthetic_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point ``_approved_store``'s repo-root discovery at a disposable, real
+    checkout under ``tmp_path``, so an ambient ``_private`` root can never
+    make ``tmp_path / "outside.sqlite"`` spuriously approved."""
+    synthetic_repo = tmp_path / "synthetic-checkout"
+    (synthetic_repo / "scripts" / "prospecting").mkdir(parents=True)
+    (synthetic_repo / ".git").mkdir()
+    (synthetic_repo / "_private").mkdir()
+    monkeypatch.setattr(
+        pipeline_cli, "__file__",
+        str(synthetic_repo / "scripts" / "prospecting" / "pipeline_cli.py"),
+    )
+
+
+def _forbid_open_store(*_args, **_kwargs):
+    raise AssertionError("open_store must not be called for a refused store")
 
 
 def _write(snapshots: Path, value: object, name: str) -> Path:
@@ -915,13 +934,18 @@ def test_store_selection_is_validated_before_the_store_is_opened(
         wrong_suffix, "--compile-funding", source, capsys,
     ) == "store_invalid"
 
+    _synthetic_checkout(tmp_path, monkeypatch)
     outside = tmp_path / "outside.sqlite"
     outside.write_bytes(b"")
-    assert _refused(
-        outside, "--compile-funding", source, capsys,
-    ) == "store_private_root_required"
+    with monkeypatch.context() as isolated:
+        isolated.setattr(capture_import_cli, "open_store", _forbid_open_store)
+        assert _refused(
+            outside, "--compile-funding", source, capsys,
+        ) == "store_private_root_required"
+    assert outside.read_bytes() == b""
     assert _exports(root) == []
 
+    assert _ok(store, "--compile-funding", source, capsys)["exported"] is True
 
 def test_invalid_arguments_never_echo_private_values(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str],

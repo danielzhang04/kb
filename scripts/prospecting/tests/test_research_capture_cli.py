@@ -17,6 +17,7 @@ import sqlite3
 import pytest
 
 import scripts.prospecting.research_capture_cli as research_capture_cli
+import scripts.prospecting.pipeline_cli as pipeline_cli
 from scripts.prospecting.pipeline_cli import MAX_JSON_DEPTH
 from scripts.prospecting.research_capture_cli import MAX_CAPTURE_INPUT_BYTES
 from scripts.prospecting.research_capture_service import (
@@ -97,6 +98,24 @@ def _clocked(monkeypatch: pytest.MonkeyPatch, clock: _Clock) -> _Clock:
 
     monkeypatch.setattr(research_capture_cli, "CaptureService", _ClockedCaptureService)
     return clock
+
+
+def _synthetic_checkout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Point ``_approved_store``'s repo-root discovery at a disposable, real
+    checkout under ``tmp_path``, so an ambient ``_private`` root can never
+    make ``tmp_path / "outside.sqlite"`` spuriously approved."""
+    synthetic_repo = tmp_path / "synthetic-checkout"
+    (synthetic_repo / "scripts" / "prospecting").mkdir(parents=True)
+    (synthetic_repo / ".git").mkdir()
+    (synthetic_repo / "_private").mkdir()
+    monkeypatch.setattr(
+        pipeline_cli, "__file__",
+        str(synthetic_repo / "scripts" / "prospecting" / "pipeline_cli.py"),
+    )
+
+
+def _forbid_open_store(*_args, **_kwargs):
+    raise AssertionError("open_store must not be called for a refused store")
 
 
 def _write(folder: Path, value: object, name: str) -> Path:
@@ -672,11 +691,15 @@ def test_store_selection_is_bounded_and_each_invocation_releases_the_store(
         wrong_suffix, "--progress", session["session_id"], capsys,
     ) == "store_invalid"
 
+    _synthetic_checkout(tmp_path, monkeypatch)
     outside = tmp_path / "outside.sqlite"
     outside.write_bytes(b"")
-    assert _refused(
-        outside, "--progress", session["session_id"], capsys,
-    ) == "store_private_root_required"
+    with monkeypatch.context() as isolated:
+        isolated.setattr(research_capture_cli, "open_store", _forbid_open_store)
+        assert _refused(
+            outside, "--progress", session["session_id"], capsys,
+        ) == "store_private_root_required"
+    assert outside.read_bytes() == b""
 
     assert _refused(store, "--progress", "pcs_" + "0" * 32, capsys) == "session_missing"
     assert _refused(store, "--verify", "pct_" + "0" * 32, capsys) == "capture_missing"
