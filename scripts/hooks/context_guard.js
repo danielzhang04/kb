@@ -34,6 +34,20 @@
  * Nothing found (no transcript_path, unreadable file, or no assistant record in the tail) -> guard
  * inactive for that Read (fail open, per spec: "no model note -> no guard").
  *
+ * ── SUBAGENTS (fix wave M4, verified live 2026-09-12) ───────────────────────────────────────────
+ * A subagent's PreToolUse payload carries `transcript_path` = the PARENT session's transcript,
+ * plus `agent_id` and the parent's `session_id` (captured verbatim from a live haiku child:
+ * {session_id: "a17f3a89-...", transcript_path: "...\\C--Users-danie-kb-worktrees-token-discipline
+ * \\a17f3a89-....jsonl", agent_id: "a2f82da3ee1efcfea", agent_type: "general-purpose"}). Reading
+ * that path answered with the PARENT'S model, so a haiku extractor dispatched from an Opus boss
+ * was told, by this guard, to "delegate to a haiku extractor" -- the escape hatch the denial
+ * message prescribes was itself denied, verified live before the fix. When `agent_id` is present,
+ * the child's own transcript is resolved at
+ *   <dirname(transcript_path)>/<session_id>/subagents/agent-<agent_id>.jsonl
+ * (the real on-disk layout under ~/.claude/projects/<project>/), and the parent path is used only
+ * when that file is missing -- so a nested agent whose transcript has not been created yet still
+ * degrades to the old behaviour rather than to no guard at all.
+ *
  * Rules are read from context_guard.rules.yaml (Daniel-owned, hand-parsed -- see that file's own
  * header for why no YAML library is used, and for a naming note reconciling an earlier ruling's
  * prose against the pinned config-shape test). A missing or malformed rules file degrades to ZERO
@@ -226,9 +240,38 @@ function tailReadFile(filePath, maxBytes) {
  * tell the difference. Null when nothing qualifies -- the guard is inactive for that Read (spec:
  * "no model note -> no guard").
  */
+/** Harness-generated ids only: anything else must not be pasted into a filesystem path. */
+const SAFE_ID = /^[A-Za-z0-9._-]+$/;
+
+/**
+ * WHICH transcript speaks for this event: the subagent's own when the payload names one and that
+ * file exists on disk, else the `transcript_path` the harness sent (the parent's, for a subagent).
+ * See the SUBAGENTS note in the file header for the verified payload shape and layout.
+ */
+function resolveTranscriptPath(event) {
+  const parentPath = event.transcript_path;
+  if (typeof parentPath !== "string" || !parentPath) return null;
+  const agentId = event.agent_id;
+  const sessionId = event.session_id;
+  if (
+    typeof agentId === "string" && SAFE_ID.test(agentId) &&
+    typeof sessionId === "string" && SAFE_ID.test(sessionId)
+  ) {
+    const candidate = path.join(
+      path.dirname(parentPath), sessionId, "subagents", "agent-" + agentId + ".jsonl"
+    );
+    try {
+      if (fs.statSync(candidate).isFile()) return candidate;
+    } catch (_err) {
+      /* no subagent transcript (yet) -- fall through to the parent path */
+    }
+  }
+  return parentPath;
+}
+
 function resolveSessionModel(event) {
-  const transcriptPath = event.transcript_path;
-  if (typeof transcriptPath !== "string" || !transcriptPath) return null;
+  const transcriptPath = resolveTranscriptPath(event);
+  if (!transcriptPath) return null;
 
   const tail = tailReadFile(transcriptPath, TRANSCRIPT_TAIL_BYTES);
   if (!tail || !tail.text) return null;

@@ -354,6 +354,91 @@ def test_settings_registers_context_guard_without_dropping_existing_entries():
         assert expected in all_commands
 
 
+# ── fix wave M4: a subagent is judged by ITS OWN transcript, not its parent's ──────────────────
+#
+# Payload shape captured verbatim from a live haiku child on 2026-09-12:
+#   {"session_id": "a17f3a89-...", "transcript_path": "...\\C--Users-danie-kb-worktrees-token-
+#    discipline\\a17f3a89-....jsonl", "cwd": "...", "agent_id": "a2f82da3ee1efcfea",
+#    "agent_type": "general-purpose", "hook_event_name": "PreToolUse", "tool_name": "Read"}
+# -- i.e. transcript_path is the PARENT'S, and the child's own transcript lives at
+# <dirname(transcript_path)>/<session_id>/subagents/agent-<agent_id>.jsonl (verified on disk,
+# assistant records carrying "claude-haiku-4-5-20251001").
+
+def _subagent_layout(tmp_path, parent_model, child_model, session="sess-1", agent="a2f82da3ee1"):
+    """The real on-disk shape: <project>/<session>.jsonl next to <project>/<session>/subagents/."""
+    project = tmp_path / "C--Users-danie-kb"
+    project.mkdir(parents=True, exist_ok=True)
+    parent = project / f"{session}.jsonl"
+    write_transcript(parent, [assistant_line(parent_model)])
+    if child_model is not None:
+        subagents = project / session / "subagents"
+        subagents.mkdir(parents=True, exist_ok=True)
+        write_transcript(subagents / f"agent-{agent}.jsonl", [assistant_line(child_model)])
+    return parent, session, agent
+
+
+def _subagent_read_event(cwd, file_path, parent, session, agent):
+    event = read_event(cwd, file_path, parent)
+    event["session_id"] = session
+    event["agent_id"] = agent
+    event["agent_type"] = "general-purpose"
+    return event
+
+
+def test_haiku_subagent_of_an_opus_parent_may_read_a_pdf(tmp_path):
+    """THE M4 bug, live-reproduced before the fix: the guard read the PARENT'S transcript for the
+    child's Read, found opus, and denied the haiku extractor -- so the very delegation its own
+    denial message prescribes ("delegate to a haiku extractor and read its summary") was itself
+    blocked. The escape hatch has to work or the rule is just a wall."""
+    parent, session, agent = _subagent_layout(tmp_path, "claude-opus-5", "claude-haiku-4-5-20251001")
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    r = run_hook(tmp_path, _subagent_read_event(tmp_path, pdf, parent, session, agent))
+    assert r.returncode == 0, r.stderr
+
+
+def test_opus_subagent_is_still_denied(tmp_path):
+    """Resolution, not exemption: a child that is itself Opus gets the same denial as any Opus."""
+    parent, session, agent = _subagent_layout(tmp_path, "claude-haiku-4-5-20251001", "claude-opus-5")
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    r = run_hook(tmp_path, _subagent_read_event(tmp_path, pdf, parent, session, agent))
+    assert r.returncode == 2
+    assert b"haiku extractor" in r.stderr
+
+
+def test_subagent_without_its_own_transcript_falls_back_to_the_parent(tmp_path):
+    """A child whose transcript does not exist yet degrades to the OLD behaviour (judge by the
+    parent), never to "no model found" -- a fallback that silently disabled the guard would be a
+    strictly worse bug than the one being fixed."""
+    parent, session, agent = _subagent_layout(tmp_path, "claude-opus-5", None)
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    r = run_hook(tmp_path, _subagent_read_event(tmp_path, pdf, parent, session, agent))
+    assert r.returncode == 2
+
+
+def test_a_top_level_session_is_unaffected_by_the_subagent_path(tmp_path):
+    """No agent_id -> the parent transcript is read exactly as before."""
+    parent, session, _ = _subagent_layout(tmp_path, "claude-opus-5", "claude-haiku-4-5-20251001")
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    event = read_event(tmp_path, pdf, parent)
+    event["session_id"] = session
+    r = run_hook(tmp_path, event)
+    assert r.returncode == 2
+
+
+def test_a_traversal_shaped_agent_id_is_ignored(tmp_path):
+    """Ids come from the harness; one that is not id-shaped is never pasted into a path."""
+    parent, session, agent = _subagent_layout(tmp_path, "claude-opus-5", "claude-haiku-4-5-20251001")
+    pdf = tmp_path / "doc.pdf"
+    pdf.write_bytes(b"%PDF-1.4 fake")
+    event = _subagent_read_event(tmp_path, pdf, parent, session, "../../elsewhere")
+    r = run_hook(tmp_path, event)
+    assert r.returncode == 2  # falls back to the parent (opus), never resolves the odd path
+
+
 # ── fix wave F2: triggers are anchored to COMMAND POSITION; escapes cover real usage ────────────
 #
 # A `\bpytest\b` that matched the word anywhere denied `grep pytest`, `cat pytest.ini` and
