@@ -16,13 +16,13 @@ Daniel must merge PR #173; then the boss runs the scripted recovery (`morning-re
 1. Daniel: apply the proposed CLAUDE.md/BOSS.md diff (Navigation reads GOAL.md; findings -> STATE.md ## Findings;
    grades cite the model-audit row) - text in memory/claude-boss.md 2026-09-11 section / PR #182 body.
 2. Reshape orgs/atlas/STATE.md to the project-frame shape (scripts/project_frame_lint.py fails on it today).
-1. Daniel merges PR #173.
-2. Boss: `morning-rebuild.ps1` (guard e8bf8d35) -> `recover-deploy.ps1 -SigningKey <path>`
+3. Daniel merges PR #173.
+4. Boss: `morning-rebuild.ps1` (guard e8bf8d35) -> `recover-deploy.ps1 -SigningKey <path>`
    (daemon-down path: no API lock, parks `current`, reset-failed, pre-installs validator).
-3. Verify hydrate clean (`journalctl -u kb-dashboard`), then `POST .../manager/stop` to interrupt
+5. Verify hydrate clean (`journalctl -u kb-dashboard`), then `POST .../manager/stop` to interrupt
    run 971d5ba4.
-4. Preflight (routing hash, admission 404-or-drain) -> decide on Gate 4b run 5.
-5. Phase B once recovery lands: post-deploy canary, drain automation, wire guards (P15d), P21/P23,
+6. Preflight (routing hash, admission 404-or-drain) -> decide on Gate 4b run 5.
+7. Phase B once recovery lands: post-deploy canary, drain automation, wire guards (P15d), P21/P23,
    retire 15 stale `wf-*` cards, P11 work-product route, P14 ruling, webauthn re-pin, P18 n8n
    comparative analysis.
 
@@ -47,9 +47,6 @@ branch-tip deploys).
 - PowerShell mangles quoted remote ssh commands (use `cmd /c "ssh host bash -s < file"`); Git Bash
   mangles `/mnt/c` and `$(`; `git worktree remove` follows a node_modules junction (delete it
   first); WSL idles between commands (harmless); opus can 529 mid-agent (resume, verify by diff).
-- Contradiction: repo `orgs/kb-ops/STATE.md` says "nothing yet, 2026-07-16" while ops handoffs and
-  personal memory describe an active, far-advanced Gate-4 arc through 2026-09-06 — the STATE.md
-  in the main checkout was never updated; this file follows the handoffs/memory as the true state.
 
 ## Infra
 - VM release at outage: 39197cf5 (broker 610230c7); forensic snapshot
