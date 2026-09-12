@@ -389,6 +389,20 @@ def _receipt(target: Path, *, status: str, plan_hash: str, manifest_hash: str, i
     })
 
 
+def _best_effort_failed_receipt(
+    target: Path, *, plan_hash: str, manifest_hash: str, inventory: list[dict[str, Any]],
+    mode: str, detail: dict[str, Any],
+) -> None:
+    """Record a terminal failure without replacing the operation that already failed."""
+    try:
+        _receipt(
+            target, status="failed", plan_hash=plan_hash, manifest_hash=manifest_hash,
+            inventory=inventory, mode=mode, detail=detail,
+        )
+    except BaseException:
+        pass
+
+
 def _verify_staged(
     target: Path, inventory: list[dict[str, Any],], *, training_config_sha256: str,
     staging_inventory_sha256: str, launcher_sha256: str, manifest_sha256: str,
@@ -611,6 +625,76 @@ def execute_experimental_plan(
             "accounting_ledger_snapshot_sha256": accounting["ledger_snapshot_sha256"],
             "accounting_arc_usd_before": accounting["arc_usd_before"],
         })
+        if runner is None:
+            runner_module = _runner_module()
+            session, redactor = runner_module.build_authenticated_session()
+            try:
+                phase = "terminal-redaction"
+                sys.excepthook = runner_module.redacting_excepthook
+                phase = "api-setup"
+                api = runner_module.RunPodAPI(session)
+                phase = "logger-setup"
+                logger = runner_module.build_logger(redactor)
+                phase = "prepared-receipt"
+                _receipt(target, status="prepared", plan_hash=context["plan_sha256"], manifest_hash=manifest_hash, inventory=inventory, mode=mode, detail=detail)
+                phase = "dispatch-marker"
+                marker = _dispatch_marker(private, context["plan_sha256"], admission_hash, admission)
+                detail.update({"dispatch_marker": str(marker), "harness_invoked": True, "provider_call_status": "unknown"})
+                phase = "dispatched-receipt"
+                _receipt(target, status="dispatched", plan_hash=context["plan_sha256"], manifest_hash=manifest_hash, inventory=inventory, mode=mode, detail=detail)
+                phase = "invocation-setup"
+                invocation.update({
+                    "max_usd": float(Decimal(train.manifest_ceiling(manifest))),
+                    "ledger_dir": Path(accounting["ledger_dir"]),
+                    "budget_path": Path(accounting["daily_budget_path"]),
+                    "arc_cap_usd": float(Decimal(accounting["arc_cap_usd"])),
+                    "arc_ledger_glob": accounting["arc_ledger_glob"],
+                    "api": api,
+                    "logger": logger,
+                    "redactor": redactor,
+                })
+                phase = "harness"
+                result = runner_module.run_harness(**invocation)
+                phase = "result-validation"
+                if not isinstance(result, dict) or result.get("termination_verified") is not True:
+                    raise ExperimentalExecuteError("harness returned without verified termination")
+                if result.get("dry_run") is not False or result.get("error"):
+                    raise ExperimentalExecuteError("harness result is not a completed live diagnostic")
+                phase = "artifact-verification"
+                downloaded = _verify_live_artifacts(target, result, manifest)
+                detail["runner_schema"] = result.get("schema")
+                detail["downloaded_sha256"] = downloaded
+                detail["provider_call_status"] = "recorded" if isinstance(result.get("pod_id"), str) else "unknown"
+            except BaseException:
+                detail["error_class"] = phase
+                _best_effort_failed_receipt(
+                    target, plan_hash=context["plan_sha256"], manifest_hash=manifest_hash,
+                    inventory=inventory, mode=mode, detail=detail,
+                )
+                try:
+                    session.close()
+                except BaseException:
+                    pass
+                raise
+            try:
+                session.close()
+            except BaseException:
+                detail["error_class"] = "session-cleanup"
+                _best_effort_failed_receipt(
+                    target, plan_hash=context["plan_sha256"], manifest_hash=manifest_hash,
+                    inventory=inventory, mode=mode, detail=detail,
+                )
+                raise ExperimentalExecuteError("authenticated session cleanup failed") from None
+            try:
+                _receipt(target, status="harness-complete", plan_hash=context["plan_sha256"], manifest_hash=manifest_hash, inventory=inventory, mode=mode, detail=detail)
+            except BaseException:
+                detail["error_class"] = "final-receipt"
+                _best_effort_failed_receipt(
+                    target, plan_hash=context["plan_sha256"], manifest_hash=manifest_hash,
+                    inventory=inventory, mode=mode, detail=detail,
+                )
+                raise
+            return {"status": "harness-complete", "out": target, "manifest_sha256": manifest_hash, "not_promotable": True}
         _receipt(target, status="prepared", plan_hash=context["plan_sha256"], manifest_hash=manifest_hash, inventory=inventory, mode=mode, detail=detail)
         marker = _dispatch_marker(private, context["plan_sha256"], admission_hash, admission)
         detail.update({"dispatch_marker": str(marker), "harness_invoked": True, "provider_call_status": "unknown"})

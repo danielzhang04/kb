@@ -1,10 +1,14 @@
 """Focused offline tests for the separate experimental training executor."""
 from __future__ import annotations
 
+import copy
 import hashlib
 import importlib.util
 import json
+import subprocess
 import sys
+import textwrap
+import traceback
 from pathlib import Path
 
 import pytest
@@ -493,3 +497,548 @@ def test_source_mutation_after_revalidation_refuses_at_copy_before_runner(tmp_pa
             train_module=production, runner=runner,
         )
     assert not (private / "copy-check").exists()
+
+
+class _AuthSession:
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.close_calls = 0
+        self.request_calls = 0
+
+    def request(self, *_args, **_kwargs):
+        self.request_calls += 1
+        raise AssertionError("default-auth regression fixture must not call a provider")
+
+    def close(self):
+        self.close_calls += 1
+        self.fixture.events.append("close")
+        if self.fixture.close_error is not None:
+            raise self.fixture.close_error
+
+
+class _AuthRedactor:
+    def redact(self, value):
+        return str(value).replace("secondary-secret", "[redacted]")
+
+
+class _AuthLogger:
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.messages: list[tuple[str, tuple[object, ...]]] = []
+
+    def __getattr__(self, name):
+        def log(*args, **_kwargs):
+            self.messages.append((name, args))
+            self.fixture.events.append(f"logger:{name}")
+        return log
+
+
+class _AuthAPI:
+    def __init__(self, fixture, session):
+        self.fixture = fixture
+        self.session = session
+        self.fixture.events.append("api")
+        if self.fixture.api_error is not None:
+            raise self.fixture.api_error
+
+
+class _AuthRunnerModule:
+    """Offline harness surface used by default-runner authentication regressions."""
+
+    def __init__(self, fixture):
+        self.fixture = fixture
+        self.sessions: list[_AuthSession] = []
+        self.harness_calls: list[dict] = []
+        self.logger: _AuthLogger | None = None
+        self.hook_calls: list[tuple[type[BaseException], BaseException]] = []
+
+        def redacting_hook(exc_type, exc, _traceback):
+            self.hook_calls.append((exc_type, exc))
+            self.fixture.events.append("terminal-redaction-called")
+        self.hook = redacting_hook
+
+    @property
+    def redacting_excepthook(self):
+        self.fixture.events.append("terminal-redaction")
+        if self.fixture.hook_missing:
+            raise self.fixture.hook_error or AttributeError("redacting_excepthook")
+        if self.fixture.hook_error is not None:
+            raise self.fixture.hook_error
+        return self.hook
+
+    def build_authenticated_session(self):
+        self.fixture.events.append("factory")
+        if self.fixture.factory_error is not None:
+            raise self.fixture.factory_error
+        session = _AuthSession(self.fixture)
+        self.sessions.append(session)
+        return session, self.fixture.redactor
+
+    def RunPodAPI(self, session):
+        return _AuthAPI(self.fixture, session)
+
+    def build_logger(self, redactor):
+        self.fixture.events.append("logger")
+        if self.fixture.logger_error is not None:
+            raise self.fixture.logger_error
+        assert redactor is self.fixture.redactor
+        self.logger = _AuthLogger(self.fixture)
+        return self.logger
+
+    def run_harness(self, manifest, manifest_path, out_dir, **kwargs):
+        self.fixture.events.append("harness")
+        self.harness_calls.append({
+            "manifest": manifest, "manifest_path": manifest_path, "out_dir": out_dir, **kwargs,
+        })
+        if self.fixture.harness_error is not None:
+            try:
+                raise self.fixture.harness_error
+            except BaseException:
+                self.fixture.primary_traceback = self.fixture.harness_error.__traceback__
+                raise
+        if kwargs["dry_run"]:
+            return {
+                "schema": "figment/runpod-run@1", "dry_run": True,
+                "termination_verified": True, "artifacts": [],
+            }
+
+        out_dir.mkdir(parents=True, exist_ok=True)
+        artifacts = []
+        for item in manifest["artifacts"]:
+            target = out_dir / item["local"]
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_bytes(b"offline auth regression artifact")
+            artifacts.append({
+                "remote": item["remote"], "path": item["local"], "type": "output",
+                "wait_for": item["wait_for"], "bytes": target.stat().st_size,
+            })
+        result = {
+            "schema": "figment/runpod-run@1", "dry_run": False,
+            "termination_verified": True, "pod_id": "fixture-pod",
+            "placement_attempts": [{"pod_id": "fixture-pod", "termination_verified": True}],
+            "artifacts": artifacts,
+        }
+        (out_dir / "run.json").write_text(json.dumps(result), encoding="utf-8")
+        return self.fixture.result if self.fixture.result is not None else result
+
+
+class _AuthFixture:
+    def __init__(self):
+        self.events: list[str] = []
+        self.receipts: list[dict] = []
+        self.markers: list[Path] = []
+        self.redactor = _AuthRedactor()
+        self.factory_error: BaseException | None = None
+        self.api_error: BaseException | None = None
+        self.logger_error: BaseException | None = None
+        self.harness_error: BaseException | None = None
+        self.close_error: BaseException | None = None
+        self.hook_error: BaseException | None = None
+        self.hook_missing = False
+        self.result: dict | None = None
+        self.verify_error: BaseException | None = None
+        self.receipt_errors: dict[str, BaseException] = {}
+        self.primary_traceback = None
+        self.runner = _AuthRunnerModule(self)
+
+
+def _default_auth_case(tmp_path: Path, monkeypatch):
+    """Prepare only synthetic inputs; live accounting, marker, and receipt are faked."""
+    plan, plan_path, private = make_real_recipe_plan(tmp_path)
+    fixture = _AuthFixture()
+    fixture.original_excepthook = sys.excepthook
+    monkeypatch.setattr(sys, "excepthook", fixture.original_excepthook)
+    accounting = {
+        "ledger_dir": "fixture-ledger", "daily_budget_path": "fixture-budget",
+        "arc_cap_usd": 50.0, "arc_ledger_glob": "fixture-arc-*.tsv",
+        "ledger_snapshot_sha256": "a" * 64, "arc_usd_before": 0.0,
+    }
+
+    def admission(_private, *, plan_hash, manifest, train, manifest_sha256,
+                  launcher_sha256, training_config_sha256, staging_inventory_sha256):
+        fixture.events.append("admission")
+        assert plan_hash == plan["frozen_sha256"]
+        assert manifest_sha256 and launcher_sha256 and training_config_sha256 and staging_inventory_sha256
+        assert train is production and manifest["not_promotable"] is True
+        return ({"admission_id": "fixture-auth-admission"}, "b" * 64, "c" * 64, accounting)
+
+    def marker(marker_private, plan_hash, admission_hash, admission_value):
+        fixture.events.append("marker")
+        assert marker_private == private and plan_hash == plan["frozen_sha256"]
+        assert admission_hash == "b" * 64 and admission_value["admission_id"] == "fixture-auth-admission"
+        path = private / "fixture-auth-markers" / "dispatch.json"
+        path.parent.mkdir(exist_ok=True)
+        path.write_text("fixture marker", encoding="utf-8")
+        fixture.markers.append(path)
+        return path
+
+    def receipt(_target, *, status, plan_hash, manifest_hash, inventory, mode, detail):
+        fixture.events.append(f"receipt:{status}")
+        assert plan_hash == plan["frozen_sha256"] and manifest_hash and inventory
+        fixture.receipts.append({"status": status, "mode": mode, "detail": copy.deepcopy(detail)})
+        if status in fixture.receipt_errors:
+            raise fixture.receipt_errors[status]
+
+    def verify(_target, result, manifest):
+        fixture.events.append("verify")
+        assert manifest["not_promotable"] is True
+        if fixture.verify_error is not None:
+            raise fixture.verify_error
+        assert result["dry_run"] is False
+        return {"fixture-artifact.safetensors": "d" * 64}
+
+    monkeypatch.setattr(executor, "_runner_module", lambda: fixture.runner)
+    monkeypatch.setattr(executor, "_admission", admission)
+    monkeypatch.setattr(executor, "_dispatch_marker", marker)
+    monkeypatch.setattr(executor, "_receipt", receipt)
+    monkeypatch.setattr(executor, "_verify_live_artifacts", verify)
+    return plan_path, private, fixture
+
+
+def _run_default_auth(plan_path: Path, private: Path):
+    return executor.execute_experimental_plan(
+        plan_path, Path("default-auth-live"), private_root=private, execute=True,
+        train_module=production,
+    )
+
+
+def _assert_no_provider_calls(fixture: _AuthFixture):
+    assert all(session.request_calls == 0 for session in fixture.runner.sessions)
+
+
+@pytest.mark.parametrize("mode", ["prepare", "dry-run", "injected-live"])
+def test_nondefault_modes_never_prepare_default_auth(tmp_path, monkeypatch, mode):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    factory_error = AssertionError("default authentication must not be touched")
+    fixture.factory_error = factory_error
+
+    if mode == "prepare":
+        result = executor.execute_experimental_plan(plan_path, Path("prepare"), private_root=private, train_module=production)
+        assert result["status"] == "prepared"
+    elif mode == "dry-run":
+        result = executor.execute_experimental_plan(plan_path, Path("dry"), private_root=private, dry_run=True, train_module=production)
+        assert result["status"] == "dry-run-complete"
+        assert len(fixture.runner.harness_calls) == 1
+    else:
+        result = executor.execute_experimental_plan(
+            plan_path, Path("injected"), private_root=private, execute=True, train_module=production,
+            runner=fixture.runner.run_harness,
+        )
+        assert result["status"] == "harness-complete"
+        assert len(fixture.runner.harness_calls) == 1
+
+    assert "factory" not in fixture.events
+    assert fixture.runner.sessions == []
+    assert sys.excepthook is fixture.original_excepthook
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_live_auth_passes_exact_dependencies_and_closes_before_success_receipt(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+
+    result = _run_default_auth(plan_path, private)
+
+    assert result["status"] == "harness-complete"
+    assert fixture.events.index("admission") < fixture.events.index("factory")
+    assert fixture.events.index("terminal-redaction") < fixture.events.index("api")
+    assert fixture.events.index("terminal-redaction") < fixture.events.index("logger") < fixture.events.index("marker")
+    assert fixture.events.index("close") < fixture.events.index("receipt:harness-complete")
+    assert len(fixture.runner.sessions) == 1 and fixture.runner.sessions[0].close_calls == 1
+    assert len(fixture.runner.harness_calls) == 1
+    call = fixture.runner.harness_calls[0]
+    assert call["api"].session is fixture.runner.sessions[0]
+    assert call["logger"] is fixture.runner.logger and call["redactor"] is fixture.redactor
+    assert [receipt["status"] for receipt in fixture.receipts].count("harness-complete") == 1
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    assert sys.excepthook is fixture.runner.hook
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_factory_failure_is_preownership_without_marker_or_close(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    factory_error = RuntimeError("factory-primary")
+    fixture.factory_error = factory_error
+
+    with pytest.raises(RuntimeError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is factory_error
+    assert fixture.markers == [] and fixture.runner.sessions == [] and fixture.runner.harness_calls == []
+    assert "close" not in fixture.events
+    _assert_no_provider_calls(fixture)
+
+
+@pytest.mark.parametrize("field", ["api_error", "logger_error"])
+def test_default_auth_setup_failure_preserves_primary_and_closes_once_before_marker(tmp_path, monkeypatch, field):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = RuntimeError(f"{field}-primary")
+    setattr(fixture, field, primary)
+
+    with pytest.raises(RuntimeError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is primary
+    assert len(fixture.runner.sessions) == 1 and fixture.runner.sessions[0].close_calls == 1
+    assert fixture.markers == [] and fixture.runner.harness_calls == []
+    _assert_no_provider_calls(fixture)
+
+
+@pytest.mark.parametrize("failure", ["missing", "throwing"])
+def test_default_auth_terminal_redaction_setup_failure_closes_once_before_marker(tmp_path, monkeypatch, failure):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = AttributeError("redacting_excepthook") if failure == "missing" else RuntimeError("hook-primary")
+    if failure == "missing":
+        fixture.hook_missing = True
+    fixture.hook_error = primary
+
+    with pytest.raises(type(primary)) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is primary
+    assert len(fixture.runner.sessions) == 1 and fixture.runner.sessions[0].close_calls == 1
+    assert fixture.markers == [] and fixture.runner.harness_calls == []
+    failed = next(receipt for receipt in fixture.receipts if receipt["status"] == "failed")
+    assert failed["detail"]["error_class"] == "terminal-redaction"
+    assert sys.excepthook is fixture.original_excepthook
+    _assert_no_provider_calls(fixture)
+
+
+@pytest.mark.parametrize("failure", ["marker", "dispatched-receipt"])
+def test_default_auth_marker_and_dispatched_receipt_failures_close_without_provider_call(tmp_path, monkeypatch, failure):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = RuntimeError(f"{failure}-primary")
+    if failure == "marker":
+        def broken_marker(*_args, **_kwargs):
+            fixture.events.append("marker")
+            raise primary
+        monkeypatch.setattr(executor, "_dispatch_marker", broken_marker)
+    else:
+        fixture.receipt_errors["dispatched"] = primary
+
+    with pytest.raises(RuntimeError) as raised:
+        _run_default_auth(plan_path, private)
+    assert raised.value is primary
+    assert fixture.runner.sessions[0].close_calls == 1 and fixture.runner.harness_calls == []
+    if failure == "marker":
+        assert fixture.markers == []
+    else:
+        assert fixture.markers and all(path.exists() for path in fixture.markers)
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_harness_baseexception_keeps_marker_and_closes_once(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = KeyboardInterrupt("harness-primary")
+    fixture.harness_error = primary
+
+    with pytest.raises(KeyboardInterrupt) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is primary
+    assert fixture.runner.sessions[0].close_calls == 1
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    assert [item["status"] for item in fixture.receipts].count("failed") == 1
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_invalid_result_refuses_before_artifact_verification(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    fixture.result = {"schema": "figment/not-a-run@1", "dry_run": False}
+    verifier_calls = []
+
+    def verifier_must_not_run(*_args, **_kwargs):
+        verifier_calls.append(True)
+        raise AssertionError("invalid harness result reached artifact verification")
+
+    monkeypatch.setattr(executor, "_verify_live_artifacts", verifier_must_not_run)
+
+    with pytest.raises(executor.ExperimentalExecuteError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert isinstance(raised.value, executor.ExperimentalExecuteError)
+    assert verifier_calls == []
+    assert fixture.runner.sessions[0].close_calls == 1
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    assert [item["status"] for item in fixture.receipts].count("failed") == 1
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_artifact_failure_closes_and_keeps_marker(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = executor.ExperimentalExecuteError("artifact-primary")
+    fixture.verify_error = primary
+
+    with pytest.raises(executor.ExperimentalExecuteError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is primary
+    assert fixture.runner.sessions[0].close_calls == 1
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    assert [item["status"] for item in fixture.receipts].count("failed") == 1
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_final_receipt_failure_happens_after_close(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    final_error = RuntimeError("final-receipt-primary")
+    fixture.receipt_errors["harness-complete"] = final_error
+
+    with pytest.raises(RuntimeError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is final_error
+    assert fixture.runner.sessions[0].close_calls == 1
+    assert fixture.events.index("close") < fixture.events.index("receipt:harness-complete")
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    _assert_no_provider_calls(fixture)
+
+
+def _traceback_contains(head, expected) -> bool:
+    while head is not None:
+        if head is expected:
+            return True
+        head = head.tb_next
+    return False
+
+
+@pytest.mark.parametrize("secondary", ["failed-receipt", "close"])
+def test_default_auth_primary_failure_survives_secondary_failure_without_secret_text(tmp_path, monkeypatch, secondary):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    primary = RuntimeError("primary-error")
+    fixture.harness_error = primary
+    secondary_error = RuntimeError("secondary-secret")
+    if secondary == "failed-receipt":
+        fixture.receipt_errors["failed"] = secondary_error
+    else:
+        fixture.close_error = secondary_error
+
+    with pytest.raises(RuntimeError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert raised.value is primary
+    assert fixture.runner.sessions[0].close_calls == 1
+    assert _traceback_contains(raised.value.__traceback__, fixture.primary_traceback)
+    assert not _traceback_contains(raised.value.__traceback__, secondary_error.__traceback__)
+    traceback_text = "".join(traceback.format_tb(raised.value.__traceback__))
+    assert "run_harness" in traceback_text
+    assert "secondary-secret" not in "".join(
+        str(value) for receipt in fixture.receipts for value in receipt.values()
+    )
+    assert "secondary-secret" not in " ".join(
+        str(message) for message in (fixture.runner.logger.messages if fixture.runner.logger else [])
+    )
+    assert all("secondary-secret" not in note for note in getattr(primary, "__notes__", []))
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_close_only_failure_refuses_success_receipt(tmp_path, monkeypatch):
+    plan_path, private, fixture = _default_auth_case(tmp_path, monkeypatch)
+    fixture.close_error = RuntimeError("secondary-secret")
+
+    with pytest.raises(executor.ExperimentalExecuteError) as raised:
+        _run_default_auth(plan_path, private)
+
+    assert "secondary-secret" not in str(raised.value)
+    assert fixture.runner.sessions[0].close_calls == 1
+    statuses = [item["status"] for item in fixture.receipts]
+    assert "harness-complete" not in statuses and "failed" in statuses
+    cleanup = next(item for item in fixture.receipts if item["status"] == "failed")
+    assert cleanup["detail"]["error_class"] == "session-cleanup"
+    assert fixture.markers and all(path.exists() for path in fixture.markers)
+    _assert_no_provider_calls(fixture)
+
+
+def test_default_auth_terminal_hook_redacts_an_uncaught_chained_harness_failure_in_main(tmp_path):
+    """Exercise the real default branch through ``main`` in an isolated interpreter."""
+    _plan, plan_path, private = make_real_recipe_plan(tmp_path)
+    script = textwrap.dedent("""
+        import importlib.util
+        import sys
+        import traceback
+        from pathlib import Path
+
+        executor_path, plan_path, private_path = map(Path, sys.argv[1:4])
+        spec = importlib.util.spec_from_file_location("terminal_executor", executor_path)
+        executor = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(executor)
+        token = "fake-token-only"
+
+        class Session:
+            def close(self):
+                return None
+
+        class Redactor:
+            def redact(self, value):
+                return str(value).replace(token, "[redacted]")
+
+        redactor = Redactor()
+
+        def terminal_hook(exc_type, exc, tb):
+            sys.stderr.write("TERMINAL_REDACTOR_HOOK\\n")
+            sys.stderr.write(redactor.redact("".join(traceback.format_exception(exc_type, exc, tb))))
+
+        class Runner:
+            redacting_excepthook = staticmethod(terminal_hook)
+
+            @staticmethod
+            def build_authenticated_session():
+                return Session(), redactor
+
+            @staticmethod
+            def RunPodAPI(_session):
+                return object()
+
+            @staticmethod
+            def build_logger(_redactor):
+                return object()
+
+            @staticmethod
+            def run_harness(*_args, **_kwargs):
+                try:
+                    raise RuntimeError("chained cause " + token)
+                except RuntimeError as cause:
+                    raise RuntimeError("primary terminal failure " + token) from cause
+
+        def admission(_private, *, plan_hash, manifest, train, manifest_sha256,
+                      launcher_sha256, training_config_sha256, staging_inventory_sha256):
+            return ({"admission_id": "terminal-fixture"}, "b" * 64, "c" * 64, {
+                "ledger_dir": "fixture-ledger", "daily_budget_path": "fixture-budget",
+                "arc_cap_usd": 50.0, "arc_ledger_glob": "fixture-arc-*.tsv",
+                "ledger_snapshot_sha256": "a" * 64, "arc_usd_before": 0.0,
+            })
+
+        def marker(private, _plan_hash, _admission_hash, _admission):
+            path = private / "terminal-marker" / "dispatch.json"
+            path.parent.mkdir(exist_ok=True)
+            path.write_text("fixture", encoding="utf-8")
+            return path
+
+        def receipt(_target, **_kwargs):
+            return None
+
+        executor._runner_module = lambda: Runner
+        executor._admission = admission
+        executor._dispatch_marker = marker
+        executor._receipt = receipt
+        real_execute = executor.execute_experimental_plan
+
+        def execute_from_main(plan, output, *, dry_run=False, execute=False):
+            return real_execute(
+                plan, output, private_root=private_path, dry_run=dry_run, execute=execute,
+            )
+
+        executor.execute_experimental_plan = execute_from_main
+        executor.main(["--plan", str(plan_path), "--out", "terminal-output", "--execute"])
+    """)
+
+    completed = subprocess.run(
+        [sys.executable, "-c", script, str(executor.__file__), str(plan_path), str(private)],
+        capture_output=True, text=True, check=False, timeout=60,
+    )
+
+    assert completed.returncode != 0
+    assert completed.stderr.count("TERMINAL_REDACTOR_HOOK") == 1
+    assert "fake-token-only" not in completed.stderr
+    assert "primary terminal failure" in completed.stderr
+    assert "chained cause" in completed.stderr
