@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { collectCloudExperiment, collectTrainFirst } from './cloudExperiment.ts';
+import { collectCloudExperiment, collectPreparedGenStatus, collectTrainFirst } from './cloudExperiment.ts';
 
 const temporary: string[] = [];
 function canonical(value: unknown): string { if (Array.isArray(value)) return `[${value.map(canonical).join(',')}]`; if (value !== null && typeof value === 'object') return `{${Object.keys(value).sort().map((key) => `${JSON.stringify(key)}:${canonical((value as Record<string, unknown>)[key])}`).join(',')}}`; return JSON.stringify(value); }
@@ -43,6 +43,164 @@ async function trainFirstFixture(): Promise<{ root: string; planSha256: string; 
 }
 const stage = (fixture: Awaited<ReturnType<typeof trainFirstFixture>>, selected: 'train' | 'tester', status: 'running' | 'failed' | 'complete') => ({ schema: 'figment/train-stage@1', creator: 'creator-001', plan_sha256: fixture.planSha256, status: status === 'running' ? `running:${selected}` : status === 'failed' ? `stopped:${selected}` : `complete:${selected}`, runs: { [selected === 'train' ? fixture.trainManifest : fixture.testerManifest]: { status, started_utc: '2026-09-09T20:12:32Z' } }, completed_stages: status === 'complete' ? selected === 'train' ? ['train'] : ['train', 'tester'] : selected === 'tester' ? ['train'] : [] });
 const receipt = (maxMinutes: number, maxUsd: number, extra: Record<string, unknown>) => ({ schema: 'figment/runpod-run@1', dry_run: false, max_minutes: maxMinutes, preflight_estimate_usd: maxUsd, started_utc: '2026-09-09T20:12:33Z', finished_utc: '2026-09-09T20:20:33Z', termination_verified: true, placement_attempts: [{ termination_verified: true }], ...extra });
+
+async function preparedGenFixture() {
+  const directory = await mkdtemp(join(tmpdir(), 'figment-prepared-gen-')); temporary.push(directory);
+  const manifestName = 'train/runs/creator-001-tensor-gen.yaml', outputName = 'train/runs/out/creator-001-tensor-gen';
+  await mkdir(join(directory, 'train/runs'), { recursive: true });
+  const hash = (value: string): string => createHash('sha256').update(value).digest('hex');
+  const manifest = { max_minutes: 115, jobs: [1, 2].map((index) => ({ output_name: `c001-tensor-gen-0${index}`, expected_images: 3 })) };
+  const manifestSource = JSON.stringify(manifest);
+  await writeFile(join(directory, manifestName), manifestSource);
+  const run = { manifest: manifestName, sha256: hash(manifestSource), ceiling_usd: '2.50', out: outputName,
+    argv: ['python', 'runpod_run.py', 'run', '--manifest', join(directory, manifestName), '--out', join(directory, outputName), '--max-usd', '2.50', '--max-minutes', '115'] };
+  const plan = { schema: 'figment/train-plan@1', creator: 'creator-001', stages: { gen: { runs: [run] } } };
+  const planSource = JSON.stringify(plan), planSha256 = hash(planSource);
+  await writeFile(join(directory, 'plan.json'), planSource);
+  const writePlan = async (value: unknown): Promise<string> => { const source = JSON.stringify(value); await writeFile(join(directory, 'plan.json'), source); return hash(source); };
+  const writeStage = async (status: 'running' | 'failed' | 'complete', overrides: Record<string, unknown> = {}) => {
+    const value = { schema: 'figment/train-stage@1', creator: 'creator-001', plan_sha256: planSha256,
+      status: status === 'running' ? 'running:gen' : status === 'failed' ? 'stopped:gen' : 'complete',
+      runs: { [manifestName]: { status, started_utc: '2026-09-09T20:12:32.900000+00:00' } },
+      completed_stages: status === 'complete' ? ['gen'] : [], ...overrides };
+    await writeFile(join(directory, 'stage.json'), JSON.stringify(value));
+  };
+  const jobs = manifest.jobs.map((job) => ({ output_name: job.output_name,
+    files: [0, 1, 2].map((index) => ({ path: `${job.output_name}-${index}.png`, bytes: 500 + index })) }));
+  const writeReceipt = async (overrides: Record<string, unknown> = {}) => {
+    await mkdir(join(directory, outputName), { recursive: true });
+    await writeFile(join(directory, outputName, 'run.json'), JSON.stringify(receipt(115, 2.5, {
+      jobs, artifacts: [], pod_id: 'private-pod-do-not-project', uploads: ['private-upload'], ...overrides,
+    })));
+  };
+  return { directory, manifestName, manifestSource, outputName, manifest, plan, planSha256, run, jobs, writePlan, writeStage, writeReceipt };
+}
+
+describe('prepared gen recorded status', () => {
+  const unavailable = { status: 'unavailable', reason: 'evidence-unavailable' };
+  it('reports missing stage as unknown attempt history even if a terminal receipt exists', async () => {
+    const item = await preparedGenFixture(); await item.writeReceipt();
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual({ status: 'recorded',
+      planSha256: item.planSha256, creator: 'creator-001', stage: 'gen', execution: 'no-stage-record',
+      liveness: 'unknown', quality: 'not-assessed', declaredCeilingUsd: 2.5, maxMinutes: 115, receipt: null });
+    expect(collectPreparedGenStatus(item.directory, '0'.repeat(64))).toEqual(unavailable);
+  });
+  it('reports a recorded running attempt without asserting liveness or inspecting provider state', async () => {
+    const item = await preparedGenFixture(); await item.writeStage('running');
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toMatchObject({ execution: 'recorded-running', liveness: 'unknown', receipt: null, quality: 'not-assessed' });
+    await item.writeReceipt();
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+  it('supports producer-shaped local launch failure without a receipt or started timestamp', async () => {
+    const item = await preparedGenFixture();
+    await item.writeStage('failed', { runs: { [item.manifestName]: { status: 'failed', error: 'private-error' } } });
+    const result = collectPreparedGenStatus(item.directory, item.planSha256);
+    expect(result).toMatchObject({ execution: 'recorded-failed', liveness: 'unknown', receipt: null });
+    expect(JSON.stringify(result)).not.toContain('private-error');
+  });
+  it('projects two gen jobs with three recorded images each without reading or approving image bytes', async () => {
+    const item = await preparedGenFixture(); await item.writeStage('complete'); await item.writeReceipt();
+    const metadata = ['plan.json', item.manifestName, 'stage.json', `${item.outputName}/run.json`];
+    const before = await Promise.all(metadata.map((name) => readFile(join(item.directory, name))));
+    const result = collectPreparedGenStatus(item.directory, item.planSha256);
+    expect(result).toMatchObject({ execution: 'recorded-completed', quality: 'not-assessed', receipt: { outputCount: 6, terminationVerified: true, preflightEstimateUsd: 2.5 } });
+    expect(JSON.stringify(result)).not.toMatch(/private-|\.png|manifest|argv|uploads|pod_id/);
+    await writeFile(join(item.directory, item.outputName, item.jobs[0].files[0].path), 'deliberately not an image');
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(result);
+    expect(await Promise.all(metadata.map((name) => readFile(join(item.directory, name))))).toEqual(before);
+    expect(await readFile(join(item.directory, item.outputName, item.jobs[0].files[0].path), 'utf8')).toBe('deliberately not an image');
+  });
+  it('accepts the producer complete:gen intermediate state with the same terminal agreement', async () => {
+    const item = await preparedGenFixture(); await item.writeStage('complete', { status: 'complete:gen' }); await item.writeReceipt();
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toMatchObject({ execution: 'recorded-completed', quality: 'not-assessed' });
+  });
+  it('uses the existing sanitized failure projection without upgrading an unverified teardown', async () => {
+    const item = await preparedGenFixture(); await item.writeStage('failed');
+    await item.writeReceipt({ error: 'BootstrapFailed: private-bootstrap-log', jobs: [], termination_verified: false });
+    const result = collectPreparedGenStatus(item.directory, item.planSha256);
+    expect(result).toMatchObject({ execution: 'recorded-failed', receipt: { failure: 'bootstrap', terminationVerified: false } });
+    expect(JSON.stringify(result)).not.toContain('private-bootstrap-log');
+  });
+  it.each([
+    { creator: 'creator-002' }, { plan_sha256: 'b'.repeat(64) }, { schema: 'wrong' },
+    { completed_stages: ['gen', 'gen'] }, { status: 'running:gen' }, { runs: {} },
+    { completed_stages: ['tester'] },
+  ])('rejects inconsistent stage metadata %j', async (overrides) => {
+    const item = await preparedGenFixture(); await item.writeStage('complete', overrides); await item.writeReceipt();
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+  it.each([
+    { dry_run: true }, { error: 'run failed' }, { termination_verified: false }, { placement_attempts: [] },
+    { placement_attempts: [{ termination_verified: false }] }, { max_minutes: 114 },
+    { preflight_estimate_usd: 2.51 }, { finished_utc: '2026-09-09T20:00:00Z' },
+    { started_utc: '2026-09-08T20:12:32Z' }, { jobs: [] },
+  ])('rejects contradictory terminal receipt %j', async (overrides) => {
+    const item = await preparedGenFixture(); await item.writeStage('complete'); await item.writeReceipt(overrides);
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+  it('requires exact gen job order, three files, positive recorded sizes and distinct names', async () => {
+    const item = await preparedGenFixture(); await item.writeStage('complete');
+    const first = item.jobs[0];
+    for (const jobs of [[...item.jobs].reverse(), [{ ...first, files: first.files.slice(0, 1) }, item.jobs[1]],
+      [{ ...first, files: [first.files[0], first.files[0], first.files[2]] }, item.jobs[1]],
+      [{ ...first, files: [{ ...first.files[0], bytes: 0 }, ...first.files.slice(1)] }, item.jobs[1]]]) {
+      await item.writeReceipt({ jobs });
+      expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+    }
+  });
+  it('rejects changed plan and manifest bytes', async () => {
+    const item = await preparedGenFixture();
+    await writeFile(join(item.directory, item.manifestName), `${item.manifestSource}\n`);
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+    await writeFile(join(item.directory, item.manifestName), item.manifestSource);
+    await item.writePlan({ ...item.plan, creator: 'creator-002' });
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+  it('rejects wrong creators, variants, stages and extra runs even when marker hash matches', async () => {
+    const item = await preparedGenFixture();
+    for (const plan of [{ ...item.plan, creator: 'creator-002' }, { ...item.plan, variant: 'train-first' },
+      { ...item.plan, stages: { gen: { runs: [item.run, item.run] } } },
+      { ...item.plan, stages: { ...item.plan.stages, tester: { runs: [] } } }]) {
+      const digest = await item.writePlan(plan);
+      expect(collectPreparedGenStatus(item.directory, digest)).toEqual(unavailable);
+    }
+  });
+  it('refuses escaping, absolute and noncanonical run paths before reading them', async () => {
+    const item = await preparedGenFixture();
+    for (const out of ['../foreign', '/foreign', 'C:/foreign', 'train/../out', 'train\\out', 'train//out']) {
+      const digest = await item.writePlan({ ...item.plan, stages: { gen: { runs: [{ ...item.run, out }] } } });
+      expect(collectPreparedGenStatus(item.directory, digest)).toEqual(unavailable);
+      const manifestDigest = await item.writePlan({ ...item.plan, stages: { gen: { runs: [{ ...item.run, manifest: out }] } } });
+      expect(collectPreparedGenStatus(item.directory, manifestDigest)).toEqual(unavailable);
+    }
+  });
+  it('refuses duplicate or changed bounded command arguments', async () => {
+    const item = await preparedGenFixture();
+    for (const argv of [[...item.run.argv, '--max-usd', '2.50'], item.run.argv.map((value) => value === '115' ? '114' : value),
+      item.run.argv.map((value) => value === join(item.directory, item.outputName) ? join(tmpdir(), 'foreign') : value)]) {
+      const digest = await item.writePlan({ ...item.plan, stages: { gen: { runs: [{ ...item.run, argv }] } } });
+      expect(collectPreparedGenStatus(item.directory, digest)).toEqual(unavailable);
+    }
+  });
+  it('does not treat malformed, oversized or non-file stage metadata as missing', async () => {
+    const item = await preparedGenFixture();
+    for (const source of ['{', ' '.repeat(256 * 1024 + 1), '{"x":' + '['.repeat(65) + '0' + ']'.repeat(65) + '}']) {
+      await writeFile(join(item.directory, 'stage.json'), source);
+      expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+    }
+    await rm(join(item.directory, 'stage.json')); await mkdir(join(item.directory, 'stage.json'));
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+  it('refuses reparse roots and output directories', async () => {
+    const item = await preparedGenFixture();
+    const link = `${item.directory}-link`; temporary.push(link); await symlink(item.directory, link, 'junction');
+    expect(collectPreparedGenStatus(link, item.planSha256)).toEqual(unavailable);
+    const foreign = await mkdtemp(join(tmpdir(), 'figment-gen-foreign-')); temporary.push(foreign);
+    await mkdir(join(item.directory, 'train/runs/out'), { recursive: true });
+    await symlink(foreign, join(item.directory, item.outputName), 'junction');
+    expect(collectPreparedGenStatus(item.directory, item.planSha256)).toEqual(unavailable);
+  });
+});
 
 describe('train-first lifecycle projection', () => {
   it('matches the Python canonical UTF-8 digest for Unicode JSON', () => {

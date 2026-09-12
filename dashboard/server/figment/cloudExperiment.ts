@@ -252,3 +252,120 @@ export function collectTrainFirst(configuredRoot?: string | null, allowedPlanSha
   const quality = selectedStage === 'tester' && terminal.execution === 'completed' ? testerReviewQuality(opened, plan.creator, allowedPlanSha256, tester) : 'not-reviewed';
   return { status: 'recorded', planSha256: allowedPlanSha256, creator: plan.creator, stage: selectedStage, liveness: null, maxMinutes: selectedRun.maxMinutes, maxUsd: selectedRun.maxUsd, quality, ...terminal };
 }
+
+type RecordedGenReceipt = Pick<Extract<CloudExperimentProjection, { status: 'recorded' }>,
+  'startedUtc' | 'finishedUtc' | 'terminationVerified' | 'outputCount' | 'preflightEstimateUsd' | 'estimatedActualUsd' | 'failure'>;
+export type PreparedGenStatus =
+  | { status: 'unavailable'; reason: 'evidence-unavailable' }
+  | { status: 'recorded'; planSha256: string; creator: 'creator-001'; stage: 'gen';
+      execution: 'no-stage-record' | 'recorded-running' | 'recorded-failed' | 'recorded-completed';
+      liveness: 'unknown' | null; quality: 'not-assessed'; declaredCeilingUsd: number; maxMinutes: number;
+      receipt: RecordedGenReceipt | null };
+
+function genRelativePath(value: unknown): value is string {
+  return typeof value === 'string' && value.length <= 240
+    && /^[A-Za-z0-9._-]+(?:\/[A-Za-z0-9._-]+)*$/.test(value)
+    && value.split('/').every((part) => part !== '.' && part !== '..');
+}
+
+/** Recorded metadata only. Caller supplies the server-owned published directory and marker digest.
+ * No source-authority, ledger, output-byte, quality, or current provider-state validation occurs here.
+ * In particular, a missing stage record does not prove there was no provider attempt.
+ */
+export function collectPreparedGenStatus(publishedDirectory: string, markerPlanSha256: string): PreparedGenStatus {
+  const unavailable: PreparedGenStatus = { status: 'unavailable', reason: 'evidence-unavailable' };
+  try {
+    if (typeof markerPlanSha256 !== 'string' || !SHA256.test(markerPlanSha256)) return unavailable;
+    const opened = root(publishedDirectory);
+    if (opened === null) return unavailable;
+    const observed: Array<{ name: string; sha256: string }> = [];
+    const read = (name: string): Record<string, unknown> | null => {
+      const path = file(opened, name), record = path === null ? null : jsonDigest(path);
+      if (record === null) return null;
+      observed.push({ name, sha256: record.sha256 });
+      return record.value;
+    };
+    const stable = (): boolean => observed.every(({ name, sha256 }) => {
+      const path = file(opened, name);
+      return path !== null && jsonDigest(path)?.sha256 === sha256;
+    });
+    const plan = read('plan.json');
+    if (plan === null || observed[0]?.sha256 !== markerPlanSha256 || plan.schema !== 'figment/train-plan@1'
+      || plan.creator !== 'creator-001' || plan.variant !== undefined || !object(plan.stages)
+      || Object.keys(plan.stages).length !== 1 || !object(plan.stages.gen)) return unavailable;
+    const runs = plan.stages.gen.runs;
+    if (!Array.isArray(runs) || runs.length !== 1 || !object(runs[0])) return unavailable;
+    const run = runs[0];
+    if (!genRelativePath(run.manifest) || !genRelativePath(run.out) || typeof run.sha256 !== 'string'
+      || !SHA256.test(run.sha256) || typeof run.ceiling_usd !== 'string'
+      || !/^\d{1,2}(?:\.\d{1,2})?$/.test(run.ceiling_usd)) return unavailable;
+    const ceiling = Number(run.ceiling_usd), minutesValue = argvValue(run.argv, '--max-minutes');
+    const minutes = minutesValue === null ? NaN : Number(minutesValue);
+    const argvManifest = argvValue(run.argv, '--manifest'), argvOut = argvValue(run.argv, '--out');
+    const argvCeiling = argvValue(run.argv, '--max-usd');
+    if (!finite(ceiling, 50) || ceiling <= 0 || !Number.isInteger(minutes) || !finite(minutes, 840) || minutes <= 0
+      || argvCeiling === null || Number(argvCeiling) !== ceiling || argvManifest === null || !isAbsolute(argvManifest)
+      || resolve(argvManifest) !== resolve(opened.path, run.manifest) || argvOut === null || !isAbsolute(argvOut)
+      || resolve(argvOut) !== resolve(opened.path, run.out)) return unavailable;
+    const manifest = read(run.manifest);
+    if (manifest === null || observed[1]?.sha256 !== run.sha256 || manifest.max_minutes !== minutes
+      || !Array.isArray(manifest.jobs) || manifest.jobs.length < 1 || manifest.jobs.length > MAX_JOBS
+      || (manifest.artifacts !== undefined && (!Array.isArray(manifest.artifacts) || manifest.artifacts.length !== 0))) return unavailable;
+    const outputs: string[] = [];
+    for (const job of manifest.jobs) {
+      if (!object(job) || typeof job.output_name !== 'string' || !/^[A-Za-z0-9_-]{1,160}$/.test(job.output_name)
+        || job.expected_images !== 3 || outputs.includes(job.output_name)) return unavailable;
+      outputs.push(job.output_name);
+    }
+    const output = childRoot(opened, run.out);
+    if (output === null && !absent(opened, run.out)) return unavailable;
+    const base = { status: 'recorded' as const, planSha256: markerPlanSha256, creator: 'creator-001' as const,
+      stage: 'gen' as const, quality: 'not-assessed' as const, declaredCeilingUsd: ceiling, maxMinutes: minutes };
+    if (file(opened, 'stage.json') === null) return absent(opened, 'stage.json') && stable() && absent(opened, 'stage.json')
+      ? { ...base, execution: 'no-stage-record', liveness: 'unknown', receipt: null } : unavailable;
+    const state = read('stage.json');
+    if (state === null || state.schema !== 'figment/train-stage@1' || state.creator !== plan.creator
+      || state.plan_sha256 !== markerPlanSha256 || !object(state.runs) || Object.keys(state.runs).length !== 1
+      || !Object.hasOwn(state.runs, run.manifest) || !Array.isArray(state.completed_stages)) return unavailable;
+    const attempt = state.runs[run.manifest], attemptStatus = attemptState(attempt);
+    if (attemptStatus === null || !object(attempt)) return unavailable;
+    const complete = attemptStatus === 'complete';
+    if (complete ? state.completed_stages.length !== 1 || state.completed_stages[0] !== 'gen'
+      || (state.status !== 'complete:gen' && state.status !== 'complete')
+      : state.completed_stages.length !== 0 || state.status !== (attemptStatus === 'running' ? 'running:gen' : 'stopped:gen')) return unavailable;
+    if ((attemptStatus !== 'failed' || attempt.started_utc !== undefined) && !iso(attempt.started_utc)) return unavailable;
+    const receiptName = `${run.out}/run.json`;
+    const receiptPath = file(opened, receiptName);
+    if (receiptPath === null) {
+      if (complete || !absent(opened, receiptName) || !stable() || !absent(opened, receiptName)) return unavailable;
+      return { ...base, execution: attemptStatus === 'running' ? 'recorded-running' : 'recorded-failed', liveness: 'unknown', receipt: null };
+    }
+    const rawReceipt = read(receiptName), projected = output === null ? null : collectCloudExperiment(output.path);
+    if (rawReceipt === null || projected === null || projected.status !== 'recorded' || projected.execution === 'started-pending-final'
+      || attemptStatus === 'running' || (complete ? projected.execution !== 'completed' : projected.execution !== 'failed')
+      || projected.maxMinutes !== minutes || projected.preflightEstimateUsd === null || projected.preflightEstimateUsd > ceiling
+      || projected.finishedUtc === null || Date.parse(projected.finishedUtc) < Date.parse(projected.startedUtc)
+      || (iso(attempt.started_utc) && Date.parse(projected.startedUtc) + 1000 < Date.parse(attempt.started_utc))) return unavailable;
+    if (complete) {
+      if (projected.terminationVerified !== true || !Array.isArray(rawReceipt.placement_attempts)
+        || rawReceipt.placement_attempts.length < 1 || rawReceipt.placement_attempts.length > MAX_JOBS
+        || rawReceipt.placement_attempts.some((row) => !object(row) || row.termination_verified !== true)
+        || !Array.isArray(rawReceipt.jobs) || rawReceipt.jobs.length !== outputs.length) return unavailable;
+      const names = new Set<string>();
+      for (const [index, job] of rawReceipt.jobs.entries()) {
+        if (!object(job) || job.output_name !== outputs[index] || !Array.isArray(job.files) || job.files.length !== 3) return unavailable;
+        for (const item of job.files) {
+          if (!object(item) || typeof item.path !== 'string' || !/^[A-Za-z0-9._-]{1,240}$/.test(item.path)
+            || !item.path.toLowerCase().endsWith('.png') || names.has(item.path)
+            || typeof item.bytes !== 'number' || !Number.isSafeInteger(item.bytes) || item.bytes <= 0) return unavailable;
+          names.add(item.path);
+        }
+      }
+      if (projected.outputCount !== names.size) return unavailable;
+    }
+    if (!stable()) return unavailable;
+    const { startedUtc, finishedUtc, terminationVerified, outputCount, preflightEstimateUsd, estimatedActualUsd, failure } = projected;
+    return { ...base, execution: complete ? 'recorded-completed' : 'recorded-failed', liveness: null,
+      receipt: { startedUtc, finishedUtc, terminationVerified, outputCount, preflightEstimateUsd, estimatedActualUsd, failure } };
+  } catch { return unavailable; }
+}
