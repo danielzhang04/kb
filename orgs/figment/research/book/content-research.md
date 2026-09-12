@@ -16,16 +16,18 @@ is `native-source`, delivery quality is `not-assessed`, transform is null, and i
 `Recorded plan; scene images still need delivery review`.
 
 This does not make an image content-ready or establish a real human identity, visual quality,
-approval, publication, or audience response. Root accepted the exact two-file direct-NVR crop/resize
-producer and test at `a0074da8`, with no assignment/binder/UI edit, provider action, or quality
-approval. V1 recorded 36 passes and one fixture-collision skip; V2 ran zero tests because of a selector
-error; V3 passed the repaired node, giving 37 distinct passing nodes across v1+v3 rather than a fresh
-full 37-test run. The producer materializes a delivery while preserving `not-assessed` and
-`not_promotable` semantics. One read-only delivery-ruling module and test are now dispatched to bind
-the exact current delivery to six fresh visual criteria, with actual real-chain tests and independent
-review required before acceptance. See the
-[native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md) and
-[still-delivery review](../../../../docs/figment/2026-09-11-nonpersona-still-delivery-review.md).
+approval, publication, or audience response. Root accepted the direct-NVR producer/test at `a0074da8`
+and the later read-only delivery-ruling checkpoint at `57590274`. The ruling tests exposed a real
+inherited Windows root-path defect in V1 (68/69 passed); repair round 1 changed only the shared
+`content_brief._relative` boundary and its tests. One fresh combined V2 run then passed 107/107
+(35 content-brief and 72 ruling tests), preserving all 13 input pins and the paid ledger.
+
+The ruling binds an external assertion to the exact current delivery receipt/output/brief/creator/slot/
+full transform and six fresh criteria, and is always `not_promotable`. It has not authenticated a human,
+assessed real media or transform quality, approved publication, or created a real nonpersona delivery.
+Records derived from the old content-brief pin are stale; retain the historical receipts and require fresh
+current preparation before retained/NVR/delivery reuse. See the
+[delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|

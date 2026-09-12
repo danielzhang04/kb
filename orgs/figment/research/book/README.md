@@ -23,10 +23,14 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   zero-test selector error; V3 passed the repaired node, for 37 distinct passing nodes across v1+v3,
   not one fresh full-suite run. Direct script revalidation passed over the unchanged 32-file fixture.
   The resulting receipt remains `materialized-not-reviewed`, `not_promotable`, and `not-assessed`.
-  The next dispatched slice is one read-only delivery-ruling module and test over the exact current
-  delivery chain and six fresh visual criteria, followed by actual real-chain tests and independent
-  review. See the
-  [still-delivery review](../../../../docs/figment/2026-09-11-nonpersona-still-delivery-review.md).
+  The next dispatched slice was accepted after one real inherited Windows path-boundary repair:
+  root accepted the ruling and tests at `57590274`. The fresh combined V2 run passed 107/107
+  (35 content-brief and 72 ruling tests), with all 13 pins and the paid ledger unchanged. The
+  read-only ruling binds an external assertion to the current delivery receipt/output/brief/creator/
+  slot/full transform and six fresh criteria, but always returns `not_promotable`. It does not
+  authenticate a human, approve real media quality, or create a delivery. The old helper pin makes
+  derived native records stale; fresh preparation is required before retained/NVR/delivery reuse.
+  See the [delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
 - **Repair diff `150978d8..ec58decf`** (Studio, video terminal authority, motion-source
   binding, HTTP surface): reviewed **READY**, full video suite 187 passed in 392.98s. See
   the [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md).
