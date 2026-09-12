@@ -10,7 +10,8 @@ exit code would turn a bookkeeping check into a way to break dispatch.
 
 SubagentStop payload fields used here (`agent_transcript_path`, `agent_id`, `agent_type`) are the
 harness's own — verified against Claude Code 2.1.234's embedded schema; evidence in
-docs/proposals/spawn-model-verify-hooks.md.
+docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the spawn-model-verify-hooks.md
+proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
 """
 import json
 import os

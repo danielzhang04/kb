@@ -11,7 +11,9 @@
  *
  * Status:
  *   INERT. Nothing in .claude/settings*.json references any file in this family. The settings
- *   snippet that WOULD arm them lives in docs/proposals/context-lifecycle-hooks.md.
+ *   snippet that WOULD arm them lives in
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the context-lifecycle-hooks.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * WHY THE STORE LIVES OUTSIDE THE REPO.
  *   A per-session context file is daemon-local state, never coordination truth — the same reasoning
@@ -244,7 +246,9 @@ function stripAnsi(value) {
  *
  * THIS IS A BEST-EFFORT DENYLIST, NOT A GUARANTEE. It catches the shapes we know; a novel credential
  * format walks straight through it. Re-reading this table against the credential shapes actually in
- * use is a PRE-ARMING precondition — see docs/proposals/context-lifecycle-hooks.md.
+ * use is a PRE-ARMING precondition — see
+ * docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the context-lifecycle-hooks.md
+ * proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * Newlines collapse to spaces FIRST, which is also what keeps an activity entry to exactly one
  * rendered `- ` line. Callers MUST strip ANSI before calling this (see {@link summarize}): an escape

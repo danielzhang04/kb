@@ -94,8 +94,10 @@ totals appear in the SessionStart frame; (d) the repo is smaller after this PR t
   (`luna` for grunt); `--follow-up` limited to 2 hops then a fresh `--cwd` dispatch (existing lesson).
 
 ## 8. Cleanup (same PR, reviewable hunks; nothing functional touched)
-- Delete `docs/plans/2026-08-18-agent-platform-GOAL-STATE.md` (dead U7 source) and the three
-  `docs/proposals/*hook*.md` now superseded by the 2026-09-11 spec (the spec keeps their arming table).
+- Delete the dead U7 GOAL-STATE plan (`2026-08-18-agent-platform-GOAL-STATE.md`, formerly under
+  `docs/plans/`) and the three `docs/proposals/*hook*.md` now superseded by the 2026-09-11 spec
+  (the spec keeps their arming table). [Done 2026-09-11, Task 6 — see
+  tests/test_cleanup_no_dangling_refs.py.]
 - Delete superseded plan docs whose PRs merged (list produced by Task 0 from `git log`; each one named).
 - Personal memory: arc files for merged/closed arcs collapse to pointers.
 - Root-level stray files in the main checkout (`*.png`, `*_tmp.txt`, `p5_plan_b380.md`, …) are untracked

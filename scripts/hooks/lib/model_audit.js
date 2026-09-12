@@ -6,7 +6,9 @@
  *
  * Status:
  *   INERT. Nothing in .claude/settings*.json references the hooks that use this module. Arming
- *   snippet and decision-notes: docs/proposals/spawn-model-verify-hooks.md.
+ *   snippet and decision-notes:
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the spawn-model-verify-hooks.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * ── WHY AN AUDIT LOG AND NOT A BLOCK ────────────────────────────────────────────────────────────
  * BOSS.md already requires the model of every dispatched subagent to be VERIFIED at grading time, by

@@ -8,7 +8,8 @@ The OUTPUT SHAPE assertions here are not a guess. The field name and nesting wer
 installed harness (Claude Code 2.1.234): its embedded schema is
 `ye({hookEventName:Ct("SubagentStart"),additionalContext:F().optional()})` and its consumer reads
 `e.hookSpecificOutput.additionalContext`. Evidence is recorded in
-docs/proposals/spawn-model-verify-hooks.md.
+docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the spawn-model-verify-hooks.md
+proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
 """
 import json
 import os

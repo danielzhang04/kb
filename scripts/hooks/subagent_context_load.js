@@ -11,7 +11,9 @@
  *
  * Status:
  *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SubagentStart. The arm-time
- *   preconditions and decision-notes live in docs/proposals/spawn-model-verify-hooks.md.
+ *   preconditions and decision-notes live in
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the spawn-model-verify-hooks.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * ── THE OUTPUT SHAPE IS VERIFIED, NOT ASSUMED ───────────────────────────────────────────────────
  * Two doc sources disagreed on what a SubagentStart hook must emit. The question was settled
