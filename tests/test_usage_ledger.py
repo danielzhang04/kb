@@ -276,11 +276,11 @@ def test_publish_to_ops_reports_success_without_recommitting_identical_content(t
     out_path.write_text("stub ledger content\n", encoding="utf-8")
     rel = "ledgers/usage/2026-09-10.tsv"
 
-    ok1, msg1 = ul.publish_to_ops(repo_root, out_path, rel)
+    ok1, msg1 = ul.publish_to_ops(repo_root, [(out_path, rel)])
     assert ok1 and msg1 == "pushed"
 
     # Same content, second call: must succeed WITHOUT creating a second commit.
-    ok2, msg2 = ul.publish_to_ops(repo_root, out_path, rel)
+    ok2, msg2 = ul.publish_to_ops(repo_root, [(out_path, rel)])
     assert ok2 and msg2 == "already on ops (identical content)"
 
     log = subprocess.run(["git", "log", "--oneline", "origin/ops"], cwd=repo_root,
@@ -288,15 +288,36 @@ def test_publish_to_ops_reports_success_without_recommitting_identical_content(t
     assert log.stdout.count("chore(usage-ledger)") == 1
 
 
+def test_publish_to_ops_commits_tsv_and_sidecar_together(tmp_path):
+    """fix round 3: the TSV and its `.summary` sidecar land on ops in ONE commit, never as two
+    separate commits where a reader could observe one without the other."""
+    repo_root = _init_ops_remote(tmp_path)
+    out_path = tmp_path / "2026-09-10.tsv"
+    out_path.write_text("stub ledger content\n", encoding="utf-8")
+    sidecar_path = tmp_path / "2026-09-10.summary"
+    sidecar_path.write_text("2026-09-10: stub summary\n", encoding="utf-8")
+    files = [(out_path, "ledgers/usage/2026-09-10.tsv"), (sidecar_path, "ledgers/usage/2026-09-10.summary")]
+
+    ok, msg = ul.publish_to_ops(repo_root, files)
+    assert ok and msg == "pushed"
+
+    log = subprocess.run(["git", "log", "--oneline", "-1", "origin/ops"], cwd=repo_root,
+                          capture_output=True, text=True, check=True)
+    assert "chore(usage-ledger)" in log.stdout
+    show = subprocess.run(["git", "show", "--stat", "--oneline", "origin/ops"], cwd=repo_root,
+                           capture_output=True, text=True, check=True)
+    assert "2026-09-10.tsv" in show.stdout and "2026-09-10.summary" in show.stdout
+
+
 # ── C3: a failed publish is retried on the next run for that date ───────────────────────────────
 
 def test_publish_and_track_writes_pending_marker_on_failure(tmp_path, monkeypatch):
     monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
-    monkeypatch.setattr(ul, "publish_to_ops", lambda root, out_path, rel_path: (False, "boom"))
+    monkeypatch.setattr(ul, "publish_to_ops", lambda root, files: (False, "boom"))
     out_path = tmp_path / "ledgers" / "usage" / "2026-09-10.tsv"
     out_path.parent.mkdir(parents=True)
     out_path.write_text("x", encoding="utf-8")
-    ul._publish_and_track(tmp_path, out_path, "ledgers/usage/2026-09-10.tsv", "2026-09-10")
+    ul._publish_and_track(tmp_path, [(out_path, "ledgers/usage/2026-09-10.tsv")], "2026-09-10")
     marker = ul._pending_marker("2026-09-10")
     assert marker.exists()
     assert marker.read_text(encoding="utf-8") == "boom"
@@ -307,12 +328,30 @@ def test_publish_and_track_clears_pending_marker_on_success(tmp_path, monkeypatc
     marker = ul._pending_marker("2026-09-10")
     marker.parent.mkdir(parents=True)
     marker.write_text("previous failure", encoding="utf-8")
-    monkeypatch.setattr(ul, "publish_to_ops", lambda root, out_path, rel_path: (True, "pushed"))
+    monkeypatch.setattr(ul, "publish_to_ops", lambda root, files: (True, "pushed"))
     out_path = tmp_path / "ledgers" / "usage" / "2026-09-10.tsv"
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("x", encoding="utf-8")
-    ul._publish_and_track(tmp_path, out_path, "ledgers/usage/2026-09-10.tsv", "2026-09-10")
+    ul._publish_and_track(tmp_path, [(out_path, "ledgers/usage/2026-09-10.tsv")], "2026-09-10")
     assert not marker.exists()
+
+
+# ── fix round 3: `.summary` sidecar written alongside the TSV ───────────────────────────────────
+
+def test_write_summary_sidecar_matches_summary_line(tmp_path):
+    day = "2026-09-10"
+    rows = [{
+        "runtime": "claude", "model": "sonnet", "session": "s1", "kind": "top", "project": "kb",
+        "input_tokens": 100, "cache_creation_tokens": 0, "cache_read_tokens": 0, "output_tokens": 50,
+        "turns": 1, "max_ctx_tokens": 100, "codex_cumulative_total": None, "est_usd": 0.001,
+    }]
+    sidecar = tmp_path / f"{day}.summary"
+    ul.write_summary_sidecar(sidecar, rows, day)
+    text = sidecar.read_text(encoding="utf-8")
+    assert text == ul.summary_line(rows, day) + "\n"
+    assert "\r" not in text  # LF only
+    assert len(text.splitlines()) == 1
+    assert len(text.splitlines()[0]) <= 200
 
 
 # ── CLI-level tests ───────────────────────────────────────────────────────────────────────────
@@ -360,6 +399,46 @@ def test_cli_writes_ledger_and_summary(tmp_path):
     assert text.startswith("#")  # rate-table header
     assert "_totals" in text
     assert "est_usd" in text.splitlines()[1]  # header row
+
+
+def test_cli_writes_summary_sidecar_alongside_tsv(tmp_path):
+    """fix round 3: the `.summary` sidecar is written every time the TSV is (fresh compute)."""
+    day = "2026-09-10"
+    claude_dir, codex_dir = _make_fixture_tree(tmp_path, day)
+    repo_root = tmp_path / "repo"
+    (repo_root / "ledgers").mkdir(parents=True)
+    r = _run({
+        "KB_CLAUDE_PROJECTS_DIR": str(claude_dir), "KB_CODEX_SESSIONS_DIR": str(codex_dir),
+    }, "--date", day, "--root", str(repo_root), "--no-publish")
+    assert r.returncode == 0, r.stderr
+    sidecar = repo_root / "ledgers" / "usage" / f"{day}.summary"
+    assert sidecar.exists()
+    text = sidecar.read_text(encoding="utf-8")
+    assert len(text.splitlines()) == 1
+    assert text.splitlines()[0].startswith(day)
+    assert len(text.splitlines()[0]) <= 200
+
+
+def test_cli_regenerates_missing_sidecar_on_idempotent_read(tmp_path):
+    """fix round 3: a TSV written before this fix (or one whose sidecar was lost) gets its
+    `.summary` sidecar regenerated on the idempotent-read path, without recomputing the TSV."""
+    day = "2026-09-10"
+    claude_dir, codex_dir = _make_fixture_tree(tmp_path, day)
+    repo_root = tmp_path / "repo"
+    (repo_root / "ledgers").mkdir(parents=True)
+    env = {"KB_CLAUDE_PROJECTS_DIR": str(claude_dir), "KB_CODEX_SESSIONS_DIR": str(codex_dir)}
+    r1 = _run(env, "--date", day, "--root", str(repo_root), "--no-publish")
+    assert r1.returncode == 0, r1.stderr
+    out_path = repo_root / "ledgers" / "usage" / f"{day}.tsv"
+    sidecar = repo_root / "ledgers" / "usage" / f"{day}.summary"
+    tsv_mtime = out_path.stat().st_mtime_ns
+    sidecar.unlink()  # simulate a pre-fix-round-3 TSV with no sidecar yet
+
+    r2 = _run({"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "empty"), "KB_CODEX_SESSIONS_DIR": str(tmp_path / "empty2")},
+              "--date", day, "--root", str(repo_root), "--no-publish")
+    assert r2.returncode == 0, r2.stderr
+    assert sidecar.exists()  # regenerated
+    assert out_path.stat().st_mtime_ns == tsv_mtime  # TSV itself was NOT recomputed
 
 
 def test_cli_is_idempotent_per_day(tmp_path):

@@ -32,14 +32,12 @@
 "use strict";
 
 const path = require("path");
-const fs = require("fs");  // NEW require -- file already requires path/spawnSync/hook_io/store/pf
 const { spawnSync } = require("child_process");
 const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");
 const pf = require("./lib/project_frame.js");
 
 const PREAMBLE_TIMEOUT_MS = 10000;
-const USAGE_LEDGER_TIMEOUT_MS = 3000;
 /** Blank line between top-level payload blocks, and the list separator inside the flags block.
  *  Named constants because F2 BUDGETS their cost rather than guessing at it. */
 const NEWLINE = "\n";
@@ -112,26 +110,26 @@ function handoffFlags(root, timeoutMs) {
 }
 
 /**
- * The `_totals` row's one-line summary for '## Usage (yesterday)', or null when that day's
- * ledger doesn't exist yet. NEVER runs the parser itself (spec S3): checks the file on disk
- * FIRST and only then invokes `usage_ledger.py --summary --no-publish` (the fast idempotent-read
- * path -- see usage_ledger.py's main(), which reads an existing file rather than recomputing).
- * `--no-publish`: this is a read, the file already exists, there is nothing new to commit, and a
- * `git fetch`/push per SessionStart is a cost this hook cannot afford.
+ * The `.summary` sidecar's one line for '## Usage (yesterday)', or null when it doesn't exist yet
+ * (in ops HEAD or the working tree). PURE FILE READ -- fix round 3 ruling (spec S3): this hook
+ * must NEVER spawn the Python parser, full stop, no matter how short the timeout. The prior
+ * version spawned `usage_ledger.py --summary --no-publish` under a 3s timeout even on the
+ * idempotent-read path; a live headless check (`claude -p`) showed the line simply absent from a
+ * real session's startup context, because that spawn lost its race under real host load -- a
+ * timeout budget is still a spawn, and the spec forbids the spawn outright, not just a slow one.
+ *
+ * `usage_ledger.py` now writes `ledgers/usage/<day>.summary` alongside the TSV every time it
+ * computes or regenerates a day (see its `write_summary_sidecar`), so this hook only ever reads
+ * what has already been computed elsewhere. `pf.readOpsFile` supplies the fallback order this
+ * needs for free: ops HEAD first (the normal case, once preamble.py's detached launch has
+ * published it), the working tree second (a same-machine run that hasn't landed on ops yet).
  */
-function usageLine(root, timeoutMs) {
+function usageLine(cwd, env) {
   const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-  const ledgerFile = path.join(root, "ledgers", "usage", yesterday + ".tsv");
-  if (!fs.existsSync(ledgerFile)) {
-    return null; // preamble.py hasn't produced it yet today -- this hook never computes it
-  }
-  const result = runPython(
-    ["scripts/usage_ledger.py", "--date", yesterday, "--summary", "--no-publish"],
-    root,
-    timeoutMs,
-  );
-  if (!result || result.status !== 0 || !result.stdout) return null;
-  return pf.firstLine(result.stdout);
+  const text = pf.readOpsFile(cwd, "ledgers/usage/" + yesterday + ".summary", env);
+  const line = pf.firstLine(text);
+  if (!line) return null;
+  return line.length > 200 ? line.slice(0, 200) : line;
 }
 
 /**
@@ -239,7 +237,7 @@ function main() {
   const flagsBlock = flags.length
     ? SEPARATOR + "## Stale handoffs" + NEWLINE + flags.map((f) => "- " + f).join(NEWLINE)
     : "";
-  const usage = usageLine(root, USAGE_LEDGER_TIMEOUT_MS);
+  const usage = usageLine(cwd, env);
   const usageBlock = usage ? SEPARATOR + "## Usage (yesterday)" + NEWLINE + usage : "";
 
   const frameResult = pf.frame({

@@ -5,11 +5,17 @@ Read-only over ~/.claude/projects/**/*.jsonl (+ subagents/*.jsonl) and the DATE-
 ~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl directories for target_day-1 and target_day
 (NOT a full-tree rglob -- fix round 1, C1a: real transcript volume on an operator's machine made a
 full-tree walk the dominant cost). Writes one row per (runtime, model, session, top|subagent) to
-ledgers/usage/<YYYY-MM-DD>.tsv, plus a `_totals` row, then publishes the file to the ops branch via
-a detached worktree -- same contention handling as scripts/codex_dispatch.py's publish_ops (ported,
-not re-derived: rebuild-on-conflict, ancestry check instead of head-equality), PLUS (fix round 1,
-C2) a same-content short-circuit before ever committing, so a retry that finds the file already
-correct on origin/ops reports success without an empty commit.
+ledgers/usage/<YYYY-MM-DD>.tsv, plus a `_totals` row, ALSO writes a `ledgers/usage/<date>.summary`
+sidecar (fix round 3) containing exactly the `--summary` line, then publishes both files to the ops
+branch TOGETHER in one commit via a detached worktree -- same contention handling as
+scripts/codex_dispatch.py's publish_ops (ported, not re-derived: rebuild-on-conflict, ancestry
+check instead of head-equality), PLUS (fix round 1, C2) a same-content short-circuit before ever
+committing, so a retry that finds the files already correct on origin/ops reports success without
+an empty commit.
+
+The sidecar exists so `scripts/hooks/project_frame_session_start.js`'s '## Usage (yesterday)' line
+can be a PURE FILE READ (spec S3: that hook must never spawn this parser, full stop) -- see
+`write_summary_sidecar`.
 
 COLUMN SPLIT (fix round 1, C4 ruling): `max_ctx_tokens` (per-turn peak of input+cache_read, a
 CONTEXT-WINDOW signal) is Claude-only; Codex rows carry that column empty and instead populate
@@ -476,19 +482,36 @@ def summary_line(rows: list[dict], target_day: str) -> str:
     return line[:200]
 
 
+def write_summary_sidecar(path: Path, rows: list[dict], target_day: str) -> None:
+    """The `.summary` sidecar (fix round 3): a live headless check (`claude -p`) showed
+    '## Usage (yesterday)' simply absent from a real session's startup context, because the
+    SessionStart hook was spawning `usage_ledger.py --summary --no-publish` under a 3s timeout to
+    get this same line -- a live spec violation (S3: the hook must NEVER run the parser, not just
+    "run it fast"). This file is written alongside the TSV every time a day is computed or
+    regenerated, containing EXACTLY the `--summary` line (<=200 chars, one line, LF-terminated) so
+    the hook can satisfy '## Usage (yesterday)' with a pure file read instead.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = summary_line(rows, target_day)
+    path.write_text(line + "\n", encoding="utf-8", newline="\n")
+
+
 # ---------------------------------------------------------------------------
 # Ops publish -- PORTED from scripts/codex_dispatch.py:publish_ops (same contention handling:
 # never rebase, rebuild from a fresh fetch; ancestry check, not head equality, decides "landed").
-# fix round 1, C2: before ever committing, check whether the target path is already tracked AND
+# fix round 1, C2: before ever committing, check whether a target path is already tracked AND
 # identical to what we're about to write -- if so, this IS success (already on ops), and treating
 # an empty "nothing to commit" as a retry-worthy failure was the bug. `git diff --quiet` alone is
 # NOT enough: it reports "no difference" for an untracked path too (verified empirically -- git
 # diff never looks at untracked files), which would have falsely reported "already on ops" for a
 # BRAND NEW date's file that was never committed at all. `git ls-files --error-unmatch` first
 # confirms the path is actually tracked before trusting the diff.
+# fix round 3: takes a LIST of (local_path, rel_path) pairs and publishes them together in ONE
+# commit -- the TSV and its `.summary` sidecar must land on ops atomically, never as two separate
+# commits where a reader could observe one without the other.
 # ---------------------------------------------------------------------------
 
-def publish_to_ops(repo_root: Path, file_path: Path, rel_path: str) -> tuple[bool, str]:
+def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool, str]:
     def git(*a, cwd=repo_root, timeout=120):
         try:
             return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
@@ -498,11 +521,11 @@ def publish_to_ops(repo_root: Path, file_path: Path, rel_path: str) -> tuple[boo
     def landed(sha):
         return bool(sha) and git("merge-base", "--is-ancestor", sha, "FETCH_HEAD").returncode == 0
 
-    def already_identical(cwd) -> bool:
+    def already_identical(cwd, rel_path) -> bool:
         tracked = git("ls-files", "--error-unmatch", "--", rel_path, cwd=cwd).returncode == 0
         return tracked and git("diff", "--quiet", "--", rel_path, cwd=cwd).returncode == 0
 
-    content = file_path.read_bytes()
+    contents = [(rel_path, local_path.read_bytes()) for local_path, rel_path in files]
     wt = Path(tempfile.mkdtemp(prefix="usage-ledger-")) / "wt"
     local_sha = ""
     try:
@@ -518,20 +541,24 @@ def publish_to_ops(repo_root: Path, file_path: Path, rel_path: str) -> tuple[boo
                 git("clean", "-fdq", cwd=wt)
             elif git("worktree", "add", "--detach", str(wt), "origin/ops").returncode != 0:
                 continue
-            target = wt / rel_path
-            target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_bytes(content)
-            if already_identical(wt):
+            changed = []
+            for rel_path, content in contents:
+                target = wt / rel_path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                if not already_identical(wt, rel_path):
+                    changed.append(rel_path)
+            if not changed:
                 return True, "already on ops (identical content)"
-            git("add", "--", str(target), cwd=wt)
-            if git("commit", "-m", f"chore(usage-ledger): record {rel_path}", cwd=wt).returncode != 0:
+            git("add", "--", *changed, cwd=wt)
+            if git("commit", "-m", f"chore(usage-ledger): record {', '.join(changed)}", cwd=wt).returncode != 0:
                 continue
             local_sha = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
             if git("push", "origin", "HEAD:refs/heads/ops", cwd=wt).returncode != 0:
                 continue
             if git("fetch", "origin", "ops").returncode == 0 and landed(local_sha):
                 return True, "pushed"
-        return False, "publish failed after 3 rebuilt attempts (local file kept)"
+        return False, "publish failed after 3 rebuilt attempts (local files kept)"
     finally:
         git("worktree", "remove", "--force", str(wt))
         git("worktree", "prune")
@@ -552,8 +579,8 @@ def _pending_marker(target_day: str) -> Path:
     return _state_dir() / f"{target_day}.pending"
 
 
-def _publish_and_track(root: Path, out_path: Path, rel_path: str, target_day: str) -> None:
-    ok, msg = publish_to_ops(root, out_path, rel_path)
+def _publish_and_track(root: Path, files: list[tuple[Path, str]], target_day: str) -> None:
+    ok, msg = publish_to_ops(root, files)
     marker = _pending_marker(target_day)
     if ok:
         try:
@@ -566,15 +593,18 @@ def _publish_and_track(root: Path, out_path: Path, rel_path: str, target_day: st
             marker.write_text(msg, encoding="utf-8")
         except OSError:
             pass
-        print(f"usage_ledger: publish failed for {rel_path}: {msg}", file=sys.stderr)
+        rel_paths = ", ".join(rel for _, rel in files)
+        print(f"usage_ledger: publish failed for {rel_paths}: {msg}", file=sys.stderr)
 
 
-def _run(env, root: Path, target_day: str, full: bool = False) -> tuple[list[dict], Path]:
+def _run(env, root: Path, target_day: str, full: bool = False) -> tuple[list[dict], Path, Path]:
     rows = collect_claude_rows(env, target_day, full=full) + collect_codex_rows(env, target_day)
     rows.sort(key=lambda r: (r["runtime"], r["model"], r["session"], r["kind"]))
     out_path = root / "ledgers" / "usage" / f"{target_day}.tsv"
+    sidecar_path = root / "ledgers" / "usage" / f"{target_day}.summary"
     write_ledger(out_path, rows)
-    return rows, out_path
+    write_summary_sidecar(sidecar_path, rows, target_day)
+    return rows, out_path, sidecar_path
 
 
 def main(argv=None) -> int:
@@ -604,21 +634,32 @@ def main(argv=None) -> int:
 
     root = Path(args.root) if args.root else REPO_ROOT
     out_path = root / "ledgers" / "usage" / f"{target_day}.tsv"
+    sidecar_path = root / "ledgers" / "usage" / f"{target_day}.summary"
     rel_path = f"ledgers/usage/{target_day}.tsv"
+    sidecar_rel = f"ledgers/usage/{target_day}.summary"
 
+    need_publish = False
     if out_path.exists():
         rows = read_existing_rows(out_path)
         if rows is None:
             print(f"usage_ledger: {out_path} missing the expected header, regenerating", file=sys.stderr)
-            rows, out_path = _run(env, root, target_day, full=args.full)
-            if not args.no_publish:
-                _publish_and_track(root, out_path, rel_path, target_day)
-        elif not args.no_publish and _pending_marker(target_day).exists():
-            _publish_and_track(root, out_path, rel_path, target_day)
+            rows, out_path, sidecar_path = _run(env, root, target_day, full=args.full)
+            need_publish = True
+        else:
+            # fix round 3: the sidecar is regenerated on the idempotent-read path if it's missing
+            # (an older ledger written before this fix, or a partial prior run) -- the TSV alone
+            # is not enough for the SessionStart hook's pure-file-read '## Usage (yesterday)'.
+            if not sidecar_path.exists():
+                write_summary_sidecar(sidecar_path, rows, target_day)
+                need_publish = True
+            if _pending_marker(target_day).exists():
+                need_publish = True
     else:
-        rows, out_path = _run(env, root, target_day, full=args.full)
-        if not args.no_publish:
-            _publish_and_track(root, out_path, rel_path, target_day)
+        rows, out_path, sidecar_path = _run(env, root, target_day, full=args.full)
+        need_publish = True
+
+    if need_publish and not args.no_publish:
+        _publish_and_track(root, [(out_path, rel_path), (sidecar_path, sidecar_rel)], target_day)
 
     if args.summary:
         print(summary_line(rows, target_day))
