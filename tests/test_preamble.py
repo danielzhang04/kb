@@ -1,5 +1,9 @@
+import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
+
+import pytest
 
 import preamble
 
@@ -104,7 +108,6 @@ def test_maybe_run_usage_ledger_skips_when_lock_is_fresh(tmp_path, monkeypatch):
 
 
 def test_maybe_run_usage_ledger_retries_when_lock_is_stale(tmp_path, monkeypatch):
-    import os
     root = tmp_path
     appdata = tmp_path / "appdata"
     monkeypatch.setenv("LOCALAPPDATA", str(appdata))
@@ -121,3 +124,72 @@ def test_maybe_run_usage_ledger_retries_when_lock_is_stale(tmp_path, monkeypatch
     monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
     preamble._maybe_run_usage_ledger(root)
     assert len(calls) == 1  # a lock older than 10 minutes is treated as abandoned, not active
+
+
+# ── fix round 2, item 1: _acquire_lock is atomic (os.O_CREAT|O_EXCL), not exists()-then-write() ──
+
+def test_acquire_lock_succeeds_on_an_absent_lock(tmp_path):
+    lock = tmp_path / "day.lock"
+    assert preamble._acquire_lock(lock) is True
+    assert lock.exists()
+
+
+def test_acquire_lock_fails_when_a_fresh_lock_already_exists(tmp_path):
+    lock = tmp_path / "day.lock"
+    lock.write_text("held", encoding="utf-8")  # fresh mtime (just written)
+    assert preamble._acquire_lock(lock) is False
+
+
+def test_acquire_lock_removes_and_retries_once_on_a_stale_lock(tmp_path):
+    lock = tmp_path / "day.lock"
+    lock.write_text("stale", encoding="utf-8")
+    stale_time = time.time() - preamble._LOCK_STALE_SECONDS - 1
+    os.utime(lock, (stale_time, stale_time))
+    assert preamble._acquire_lock(lock) is True
+    # the retry created a FRESH lock (not the stale one) -- a second immediate call must now fail.
+    assert preamble._acquire_lock(lock) is False
+
+
+# ── fix round 2, item 2: Windows detach requests CREATE_BREAKAWAY_FROM_JOB, with a fallback ──────
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only Job Object creationflags")
+def test_maybe_run_usage_ledger_includes_breakaway_flag_on_windows(tmp_path, monkeypatch):
+    root = tmp_path
+    appdata = tmp_path / "appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(appdata))
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
+    preamble._maybe_run_usage_ledger(root)
+    assert len(calls) == 1
+    flags = calls[0][1].get("creationflags", 0)
+    assert flags & preamble.subprocess.CREATE_BREAKAWAY_FROM_JOB
+    assert flags & preamble.subprocess.DETACHED_PROCESS
+    assert flags & preamble.subprocess.CREATE_NEW_PROCESS_GROUP
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only Job Object creationflags")
+def test_maybe_run_usage_ledger_retries_without_breakaway_when_rejected(tmp_path, monkeypatch):
+    root = tmp_path
+    appdata = tmp_path / "appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(appdata))
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
+    calls = []
+
+    def fake_popen(*a, **k):
+        calls.append((a, k))
+        if k.get("creationflags", 0) & preamble.subprocess.CREATE_BREAKAWAY_FROM_JOB:
+            raise OSError("breakaway not permitted by this job object")
+        return _FakePopen()
+
+    monkeypatch.setattr(preamble.subprocess, "Popen", fake_popen)
+    preamble._maybe_run_usage_ledger(root)
+    # first attempt (with breakaway) failed and was retried once without it -- not abandoned.
+    assert len(calls) == 2
+    assert calls[0][1].get("creationflags", 0) & preamble.subprocess.CREATE_BREAKAWAY_FROM_JOB
+    assert not (calls[1][1].get("creationflags", 0) & preamble.subprocess.CREATE_BREAKAWAY_FROM_JOB)
+    day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    log_bytes = (appdata / "kb-usage-ledger" / f"{day}.log").read_bytes()
+    assert b"BREAKAWAY" in log_bytes
