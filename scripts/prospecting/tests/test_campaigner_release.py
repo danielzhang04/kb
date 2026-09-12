@@ -364,6 +364,12 @@ def test_zero_gmail_send_requests_across_every_path(tmp_path, monkeypatch) -> No
         "UPDATE contact_point SET person_id='other' WHERE contact_id='cp_0000000000000001'",
         "UPDATE enrollment SET person_id='other' WHERE enrollment_id='enr'",
     ],
+    ids=(
+        "campaign-scope-mismatch",
+        "step-mismatch",
+        "contact-person-mismatch",
+        "person-mismatch",
+    ),
 )
 def test_release_refuses_cross_scope_delivery_components(tmp_path, mutation) -> None:
     db = store(tmp_path / "scope.sqlite")

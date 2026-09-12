@@ -279,6 +279,7 @@ def test_27_non_send_operations_forbid_approval() -> None:
 @pytest.mark.parametrize(
     "revision_id",
     ("rev_1111111111111111", "123e4567-e89b-42d3-a456-426614174000"),
+    ids=("legacy-revision", "owner-uuid"),
 )
 def test_27a_gmail_draft_accepts_revision_owner_and_legacy_ids(
     revision_id: str,
@@ -297,6 +298,13 @@ def test_27a_gmail_draft_accepts_revision_owner_and_legacy_ids(
         "{123e4567-e89b-42d3-a456-426614174000}",
         "123e4567e89b42d3a456426614174000",
         "123e4567-e89b-42d3-7456-426614174000",
+    ),
+    ids=(
+        "version-one-uuid",
+        "uppercase-uuid",
+        "braced-uuid",
+        "compact-uuid",
+        "wrong-variant",
     ),
 )
 def test_27b_gmail_draft_rejects_noncanonical_or_non_v4_revision_uuids(

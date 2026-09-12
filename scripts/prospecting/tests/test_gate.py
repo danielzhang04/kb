@@ -219,26 +219,50 @@ def test_54_gate_run_of_this_suite_matches_a_direct_subprocess_run(tmp_path: Pat
 
 
 def test_50_loopback_connect_ex_permits_localhost_and_refuses_external() -> None:
+    # Capture the ambient production counter *before* exercising this test's
+    # intentional nonloopback refusal, so the assertion below can prove the
+    # real gate counter (which may already carry genuine detections from a
+    # real P1 run) is never reset or polluted by this unit test.
+    ambient_entry = LoopbackOnlySocket.external_network_calls
+
+    class _CountingLoopbackOnlySocket(LoopbackOnlySocket):
+        """Test-local subclass with its own counter.
+
+        ``_reject`` increments ``cls.external_network_calls`` via
+        ``classmethod``; because this subclass defines its own class
+        attribute, the increment lands on the subclass only and never
+        touches (or resets) the ambient ``LoopbackOnlySocket`` counter used
+        by the real gate run.
+        """
+
+        external_network_calls = 0
+
     listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     listener.bind(("127.0.0.1", 0))
     listener.listen(1)
     try:
-        permitted = LoopbackOnlySocket(socket.AF_INET, socket.SOCK_STREAM)
+        permitted = _CountingLoopbackOnlySocket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             assert permitted.connect_ex(listener.getsockname()) == 0
         finally:
             permitted.close()
         accepted, _ = listener.accept()
         accepted.close()
-        LoopbackOnlySocket.external_network_calls = 0
-        refused = LoopbackOnlySocket(socket.AF_INET, socket.SOCK_STREAM)
+        assert _CountingLoopbackOnlySocket.external_network_calls == 0
+
+        refused = _CountingLoopbackOnlySocket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             assert refused.connect_ex(("203.0.113.1", 443)) == errno.EACCES
         finally:
             refused.close()
-        assert LoopbackOnlySocket.external_network_calls == 1
+        assert _CountingLoopbackOnlySocket.external_network_calls == 1
     finally:
         listener.close()
+
+    # Regression: the ambient production counter must remain exactly its
+    # entry value; this test must never erase or perturb prior genuine
+    # external-call detections recorded by a real gate run.
+    assert LoopbackOnlySocket.external_network_calls == ambient_entry
 
 
 def test_51_strict_allowlist_unions_multiple_manifests(tmp_path: Path) -> None:
