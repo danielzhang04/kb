@@ -79,6 +79,8 @@ export interface SurfaceContext {
   figmentVideoRulingConfig?: VideoRulingConfig | null;
   /** Injectable bounded process seam for the Figment video-ruling reader. */
   figmentVideoRulingRunProcess?: typeof runStudioPlanProcessCapture;
+  /** Injectable bounded process seam for Figment content-brief revision publication and reading. */
+  figmentContentBriefRunProcess?: typeof runStudioPlanProcessCapture;
   /**
    * P4 W6.2 [P4-C33]: the ONE server-owned reconciliation publisher, composed once at the surface root
    * over the real store/ops ports. Present for step 2's callers (card/inbox transitions, schedule

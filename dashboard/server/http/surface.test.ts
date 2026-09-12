@@ -8,7 +8,7 @@
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
  * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
  */
-import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -155,6 +155,95 @@ function rawVideoRulingResult(): Record<string, unknown> {
   };
 }
 
+const CONTENT_BRIEF_POST = '/api/figment/studio/content-brief-revisions';
+const CONTENT_BRIEF_BASE_ID = 'base-brief';
+const CONTENT_BRIEF_ID = '2026-09-12-creator-001-revision-a';
+const CONTENT_BRIEF_SHA = 'b'.repeat(64);
+const CONTENT_BRIEF_REQUEST_SHA = 'a'.repeat(64);
+const contentBriefBody = {
+  baseBriefId: CONTENT_BRIEF_BASE_ID,
+  briefDate: '2026-09-12',
+  slug: 'revision-a',
+  hypothesis: 'A synthetic local planning revision hypothesis.',
+  intendedMetric: 'profile visits per reached account',
+};
+
+function collectorCompatibleBrief(): Record<string, unknown> {
+  return {
+    schema: 'figment/content-brief@1',
+    brief_date: '2026-09-11',
+    creator: {
+      id: 'creator-001',
+      persona: { path: 'personas/creator-001/persona.yaml', sha256: 'c'.repeat(64) },
+      canonical_reference: {
+        declared_path: 'anchors/g01.jpg',
+        path: 'personas/creator-001/anchors/g01.jpg',
+        sha256: 'd'.repeat(64),
+      },
+    },
+    content: {
+      surface: 'carousel', template_id: 'CT-2', template_sha256: 'e'.repeat(64), taxonomy_sha256: 'f'.repeat(64),
+      required_asset_slots: [
+        { index: 1, role: 'hook', taxonomy_type: 'A', kind: 'persona' },
+        { index: 2, role: 'punchline', taxonomy_type: 'A', kind: 'persona' },
+      ],
+    },
+    sources: [{ citation: 'https://example.test/research', observed_date: '2026-09-10' }],
+    hypothesis: 'A synthetic base hypothesis.',
+    intended_metric: 'saves per reached account',
+    observed_metrics: null,
+    fixture_private_note: 'must-not-reach-the-DTO',
+  };
+}
+
+function contentBriefFixture(): { repo: string; allocation: string; baseBrief: string } {
+  const repo = mkdtempSync(join(tmpdir(), 'kb-surface-content-brief-'));
+  contentBriefFixtureRoot = repo;
+  const figment = join(repo, 'orgs', 'figment');
+  const base = join(figment, 'content', 'briefs', CONTENT_BRIEF_BASE_ID);
+  const pipeline = join(figment, 'pipeline', 'content');
+  mkdirSync(base, { recursive: true });
+  mkdirSync(pipeline, { recursive: true });
+  const baseBrief = join(base, 'brief.json');
+  writeFileSync(baseBrief, JSON.stringify(collectorCompatibleBrief()));
+  writeFileSync(join(base, 'request.json'), '{"synthetic":true}\n');
+  writeFileSync(join(pipeline, 'content_brief.py'), '# synthetic publisher placeholder\n');
+  writeFileSync(join(pipeline, 'content_brief_read.py'), '# synthetic reader placeholder\n');
+  return {
+    repo,
+    allocation: join(figment, 'content', '.studio-revision-active'),
+    baseBrief,
+  };
+}
+
+function contentBriefPost(withToken = true, origin = GOOD_ORIGIN) {
+  return {
+    method: 'POST' as const,
+    url: CONTENT_BRIEF_POST,
+    headers: {
+      origin, host: GOOD_HOST, 'content-type': 'application/json',
+      ...(withToken ? { authorization: `Bearer ${token()}` } : {}),
+    },
+    payload: contentBriefBody,
+  };
+}
+
+function readerProjection(): Buffer {
+  return Buffer.from(JSON.stringify({
+    brief_sha256: CONTENT_BRIEF_SHA,
+    request_sha256: CONTENT_BRIEF_REQUEST_SHA,
+    schema: 'figment/content-brief-revalidation@1',
+  }) + '\n', 'utf8');
+}
+
+function twoCallContentBriefRunner() {
+  return vi.fn(async (_command: string, args: string[]) => {
+    if (args.includes('--revise-base')) return { stdout: Buffer.alloc(0) };
+    if (args.includes('--request') && args.includes('--brief')) return { stdout: readerProjection() };
+    throw new Error('unexpected synthetic content-brief runner invocation');
+  });
+}
+
 /** A v2 session id: `pty-` plus 32 lowercase hex digits, the only grammar the registry mints. */
 const HOST_SESSION_ID = 'pty-0123456789abcdef0123456789abcdef';
 
@@ -239,6 +328,7 @@ function headers(withToken: boolean): Record<string, string> {
 
 let app: FastifyInstance | undefined;
 let testStateRoot: string | undefined;
+let contentBriefFixtureRoot: string | undefined;
 const originalStateRoot = process.env.DASHBOARD_STATE_ROOT;
 
 beforeEach(() => {
@@ -246,7 +336,7 @@ beforeEach(() => {
   process.env.DASHBOARD_STATE_ROOT = testStateRoot;
 });
 
-afterEach(async () => {
+afterEach(async (context) => {
   if (app) {
     await app.close();
     app = undefined;
@@ -257,6 +347,17 @@ afterEach(async () => {
   testStateRoot = undefined;
   rmSync(join(REPO_A, 'STOP'), { force: true });
   rmSync(join(REPO_A, 'ledgers', 'audit'), { recursive: true, force: true });
+  if (contentBriefFixtureRoot) {
+    const fixture = contentBriefFixtureRoot;
+    contentBriefFixtureRoot = undefined;
+    if (context.task.result?.state !== 'pass') {
+      process.stderr.write(`[surface.test] preserved failed content-brief fixture: ${fixture}\n`);
+    } else {
+      expect(fixture.startsWith(join(tmpdir(), 'kb-surface-content-brief-'))).toBe(true);
+      rmSync(fixture, { recursive: true, force: false });
+      expect(existsSync(fixture)).toBe(false);
+    }
+  }
   vi.restoreAllMocks();
 });
 
@@ -372,6 +473,111 @@ describe('write surface — composition chain', () => {
       expect((await app.inject(genPlans(true, 'https://wrong.example'))).statusCode).toBe(403);
       expect((await app.inject(genPlans())).statusCode).toBe(429);
       expect(existsSync(studioPlans)).toBe(false);
+    });
+  });
+
+  describe('Studio content-brief revision wiring', () => {
+    it('keeps origin, session, write-rate, admission, and preamble refusals ahead of allocation and the process', async () => {
+      const fixture = contentBriefFixture();
+      const runner = twoCallContentBriefRunner();
+      const audit = recordingAudit();
+      const common = {
+        repoRoot: fixture.repo,
+        appendAudit: audit.fn,
+        figmentContentBriefRunProcess: runner as unknown as NonNullable<SurfaceContext['figmentContentBriefRunProcess']>,
+      };
+
+      ({ app } = buildApp(common));
+      expect((await app.inject(contentBriefPost(true, 'https://wrong.example'))).statusCode).toBe(403);
+      expect((await app.inject(contentBriefPost(false))).statusCode).toBe(401);
+      await app.close();
+      app = undefined;
+
+      const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+      const writeRateGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+      ({ app } = buildApp({ ...common, rateGuard: writeRateGuard }));
+      expect((await app.inject(contentBriefPost(false))).statusCode).toBe(401);
+      expect((await app.inject(contentBriefPost())).statusCode).toBe(429);
+      await app.close();
+      app = undefined;
+
+      const rejectedAdmission = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+      const noPreamble = vi.fn(okPreamble);
+      ({ app } = buildApp({ ...common, admission: (kind) => admit(kind, rejectedAdmission), runPreamble: noPreamble }));
+      expect((await app.inject(contentBriefPost())).json()).toEqual({ error: 'outbox-degraded' });
+      expect(noPreamble).not.toHaveBeenCalled();
+      await app.close();
+      app = undefined;
+
+      const frozen = vi.fn(frozenPreamble);
+      ({ app } = buildApp({ ...common, runPreamble: frozen }));
+      expect((await app.inject(contentBriefPost())).json()).toEqual({ error: 'fleet-frozen' });
+      expect(frozen).toHaveBeenCalledWith(fixture.repo);
+      expect(runner).not.toHaveBeenCalled();
+      expect(audit.rows).toHaveLength(0);
+      expect(existsSync(fixture.allocation)).toBe(false);
+    });
+
+    it('uses only the dedicated two-call runner, audits the safe revision DTO, and cleans its owned allocation', async () => {
+      const fixture = contentBriefFixture();
+      const baseBefore = readFileSync(fixture.baseBrief);
+      const runner = twoCallContentBriefRunner();
+      const videoRunner = vi.fn(async () => ({ stdout: Buffer.from(JSON.stringify(rawVideoRulingResult())) }));
+      const audit = recordingAudit();
+      ({ app } = buildApp({
+        repoRoot: fixture.repo,
+        appendAudit: audit.fn,
+        figmentContentBriefRunProcess: runner as unknown as NonNullable<SurfaceContext['figmentContentBriefRunProcess']>,
+        figmentVideoRulingConfig: videoRulingConfig('clip-1'),
+        figmentVideoRulingRunProcess: videoRunner as unknown as NonNullable<SurfaceContext['figmentVideoRulingRunProcess']>,
+      }));
+
+      const response = await app.inject(contentBriefPost());
+
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual({
+        schema: 'figment/studio-content-brief-revision@1',
+        status: 'published',
+        briefId: CONTENT_BRIEF_ID,
+        briefSha256: CONTENT_BRIEF_SHA,
+      });
+      expect(response.body).not.toContain(fixture.repo);
+      expect(response.body).not.toContain(contentBriefBody.hypothesis);
+      expect(runner).toHaveBeenCalledTimes(2);
+      expect(runner.mock.calls[0]?.[1]).toEqual(expect.arrayContaining(['--revise-base', `content/briefs/${CONTENT_BRIEF_BASE_ID}`]));
+      expect(runner.mock.calls[1]?.[1]).toEqual(expect.arrayContaining(['--request', `content/briefs/${CONTENT_BRIEF_ID}/request.json`, '--brief', `content/briefs/${CONTENT_BRIEF_ID}/brief.json`]));
+      expect(videoRunner).not.toHaveBeenCalled();
+      expect(audit.rows).toEqual([expect.objectContaining({
+        action: 'figment-content-brief-revise',
+        owner: 'operator',
+        target: CONTENT_BRIEF_ID,
+        riskTier: 'T1',
+        result: 'published',
+        detail: { baseBriefId: CONTENT_BRIEF_BASE_ID, briefSha256: CONTENT_BRIEF_SHA },
+      })]);
+      expect(existsSync(fixture.allocation)).toBe(false);
+      expect(readFileSync(fixture.baseBrief)).toEqual(baseBefore);
+    });
+
+    it('returns fixed unavailable and retains recovery when the awaited audit fails', async () => {
+      const fixture = contentBriefFixture();
+      const runner = twoCallContentBriefRunner();
+      const audit = vi.fn(async () => { throw new Error('PRIVATE_AUDIT_FAILURE'); });
+      ({ app } = buildApp({
+        repoRoot: fixture.repo,
+        appendAudit: audit as unknown as SurfaceContext['appendAudit'],
+        figmentContentBriefRunProcess: runner as unknown as NonNullable<SurfaceContext['figmentContentBriefRunProcess']>,
+      }));
+
+      const response = await app.inject(contentBriefPost());
+
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toEqual({ error: 'publication-unavailable' });
+      expect(response.body).not.toContain('PRIVATE_AUDIT_FAILURE');
+      expect(runner).toHaveBeenCalledTimes(2);
+      expect(audit).toHaveBeenCalledOnce();
+      expect(existsSync(fixture.allocation)).toBe(true);
+      expect(readdirSync(fixture.allocation).sort()).toEqual(['edits.json', 'recovery.json']);
     });
   });
 

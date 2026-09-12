@@ -30,6 +30,7 @@ import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { auditFn, makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
+import { registerFigmentStudioContentBrief } from '../figment/studioContentBrief.ts';
 import { registerFigmentStudioGenPlan } from '../figment/studioGenPlan.ts';
 import {
   parseVideoRulingConfig,
@@ -324,6 +325,7 @@ export function makeSurfaceContext(
     repoRoot,
     figmentVideoRulingConfig,
     figmentVideoRulingRunProcess: overrides.figmentVideoRulingRunProcess,
+    figmentContentBriefRunProcess: overrides.figmentContentBriefRunProcess,
     reconciliationPublisher,
     coordinationPublication,
     outboxRoot,
@@ -638,6 +640,20 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
             await auditFn(ctx)(ctx.repoRoot, {
               action: 'figment-gen-plan-prepare', owner: subject, target: id, riskTier: 'T1',
               result: 'prepared', detail: { planSha256 },
+            }, { runGit: ctx.opsGit, now: ctx.now });
+          },
+        });
+        registerFigmentStudioContentBrief(studio, {
+          repoRoot: ctx.repoRoot,
+          sessionConfig: ctx.sessionConfig,
+          runProcess: ctx.figmentContentBriefRunProcess,
+          auditPublished: async (subject, result) => {
+            await auditFn(ctx)(ctx.repoRoot, {
+              action: 'figment-content-brief-revise', owner: subject, target: result.briefId, riskTier: 'T1',
+              result: 'published', detail: {
+                baseBriefId: result.baseBriefId,
+                briefSha256: result.briefSha256,
+              },
             }, { runGit: ctx.opsGit, now: ctx.now });
           },
         });
