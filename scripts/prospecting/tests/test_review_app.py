@@ -61,6 +61,7 @@ from scripts.prospecting.review_service import (
     ReviewService,
 )
 from scripts.prospecting.manager.campaigns import (
+    CampaignCreationStatus,
     CampaignError,
     CampaignService,
     SelectedDraftFormatStatus,
@@ -71,6 +72,12 @@ from scripts.prospecting.tests.p6_support import migrated_t1_store
 
 CAMPAIGN = "camp_1111111111111111"
 PROFILE = "22222222-2222-4222-8222-222222222222"
+SAVED_REQUEST = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
+ABSENT_REQUEST = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+TAMPERED_REQUEST = "cccccccc-cccc-4ccc-8ccc-cccccccccccc"
+_CANONICAL_UUID = re.compile(
+    r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"
+)
 REVIEW_FIXTURE = json.loads(
     (Path(__file__).parents[3] / "orgs" / "prospecting" / "fixtures" / "review-synthetic.json")
     .read_text(encoding="utf-8")
@@ -203,10 +210,21 @@ class FakeReview:
 class FakeCampaigns:
     def __init__(self) -> None:
         self.seen: list[dict[str, object]] = []
+        self.creation_seen: list[str] = []
 
     def create(self, **value):
         self.seen.append(value)
         return Result()
+
+    def creation_status(self, request_id):
+        self.creation_seen.append(request_id)
+        if _CANONICAL_UUID.fullmatch(request_id) is None:
+            raise CampaignError("invalid_request_id")
+        if request_id == SAVED_REQUEST:
+            return CampaignCreationStatus(request_id, "saved", CAMPAIGN)
+        if request_id == TAMPERED_REQUEST:
+            raise CampaignError("campaign_state_invalid")
+        return CampaignCreationStatus(request_id, "not_found", None)
 
     def selected_draft_format_status(self, campaign_id):
         if campaign_id != CAMPAIGN:
@@ -887,6 +905,70 @@ def test_exact_host_session_csrf_and_body_bound_precede_mutation(app) -> None:
     assert status == 413 and json.loads(raw) == {"error": "request_too_large"}
 
 
+def test_campaign_http_refuses_duplicate_brief_fields_and_allows_corrected_retry(
+    tmp_path: Path,
+) -> None:
+    from scripts.prospecting.tests.test_campaigns import MAILBOX_ID, REQUEST_ONE, _profile
+
+    database = tmp_path / "duplicate-brief.sqlite"
+    seeded = open_store(database)
+    _profile(seeded, PROFILE)
+    seeded.commit()
+    seeded.close()
+    connection = sqlite3.connect(database, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+    server = create_server(
+        ReviewService(connection),
+        CampaignService(connection, campaign_id_factory=lambda: CAMPAIGN),
+        port=0,
+    )
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, csrf, _headers, _body = bootstrap(server)
+        headers = {
+            "Cookie": cookie,
+            "Content-Type": "application/json",
+            "X-CSRF-Token": csrf,
+        }
+
+        def post(brief_text: str) -> tuple[int, dict[str, object]]:
+            payload = json.dumps({
+                "request_id": REQUEST_ONE,
+                "brief_text": brief_text,
+                "sender_profile_id": PROFILE,
+                "mailbox_id": MAILBOX_ID,
+            }).encode()
+            status, _response_headers, raw = request(
+                server, "POST", "/api/campaigns", body=payload, headers=headers,
+            )
+            return status, json.loads(raw)
+
+        assert post(
+            "intent:networking people-count:20 people-count:8 "
+            "ask:informational_call minutes:15"
+        ) == (422, {"error": "duplicate_brief_field"})
+        assert connection.execute("SELECT count(*) FROM campaign").fetchone()[0] == 0
+        assert connection.execute("SELECT count(*) FROM campaign_brief").fetchone()[0] == 0
+        assert connection.in_transaction is False
+
+        status, body = post(
+            "intent:networking people-count:8 ask:informational_call minutes:15\n"
+            "path: synthetic operations work\n"
+            "must: synthetic operating experience"
+        )
+        assert status == 201
+        assert body == {"campaign_id": CAMPAIGN, "created": True}
+        assert connection.execute("SELECT count(*) FROM campaign").fetchone()[0] == 1
+        assert connection.execute("SELECT count(*) FROM campaign_brief").fetchone()[0] == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        connection.close()
+
+
 def test_feedback_converts_json_tags_to_typed_tuple(app) -> None:
     server, review, _campaigns, _clock = app
     cookie, csrf, _headers, _body = bootstrap(server)
@@ -1103,15 +1185,32 @@ def test_bundled_interface_has_five_views_and_no_external_assets() -> None:
     for label in ("Campaigns", "People", "Drafts", "Schedule", "Activity"):
         assert f'data-view="{label.lower()}"' in html
     assert not re.search(r"(?:src|href)=[\"']https?://", html)
-    assert 'id="requestId" name="request_id" type="hidden"' in html
+    assert re.search(
+        r'<input\b(?=[^>]*\bid="requestId")(?=[^>]*\bname="request_id")'
+        r'(?=[^>]*\btype="hidden")[^>]*>',
+        html,
+    )
     assert "/api/people/select" not in html
     assert "No messages are scheduled" in html
     assert "Saved edit history" in html
+    ask = re.search(
+        r'<select\b(?=[^>]*\bid="conversationAsk")[^>]*>(.*?)</select>',
+        html,
+        re.DOTALL,
+    )
+    assert ask is not None
+    assert re.fullmatch(
+        r'\s*<option\b(?=[^>]*\bvalue="informational_call")[^>]*>'
+        r'\s*Informational call\s*</option>\s*',
+        ask.group(1),
+        re.DOTALL,
+    )
     assert re.search(
-        r'<select id="conversationAsk">\s*<option value="informational_call">Informational call</option>\s*</select>',
+        r'<input\b(?=[^>]*\bid="minutes")(?=[^>]*\btype="number")'
+        r'(?=[^>]*\bmin="10")(?=[^>]*\bmax="20")'
+        r'(?=[^>]*\bvalue="15")(?=[^>]*\brequired\b)[^>]*>',
         html,
     )
-    assert '<input id="minutes" type="number" min="10" max="20" value="15" required>' in html
     assert "ask_type_unsupported" in html and "ask_minutes_unsupported" in html
     assert "I confirm this source shows" in html
     assert "/api/people/verify-source" in html
@@ -1752,3 +1851,144 @@ def test_read_response_helper_detects_a_coalesced_second_response() -> None:
     fake_socket = _CoalescedFakeSocket(first + second)
     with pytest.raises(AssertionError, match="trailing bytes"):
         _read_response(fake_socket)
+
+
+def test_creation_status_route_is_closed_authorized_and_host_bound(app) -> None:
+    """The lookup answers one closed question and refuses everything else.
+
+    Unauthenticated and wrong-Host requests never reach the service at all, so
+    the existing authorization and Host checks continue to protect this read.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    route = "/api/campaigns/creation-status"
+
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id={SAVED_REQUEST}",
+        headers={"Cookie": cookie},
+    )
+    assert (status, json.loads(raw)) == (200, {
+        "state": "saved", "request_id": SAVED_REQUEST, "campaign_id": CAMPAIGN,
+    })
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id={ABSENT_REQUEST}",
+        headers={"Cookie": cookie},
+    )
+    assert (status, json.loads(raw)) == (200, {
+        "state": "not_found", "request_id": ABSENT_REQUEST, "campaign_id": None,
+    })
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id={TAMPERED_REQUEST}",
+        headers={"Cookie": cookie},
+    )
+    assert (status, json.loads(raw)) == (422, {"error": "campaign_state_invalid"})
+    assert CAMPAIGN.encode() not in raw
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id=not-a-uuid", headers={"Cookie": cookie},
+    )
+    assert (status, json.loads(raw)) == (422, {"error": "invalid_request_id"})
+
+    seen_before = list(campaigns.creation_seen)
+    # Duplicated, extra, and missing parameters are all refused outright.
+    for path in (
+        f"{route}?request_id={SAVED_REQUEST}&request_id={ABSENT_REQUEST}",
+        f"{route}?request_id={SAVED_REQUEST}&campaign_id={CAMPAIGN}",
+        f"{route}?campaign_id={CAMPAIGN}",
+        route,
+    ):
+        assert request(server, "GET", path, headers={"Cookie": cookie})[0] == 400
+    assert campaigns.creation_seen == seen_before
+
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id={SAVED_REQUEST}",
+    )
+    assert (status, json.loads(raw)) == (401, {"error": "session_required"})
+    status, _headers, raw = request(
+        server, "GET", f"{route}?request_id={SAVED_REQUEST}",
+        headers={"Host": "evil.test", "Cookie": cookie},
+    )
+    assert (status, json.loads(raw)) == (400, {"error": "request_invalid"})
+    assert campaigns.creation_seen == seen_before
+    # A read never reaches campaign creation.
+    assert campaigns.seen == []
+
+
+def test_creation_status_http_uses_the_real_service_and_leaks_no_private_fields(
+    tmp_path: Path,
+) -> None:
+    from scripts.prospecting.tests.test_campaigns import (
+        BRIEF, MAILBOX_ID, REQUEST_ONE, REQUEST_TWO, _profile,
+    )
+
+    database = tmp_path / "creation-status.sqlite"
+    seeded = open_store(database)
+    _profile(seeded, PROFILE)
+    CampaignService(seeded, campaign_id_factory=lambda: CAMPAIGN).create(
+        request_id=REQUEST_ONE, brief_text=BRIEF, sender_profile_id=PROFILE,
+        mailbox_id=MAILBOX_ID, require_first_draft_compatible=True,
+    )
+    seeded.commit()
+    seeded.close()
+    connection = sqlite3.connect(database, check_same_thread=False)
+    connection.row_factory = sqlite3.Row
+    connection.execute("PRAGMA foreign_keys=ON")
+
+    def counts() -> tuple[int, int]:
+        return (
+            connection.execute("SELECT count(*) FROM campaign").fetchone()[0],
+            connection.execute("SELECT count(*) FROM campaign_brief").fetchone()[0],
+        )
+
+    server = create_server(ReviewService(connection), CampaignService(connection), port=0)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        cookie, _csrf, _headers, _body = bootstrap(server)
+        route = "/api/campaigns/creation-status"
+        before = counts()
+
+        status, _headers, raw = request(
+            server, "GET", f"{route}?request_id={REQUEST_ONE}",
+            headers={"Cookie": cookie},
+        )
+        assert (status, json.loads(raw)) == (200, {
+            "state": "saved", "request_id": REQUEST_ONE, "campaign_id": CAMPAIGN,
+        })
+        for secret in (b"synthetic operations work", MAILBOX_ID.encode(), PROFILE.encode()):
+            assert secret not in raw
+
+        # Repeating the exact lookup changes nothing and answers identically.
+        assert request(
+            server, "GET", f"{route}?request_id={REQUEST_ONE}",
+            headers={"Cookie": cookie},
+        )[2] == raw
+        assert counts() == before
+
+        status, _headers, raw = request(
+            server, "GET", f"{route}?request_id={REQUEST_TWO}",
+            headers={"Cookie": cookie},
+        )
+        assert (status, json.loads(raw)) == (200, {
+            "state": "not_found", "request_id": REQUEST_TWO, "campaign_id": None,
+        })
+        assert counts() == before
+
+        connection.execute(
+            "UPDATE campaign SET policy_json=json_set(policy_json, '$.timezone', ?) "
+            "WHERE campaign_id=?",
+            ("UTC", CAMPAIGN),
+        )
+        connection.commit()
+        status, _headers, raw = request(
+            server, "GET", f"{route}?request_id={REQUEST_ONE}",
+            headers={"Cookie": cookie},
+        )
+        assert (status, json.loads(raw)) == (422, {"error": "campaign_state_invalid"})
+        assert CAMPAIGN.encode() not in raw
+        assert b"synthetic operations work" not in raw
+        assert counts() == before
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=2)
+        connection.close()

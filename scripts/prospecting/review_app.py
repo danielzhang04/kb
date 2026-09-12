@@ -113,6 +113,10 @@ _SELECTED_DRAFT_FORMAT_CODES = frozenset({
     "selected_draft_format_locked", "ask_type_unsupported",
     "ask_minutes_unsupported", "store_busy", "transaction_active",
 })
+# The only refusal codes the read-only creation-status lookup forwards verbatim.
+# Anything else is reported as one fixed, non-descriptive code so no driver,
+# path, brief or policy text can reach the browser through this route.
+_CREATION_STATUS_CODES = frozenset({"invalid_request_id", "campaign_state_invalid"})
 # The only local pipeline states that precede research entirely.
 _PRE_RESEARCH_PIPELINE_STATES = frozenset({"awaiting_research_adapter", "input_pending"})
 _SECURITY_HEADERS = {
@@ -489,6 +493,11 @@ class ReviewHandler(BaseHTTPRequestHandler):
             if path == "/api/review" and self._authorized():
                 self._review_snapshot(query)
                 return
+            if path == "/api/campaigns/creation-status" and self._authorized():
+                # Read-only: the existing Host and session checks above already
+                # protect it, and it reaches no mutable campaign operation.
+                self._creation_status(query)
+                return
             format_prefix = "/api/campaigns/"
             format_suffix = "/selected-draft-format"
             if (
@@ -642,6 +651,43 @@ class ReviewHandler(BaseHTTPRequestHandler):
                 snapshot["editorial_pipeline"] = editorial
         snapshot["next_action"] = _next_action(snapshot)
         self._json(HTTPStatus.OK, snapshot)
+
+    def _creation_status(self, query: dict[str, list[str]]) -> None:
+        """Answer one opaque creation-status question for a saved request key.
+
+        Closed query shape: exactly one ``request_id`` parameter and nothing
+        else, so an extra or repeated parameter is refused rather than silently
+        ignored.  The response carries only the fixed state plus the opaque
+        request and campaign identifiers -- never brief, fit, sender profile,
+        mailbox, policy, model or exception text.  A key with no saved campaign
+        is an ordinary successful ``not_found`` answer, not a refusal.
+        """
+        values = query.get("request_id", [])
+        if set(query) != {"request_id"} or len(values) != 1:
+            self._error(HTTPStatus.BAD_REQUEST, "request_schema")
+            return
+        try:
+            status = self.server.campaigns.creation_status(values[0])
+        except CampaignError as error:
+            code = str(error)
+            # A saved request key pointing at no campaign row is corruption, not
+            # a clean not-found answer, so it is never reported as one.
+            if code == "campaign_missing":
+                code = "campaign_state_invalid"
+            self._error(
+                HTTPStatus.UNPROCESSABLE_ENTITY,
+                code if code in _CREATION_STATUS_CODES else "creation_status_unavailable",
+            )
+            return
+        except sqlite3.Error:
+            # Driver-level text may carry a local path; it is never forwarded.
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY, "creation_status_unavailable")
+            return
+        self._json(HTTPStatus.OK, {
+            "state": status.state,
+            "request_id": status.request_id,
+            "campaign_id": status.campaign_id,
+        })
 
     def _read_json(self, *, max_bytes: int = MAX_JSON_BYTES) -> object:
         lengths = self.headers.get_all("Content-Length", failobj=[])

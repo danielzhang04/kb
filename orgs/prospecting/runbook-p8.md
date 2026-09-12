@@ -58,7 +58,7 @@ root link use that session, which lasts 8 hours. The app binds to loopback and
 serves a bundled static interface; it does not alter the main KB dashboard or VM production.
 
 For acceptance, first select a copy of the desktop-local store. Use that copy while historical
-gates and visual acceptance remain pending. The selected store is paired only with its sibling
+gates remain pending. The selected store is paired only with its sibling
 `sender-anchors.json`; there is no ambient fallback to another store or anchor file. Keep all
 local data in the permitted desktop-local boundary and do not place credentials, PII, ask text,
 names, URLs, or source material in commands, logs, Git, or VM jobs.
@@ -87,6 +87,31 @@ a separate explicit local action then binds fulfillment to that result. Saving t
 not fulfill feedback. A new revision does not inherit editorial readiness or send approval. There
 is no automated feedback rewriter; unavailable QA context remains pending/blocked rather than
 creating a synthetic passing revision.
+
+## Review-app setup and saves
+
+Start in Campaigns and choose a saved sender profile and mailbox. These pickers select existing
+desktop-local records; they do not create either record. Enter the campaign purpose, target,
+tone, conversation ask and optional structured filters. Advanced brief entries are `key:value`
+fields only. A field already supplied by a visible control must not be repeated there; the form
+refuses duplicate or conflicting fields with a fixed explanation.
+
+`Save campaign` is one local transaction for campaign setup. It does not start research, ranking,
+drafting, delivery, or any background work. Research criteria are a separate draft. `Save research
+brief` saves those criteria for the selected campaign; it does not require capture or import first.
+The saved intake can remain pending while later capture/import work uses its criteria. That work and
+the configured workflow happen outside this page. Use `Refresh` to inspect their saved results.
+
+Draft review is manual. `Save edit` records the typed draft text as a local revision. `Save
+correction request` records feedback without rewriting the draft. `Mark ready` records a human
+readiness decision only after the shown source and review prerequisites pass; none of these
+actions sends a message.
+
+If a campaign save loses its response, the browser keeps only one opaque request UUID in session
+storage. It never stores form text or other campaign content there. On reload, use `Check save
+status`: a confirmed save opens that exact campaign, while an unknown outcome remains blocked
+until checked or explicitly abandoned. Reload loses unsaved form text. On the same page, local
+research text remains available if status recovery succeeds or reports no saved campaign.
 
 Development Codex workers receive explicitly selected source files on the VM. Desktop data,
 skills and connectors are not automatically available to them. The primary ask remains a 10–20 minute informational call.

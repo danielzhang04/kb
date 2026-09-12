@@ -21,6 +21,7 @@ class Element {
     this.textContent = "";
     this.hidden = false;
     this.dataset = {};
+    this.attributes = {};
     this.classList = new Classes();
     this.listeners = {};
     this._innerHTML = "";
@@ -29,7 +30,7 @@ class Element {
   dispatch(type) {
     for (const callback of this.listeners[type] || []) callback({target: this, preventDefault() {}});
   }
-  setAttribute() {}
+  setAttribute(name, value) { this.attributes[name] = String(value); }
   focus() {}
   reset() {}
   closest() { return this; }
@@ -45,6 +46,7 @@ class Document {
     this.elements = new Map();
     this.listeners = {};
     this.body = new Element("body", this);
+    this.documentElement = new Element("html", this);
     for (const match of html.matchAll(/id="([^"]+)"/g)) this.getElementById(match[1]);
     for (const id of ["draftSubject", "draftBody", "feedbackDisposition", "feedbackText", "localDraftNotice", "draftError"])
       this.getElementById(id);
@@ -76,10 +78,20 @@ class Document {
 
 const tick = () => new Promise(resolve => setImmediate(resolve));
 
+function sessionStore(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: key => (values.has(key) ? values.get(key) : null),
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: key => values.delete(key),
+  };
+}
+
 function snapshot(campaign, subject = "Server subject", body = "Server body") {
   const campaigns = ["A", "B"].map(id => ({campaign_id: id, intent: `campaign_${id}`, status: "draft", next_action: "review_drafts"}));
   return {
-    campaigns, sender_profiles: [], mailboxes: [], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
+    campaigns, sender_profiles: [{sender_profile_id: "profile", sender_name: "Saved profile"}], mailboxes: ["mailbox"], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
     people: [], schedule: [], activity: [], control: null, pipeline: null, funding: null,
     editorial_pipeline: [], next_action: {},
     drafts: campaign ? [{campaign_id: campaign, person_id: `person-${campaign}`, full_name: `Person ${campaign}`, revision_id: `rev-${campaign}`,
@@ -89,20 +101,23 @@ function snapshot(campaign, subject = "Server subject", body = "Server body") {
   };
 }
 
-function harness() {
+function harness(options = {}) {
   const htmlPath = path.join(__dirname, "..", "review_app.html");
   const html = fs.readFileSync(htmlPath, "utf8");
   const source = html.match(/<script>\s*([\s\S]*?)\s*<\/script>/)[1];
   const document = new Document(html);
   const requests = [];
   let uuid = 0;
-  const context = vm.createContext({
+  const globals = {
     console, document, encodeURIComponent, setTimeout, clearTimeout,
     crypto: {randomUUID: () => `aaaaaaaa-aaaa-4aaa-8aaa-${(++uuid).toString(16).padStart(12, "a")}`},
     fetch(url, init = {}) {
       return new Promise((resolve, reject) => requests.push({url, init, resolve, reject}));
     },
-  });
+  };
+  if (Object.prototype.hasOwnProperty.call(options, "localStorage")) globals.localStorage = options.localStorage;
+  if (Object.prototype.hasOwnProperty.call(options, "sessionStorage")) globals.sessionStorage = options.sessionStorage;
+  const context = vm.createContext(globals);
   const defaults = {
     purpose: "networking", targetCount: "20", tone: "warm", conversationAsk: "informational_call", minutes: "15",
     industry: "", role: "", location: "", advancedBrief: "", priorCareer: "", mustHave: "", preferred: "",
@@ -267,6 +282,8 @@ test("obsolete campaign-create success and error cannot replace newer UI context
   afterSwitch.reply(afterSwitch.requests.shift(), snapshot("A"));
   await tick(); await tick();
   afterSwitch.document.getElementById("newCampaign").dispatch("click");
+  afterSwitch.document.getElementById("senderProfile").value = "profile";
+  afterSwitch.document.getElementById("mailboxId").value = "mailbox";
   afterSwitch.document.getElementById("campaignForm").dispatch("submit");
   const oldError = afterSwitch.requests.shift();
   const retryId = JSON.parse(oldError.init.body).request_id;
@@ -360,7 +377,7 @@ test("campaign workspace cards are full width with saved detail ordered before t
   const html = fs.readFileSync(path.join(__dirname, "..", "review_app.html"), "utf8");
   assert.match(html, /id="campaignEditorCard"[^>]*class="card full campaign-editor"|class="card full campaign-editor"[^>]*id="campaignEditorCard"/);
   assert.match(html, /id="campaignDetailCard"[^>]*class="card full campaign-detail"|class="card full campaign-detail"[^>]*id="campaignDetailCard"/);
-  assert.match(html, /\.campaign-detail\{order:1\}\.campaign-editor\{order:2\}/);
+  assert.match(html, /\.campaign-detail\{order:1\}\s*\.campaign-editor\{order:2\}/);
   assert.match(html, /#campaignCreateFields\[hidden\]\{display:none\}/);
 });
 
@@ -1629,4 +1646,705 @@ test("selected draft format failure restores the explicit action without refresh
   assert.equal(button.disabled, false);
   assert.match(app.document.getElementById("campaignError").textContent, /saved draft format is invalid/);
   assert.equal(app.requests.length, 0);
+});
+
+function setResearch(app, values) {
+  for (const [id, value] of Object.entries(values)) {
+    const field = app.document.getElementById(id);
+    field.value = value;
+    field.dispatch("change");
+    field.dispatch("input");
+  }
+}
+
+test("research text typed before create is buffered, attached to the new campaign, and still needs its own save", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Ask about operations hiring"});
+  assert.equal(app.evaluate('state.researchDrafts[""].value.outreach_goal'), "Ask about operations hiring");
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const create = app.requests.shift();
+  assert.equal(create.url, "/api/campaigns");
+  app.reply(create, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  assert.ok(reload.url.includes("campaign_id=A"));
+  app.reply(reload, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "A");
+  assert.equal(app.document.getElementById("outreachGoal").value, "Ask about operations hiring");
+  assert.equal(app.evaluate("state.researchDrafts.A.value.outreach_goal"), "Ask about operations hiring");
+  assert.equal(app.evaluate("state.researchDrafts.A.dirty"), true);
+  assert.equal(app.evaluate('state.researchDrafts[""]'), undefined);
+  assert.match(app.document.getElementById("campaignSavedNotice").textContent, /still local unsaved text/);
+  assert.equal(app.requests.length, 0, "creating a campaign starts no research run");
+});
+
+test("a failed create keeps the buffered research text and reuses the unchanged retry identity", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this goal"});
+  const form = app.document.getElementById("campaignForm");
+  form.dispatch("submit");
+  const failed = app.requests.shift();
+  const first = JSON.parse(failed.init.body).request_id;
+  app.reply(failed, {error: "sender_profile_missing"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent, /sender profile/i);
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this goal");
+  assert.equal(app.evaluate('state.researchDrafts[""].value.outreach_goal'), "Keep this goal");
+  assert.equal(app.document.getElementById("saveCampaign").disabled, false);
+  form.dispatch("submit");
+  const retry = app.requests.shift();
+  assert.equal(JSON.parse(retry.init.body).request_id, first);
+});
+
+test("an unchanged research brief disables save and an exact repeat reuses the same intake request", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadedA=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.loadedA;
+  setResearch(app, {outreachGoal: "Operations leaders in New York"});
+  const save = app.document.getElementById("saveResearchBrief");
+  assert.equal(save.disabled, false);
+  save.dispatch("click");
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/pipeline/start");
+  const payload = JSON.parse(post.init.body);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.outreach_goal, "Operations leaders in New York");
+  app.reply(post, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  const saved = snapshot("A");
+  saved.pipeline = {...payload, state: "awaiting_research_adapter", intake_revision: 1, run_id: "prun_a"};
+  app.reply(app.requests.shift(), saved);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Operations leaders in New York");
+  assert.equal(save.disabled, true, "an unchanged brief cannot create a fresh intake revision");
+  save.dispatch("click");
+  assert.equal(app.requests.length, 0);
+  app.evaluate('globalThis.forced=saveResearchBrief("A",state.researchDrafts.A.value)');
+  const forced = app.requests.shift();
+  assert.equal(JSON.parse(forced.init.body).request_id, payload.request_id);
+  setResearch(app, {outreachGoal: "Changed goal"});
+  assert.equal(save.disabled, false, "a changed brief can be saved again");
+});
+
+test("edits typed while a research save is in flight are preserved and stay savable", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.inflight=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.inflight;
+  setResearch(app, {outreachGoal: "Submitted goal"});
+  const save = app.document.getElementById("saveResearchBrief");
+  save.dispatch("click");
+  const post = app.requests.shift();
+  assert.equal(save.disabled, true, "the save is held while it is in flight");
+  setResearch(app, {outreachGoal: "Newer unsaved goal"});
+  app.reply(post, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Newer unsaved goal");
+  assert.equal(app.evaluate("state.researchDrafts.A.dirty"), true);
+  assert.equal(save.disabled, false);
+});
+
+test("an obsolete research save cannot unlock a newer save after starting a new campaign", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Save for A"});
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  const oldSave = app.requests.shift();
+
+  app.document.getElementById("newCampaign").dispatch("click");
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  const loadB = app.requests.shift();
+  app.reply(loadB, snapshot("B"));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Save for B"});
+  const save = app.document.getElementById("saveResearchBrief");
+  save.dispatch("click");
+  const newSave = app.requests.shift();
+  assert.equal(save.disabled, true);
+
+  app.reply(oldSave, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  assert.equal(save.disabled, true, "the obsolete completion cannot unlock B's save");
+
+  app.reply(newSave, {run_id: "prun_b", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), snapshot("B"));
+  await tick(); await tick();
+});
+
+test("an advanced compiler field that overrides a visible selection is rejected without any POST", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const industry = app.document.getElementById("industry");
+  industry.value = "software"; industry.dispatch("input");
+  const advanced = app.document.getElementById("advancedBrief");
+  const box = app.document.getElementById("advancedBriefError");
+  advanced.value = "industry:fintech"; advanced.dispatch("input");
+  assert.match(box.textContent, /already set by a field above/);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0, "a conflicting advanced field never reaches the service");
+  advanced.value = "seniority:vp seniority:director"; advanced.dispatch("input");
+  assert.match(box.textContent, /listed more than once/);
+  advanced.value = "please find me some vps"; advanced.dispatch("input");
+  assert.match(box.textContent, /free prose is never compiled/);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0);
+  advanced.value = "seniority:vp"; advanced.dispatch("input");
+  assert.equal(box.textContent, "");
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const create = app.requests.shift();
+  const brief = JSON.parse(create.init.body).brief_text;
+  assert.match(brief, /industry:software/);
+  assert.match(brief, /seniority:vp/);
+});
+
+test("scope values are disabled outside specific mode and an oversized brief context blocks the save", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.scopeLoad=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.scopeLoad;
+  setResearch(app, {geoMode: "specific"});
+  const geoValues = app.document.getElementById("geoValues");
+  assert.equal(geoValues.disabled, false);
+  setResearch(app, {geoValues: "New York, Boston"});
+  assert.equal(app.evaluate("state.researchDrafts.A.value.geography.values.join('|')"), "New York|Boston");
+  setResearch(app, {geoMode: "any"});
+  assert.equal(geoValues.disabled, true);
+  assert.match(app.document.getElementById("geoValuesHint").textContent, /not applied in this mode/i);
+  assert.equal(geoValues.value, "New York, Boston", "typed values are kept, not discarded");
+  assert.equal(app.evaluate("state.researchDrafts.A.value.geography.values.length"), 0);
+  setResearch(app, {outreachGoal: "é".repeat(6000), originalSpecification: "é".repeat(3000)});
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  assert.equal(app.requests.length, 0, "the oversized brief is never sent");
+  assert.match(app.document.getElementById("outreachGoalError").textContent, /16384/);
+});
+
+test("the campaign checklist reports saved setup as waiting and never claims work is running", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.drafts = [];
+  value.pipeline = {state: "awaiting_research_adapter", campaign_id: "A", requested_companies: 8,
+    requested_people_per_company: 2, funding_window_years: 3, next_stage: "research",
+    intake_revision: 1, run_id: "run-A"};
+  app.evaluate('state.campaign="A"; globalThis.checklistLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.checklistLoad;
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Setup checklist/);
+  assert.match(markup, /<b>Done<\/b> Campaign saved/);
+  assert.match(markup, /<b>Done<\/b> Research brief saved/);
+  assert.match(markup, /<b>Waiting<\/b> Captured company sources/);
+  assert.match(markup, /<b>Waiting<\/b> People selected/);
+  assert.match(markup, /run the configured workflow separately/i);
+  assert.doesNotMatch(markup, /all ready/i);
+  assert.doesNotMatch(markup, /\d+%/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("the create button is held while a create is in flight and a second click sends nothing", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const save = app.document.getElementById("saveCampaign");
+  const form = app.document.getElementById("campaignForm");
+  form.dispatch("submit");
+  assert.equal(save.disabled, true);
+  assert.equal(app.requests.length, 1);
+  form.dispatch("submit");
+  assert.equal(app.requests.length, 1, "no duplicate in-flight create");
+  app.reply(app.requests.shift(), {error: "request_conflict"}, false);
+  await tick(); await tick();
+  assert.equal(save.disabled, false);
+  assert.match(app.document.getElementById("campaignError").textContent, /changed after an earlier request/);
+});
+
+test("theme boot defaults to dark with no storage available and issues no theme-related network request", () => {
+  const app = harness();
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(app.requests.length, 1, "only the initial review load fetch was issued at boot");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("a valid persisted light preference is honored at boot and an invalid value falls back to dark", () => {
+  const store = new Map([["mc-theme", "light"]]);
+  const fakeStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+  };
+  const light = harness({localStorage: fakeStorage});
+  assert.equal(light.document.documentElement.dataset.theme, "light");
+  light.reply(light.requests.shift(), snapshot(null));
+
+  const garbled = harness({localStorage: {getItem: () => "not-a-real-theme", setItem: () => {}}});
+  assert.equal(garbled.document.documentElement.dataset.theme, "dark");
+  garbled.reply(garbled.requests.shift(), snapshot(null));
+});
+
+test("a storage that throws on every call never crashes boot or the toggle, and the toggle issues no fetch", () => {
+  const throwing = {
+    getItem() { throw new Error("storage disabled"); },
+    setItem() { throw new Error("storage disabled"); },
+  };
+  const app = harness({localStorage: throwing});
+  assert.equal(app.document.documentElement.dataset.theme, "dark", "a throwing getItem is swallowed and defaults dark");
+  const toggle = app.document.getElementById("themeToggle");
+  assert.doesNotThrow(() => toggle.dispatch("click"));
+  assert.equal(app.document.documentElement.dataset.theme, "light", "the toggle still flips the in-memory theme even though persistence throws");
+  assert.doesNotThrow(() => toggle.dispatch("click"));
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(app.requests.length, 1, "only the initial review load fetch exists; the toggle issued no network request");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("toggling theme persists a plain string only, flips aria-pressed, and never touches the network", () => {
+  const store = new Map();
+  const fakeStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+  };
+  const app = harness({localStorage: fakeStorage});
+  const toggle = app.document.getElementById("themeToggle");
+  assert.equal(toggle.attributes["aria-pressed"], "false");
+
+  toggle.dispatch("click");
+  assert.equal(app.document.documentElement.dataset.theme, "light");
+  assert.equal(store.get("mc-theme"), "light");
+  assert.equal(toggle.attributes["aria-pressed"], "true");
+
+  toggle.dispatch("click");
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(store.get("mc-theme"), "dark");
+  assert.equal(toggle.attributes["aria-pressed"], "false");
+  assert.equal(store.size, 1, "only the single theme key is ever written");
+  assert.equal(app.requests.length, 1, "toggling theme issued no additional fetch beyond the initial load");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("the theme helper never mutates state.* or issues requests directly", () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  assert.equal(typeof app.evaluate("globalThis.__mcTheme.applyTheme"), "function");
+  assert.equal(app.requests.length, 0);
+});
+
+test("a lost create response is recovered after reload from only its persisted request UUID", async () => {
+  const storage = sessionStore();
+  const first = harness({sessionStorage: storage});
+  first.reply(first.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  first.document.getElementById("campaignForm").dispatch("submit");
+  const lost = first.requests.shift();
+  const requestId = JSON.parse(lost.init.body).request_id;
+  assert.deepEqual([...storage.values.entries()], [["mc-campaign-create-request-v1", requestId]]);
+  assert.match(requestId, /^[0-9a-f-]{36}$/);
+
+  const reloaded = harness({sessionStorage: storage});
+  const status = reloaded.requests.shift();
+  const initialReview = reloaded.requests.shift();
+  assert.equal(status.url, `/api/campaigns/creation-status?request_id=${requestId}`);
+  assert.equal(status.init.method, undefined);
+  reloaded.reply(initialReview, snapshot(null));
+  await tick(); await tick();
+  reloaded.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  const recoveredLoad = reloaded.requests.shift();
+  assert.ok(recoveredLoad.url.includes("campaign_id=A"));
+  reloaded.reply(recoveredLoad, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(reloaded.evaluate("state.campaign"), "A");
+  assert.equal(storage.values.size, 0);
+  assert.match(reloaded.document.getElementById("campaignSavedNotice").textContent, /^Campaign save confirmed\./);
+});
+
+test("not_found clears the pending UUID and requires a fresh explicit form submission", async () => {
+  const requestId = "11111111-1111-1111-1111-111111111111";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  const review = app.requests.shift();
+  app.reply(review, snapshot(null));
+  app.reply(status, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaignRecoveryId"), "");
+  assert.equal(storage.values.size, 0);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /No campaign was saved.*Re-enter the form/);
+  assert.equal(app.requests.length, 0, "status lookup never creates a campaign automatically");
+});
+
+test("malformed recovery keys and responses cannot bind or unlock campaign creation", async () => {
+  const malformedStorage = sessionStore({"mc-campaign-create-request-v1": "not-a-uuid"});
+  const malformed = harness({sessionStorage: malformedStorage});
+  assert.equal(malformed.requests.length, 1, "an invalid key is never sent to the service");
+  assert.equal(malformed.document.getElementById("saveCampaign").disabled, true);
+  assert.equal(malformed.document.getElementById("campaignRecoveryAbandon").hidden, false);
+  malformed.reply(malformed.requests.shift(), snapshot(null));
+  malformed.document.getElementById("campaignRecoveryAbandon").dispatch("click");
+  assert.equal(malformedStorage.values.size, 0);
+  assert.equal(malformed.evaluate("state.campaignRecoveryId"), "");
+  assert.match(malformed.document.getElementById("campaignRecoveryText").textContent, /Stopped checking.*does not cancel/);
+
+  const requestId = "22222222-2222-2222-2222-222222222222";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  app.reply(app.requests.shift(), snapshot(null));
+  app.reply(status, {state: "saved", request_id: "33333333-3333-3333-3333-333333333333", campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "");
+  assert.equal(app.evaluate("state.campaignRecoveryId"), requestId);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0);
+});
+
+test("a failed status lookup retains the UUID and retries only on the explicit status action", async () => {
+  const requestId = "44444444-4444-4444-4444-444444444444";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  app.reply(app.requests.shift(), snapshot(null));
+  status.reject(new Error("offline"));
+  await tick(); await tick();
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /could not be checked/);
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const retry = app.requests.shift();
+  assert.equal(retry.url, `/api/campaigns/creation-status?request_id=${requestId}`);
+  app.reply(retry, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(storage.values.size, 0);
+  assert.equal(app.requests.length, 0);
+});
+
+test("same-page status recovery attaches pretyped research before loading the saved campaign", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this local research"});
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  post.reject(new Error("connection lost"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const status = app.requests.shift();
+  const requestId = JSON.parse(post.init.body).request_id;
+  app.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate('state.researchDrafts.A.value.outreach_goal'), "Keep this local research");
+  assert.equal(app.evaluate('state.researchDrafts.A.dirty'), true);
+  const load = app.requests.shift();
+  app.reply(load, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this local research");
+});
+
+test("same-page not_found preserves local research without telling the user to re-enter it", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this local research"});
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  const requestId = JSON.parse(post.init.body).request_id;
+  post.reject(new Error("connection lost"));
+  await tick(); await tick();
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const status = app.requests.shift();
+  app.reply(status, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this local research");
+  assert.equal(app.evaluate('state.researchDrafts[""].dirty'), true);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /local research text remains/);
+  assert.doesNotMatch(app.document.getElementById("campaignRecoveryText").textContent, /Re-enter/);
+});
+
+test("a known create refusal remains visible while its status can be checked", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  app.reply(post, {error: "duplicate_brief_field"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent, /Each advanced field can appear only once/);
+  assert.doesNotMatch(app.document.getElementById("campaignError").textContent, /duplicate_brief_field/);
+  assert.equal(app.document.getElementById("campaignError").classList.contains("show"), true);
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+});
+
+test("throwing session storage leaves the old create flow usable with an honest reload warning", async () => {
+  const throwing = {
+    getItem() { throw new Error("blocked"); },
+    setItem() { throw new Error("blocked"); },
+    removeItem() { throw new Error("blocked"); },
+  };
+  const app = harness({sessionStorage: throwing});
+  assert.equal(app.requests.length, 1);
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/campaigns");
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /Reload recovery is unavailable/);
+  assert.equal(app.evaluate("state.campaignRecoveryId"), "");
+  app.reply(post, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  const load = app.requests.shift();
+  app.reply(load, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "A");
+});
+
+test("campaign switches make in-flight recovery responses stale without clearing their UUID", async () => {
+  const requestId = "55555555-5555-5555-5555-555555555555";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  const initialReview = app.requests.shift();
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  const loadB = app.requests.shift();
+  app.reply(initialReview, snapshot(null));
+  app.reply(loadB, snapshot("B"));
+  await tick(); await tick();
+  app.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.requests.length, 0);
+});
+
+test("explicit New campaign abandons a pending create and its late response stays obsolete", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  assert.equal(storage.values.size, 1);
+  app.document.getElementById("newCampaign").dispatch("click");
+  assert.equal(storage.values.size, 0);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /Stopped checking.*does not cancel/);
+  app.reply(post, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "");
+  assert.equal(app.requests.length, 0);
+});
+
+test("campaign save ignores incomplete unsaved research while research save keeps its own validation", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "review_app.html"), "utf8");
+  assert.match(html, /<form id="campaignForm" novalidate>/);
+
+  const createApp = harness();
+  const createData = snapshot(null);
+  createData.sender_profiles = [{sender_profile_id: "profile", sender_name: "Saved profile"}];
+  createData.mailboxes = ["mailbox"];
+  createApp.reply(createApp.requests.shift(), createData);
+  await tick(); await tick();
+  createApp.document.getElementById("asOfDate").value = "";
+  createApp.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(createApp.requests.shift().url, "/api/campaigns", "campaign validation does not inspect the unsaved research fields");
+
+  const researchApp = harness();
+  researchApp.reply(researchApp.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  setResearch(researchApp, {asOfDate: ""});
+  researchApp.document.getElementById("saveResearchBrief").dispatch("click");
+  assert.equal(researchApp.requests.length, 0, "invalid research is never sent by its separate save action");
+  assert.equal(researchApp.document.getElementById("researchBriefEditor").open, true);
+  assert.equal(researchApp.document.getElementById("asOfDate").attributes["aria-invalid"], "true");
+});
+
+test("refresh keeps valid unsaved picker choices and clears choices removed from the current lists", async () => {
+  const app = harness();
+  const available = snapshot(null);
+  available.sender_profiles = [{sender_profile_id: "profile-2", sender_name: "Second profile"}];
+  available.mailboxes = ["mailbox-2"];
+  app.reply(app.requests.shift(), available);
+  await tick(); await tick();
+
+  app.document.getElementById("senderProfile").value = "profile-2";
+  app.document.getElementById("mailboxId").value = "mailbox-2";
+  app.document.getElementById("refresh").dispatch("click");
+  app.reply(app.requests.shift(), available);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("senderProfile").value, "profile-2");
+  assert.equal(app.document.getElementById("mailboxId").value, "mailbox-2");
+
+  const removed = snapshot(null);
+  removed.sender_profiles = [];
+  removed.mailboxes = [];
+  app.document.getElementById("refresh").dispatch("click");
+  app.reply(app.requests.shift(), removed);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("senderProfile").value, "");
+  assert.equal(app.document.getElementById("mailboxId").value, "");
+  assert.match(app.document.getElementById("mailboxHint").textContent, /no saved mailbox/i);
+});
+
+
+function savedResearchSnapshot(campaign, scopeId, scopeValue) {
+  const data = snapshot(campaign);
+  data.pipeline = {
+    campaign_id: campaign,
+    state: "awaiting_research_adapter",
+    intake_revision: 1,
+    run_id: `run-${campaign}`,
+    as_of_date: "2026-09-12",
+    funding_stage_min: "series_a",
+    funding_stage_max: "series_c",
+    funding_window_years: 3,
+    funding_stage_interpretation: "latest_known",
+    geography: {mode: scopeId === "geography" ? "specific" : "unknown", values: scopeId === "geography" ? [scopeValue] : []},
+    sector: {mode: scopeId === "sector" ? "specific" : "unknown", values: scopeId === "sector" ? [scopeValue] : []},
+    requested_companies: 20,
+    requested_people_per_company: 2,
+    role_families: ["operations"],
+    original_specification: "",
+    outreach_goal: "",
+  };
+  return data;
+}
+
+for (const [scopeId, modeId, valuesId] of [["geography", "geoMode", "geoValues"], ["sector", "sectorMode", "sectorValues"]]) {
+  test(`${scopeId} keeps a current dirty specific value through refresh after restoring an inactive value`, async () => {
+    const app = harness();
+    app.reply(app.requests.shift(), snapshot(null));
+    await tick(); await tick();
+    app.evaluate('state.campaign="A"; globalThis.loadScoped=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.loadScoped;
+
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[]", "inactive values never enter the request payload");
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "Boston");
+    setResearch(app, {[valuesId]: "New York"});
+
+    app.evaluate('globalThis.refreshScoped=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.refreshScoped;
+    assert.equal(app.document.getElementById(valuesId).value, "New York", "refresh must not replace the current dirty value from cache");
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[\"New York\"]");
+    app.document.getElementById("saveResearchBrief").dispatch("click");
+    const post = app.requests.shift();
+    assert.deepEqual(JSON.parse(post.init.body)[scopeId].values, ["New York"], "Save sends the current value");
+  });
+
+  test(`${scopeId} inactive values stay with their campaign and restore without payload leakage`, async () => {
+    const app = harness();
+    app.reply(app.requests.shift(), snapshot(null));
+    await tick(); await tick();
+    app.evaluate('state.campaign="A"; globalThis.loadScopeA=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.loadScopeA;
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[]");
+
+    const picker = app.document.getElementById("campaignSelect");
+    picker.value = "B";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("B", "other", ""));
+    await tick(); await tick();
+    assert.equal(app.document.getElementById(valuesId).value, "");
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "", "A's cached value does not leak into B");
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("B").${scopeId}.values`)), "[]");
+
+    picker.value = "A";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await tick(); await tick();
+    assert.equal(app.document.getElementById(modeId).value, "any");
+    picker.value = "B";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("B", "other", ""));
+    await tick(); await tick();
+    picker.value = "A";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await tick(); await tick();
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "Boston", "A's inactive value is restored after returning");
+  });
+}
+
+
+test("changing one restored scope never replaces the other dirty specific scope", async () => {
+  const app = harness();
+  const saved = () => {
+    const data = savedResearchSnapshot("A", "geography", "Boston");
+    data.pipeline.sector = {mode: "specific", values: ["Software"]};
+    return data;
+  };
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadBothScopes=load("A")');
+  app.reply(app.requests.shift(), saved());
+  await app.context.loadBothScopes;
+
+  setResearch(app, {geoMode: "any"});
+  setResearch(app, {geoMode: "specific"});
+  setResearch(app, {geoValues: "New York"});
+  setResearch(app, {sectorMode: "any"});
+  setResearch(app, {sectorMode: "specific"});
+  setResearch(app, {sectorValues: "Healthcare"});
+  assert.equal(app.document.getElementById("geoValues").value, "New York");
+
+  app.evaluate('globalThis.refreshBothScopes=load("A")');
+  app.reply(app.requests.shift(), saved());
+  await app.context.refreshBothScopes;
+  assert.equal(app.document.getElementById("geoValues").value, "New York");
+  assert.equal(app.document.getElementById("sectorValues").value, "Healthcare");
+  assert.equal(JSON.stringify(app.evaluate('pipelineRequestValue("A").geography.values')), "[\"New York\"]");
+  assert.equal(JSON.stringify(app.evaluate('pipelineRequestValue("A").sector.values')), "[\"Healthcare\"]");
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  const post = app.requests.shift();
+  const payload = JSON.parse(post.init.body);
+  assert.deepEqual(payload.geography.values, ["New York"]);
+  assert.deepEqual(payload.sector.values, ["Healthcare"]);
+});
+
+test("an unchanged interaction keeps a saved research brief labeled as saved and disabled", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadSaved=load("A")');
+  app.reply(app.requests.shift(), savedResearchSnapshot("A", "geography", "Boston"));
+  await app.context.loadSaved;
+  const date = app.document.getElementById("asOfDate");
+  date.dispatch("input");
+  assert.equal(app.document.getElementById("saveResearchBrief").disabled, true);
+  assert.match(app.document.getElementById("researchStatus").textContent, /matches the last saved values/);
+  assert.equal(app.evaluate("state.researchDrafts.A.saved"), true);
 });

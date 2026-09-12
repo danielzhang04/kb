@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import asdict
 import json
 import sqlite3
 from pathlib import Path
@@ -7,9 +8,11 @@ from pathlib import Path
 import pytest
 
 from scripts.prospecting.manager.campaigns import (
+    CampaignCreationStatus,
     CampaignError,
     CampaignService,
     DraftingSettings,
+    _request_hash,
 )
 from scripts.prospecting.p2_store import compile_target_policy
 from scripts.prospecting.personalizer.cli import _campaign_policy
@@ -316,6 +319,87 @@ def test_invalid_or_missing_creation_inputs_never_mutate(
     with pytest.raises(CampaignError, match=f"^{code}$"):
         _service(connection, (CAMPAIGN_ONE,)).create(**(values | arguments))
     assert _counts(connection) == (0, 0)
+
+
+@pytest.mark.parametrize(
+    "brief",
+    [
+        "intent:networking intent:networking ask:informational_call minutes:15",
+        "intent:networking people-count:20 PEOPLE-COUNT:8 ask:informational_call minutes:15",
+    ],
+)
+def test_new_campaign_refuses_duplicate_compiler_fields_without_partial_state(
+    tmp_path: Path, brief: str,
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+
+    with pytest.raises(CampaignError, match="^duplicate_brief_field$"):
+        service.create(
+            request_id=REQUEST_ONE,
+            brief_text=brief,
+            sender_profile_id=PROFILE_ID,
+            mailbox_id=MAILBOX_ID,
+        )
+
+    assert _counts(connection) == (0, 0)
+    assert connection.in_transaction is False
+    created = service.create(
+        request_id=REQUEST_ONE,
+        brief_text=(
+            "intent:networking people-count:8 ask:informational_call minutes:15\n"
+            "path: synthetic operations work\n"
+            "must: synthetic operating experience\n"
+            "prefer: synthetic strategy experience\n"
+        ),
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+    assert created.created is True
+    assert created.target_policy["requested_people"] == 8
+    assert _counts(connection) == (1, 1)
+
+
+def test_historical_duplicate_brief_remains_resumable_and_exactly_retryable(
+    tmp_path: Path,
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    created = service.create(
+        request_id=REQUEST_ONE,
+        brief_text=BRIEF,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+    historical = BRIEF.replace(
+        "people-count:8", "people-count:20 people-count:8",
+    )
+    connection.execute(
+        "UPDATE campaign_brief SET brief_text=?,request_hash=? WHERE campaign_id=?",
+        (
+            historical,
+            _request_hash(historical, created.fit_text, PROFILE_ID, MAILBOX_ID, None),
+            CAMPAIGN_ONE,
+        ),
+    )
+    connection.commit()
+
+    resumed = service.resume(CAMPAIGN_ONE)
+    retried = service.create(
+        request_id=REQUEST_ONE,
+        brief_text=historical,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+
+    assert resumed.brief_text == historical
+    assert resumed.target_policy["requested_people"] == 8
+    assert retried.created is False
+    assert retried.campaign_id == CAMPAIGN_ONE
+    assert _counts(connection) == (1, 1)
+    assert connection.in_transaction is False
 
 
 @pytest.mark.parametrize("minutes", [10, 20])
@@ -639,3 +723,224 @@ def test_selected_draft_format_refuses_a_valid_campaign_scoped_exec_request(tmp_
     assert connection.execute(
         "SELECT policy_json,policy_hash FROM campaign WHERE campaign_id=?", (CAMPAIGN_ONE,),
     ).fetchone() == before
+
+
+NO_PREDICATE_MANUAL_BRIEF = "intent:networking lane:manual"
+UNSUPPORTED_LANE_BRIEF = "intent:networking lane:pdl"
+UNSUPPORTED_LANE_WITH_PREDICATE_BRIEF = "intent:networking lane:pdl industry:software"
+
+
+def test_predicate_free_manual_brief_still_compiles_and_persists_one_campaign(
+    tmp_path: Path,
+) -> None:
+    """A supported lane with no predicates must remain fully accepted.
+
+    The lane guard is deliberately independent of predicate count, so this is
+    the positive case that keeps it from becoming an over-broad refusal.
+    """
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    session = _service(connection, (CAMPAIGN_ONE,)).create(
+        request_id=REQUEST_ONE,
+        brief_text=NO_PREDICATE_MANUAL_BRIEF,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+
+    assert session.created is True
+    assert session.target_policy["predicates"] == []
+    assert session.target_policy["lane_plan"] == ["manual"]
+    assert _counts(connection) == (1, 1)
+    resumed = CampaignService(connection).resume(CAMPAIGN_ONE)
+    assert resumed.policy_hash == session.policy_hash
+
+
+@pytest.mark.parametrize(
+    ("brief", "code"),
+    [
+        (UNSUPPORTED_LANE_BRIEF, "unsupported_lane"),
+        (UNSUPPORTED_LANE_WITH_PREDICATE_BRIEF, "unsupported:p01-industry"),
+    ],
+)
+def test_unsupported_lane_is_refused_with_a_stable_code_and_no_partial_write(
+    tmp_path: Path, brief: str, code: str
+) -> None:
+    """An unsupported lane is refused whether or not the brief has predicates.
+
+    The predicate-free brief is the previously wrong behaviour: the general
+    compiler capability-checks a lane only inside its predicate loop, so a
+    zero-predicate brief compiled cleanly and both durable rows were written
+    with an unsupported ``lane_plan``.  It must now refuse with a fixed code
+    and leave no row in either table.  The with-predicate brief keeps the
+    compiler's existing per-predicate code, unchanged by this repair.  Both
+    attempts run twice to show the code is stable rather than first-call only.
+    """
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE, CAMPAIGN_TWO))
+
+    for _attempt in range(2):
+        with pytest.raises(CampaignError, match=f"^{code}$"):
+            service.create(
+                request_id=REQUEST_ONE,
+                brief_text=brief,
+                sender_profile_id=PROFILE_ID,
+                mailbox_id=MAILBOX_ID,
+            )
+        assert _counts(connection) == (0, 0)
+    assert connection.in_transaction is False
+
+
+def _durable_state(
+    connection: sqlite3.Connection,
+) -> tuple[tuple[tuple[object, ...], ...], tuple[tuple[object, ...], ...]]:
+    return (
+        tuple(
+            tuple(row)
+            for row in connection.execute("SELECT * FROM campaign ORDER BY campaign_id")
+        ),
+        tuple(
+            tuple(row)
+            for row in connection.execute(
+                "SELECT * FROM campaign_brief ORDER BY request_id"
+            )
+        ),
+    )
+
+
+def test_creation_status_for_an_absent_request_reads_nothing_and_writes_nothing(
+    tmp_path: Path,
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+
+    status = service.creation_status(REQUEST_ONE)
+
+    assert status == CampaignCreationStatus(REQUEST_ONE, "not_found", None)
+    assert _counts(connection) == (0, 0)
+    assert _durable_state(connection) == ((), ())
+    assert connection.in_transaction is False
+    # Repeating the lookup is still a pure read: no row is created to remember it.
+    assert service.creation_status(REQUEST_ONE) == status
+    assert _counts(connection) == (0, 0)
+
+
+def test_creation_status_resolves_the_exact_saved_campaign_id_without_private_fields(
+    tmp_path: Path,
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    created = service.create(
+        request_id=REQUEST_ONE,
+        brief_text=BRIEF,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+        drafting=DRAFTING,
+    )
+    before = _durable_state(connection)
+
+    status = service.creation_status(REQUEST_ONE)
+
+    assert status == CampaignCreationStatus(REQUEST_ONE, "saved", created.campaign_id)
+    assert status.campaign_id == CAMPAIGN_ONE
+    # A different, never-saved key is answered independently and truthfully.
+    assert service.creation_status(REQUEST_TWO) == CampaignCreationStatus(
+        REQUEST_TWO, "not_found", None
+    )
+    # Fixed closed shape: no brief, fit text, sender profile, mailbox, policy
+    # hash or drafting model is reachable through the returned status.
+    assert set(asdict(status)) == {"request_id", "state", "campaign_id"}
+    rendered = json.dumps(asdict(status), sort_keys=True)
+    for secret in (
+        BRIEF, "synthetic operations work", PROFILE_ID, MAILBOX_ID,
+        DRAFTING.model_version, created.policy_hash, created.fit_text,
+    ):
+        assert secret not in rendered
+    # Repeating the lookup changes no durable state at all.
+    assert service.creation_status(REQUEST_ONE) == status
+    assert _durable_state(connection) == before
+    assert _counts(connection) == (1, 1)
+    assert connection.in_transaction is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [
+        "missing",
+        "",
+        REQUEST_ONE.upper(),
+        REQUEST_ONE.replace("-", ""),
+        "{" + REQUEST_ONE + "}",
+        " " + REQUEST_ONE,
+        REQUEST_ONE + "\n",
+        CAMPAIGN_ONE,
+    ],
+)
+def test_creation_status_refuses_a_noncanonical_request_key(
+    tmp_path: Path, value: str
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    service.create(
+        request_id=REQUEST_ONE,
+        brief_text=BRIEF,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+    before = _durable_state(connection)
+
+    with pytest.raises(CampaignError, match="^invalid_request_id$"):
+        service.creation_status(value)
+
+    assert _durable_state(connection) == before
+    assert _counts(connection) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    ("statement", "parameters"),
+    [
+        (
+            "UPDATE campaign SET policy_json=json_set(policy_json, '$.timezone', ?) "
+            "WHERE campaign_id=?",
+            ("UTC", CAMPAIGN_ONE),
+        ),
+        (
+            "UPDATE campaign SET policy_hash=? WHERE campaign_id=?",
+            ("f" * 64, CAMPAIGN_ONE),
+        ),
+        (
+            "UPDATE campaign_brief SET request_hash=? WHERE campaign_id=?",
+            ("f" * 64, CAMPAIGN_ONE),
+        ),
+    ],
+)
+def test_creation_status_refuses_saved_but_corrupt_state_and_binds_no_campaign(
+    tmp_path: Path, statement: str, parameters: tuple[str, str]
+) -> None:
+    connection = open_store(tmp_path / "store.sqlite")
+    _profile(connection)
+    service = _service(connection, (CAMPAIGN_ONE,))
+    service.create(
+        request_id=REQUEST_ONE,
+        brief_text=BRIEF,
+        sender_profile_id=PROFILE_ID,
+        mailbox_id=MAILBOX_ID,
+    )
+    connection.execute(statement, parameters)
+    connection.commit()
+    before = _durable_state(connection)
+
+    with pytest.raises(CampaignError) as error:
+        service.creation_status(REQUEST_ONE)
+
+    # The refusal is a fixed code only: no campaign identity is handed back for
+    # a row that failed the full session integrity recompile.
+    assert str(error.value) == "campaign_state_invalid"
+    assert CAMPAIGN_ONE not in str(error.value)
+    assert BRIEF not in str(error.value)
+    assert _durable_state(connection) == before
+    assert _counts(connection) == (1, 1)
+    assert connection.in_transaction is False

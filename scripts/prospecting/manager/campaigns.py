@@ -17,7 +17,9 @@ from collections.abc import Callable, Mapping
 
 from scripts.prospecting.manager.compile_ask import (
     CompileError,
+    KNOWN,
     PREDICATES,
+    TOKEN,
     _split_fit_lines,
     compile_ask,
 )
@@ -61,6 +63,9 @@ _P8_EXTENSION_KEYS = frozenset({"fit_spec_hash", "copy_profile"})
 _POLICY_KEYS = frozenset(
     (*_TARGET_KEYS, *_BUSINESS_POLICY_KEYS, *_DRAFTING_KEYS)
 ) | _P2_EXTENSION_KEYS | _P8_EXTENSION_KEYS
+# Only the lanes this desktop-local service advertises capabilities for.  The
+# compiled lane plan is checked against this at the service boundary.
+_SUPPORTED_LANES = frozenset({"manual"})
 
 
 class CampaignError(ValueError):
@@ -137,6 +142,22 @@ class SelectedDraftFormatStatus:
     changed: bool
 
 
+@dataclass(frozen=True)
+class CampaignCreationStatus:
+    """Whether one request key already has a durable campaign.
+
+    ``state`` is one of exactly two fixed values: ``"saved"`` with the durable
+    ``campaign_id``, or ``"not_found"`` with ``campaign_id`` ``None``.  No brief
+    text, fit text, sender profile, mailbox, policy, drafting model, or stored
+    exception text is carried here: the only values are the caller's own opaque
+    request key and, when saved, P8's opaque campaign identity.
+    """
+
+    request_id: str
+    state: str
+    campaign_id: str | None
+
+
 def _utc_now() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -178,6 +199,29 @@ def _brief(value: object) -> str:
     if size > MAX_BRIEF_BYTES:
         raise CampaignError("invalid_brief")
     return value
+
+
+def _require_unique_brief_fields(value: str) -> None:
+    """Reject repeated compiler fields for a newly created campaign.
+
+    The shared compiler historically applies last-value-wins semantics.  Keep
+    that behavior available to its other callers and to integrity checks for
+    already-saved campaigns, while refusing an ambiguous new durable brief at
+    this service boundary.  Fit-note lines are removed by the compiler's own
+    splitter before token inspection.
+    """
+    token_text, _fit_text = _split_fit_lines(value)
+    seen: set[str] = set()
+    for raw_token in token_text.split():
+        match = TOKEN.fullmatch(raw_token.lower())
+        if match is None:
+            continue
+        key = match.group(1)
+        if key not in KNOWN:
+            continue
+        if key in seen:
+            raise CampaignError("duplicate_brief_field")
+        seen.add(key)
 
 
 def _drafting_settings(value: object) -> DraftingSettings | None:
@@ -314,6 +358,26 @@ def _resolve_company_id(connection: sqlite3.Connection, value: str) -> str | Non
     return str(row[0]) if row is not None else None
 
 
+def _require_supported_lane(target_policy: Mapping[str, object]) -> None:
+    """Refuse a compiled lane plan this service has no capabilities for.
+
+    The general compiler checks a lane against the capability map only inside
+    its predicate loop, so a brief that declares no predicates never reaches
+    that check.  This boundary owns the durable write, so it refuses on the
+    compiled lane plan itself, independent of how many predicates the brief
+    declared.  The code is the compiler's existing one; no new capability or
+    vocabulary is introduced here.
+    """
+    lane_plan = target_policy.get("lane_plan")
+    if (
+        type(lane_plan) is not list
+        or len(lane_plan) != 1
+        or type(lane_plan[0]) is not str
+        or lane_plan[0] not in _SUPPORTED_LANES
+    ):
+        raise CampaignError("unsupported_lane")
+
+
 def _compile(
     connection: sqlite3.Connection,
     brief_text: str,
@@ -323,7 +387,8 @@ def _compile(
     drafting: DraftingSettings | None,
 ) -> tuple[dict[str, object], dict[str, object], str]:
     capabilities = {
-        "manual": {field: ("exact", "v1") for field in PREDICATES.values()}
+        lane: {field: ("exact", "v1") for field in PREDICATES.values()}
+        for lane in _SUPPORTED_LANES
     }
     compile_campaign_id = str(
         uuid.uuid5(uuid.NAMESPACE_URL, "kb:campaign:" + campaign_id)
@@ -342,6 +407,17 @@ def _compile(
             set(),
         )
         target_policy = dict(compiled.target_policy)
+    except CompileError as error:
+        raise CampaignError(str(error)) from None
+    except ValueError:
+        raise CampaignError("invalid_policy") from None
+    # ``CompileError`` and ``CampaignError`` are both ``ValueError`` subclasses,
+    # so this refusal is raised outside the mapping above rather than being
+    # remapped to ``invalid_policy``.  Running it before normalisation also
+    # rejects unsupported predicate-free lanes before target normalisation.
+    # Nothing has been written at this point.
+    _require_supported_lane(target_policy)
+    try:
         normalized = compile_target_policy(
             target_policy, lambda value: _resolve_company_id(connection, value)
         )
@@ -533,6 +609,8 @@ class CampaignService:
                 self.connection.commit()
                 return session
 
+            _require_unique_brief_fields(brief_text)
+
             profile = self.connection.execute(
                 "SELECT 1 FROM sender_profile WHERE sender_profile_id=?",
                 (sender_profile_id,),
@@ -626,6 +704,37 @@ class CampaignService:
         if type(campaign_id) is not str or _CAMPAIGN_ID.fullmatch(campaign_id) is None:
             raise CampaignError("invalid_campaign_id")
         return _session(self.connection, campaign_id)
+
+    def creation_status(self, request_id: str) -> CampaignCreationStatus:
+        """Report whether the campaign for ``request_id`` is durably saved.
+
+        This is a read.  It creates, updates and migrates nothing, starts no
+        workflow, and never invents a request key or a campaign identity.  The
+        key must be the exact canonical UUID form already used by ``create``.
+
+        An absent key is an explicit ``not_found`` with no campaign bound: that
+        is a normal answer, not a refusal, and it leaks nothing about any other
+        campaign.  A present key is resolved only through the existing full
+        ``_session`` integrity/recompile check, so a saved-but-corrupt row
+        refuses with the established ``campaign_state_invalid`` code rather than
+        binding an unverified campaign to the caller's retry.
+        """
+        request_id = _canonical_uuid(request_id, "invalid_request_id")
+        row = self.connection.execute(
+            "SELECT campaign_id FROM campaign_brief WHERE request_id=?",
+            (request_id,),
+        ).fetchone()
+        if row is None:
+            return CampaignCreationStatus(request_id, "not_found", None)
+        campaign_id = row[0]
+        if type(campaign_id) is not str or _CAMPAIGN_ID.fullmatch(campaign_id) is None:
+            # A durable row that does not carry P8's established ID grammar is
+            # corrupt state, not a campaign this lookup may hand back.
+            raise CampaignError("campaign_state_invalid")
+        session = _session(self.connection, campaign_id)
+        if session.request_id != request_id or session.campaign_id != campaign_id:
+            raise CampaignError("campaign_state_invalid")
+        return CampaignCreationStatus(request_id, "saved", session.campaign_id)
 
     def selected_draft_format_status(self, campaign_id: str) -> SelectedDraftFormatStatus:
         """Return only opaque state for the optional selected-draft copy profile."""
@@ -748,6 +857,7 @@ class CampaignService:
 
 __all__ = [
     "COMPILER_VERSION",
+    "CampaignCreationStatus",
     "CampaignError",
     "CampaignService",
     "CampaignSession",
