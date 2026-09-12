@@ -24,3 +24,13 @@ Hard boundaries the shim restates because they are absolute: a human approves ev
 and only under an explicit spend authorization; never print, copy, or persist credentials; end
 every run by appending lessons to `memory/fyt-runner.md` and the run report to
 `<video_dir>/run-report.md`.
+
+MCP scope: `mcpServers: []` above is deliberate, verified against the definition, not an
+oversight. Per `agents/fyt-runner.md`'s Forbidden authority ("No publish: you never upload,
+change privacy, or touch Studio") and Stage card filing policy ("You NEVER spawn stage work as
+in-terminal subagents ... every review gate belongs to `fyt-checker` as a filed card"), this
+session never calls an MCP tool itself — every stage, including the youtube-uploader upload in
+`fyt-publish`'s publish-queue skill, is filed as a queue card and executed by `dashboard-engine`
+in its own separate process. If that architecture ever changes so a stage executes inside this
+session, revisit this field then — don't restore an MCP grant on the strength of "this agent
+conducts the pipeline" alone.

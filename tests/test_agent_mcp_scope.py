@@ -18,9 +18,22 @@ import yaml
 REPO = Path(__file__).resolve().parents[1]
 AGENTS_DIR = REPO / ".claude" / "agents"
 
-#: name -> expected `mcpServers` value. fyt-runner drives the project's own committed skills
-#: (segment-a/b1/b2/c workflow) and never a browser/Gmail/Drive/video MCP tool
-#: (`grep -n "mcp__\|chrome-devtools\|playwright\|MCP" agents/fyt-runner.md` returns nothing).
+#: name -> expected `mcpServers` value.
+#:
+#: fyt-runner=[] verified twice (initial pass + fix-round-1 challenge that it would break the FYT
+#: publish stage, since `orgs/faceless-youtube/.claude/skills/publish-queue/SKILL.md` uploads
+#: through the youtube-uploader MCP). It does not: per `agents/fyt-runner.md`'s Forbidden
+#: authority ("No publish: you never upload, change privacy, or touch Studio") and its Stage card
+#: filing policy ("You NEVER spawn stage work as in-terminal subagents ... every review gate
+#: belongs to `fyt-checker` as a filed card"), fyt-runner never executes a stage — including
+#: publish-queue — inside its own session. Every stage is filed as a queue card and executed by
+#: `dashboard-engine` as a separate process (`fyt-publish` for the upload), which is not governed
+#: by this file's `mcpServers`. The other `mcp__` tools referenced under `orgs/faceless-youtube/`
+#: (`claude-video-vision` + `claude_ai_Google_Drive`, allow-listed in
+#: `orgs/faceless-youtube/.claude/settings.json`) back a separate manual research method
+#: (`visual-kit/research/motion-logs/_method.md`), not a fyt-runner stage either — fyt-runner's
+#: "No craft" boundary excludes it from media/review tooling. `grep -n "mcp__\|chrome-devtools\|
+#: playwright\|MCP" agents/fyt-runner.md` still returns nothing.
 RESTRICTED = {
     "fyt-runner": [],
 }
