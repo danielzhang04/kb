@@ -1,10 +1,11 @@
 # Figment input and authentication repairs: local operator use
 
-This note covers two local technical interfaces accepted on 2026-09-12:
-bounded content-brief revision and the experimental training executor's
-default authenticated live branch. That acceptance covers the local contracts
-and regression suites named below. It does not assess creator quality and does
-not approve a paid or live provider operation.
+This note covers three local technical interfaces accepted on 2026-09-12:
+bounded content-brief revision, its read-only final-path projection, and the
+experimental training executor's default authenticated live branch. That
+acceptance covers the local contracts and regression suites named below. It
+does not assess creator quality and does not approve a paid or live provider
+operation.
 
 ## Revise a content brief
 
@@ -78,6 +79,49 @@ untouched. The implementation attempts cleanup only for staging it can
 positively identify as its own. If identity or cleanup is uncertain, a staging
 remainder can be left for an operator to inspect locally; do not treat it as a
 publication or delete it by pattern.
+
+## Read a current content-brief proof
+
+`content_brief_read.py` is a separate read-only CLI adapter for the existing
+sole `revalidate_content_brief` authority. It does not build, revise, or write
+any record, and `content_brief.py` remains unchanged. Use root-relative string
+paths for the already-published pair:
+
+```text
+python -B -m orgs.figment.pipeline.content.content_brief_read --root C:\local\figment-sandbox --request content/briefs/revised-brief/request.json --brief content/briefs/revised-brief/brief.json
+```
+
+A successful call writes exactly this bounded JSON shape to stdout:
+
+```json
+{
+  "schema": "figment/content-brief-revalidation@1",
+  "request_sha256": "<64 lowercase hex characters>",
+  "brief_sha256": "<64 lowercase hex characters>"
+}
+```
+
+Argument, validation, and malformed-projection refusals return exit code `2`,
+write no stdout, and write only this fixed stderr line:
+
+```text
+content brief revalidation refused
+```
+
+Treat output as a result only after exit code `0` and strict decoding of the
+exact DTO above. An ordinary stream write or flush failure is unsuccessful even
+if it leaves partial stdout.
+
+The direct-script form is also supported when the adapter remains beside its
+`content_brief.py` authority. It sets bytecode suppression before loading that
+authority, so it can be called without `-B`. Keep `-B` for package invocation:
+package imports can occur before the adapter body gets a chance to suppress
+bytecode.
+
+The independent adapter suite passed 12 scoped local tests, including the real
+producer-to-adapter path and direct-script bytecode behavior with synthetic
+canonical-reference bytes. This is a validator projection only; it does not
+create a Studio write route or a working brief editor.
 
 ## Experimental executor modes and default authentication
 
