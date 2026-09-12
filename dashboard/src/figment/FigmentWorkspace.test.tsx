@@ -93,12 +93,14 @@ describe('FigmentWorkspace', () => {
   });
 
   it('wires the Frozen plans tab to the gen-plans endpoint with the session token and no POST on mount', async () => {
-    const genPlansBody = { schema: 'figment/studio-gen-plans@1' as const, requestScope: 'a'.repeat(64), plans: [], preparation: 'available' as const };
+    const genPlansBody = { schema: 'figment/studio-gen-plans@2' as const, requestScope: 'a'.repeat(64), plans: [], executionRecords: [], preparation: 'available' as const };
     const fetchImpl: ReturnType<typeof vi.fn> = vi.fn((url: string) => url === '/api/figment' ? response(projection) : url === '/api/figment/studio/gen-plans' ? response(genPlansBody) : Promise.reject(new Error(`unexpected request: ${url}`)));
     render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
     await screen.findByText('creator-a');
     fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
     await screen.findByRole('heading', { name: 'Prepare generation plan' });
+    await screen.findByText('Preparation status: Local preparation checks passed. Checkpoint and source authority are checked when preparation runs.');
+    await waitFor(() => expect((screen.getByRole('button', { name: 'Prepare generation plan' }) as HTMLButtonElement).disabled).toBe(false));
     expect(fetchImpl).toHaveBeenCalledWith('/api/figment/studio/gen-plans', { headers: { authorization: 'Bearer session' } });
     expect(fetchImpl.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(false);
   });

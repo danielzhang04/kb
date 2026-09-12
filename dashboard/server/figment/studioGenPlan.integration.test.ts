@@ -146,8 +146,14 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
     const listed = await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: { authorization: headers(key).authorization } });
     expect(listed.statusCode).toBe(200);
     expect(listed.json()).toEqual({
-      schema: 'figment/studio-gen-plans@1', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/),
+      schema: 'figment/studio-gen-plans@2', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/),
       plans: [prepared], preparation: 'available',
+      executionRecords: [{ id: prepared.id, planSha256: prepared.planSha256, state: {
+        status: 'recorded', planSha256: prepared.planSha256, creator: 'creator-001', stage: 'gen',
+        execution: 'no-stage-record', liveness: 'unknown', quality: 'not-assessed',
+        declaredCeilingUsd: prepared.declaredCeilingUsd,
+        maxMinutes: Number(genRun.argv[genRun.argv.indexOf('--max-minutes') + 1]), receipt: null,
+      } }],
     });
     expect(listed.body).not.toContain('plan.json');
     expect(capturedArgv).toHaveLength(1);

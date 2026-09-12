@@ -17,11 +17,11 @@ const PENDING_UNREADABLE = 'A stored generation plan request could not be read. 
 const PENDING_FOREIGN = 'A stored generation plan request belongs to a different operator or workspace. Preparation is blocked and the stored request has been left in place.';
 const CLEAR_FAILED = 'The generation plan was prepared, but its pending request record could not be cleared. New preparation is blocked; resuming replays the same request.';
 const STATUS = {
-  'available': 'Preparation status: Preparation is available.',
+  'available': 'Preparation status: Local preparation checks passed. Checkpoint and source authority are checked when preparation runs.',
   'busy': 'Preparation status: Another preparation is in progress. Refresh status once it finishes.',
   'at-capacity': 'Preparation status: At capacity: two prepared plans already exist. New preparation is disabled; a pending request can still be resumed.',
   'maintenance-required': 'Preparation status: Maintenance is required before new plans can be prepared. A pending request can still be resumed.',
-  'unavailable': 'Preparation status: Preparation is unavailable. A current selected checkpoint and source authority are required.',
+  'unavailable': 'Preparation status: Local preparation is unavailable.',
 } as const;
 const PREPARE = 'Prepare generation plan';
 const RESUME = 'Resume preparation request';
@@ -30,7 +30,11 @@ const REFRESH = 'Refresh status';
 const SUMMARY = /creator-001 · gen · one prepared run · declared \$2\.50 · plan cccccccccccc/;
 
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
-const plansBody = (overrides: Record<string, unknown> = {}) => ({ schema: 'figment/studio-gen-plans@1', requestScope: SCOPE_A, plans: [], preparation: 'available', ...overrides });
+const plansBody = (overrides: Record<string, unknown> = {}) => {
+  const plans = Array.isArray(overrides.plans) ? overrides.plans : [];
+  return { schema: 'figment/studio-gen-plans@2', requestScope: SCOPE_A, plans, preparation: 'available',
+    executionRecords: plans.map((plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } })), ...overrides };
+};
 const preparedBody = (overrides: Record<string, unknown> = {}) => ({ schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'c'.repeat(64), ...overrides });
 const record = (scope: string, key: string) => JSON.stringify({ schema: 'figment/studio-gen-plan-pending@1', requestScope: scope, key });
 const realGetItem = Storage.prototype.getItem;
@@ -475,5 +479,136 @@ describe('StudioGenPlans lifecycle and auth changes', () => {
     await flush();
     expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, key));
     expect(s.gets()).toHaveLength(1);
+  });
+});
+
+
+const EXECUTION_COPY = {
+  'no-stage-record': 'No stage record; attempt history is unknown.',
+  'recorded-running': 'Recorded running; current liveness is unknown.',
+  'recorded-failed': 'Recorded failure.',
+  'recorded-completed': 'Recorded completion; media quality has not been assessed.',
+  'unavailable': 'Recorded execution status is unavailable.',
+} as const;
+const recordedReceipt = (overrides: Record<string, unknown> = {}) => ({ startedUtc: '2026-09-12T18:00:00Z', finishedUtc: '2026-09-12T18:05:00Z',
+  terminationVerified: true, outputCount: 3, preflightEstimateUsd: 2.5, estimatedActualUsd: 0.1, failure: null, ...overrides });
+const recordedState = (execution = 'no-stage-record', overrides: Record<string, unknown> = {}) => ({
+  status: 'recorded', planSha256: 'c'.repeat(64), creator: 'creator-001', stage: 'gen', execution,
+  liveness: execution === 'recorded-completed' ? null : 'unknown', quality: 'not-assessed', declaredCeilingUsd: 2.5, maxMinutes: 115,
+  receipt: execution === 'recorded-completed' ? recordedReceipt() : null, ...overrides,
+});
+const executionRow = (state: unknown, plan = preparedBody()) => ({ id: plan.id, planSha256: plan.planSha256, state });
+const statusBody = (state: unknown) => plansBody({ plans: [preparedBody()], executionRecords: [executionRow(state)] });
+const without = (value: Record<string, unknown>, key: string) => Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+
+describe('StudioGenPlans recorded execution wire contract', () => {
+  it.each([
+    ['no-stage-record', recordedState()], ['recorded-running', recordedState('recorded-running')],
+    ['recorded-failed', recordedState('recorded-failed')], ['recorded-completed', recordedState('recorded-completed')],
+    ['unavailable', { status: 'unavailable', reason: 'evidence-unavailable' }],
+  ] as const)('renders %s as recorded information and never sends a POST on mount or refresh', async (execution, state) => {
+    const s = server(() => json(statusBody(state)));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    await screen.findByText(EXECUTION_COPY[execution]);
+    fireEvent.click(await enabled(REFRESH));
+    await waitFor(() => expect(s.gets()).toHaveLength(2)); await enabled(REFRESH);
+    expect(screen.getByText(EXECUTION_COPY[execution])).toBeTruthy(); expect(s.posts()).toHaveLength(0);
+    expect(screen.queryByRole('button', { name: /launch|retry execution|resume execution/i })).toBeNull();
+    expect(document.body.textContent).not.toMatch(/quality approved|quality accepted|provider live/i);
+  });
+
+  it('accepts a bounded failed receipt without promoting uncertain teardown or clearing a pending key', async () => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E));
+    const state = recordedState('recorded-failed', { liveness: null, receipt: recordedReceipt({ terminationVerified: false, outputCount: 0, failure: 'run', estimatedActualUsd: null }) });
+    const s = server(() => json(statusBody(state)));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    await screen.findByText(EXECUTION_COPY['recorded-failed']); await enabled(RESUME);
+    expect(s.posts()).toHaveLength(0); expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E));
+  });
+
+  it.each([
+    ['old schema', plansBody({ schema: 'figment/studio-gen-plans@1' })],
+    ['missing rows', plansBody({ plans: [preparedBody()], executionRecords: [] })],
+    ['missing field', plansBody({ executionRecords: undefined })],
+    ['extra row', plansBody({ executionRecords: [executionRow(recordedState())] })],
+    ['foreign id', plansBody({ plans: [preparedBody()], executionRecords: [{ ...executionRow(recordedState()), id: '00000000-0000-4000-8000-000000000001' }] })],
+    ['foreign row digest', plansBody({ plans: [preparedBody()], executionRecords: [{ ...executionRow(recordedState()), planSha256: 'd'.repeat(64) }] })],
+    ['extra row key', plansBody({ plans: [preparedBody()], executionRecords: [{ ...executionRow(recordedState()), path: 'private-path' }] })],
+    ['duplicate rows', plansBody({ plans: [preparedBody(), preparedBody({ id: '00000000-0000-4000-8000-000000000001' })], executionRecords: [executionRow(recordedState()), executionRow(recordedState())] })],
+    ['wrong row order', plansBody({ plans: [preparedBody(), preparedBody({ id: '00000000-0000-4000-8000-000000000001' })], executionRecords: [executionRow({ status: 'unavailable', reason: 'evidence-unavailable' }, preparedBody({ id: '00000000-0000-4000-8000-000000000001' })), executionRow(recordedState())] })],
+  ])('refuses %s in the exact paired GET contract and preserves pending intent', async (_name, body) => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E));
+    const s = server(() => json(body)); render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    await screen.findByText(GET_UNAVAILABLE); expect(button(PREPARE).disabled).toBe(true);
+    expect(s.posts()).toHaveLength(0); expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E));
+    expect(document.body.textContent).not.toContain('private-path');
+  });
+
+  it.each([
+    ['unknown status', { status: 'approved' }], ['extra unavailable key', { status: 'unavailable', reason: 'evidence-unavailable', error: 'private-error' }],
+    ['unknown unavailable reason', { status: 'unavailable', reason: 'provider-error' }],
+    ['missing recorded key', without(recordedState(), 'receipt')], ['extra recorded key', recordedState('no-stage-record', { raw: 'private-error' })],
+    ['foreign state digest', recordedState('no-stage-record', { planSha256: 'd'.repeat(64) })],
+    ['foreign creator', recordedState('no-stage-record', { creator: 'creator-002' })], ['foreign stage', recordedState('no-stage-record', { stage: 'tester' })],
+    ['unknown execution', recordedState('completed')], ['quality promotion', recordedState('no-stage-record', { quality: 'accepted' })],
+    ['fractional minutes', recordedState('no-stage-record', { maxMinutes: 1.5 })], ['excess minutes', recordedState('no-stage-record', { maxMinutes: 841 })],
+    ['negative ceiling', recordedState('no-stage-record', { declaredCeilingUsd: -1 })], ['excess ceiling', recordedState('no-stage-record', { declaredCeilingUsd: 51 })],
+    ['running terminal liveness', recordedState('recorded-running', { liveness: null })], ['running receipt', recordedState('recorded-running', { receipt: recordedReceipt() })],
+    ['missing completion receipt', recordedState('recorded-completed', { receipt: null })], ['completed unknown liveness', recordedState('recorded-completed', { liveness: 'unknown' })],
+    ['failed receipt without failure', recordedState('recorded-failed', { liveness: null, receipt: recordedReceipt() })],
+    ['extra receipt key', recordedState('recorded-completed', { receipt: recordedReceipt({ podId: 'private-error' }) })],
+    ['invalid receipt timestamp', recordedState('recorded-completed', { receipt: recordedReceipt({ finishedUtc: 'not-a-date' }) })],
+    ['oversized timestamp', recordedState('recorded-completed', { receipt: recordedReceipt({ startedUtc: 'x'.repeat(41) }) })],
+    ['reversed timestamps', recordedState('recorded-completed', { receipt: recordedReceipt({ finishedUtc: '2026-09-12T17:00:00Z' }) })],
+    ['missing receipt key', recordedState('recorded-completed', { receipt: without(recordedReceipt(), 'failure') })],
+    ['wrong teardown type', recordedState('recorded-failed', { liveness: null, receipt: recordedReceipt({ terminationVerified: 'yes', failure: 'run' }) })],
+    ['fractional output count', recordedState('recorded-completed', { receipt: recordedReceipt({ outputCount: 3.5 }) })],
+    ['excess output count', recordedState('recorded-completed', { receipt: recordedReceipt({ outputCount: 99 }) })],
+    ['incomplete gen batch', recordedState('recorded-completed', { receipt: recordedReceipt({ outputCount: 2 }) })],
+    ['unverified completion', recordedState('recorded-completed', { receipt: recordedReceipt({ terminationVerified: false }) })],
+    ['completion failure', recordedState('recorded-completed', { receipt: recordedReceipt({ failure: 'run' }) })],
+    ['negative recorded cost', recordedState('recorded-completed', { receipt: recordedReceipt({ estimatedActualUsd: -0.1 }) })],
+    ['oversized recorded estimate', recordedState('recorded-completed', { receipt: recordedReceipt({ preflightEstimateUsd: 51 }) })],
+  ])('rejects %s without displaying the forged state', async (_name, state) => {
+    const s = server(() => json(statusBody(state))); render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    await screen.findByText(GET_UNAVAILABLE); expect(button(PREPARE).disabled).toBe(true); expect(s.posts()).toHaveLength(0);
+    expect(screen.queryByText(EXECUTION_COPY['recorded-completed'])).toBeNull(); expect(document.body.textContent).not.toContain('private-error');
+  });
+
+  it('refuses an otherwise valid execution body over the accepted GET size limit', async () => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E));
+    const s = server(() => new Response(JSON.stringify(statusBody(recordedState('recorded-completed'))) + ' '.repeat(65536), { status: 200 }));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />); await screen.findByText(GET_UNAVAILABLE);
+    expect(button(PREPARE).disabled).toBe(true); expect(s.posts()).toHaveLength(0);
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E));
+  });
+
+  it('a malformed execution GET cannot erase a pending key and valid refresh recovers the original POST intent', async () => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E)); let valid = false;
+    const s = server((url) => url === GET_URL ? json(valid ? statusBody(recordedState('recorded-completed')) : plansBody({ plans: [preparedBody()], executionRecords: [] })) : json(preparedBody()));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />); await screen.findByText(GET_UNAVAILABLE);
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E)); expect(s.posts()).toHaveLength(0);
+    valid = true; fireEvent.click(await enabled(REFRESH)); await screen.findByText(EXECUTION_COPY['recorded-completed']);
+    expect(s.posts()).toHaveLength(0); fireEvent.click(await enabled(RESUME));
+    await screen.findByText(SUMMARY); expect(s.postKeys()).toEqual([KEY_E]);
+    expect(new Headers(s.posts()[0]![1]?.headers).get('X-Figment-Intent-Scope')).toBe(SCOPE_A);
+    await waitFor(() => expect(sessionStorage.getItem(STORAGE_KEY)).toBeNull());
+  });
+
+  it.each(['token', 'fetch'] as const)('hides recorded state immediately when %s ownership changes and ignores the old GET completion', async (owner) => {
+    const oldRefresh = deferred<Response>(), replacement = deferred<Response>();
+    const first = server(() => first.gets().length === 1 ? json(statusBody(recordedState('recorded-completed'))) : oldRefresh.promise);
+    const second = server(() => replacement.promise);
+    const tokenFetch = server((_url, _init, headers) => headers.get('authorization') === 'Bearer second' ? replacement.promise :
+      tokenFetch.gets().filter(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer first').length === 1 ? json(statusBody(recordedState('recorded-completed'))) : oldRefresh.promise);
+    const original = owner === 'token' ? tokenFetch : first;
+    const { rerender } = render(<StudioGenPlans token="first" fetchImpl={original.fetchImpl} />);
+    await screen.findByText(EXECUTION_COPY['recorded-completed']); fireEvent.click(await enabled(REFRESH));
+    rerender(<StudioGenPlans token={owner === 'token' ? 'second' : 'first'} fetchImpl={owner === 'fetch' ? second.fetchImpl : original.fetchImpl} />);
+    expect(screen.queryByText(EXECUTION_COPY['recorded-completed'])).toBeNull();
+    await act(async () => { oldRefresh.resolve(json(statusBody(recordedState('recorded-completed')))); });
+    expect(screen.queryByText(EXECUTION_COPY['recorded-completed'])).toBeNull();
+    await act(async () => { replacement.resolve(json(statusBody({ status: 'unavailable', reason: 'evidence-unavailable' }))); });
+    await screen.findByText(EXECUTION_COPY.unavailable); expect(original.posts()).toHaveLength(0); expect(second.posts()).toHaveLength(0);
   });
 });

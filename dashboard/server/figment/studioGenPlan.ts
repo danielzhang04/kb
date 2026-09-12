@@ -7,6 +7,7 @@ import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { resolvePython } from '../runtime/python.ts';
 import { runStudioPlanProcess, StudioPlanProcessError } from './studioPlanProcess.ts';
+import { collectPreparedGenStatus, type PreparedGenStatus } from './cloudExperiment.ts';
 
 const CREATOR = 'creator-001';
 const STAGE = 'gen';
@@ -29,7 +30,8 @@ export interface StudioGenPlan {
 export type StudioPreparation = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
 /** Discovery read: prepared plans are existing POST DTOs, never approval or launch authority. */
 export interface StudioGenPlans {
-  schema: 'figment/studio-gen-plans@1'; requestScope: string; plans: StudioGenPlan[]; preparation: StudioPreparation;
+  schema: 'figment/studio-gen-plans@2'; requestScope: string; plans: StudioGenPlan[]; preparation: StudioPreparation;
+  executionRecords: Array<{ id: string; planSha256: string; state: PreparedGenStatus }>;
 }
 export interface RunStudioGenPlanOptions { cwd: string; timeout: number; maxBuffer: number; windowsHide: boolean; }
 export type RunStudioGenPlan = (command: string, args: readonly string[], options: RunStudioGenPlanOptions) => Promise<unknown>;
@@ -43,7 +45,7 @@ export interface StudioGenPlanOptions {
 interface SafeRoot { path: string; real: string; }
 interface Marker { schema: 'figment/studio-gen-plan-marker@1'; id: string; plan_sha256: string; intent_sha256: string; created_utc: string; }
 interface Published { saved: Marker; directory: string; }
-interface Inventory { published: Published[]; unmarked: boolean; }
+interface Inventory { published: Published[]; unmarked: boolean; directories: string[]; }
 
 function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
@@ -182,19 +184,19 @@ async function publishMarker(path: string, content: string): Promise<void> {
   try { await handle.writeFile(content); await handle.sync(); }
   finally { await handle.close(); }
 }
-/** Bounded read-only inventory shared by preparation and discovery; any unsafe entry throws. */
-async function scanPlans(root: SafeRoot, plansRoot: string): Promise<Inventory> {
-  const rootBytes = await sizeOf(root, plansRoot);
-  if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
+/** Bounded metadata discovery; recursive capacity failures do not hide safe published summaries. */
+async function scanPlanMarkers(root: SafeRoot, plansRoot: string): Promise<Inventory> {
+  if (await safePath(root, plansRoot, 'directory') === null) throw new Error('unsafe-root');
   const published: Published[] = [];
+  const directories: string[] = [];
   let unmarked = false;
   const entries = await opendir(plansRoot);
   let count = 0;
   for await (const entry of entries) {
     if (++count > MAX_ENTRIES || !entry.isDirectory() || !ID.test(entry.name)) throw new Error('unsafe-plan-entry');
     const directory = join(plansRoot, entry.name);
-    const bytes = await sizeOf(root, directory);
-    if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
+    if (await safePath(root, directory, 'directory') === null) throw new Error('unsafe-plan-entry');
+    directories.push(directory);
     const markerName = join(directory, 'published.json');
     if (!await entryExists(markerName)) { unmarked = true; continue; }
     const markerPath = await safePath(root, markerName, 'file');
@@ -204,7 +206,21 @@ async function scanPlans(root: SafeRoot, plansRoot: string): Promise<Inventory> 
     published.push({ saved, directory });
   }
   if (published.length > MAX_PUBLISHED) throw new Error('capacity');
-  return { published, unmarked };
+  return { published, unmarked, directories };
+}
+/** The original tree limits and unsafe-descendant checks still gate every preparation/replay. */
+async function assertPlanCapacity(root: SafeRoot, plansRoot: string, inventory: Inventory): Promise<void> {
+  const rootBytes = await sizeOf(root, plansRoot);
+  if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
+  for (const directory of inventory.directories) {
+    const bytes = await sizeOf(root, directory);
+    if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
+  }
+}
+async function scanPlans(root: SafeRoot, plansRoot: string): Promise<Inventory> {
+  const inventory = await scanPlanMarkers(root, plansRoot);
+  await assertPlanCapacity(root, plansRoot, inventory);
+  return inventory;
 }
 /** The published summary, only when the plan bytes still hash to the marker. */
 async function publishedPlan(root: SafeRoot, entry: Published): Promise<StudioGenPlan | null> {
@@ -243,8 +259,8 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       || (length !== undefined && length !== '0')) return reply.code(400).send({ error: 'body-not-allowed' });
     const session = verifiedSession(request);
     if (session === undefined) return reply.code(401).send({ error: 'missing-session' });
-    const view = (preparation: StudioPreparation, plans: StudioGenPlan[] = []): StudioGenPlans =>
-      ({ schema: 'figment/studio-gen-plans@1', requestScope: requestScope(session.claims.sub), plans, preparation });
+    const view = (preparation: StudioPreparation, plans: StudioGenPlan[] = [], executionRecords: StudioGenPlans['executionRecords'] = []): StudioGenPlans =>
+      ({ schema: 'figment/studio-gen-plans@2', requestScope: requestScope(session.claims.sub), plans, preparation, executionRecords });
     if (active) return view('busy');
     const generation = started;
     let result: StudioGenPlans;
@@ -253,17 +269,24 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       if (!await entryExists(plansRoot)) {
         result = view(terminationUncertain ? 'maintenance-required' : 'available');
       } else {
-        const inventory = await scanPlans(root, plansRoot);
+        const inventory = await scanPlanMarkers(root, plansRoot);
         const ordered = [...inventory.published].sort((a, b) => a.saved.created_utc.localeCompare(b.saved.created_utc)
           || a.saved.id.localeCompare(b.saved.id));
         const plans: StudioGenPlan[] = [];
+        const executionRecords: StudioGenPlans['executionRecords'] = [];
         for (const entry of ordered) {
           const prepared = await publishedPlan(root, entry);
           if (prepared === null) throw new Error('stale-plan');
           plans.push(prepared);
+          executionRecords.push({ id: prepared.id, planSha256: prepared.planSha256,
+            state: collectPreparedGenStatus(entry.directory, entry.saved.plan_sha256) });
         }
-        result = view(terminationUncertain || inventory.unmarked ? 'maintenance-required'
-          : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans);
+        let capacityAvailable = true;
+        try { await assertPlanCapacity(root, plansRoot, inventory); }
+        catch { capacityAvailable = false; }
+        if (await safePath(root, plansRoot, 'directory') === null) throw new Error('unsafe-root');
+        result = view(terminationUncertain || inventory.unmarked || !capacityAvailable ? 'maintenance-required'
+          : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans, executionRecords);
       }
     } catch {
       request.log.warn('Figment generation-plan discovery unavailable');

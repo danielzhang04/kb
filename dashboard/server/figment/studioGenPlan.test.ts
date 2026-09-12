@@ -33,6 +33,29 @@ function expectPrivateFree(body: string, repo: string): void {
   for (const forbidden of [repo, repo.replaceAll('\\', '\\\\'), 'published.json', 'intent_sha256', 'created_utc', 'operator', 'argv']) expect(body).not.toContain(forbidden);
 }
 
+
+const unavailableExecution = (plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } });
+const manifestName = 'train/runs/creator-001-gen.yaml';
+const outputName = 'train/runs/out/creator-001-gen';
+async function recordedFixture() {
+  const item = await fixture(async (_command, args) => {
+    const out = args[args.indexOf('--out') + 1];
+    await mkdir(join(out, 'train/runs'), { recursive: true });
+    const manifest = JSON.stringify({ max_minutes: 115, jobs: [{ output_name: 'c001-gen-01', expected_images: 3 }] });
+    await writeFile(join(out, manifestName), manifest);
+    const run = { manifest: manifestName, out: outputName, sha256: createHash('sha256').update(manifest).digest('hex'), ceiling_usd: '2.50',
+      argv: ['python', 'runpod_run.py', 'run', '--manifest', join(out, manifestName), '--out', join(out, outputName), '--max-usd', '2.50', '--max-minutes', '115'] };
+    await writeFile(join(out, 'plan.json'), JSON.stringify({ schema: 'figment/train-plan@1', creator: 'creator-001', stages: { gen: { runs: [run] } } }));
+  });
+  const posted = await item.app.inject({ method: 'POST', url: POST, headers: headers() });
+  expect(posted.statusCode).toBe(200);
+  const prepared = posted.json() as { id: string; planSha256: string };
+  const directory = join(item.repo, '_private/figment-studio/gen-plans', prepared.id);
+  const expected = { status: 'recorded', planSha256: prepared.planSha256, creator: 'creator-001', stage: 'gen',
+    execution: 'no-stage-record', liveness: 'unknown', quality: 'not-assessed', declaredCeilingUsd: 2.5, maxMinutes: 115, receipt: null };
+  return { ...item, prepared, directory, expected };
+}
+
 describe('Studio generation-plan preparation', () => {
   it('runs only the fixed planner into a stable published directory and returns no private fields', async () => {
     const { app, repo, ledger, runner, audit } = await fixture(); const response = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() });
@@ -230,7 +253,7 @@ describe('Studio generation-plan discovery', () => {
     const { app, repo, runner, audit } = await fixture();
     const response = await app.inject({ method: 'GET', url: GET, headers: read() });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@1', requestScope: scopeOf(repo), plans: [], preparation: 'available' });
+    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [], executionRecords: [], preparation: 'available' });
     expect(existsSync(join(repo, '_private'))).toBe(false); expect(runner).not.toHaveBeenCalled(); expect(audit).not.toHaveBeenCalled();
     expectPrivateFree(response.body, repo);
     await app.close();
@@ -251,7 +274,7 @@ describe('Studio generation-plan discovery', () => {
     const { app, repo, ledger, runner } = await fixture();
     const prepared = (await app.inject({ method: 'POST', url: POST, headers: headers() })).json();
     const listed = await app.inject({ method: 'GET', url: GET, headers: read() });
-    expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@1', requestScope: scopeOf(repo), plans: [prepared], preparation: 'available' });
+    expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [prepared], executionRecords: [unavailableExecution(prepared)], preparation: 'available' });
     expectPrivateFree(listed.body, repo);
     await app.close();
     const restartedRunner = vi.fn(async () => {}) as unknown as RunStudioGenPlan;
@@ -260,6 +283,7 @@ describe('Studio generation-plan discovery', () => {
     await restarted.ready();
     const after = (await restarted.inject({ method: 'GET', url: GET, headers: read() })).json();
     expect(after.plans).toEqual([prepared]);
+    expect(after.executionRecords).toEqual([unavailableExecution(prepared)]);
     const replay = await restarted.inject({ method: 'POST', url: POST, headers: { ...headers(), 'x-figment-intent-scope': after.requestScope } });
     expect(replay.json()).toEqual(prepared);
     expect(restartedRunner).not.toHaveBeenCalled(); expect(runner).toHaveBeenCalledTimes(1);
@@ -267,9 +291,13 @@ describe('Studio generation-plan discovery', () => {
   });
 
   it('orders by marker timestamp then id and reports at-capacity without allowing a third', async () => {
-    const { app, repo, runner } = await fixture();
+    let sequence = 0;
+    const { app, repo, runner } = await fixture(async (_command, args) => {
+      await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify({ ...PLAN, fixtureSequence: ++sequence }));
+    });
     const first = (await app.inject({ method: 'POST', url: POST, headers: headers() })).json();
     const second = (await app.inject({ method: 'POST', url: POST, headers: headers('B'.repeat(32)) })).json();
+    expect(first.planSha256).not.toBe(second.planSha256);
     // Only marker timestamps move; plan bytes stay integrity-bound.
     const markerOf = (id: string) => join(plansRootOf(repo), id, 'published.json');
     for (const [id, stamp] of [[first.id, '2026-09-11T00:00:02.000Z'], [second.id, '2026-09-11T00:00:01.000Z']]) {
@@ -277,6 +305,7 @@ describe('Studio generation-plan discovery', () => {
     }
     const listed = (await app.inject({ method: 'GET', url: GET, headers: read() })).json();
     expect(listed.preparation).toBe('at-capacity'); expect(listed.plans).toEqual([second, first]);
+    expect(listed.executionRecords).toEqual([unavailableExecution(second), unavailableExecution(first)]);
     expect((await app.inject({ method: 'POST', url: POST, headers: headers('C'.repeat(32)) })).statusCode).toBe(503);
     expect(runner).toHaveBeenCalledTimes(2);
     await app.close();
@@ -296,7 +325,7 @@ describe('Studio generation-plan discovery', () => {
     await corrupt(plansRootOf(repo), id);
     const before = (await readdir(plansRootOf(repo))).sort();
     const response = await app.inject({ method: 'GET', url: GET, headers: read() });
-    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@1', requestScope: scopeOf(repo), plans: [], preparation: 'unavailable' });
+    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [], executionRecords: [], preparation: 'unavailable' });
     expectPrivateFree(response.body, repo);
     expect((await readdir(plansRootOf(repo))).sort()).toEqual(before);
     await app.close();
@@ -326,7 +355,7 @@ describe('Studio generation-plan discovery', () => {
       throw new StudioPlanProcessError('timeout', true);
     });
     await app.inject({ method: 'POST', url: POST, headers: headers() });
-    for (let i = 0; i < 2; i += 1) expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], preparation: 'maintenance-required' });
+    for (let i = 0; i < 2; i += 1) expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], preparation: 'maintenance-required' });
     expect((await app.inject({ method: 'POST', url: POST, headers: headers('B'.repeat(32)) })).statusCode).toBe(503);
     expect(runner).toHaveBeenCalledTimes(1);
     await app.close();
@@ -337,9 +366,133 @@ describe('Studio generation-plan discovery', () => {
     let entered: (() => void) | undefined; const runnerEntered = new Promise<void>((resolve) => { entered = resolve; });
     const { app } = await fixture(async (_command, args) => { entered?.(); await waiting; await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(PLAN)); });
     const pending = app.inject({ method: 'POST', url: POST, headers: headers() }); await runnerEntered;
-    expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], preparation: 'busy' });
+    expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], preparation: 'busy' });
     release?.(); expect((await pending).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json().preparation).toBe('available');
     await app.close();
+  });
+});
+
+
+describe('Studio generation-plan recorded execution discovery', () => {
+  it('projects actual producer-shaped metadata while leaving prepared POST replay unchanged', async () => {
+    const item = await recordedFixture();
+    try {
+      const paths = ['plan.json', 'published.json', manifestName].map((name) => join(item.directory, name));
+      const before = await Promise.all(paths.map((path) => readFile(path)));
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available',
+        plans: [item.prepared], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: item.expected }] });
+      expectPrivateFree(response.body, item.repo);
+      expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before);
+      expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).toHaveBeenCalledTimes(1);
+      const replay = await item.app.inject({ method: 'POST', url: POST, headers: headers() });
+      expect(replay.json()).toEqual(item.prepared); expect(item.runner).toHaveBeenCalledTimes(1);
+    } finally { await item.app.close(); }
+  });
+
+  it('retains safe summary and status beyond the per-plan byte limit, while POST replay and new dispatch remain refused', async () => {
+    const item = await recordedFixture();
+    try {
+      const metadata = ['plan.json', 'published.json', manifestName].map((name) => join(item.directory, name));
+      const before = await Promise.all(metadata.map((path) => readFile(path)));
+      await writeFile(join(item.directory, 'stage.json'), JSON.stringify({ schema: 'figment/train-stage@1', creator: 'creator-001',
+        plan_sha256: item.prepared.planSha256, status: 'complete', completed_stages: ['gen'],
+        runs: { [manifestName]: { status: 'complete', started_utc: '2026-09-12T18:00:00Z' } } }));
+      await mkdir(join(item.directory, outputName), { recursive: true });
+      await writeFile(join(item.directory, outputName, 'run.json'), JSON.stringify({ schema: 'figment/runpod-run@1', dry_run: false,
+        started_utc: '2026-09-12T18:00:00Z', finished_utc: '2026-09-12T18:05:00Z', max_minutes: 115,
+        preflight_estimate_usd: 2.5, estimated_actual_usd: 0.1, termination_verified: true, placement_attempts: [{ termination_verified: true }],
+        jobs: [{ output_name: 'c001-gen-01', files: [0, 1, 2].map((index) => ({ path: `image-${index}.png`, bytes: 500 })) }], pod_id: 'private-pod' }));
+      const expectedExecution = { ...item.expected, execution: 'recorded-completed', liveness: null, receipt: {
+        startedUtc: '2026-09-12T18:00:00Z', finishedUtc: '2026-09-12T18:05:00Z', terminationVerified: true,
+        outputCount: 3, preflightEstimateUsd: 2.5, estimatedActualUsd: 0.1, failure: null } };
+      const large = join(item.directory, 'large-output.dat'); const handle = await open(large, 'wx');
+      try { await handle.truncate(256 * 1024 * 1024 + 1); } finally { await handle.close(); }
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'maintenance-required',
+        plans: [item.prepared], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: expectedExecution }] });
+      for (const intent of [key, 'B'.repeat(32)]) expect((await item.app.inject({ method: 'POST', url: POST, headers: headers(intent) })).statusCode).toBe(503);
+      expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).toHaveBeenCalledTimes(1); expect(existsSync(large)).toBe(true);
+      expect(await Promise.all(metadata.map((path) => readFile(path)))).toEqual(before); expectPrivateFree(response.body, item.repo);
+    } finally { await item.app.close(); }
+  });
+
+  it('retains safe metadata across an unrelated reparse descendant without allowing preparation or touching the target', async () => {
+    const item = await recordedFixture();
+    try {
+      const outside = await mkdtemp(join(tmpdir(), 'figment-status-foreign-')); temporary.push(outside);
+      const sentinel = join(outside, 'private-sentinel'); await writeFile(sentinel, 'untouched');
+      await symlink(outside, join(item.directory, 'unrelated-output'), process.platform === 'win32' ? 'junction' : 'dir');
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toMatchObject({ preparation: 'maintenance-required', plans: [item.prepared],
+        executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: item.expected }] });
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
+      expect(await readFile(sentinel, 'utf8')).toBe('untouched'); expect(item.runner).toHaveBeenCalledTimes(1);
+      expectPrivateFree(response.body, item.repo); expect(response.body).not.toContain('private-sentinel');
+    } finally { await item.app.close(); }
+  });
+
+  it.each(['malformed-stage', 'linked-stage', 'changed-manifest'] as const)('retains the prepared summary when only execution metadata is %s', async (failure) => {
+    const item = await recordedFixture();
+    try {
+      const before = await readFile(join(item.directory, 'published.json'));
+      if (failure === 'malformed-stage') await writeFile(join(item.directory, 'stage.json'), '{');
+      else if (failure === 'changed-manifest') await writeFile(join(item.directory, manifestName), '{}');
+      else {
+        const outside = await mkdtemp(join(tmpdir(), 'figment-status-stage-')); temporary.push(outside);
+        await symlink(outside, join(item.directory, 'stage.json'), process.platform === 'win32' ? 'junction' : 'dir');
+      }
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo),
+        preparation: failure === 'linked-stage' ? 'maintenance-required' : 'available', plans: [item.prepared], executionRecords: [unavailableExecution(item.prepared)] });
+      expect(await readFile(join(item.directory, 'published.json'))).toEqual(before); expect(item.runner).toHaveBeenCalledTimes(1);
+      expectPrivateFree(response.body, item.repo);
+    } finally { await item.app.close(); }
+  });
+
+  it('refuses a linked plans root before listing metadata or invoking the planner', async () => {
+    const item = await fixture();
+    try {
+      const outside = await mkdtemp(join(tmpdir(), 'figment-status-root-')); temporary.push(outside);
+      await writeFile(join(outside, 'sentinel'), 'untouched');
+      await mkdir(join(item.repo, '_private/figment-studio'), { recursive: true });
+      await symlink(outside, join(item.repo, '_private/figment-studio/gen-plans'), process.platform === 'win32' ? 'junction' : 'dir');
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
+      expect(await readFile(join(outside, 'sentinel'), 'utf8')).toBe('untouched'); expectPrivateFree(response.body, item.repo);
+    } finally { await item.app.close(); }
+  });
+
+  it.each(['oversized-marker', 'linked-marker', 'oversized-plan', 'third-published-id'] as const)('refuses unsafe inventory metadata %s as a whole', async (failure) => {
+    const item = await recordedFixture();
+    try {
+      const root = join(item.repo, '_private/figment-studio/gen-plans');
+      if (failure === 'oversized-marker' || failure === 'oversized-plan') {
+        const path = join(item.directory, failure === 'oversized-marker' ? 'published.json' : 'plan.json');
+        const oversized = (await readFile(path, 'utf8')) + ' '.repeat(256 * 1024 + 1);
+        await writeFile(path, oversized);
+        if (failure === 'oversized-plan') {
+          const markerPath = join(item.directory, 'published.json'), marker = JSON.parse(await readFile(markerPath, 'utf8'));
+          await writeFile(markerPath, JSON.stringify({ ...marker, plan_sha256: createHash('sha256').update(oversized).digest('hex') }));
+        }
+      }
+      else if (failure === 'linked-marker') {
+        await rm(join(item.directory, 'published.json'));
+        const outside = await mkdtemp(join(tmpdir(), 'figment-status-marker-')); temporary.push(outside);
+        await symlink(outside, join(item.directory, 'published.json'), process.platform === 'win32' ? 'junction' : 'dir');
+      } else {
+        const marker = JSON.parse(await readFile(join(item.directory, 'published.json'), 'utf8'));
+        for (const id of ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002']) {
+          await mkdir(join(root, id)); await writeFile(join(root, id, 'published.json'), JSON.stringify({ ...marker, id }));
+          await writeFile(join(root, id, 'plan.json'), await readFile(join(item.directory, 'plan.json')));
+        }
+      }
+      const before = (await readdir(root)).sort();
+      const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expectPrivateFree(response.body, item.repo); expect((await readdir(root)).sort()).toEqual(before); expect(item.runner).toHaveBeenCalledTimes(1);
+    } finally { await item.app.close(); }
   });
 });

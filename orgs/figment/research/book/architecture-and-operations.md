@@ -42,8 +42,19 @@ synthetic desktop screenshots. The form keeps success local until an explicit in
 and preserves uncertainty after an untrustworthy response. Retained allocation state must be
 inspected and current final-path proof established before reuse; neither abort nor inventory
 refresh proves rollback or current source validity. These checks do not complete the separate
-prepared-plan execution/status and content-assignment journey. See the
+prepared-plan execution and content-assignment journey. See the
 [Research composition review](../../../../docs/figment/2026-09-12-brief-workspace-review.md).
+
+Prepared-plan cards now show accepted recorded execution status through GET @2,
+one ID/digest-bound record per stored plan. Missing history and running liveness
+remain unknown; completion leaves media quality unassessed. Capacity-only refusal
+retains safe summaries/status while preparation requires maintenance. POST @1 and
+existing intent replay are preserved. One six-suite run passed 268/268 cases,
+including both real Windows planner integration files, with typecheck/build;
+root verified 68 unchanged named inputs. Root also viewed four synthetic status
+screenshots and checked 26 unchanged inputs plus exact cleanup. This accepts the
+local status display, with no launch control or live-provider claim; see the
+[status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
 
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
 before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed

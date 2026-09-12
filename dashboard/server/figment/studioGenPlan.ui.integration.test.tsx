@@ -121,7 +121,7 @@ describe('Studio generation-plan: real planner + real HTTP control + real Studio
 
       const firstApp = await startApp(repo, sessionConfig, capturedArgv, apps);
       const first = render(<StudioGenPlans token={token} fetchImpl={bridgeFetch(firstApp, calls, true)} />);
-      await waitFor(() => expect(screen.getByText(/Preparation status: Preparation is available\./)).toBeTruthy());
+      await waitFor(() => expect(screen.getByText('Preparation status: Local preparation checks passed. Checkpoint and source authority are checked when preparation runs.')).toBeTruthy());
       const prepareButton = await waitFor(() => {
         const button = screen.getByRole('button', { name: 'Prepare generation plan' }) as HTMLButtonElement;
         expect(button.disabled).toBe(false);
@@ -172,6 +172,7 @@ describe('Studio generation-plan: real planner + real HTTP control + real Studio
       const ceiling = prepared.declaredCeilingUsd.toFixed(2).replace('.', '\\.');
       const hash = prepared.planSha256.slice(0, 12);
       await waitFor(() => expect(screen.getByText('creator-001 · gen')).toBeTruthy());
+      await screen.findByText('No stage record; attempt history is unknown.');
       await waitFor(() => expect(screen.getByText(new RegExp(
         `^prepared · one prepared run · declared \\$${ceiling} · plan ${hash}$`,
       ))).toBeTruthy());
@@ -217,7 +218,7 @@ describe('Studio generation-plan: real planner + real HTTP control + real Studio
       });
       fireEvent.click(refreshButton);
       await waitFor(() => expect(screen.getByText(
-        'Preparation status: Preparation is unavailable. A current selected checkpoint and source authority are required.',
+        'Preparation status: Local preparation is unavailable.',
       )).toBeTruthy());
       expect(gets().length).toBeGreaterThan(getsBeforeRefresh);
       const blockedPrepare = screen.getByRole('button', { name: 'Prepare generation plan' }) as HTMLButtonElement;

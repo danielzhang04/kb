@@ -176,6 +176,23 @@ authentication or publication was exercised end to end.
 
 ## Experimental executor modes and default authentication
 
+Prepared-plan recorded status is accepted locally. In **Frozen plans**, choose
+**Refresh status** to display execution metadata alongside each stored plan.
+A missing stage means attempt history is unknown. Recorded running has unknown
+current liveness; recorded completion does not assess media quality. A maintenance
+state retains a safe summary and recorded status while disabling new preparation.
+Unsafe metadata makes discovery unavailable. Preparation still validates current
+checkpoint/source authority when it runs; a readable stored plan is not that proof.
+
+GET uses exact `figment/studio-gen-plans@2`; preparation POST remains @1 with
+existing intent/replay behavior. Navigation and refresh do not POST, and no
+execution button was added. Preserve a pending preparation key after an uncertain
+response; use the existing explicit resume flow rather than creating another intent.
+The [accepted status-wiring review](2026-09-12-gen-status-wiring-review.md) records
+268 passing cases across six suites, including both real planner integration files,
+typecheck/build and four root-viewed synthetic browser states. A full live
+browser/backend execution and assignment journey remains open.
+
 The executor has three separate modes:
 
 ```text

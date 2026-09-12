@@ -6,6 +6,15 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 ## Current status — 2026-09-12
 
+- **Prepared-plan recorded status accepted**: GET @2 now pairs stored plans with recorded
+  execution metadata while preserving preparation POST @1 and pending-intent recovery.
+  Six suites passed 268/268 cases, including both real planner integration files, with
+  typecheck/build; root checked 68 unchanged named inputs and accepted four synthetic
+  browser states with 26 unchanged inputs and cleanup. Missing history/running liveness
+  remain unknown, and completion does not assess media quality. Live execution and the
+  current-evidence/assignment journey remain open. See the
+  [status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
+
 - **Square framing diagnostic, 22:15 UTC update**: both retained public-base controls were
   actually reviewed and failed framing. Candidate offline verification passed 80 checks with
   18 unchanged named inputs. One authorized two-cell square-treatment attempt made a single
@@ -58,7 +67,7 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   styles and controls; the strict mocked loopback backend does not verify a live backend,
   authentication, real media, creator quality or a full production journey. See the
   [Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md).
-  Full execution/status/assignment recovery and deployment remain incomplete. The separate
+  Full execution/current-evidence/assignment recovery and deployment remain incomplete. The separate
   governed brief-write route and Research form are now accepted locally as described below.
 - **Local input and authentication repairs**: bounded content-brief revision and the
   experimental executor's default authenticated live branch are accepted at source/test

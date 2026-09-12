@@ -2,7 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 
 export interface StudioGenPlan { schema: 'figment/studio-gen-plan@1'; id: string; status: 'prepared'; creator: 'creator-001'; stage: 'gen'; runCount: 1; declaredCeilingUsd: number; planSha256: string; }
 export type PreparationAvailability = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
-export interface StudioGenPlansResponse { schema: 'figment/studio-gen-plans@1'; requestScope: string; plans: StudioGenPlan[]; preparation: PreparationAvailability; }
+interface GenExecutionReceipt { startedUtc: string; finishedUtc: string; terminationVerified: boolean | null; outputCount: number; preflightEstimateUsd: number; estimatedActualUsd: number | null; failure: 'bootstrap' | 'run' | null; }
+type GenExecutionState = { status: 'unavailable'; reason: 'evidence-unavailable' }
+  | { status: 'recorded'; planSha256: string; creator: 'creator-001'; stage: 'gen';
+      execution: 'no-stage-record' | 'recorded-running' | 'recorded-failed' | 'recorded-completed';
+      liveness: 'unknown' | null; quality: 'not-assessed'; declaredCeilingUsd: number; maxMinutes: number;
+      receipt: GenExecutionReceipt | null };
+export interface StudioGenPlansResponse { schema: 'figment/studio-gen-plans@2'; requestScope: string; plans: StudioGenPlan[]; preparation: PreparationAvailability; executionRecords: Array<{ id: string; planSha256: string; state: GenExecutionState }>; }
 interface PendingRecord { requestScope: string; key: string; }
 type PendingRead = { kind: 'missing' } | { kind: 'valid'; record: PendingRecord } | { kind: 'blocked' };
 type PendingState = { kind: 'unknown' } | { kind: 'none' } | { kind: 'same'; key: string } | { kind: 'blocked'; message: string };
@@ -18,7 +24,9 @@ const GET_MAX_CHARS = 65536;
 const POST_MAX_CHARS = 16384;
 const KEY_RE = /^[0-9a-f]{48}$/;
 const PLAN_KEYS = ['declaredCeilingUsd', 'creator', 'id', 'planSha256', 'runCount', 'schema', 'stage', 'status'].sort();
-const PLANS_KEYS = ['plans', 'preparation', 'requestScope', 'schema'];
+const PLANS_KEYS = ['executionRecords', 'plans', 'preparation', 'requestScope', 'schema'];
+const EXECUTION_KEYS = ['creator', 'declaredCeilingUsd', 'execution', 'liveness', 'maxMinutes', 'planSha256', 'quality', 'receipt', 'stage', 'status'];
+const RECEIPT_KEYS = ['estimatedActualUsd', 'failure', 'finishedUtc', 'outputCount', 'preflightEstimateUsd', 'startedUtc', 'terminationVerified'];
 const PENDING_KEYS = ['key', 'requestScope', 'schema'];
 const GET_UNAVAILABLE = 'Studio generation plans are unavailable.';
 const PREPARE_UNAVAILABLE = 'Generation plan preparation is unavailable. A current selected checkpoint and source authority are required before a plan can be prepared.';
@@ -27,11 +35,11 @@ const PENDING_UNREADABLE = 'A stored generation plan request could not be read. 
 const PENDING_FOREIGN = 'A stored generation plan request belongs to a different operator or workspace. Preparation is blocked and the stored request has been left in place.';
 const CLEAR_FAILED = 'The generation plan was prepared, but its pending request record could not be cleared. New preparation is blocked; resuming replays the same request.';
 const AVAILABILITY_COPY: Record<PreparationAvailability, string> = {
-  'available': 'Preparation is available.',
+  'available': 'Local preparation checks passed. Checkpoint and source authority are checked when preparation runs.',
   'busy': 'Another preparation is in progress. Refresh status once it finishes.',
   'at-capacity': 'At capacity: two prepared plans already exist. New preparation is disabled; a pending request can still be resumed.',
   'maintenance-required': 'Maintenance is required before new plans can be prepared. A pending request can still be resumed.',
-  'unavailable': 'Preparation is unavailable. A current selected checkpoint and source authority are required.',
+  'unavailable': 'Local preparation is unavailable.',
 };
 const RESUMABLE: ReadonlySet<PreparationAvailability> = new Set(['available', 'at-capacity', 'maintenance-required']);
 
@@ -48,8 +56,44 @@ export function validStudioGenPlan(value: unknown): StudioGenPlan | null {
   return valid ? { schema: 'figment/studio-gen-plan@1', id: value.id as string, status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: value.declaredCeilingUsd as number, planSha256: value.planSha256 as string } : null;
 }
 
+function validExecutionState(value: unknown, plan: StudioGenPlan): GenExecutionState | null {
+  if (!object(value)) return null;
+  if (value.status === 'unavailable') return exactKeys(value, ['reason', 'status']) && value.reason === 'evidence-unavailable'
+    ? { status: 'unavailable', reason: 'evidence-unavailable' } : null;
+  const finite = (item: unknown, maximum: number): item is number => typeof item === 'number' && Number.isFinite(item) && item >= 0 && item <= maximum;
+  const date = (item: unknown): item is string => typeof item === 'string' && item.length > 0 && item.length <= 40 && Number.isFinite(Date.parse(item));
+  if (!exactKeys(value, EXECUTION_KEYS) || value.status !== 'recorded' || value.planSha256 !== plan.planSha256
+    || value.creator !== plan.creator || value.stage !== plan.stage || value.quality !== 'not-assessed'
+    || value.declaredCeilingUsd !== plan.declaredCeilingUsd || !finite(value.declaredCeilingUsd, 50) || value.declaredCeilingUsd <= 0
+    || !finite(value.maxMinutes, 840) || !Number.isInteger(value.maxMinutes) || value.maxMinutes <= 0) return null;
+  const execution = value.execution;
+  if (execution !== 'no-stage-record' && execution !== 'recorded-running' && execution !== 'recorded-failed' && execution !== 'recorded-completed') return null;
+  let receipt: GenExecutionReceipt | null = null;
+  if (value.receipt !== null) {
+    const raw = value.receipt;
+    if (!object(raw) || !exactKeys(raw, RECEIPT_KEYS) || !date(raw.startedUtc) || !date(raw.finishedUtc)
+      || Date.parse(raw.finishedUtc) < Date.parse(raw.startedUtc) || !finite(raw.outputCount, 128) || !Number.isInteger(raw.outputCount)
+      || !finite(raw.preflightEstimateUsd, value.declaredCeilingUsd) || raw.preflightEstimateUsd <= 0
+      || (raw.estimatedActualUsd !== null && !finite(raw.estimatedActualUsd, 50))
+      || (raw.terminationVerified !== null && typeof raw.terminationVerified !== 'boolean')
+      || (raw.failure !== null && raw.failure !== 'bootstrap' && raw.failure !== 'run')) return null;
+    receipt = { startedUtc: raw.startedUtc, finishedUtc: raw.finishedUtc, outputCount: raw.outputCount,
+      preflightEstimateUsd: raw.preflightEstimateUsd, estimatedActualUsd: raw.estimatedActualUsd,
+      terminationVerified: raw.terminationVerified, failure: raw.failure };
+  }
+  if (execution === 'no-stage-record' || execution === 'recorded-running') {
+    if (receipt !== null || value.liveness !== 'unknown') return null;
+  } else if (execution === 'recorded-completed') {
+    if (receipt === null || value.liveness !== null || receipt.terminationVerified !== true || receipt.failure !== null
+      || receipt.outputCount < 3 || receipt.outputCount > 96 || receipt.outputCount % 3 !== 0) return null;
+  } else if (receipt === null ? value.liveness !== 'unknown' : value.liveness !== null || receipt.failure === null) return null;
+  return { status: 'recorded', planSha256: plan.planSha256, creator: 'creator-001', stage: 'gen', execution,
+    liveness: receipt === null ? 'unknown' : null, quality: 'not-assessed', declaredCeilingUsd: value.declaredCeilingUsd,
+    maxMinutes: value.maxMinutes, receipt };
+}
+
 function validPlansResponse(value: unknown): StudioGenPlansResponse | null {
-  if (!object(value) || !exactKeys(value, PLANS_KEYS) || value.schema !== 'figment/studio-gen-plans@1' || !isSha256(value.requestScope) || !isAvailability(value.preparation)) return null;
+  if (!object(value) || !exactKeys(value, PLANS_KEYS) || value.schema !== 'figment/studio-gen-plans@2' || !isSha256(value.requestScope) || !isAvailability(value.preparation)) return null;
   if (!Array.isArray(value.plans) || value.plans.length > 2) return null;
   const plans: StudioGenPlan[] = [];
   for (const item of value.plans) {
@@ -57,7 +101,26 @@ function validPlansResponse(value: unknown): StudioGenPlansResponse | null {
     if (decoded === null || plans.some((plan) => plan.id === decoded.id)) return null;
     plans.push(decoded);
   }
-  return { schema: 'figment/studio-gen-plans@1', requestScope: value.requestScope as string, plans, preparation: value.preparation as PreparationAvailability };
+  if (!Array.isArray(value.executionRecords) || value.executionRecords.length !== plans.length) return null;
+  const executionRecords: StudioGenPlansResponse['executionRecords'] = [];
+  for (const [index, item] of value.executionRecords.entries()) {
+    const plan = plans[index];
+    if (!object(item) || !exactKeys(item, ['id', 'planSha256', 'state']) || item.id !== plan.id || item.planSha256 !== plan.planSha256) return null;
+    const state = validExecutionState(item.state, plan);
+    if (state === null) return null;
+    executionRecords.push({ id: plan.id, planSha256: plan.planSha256, state });
+  }
+  return { schema: 'figment/studio-gen-plans@2', requestScope: value.requestScope as string, plans, preparation: value.preparation as PreparationAvailability, executionRecords };
+}
+
+function executionCopy(state: GenExecutionState): string {
+  if (state.status === 'unavailable') return 'Recorded execution status is unavailable.';
+  switch (state.execution) {
+    case 'no-stage-record': return 'No stage record; attempt history is unknown.';
+    case 'recorded-running': return 'Recorded running; current liveness is unknown.';
+    case 'recorded-failed': return 'Recorded failure.';
+    case 'recorded-completed': return 'Recorded completion; media quality has not been assessed.';
+  }
 }
 
 async function boundedJson(response: Response, maxChars: number): Promise<unknown> {
@@ -227,7 +290,7 @@ export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl
     {prepared ? <p role="status">{prepared.creator} · {prepared.stage} · one prepared run · declared ${prepared.declaredCeilingUsd.toFixed(2)} · plan {prepared.planSha256.slice(0, 12)}</p> : null}
     {ready && ready.plans.length ? <div className="figment__plans">
       <p className="figment__notice">Stored plan summaries are recorded snapshots, not live validity checks.</p>
-      {ready.plans.map((plan) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p></article>)}
+      {ready.plans.map((plan, index) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p><p>{executionCopy(ready.executionRecords[index].state)}</p></article>)}
     </div> : null}
   </section>;
 }

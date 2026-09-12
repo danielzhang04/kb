@@ -2,7 +2,7 @@
 
 The standalone `collectPreparedGenStatus` collector is accepted. It binds a server-owned published directory and marker plan digest to one creator-001 gen plan, its manifest and recorded stage/receipt metadata. It reports missing stage history as unknown, running as recorded with unknown liveness, and only internally agreeing terminal metadata as recorded completion or failure. Quality is always `not-assessed`.
 
-This slice adds no route, UI control, execution runner, current source-authority check, ledger validation, provider query or media-byte inspection. The existing train-first collector remains unchanged. Future Studio wiring must validate the published marker and preserve the distinction between recorded status and current authority.
+This slice adds no route, UI control, execution runner, current source-authority check, ledger validation, provider query or media-byte inspection. The existing train-first collector remains unchanged. The separately accepted Studio wiring validates the published marker and preserves the distinction between recorded status and current authority.
 
 Root and an independent reviewer accepted the source and tests. Independent review: `MAIN/_private/figment-prepared-gen-collector-independent-review-20260912.md`, SHA `85d4a78a3dbd4cef65ef02e7d994342e1711c2801bea4cef56f1e9b990c81250`.
 
@@ -15,4 +15,4 @@ Evidence: `MAIN/_private/figment-prepared-gen-status-verification-20260912-v1`. 
 
 Coverage includes exact plan/manifest digests and run limits, canonical contained paths and reparse refusal, malformed/oversized/deep metadata, producer `complete:gen` and failed-launch shapes, contradictory stage/receipt state, gen's three recorded files per job, sanitized failure/teardown fields and metadata immutability. Missing or garbage image files do not change the result because this is recorded metadata only. Rehashed observations provide a bounded cooperative-filesystem consistency check, not an atomic snapshot against hostile concurrent writers.
 
-Next: the separately reviewed GET @2 and plan-card wiring, retaining POST @1 and existing preparation/intent semantics. No deployment, real-media acceptance, full operator-journey completion or paid-run authorization follows from this collector acceptance. `MAIN` is `C:/Users/danie/kb`.
+The [GET @2 and plan-card wiring](2026-09-12-gen-status-wiring-review.md) is now accepted separately, retaining POST @1 and existing preparation/intent semantics. No deployment, real-media acceptance, full operator-journey completion or paid-run authorization follows from this collector acceptance. `MAIN` is `C:/Users/danie/kb`.
