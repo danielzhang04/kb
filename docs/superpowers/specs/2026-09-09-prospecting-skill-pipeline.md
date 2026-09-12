@@ -1,7 +1,10 @@
 # Prospecting skill pipeline: implementation proposal
 
-Status: P15 intake and the P16 editorial controller are implemented locally. Research, production
-model adapters, and a complete template-drafting bridge remain unavailable.
+Status (historical, original P15/P16 proposal): P15 intake and the P16 editorial controller were
+implemented locally; research, production model adapters, and a complete template-drafting bridge
+were unavailable at proposal time. Funding research, source-bound qualification, deterministic role
+ranking, and the native Humanizer/fact-check/critic adapters have since been implemented and
+exercised; see "Current implementation status" below.
 
 ## Purpose
 
@@ -144,11 +147,15 @@ editorial event to be `ready`; approval, scheduling, and execution use this full
 timestamps as timezone-aware instants. It temporarily installs `sqlite3.Row` because the existing P11
 reader requires named rows, then restores the caller's row factory.
 
-The target workflow remains researcher -> qualification fact-checker -> configured-person ranker ->
-drafter -> Humanizer -> post-humanization fact-checker -> independent critic -> human review. Discovery,
-qualification, ranking, initial drafting, and a production private model adapter remain future slices.
+(Historical, original proposal) The target workflow was researcher -> qualification fact-checker ->
+configured-person ranker -> drafter -> Humanizer -> post-humanization fact-checker -> independent
+critic -> human review, with discovery, qualification, ranking, initial drafting, and a production
+private model adapter described as future slices. Qualification, ranking, and the four native
+qualification/Humanizer/fact-check/critic adapters are now implemented (see "Current implementation status" below);
+operator-driven capture remains the only supported acquisition path, and there is still no
+autonomous discovery UI.
 
-## Current implementation gaps
+## Historical implementation gaps (original P15/P16 proposal)
 
 - Campaign intake has no dated latest-funding fact or three-calendar-year evaluator. The existing
   `company_stage` token alone cannot establish the startup pilot criterion.
@@ -156,7 +163,26 @@ qualification, ranking, initial drafting, and a production private model adapter
   target count is global and does not bind the P8 per-company target of two.
 - The UI prepare action renders deterministic P8 templates. The separate personalizer model-turn path
   is not an integrated prepare/model/submit stage in the declared workflow.
-- The Humanizer/fact-check/critic state machine is persisted, but no approved live private model adapter
-  is connected; it refuses rather than fabricating receipts.
+- (Historical, original proposal) The Humanizer/fact-check/critic state machine is persisted, but no
+  approved live private model adapter was connected; it refused rather than fabricating receipts. This
+  has since changed: see "Current implementation status" below.
 - Existing review QA is structural revalidation of stored bindings; its token overlap check is not
   semantic entailment. Future model reviewers must make genuine semantic judgments.
+
+## Current implementation status
+
+Concrete interfaces now exist and have been run against real source-bound data: `FundingResearchService`
+(funding_research_service.py), `QualificationService` (qualification_service.py, source-bound
+machine qualification), `RankingService` (ranking_service.py, deterministic role ordering over
+source-supported results), and `SelectedDraftService` (selected_draft_service.py). The public
+`prepare_stage_adapters` entry point has returned all four native qualification/Humanizer/post-fact-check/critic
+adapters in an actual same-process canary, and actual qualification and three-stage editorial runs
+have completed; see
+`docs/superpowers/reviews/2026-09-11-prospecting-selected-native-acceptance.md`, "Current accepted
+runtime bundle".
+
+Honest remaining scope limits, unchanged from the original requirements: research acquisition depends
+on operator-driven browser capture (`orgs/prospecting/runbook-acquisition.md`), not autonomous
+discovery; initial drafting remains deterministic P8 template rendering, distinct from the native
+model refinement stages above; and exact-source binding plus human review/readiness gates are still
+required before any send. No sends were performed during this validation.

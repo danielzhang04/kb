@@ -20,7 +20,10 @@ cumulative attempts including one historical refusal), ranked one selected perso
 five-person shortfall, and materialized a selected-person draft. Public format setup created
 a backup; setup and draft replay were verified. Targeting, qualification and ranking hashes
 are unchanged. The metadata audit found one binding and zero source attestations, approvals,
-execution requests or sends. Actual native calls prove desktop authentication works.
+execution requests or sends. Actual native calls prove desktop authentication works. Root
+re-verified this original store remains unchanged at1 selected_draft_binding and0
+attestation/approval/exec/send rows, and checked the AST runbook CLI flags: all match, with
+three CLI modules disabling --help by design.
 
 HTTP refusals previously closed while declared body bytes could remain unread. The repair
 flushes the refusal first, then discards eligible unread bytes under the existing byte cap
@@ -55,11 +58,13 @@ the existing source-only vCPU; responding Opus5/Sonnet5 identities were verified
 ## Full-suite history and remaining acceptance
 
 Full-suite run171 completed:2147tests,2143passed,4failed,0errors/skips,908.982seconds
-parsed from JUnit full-suite-171.xml (911.108s process wall time). It is not a green
-full-suite result. The earlier full-suite123 JUnit remains as history and records2087tests:
+parsed from JUnit full-suite-171.xml (911.108s process wall time). That run171 result is not
+green and is preserved as repaired history, not a current failure. The earlier full-suite123
+JUnit remains as history and records2087tests:
 2082passed,5failed,0errors/skips,1245.491seconds. Two of the four run171 failures are the
-historical gate-inventory nodes below, which require the absent P1 record. Three historical
-failures concern gate inventories/results:
+historical gate-inventory nodes below, which required the then-absent P1 record, now
+generated and published as67218ba5. Three historical failures concern gate
+inventories/results:
 - test_deployment::test_p6_manifest_is_numeric_and_complete
 - test_p2_prerequisite::test_p2_00_p1_record_verifies
 - test_p4_p1_contract::test_p4_00_p1_record_verifies
@@ -78,8 +83,14 @@ open_store sentinel proves refusal happens before the store is opened, with a by
 check and a positive case after the patch context. All50tests in both affected modules now
 pass in32.08s CLI under a private basetemp, and the same two target checks pass in1.74s
 under a non-private basetemp (capture-private-final-175c.xml,
-capture-nonprivate-final-175c.xml). Full-suite179 is now running; no completed post-repair full run exists yet, so the
-current full suite is not claimed green.
+capture-nonprivate-final-175c.xml). Full-suite179 ran after this repair and after the real P1
+record67218ba5: root's authoritative verification of ORCH/full-suite-179-result.json shows
+returncode0, elapsed741.130seconds. The parsed full-suite-179.xml records2,147tests, all
+2,147passed,0failures/errors/skips,738.964seconds JUnit time, on the supported Python3.13.
+Run171's2,143pass/4fail result is preserved as repaired history, not a current failure. The
+current full suite is green. Root completed the current-state requirement audit in
+2026-09-12-prospecting-completion-audit.md and reconciled coordination artifacts; final
+publication is verified before the thread goal is marked complete.
 
 Two other failures passed focused reruns: the person-scope temp-root case and an HTTP
 connection abort. The latter now has a source repair and focused acceptance above.
@@ -87,7 +98,9 @@ Agents have not modified or blessed the recorded evaluation manifests.
 
 Actual Chrome DevTools CLI1.9.0 attached to the user's existing Chrome and brought forward
 Prospecting Review. Earlier CUA initialization failure was specific to that control surface;
-it did not establish that Chrome DevTools was unavailable.
+it did not establish that Chrome DevTools was unavailable. Root just reverified the actual
+existing Chrome DevTools tab3 as ready/complete and visible within this same existing
+session, with no new profile created.
 
 Browser acceptance now verifies the real pilot review copy has one exact selected draft and
 source excerpt, disabled source confirmation/readiness, preserved unsaved input across views,
@@ -109,7 +122,7 @@ run159b had11pass1fail;159c repaired the Row/tuple error and strengthened weak U
 checks. No production pipeline behavior changed for these browser checks. Source PR181 and coordination PR180 remain drafts;
 no merge, deployment or release is claimed. P1/P6 inventory and direct-run evidence is recorded
 in the section below; independent P1 inspection and an actual passing gate record now exist as detailed below.
-The full infrastructure goal remains open for broad regression and completion audit. Exact
+The broad regression and requirement audit are complete. Exact
 publication heads and private receipt paths are in the canonical coordination handoff.
 
 ## P1/P6 inventories and direct P1 gate run
@@ -158,4 +171,5 @@ The36 P2/P4/P5 prerequisite and record-contract checks pass (p1-prerequisites-17
 The gate ran without --strict-allowlist:137 paths remain unlisted,135 pre-existing plus the
 two new refresher files. The inspector classified the new files' missing declaration as a
 minor residual gap and the wider strict-allowlist mismatch as pre-existing. These limitations
-remain visible; neither a strict-allowlist pass nor parent-goal completion is claimed.
+remain visible. A strict-allowlist pass is not claimed; parent-scope completion is assessed
+separately in the requirement-by-requirement completion audit.

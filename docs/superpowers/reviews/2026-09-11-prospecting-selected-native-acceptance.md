@@ -21,7 +21,9 @@ speculative legacy URL finding was checked against the existing HTTPS import gua
 Final combined verification: 320 selected service/render/source/projection/HTTP/pipeline,
 native runtime, manual fixture, repair-context and static import-boundary tests passed
 in197.14s. All36 real-HTML JavaScript state tests passed. These do not establish actual
-browser rendering; supported browser access remains unavailable.
+browser rendering by themselves. (Historical, at this review's time) supported browser access had
+not yet been demonstrated; current actual Chrome DevTools proof (signed-in session, page
+ready/visible) is recorded in the final-verification document's browser-verification section.
 
 Actual native verification used CLI0.154.0, binary
 be96b992178b1e467c225800da0d65f2c86d5eba1ef0b14632f65db381cbdfde and runtime bundle

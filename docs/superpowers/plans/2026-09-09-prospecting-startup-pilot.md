@@ -2,8 +2,11 @@
 
 Updated 2026-09-12. Browser acceptance and the P1 DRAFT/declaration repair are verified. A
 completed full-suite run171 found four failures, now addressed by a capture-fixture repair
-and a genuinely generated P1 record after independent grading. Full-suite179 and the final
-completion audit remain open.
+and a genuinely generated P1 record after independent grading. Full-suite179 completed green:
+2,147 tests, all 2,147 passed, 0 failures/errors/skips, 741.130 seconds process wall time
+(738.964 seconds JUnit), on Python 3.13, run after repair f9da2881 and P1 record 67218ba5.
+Run171's four failures are preserved as repaired history, not current failures. The requirement audit is complete and coordination artifacts are reconciled for
+publication on the existing PR branches.
 
 ## Goal
 
@@ -43,14 +46,14 @@ real case. Tests identify infrastructure gaps; a prospect quota is not the deliv
   Opus160 corrected the stale human-only classification. P6 requires904 current nodes instead of741. The missing DRAFT was restored without reverting the worktree, three stale P1 nodeids were corrected and descriptive IDs were added for11 P6 parameter cases; payloads and assertions are unchanged. Source commit c220266c tracks all P1 artifacts.
 - [x] Obtain independent inspector evidence and an actual gate.main record for P1.
   Fresh Opus174/174b requested and evaluated C1-C15 via desktop synthetic verification and graded bounded card01M29VGYQJ9KSTR8S7D37YKG01 at95/100, T2 pass. Its paired grade is published on PR180. The actual P1 gate then passed122 with score95 and generated the full current artifact record, published as67218ba5. Recorded verification matches;36 prerequisite/contract checks pass. This is not a grade of the parent goal or a strict-allowlist pass.
-- [ ] Reach a green full-suite regression.
-  Run171 completed with four failures. Two P1-record failures are addressed by the generated record. Two capture CLI cases incorrectly expected rejection of paths inside the real shared private root. Sonnet175b isolated their repository context and proved rejection before opening a store:50 affected tests pass under a private basetemp, and2 target checks pass under a non-private basetemp. Repairf9da2881 is published. Full-suite179 is running; no green full result is claimed yet.
+- [x] Reach a green full-suite regression.
+  Run171 completed with four failures. Two P1-record failures are addressed by the generated record. Two capture CLI cases incorrectly expected rejection of paths inside the real shared private root. Sonnet175b isolated their repository context and proved rejection before opening a store:50 affected tests pass under a private basetemp, and2 target checks pass under a non-private basetemp. Repairf9da2881 is published. Full-suite179 ran after that repair and the real P1 record67218ba5: root's authoritative check of ORCH/full-suite-179-result.json shows returncode0, elapsed741.130seconds; the parsed full-suite-179.xml records2,147tests, all2,147passed,0failed/errors/skips,738.964seconds JUnit time, on the supported Python3.13. Run171's2,143pass/4fail result is preserved as repaired history, not a current failure.
 - [x] Publish reviewed source and coordination commits to existing PR branches.
-  PR181 title/body updated. The prepared PR180 summary publication was explicitly approved and published; source published head is `7c1b2ab4`.
+  PR181 title/body updated. The prepared PR180 summary publication was explicitly approved and published; that publication head `7c1b2ab4` is now a historical identifier. Current published source HEAD is `8d0e3fe4`.
 - [x] Package the reviewed format and HTTP repair for the existing PR181 branch.
   Format c8643caf is published. Final repair publication heads are recorded in the canonical handoff after staged PII/diff guards.
 - [x] Refresh the canonical handoff, STATE, assigned card and reusable lessons with verified results.
-  Retain private model evidence, pilot backups and pre-existing scratch roots; no unbounded worker remains.
+  Canonical handoff, STATE, completed assigned card, lessons and verified-worker ledgers reflect full-suite179 and the completed requirement audit. Private evidence and pre-existing scratch are retained; all workers returned. Final publication is verified before the thread goal closes.
 
 ## Accepted evidence
 
@@ -61,8 +64,11 @@ combined checks passed before the final read-only connection repairs; those repa
 CLI/verifier checks and independent review122. Qualification/native combined170 checks passed;
 postpin adapter suite36 passed. All130 unpublished committed files passed PII scan.
 Full project suite run171:2,147tests,2,143passed,4failed,0errors/0skips in908.982s parsed
-JUnit (ORCH/full-suite-171.xml; process wall911.108s). The earlier2,082passed/5failed run
-remains as history. The four current failures are not claimed green.
+JUnit (ORCH/full-suite-171.xml; process wall911.108s), now preserved as repaired history, not
+current failures. Full-suite179, run after capture-fixture repairf9da2881 and real P1 record
+67218ba5, is the current result:2,147tests, all2,147passed,0failures/errors/skips,738.964s
+JUnit (741.130s process wall; ORCH/full-suite-179-result.json, full-suite-179.xml), on the
+supported Python3.13. The earlier2,082passed/5failed run remains further history.
 
 Current accepted runtime bundle:
 `e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814`.
@@ -95,7 +101,15 @@ under handoffs/ in the coordination worktree; this file is the live work plan.
 
 Independent inspection identified two new utility files absent from phase declarations,
 within a pre-existing strict-allowlist mismatch (137 current unlisted paths,135 baseline).
-Assess these residuals in the full-scope completion audit; do not claim strict acceptance.
+The completion audit records these minor/pre-existing residuals; no strict acceptance is claimed.
 The inspector-role coordination rows triggered the general email scanner; their mandated
 role-only contents were verified, but that scan was not a pass. Source/gate-record staged
 scans passed. Full details and live handles remain in the canonical handoff.
+
+Root additionally verified the AST runbook CLI flags: all match, with three CLI modules
+disabling --help by design. The actual existing Chrome DevTools tab3 was just reverified
+ready/complete and visible within that same existing session; no new profile was created.
+The original store remains at1 selected_draft_binding and0 attestation/approval/exec/send
+rows. Root completed the current-state requirement audit in
+reviews/2026-09-12-prospecting-completion-audit.md. Final publication is verified before
+marking the thread goal complete.
