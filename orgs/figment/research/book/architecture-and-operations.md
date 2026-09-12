@@ -16,8 +16,13 @@ accepted at `4fa11242`, `e4ac72c6` and `a1fef9be`. The real join used synthetic 
 evidence, exercised stale external-claim refusal and recovery, and returned no raw paths, notes or
 attribution. This proves a bounded local producer-to-reader-to-route connection, not human
 attribution, playback, visual quality, deployment or a complete operator journey. Typecheck/build
-passed for the wiring, but bounded browser attempts failed and no screenshot or rendered-UI claim
-is available. Exact scoped counts and their limits are in the
+passed for the wiring. A bounded 1440 × 1200 Chrome/CDP check rendered two synthetic desktop
+states: the no-run-record pre-check still had the configured `local-preview-clip` claim, and the
+reported-pass state followed an explicit **Check recorded review** action. Root accepted both
+screenshots for readable current styles and controls. The strict mocked loopback backend does not
+verify live authentication or backend behavior, real media, creator quality, deployment or a full
+journey; see the
+[Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md). Exact scoped counts and their limits are in the
 [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
 
 Two other local lifecycle repairs are accepted. Content-brief revision preserves the base pair and

@@ -42,9 +42,14 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   scoped runs, not combined closure. The wiring Vitest process's numeric exit status was not
   captured even though its complete JSON case report passed; see the
   [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
-  Typecheck and build passed for the accepted wiring. Bounded browser attempts failed, so
-  there is no screenshot or rendered-UI proof. Full input/launch/review recovery, a working
-  brief-write route, deployment and real media quality remain incomplete.
+  Typecheck and build passed for the accepted wiring. A bounded local Chrome/CDP check at
+  1440 × 1200 rendered two synthetic desktop states: a no-run-record pre-check with the
+  configured `local-preview-clip` claim, and a reported-pass result after an explicit
+  **Check recorded review** action. Root accepted both screenshots for readable current
+  styles and controls; the strict mocked loopback backend does not verify a live backend,
+  authentication, real media, creator quality or a full production journey. See the
+  [Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md).
+  Full input/launch/review recovery, a working brief-write route and deployment remain incomplete.
 - **Local input and authentication repairs**: bounded content-brief revision and the
   experimental executor's default authenticated live branch are accepted at source/test
   checkpoints `6b88e564`/`3291c4a0` and `29b37c76`. Revision publishes a fresh local-Windows

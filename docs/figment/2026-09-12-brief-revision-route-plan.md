@@ -25,6 +25,8 @@ Use the existing `runStudioPlanProcessCapture` and its ownership/timeout/output-
 
 Server/test options follow the reviewed checklist: fixed `repoRoot`, `sessionConfig`, optional existing process/collector/Python resolver/platform/time seams, and required `auditPublished(subject,{baseBriefId,briefId,briefSha256})`. The narrow Python resolver seam defaults to existing `resolvePython`; integration supplies an explicit absolute interpreter. Do not parse a test environment variable in production code. Verify the actual production interpreter separately before describing a working operator journey.
 
+The publisher supports local Windows only. Unsupported platform and UNC/device/rooted-without-drive roots must produce a fixed unavailable endpoint before filesystem traversal, resolver/collector calls, allocation or spawn. They must not break unrelated Studio registration or create a recovery marker for a guaranteed unsupported request.
+
 ## Ownership and outcome
 
 Acquire the fixed `content/.studio-revision-active` directory with nonrecursive exclusive creation. Keep exact `edits.json` and `recovery.json` files; fsync both before the publisher may start. The recovery record contains only a schema, unclaimed-outcome status, validated base/derived IDs, edits digest and UTC timestamp. It is a durable marker, not a publication claim.
