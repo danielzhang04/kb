@@ -1,0 +1,2 @@
+card_id	inspector_id	kind	project	task_type	tier	ts	worker
+01M29VGYQJ9KSTR8S7D37YKG01	inspector@agents.local	grade	prospecting	restore-prospecting-p1-verification	T2	2026-09-12T04:01:37.022548+00:00	codex-worker
