@@ -35,6 +35,16 @@ failure primary when receipt or cleanup work also fails. The
 separate 58-test and 35-test evidence, and limits. This acceptance includes no provider call,
 credential handling, paid-run authority or creator-quality result.
 
+The brief publication path now joins its real binary validator and contained Windows runner
+(2/2 integration cases), governed Studio write scope (83/83 guard/audit cases), and explicit
+Research form. Research composition passed 41/41 tests, typecheck and build; root accepted four
+synthetic desktop screenshots. The form keeps success local until an explicit inventory refresh
+and preserves uncertainty after an untrustworthy response. Retained allocation state must be
+inspected and current final-path proof established before reuse; neither abort nor inventory
+refresh proves rollback or current source validity. These checks do not complete the separate
+prepared-plan execution/status and content-assignment journey. See the
+[Research composition review](../../../../docs/figment/2026-09-12-brief-workspace-review.md).
+
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
 before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed
 jobs wrote synthetic 36-byte placeholders; the owned child exited without timeout and without

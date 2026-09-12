@@ -42,7 +42,11 @@ identity the operation can establish, so uncertain remnants are retained for loc
 
 This revision changes a dated hypothesis and intended metric, not observed outcomes. It generates
 no media, performs no delivery review, and authorizes no publication or account action. The Studio
-brief editor remains a design and has no working write route. See the
+Research editor and governed write route are now accepted locally. One explicit submission creates
+a planning revision; a separate explicit refresh updates recorded inventory. An uncertain result
+does not prove rollback and must not trigger an automatic repeat submission. Root accepted four
+synthetic desktop states after 41/41 composition tests, typecheck and build; the separate real
+brief process join passed 2/2. These bounded checks do not establish actual media or audience results. See the
 [September 12 operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
 API/CLI shape and the separate 58-test acceptance evidence.
 

@@ -6,6 +6,15 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 ## Current status — 2026-09-12
 
+- **Square framing diagnostic, 22:15 UTC update**: both retained public-base controls were
+  actually reviewed and failed framing. Candidate offline verification passed 80 checks with
+  18 unchanged named inputs. One authorized two-cell square-treatment attempt made a single
+  create request at 22:13 UTC, refused with HTTP 500 / no instances available. No pod ID, jobs
+  or new images resulted; estimated cost is zero and the arc is unchanged. Separate status at
+  22:15:35 UTC returned zero pods; the original run/journal's conservative false/uncertain
+  termination record remains retained. There is no square result or new identity conclusion,
+  and no automatic placement retry follows.
+
 - **Nonpersona native-source binding**: root accepted v3 at `bb9b8db2` after the final
   mixed-flow fixture repair and a real producer/binder-to-collector/UI join. The accepted
   source binds only an externally attributed `accept-native` ruling to the exact current
@@ -49,7 +58,8 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   styles and controls; the strict mocked loopback backend does not verify a live backend,
   authentication, real media, creator quality or a full production journey. See the
   [Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md).
-  Full input/launch/review recovery, a working brief-write route and deployment remain incomplete.
+  Full execution/status/assignment recovery and deployment remain incomplete. The separate
+  governed brief-write route and Research form are now accepted locally as described below.
 - **Local input and authentication repairs**: bounded content-brief revision and the
   experimental executor's default authenticated live branch are accepted at source/test
   checkpoints `6b88e564`/`3291c4a0` and `29b37c76`. Revision publishes a fresh local-Windows
@@ -58,7 +68,13 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   session; an explicitly admitted default live call owns and closes its ambient-auth session
   while preserving the primary operational failure over cleanup failures. See the
   [operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
-  interfaces, test counts and limits. No provider call or paid action follows from acceptance.
+  interfaces, test counts and limits. The binary reader repair passed 14/14 and the real brief
+  process join passed 2/2. Governed wiring (`a3ab95ef`) passed 83/83; the isolated form/decoder
+  (`8218350f`) passed 47 and 16 cases separately; Research composition passed 41/41 plus
+  typecheck/build. Root viewed four synthetic desktop states covering initial form, success,
+  explicit refresh and ambiguity without repeat submission. See the
+  [Research composition review](../../../../docs/figment/2026-09-12-brief-workspace-review.md).
+  No live browser/backend session, provider call or paid action follows from this acceptance.
 - **Identity/coverage diagnostic (V4, ten clothed images, original checkpoint)**: completed
   with independently verified pod teardown; estimated cost $0.247567. Root and an
   independent Opus review agree the LoRA condition shows stronger resemblance cues to
@@ -119,8 +135,8 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 - **Brief text contract**: repaired and independently reviewed at `a3d87a8c`, with 29 Python
   tests, 11 collector tests and a real compiler-to-collector boundary check passing.
   See the [content input contract review](../../../../docs/figment/2026-09-11-content-input-contract-review.md).
-  The separate bounded revision producer is now accepted as described above. The Studio
-  brief editor remains in design; no working write route exists.
+  The separate bounded revision producer, governed route and explicit-submit Research editor
+  are now accepted as described above. Their results remain local planning evidence.
 - The public sampler/wording comparison and the two-image alternate seed-B control are
   closed lines of inquiry, not reopened by the above.
 

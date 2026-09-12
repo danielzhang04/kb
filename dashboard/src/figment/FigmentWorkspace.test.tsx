@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FigmentWorkspace } from './FigmentWorkspace';
 
 const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
@@ -472,5 +472,118 @@ describe('FigmentWorkspace', () => {
     const trainFirst = { status: 'recorded', planSha256: 'e'.repeat(64), creator: 'creator-001', stage: 'tester', execution: 'completed', liveness: 'unknown', maxMinutes: 115, maxUsd: 2.5, startedUtc: null, finishedUtc: null, terminationVerified: false, checkpoints: [], outputCount: 5, quality: 'not-reviewed' };
     const fetchImpl = vi.fn(() => response({ ...projection, trainFirst })) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('Figment records are unavailable.');
+  });
+});
+
+const revisionHash = 'a'.repeat(64);
+const revisionBriefs = (includePublished = false) => {
+  const base = recordedBriefs();
+  const creatorBase = { ...base.items[0], briefId: 'creator001-base', briefDate: '2026-09-10', creatorId: 'creator-001' };
+  const otherCreator = { ...base.items[0], briefId: 'other-creator-base', briefDate: '2026-09-09', creatorId: 'creator-002' };
+  const published = { ...creatorBase, briefId: '2026-09-12-creator-001-revision-a', briefDate: '2026-09-12', hypothesis: 'A refreshed planning hypothesis.' };
+  return { ...base, items: includePublished ? [creatorBase, otherCreator, published] : [creatorBase, otherCreator] };
+};
+
+const revisionSuccess = {
+  schema: 'figment/studio-content-brief-revision@1',
+  status: 'published',
+  briefId: '2026-09-12-creator-001-revision-a',
+  briefSha256: revisionHash,
+};
+
+function fillRevisionForm(): void {
+  fireEvent.change(screen.getByLabelText('Revision date'), { target: { value: '2026-09-12' } });
+  fireEvent.change(screen.getByLabelText('Slug'), { target: { value: 'revision-a' } });
+  fireEvent.change(screen.getByLabelText('Hypothesis'), { target: { value: 'A bounded local planning hypothesis.' } });
+  fireEvent.change(screen.getByLabelText('Intended metric'), { target: { value: 'profile visits per reached account' } });
+}
+
+const figmentGets = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.filter(([url]) => String(url) === '/api/figment');
+const revisionPosts = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.filter(([url, init]) => String(url) === '/api/figment/studio/content-brief-revisions' && (init as RequestInit | undefined)?.method === 'POST');
+
+describe('FigmentWorkspace content-brief revision composition', () => {
+  it('offers only recorded creator-001 briefs as revision bases', async () => {
+    const fetchImpl = vi.fn((url: string) => url === '/api/figment'
+      ? response({ ...projection, contentBriefs: revisionBriefs() })
+      : Promise.reject(new Error(`unexpected request: ${url}`)));
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    const select = await screen.findByLabelText('Base brief') as HTMLSelectElement;
+    expect(Array.from(select.options, (option) => option.value)).toEqual(['creator001-base']);
+    expect(Array.from(select.options, (option) => option.textContent).join(' ')).not.toContain('other-creator-base');
+    expect(revisionPosts(fetchImpl)).toHaveLength(0);
+  });
+
+  it('never POSTs on mount, tab navigation, or a parent projection retry', async () => {
+    let projectionCalls = 0;
+    const fetchImpl = vi.fn((url: string) => {
+      if (url !== '/api/figment') return Promise.reject(new Error(`unexpected request: ${url}`));
+      projectionCalls += 1;
+      return projectionCalls === 1
+        ? Promise.reject(new Error('synthetic projection interruption'))
+        : response({ ...projection, contentBriefs: revisionBriefs() });
+    });
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('Figment records are unavailable.');
+    fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    await screen.findByLabelText('Base brief');
+    fireEvent.click(screen.getByRole('tab', { name: 'Creators' }));
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    await screen.findByLabelText('Base brief');
+    expect(figmentGets(fetchImpl)).toHaveLength(2);
+    expect(revisionPosts(fetchImpl)).toHaveLength(0);
+  });
+
+  it('keeps a successful POST local until an explicit refresh gets the current-token inventory', async () => {
+    let projectionCalls = 0;
+    const fetchImpl = vi.fn((url: string) => {
+      if (url === '/api/figment') {
+        projectionCalls += 1;
+        return response({ ...projection, contentBriefs: revisionBriefs(projectionCalls > 1) });
+      }
+      if (url === '/api/figment/studio/content-brief-revisions') return response(revisionSuccess);
+      return Promise.reject(new Error(`unexpected request: ${url}`));
+    });
+    render(<FigmentWorkspace token="current-session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    await screen.findByLabelText('Base brief');
+    fillRevisionForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Create local planning revision' }));
+    await screen.findByText(`Local planning revision created: ${revisionSuccess.briefId}.`);
+    expect(figmentGets(fetchImpl)).toHaveLength(1);
+    expect(revisionPosts(fetchImpl)).toHaveLength(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh recorded briefs' }));
+    await waitFor(() => expect(figmentGets(fetchImpl)).toHaveLength(2));
+    expect(figmentGets(fetchImpl)[1]?.[1]).toEqual({ headers: { authorization: 'Bearer current-session' } });
+    expect(await screen.findByRole('option', { name: /2026-09-12-creator-001-revision-a/ })).toBeTruthy();
+    expect(revisionPosts(fetchImpl)).toHaveLength(1);
+  });
+
+  it('hides an old-token pending revision completion and never posts under the replacement token', async () => {
+    let resolvePost!: (value: Response) => void;
+    const pendingPost = new Promise<Response>((resolve) => { resolvePost = resolve; });
+    const fetchImpl = vi.fn((url: string) => {
+      if (url === '/api/figment') return response({ ...projection, contentBriefs: revisionBriefs() });
+      if (url === '/api/figment/studio/content-brief-revisions') return pendingPost;
+      return Promise.reject(new Error(`unexpected request: ${url}`));
+    });
+    const view = render(<FigmentWorkspace token="old-session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    await screen.findByLabelText('Base brief');
+    fillRevisionForm();
+    fireEvent.click(screen.getByRole('button', { name: 'Create local planning revision' }));
+    expect(revisionPosts(fetchImpl)).toHaveLength(1);
+    expect(new Headers((revisionPosts(fetchImpl)[0]?.[1] as RequestInit).headers).get('authorization')).toBe('Bearer old-session');
+    view.rerender(<FigmentWorkspace token="new-session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await waitFor(() => expect(figmentGets(fetchImpl)).toHaveLength(2));
+    await act(async () => { resolvePost(await response(revisionSuccess)); });
+    expect(screen.queryByText(`Local planning revision created: ${revisionSuccess.briefId}.`)).toBeNull();
+    expect(revisionPosts(fetchImpl)).toHaveLength(1);
+    expect(revisionPosts(fetchImpl).every(([, init]) => new Headers((init as RequestInit).headers).get('authorization') === 'Bearer old-session')).toBe(true);
   });
 });

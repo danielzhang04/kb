@@ -1,13 +1,43 @@
 # Figment input and authentication repairs: local operator use
 
-This note covers three local technical interfaces accepted on 2026-09-12:
-bounded content-brief revision, its read-only final-path projection, and the
-experimental training executor's default authenticated live branch. That
+This note covers local technical interfaces accepted on 2026-09-12:
+the Research brief revision form and governed route, bounded content-brief
+revision, its read-only final-path projection, and the experimental training
+executor's default authenticated live branch. That
 acceptance covers the local contracts and regression suites named below. It
 does not assess creator quality and does not approve a paid or live provider
 operation.
 
-## Revise a content brief
+## Revise from Studio Research
+
+Open **Research**, select a recorded `creator-001` item under **Base brief**,
+then enter the revision date, slug, hypothesis and intended metric. The date
+and slug determine a fresh revision ID. Select **Create local planning revision**
+once. This changes local planning text and preserves the original brief; it
+generates no media and records no observed audience outcome.
+
+A confirmed result displays the new brief ID. Select **Refresh recorded briefs**
+to request the current inventory through the Workspace's existing GET. A
+successful POST does not refresh automatically. Mounting the form, navigating
+tabs or retrying the inventory does not submit a revision.
+
+If the request ends without a trustworthy result, the form retains uncertainty
+and removes the repeat-submit control. Abort or a lost response does not prove
+rollback. Inspect the local retained allocation/recovery evidence and the exact
+final pair, then revalidate through the current authority before treating it as
+current. Do not delete allocations by pattern or automatically repeat the POST:
+the server retains uncertain allocation state across registrar restart. A
+refresh can update recorded inventory but does not itself establish current
+source proof. Fixed input or session refusals should be addressed before a new
+explicit attempt; no automatic retry occurs.
+
+The governed route retains Studio authentication, origin, write-rate,
+admission and preamble checks and awaits its required audit. The browser sends
+only the five bounded fields; filesystem paths and commands remain server-owned.
+See [Research composition acceptance](2026-09-12-brief-workspace-review.md)
+for the actual synthetic browser check and its limits.
+
+## Revise a content brief through the local API or CLI
 
 Use `revise_content_brief(root, base_dir, edits_path, out_dir)` only with
 string, root-relative paths. `base_dir` identifies an existing
@@ -136,9 +166,13 @@ revision route, final validator, and contained Windows runner. It proved one
 successful local planning revision and conservative retained recovery after a
 stale-input refusal, including refusal after a fresh registrar restart. It did
 not use a provider, network, real media, account, or paid action. This remains
-a local validator/publication path; the governed surface wiring has been
-authored but is awaiting acceptance, and the explicit-submit Studio form has
-not been implemented.
+a local validator/publication path. Governed surface wiring is accepted at
+`a3ab95ef` with 83/83 guard/audit tests and a passing typecheck. The isolated
+form and decoder are accepted at `8218350f` with 47 form and 16 decoder cases
+across separate runs. Research composition then passed 41/41 tests, typecheck
+and build, followed by four root-viewed synthetic desktop states. These checks
+are distinct from the real process join; they do not imply live browser/backend
+authentication or publication was exercised end to end.
 
 ## Experimental executor modes and default authentication
 
@@ -180,6 +214,7 @@ The current reader suite passed 14/14 with native exit `0`; the earlier 12-test
 adapter result is historical for the reason above. The real brief join passed
 2/2 with native exit `0` in v3. The independent experimental-auth suite passed
 35 tests on the accepted auth interface. These are local technical regression
-results, not a full transitive dependency closure, a mounted and accepted
-Studio write surface, a working Studio brief editor, an actual creator-quality
-review, a provider call, or a paid-operation authorization.
+results. The governed write surface, isolated editor and Research composition
+have the additional accepted evidence described above. Together they establish
+bounded local mechanics, not a full transitive dependency closure, an actual
+creator-quality review, a provider call or paid-operation authorization.
