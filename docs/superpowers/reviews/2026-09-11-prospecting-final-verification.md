@@ -55,9 +55,9 @@ the existing source-only vCPU; responding Opus5/Sonnet5 identities were verified
 ## Full-suite history and remaining acceptance
 
 The original full-suite123 JUnit records2087tests:2082passed,5failed,0errors/skips,
-1245.491seconds. It is not a green full-suite result and was not rerun after these focused
-changes. Three historical failures concern gate inventories/results:
-
+1245.491seconds. It is not a green full-suite result and remains the only completed broad
+result; a new full-suite run under run171 is in progress and has produced no result
+here. Three historical failures concern gate inventories/results:
 - test_deployment::test_p6_manifest_is_numeric_and_complete
 - test_p2_prerequisite::test_p2_00_p1_record_verifies
 - test_p4_p1_contract::test_p4_00_p1_record_verifies
@@ -88,5 +88,31 @@ prove exact special-character URI identity/read-only mode, malformed metadata re
 public edit/restart, Windows link guards and bounded timer wiring. The first corrected test
 run159b had11pass1fail;159c repaired the Row/tuple error and strengthened weak URI/metadata
 checks. No production pipeline behavior changed for these browser checks. Source PR181 and coordination PR180 remain drafts;
-no merge, deployment or release is claimed. P1/P6 inventory/result work remains unresolved; declaration refresh is authorized, while a generated pass requires independent inspector evidence. Exact
+no merge, deployment or release is claimed. P1/P6 inventory and direct-run evidence is recorded
+in the section below; no gate.main record and no independent grade exist, so the gate is not
+complete and no grade is claimed. Exact
 publication heads and private receipt paths are in the canonical coordination handoff.
+
+## P1/P6 inventories and direct P1 gate run
+
+Separate P1 and P6 inventories contain122 and904 tests respectively; both validate and match
+their source hashes. A plan-required worktree DRAFT STATE file that was missing was restored,
+without reverting the worktree. Three stale P1 nodeids were corrected and descriptive IDs were
+added for11 P6 parameter cases; payloads and assertions are unchanged. The refreshed
+declaration covers P1 hashes only and, for P6, the test inventory and minimum within the
+existing file closure plus hashes; all other criteria are unchanged.
+
+A direct P1 gate.run_tests/evaluate_run collected122 and passed122, with0 failures, skips,
+xfails, warnings, external calls and unguarded children; all measured test criteria were met
+in61.158seconds parsed from JUnit ORCH/p1-direct-168.xml and its .json, on Python3.13.7,
+SQLite3.50.4 and Datasette0.65.1. There is no gate.main record and no independent grade yet,
+and the new DRAFT was not tracked at verification time. Source commit c220266c now tracks
+all P1 artifacts; the post-commit tracking, manifest and file checks pass.
+
+Earlier run166 had120passed,2failed and9warnings from
+path escaping, xunit2 record_property warnings and launcher cleanup sandboxing; the corrected
+invocation passed2 focused tests in14.85s. A Sonnet167 test-counter local subclass isolates an
+intentional refusal; the boss preserved the prior counters0and7 and the production guard is
+unchanged. Opus166 supplied a collector scratch fix, and Sonnet169 focused tests passed14 in
+3.451seconds (JUnit inventory-final-169.xml), including P6 completeness. The fixture run
+passed26 in18.868seconds (JUnit on313).
