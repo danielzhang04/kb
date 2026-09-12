@@ -21,10 +21,12 @@ Verification: the final review-app state suite passed 72 tests, and the final HT
 Independent recovery/backend review passed its scoped checks. Chrome covered all five views in both
 themes at 390, 852 and 1366 pixels without horizontal overflow; it also exercised reload and
 same-page recovery, invalid-research zero-POST/focus behavior, research double-click, and scope
-cache switch/refresh behavior. Final DOM geometry at 1366 confirmed paired controls have equal
-40-pixel top alignment and height. The earlier reviewed screenshot supplies the visual record;
+cache switch/refresh behavior. Final DOM geometry at 1366px confirmed paired controls have
+matching top positions and 40px heights. The earlier reviewed screenshot supplies the visual record;
 post-repair screenshot calls timed out in the daemon, so no newer capture is claimed. The final
 source was reloaded in the existing Chrome session and the ready state, theme control, and recovery
-checks remained correct. The full Python run reported 2168 passes and one sandbox-only `taskkill`
-teardown failure; the unchanged isolated launcher test passed with desktop escalation. UX
-verification is complete. Commit and publication remain pending.
+checks remained correct. The full Python run reported 2168 passes and one sandbox-associated
+`taskkill` teardown failure; the unchanged isolated launcher test passed with desktop escalation.
+That result infers a restriction rather than proving a precise OS cause. UX verification is complete.
+The source is published in PR181 (`7bbe4f4e`), and coordination finalization is published on PR180
+(`af5b4c03`).

@@ -16,7 +16,8 @@ its private-data, exact-source, review, authentication and idempotency boundarie
 - [x] Implement KB-family styling, field guidance, save states and campaign setup recovery.
 - [x] Independently review UX, correctness, privacy and mutation boundaries; repair findings.
 - [x] Verify synthetic create/edit/retry paths, affected regression suites and actual Chrome at multiple sizes/themes.
-- [ ] Publish reviewed source to PR181 and refresh canonical handoff, STATE, task card and accounting on PR180.
+- [x] Publish reviewed source to PR181 (`7bbe4f4e`).
+- [x] Publish coordination finalization, including the canonical handoff, on PR180 (`af5b4c03`).
 
 ## Design direction to verify
 
@@ -84,14 +85,15 @@ Final UI state verification passed 72 Node tests, including the late cross-field
 the final HTML assertion also passed. Independent recovery/backend review passed its scoped
 checks. The full Python run reported 2168 passes and one failure in the `test_store` launcher
 `taskkill` teardown after 884.35 seconds. The same isolated test passed with desktop escalation in
-4.21 seconds, and the affected GET/write behavior passed in both runs. No launcher or store change
-is warranted from that sandbox-only teardown result.
+4.21 seconds, and the affected GET/write behavior passed in both runs. This is associated with the
+sandbox and infers a restriction rather than proving a precise OS cause; no launcher or store change
+is warranted.
 
 Actual Chrome covered all five views in both themes at 390, 852 and 1366 pixels with no horizontal
 overflow. It confirmed reload and same-page recovery, invalid-research zero-POST/focus behavior,
 one POST on research double-click, and scope-cache behavior across switch and refresh. Visual
 acceptance combines the earlier reviewed screenshot with final DOM geometry: paired controls at
-1366 had equal 40-pixel top alignment and height. Post-repair screenshot calls timed out in the
+1366px had matching top positions and 40px heights. Post-repair screenshot calls timed out in the
 daemon, so this plan does not claim a newer capture. The final source was reloaded in the existing
-Chrome session and ready state, theme control, and recovery checks remained correct. Commit and
-publication steps remain pending.
+Chrome session and ready state, theme control, and recovery checks remained correct. The source is
+published in PR181; coordination finalization is published on PR180 (`af5b4c03`).
