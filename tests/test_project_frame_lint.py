@@ -38,7 +38,7 @@ GOOD_STATE = textwrap.dedent("""\
     ## Current gate
     review
     ## Decisions
-    2026-09-11 — example ruling — why
+    - 2026-09-11 — example ruling — why
     ## Next
     ship
     ## Blocked
@@ -96,11 +96,51 @@ def test_heading_with_suffix_passes_by_prefix_match(tmp_path):
 
 
 def test_state_missing_decisions_fails(tmp_path):
-    bad_state = GOOD_STATE.replace("## Decisions\n2026-09-11 — example ruling — why\n", "")
+    bad_state = GOOD_STATE.replace("## Decisions\n- 2026-09-11 — example ruling — why\n", "")
     _write(tmp_path, "demo", GOOD_GOAL, bad_state)
     r = run_lint(tmp_path)
     assert r.returncode == 1
     assert "missing ## Decisions" in r.stdout
+
+
+def test_decisions_bullet_without_date_fails(tmp_path):
+    bad_state = GOOD_STATE.replace(
+        "- 2026-09-11 — example ruling — why", "- no date here — example ruling — why"
+    )
+    _write(tmp_path, "demo", GOOD_GOAL, bad_state)
+    r = run_lint(tmp_path)
+    assert r.returncode == 1
+    assert "Decisions bullet 1 lacks the YYYY-MM-DD — ruling — why shape" in r.stdout
+
+
+def test_decisions_hyphen_separator_passes(tmp_path):
+    """The ruling accepts ` - ` as a separator, not only the em dash."""
+    state = GOOD_STATE.replace(
+        "- 2026-09-11 — example ruling — why", "- 2026-09-11 - example ruling - why"
+    )
+    _write(tmp_path, "demo", GOOD_GOAL, state)
+    r = run_lint(tmp_path)
+    assert r.returncode == 0, r.stdout
+
+
+def test_decisions_annotated_heading_still_validates_bullets(tmp_path):
+    """`## Decisions (arc X)` still resolves as `Decisions` -- a well-formed bullet under it
+    passes, same as the unannotated heading."""
+    state = GOOD_STATE.replace("## Decisions\n", "## Decisions (arc X)\n")
+    _write(tmp_path, "demo", GOOD_GOAL, state)
+    r = run_lint(tmp_path)
+    assert r.returncode == 0, r.stdout
+
+
+def test_decisions_over_10_bullets_fails(tmp_path):
+    bullets = "\n".join(f"- 2026-09-{i:02d} — ruling {i} — why {i}" for i in range(1, 12))
+    state = GOOD_STATE.replace(
+        "- 2026-09-11 — example ruling — why", bullets
+    )
+    _write(tmp_path, "demo", GOOD_GOAL, state)
+    r = run_lint(tmp_path)
+    assert r.returncode == 1
+    assert "Decisions has 11 bullets > 10 max" in r.stdout
 
 
 def test_heading_prefix_match_requires_word_boundary(tmp_path):
