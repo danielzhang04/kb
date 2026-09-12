@@ -72,6 +72,22 @@ MAX_SOURCE_UPLOAD_JSON_BYTES = 6 * MAX_SOURCE_BYTES + 64 * 1024
 SESSION_SECONDS = 8 * 60 * 60
 BOOTSTRAP_SECONDS = 60
 REQUEST_SECONDS = 5
+# Refusing a POST before its body is read leaves unread bytes queued on the
+# socket.  Closing then lets the transport abort the connection instead of
+# sending an ordinary FIN, which can discard the refusal the peer has not read
+# yet.  Discarding the already-declared body first avoids that, under one
+# absolute wall-clock bound so a stalled peer cannot hold this single-threaded
+# loopback server.  The value is intentionally small: it only has to cover bytes
+# already in flight on loopback, never a slow network sender.
+MAX_REFUSAL_DRAIN_SECONDS = 0.25
+REFUSAL_DRAIN_CHUNK_BYTES = 16 * 1024
+# ``int()`` refuses to convert a decimal string longer than CPython's integer
+# string conversion limit and raises ``ValueError``.  A ``Content-Length`` header
+# can carry thousands of digits, so every declared length is bounded as a string
+# before it is converted: a byte-cap comparison performed after ``int()`` is too
+# late.  Twenty digits is above any 64-bit octet count and far above either
+# route cap, so no ordinary valid length is affected.
+MAX_CONTENT_LENGTH_DIGITS = 20
 HTML_PATH = Path(__file__).with_name("review_app.html")
 _ENTITY_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _LOCAL_REVIEW_ACTOR = "human:local-review"
@@ -348,6 +364,17 @@ class ReviewHandler(BaseHTTPRequestHandler):
     def log_message(self, _format: str, *_args: object) -> None:
         return
 
+    # ``BaseHTTPRequestHandler`` reuses one handler instance for the lifetime of
+    # a connection, so per-request state is initialised in ``handle_one_request``
+    # rather than only in ``__init__``.  The class default is the conservative
+    # one: a body is treated as already consumed, so nothing is ever discarded
+    # unless this request explicitly declared an unread, safely framed body.
+    _body_consumed: bool = True
+
+    def handle_one_request(self) -> None:
+        self._body_consumed = False
+        super().handle_one_request()
+
     def send_error(
         self,
         code: int,
@@ -623,13 +650,22 @@ class ReviewHandler(BaseHTTPRequestHandler):
         content_types = self.headers.get_all("Content-Type", failobj=[])
         if transfers or expects or len(lengths) != 1 or len(content_types) != 1 or content_types[0].casefold() != "application/json":
             raise ValueError("request_framing")
-        if not lengths[0].isascii() or not lengths[0].isdigit():
+        if (
+            not lengths[0].isascii()
+            or not lengths[0].isdigit()
+            or len(lengths[0]) > MAX_CONTENT_LENGTH_DIGITS
+        ):
+            # Rejected as framing before conversion, so no interpreter-generated
+            # conversion message can reach the caller as an error code.
             raise ValueError("request_framing")
         length = int(lengths[0])
         if length <= 0:
             raise ValueError("request_framing")
         if length > max_bytes:
             raise OverflowError("request_too_large")
+        # Past this point the body is (at least partly) consumed, so a later
+        # refusal on this same request must not attempt to discard it again.
+        self._body_consumed = True
         raw = self.rfile.read(length)
         if len(raw) != length:
             raise ValueError("request_framing")
@@ -647,33 +683,131 @@ class ReviewHandler(BaseHTTPRequestHandler):
             and (not origin or (len(origin) == 1 and hmac.compare_digest(origin[0], f"http://{self.server.authority}")))
         )
 
+    def _refusal_length(self, max_bytes: int) -> int | None:
+        """Exact unread body length that is safe to discard after a refusal.
+
+        ``None`` means "read nothing".  That covers a request with no body, a
+        body this request already consumed, and any framing this boundary does
+        not interpret: chunked transfer coding, ``Expect``, or a missing,
+        duplicated, over-long or malformed ``Content-Length``.  The declared
+        length is bounded as a string first: this runs after the refusal has
+        been sent, so it must not raise.  No unbounded header-derived
+        value is ever used: a declared length above the route's existing cap is
+        refused rather than drained.
+        """
+        if self._body_consumed or self.command != "POST":
+            return None
+        lengths = self.headers.get_all("Content-Length", failobj=[])
+        if (
+            self.headers.get_all("Transfer-Encoding", failobj=[])
+            or self.headers.get_all("Expect", failobj=[])
+            or len(lengths) != 1
+            or not lengths[0].isascii()
+            or not lengths[0].isdigit()
+            or len(lengths[0]) > MAX_CONTENT_LENGTH_DIGITS
+        ):
+            return None
+        length = int(lengths[0])
+        return length if 0 < length <= max_bytes else None
+
+    def _drain_refused_body(self, max_bytes: int) -> None:
+        """Discard an unread, safely framed body after the refusal was sent.
+
+        A peer may still be writing the body when the refusal is flushed.
+        Closing with unread bytes queued lets the transport abort the connection
+        instead of sending an ordinary FIN, which can destroy the response the
+        peer has not read yet.  Reading the declared body back first keeps the
+        close orderly.  That is a consequence of closing mid-request, not
+        OS-specific noise, so it is applied uniformly rather than conditionally.
+
+        The read is bounded twice: by the route's existing byte cap, and by one
+        absolute wall-clock deadline that is never extended by newly arriving
+        data.  Nothing read here is decoded, parsed, forwarded to any service,
+        or allowed to change the refusal that was already sent.
+        """
+        length = self._refusal_length(max_bytes)
+        if length is None:
+            return
+        self._body_consumed = True
+        deadline = time.monotonic() + MAX_REFUSAL_DRAIN_SECONDS
+        connection = self.connection
+        try:
+            previous = connection.gettimeout()
+        except OSError:
+            return
+        reader = self.rfile
+        # ``read1`` hands back whatever the BufferedReader already holds without
+        # demanding another syscall, so a small body that arrived while the
+        # request headers were being parsed is consumed immediately.
+        read_some = getattr(reader, "read1", reader.read)
+        remaining = length
+        try:
+            while remaining > 0:
+                budget = deadline - time.monotonic()
+                if budget <= 0:
+                    return
+                connection.settimeout(budget)
+                chunk = read_some(min(remaining, REFUSAL_DRAIN_CHUNK_BYTES))
+                if not chunk:
+                    return
+                remaining -= len(chunk)
+        except (OSError, ValueError):
+            # Only the expected peer-side outcomes: a timeout, a reset or abort,
+            # or an already-closed stream.  The refusal has been sent, nothing is
+            # retried, and no other failure is suppressed here.
+            return
+        finally:
+            try:
+                connection.settimeout(previous)
+            except OSError:
+                pass
+
+    def _refuse(self, status: int, code: str, max_bytes: int = MAX_JSON_BYTES) -> None:
+        """Send a refusal, then discard only a safely framed unread body.
+
+        The ordering is deliberate: the response is written and flushed before a
+        single body byte is read, so a client that never sends its body still
+        receives the complete refusal.  Host, session and CSRF ordering is
+        unchanged -- this runs strictly after the refusal has been decided and
+        emitted, and never parses or acts on the discarded bytes.
+        """
+        self._error(status, code)
+        try:
+            self.wfile.flush()
+        except OSError:
+            return
+        self._drain_refused_body(max_bytes)
+
     def do_POST(self) -> None:  # noqa: N802 -- stdlib handler API
         try:
             if not self._valid_host():
-                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                self._refuse(HTTPStatus.BAD_REQUEST, "request_invalid")
                 return
             if not self._authorized():
-                self._error(HTTPStatus.UNAUTHORIZED, "session_required")
+                self._refuse(HTTPStatus.UNAUTHORIZED, "session_required")
                 return
             if not self._csrf_valid():
-                self._error(HTTPStatus.FORBIDDEN, "csrf_invalid")
+                self._refuse(HTTPStatus.FORBIDDEN, "csrf_invalid")
                 return
             target = self._path()
             if target is None or target[1]:
-                self._error(HTTPStatus.BAD_REQUEST, "request_invalid")
+                self._refuse(HTTPStatus.BAD_REQUEST, "request_invalid")
                 return
+            limit = (
+                MAX_SOURCE_UPLOAD_JSON_BYTES
+                if target[0] == "/api/people/import-source" else MAX_JSON_BYTES
+            )
             try:
-                payload = self._read_json(
-                    max_bytes=(
-                        MAX_SOURCE_UPLOAD_JSON_BYTES
-                        if target[0] == "/api/people/import-source" else MAX_JSON_BYTES
-                    )
-                )
+                payload = self._read_json(max_bytes=limit)
             except OverflowError:
-                self._error(HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large")
+                # An oversized declared length keeps its immediate 413 and is
+                # never drained: the cap exists so that body is never read.
+                self._refuse(
+                    HTTPStatus.REQUEST_ENTITY_TOO_LARGE, "request_too_large", limit,
+                )
                 return
             except ValueError as error:
-                self._error(HTTPStatus.BAD_REQUEST, str(error))
+                self._refuse(HTTPStatus.BAD_REQUEST, str(error), limit)
                 return
             path = target[0]
             if path == "/api/campaigns":

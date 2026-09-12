@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import contextlib
 import http.client
 import json
 from pathlib import Path
 from queue import Queue
 import re
+import socket
 import sqlite3
 import threading
+import time
 
 import pytest
 
@@ -33,6 +36,8 @@ from scripts.prospecting.pipeline_stage_service import (
 )
 from scripts.prospecting.review_app import (
     MAX_JSON_BYTES,
+    MAX_CONTENT_LENGTH_DIGITS,
+    MAX_REFUSAL_DRAIN_SECONDS,
     MAX_SOURCE_BYTES,
     MAX_SOURCE_UPLOAD_JSON_BYTES,
     SESSION_SECONDS,
@@ -1310,3 +1315,440 @@ def test_review_snapshot_hides_synthetic_sqlite_driver_detail_on_selected_draft_
         server.server_close()
         thread.join(timeout=2)
         connection.close()
+
+
+_DRAIN_SLACK_SECONDS = 2.0
+
+
+def _open_raw(server) -> socket.socket:
+    sock = socket.create_connection(("127.0.0.1", server.server_address[1]), timeout=5)
+    sock.settimeout(5)
+    return sock
+
+
+def _send_request_head(server, sock, path: str, headers: list[tuple[str, str]]) -> None:
+    """Send the request line and headers only, deliberately withholding the body."""
+    lines = [f"POST {path} HTTP/1.1", f"Host: {server.authority}"]
+    lines += [f"{key}: {value}" for key, value in headers]
+    sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode("ascii"))
+
+
+def _read_response(sock) -> tuple[int, dict[str, str], bytes]:
+    buffer = b""
+    while b"\r\n\r\n" not in buffer:
+        chunk = sock.recv(4096)
+        assert chunk, "connection ended before the refusal headers were readable"
+        buffer += chunk
+    head, _, body = buffer.partition(b"\r\n\r\n")
+    lines = head.decode("latin-1").split("\r\n")
+    status = int(lines[0].split(" ")[1])
+    headers = {}
+    for line in lines[1:]:
+        key, _, value = line.partition(":")
+        headers[key.strip().lower()] = value.strip()
+    length = int(headers.get("content-length", "0"))
+    while len(body) < length:
+        chunk = sock.recv(4096)
+        assert chunk, "connection ended before the refusal body was readable"
+        body += chunk
+    # Anything already buffered past the declared length is a second response
+    # appended to this one -- coalesced by the transport, or by a future
+    # regression -- and must never be silently discarded by truncation.
+    assert body[length:] == b"", "trailing bytes after the declared refusal body"
+    return status, headers, body[:length]
+
+
+def _read_to_eof(sock) -> bytes:
+    # A clean end of stream is the point of the repair: a connection reset here
+    # (ConnectionResetError / WinError 10053) is exactly the failure being fixed.
+    trailing = b""
+    while True:
+        chunk = sock.recv(4096)
+        if not chunk:
+            return trailing
+        trailing += chunk
+
+
+def _campaign_payload() -> bytes:
+    return json.dumps({
+        "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "brief_text": "intent:networking",
+        "sender_profile_id": PROFILE,
+        "mailbox_id": "mailbox-001",
+    }).encode()
+
+
+def test_refused_post_takes_its_declared_body_after_the_response_and_closes_cleanly(app) -> None:
+    """The body is released only after the whole refusal has been read.
+
+    This is the deterministic form of the race: no sleep is used, the client
+    simply withholds the body until the entire 403 has arrived.  The server must
+    still consume that body before closing, because closing with unread bytes
+    queued can abort the connection and destroy a response the peer has not read.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    payload = _campaign_payload()
+    sock = _open_raw(server)
+    try:
+        _send_request_head(server, sock, "/api/campaigns", [
+            ("Cookie", cookie),
+            ("Content-Type", "application/json"),
+            ("X-CSRF-Token", "not-the-issued-token"),
+            ("Content-Length", str(len(payload))),
+        ])
+        status, headers, body = _read_response(sock)
+        assert (status, json.loads(body)) == (403, {"error": "csrf_invalid"})
+        assert headers["connection"] == "close"
+        sock.sendall(payload)
+        assert _read_to_eof(sock) == b""
+    finally:
+        sock.close()
+    assert campaigns.seen == []
+
+
+def test_refused_post_with_a_partial_body_stays_inside_the_drain_deadline(app) -> None:
+    server, _review, campaigns, _clock = app
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    payload = _campaign_payload()
+    sock = _open_raw(server)
+    try:
+        _send_request_head(server, sock, "/api/campaigns", [
+            ("Cookie", cookie),
+            ("Content-Type", "application/json"),
+            ("X-CSRF-Token", "not-the-issued-token"),
+            ("Content-Length", str(len(payload))),
+        ])
+        # Within the route cap, but the remainder never arrives.
+        sock.sendall(payload[: len(payload) // 2])
+        status, _headers, body = _read_response(sock)
+        assert (status, json.loads(body)) == (403, {"error": "csrf_invalid"})
+        started = time.monotonic()
+        assert _read_to_eof(sock) == b""
+        # One absolute deadline that is never extended: the wait for the missing
+        # remainder ends far inside the five-second per-request socket timeout.
+        assert time.monotonic() - started < _DRAIN_SLACK_SECONDS
+        assert MAX_REFUSAL_DRAIN_SECONDS <= 0.25
+    finally:
+        sock.close()
+    assert campaigns.seen == []
+
+
+def test_oversized_declared_body_is_refused_immediately_and_never_drained(app) -> None:
+    server, _review, campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    sock = _open_raw(server)
+    try:
+        _send_request_head(server, sock, "/api/campaigns", [
+            ("Cookie", cookie),
+            ("Content-Type", "application/json"),
+            ("X-CSRF-Token", csrf),
+            ("Content-Length", str(MAX_JSON_BYTES + 1)),
+        ])
+        started = time.monotonic()
+        status, _headers, body = _read_response(sock)
+        assert (status, json.loads(body)) == (413, {"error": "request_too_large"})
+        # No body byte is ever sent, and none is waited for.
+        assert _read_to_eof(sock) == b""
+        assert time.monotonic() - started < _DRAIN_SLACK_SECONDS
+    finally:
+        sock.close()
+    assert campaigns.seen == []
+
+
+def test_ambiguous_or_unsupported_framing_refusals_never_wait_for_a_body(app) -> None:
+    server, _review, campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    cases = (
+        ([("X-CSRF-Token", csrf), ("Transfer-Encoding", "chunked"),
+          ("Content-Length", "24")], (400, {"error": "request_framing"})),
+        ([("X-CSRF-Token", "not-the-issued-token"),
+          ("Transfer-Encoding", "chunked"), ("Content-Length", "24")],
+         (403, {"error": "csrf_invalid"})),
+        ([("X-CSRF-Token", "not-the-issued-token"), ("Content-Length", "24"),
+          ("Content-Length", "25")], (403, {"error": "csrf_invalid"})),
+        ([("X-CSRF-Token", csrf), ("Content-Length", "24"),
+          ("Expect", "100-continue")], (417, {"error": "request_framing"})),
+    )
+    for extra, expected in cases:
+        sock = _open_raw(server)
+        try:
+            _send_request_head(server, sock, "/api/campaigns", [
+                ("Cookie", cookie), ("Content-Type", "application/json"), *extra,
+            ])
+            started = time.monotonic()
+            status, _response_headers, body = _read_response(sock)
+            assert (status, json.loads(body)) == expected
+            # Framing this boundary does not interpret is never drained, so the
+            # refusal is not held waiting for bytes that may never arrive.
+            assert _read_to_eof(sock) == b""
+            assert time.monotonic() - started < _DRAIN_SLACK_SECONDS
+        finally:
+            sock.close()
+    assert campaigns.seen == []
+
+
+# Longer than CPython's integer string conversion limit, and far longer than any
+# length this boundary accepts, while still a legal header line.
+_UNCONVERTIBLE_CONTENT_LENGTH = "9" * 4400
+
+
+def test_refused_post_with_an_oversized_content_length_header_sends_one_fixed_refusal(app) -> None:
+    """One refusal, with a fixed code, for a length that cannot be converted.
+
+    The drain runs after the refusal has been written, so a failure to interpret
+    the declared length there would append a second response to a connection that
+    has already been framed by ``Content-Length``.  The declared length is also
+    never converted before it is bounded, so no interpreter diagnostic can be
+    returned in place of this boundary's fixed codes.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    assert len(_UNCONVERTIBLE_CONTENT_LENGTH) > MAX_CONTENT_LENGTH_DIGITS
+    cases = (
+        ("not-the-issued-token", (403, {"error": "csrf_invalid"})),
+        (csrf, (400, {"error": "request_framing"})),
+    )
+    for token, expected in cases:
+        sock = _open_raw(server)
+        try:
+            _send_request_head(server, sock, "/api/campaigns", [
+                ("Cookie", cookie),
+                ("Content-Type", "application/json"),
+                ("X-CSRF-Token", token),
+                ("Content-Length", _UNCONVERTIBLE_CONTENT_LENGTH),
+            ])
+            started = time.monotonic()
+            status, _response_headers, body = _read_response(sock)
+            assert (status, json.loads(body)) == expected
+            assert b"digit" not in body and b"4300" not in body
+            # Nothing follows the declared refusal body: a second response would
+            # be readable here.  No body byte is sent, and none is waited for.
+            assert _read_to_eof(sock) == b""
+            assert time.monotonic() - started < _DRAIN_SLACK_SECONDS
+        finally:
+            sock.close()
+    assert campaigns.seen == []
+
+
+# Larger than the handler's buffered header read, so the remainder cannot have
+# been absorbed into user space while the request line and headers were parsed.
+_QUEUED_BODY_BYTES = 64 * 1024
+
+
+def test_refused_post_drains_a_body_already_queued_on_the_socket(app) -> None:
+    """The whole refusal survives a close with body bytes still queued.
+
+    The body is sent immediately after the headers and is far larger than the
+    buffered header read, so unread bytes are certainly still queued on the
+    connection when the refusal is written.  Closing in exactly that state is
+    what lets the transport abort the connection instead of sending an ordinary
+    FIN, so the complete refusal must still be readable and the stream must then
+    end cleanly.  No sleep and no retry is used.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    payload = json.dumps({
+        "request_id": "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+        "brief_text": "x" * _QUEUED_BODY_BYTES,
+        "sender_profile_id": PROFILE,
+        "mailbox_id": "mailbox-001",
+    }).encode()
+    assert _QUEUED_BODY_BYTES < len(payload) < MAX_JSON_BYTES
+    sock = _open_raw(server)
+    try:
+        _send_request_head(server, sock, "/api/campaigns", [
+            ("Cookie", cookie),
+            ("Content-Type", "application/json"),
+            ("X-CSRF-Token", "not-the-issued-token"),
+            ("Content-Length", str(len(payload))),
+        ])
+        sock.sendall(payload)
+        started = time.monotonic()
+        status, headers, body = _read_response(sock)
+        assert (status, json.loads(body)) == (403, {"error": "csrf_invalid"})
+        assert headers["connection"] == "close"
+        assert _read_to_eof(sock) == b""
+        assert time.monotonic() - started < _DRAIN_SLACK_SECONDS
+    finally:
+        sock.close()
+    assert campaigns.seen == []
+
+
+class _CountingReader:
+    """Delegates to the handler's real ``BufferedReader``, counting ``read1``.
+
+    Both call count and byte count are tracked: it is the exact call the
+    refusal drain issues
+    (``getattr(reader, "read1", reader.read)``), so this proves bytes were
+    actually pulled off the wire by the drain rather than merely that some
+    drain method was invoked.  Every other attribute -- including ``read``,
+    used by ``_read_json`` for an accepted body -- is delegated untouched, so
+    ordinary request handling is unaffected.
+    """
+
+    def __init__(self, wrapped: object) -> None:
+        self._wrapped = wrapped
+        self.read1_bytes = 0
+        self.read1_calls = 0
+
+    def read1(self, size: int = -1) -> bytes:
+        self.read1_calls += 1
+        chunk = self._wrapped.read1(size)
+        self.read1_bytes += len(chunk)
+        return chunk
+
+    def __getattr__(self, name: str) -> object:
+        return getattr(self._wrapped, name)
+
+
+@contextlib.contextmanager
+def _counting_rfile(counters: list):
+    """Wrap each handled connection's ``rfile`` with ``_CountingReader``.
+
+    This patches only ``ReviewHandler.setup`` -- never a built-in
+    ``BufferedReader`` attribute -- and always restores the original method,
+    so no production behaviour or class state survives the test.
+    """
+    original_setup = review_app.ReviewHandler.setup
+
+    def setup(self) -> None:
+        original_setup(self)
+        counter = _CountingReader(self.rfile)
+        self.rfile = counter
+        counters.append(counter)
+
+    review_app.ReviewHandler.setup = setup
+    try:
+        yield counters
+    finally:
+        review_app.ReviewHandler.setup = original_setup
+
+
+def test_refusal_drain_actually_consumes_the_declared_body_bytes(app) -> None:
+    """The drain must pull every declared body byte off the wire.
+
+    A mutant that sends the refusal and closes without draining -- proven on
+    root to still pass the response-shape assertions alone -- leaves this
+    counter at zero.  Counting real ``read1`` calls on the handler's own
+    ``rfile`` proves the requirement (bytes actually consumed), not merely
+    that some drain method was called.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, _csrf, _headers, _body = bootstrap(server)
+    payload = _campaign_payload()
+    counters: list = []
+    with _counting_rfile(counters):
+        sock = _open_raw(server)
+        try:
+            _send_request_head(server, sock, "/api/campaigns", [
+                ("Cookie", cookie),
+                ("Content-Type", "application/json"),
+                ("X-CSRF-Token", "not-the-issued-token"),
+                ("Content-Length", str(len(payload))),
+            ])
+            status, headers, body = _read_response(sock)
+            assert (status, json.loads(body)) == (403, {"error": "csrf_invalid"})
+            sock.sendall(payload)
+            assert _read_to_eof(sock) == b""
+        finally:
+            sock.close()
+    assert campaigns.seen == []
+    assert len(counters) == 1
+    assert counters[0].read1_bytes == len(payload)
+
+
+_ZERO_READ_FRAMING_CASES = (
+    pytest.param(
+        "oversized_content_length", "valid_csrf",
+        [("Content-Length", str(MAX_JSON_BYTES + 1))],
+        (413, {"error": "request_too_large"}),
+        id="oversized_content_length",
+    ),
+    pytest.param(
+        "duplicate_content_length", "invalid_csrf",
+        [("Content-Length", "24"), ("Content-Length", "25")],
+        (403, {"error": "csrf_invalid"}),
+        id="duplicate_content_length",
+    ),
+    pytest.param(
+        "transfer_encoding_and_content_length", "valid_csrf",
+        [("Transfer-Encoding", "chunked"), ("Content-Length", "24")],
+        (400, {"error": "request_framing"}),
+        id="transfer_encoding_and_content_length",
+    ),
+    pytest.param(
+        "expect_100_continue", "valid_csrf",
+        [("Content-Length", "24"), ("Expect", "100-continue")],
+        (417, {"error": "request_framing"}),
+        id="expect_100_continue",
+    ),
+)
+
+
+@pytest.mark.parametrize("_label,csrf_choice,extra_headers,expected", _ZERO_READ_FRAMING_CASES)
+def test_zero_read_framing_refusals_read_zero_additional_body_bytes(
+    app, _label, csrf_choice, extra_headers, expected,
+) -> None:
+    """Each declared framing refusal reads zero additional body bytes.
+
+    This counts actual bytes read rather than relying on a wall-clock slack
+    window, and also counts read1 attempts directly: a timed-out read attempt
+    can return zero bytes without having read nothing, so byte counts alone
+    do not prove zero read attempts occurred.
+    """
+    server, _review, campaigns, _clock = app
+    cookie, csrf, _headers, _body = bootstrap(server)
+    token = csrf if csrf_choice == "valid_csrf" else "not-the-issued-token"
+    counters: list = []
+    with _counting_rfile(counters):
+        sock = _open_raw(server)
+        try:
+            _send_request_head(server, sock, "/api/campaigns", [
+                ("Cookie", cookie),
+                ("Content-Type", "application/json"),
+                ("X-CSRF-Token", token),
+                *extra_headers,
+            ])
+            status, _headers, body = _read_response(sock)
+            assert (status, json.loads(body)) == expected
+            assert _read_to_eof(sock) == b""
+        finally:
+            sock.close()
+    assert campaigns.seen == []
+    assert len(counters) == 1
+    assert counters[0].read1_bytes == 0
+    assert counters[0].read1_calls == 0
+
+
+def test_read_response_helper_detects_a_coalesced_second_response() -> None:
+    """Synthetic proof that ``_read_response`` never swallows a coalesced reply.
+
+    This does not exercise the real server: it feeds the test helper two
+    responses written back to back on one synthetic socket pair, the same
+    shape a no-drain mutant (or any future regression) could produce by
+    letting the transport append a second reply.  Before this repair the
+    helper's ``body[:length]`` slice silently discarded exactly this case.
+    """
+
+    class _CoalescedFakeSocket:
+        def __init__(self, payload: bytes) -> None:
+            self._payload = payload
+            self._delivered = False
+
+        def recv(self, _size: int) -> bytes:
+            if self._delivered:
+                return b""
+            self._delivered = True
+            return self._payload
+
+    body = b'{"error":"csrf_invalid"}'
+    first = (
+        b"HTTP/1.1 403 Forbidden\r\n"
+        b"Content-Length: " + str(len(body)).encode("ascii") + b"\r\n"
+        b"Connection: close\r\n\r\n" + body
+    )
+    second = b"HTTP/1.1 500 Internal Server Error\r\nContent-Length: 0\r\n\r\n"
+    fake_socket = _CoalescedFakeSocket(first + second)
+    with pytest.raises(AssertionError, match="trailing bytes"):
+        _read_response(fake_socket)
