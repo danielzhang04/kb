@@ -1,5 +1,5 @@
 # figment — STATE
-_Updated: 2026-09-07 23:20_
+_Updated: 2026-09-12 01:30_
 
 ## Now
 Overnight build delivered a slim single-command gated pipeline + creator-002 acceptance (964
@@ -26,6 +26,10 @@ identity_gate + vlm_judge gate, per the gate-before-eyes ruling).
 Path-B PuLID diagnostic (`expand/bakeoff/m3diag_manifest.yaml`, $3.70, research-only) — launch
 blocked by the session permission classifier; Daniel must launch by hand (command in
 `m3diag_README`).
+
+## Decisions
+- 2026-09-06 — Gate before eyes: automated identity/age/realism gates precede any board; identity-transfer chosen by scored bake-off — eye-judging burned days
+- 2026-09-06 — Track-2 approved: rebuild module-for-module like 10sorlabs — Track-1 LoRA graded close but glossy/older/inconsistent
 
 ## Findings
 - Edit-model identity-transfer path (Qwen-Image-Edit variants, 6 runs, ~$8 total) is EXHAUSTED:

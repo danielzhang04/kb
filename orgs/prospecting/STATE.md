@@ -1,5 +1,5 @@
 # prospecting — STATE
-_Updated: 2026-09-07 06:00_
+_Updated: 2026-09-12 01:30_
 
 ## Now
 P1-P8 built across integrated worktrees `C:/Users/danie/kb-worktrees/prospecting-p{1..8}`, all
@@ -25,6 +25,10 @@ Chrome, then re-run research -> score -> fill-fit -> acceptance check.
 
 ## Blocked
 Codex dispatches (auth broken, `codex login` owed) — not blocking P8-B, workaround via sonnet.
+
+## Decisions
+- 2026-09-04 — Deliver only people with confidently found emails; substitute prospect then firm — shallow rows are worthless to outreach
+- 2026-09-07 — LinkedIn facts fetched via Daniel's own Chrome (override of the dedicated-profile rule) — firm bio pages too thin
 
 ## Findings
 - Real-store live run surfaced 16 defects not caught by synthetic-fixture gates (fixtures never

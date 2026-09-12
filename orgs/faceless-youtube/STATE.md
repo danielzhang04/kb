@@ -1,5 +1,5 @@
 # faceless-youtube — STATE
-_Updated: 2026-08-21 23:59_
+_Updated: 2026-09-12 01:30_
 
 ## Now
 PARKED. No active work in flight. Repo `orgs/faceless-youtube/STATE.md` is stale (dated
@@ -21,6 +21,9 @@ experiment-first / revert. Not yet ruled as of the last handoff.
 
 ## Blocked
 None beyond the human gate above.
+
+## Decisions
+- 2026-08-21 — Variant D L01–L50 parked at Daniel's eye-gate (continue-D / register-first / revert) — no further spend until ruled
 
 ## Findings
 - Open governance question (unresolved, not blocking): `governance/budget.yaml` daily cap $5 vs

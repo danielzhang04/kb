@@ -1,5 +1,5 @@
 # kb-ops — STATE
-_Updated: 2026-09-11 17:50_
+_Updated: 2026-09-12 01:30_
 
 ## Now
 VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 2026-09-06 19:04:55Z
@@ -7,8 +7,6 @@ VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 202
 generation provenance`, store.ts:1715: a validator join not keyed by run). Fix is PR #173
 (`claude/provenance-fix`, opus root-caused + reviewed MERGEABLE) — **confirmed still OPEN,
 unmerged** as of this file's writing (2026-09-11, `gh pr view 173`). Recovery has NOT been run.
-Repo `orgs/kb-ops/STATE.md` itself is stale (last touched 2026-07-16, "nothing yet") — this file
-distills the ops handoffs/memory instead, which are current.
 
 ## Current gate
 Daniel must merge PR #173; then the boss runs the scripted recovery (`morning-rebuild.ps1` ->
@@ -31,6 +29,10 @@ Daniel must merge PR #173; then the boss runs the scripted recovery (`morning-re
 ## Blocked
 Gate 4b run 5 and all Phase B work blocked on Daniel merging #173 (his merge authority; no
 branch-tip deploys).
+
+## Decisions
+- 2026-09-11 — Token discipline: measure only (no warn/freeze); boss resets at the next task boundary past 150k; MCP access unchanged; Codex boss stays astra — Daniel's rulings for the token-discipline PR
+- 2026-09-11 — Project frame: GOAL.md + STATE.md per project on ops, U7/U8/U9 hooks armed (#182) — every session grounded without re-reading the repo
 
 ## Findings
 - PR ledger #157-#173 (2026-09-03 to 09-06) shipped 17 PRs fixing the broker/launch/drain chain
