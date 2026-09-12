@@ -1,3 +1,36 @@
+# ACTIVE follow-up: Prospecting UI/UX - 2026-09-12
+
+The previous infrastructure scope below is complete; the newly assigned UI/UX scope IS NOT.
+User requests KB dashboard styling, consistent spacing, clear accepted inputs/save behavior,
+truthful campaign/backend workflow, and useful HubSpot/Mailchimp/Apollo patterns implemented
+and reviewed. Active card queue/working/01M29VGYQJ9KSTR8S7D37YKG02.md. Running plan on DELIVERY:
+docs/superpowers/plans/2026-09-12-prospecting-ux.md. Both existing draft PR branches remain in use.
+
+Current source uncommitted: 189 manual-lane refusal repair, 187b neutral styling/theme/tests,
+190 authenticated read-only creation-status lookup/tests. 189 actual red: 1 failed/2 passed;
+green affected suite: 115 passed with 2 JUnit-family warnings. 190: 96 passed, no warnings.
+187b first JS run: 44 passed/1 failed, an existing literal CSS adjacency assertion now sees
+newlines; no false green. Needs worker repair, final merged suite and actual Chrome acceptance.
+188 form/workflow proposal still running at checkpoint; exact exec95678, bounded1200sec.
+187 original visual proposal rejected; 187b corrected it. Verify frozen original188 inputs in
+ORCH/ux-frozen-base-187188 before merging its proposal with accepted187b/189/190 changes.
+
+Next: integrate188, implement UI recovery via190 lookup using ONLY opaque request UUID in
+sessionStorage (no private form payload), independent Claude UX/code/security review and
+repairs, synthetic Chrome checks, full regression, source and coordination publication.
+Existing Chrome DevTools session9e9063aa-56ea-44d8-a68c-777d790b77ad; page7 synthetic8766,
+page3 real review-copy8765. Do not touch unrelated tabs. Fixture server8382 is bounded20min
+and reads HTML at startup, so restart owned8766 after changes. Never mutate original pilot.
+All implementation workers remain verified Claude on existing source-only vCPU; desktop
+runtime stays local. No sends, deployment, protected merges or credentials in scope.
+
+Coordination merged upstreamff342093 after a read-only merge preview proved only three
+upstream token-discipline handoff/memory changes; no Prospecting/ledger/queue deletion.
+Automatic approval initially rejected a misleading two-branch diff, then accepted the
+verified merge-tree result. Preserve published ancestry; do not rebase or force-push.
+
+## Previous infrastructure handoff (historical baseline)
+
 # Prospecting infrastructure handoff ? 2026-09-12
 
 Updated 2026-09-12T04:39:35.725516+00:00. Assigned infrastructure implementation and validation complete.
