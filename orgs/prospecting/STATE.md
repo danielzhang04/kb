@@ -2,7 +2,7 @@
 
 Updated 2026-09-12T02:42:52.482828+00:00
 
-Reviewed source7c1b2ab4 is published to draft PR181. The saved pilot now completes approved
+Reviewed source1644aa00 (browser fixture/verification after7c1b2ab4) is published to draft PR181. The saved pilot now completes approved
 qualification (3/3 items), deterministic ranking (one selection, five-person shortfall),
 canonical format setup and selected-draft materialization/replay through public services.
 Targeting, qualification and ranking hashes are unchanged. Backup/replay and authority audit
@@ -18,16 +18,16 @@ passed. Earlier185 affected tests had184passes and one intermittent HTTP failure
 prompted the repair. Final merge simulation against main is clean (24behind/46ahead).
 
 Original full suite2087:2082pass5fail,0errors/skips,1245.491s. Two failures passed focused
-reruns; three human-owned P1/P6 records remain unresolved. The full suite was not rerun after
+reruns; three P1/P6 inventory/result checks remain under active repair. The full suite was not rerun after
 these focused changes and is not claimed green. Runtime bundle remains
  e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814.
 Four actual native adapters/public prepare and synthetic editorial previously passed.
 
 All requested publication/runtime approvals are resolved, including explicit source/HTTP
 publication approval. PR180 carries the coordination handoff; PR181 remains draft. Verified
-Claude Opus5/Sonnet5 source-only workers returned to the existing vCPU after00:30UTC. Bounded Claude jobs159c and161 are active for fixture proof and declared gate inventory repair.
-DELIVERY has uncommitted synthetic fixture and updated plan/verification docs; retained
-private evidence and pre-existing scratch roots remain. No merge, deployment or release is claimed.
+Claude Opus5/Sonnet5 source-only workers returned to the existing vCPU after00:30UTC. Bounded Opus162 is reviewing/completing the declared gate inventory repair.
+DELIVERY contains one untracked updater proposal; browser fixture/docs are published.
+Retained private evidence and pre-existing scratch roots remain. No merge, deployment or release is claimed.
 
 Chrome DevTools now controls the existing user Chrome. Real pilot review-copy checks passed:
 exact draft/source, dirty input preservation, readiness/confirmation guards, and unchanged
@@ -35,11 +35,11 @@ refresh with no domain/authority changes. A separate synthetic browser flow save
 edit and atomically restarted exhausted review (oldparked2/newcycle0); changed-source refusal
 and exact restoration also passed. No attestation, approval or send was performed.
 
-Remaining: accept corrected fixture regressions159c and inventory repair161. Opus160 established
-that source gate manifests are phase-owned declarations, not human-only result records. P6
-has741 stale inventory entries versus904 current required nodes. P1 lacks its generated result
-and plan-required worktree DRAFT STATE;10 artifact hashes changed. Actual recording needs a
-passing run and genuine independent inspector grade. No score or gate outcome is fabricated.
-Fixture159b test run:11pass1fail (SQLite Row/tuple mismatch);159c also strengthens URI identity
-and malformed-count proof. Final release/merge/send authority remains separate.
+Remaining: accept Opus162 updater/DRAFT repair, verify the declaration changes, then obtain
+independent inspector evidence for generated records. Opus160 established that source gate
+manifests are phase-owned declarations. P6 has741 old entries versus904 required nodes; P1
+lacks its generated result and plan-required worktree DRAFT STATE, with10 changed hashes.
+No manifest or gate result has been written. Final fixture suite26passed in12.63s after159c
+repaired159b's11pass1fail result and strengthened weak checks. No score or gate outcome is
+fabricated; release/merge/send authority remains separate. Exact live handle is in handoff.
 Canonical handoff: handoffs/2026-09-11-prospecting-infrastructure.md.
