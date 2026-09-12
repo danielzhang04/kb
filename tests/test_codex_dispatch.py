@@ -302,6 +302,25 @@ def test_spawn_builds_exact_command(tmp_path, monkeypatch):
     assert seen["timeout"] == codex_dispatch.DEFAULT_TIMEOUT
 
 
+def test_spawn_marks_worker_env(monkeypatch, tmp_path):
+    seen_env = {}
+    class FakeProc:
+        pid = 111
+        def communicate(self, input=None, timeout=None):
+            return (b"", b"")
+        returncode = 0
+    def fake_popen(cmd, **kwargs):
+        seen_env.update(kwargs.get("env") or {})
+        return FakeProc()
+    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
+    monkeypatch.setattr(codex_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(codex_dispatch, "update_marker", lambda *a, **k: None)
+    monkeypatch.setattr(codex_dispatch, "process_start_time", lambda *_: None)
+    codex_dispatch.spawn("hi", "gpt-5.6-terra", None, tmp_path, "workspace-write",
+                          tmp_path / "out.txt", tmp_path / "log.txt")
+    assert seen_env.get("KB_INSIDE_CODEX_WORKER") == "1"
+
+
 def test_main_unknown_model_refuses_before_spawn(repo, tmp_path, monkeypatch, capsys):
     called = []
     monkeypatch.setenv("KB_DISPATCH_TEST", "1")

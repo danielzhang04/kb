@@ -32,12 +32,14 @@
 "use strict";
 
 const path = require("path");
+const fs = require("fs");  // NEW require -- file already requires path/spawnSync/hook_io/store/pf
 const { spawnSync } = require("child_process");
 const io = require("./lib/hook_io.js");
 const store = require("./lib/context_store.js");
 const pf = require("./lib/project_frame.js");
 
 const PREAMBLE_TIMEOUT_MS = 10000;
+const USAGE_LEDGER_TIMEOUT_MS = 3000;
 /** Blank line between top-level payload blocks, and the list separator inside the flags block.
  *  Named constants because F2 BUDGETS their cost rather than guessing at it. */
 const NEWLINE = "\n";
@@ -110,6 +112,29 @@ function handoffFlags(root, timeoutMs) {
 }
 
 /**
+ * The `_totals` row's one-line summary for '## Usage (yesterday)', or null when that day's
+ * ledger doesn't exist yet. NEVER runs the parser itself (spec S3): checks the file on disk
+ * FIRST and only then invokes `usage_ledger.py --summary --no-publish` (the fast idempotent-read
+ * path -- see usage_ledger.py's main(), which reads an existing file rather than recomputing).
+ * `--no-publish`: this is a read, the file already exists, there is nothing new to commit, and a
+ * `git fetch`/push per SessionStart is a cost this hook cannot afford.
+ */
+function usageLine(root, timeoutMs) {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const ledgerFile = path.join(root, "ledgers", "usage", yesterday + ".tsv");
+  if (!fs.existsSync(ledgerFile)) {
+    return null; // preamble.py hasn't produced it yet today -- this hook never computes it
+  }
+  const result = runPython(
+    ["scripts/usage_ledger.py", "--date", yesterday, "--summary", "--no-publish"],
+    root,
+    timeoutMs,
+  );
+  if (!result || result.status !== 0 || !result.stdout) return null;
+  return pf.firstLine(result.stdout);
+}
+
+/**
  * Write this session's governing sections from the active project's GOAL.md/STATE.md, WITHOUT
  * touching any section this hook does not own. A no-op when there is no session, no project, or
  * neither ops file yields any of the three headings -- `updateStore` (and the locked
@@ -150,6 +175,18 @@ function writeGoverningSections(sessionId, project, cwd, env) {
   );
 }
 
+/** '## Session model' -- a write-once-per-turn note of `event.model` (when the harness sends
+ * one), read by scripts/hooks/context_guard.js's Fable/Opus PDF/image-read rule. NOT one of
+ * context_store's five reserved HEADINGS -- an ordinary extra section, so lib/context_store.js
+ * needs no change (renderSections already preserves unknown headings verbatim). */
+const SESSION_MODEL_HEADING = "Session model";
+
+function writeSessionModel(sessionId, event, env) {
+  const model = typeof event.model === "string" && event.model.trim() ? event.model.trim() : null;
+  if (!sessionId || !model) return;
+  store.updateStore(sessionId, (sections) => store.upsertSection(sections, SESSION_MODEL_HEADING, model), env);
+}
+
 function main() {
   // Fails open ("{}", exit 0) inside this call on: no stdin, malformed JSON, a non-object
   // payload, or a `hook_event_name` naming a different event. A missing `hook_event_name` is
@@ -179,6 +216,7 @@ function main() {
   // post-compact re-grounding needs fresh sections to read even on a turn where THIS hook stays
   // silent).
   writeGoverningSections(sessionId, project, cwd, env);
+  writeSessionModel(sessionId, event, env);
 
   if (event.source === "compact") {
     io.noop(); // U7 owns the compact re-injection -- never returns
@@ -201,6 +239,8 @@ function main() {
   const flagsBlock = flags.length
     ? SEPARATOR + "## Stale handoffs" + NEWLINE + flags.map((f) => "- " + f).join(NEWLINE)
     : "";
+  const usage = usageLine(root, USAGE_LEDGER_TIMEOUT_MS);
+  const usageBlock = usage ? SEPARATOR + "## Usage (yesterday)" + NEWLINE + usage : "";
 
   const frameResult = pf.frame({
     project,
@@ -208,10 +248,10 @@ function main() {
     cwd,
     sessionId,
     env,
-    budget: budget - preambleLine.length - SEPARATOR.length - flagsBlock.length,
+    budget: budget - preambleLine.length - SEPARATOR.length - flagsBlock.length - usageBlock.length,
   });
 
-  const combined = preambleLine + SEPARATOR + frameResult.text + flagsBlock;
+  const combined = preambleLine + SEPARATOR + frameResult.text + flagsBlock + usageBlock;
 
   // A GUARD, not the strategy: the reservation above already keeps the total inside `budget` in
   // every normal case, so this only fires when the preamble line and the flags block ALONE overrun

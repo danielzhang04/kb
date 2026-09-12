@@ -1,3 +1,6 @@
+import subprocess
+from datetime import datetime, timedelta, timezone
+
 import preamble
 
 
@@ -47,3 +50,25 @@ def test_scoped_key_wins_over_the_legacy_key(tmp_path):
         "daily_usd_limit: 100.0\ndaily_subscription_usd_limit: 1.0", encoding="utf-8")
     problems = preamble.check(tmp_path, env={}, cost_today_fn=lambda root: 2.5)
     assert any("budget" in p.lower() for p in problems)
+
+
+def test_maybe_run_usage_ledger_skips_when_file_exists(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / "ledgers" / "usage").mkdir(parents=True)
+    day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    (root / "ledgers" / "usage" / f"{day}.tsv").write_text("x", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(preamble.subprocess, "run", lambda *a, **k: calls.append(a) or None)
+    preamble._maybe_run_usage_ledger(root)
+    assert calls == []
+
+
+def test_maybe_run_usage_ledger_calls_script_when_missing(tmp_path, monkeypatch):
+    root = tmp_path
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
+    calls = []
+    monkeypatch.setattr(preamble.subprocess, "run", lambda *a, **k: calls.append((a, k)) or subprocess.CompletedProcess(a, 0))
+    preamble._maybe_run_usage_ledger(root)
+    assert len(calls) == 1
+    assert calls[0][1]["timeout"] == 5

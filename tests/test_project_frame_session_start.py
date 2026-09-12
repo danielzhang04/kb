@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -30,7 +31,8 @@ def git(cwd, *args):
     return r.stdout
 
 
-def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=False, sweep_body=None):
+def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=False, sweep_body=None,
+                  with_usage_summary=None):
     root = tmp_path / "kb_root"
     (root / "scripts").mkdir(parents=True)
     (root / "scripts" / "preamble.py").write_text(preamble_body, encoding="utf-8")
@@ -40,6 +42,13 @@ def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=Fa
             'print(json.dumps([{"file": "2020-01-01-kb-old.md", "reasons": ["30 days old"]}]))\n'
         )
         (root / "scripts" / "handoffs_sweep.py").write_text(body, encoding="utf-8")
+    if with_usage_summary is not None:
+        day = (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+        (root / "ledgers" / "usage").mkdir(parents=True, exist_ok=True)
+        (root / "ledgers" / "usage" / f"{day}.tsv").write_text("stub\n", encoding="utf-8")
+        (root / "scripts" / "usage_ledger.py").write_text(
+            f"print({with_usage_summary!r})\n", encoding="utf-8",
+        )
     return root
 
 
@@ -135,6 +144,62 @@ def section_body(sections, heading):
         if section.get("heading") == heading:
             return section.get("body")
     return None
+
+
+def test_usage_line_appended_when_ledger_exists(tmp_path):
+    kb_root = make_kb_root(
+        tmp_path, with_usage_summary="2026-09-10: claude $12.34-eq / codex $5.00-eq | 900 turns | max ctx 210k",
+    )
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Usage (yesterday)" in ctx
+    assert "claude $12.34-eq" in ctx
+
+
+def test_usage_line_absent_when_ledger_missing(tmp_path):
+    kb_root = make_kb_root(tmp_path)  # no ledgers/usage/<day>.tsv on disk
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Usage (yesterday)" not in ctx
+
+
+def test_session_model_note_written_when_event_carries_model(tmp_path):
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo),
+         "model": "claude-opus-5"},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    sections = read_store_sections(store_dir, "s1")
+    assert section_body(sections, "Session model") == "claude-opus-5"
+
+
+def test_session_model_note_absent_when_event_has_no_model(tmp_path):
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    sections = read_store_sections(store_dir, "s1")
+    assert section_body(sections, "Session model") is None
 
 
 def test_full_payload_on_startup(tmp_path):

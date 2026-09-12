@@ -261,7 +261,8 @@ def spawn(prompt_text: str, model: str | None, effort: str | None, cwd: Path,
         cmd += ["-c", f"model_reasoning_effort={effort}"]
     with open(log_file, "wb") as log:
         proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=log, stderr=log,
-                                start_new_session=True)
+                                start_new_session=True,
+                                env={**os.environ, "KB_INSIDE_CODEX_WORKER": "1"})
         # The worker tree's own pid: a human killing a survivor needs it, but the
         # sweep probes the DISPATCH pid — a codex child outlives a killed parent.
         update_marker(marker, codex_pid=proc.pid,

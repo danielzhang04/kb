@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import os
+import subprocess
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import yaml
@@ -49,8 +51,30 @@ def check(repo_root: Path, env: dict | None = None, cost_today_fn=None) -> list[
     return problems
 
 
+def _maybe_run_usage_ledger(root: Path) -> None:
+    """Best-effort, budgeted (5s), fail-open: run usage_ledger.py for yesterday if that day's
+    file doesn't exist yet. NEVER affects preamble's PASS/FAIL verdict (ruling: measure only) --
+    called only from main(), never from check(), so a library caller (codex_dispatch.py calls
+    preamble.check() on every dispatch) never pays this cost."""
+    yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    ledger_file = Path(root) / "ledgers" / "usage" / f"{yesterday}.tsv"
+    if ledger_file.exists():
+        return
+    script = Path(root) / "scripts" / "usage_ledger.py"
+    if not script.exists():
+        return
+    for bin_name in ("py", "python"):
+        args = [bin_name] + (["-3"] if bin_name == "py" else []) + [str(script), "--date", yesterday]
+        try:
+            subprocess.run(args, cwd=str(root), timeout=5, capture_output=True)
+            return
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+
+
 def main() -> int:
     root = Path.cwd()
+    _maybe_run_usage_ledger(root)
     try:
         import ledger
         cost_fn = ledger.cost_today
