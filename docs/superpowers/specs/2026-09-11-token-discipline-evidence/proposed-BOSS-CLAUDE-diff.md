@@ -37,3 +37,17 @@ line, keep every RULE, cut restated context the rule already implies.
 
 ## Task 4 — BOSS.md trim
 (appended by Task 4)
+
+## Task 3 — BOSS.md pointer to subagent-brief-rules
+
+Redirect of the brief's own Step 6 ("edit skills/curated/dispatch-codex/SKILL.md"): Task 5
+already landed its own edit to that skill in this same plan, so Task 3 lands its pointer here
+instead. Add to BOSS.md's "Delegation" section:
+
+    - Every dispatch brief (Claude Agent tool AND dispatch-codex) follows the one brief rule in
+      `docs/runbooks/subagent-brief-rules.md`: the worker writes its full output to a file and
+      returns <= 300 words in its final message.
+
+(This duplicates hunk 2 above verbatim — hunk 2 was already the same rule, landed by an earlier
+task in this plan; this entry exists so Task 3's own scope is traceable in this file without
+re-editing hunk 2's text.)

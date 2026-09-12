@@ -120,6 +120,15 @@
             "command": "node \"C:/Users/danie/kb/scripts/hooks/model_verify_pretooluse.js\""
           }
         ]
+      },
+      {
+        "matcher": "Read|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"C:/Users/danie/kb/scripts/hooks/context_guard.js\""
+          }
+        ]
       }
     ],
     "Stop": [
