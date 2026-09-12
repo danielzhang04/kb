@@ -12,18 +12,27 @@
  *      (pytest without -q/tail|head|grep, unbounded `git log`, `find /`, `cat` of a file over a
  *      configured byte limit unless piped through a filter).
  *
- * ── HOW THE SESSION MODEL IS KNOWN (ruling, 2026-09-11) ─────────────────────────────────────────
+ * ── HOW THE SESSION MODEL IS KNOWN (ruling, 2026-09-11; revised in fix round 1) ─────────────────
  * Task 0's probe proved `event.model` is ABSENT on every PreToolUse/SessionStart payload in this
  * build, so project_frame_session_start.js's `## Session model` store note (written from
- * `event.model` when present) is EMPTY in practice, every time. Reading only that note would make
- * this guard permanently inert. So: read the store first; if empty, tail-read
- * `event.transcript_path` (last <= TRANSCRIPT_TAIL_BYTES, via a seek -- never the whole file,
- * which can be many MB) and take the LAST `"model":"claude-…"` occurrence in that tail (a live
- * transcript carries the model on every assistant message, so the last one in the tail is the
- * session's current model). Found -> cache it into the store's `## Session model` via
- * store.updateStore (under the lock) so later tool calls in the same session skip the tail-read.
- * Nothing found anywhere -> guard inactive for that Read (fail open, per spec: "no model note ->
- * no guard").
+ * `event.model` when present) is EMPTY in practice, every time. This guard does NOT read or write
+ * that store note at all (Task 1's SessionStart writer is left alone; it just has no reader here).
+ * Instead it ALWAYS tail-reads `event.transcript_path` fresh, on every call (last <=
+ * TRANSCRIPT_TAIL_BYTES, via a seek -- never the whole file, which can be many MB). Measured 0.09s
+ * on a 100 MB transcript -- cheap enough to skip caching, and caching would go stale across a
+ * `/resume` that changes the session's model mid-transcript.
+ *
+ * Detection is STRUCTURAL, not a raw regex over the bytes: the tail is split into lines, the first
+ * (likely partial, since the seek can land mid-line) is dropped, and the remaining complete lines
+ * are walked from the END, JSON.parse'd one at a time (parse failures skipped), until one is found
+ * where `type === "assistant"` and `message.model` is a string -- that is the model. This matters
+ * because a plain substring/regex scan for `"model":"claude-…"` would also match the SAME literal
+ * text if it appears inside a later tool-result line (e.g. a tool result echoing another
+ * transcript's JSON) and wrongly treat that as the session's current model; the structural walk
+ * only trusts a line that is itself a complete, parseable assistant record.
+ *
+ * Nothing found (no transcript_path, unreadable file, or no assistant record in the tail) -> guard
+ * inactive for that Read (fail open, per spec: "no model note -> no guard").
  *
  * Rules are read from context_guard.rules.yaml (Daniel-owned, hand-parsed -- see that file's own
  * header for why no YAML library is used, and for a naming note reconciling an earlier ruling's
@@ -41,17 +50,12 @@
 
 const fs = require("fs");
 const path = require("path");
-const store = require("./lib/context_store.js");
 
 const DEFAULT_RULES_PATH = path.join(__dirname, "context_guard.rules.yaml");
 const MAX_STDIN = 1024 * 1024;
-const SESSION_MODEL_HEADING = "Session model";
 
-/** Last <= this many bytes of a transcript are read on the model-detection fallback. */
+/** Last <= this many bytes of a transcript are read on every call -- no caching (see file header). */
 const TRANSCRIPT_TAIL_BYTES = 64 * 1024;
-
-/** Matches a JSON `"model":"claude-…"` field anywhere in a chunk of transcript text. */
-const MODEL_FIELD = /"model"\s*:\s*"(claude-[^"]*)"/g;
 
 function debugLog(env, message) {
   if (env && env.KB_DEBUG_HOOKS === "1") {
@@ -123,13 +127,19 @@ function compileRule(raw) {
       escape = null;
     }
   }
+  // `raw.limit_bytes` is always a STRING here (the hand-rolled parser never produces numbers), so
+  // a configured `limit_bytes: 0` arrives as the non-empty string "0" -- truthy, so a bare
+  // ternary on raw.limit_bytes itself would work for THIS field, but Number.isFinite on the
+  // CONVERTED number is used instead so the check reads the same way `checkBash` reads the
+  // result (0 is a valid, finite, MEANINGFUL limit; unset/unparsable is `null` = no limit).
+  const limitBytesNum = raw.limit_bytes !== undefined ? Number(raw.limit_bytes) : NaN;
   return {
     id: raw.id,
     tool: raw.tool,
     kind: raw.kind || "regex",
     trigger,
     escape,
-    limitBytes: raw.limit_bytes ? Number(raw.limit_bytes) : null,
+    limitBytes: Number.isFinite(limitBytesNum) ? limitBytesNum : null,
     message: raw.message || "denied by context guard",
   };
 }
@@ -173,17 +183,11 @@ function extractEvent(rawInput) {
   }
 }
 
-/** Store-only lookup of '## Session model'. Null when absent/empty/unreadable. */
-function sessionModel(sessionId, env) {
-  if (!sessionId) return null;
-  const sections = store.readStore(sessionId, env);
-  const body = store.sectionBody(sections, SESSION_MODEL_HEADING);
-  return body ? body.trim().toLowerCase() : null;
-}
-
 /**
  * Read the last `maxBytes` of a file via a seek -- never the whole file. Returns null on any
  * failure (missing file, unreadable, not a regular file): callers fail open on null.
+ * `truncated` is true when the read started after byte 0 -- i.e. the FIRST line in `text` is
+ * likely a partial line (the seek landed mid-line) and must be dropped before parsing.
  */
 function tailReadFile(filePath, maxBytes) {
   let fd;
@@ -195,11 +199,11 @@ function tailReadFile(filePath, maxBytes) {
   try {
     const size = fs.fstatSync(fd).size;
     const readSize = Math.min(size, maxBytes);
-    if (readSize <= 0) return "";
+    if (readSize <= 0) return { text: "", truncated: false };
     const start = size - readSize;
     const buf = Buffer.alloc(readSize);
     fs.readSync(fd, buf, 0, readSize, start);
-    return buf.toString("utf8");
+    return { text: buf.toString("utf8"), truncated: start > 0 };
   } catch (_err) {
     return null;
   } finally {
@@ -211,43 +215,49 @@ function tailReadFile(filePath, maxBytes) {
   }
 }
 
-/** The LAST `"model":"claude-…"` occurrence in `text`, or null. */
-function lastModelInText(text) {
-  if (!text) return null;
-  MODEL_FIELD.lastIndex = 0;
-  let match;
-  let last = null;
-  while ((match = MODEL_FIELD.exec(text)) !== null) {
-    last = match[1];
-  }
-  return last;
-}
-
 /**
- * The session's model: store note first, else a tail-read of `event.transcript_path` (cached back
- * into the store on a hit). Null when neither source yields one -- the guard is inactive for that
- * Read (spec: "no model note -> no guard").
+ * The session's CURRENT model, read structurally from the tail of `event.transcript_path`: split
+ * into lines (dropping a leading partial line when the tail read started mid-file), then walk the
+ * remaining complete lines from the END, JSON.parse'ing each (a parse failure is skipped, never
+ * fatal) until one is found where `type === "assistant"` and `message.model` is a string. This
+ * deliberately does NOT do a raw substring/regex scan for `"model":"claude-…"`: that text can
+ * legitimately appear inside a LATER non-assistant line (e.g. a tool-result echoing another
+ * transcript's JSON) without meaning the session's model changed, and only a structural walk can
+ * tell the difference. Null when nothing qualifies -- the guard is inactive for that Read (spec:
+ * "no model note -> no guard").
  */
-function resolveSessionModel(event, env) {
-  const sessionId = event.session_id;
-  const fromStore = sessionModel(sessionId, env);
-  if (fromStore) return fromStore;
-
+function resolveSessionModel(event) {
   const transcriptPath = event.transcript_path;
   if (typeof transcriptPath !== "string" || !transcriptPath) return null;
 
   const tail = tailReadFile(transcriptPath, TRANSCRIPT_TAIL_BYTES);
-  const model = lastModelInText(tail);
-  if (!model) return null;
+  if (!tail || !tail.text) return null;
 
-  if (typeof sessionId === "string" && sessionId) {
-    store.updateStore(
-      sessionId,
-      (sections) => store.upsertSection(sections, SESSION_MODEL_HEADING, model),
-      env,
-    );
+  let lines = tail.text.split("\n");
+  if (tail.truncated && lines.length > 0) {
+    lines = lines.slice(1); // drop the likely-partial first line
   }
-  return model.toLowerCase();
+
+  for (let i = lines.length - 1; i >= 0; i -= 1) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    let record;
+    try {
+      record = JSON.parse(line);
+    } catch (_err) {
+      continue; // an unparseable (partial/corrupt) line is skipped, never fatal
+    }
+    if (
+      record &&
+      typeof record === "object" &&
+      record.type === "assistant" &&
+      record.message &&
+      typeof record.message.model === "string"
+    ) {
+      return record.message.model.toLowerCase();
+    }
+  }
+  return null;
 }
 
 function extensionOf(filePath) {
@@ -255,12 +265,12 @@ function extensionOf(filePath) {
   return m ? m[0].toLowerCase() : "";
 }
 
-function checkRead(event, cfg, env) {
+function checkRead(event, cfg) {
   const filePath = event.tool_input && event.tool_input.file_path;
   if (typeof filePath !== "string" || !filePath) return null;
   if (!cfg.readExtensions.includes(extensionOf(filePath))) return null;
-  const model = resolveSessionModel(event, env);
-  if (!model) return null; // no note recorded anywhere -> no guard
+  const model = resolveSessionModel(event);
+  if (!model) return null; // no model found anywhere -> no guard
   if (!cfg.readModels.some((m) => model.includes(m))) return null;
   return cfg.readMessage || "denied by context guard";
 }
@@ -289,7 +299,11 @@ function checkBash(event, cfg) {
       } catch (_err) {
         continue; // can't stat it -> not this hook's job to say so
       }
-      if (size <= (rule.limitBytes || Infinity)) continue;
+      // rule.limitBytes can legitimately be 0 ("anything over 0 bytes is too big"); `|| Infinity`
+      // would treat 0 as falsy and silently disable the check, so `null` (unset) is the only
+      // value that means "no limit".
+      const limit = rule.limitBytes === null ? Infinity : rule.limitBytes;
+      if (size <= limit) continue;
     }
     return rule.message;
   }
@@ -317,7 +331,7 @@ function main() {
   let denyMessage = null;
   try {
     if (event.tool_name === "Read") {
-      denyMessage = checkRead(event, cfg, env);
+      denyMessage = checkRead(event, cfg);
     } else if (event.tool_name === "Bash") {
       denyMessage = checkBash(event, cfg);
     }
