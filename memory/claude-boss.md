@@ -344,3 +344,16 @@
   hooks are the only ones a headless run surfaces. Live-proved the whole armed family this way: one
   headless parent dispatching one haiku child gave audit rows, inherited spawn context, activity ring,
   throttle counter; PreCompact + compact re-ground simulated on the real transcript.
+
+## 2026-09-11 — token discipline (spec only; build handed to a fresh boss)
+- **The bill is context × turns, and the parent pays most of it.** Six boss sessions: parent 59%, children 41%;
+  97% of Claude tokens were cache reads of 500k–880k contexts over 400–700 turns. Model choice was second-order.
+  Delegation only saves money if the orchestrator's own context stays small.
+- **A "turn" is an API call, not a user message.** ~370 calls for ~40 messages here; every call re-sends the
+  whole context. Batch independent tool calls; each avoided call is a full context read saved.
+- **`autoCompactWindow` is an absolute-token setting** (docs: model-config). 150k plus the PreCompact/SessionStart
+  hooks is the async reset; the compact prompt is NOT customizable, so rulings must be on disk when they happen.
+- **Nothing measured subscription burn.** Cost ledgers log $0 for subscription steps by design; cco had never
+  recorded. Measure from the transcripts themselves (`usage` fields; Codex `total_token_usage` max per file).
+- **Hand off at a boundary, not at a number.** Mid-loop resets lose the reviewer's findings; boundary resets lose
+  nothing if the SDD ledger is current. Practiced it: this session closed at ~240k avg after the spec commit.
