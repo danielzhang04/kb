@@ -27,21 +27,35 @@ read_extensions: [.pdf, .png, .jpg, .jpeg, .gif, .webp, .bmp, .tiff]
 read_models: [fable, opus]
 read_message: delegate to a haiku extractor (Agent, model haiku) and read its summary
 
+# COMMAND POSITION (fix wave F2). Every Bash trigger below starts with the same prefix group
+# `(^|[;&|]\s*|\$\(\s*)` -- start of the command line, just after a `;`/`&`/`|` separator, or just
+# inside a `$(` substitution. A bare `\bpytest\b` matched the WORD anywhere, so `grep pytest`,
+# `cat pytest.ini` and `git commit -m "pytest"` were all blocked with advice to add `-q` to a
+# command that never ran pytest at all. A guard that blocks commands it does not understand is
+# worse than no guard: it teaches the operator to work around it. The optional
+# `(?:py\s+-3\s+-m\s+|python3?\s+-m\s+)` keeps the real invocation form used in this repo
+# (`py -3 -m pytest`) inside the trigger.
 rules:
   - id: bash-pytest-no-filter
     tool: Bash
-    trigger: \bpytest\b
-    escape: (-q\b|--quiet\b|\|\s*(tail|head|grep)\b|>\s*\S)
+    trigger: (^|[;&|]\s*|\$\(\s*)(?:py\s+-3\s+-m\s+|python3?\s+-m\s+)?pytest\b
+    escape: (-q{1,2}\b|--quiet\b|--maxfail|-x\b|--tb=|::|\|\s*(tail|head|grep)\b|>\s*\S)
     message: re-run as `pytest -q` or pipe through `| tail -n 50` -- a full pytest run floods the tool result
   - id: bash-git-log-unbounded
     tool: Bash
-    trigger: \bgit\s+log\b
-    escape: (-n\s*\d|--oneline\b|-\d+\b|\|\s*(head|tail|grep)\b|>\s*\S)
+    trigger: (^|[;&|]\s*|\$\(\s*)git\s+log\b
+    escape: (-n\s*\d|-\d+\b|--max-count|--oneline\s+-\d|-p\b|\.\.|\|\s*(head|tail|grep)\b|>\s*\S)
     message: re-run as `git log -n 20` or `git log --oneline -n 20`
   - id: bash-find-root
     tool: Bash
-    trigger: \bfind\s+/(\s|$)
+    trigger: (^|[;&|]\s*|\$\(\s*)find\s+/(\s|$)
+    escape: (-maxdepth\b|\|\s*(head|tail|grep)\b|>\s*\S)
     message: scope `find` to a subdirectory, e.g. `find . -name ...`, never the filesystem root
+  # This trigger is deliberately NOT widened to the prefix group above: it is already anchored at
+  # command position (`^\s*cat`), and context_guard.js's resolveCatTarget re-derives the same
+  # `^\s*cat\s+(\S+)` shape to decide WHICH file to stat. Widening only this trigger would make
+  # the rule fire on `... ; cat big` while resolveCatTarget failed to resolve the path, which
+  # fails open anyway -- no gain, and two regexes silently out of step.
   - id: bash-cat-large-file
     tool: Bash
     kind: cat-size

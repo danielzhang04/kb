@@ -352,3 +352,79 @@ def test_settings_registers_context_guard_without_dropping_existing_entries():
         "model_verify_pretooluse.js",
     ):
         assert expected in all_commands
+
+
+# ── fix wave F2: triggers are anchored to COMMAND POSITION; escapes cover real usage ────────────
+#
+# A `\bpytest\b` that matched the word anywhere denied `grep pytest`, `cat pytest.ini` and
+# `git commit -m "pytest"` -- commands that run no tests at all -- with advice to add `-q`. A
+# guard that blocks what it does not understand gets routed around, and then it guards nothing.
+
+import pytest as _pytest  # noqa: E402  (parametrize only; the guard itself is driven as a subprocess)
+
+
+ALLOWED_COMMANDS = [
+    # the three false positives named in the final review
+    "grep pytest scripts/hooks/context_guard.js",
+    "cat pytest.ini",
+    'git commit -m "pytest"',
+    # the same shape for the other rules
+    'grep -rn "git log" docs/',
+    "echo find / is dangerous",
+    # real pytest invocations that already bound their own output
+    "pytest tests/ -qq",
+    "py -3 -m pytest tests/ -q",
+    "pytest tests/ --maxfail=1",
+    "pytest tests/ -x",
+    "pytest --tb=short tests/",
+    "pytest tests/test_context_guard.py::test_benign_bash_silent",
+    # real git log invocations that are already bounded
+    "git log --max-count=5",
+    "git log -3",
+    "git log main..HEAD",
+    "git log -p -- scripts/preamble.py",
+    # a bounded find
+    "find / -maxdepth 2 -name kb",
+]
+
+
+@_pytest.mark.parametrize("command", ALLOWED_COMMANDS)
+def test_command_is_allowed(tmp_path, command):
+    (tmp_path / "pytest.ini").write_text("[pytest]\n", encoding="utf-8")  # small, real, stat-able
+    r = run_hook(tmp_path, bash_event(command, tmp_path))
+    assert r.returncode == 0, f"{command!r} was blocked: {r.stderr!r}"
+
+
+DENIED_COMMANDS = [
+    "pytest tests/",
+    "py -3 -m pytest tests/",
+    "python -m pytest tests/",
+    "git log",
+    "find /",
+    "find / -name '*.log'",
+]
+
+
+@_pytest.mark.parametrize("command", DENIED_COMMANDS)
+def test_command_is_still_denied(tmp_path, command):
+    """The widened escapes must not have widened a hole: every command the guard exists for
+    still exits 2."""
+    r = run_hook(tmp_path, bash_event(command, tmp_path))
+    assert r.returncode == 2, f"{command!r} was allowed"
+    assert b"[context-guard BLOCK]" in r.stderr
+
+
+def test_cat_of_a_large_file_is_still_denied(tmp_path):
+    big = tmp_path / "big.jsonl"
+    big.write_bytes(b"x" * 60_000)
+    r = run_hook(tmp_path, bash_event("cat big.jsonl", tmp_path))
+    assert r.returncode == 2
+    assert b"over 50 KB" in r.stderr
+
+
+def test_trigger_fires_after_a_command_separator(tmp_path):
+    """Command position is not only the start of the line: `;`, `&&`, `||` and `$(...)` all begin
+    a new command, and the second command in a chain floods the context exactly as much."""
+    for command in ("cd /tmp; pytest tests/", "git fetch && git log", "echo $(git log)"):
+        r = run_hook(tmp_path, bash_event(command, tmp_path))
+        assert r.returncode == 2, f"{command!r} was allowed"
