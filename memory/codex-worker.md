@@ -695,3 +695,32 @@ a read-only path wrapping a mutating opener, I will use URI encoding, mode=ro/qu
 exact file identity, and ordinary locking; I will test concurrent commits and schema invariants
 separately from optional WAL/SHM coordination. Signal: tests assert zero files and tempt an
 immutable flag on a store whose quiescence is not enforced.
+
+## 2026-09-12 - Separate target identity from draft context
+
+A missing copy profile blocked real selected drafting even after successful qualification.
+The manager had coupled format to fit approval. Check the exact hash inputs before
+invalidating completed work: targeting excludes copy format, while selected revisions bind
+full render context. An explicit canonical-only, guarded transaction can add format without
+inventing fit approval or repeating model calls. Verify saved campaign integrity, guard-table
+presence, replay and unchanged upstream hashes through public services.
+
+## 2026-09-12 - Intermittent HTTP errors still need source investigation
+
+Repeated Windows connection aborts across unrelated refusal tests were initially classified
+as environment-sensitive after isolated passes. The handler closes with request body unread,
+a plausible reset race that timing changes can expose. A rerun is evidence of intermittency,
+not proof that product code is correct. Review response/close ordering and verify with a
+split-header/body test; any discard must have byte and total-time bounds after refusal.
+
+## 2026-09-12 - Prove a regression can detect its missing fix
+
+Two socket response-shape tests passed with refusal draining removed. TCP timing alone did
+not prove the discard policy. Counting actual bytes read made the requirement observable;
+counting attempts separately proved no-read refusals, because a timed-out call can return no
+bytes. Also preserve trailing response bytes in the test parser: slicing to Content-Length
+hid a second coalesced response. Keep the negative mutation evidence beside the passing suite.
+
+Publication review initially lacked destination trust. Read-only PR metadata proved the
+existing user-owned repository and exact branch, permitting re-review; this is a legitimate
+new-evidence path, not bypassing a rejection. Record subsequent explicit user approval too.

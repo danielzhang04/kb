@@ -1,28 +1,35 @@
 # Prospecting current state
 
-Updated 2026-09-11T22:54:30.847924+00:00
+Updated 2026-09-12T01:10:37.103235+00:00
 
-Source35ac5517 is published to draftPR181. Recoverable intake/capture/P17/P18/P19/P20,
-selected drafts/source review, restart and exact native runtime are implemented and independently
-reviewed. Acquisition runbook and skill are validated. PII guards passed. Nothing merged/deployed.
+Reviewed source7c1b2ab4 is published to draft PR181. The saved pilot now completes approved
+qualification (3/3 items), deterministic ranking (one selection, five-person shortfall),
+canonical format setup and selected-draft materialization/replay through public services.
+Targeting, qualification and ranking hashes are unchanged. Backup/replay and authority audit
+were verified: one draft binding; zero source attestations, approvals, exec requests or sends.
+Actual native calls prove desktop authentication works.
 
-Whole-project verification:2,082passed,5failed,0errors/0skips in1,245.491s. Two environment-sensitive
-cases passed focused reruns;3recordedP1/P6manifest/gate checks remain human-owned and unresolved.
-No product regression was demonstrated; the fullsuite is not claimedgreen. Accepted focused
-checks:320selected/native,36UI,168acquisition plus37finalverifier,170qualification/native,36postpin.
-Newbundlee07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814 passedall4actual
-adapters andpubliccanary withcompletecleanup. Qualification outcomesunknown, editorialhuman_review.
+Independent Opus148/150 accepted format/hash boundaries. Sonnet149 fixed optional SQLite
+status isolation. Opus151/153/154 reviewed and repaired bounded HTTP refusal handling and
+long numeric headers; Sonnet155/155b strengthened regression proof. Final HTTP42passed in
+19.469s parsedJUnit; removing draining makes the strengthened regression fail. Four framing
+cases verify zero read attempts. Format40 actual-HTML JS checks and7 focused backend checks
+passed. Earlier185 affected tests had184passes and one intermittent HTTP failure, which
+prompted the repair. Final merge simulation against main is clean (24behind/46ahead).
 
-Remaining: explicitapproval totransfer privatepilotprospect/sourcecontext toexistingCodexruntime;
-supportedbrowserforvisibleUIacceptance; humanrecorded-gaterefresh/release review. Realretry was
-blockedbeforeexecution byautomaticapprovalreview; firstP19itemstill1of2attemptsused,0artifacts.
-No confirmations/approvals/readiness/sends. Independent source/testworkcomplete, no active tests.
+Original full suite2087:2082pass5fail,0errors/skips,1245.491s. Two failures passed focused
+reruns; three human-owned P1/P6 records remain unresolved. The full suite was not rerun after
+these focused changes and is not claimed green. Runtime bundle remains
+ e07ade2e36d078cd83fecb2e4244a0c33322563969308da912a18205e0ca7814.
+Four actual native adapters/public prepare and synthetic editorial previously passed.
 
-Claude fallbackpolicy: newworkreturns toClaudeat00:30UTCSeptember12(20:30NewYork) ifworkresumes;
-sourceonlyexistingvCPU preserved. CoordinationPR180 carriescurrenthandoff andledgers.
-Canonicalhandoff: handoffs/2026-09-11-prospecting-infrastructure.md.
+All requested publication/runtime approvals are resolved, including explicit source/HTTP
+publication approval. PR180 carries the coordination handoff; PR181 remains draft. Verified
+Claude Opus5/Sonnet5 source-only workers returned to the existing vCPU after00:30UTC. No active
+worker or pytest session remains. Source tracked files are clean; retained private evidence
+and pre-existing scratch roots remain. No merge, deployment or release is claimed.
 
-Publication checkpoint: sourcePR181updated at35ac5517; coordinationbranchb88dfcd8published normally.
-PR180title/bodyeditrejected beforeexecution byautomaticapprovalreview; explicitapprovalpending.
-Currentdescriptionunchanged. Newlocalmetadata/statusandplan5518114aheldlocally,nofurtherpublication.
-Publishedcoordmergepreserved; plainrebasewouldreplayduplicateoldcommit,wasaborted,currentopsancestorverified.
+Remaining acceptance: supported browser initialization reports no browser available, so
+visible private UI is unverified; human record refresh/release review also remain. Resume
+with those gates, not another qualification call or full-suite rerun without a new reason.
+Canonical handoff: handoffs/2026-09-11-prospecting-infrastructure.md.
