@@ -29,9 +29,17 @@ stdlib only. Invoked as `py -3 scripts/usage_ledger.py [--date YYYY-MM-DD] [--su
 [--no-publish] [--root <path>] [--full]`. Ruling 2026-09-11 Section 0.1: measure only -- this
 script enforces nothing, warns nothing, and never blocks anything it is called from.
 
-`--full` disables the 64 MB per-file skip (fix round 1, C1b): by default a transcript over that
-size is skipped with a one-line stderr note rather than streamed, so a still-growing multi-hundred-
-MB session file (a long-lived boss terminal) does not dominate every single run.
+`--full` is a NO-OP alias kept for one release (fix wave M2): the 64 MB per-file skip and the
+2-day mtime upper bound it used to disable are both gone, because they excluded precisely the
+transcripts worth measuring (a long-lived boss terminal is both the largest file and the one whose
+mtime is always "now"). The run is detached, so scan time costs nobody anything. Passing --full
+prints one stderr note and changes nothing.
+
+WRITE/PUBLISH REFUSALS (fix wave F1, both about never publishing a hollow day over a real one):
+a collected day with ZERO Claude rows writes no files and publishes nothing (one stderr line,
+exit 0) -- a run from a machine with no local transcripts must not overwrite the operator real
+ledger; and publish_to_ops refuses to overwrite an EXISTING ops file whose `_totals` turn count is
+HIGHER than the one being pushed (a later run of the same day can only ever add turns).
 
 NEVER run this from inside a Codex worker's shell: it reads ~/.codex/sessions/**/rollout-*.jsonl,
 and a worker that reads its OWN rollout file mid-session can inject megabytes of its own history
@@ -47,6 +55,7 @@ from __future__ import annotations
 import argparse
 import os
 import random
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -56,7 +65,6 @@ from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-MAX_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 
 # ---------------------------------------------------------------------------
 # Pricing -- an ESTIMATE for cross-session comparison, not a real bill (subscription usage is
@@ -291,32 +299,32 @@ def _day_start_epoch(day: str) -> float:
     return datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp()
 
 
-def collect_claude_rows(env, target_day: str, full: bool = False) -> list[dict]:
-    """C1b: the mtime filter is now a WINDOW, not just a floor -- [start_epoch, start_epoch +
-    2 days) -- so a session file that is still being touched long after target_day (a live boss
-    terminal, mtime always "now") stops being rescanned once its relevant window has passed.
-    Files over MAX_TRANSCRIPT_BYTES are skipped with a one-line stderr note unless `full=True`
-    (`--full`): a still-growing multi-hundred-MB transcript must not be streamed every run."""
+def collect_claude_rows(env, target_day: str) -> list[dict]:
+    """The mtime filter is a FLOOR only (fix wave M2): a file untouched since before target_day
+    began cannot contain target_day rows, so skipping it is free. Both of C1b's narrowing filters
+    are GONE, and they were wrong for the same reason -- the file they excluded is exactly the file
+    that matters:
+
+      * the 2-day mtime UPPER bound excluded any still-open transcript (a long-lived boss terminal
+        has mtime "now" forever), i.e. the single biggest token consumer on the machine;
+      * the 64 MB size skip excluded those same files by another route.
+
+    Both were justified by run time. That justification is void: scripts/preamble.py launches this
+    parser DETACHED (fix round 1, C1c), so nothing waits on it and a slow full scan costs nobody
+    anything. process_claude_file still streams line by line and never holds a whole transcript in
+    memory.
+    """
     root = _claude_projects_dir(env)
     if not root.is_dir():
         return []
     start_epoch = _day_start_epoch(target_day)
-    end_epoch = start_epoch + 2 * 86400
-    max_bytes = None if full else MAX_TRANSCRIPT_BYTES
 
     def _maybe_process(entry: Path, kind: str, session_id: str, project: str) -> list[dict]:
         try:
             st = entry.stat()
         except OSError:
             return []
-        if not (start_epoch <= st.st_mtime < end_epoch):
-            return []
-        if max_bytes is not None and st.st_size > max_bytes:
-            print(
-                f"usage_ledger: skipping {entry} ({st.st_size / 1e6:.0f} MB > 64 MB; "
-                "pass --full to include)",
-                file=sys.stderr,
-            )
+        if st.st_mtime < start_epoch:
             return []
         return process_claude_file(entry, kind, session_id, project, target_day)
 
@@ -511,6 +519,55 @@ def write_summary_sidecar(path: Path, rows: list[dict], target_day: str) -> None
 # commits where a reader could observe one without the other.
 # ---------------------------------------------------------------------------
 
+def totals_turns(text: str) -> int | None:
+    """The `turns` cell of a ledger TSV `_totals` row, or None when `text` is not a ledger TSV
+    (the `.summary` sidecar, an empty file, a foreign file). None means "no opinion" -- callers
+    treat it as "no comparison possible", never as zero."""
+    lines = text.splitlines()
+    if len(lines) < 2 or not lines[0].startswith("#"):
+        return None
+    header = lines[1].split("\t")
+    if "runtime" not in header or "turns" not in header:
+        return None
+    ri, ti = header.index("runtime"), header.index("turns")
+    for line in reversed(lines[2:]):
+        cells = line.split("\t")
+        if len(cells) > max(ri, ti) and cells[ri] == "_totals":
+            try:
+                return int(cells[ti])
+            except ValueError:
+                return None
+    return None
+
+
+def _turn_count_regression(existing: Path, new_content: bytes) -> str | None:
+    """fix wave F1c. A day's ledger can only ever GROW: every later run of the same date sees at
+    least the transcripts the earlier run saw. So a push whose `_totals` turn count is LOWER than
+    what is already on ops is not an update, it is a run that could not see the data -- the VM's
+    detached preamble run against a near-empty `~/.claude/projects` being the case that actually
+    happened. Refuse it and keep the richer file.
+
+    Returns a reason string when the overwrite must be refused, else None (file absent, either side
+    not a ledger TSV, or the new count is >= the existing one). Fail-open by construction: anything
+    unparseable yields None and the publish proceeds exactly as before.
+    """
+    try:
+        if not existing.is_file():
+            return None
+        old_turns = totals_turns(existing.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    if old_turns is None:
+        return None
+    new_turns = totals_turns(new_content.decode("utf-8", errors="replace"))
+    if new_turns is None or new_turns >= old_turns:
+        return None
+    return (
+        f"already on ops with {old_turns} turns, refusing to overwrite it with {new_turns} "
+        "(a later run of the same day can only add turns -- this run could not see the data)"
+    )
+
+
 def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool, str]:
     def git(*a, cwd=repo_root, timeout=120):
         try:
@@ -526,7 +583,8 @@ def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool
         return tracked and git("diff", "--quiet", "--", rel_path, cwd=cwd).returncode == 0
 
     contents = [(rel_path, local_path.read_bytes()) for local_path, rel_path in files]
-    wt = Path(tempfile.mkdtemp(prefix="usage-ledger-")) / "wt"
+    tmp_parent = Path(tempfile.mkdtemp(prefix="usage-ledger-"))
+    wt = tmp_parent / "wt"
     local_sha = ""
     try:
         for attempt in range(3):
@@ -544,6 +602,9 @@ def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool
             changed = []
             for rel_path, content in contents:
                 target = wt / rel_path
+                regression = _turn_count_regression(target, content)
+                if regression:
+                    return False, f"refused: {rel_path} {regression}"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(content)
                 if not already_identical(wt, rel_path):
@@ -560,8 +621,14 @@ def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool
                 return True, "pushed"
         return False, "publish failed after 3 rebuilt attempts (local files kept)"
     finally:
+        # I3: `worktree remove --force` on OUR temp dir only. The `git worktree prune` that used to
+        # follow it ran in the OPERATOR'S main checkout and deleted the administrative records of
+        # every other worktree whose directory happened to be missing at that moment (an unplugged
+        # external drive, a dir being moved, a lease another agent was mid-way through creating) --
+        # a global side effect from a local cleanup. `remove --force` already prunes the record of
+        # the worktree it removes. The mkdtemp PARENT is ours too and was leaked on every publish.
         git("worktree", "remove", "--force", str(wt))
-        git("worktree", "prune")
+        shutil.rmtree(tmp_parent, ignore_errors=True)
 
 
 # ---------------------------------------------------------------------------
@@ -582,7 +649,11 @@ def _pending_marker(target_day: str) -> Path:
 def _publish_and_track(root: Path, files: list[tuple[Path, str]], target_day: str) -> None:
     ok, msg = publish_to_ops(root, files)
     marker = _pending_marker(target_day)
-    if ok:
+    # A "refused:" result (fix wave F1c) is TERMINAL, not contention: the local file is thinner
+    # than the one on ops and re-running the identical publish would refuse identically. It clears
+    # the pending marker like a success does -- while still printing the reason and reporting
+    # failure -- so it never turns into a publish retried at every single session start.
+    if ok or msg.startswith("refused:"):
         try:
             marker.unlink()
         except OSError:
@@ -593,15 +664,37 @@ def _publish_and_track(root: Path, files: list[tuple[Path, str]], target_day: st
             marker.write_text(msg, encoding="utf-8")
         except OSError:
             pass
+    if not ok:
         rel_paths = ", ".join(rel for _, rel in files)
         print(f"usage_ledger: publish failed for {rel_paths}: {msg}", file=sys.stderr)
 
 
-def _run(env, root: Path, target_day: str, full: bool = False) -> tuple[list[dict], Path, Path]:
-    rows = collect_claude_rows(env, target_day, full=full) + collect_codex_rows(env, target_day)
+def has_claude_rows(rows: list[dict]) -> bool:
+    return any(r["runtime"] == "claude" for r in rows)
+
+
+def _run(env, root: Path, target_day: str) -> tuple[list[dict], Path | None, Path | None]:
+    """Collect the day and write the TSV + sidecar -- UNLESS the day collected zero Claude rows,
+    in which case nothing is written and `(rows, None, None)` is returned (fix wave F1b).
+
+    A zero-Claude-row day is not a real measurement, it is a measurement taken somewhere there is
+    nothing to measure: the VM preamble gates run this same `main()` against a checkout with no
+    `ledgers/usage/` and a near-empty `~/.claude/projects`. Writing that day and publishing it
+    replaced the operator real ledger on ops with a hollow one. A day on which the operator
+    genuinely ran no Claude session is indistinguishable from that case and equally worthless, so
+    both are declined; the file simply stays absent and the next run recomputes it.
+    """
+    rows = collect_claude_rows(env, target_day) + collect_codex_rows(env, target_day)
     rows.sort(key=lambda r: (r["runtime"], r["model"], r["session"], r["kind"]))
     out_path = root / "ledgers" / "usage" / f"{target_day}.tsv"
     sidecar_path = root / "ledgers" / "usage" / f"{target_day}.summary"
+    if not has_claude_rows(rows):
+        print(
+            f"usage_ledger: {target_day} collected 0 Claude rows -- writing nothing and publishing "
+            "nothing (a run with no local transcripts must not overwrite the real ledger on ops)",
+            file=sys.stderr,
+        )
+        return rows, None, None
     write_ledger(out_path, rows)
     write_summary_sidecar(sidecar_path, rows, target_day)
     return rows, out_path, sidecar_path
@@ -613,7 +706,8 @@ def main(argv=None) -> int:
     parser.add_argument("--summary", action="store_true", help="print the one-line summary")
     parser.add_argument("--no-publish", action="store_true", help="skip the ops publish (tests, dry runs)")
     parser.add_argument("--root", default=None, help="repo root override (tests only)")
-    parser.add_argument("--full", action="store_true", help="include transcripts over 64 MB (skipped by default)")
+    parser.add_argument("--full", action="store_true",
+                        help="no-op alias kept for one release (the size/mtime skips it disabled are gone)")
     args = parser.parse_args(argv)
 
     env = os.environ
@@ -638,12 +732,18 @@ def main(argv=None) -> int:
     rel_path = f"ledgers/usage/{target_day}.tsv"
     sidecar_rel = f"ledgers/usage/{target_day}.summary"
 
+    if args.full:
+        print("usage_ledger: --full is a no-op alias (fix wave M2); nothing is skipped any more",
+              file=sys.stderr)
+
     need_publish = False
     if out_path.exists():
         rows = read_existing_rows(out_path)
         if rows is None:
             print(f"usage_ledger: {out_path} missing the expected header, regenerating", file=sys.stderr)
-            rows, out_path, sidecar_path = _run(env, root, target_day, full=args.full)
+            rows, out_path, sidecar_path = _run(env, root, target_day)
+            if out_path is None:
+                return 0  # nothing collected -- the bad file is left exactly as it was
             need_publish = True
         else:
             # fix round 3: the sidecar is regenerated on the idempotent-read path if it's missing
@@ -655,7 +755,9 @@ def main(argv=None) -> int:
             if _pending_marker(target_day).exists():
                 need_publish = True
     else:
-        rows, out_path, sidecar_path = _run(env, root, target_day, full=args.full)
+        rows, out_path, sidecar_path = _run(env, root, target_day)
+        if out_path is None:
+            return 0  # zero Claude rows -- see _run docstring
         need_publish = True
 
     if need_publish and not args.no_publish:

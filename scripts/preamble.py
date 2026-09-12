@@ -76,8 +76,21 @@ def _acquire_lock(lock_file: Path) -> bool:
     for attempt in range(2):
         try:
             fd = os.open(str(lock_file), os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            with os.fdopen(fd, "w") as f:
-                f.write(str(time.time()))
+            # `os.fdopen` TAKES OWNERSHIP of `fd` only once it returns; if it raises (fix wave M1)
+            # the descriptor is still ours and leaks unless we close it here. `adopted` is set
+            # inside the `with` header's body, so it is True only on the path where fdopen
+            # returned and the `with` block owns the close.
+            adopted = False
+            try:
+                with os.fdopen(fd, "w") as f:
+                    adopted = True
+                    f.write(str(time.time()))
+            finally:
+                if not adopted:
+                    try:
+                        os.close(fd)
+                    except OSError:
+                        pass
             return True
         except FileExistsError:
             if attempt == 0:
@@ -127,12 +140,22 @@ def _launch_usage_ledger(args: list[str], cwd: str, log) -> None:
     subprocess.Popen(args, **kwargs)
 
 
-def _maybe_run_usage_ledger(root: Path) -> None:
+def _maybe_run_usage_ledger(root: Path, env: dict | None = None) -> None:
     """Best-effort, NON-BLOCKING, fail-open: launches usage_ledger.py DETACHED for yesterday if
     that day's file doesn't exist yet, then returns immediately -- the ledger file appears in time
     for the NEXT session, not this one. NEVER affects preamble's PASS/FAIL verdict (ruling:
     measure only) -- called only from main(), never from check(), so a library caller
     (codex_dispatch.py calls preamble.check() on every dispatch) never pays this cost.
+
+    OPT-IN (fix wave F1, CRITICAL). Nothing happens at all unless `KB_USAGE_LEDGER=1` is in the
+    environment. `main()` here is not only run by the operator's shell: the VM runs it too, via
+    dashboard/server/write/preambleGate.ts and broker/preambleGate.ts, in a checkout with no
+    `ledgers/usage/` and a near-empty `~/.claude/projects`. There the detached parser computed a
+    ~zero-row day and `publish_to_ops` OVERWROTE the operator's real TSV + sidecar on ops. The
+    variable is set ONLY in the project `.claude/settings.json` `env` block, which is loaded by
+    Claude Code sessions on the operator machine and by nothing else -- the VM gates shell out to
+    this file without it, so they now skip the launch entirely. (usage_ledger.py additionally
+    refuses to write or publish a day with zero Claude rows; belt and buckle.)
 
     fix round 1, C1c: this used to call `subprocess.run(..., timeout=5)` SYNCHRONOUSLY. On a real
     machine with real transcript volume, usage_ledger.py's own collection step alone measured
@@ -142,6 +165,10 @@ def _maybe_run_usage_ledger(root: Path) -> None:
     dispatches in flight at once) from launching a duplicate parser for the same day. Log output
     goes to `<date>.log` in the same dir -- nothing is printed here, since nothing is waited on.
     """
+    env = os.environ if env is None else env
+    if env.get("KB_USAGE_LEDGER") != "1":
+        return
+
     yesterday = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     ledger_file = Path(root) / "ledgers" / "usage" / f"{yesterday}.tsv"
     if ledger_file.exists():
@@ -168,6 +195,14 @@ def _maybe_run_usage_ledger(root: Path) -> None:
             return
         except OSError:
             continue
+
+    # fix wave M1: BOTH interpreters failed to launch, so no parser is running and nothing will
+    # ever clear this lock -- holding it would suppress every retry for the next 10 minutes
+    # (_LOCK_STALE_SECONDS) for no reason. Release it so the next session tries again immediately.
+    try:
+        lock_file.unlink()
+    except OSError:
+        pass
 
 
 def main() -> int:

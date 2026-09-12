@@ -7,6 +7,7 @@ throwaway fixture tree, and --no-publish so no test ever touches a real git remo
 """
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -175,7 +176,7 @@ def test_collect_codex_rows_finds_session_filed_under_previous_day_dir(tmp_path)
     assert rows[0]["session"] == "late"
 
 
-# ── C1b: bounded mtime window + oversized-file skip for Claude transcripts ──────────────────────
+# ── M2: NO upper mtime bound and NO size skip -- the excluded file was the one that mattered ───
 
 class _FakeStat:
     """Wraps a real os.stat_result, overriding only st_size -- every other attribute (st_mtime
@@ -188,56 +189,54 @@ class _FakeStat:
         return getattr(self._real, name)
 
 
-def test_collect_claude_rows_skips_oversized_file_by_default(tmp_path, monkeypatch, capsys):
+def test_collect_claude_rows_includes_an_oversized_file(tmp_path, monkeypatch):
+    """fix wave M2: the 64 MB skip is GONE. A multi-hundred-MB transcript is a long-lived boss
+    terminal -- the single largest token consumer on the machine and the whole reason the ledger
+    exists. Skipping it to save scan time on a run nothing waits on measured everything except
+    the thing worth measuring."""
     day = "2026-09-10"
     claude_root = tmp_path / "claude_projects" / "proj1"
     claude_root.mkdir(parents=True)
     big = claude_root / "big.jsonl"
     big.write_text(_claude_line("claude-sonnet-5", day) + "\n", encoding="utf-8")
-    in_window = ul._day_start_epoch(day) + 3600  # 1h into target_day -- independent of real "now"
+    in_window = ul._day_start_epoch(day) + 3600
     os.utime(big, (in_window, in_window))
     real_stat = Path.stat
 
     def fake_stat(self, *a, **k):
         st = real_stat(self, *a, **k)
-        return _FakeStat(st, ul.MAX_TRANSCRIPT_BYTES + 1) if self == big else st
+        return _FakeStat(st, 512 * 1024 * 1024) if self == big else st
 
     monkeypatch.setattr(Path, "stat", fake_stat)
     env = {"KB_CLAUDE_PROJECTS_DIR": str(claude_root.parent)}
-    assert ul.collect_claude_rows(env, day) == []
-    assert "skipping" in capsys.readouterr().err
+    assert len(ul.collect_claude_rows(env, day)) == 1
+    assert not hasattr(ul, "MAX_TRANSCRIPT_BYTES"), "the size-skip constant should be gone entirely"
 
 
-def test_collect_claude_rows_includes_oversized_file_with_full(tmp_path, monkeypatch):
+def test_collect_claude_rows_includes_a_still_growing_transcript(tmp_path):
+    """fix wave M2, the inverse of the old C1b test: a session file still being touched long after
+    target_day (mtime always "now") used to fall outside the 2-day window and be skipped. That is
+    a live boss terminal -- it must be scanned, whatever its mtime says."""
     day = "2026-09-10"
     claude_root = tmp_path / "claude_projects" / "proj1"
     claude_root.mkdir(parents=True)
-    big = claude_root / "big.jsonl"
-    big.write_text(_claude_line("claude-sonnet-5", day) + "\n", encoding="utf-8")
-    in_window = ul._day_start_epoch(day) + 3600  # 1h into target_day -- independent of real "now"
-    os.utime(big, (in_window, in_window))
-    real_stat = Path.stat
-
-    def fake_stat(self, *a, **k):
-        st = real_stat(self, *a, **k)
-        return _FakeStat(st, ul.MAX_TRANSCRIPT_BYTES + 1) if self == big else st
-
-    monkeypatch.setattr(Path, "stat", fake_stat)
-    env = {"KB_CLAUDE_PROJECTS_DIR": str(claude_root.parent)}
-    rows = ul.collect_claude_rows(env, day, full=True)
-    assert len(rows) == 1
-
-
-def test_collect_claude_rows_ignores_mtime_far_past_the_two_day_window(tmp_path):
-    """A still-growing transcript touched long after target_day's 2-day window must not be
-    rescanned every run (a live boss terminal's mtime is always "now")."""
-    day = "2026-09-10"
-    claude_root = tmp_path / "claude_projects" / "proj1"
-    claude_root.mkdir(parents=True)
-    stale = claude_root / "still_growing.jsonl"
-    stale.write_text(_claude_line("claude-sonnet-5", day) + "\n", encoding="utf-8")
+    live = claude_root / "still_growing.jsonl"
+    live.write_text(_claude_line("claude-sonnet-5", day) + "\n", encoding="utf-8")
     far_future = ul._day_start_epoch(day) + 30 * 86400
-    os.utime(stale, (far_future, far_future))
+    os.utime(live, (far_future, far_future))
+    env = {"KB_CLAUDE_PROJECTS_DIR": str(claude_root.parent)}
+    assert len(ul.collect_claude_rows(env, day)) == 1
+
+
+def test_collect_claude_rows_still_skips_a_file_untouched_before_the_day(tmp_path):
+    """The FLOOR stays: a file not written since before target_day began cannot hold its rows."""
+    day = "2026-09-10"
+    claude_root = tmp_path / "claude_projects" / "proj1"
+    claude_root.mkdir(parents=True)
+    old_file = claude_root / "old.jsonl"
+    old_file.write_text(_claude_line("claude-sonnet-5", day) + "\n", encoding="utf-8")
+    before = ul._day_start_epoch(day) - 86400
+    os.utime(old_file, (before, before))
     env = {"KB_CLAUDE_PROJECTS_DIR": str(claude_root.parent)}
     assert ul.collect_claude_rows(env, day) == []
 
@@ -374,7 +373,11 @@ def _make_fixture_tree(tmp_path, day):
         ]) + "\n",
         encoding="utf-8",
     )
-    return claude_root.parent.parent, codex_root.parent.parent.parent
+    # KB_CLAUDE_PROJECTS_DIR must be the PROJECTS dir itself (its children are project dirs), not
+    # its parent. It was the parent, so every CLI test below collected ZERO Claude rows and still
+    # passed -- a zero-row day used to be written anyway. Fix wave F1b declines to write that day,
+    # which is what surfaced the bug: these tests had been asserting the shape of an empty ledger.
+    return claude_root.parent, codex_root.parent.parent.parent
 
 
 def _run(env_extra, *args):
@@ -399,6 +402,10 @@ def test_cli_writes_ledger_and_summary(tmp_path):
     assert text.startswith("#")  # rate-table header
     assert "_totals" in text
     assert "est_usd" in text.splitlines()[1]  # header row
+    # The fixture must actually produce Claude rows (both a top session and a subagent one) --
+    # asserting only the header/_totals shape is what let the fixture-root bug hide.
+    kinds = {line.split("	")[3] for line in text.splitlines() if line.startswith("claude	")}
+    assert kinds == {"top", "subagent"}, f"fixture produced no real Claude rows: {kinds}"
 
 
 def test_cli_writes_summary_sidecar_alongside_tsv(tmp_path):
@@ -523,3 +530,196 @@ def test_cli_retries_publish_when_pending_marker_exists(tmp_path):
     assert r2.returncode == 0
     assert marker.exists()  # still failing (no real git remote) -- retried, not silently dropped
     assert "publish failed" in r2.stderr
+
+
+# ── fix wave F1b: a day with zero Claude rows is never written and never published ──────────────
+
+def _ledger_text(turns: int, session: str = "s1") -> str:
+    """A syntactically real ledger TSV (header + one row + `_totals`) with a chosen turn count."""
+    row = {
+        "runtime": "claude", "model": "opus", "session": session, "kind": "top", "project": "p",
+        "input_tokens": 1, "cache_creation_tokens": 0, "cache_read_tokens": 0, "output_tokens": 1,
+        "turns": turns, "max_ctx_tokens": 10, "codex_cumulative_total": None, "est_usd": 0.1,
+    }
+    lines = [ul.RATE_TABLE_HEADER, "\t".join(ul.TSV_FIELDS)]
+    for r in [row, ul.build_totals_row([row])]:
+        lines.append("\t".join(ul._cell(r.get(k)) for k in ul.TSV_FIELDS))
+    return "\n".join(lines) + "\n"
+
+
+def test_run_writes_nothing_when_the_day_has_zero_claude_rows(tmp_path):
+    """THE critical one. The VM's preamble gates run this same main() against a checkout with no
+    ledgers/usage/ and a near-empty ~/.claude/projects: it computed a ~zero-row day and published
+    it over the operator's real ledger on ops. Nothing collected -> nothing written."""
+    repo_root = tmp_path / "repo"
+    env = {"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "nope"), "KB_CODEX_SESSIONS_DIR": str(tmp_path / "nope2")}
+    rows, out_path, sidecar_path = ul._run(env, repo_root, "2026-09-10")
+    assert rows == [] and out_path is None and sidecar_path is None
+    assert not (repo_root / "ledgers").exists()
+
+
+def test_run_writes_nothing_for_a_codex_only_day(tmp_path):
+    """Codex rows alone do not make the day real: the Claude side is what the VM cannot see, and
+    a TSV holding only codex rows would still overwrite a full day on ops."""
+    day = "2026-09-10"
+    codex_root = tmp_path / "codex_sessions" / "2026" / "09" / "10"
+    codex_root.mkdir(parents=True)
+    (codex_root / "rollout-1.jsonl").write_text(
+        "\n".join([
+            _codex_line({"type": "session_meta", "payload": {"session_id": "c1", "timestamp": f"{day}T01:00:00Z"}}),
+            _codex_line({"type": "event_msg", "payload": {"type": "token_count", "info": {
+                "total_token_usage": {"input_tokens": 10, "cached_input_tokens": 5, "output_tokens": 2, "total_tokens": 12},
+            }}}),
+        ]) + "\n", encoding="utf-8")
+    repo_root = tmp_path / "repo"
+    env = {"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "nope"), "KB_CODEX_SESSIONS_DIR": str(tmp_path / "codex_sessions")}
+    rows, out_path, _ = ul._run(env, repo_root, day)
+    assert rows and out_path is None
+    assert not (repo_root / "ledgers").exists()
+
+
+def test_cli_declines_a_zero_claude_row_day_without_touching_disk(tmp_path):
+    day = "2026-09-10"
+    repo_root = tmp_path / "repo"
+    repo_root.mkdir()
+    r = _run({"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "nope"), "KB_CODEX_SESSIONS_DIR": str(tmp_path / "nope2")},
+             "--date", day, "--root", str(repo_root))  # NOTE: publish NOT disabled
+    assert r.returncode == 0
+    assert "0 Claude rows" in r.stderr
+    assert not (repo_root / "ledgers" / "usage" / f"{day}.tsv").exists()
+    assert not (repo_root / "ledgers" / "usage" / f"{day}.summary").exists()
+
+
+def test_cli_leaves_a_bad_header_file_alone_when_nothing_can_be_collected(tmp_path):
+    """The regeneration path is subject to the same rule: an unparseable local file is not a
+    licence to replace it with an empty one."""
+    day = "2026-09-10"
+    repo_root = tmp_path / "repo"
+    out_path = repo_root / "ledgers" / "usage" / f"{day}.tsv"
+    out_path.parent.mkdir(parents=True)
+    out_path.write_text("not a valid ledger file\n", encoding="utf-8")
+    r = _run({"KB_CLAUDE_PROJECTS_DIR": str(tmp_path / "nope"), "KB_CODEX_SESSIONS_DIR": str(tmp_path / "nope2")},
+             "--date", day, "--root", str(repo_root), "--no-publish")
+    assert r.returncode == 0
+    assert out_path.read_text(encoding="utf-8") == "not a valid ledger file\n"
+
+
+# ── fix wave F1c: a thinner day never overwrites a richer one already on ops ────────────────────
+
+def test_totals_turns_reads_the_totals_row_and_ignores_non_ledgers():
+    assert ul.totals_turns(_ledger_text(turns=137)) == 137
+    assert ul.totals_turns("2026-09-10: claude $1.00-eq / codex $0.00-eq | 5 turns\n") is None
+    assert ul.totals_turns("") is None
+
+
+def test_publish_to_ops_refuses_to_overwrite_a_richer_day_on_ops(tmp_path):
+    """A later run of the same date can only ever ADD turns, so a lower count means the pusher
+    could not see the data (the VM case). Keep what is on ops."""
+    repo_root = _init_ops_remote(tmp_path)
+    rel = "ledgers/usage/2026-09-10.tsv"
+    rich = tmp_path / "rich.tsv"
+    rich.write_text(_ledger_text(turns=500), encoding="utf-8")
+    ok, msg = ul.publish_to_ops(repo_root, [(rich, rel)])
+    assert ok and msg == "pushed"
+
+    thin = tmp_path / "thin.tsv"
+    thin.write_text(_ledger_text(turns=3), encoding="utf-8")
+    ok2, msg2 = ul.publish_to_ops(repo_root, [(thin, rel)])
+    assert ok2 is False
+    assert msg2.startswith("refused:") and "500" in msg2 and "3" in msg2
+
+    on_ops = subprocess.run(["git", "show", f"origin/ops:{rel}"], cwd=repo_root,
+                            capture_output=True, text=True, check=True).stdout
+    assert ul.totals_turns(on_ops) == 500  # untouched
+
+
+def test_publish_to_ops_allows_a_day_that_grew(tmp_path):
+    repo_root = _init_ops_remote(tmp_path)
+    rel = "ledgers/usage/2026-09-10.tsv"
+    first = tmp_path / "first.tsv"
+    first.write_text(_ledger_text(turns=10), encoding="utf-8")
+    assert ul.publish_to_ops(repo_root, [(first, rel)])[0]
+    grown = tmp_path / "grown.tsv"
+    grown.write_text(_ledger_text(turns=11), encoding="utf-8")
+    ok, msg = ul.publish_to_ops(repo_root, [(grown, rel)])
+    assert ok and msg == "pushed"
+    on_ops = subprocess.run(["git", "show", f"origin/ops:{rel}"], cwd=repo_root,
+                            capture_output=True, text=True, check=True).stdout
+    assert ul.totals_turns(on_ops) == 11
+
+
+def test_publish_to_ops_publishes_a_brand_new_day_normally(tmp_path):
+    """No file on ops to compare against -> nothing to refuse. The guard only ever protects an
+    EXISTING richer file; it must not become a first-publish blocker."""
+    repo_root = _init_ops_remote(tmp_path)
+    thin = tmp_path / "thin.tsv"
+    thin.write_text(_ledger_text(turns=1), encoding="utf-8")
+    ok, msg = ul.publish_to_ops(repo_root, [(thin, "ledgers/usage/2026-09-11.tsv")])
+    assert ok and msg == "pushed"
+
+
+def test_publish_and_track_clears_the_marker_on_a_terminal_refusal(tmp_path, monkeypatch):
+    """A refusal is not contention: retrying the identical publish refuses identically, so it must
+    not leave a `.pending` marker that forces a git fetch at every session start forever."""
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
+    marker = ul._pending_marker("2026-09-10")
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    marker.write_text("a previous failure", encoding="utf-8")
+    monkeypatch.setattr(ul, "publish_to_ops", lambda root, files: (False, "refused: ledgers/... thinner"))
+    ul._publish_and_track(tmp_path, [(tmp_path / "x.tsv", "ledgers/usage/2026-09-10.tsv")], "2026-09-10")
+    assert not marker.exists()
+
+
+# ── fix wave I3: cleanup touches only what this publish created ────────────────────────────────
+
+def test_publish_to_ops_does_not_prune_unrelated_worktrees(tmp_path):
+    """`git worktree prune` ran in the OPERATOR'S main checkout and deleted the administrative
+    record of every worktree whose directory was missing at that moment -- someone else's lease,
+    a dir being moved, a drive not mounted. Local cleanup, global side effect."""
+    repo_root = _init_ops_remote(tmp_path)
+    other = tmp_path / "other-wt"
+    subprocess.run(["git", "-C", str(repo_root), "worktree", "add", "--detach", str(other), "HEAD"],
+                   check=True, capture_output=True)
+    shutil.rmtree(other)  # now prunable: registered, but its directory is gone
+
+    out_path = tmp_path / "2026-09-10.tsv"
+    out_path.write_text(_ledger_text(turns=5), encoding="utf-8")
+    ok, _ = ul.publish_to_ops(repo_root, [(out_path, "ledgers/usage/2026-09-10.tsv")])
+    assert ok
+
+    listing = subprocess.run(["git", "-C", str(repo_root), "worktree", "list", "--porcelain"],
+                             capture_output=True, text=True, check=True).stdout
+    assert "other-wt" in listing.replace("\\", "/"), "an unrelated worktree record was pruned"
+
+
+def test_publish_to_ops_removes_its_own_temp_directory(tmp_path, monkeypatch):
+    """The mkdtemp PARENT (not just the worktree inside it) was left behind on every single
+    publish -- one directory per day, forever, under the system temp dir."""
+    repo_root = _init_ops_remote(tmp_path)
+    made = []
+    real_mkdtemp = ul.tempfile.mkdtemp
+
+    def tracking_mkdtemp(*a, **k):
+        d = real_mkdtemp(*a, **k)
+        made.append(Path(d))
+        return d
+
+    monkeypatch.setattr(ul.tempfile, "mkdtemp", tracking_mkdtemp)
+    out_path = tmp_path / "2026-09-10.tsv"
+    out_path.write_text(_ledger_text(turns=5), encoding="utf-8")
+    assert ul.publish_to_ops(repo_root, [(out_path, "ledgers/usage/2026-09-10.tsv")])[0]
+    assert made and not made[0].exists(), f"leaked temp dir {made[0] if made else None}"
+
+
+# ── fix wave M2: --full survives as an inert alias for one release ─────────────────────────────
+
+def test_cli_accepts_full_as_a_documented_no_op(tmp_path):
+    day = "2026-09-10"
+    claude_dir, codex_dir = _make_fixture_tree(tmp_path, day)
+    repo_root = tmp_path / "repo"
+    (repo_root / "ledgers").mkdir(parents=True)
+    r = _run({"KB_CLAUDE_PROJECTS_DIR": str(claude_dir), "KB_CODEX_SESSIONS_DIR": str(codex_dir)},
+             "--date", day, "--root", str(repo_root), "--no-publish", "--full")
+    assert r.returncode == 0, r.stderr
+    assert "no-op" in r.stderr
+    assert (repo_root / "ledgers" / "usage" / f"{day}.tsv").exists()
