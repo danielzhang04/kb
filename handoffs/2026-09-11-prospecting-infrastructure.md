@@ -1,7 +1,7 @@
 # Prospecting infrastructure handoff ? 2026-09-12
 
 Updated 2026-09-12T04:39:35.725516+00:00. Assigned infrastructure implementation and validation complete.
-Source37c13412 is published to draft PR181; this final handoff is delivered through PR180. No live test or
+Source74406c4d is published to draft PR181; this final handoff is delivered through PR180. No live test or
 Claude worker remains. Retained at the user's explicit request.
 
 ## Goal and roots
@@ -173,8 +173,14 @@ PR181 (source) and PR180 (coordination) remain OPEN DRAFT. Earlier runtime-trans
 PR-summary, handoff and source/HTTP publication approvals remain resolved; no rejection
 is pending. Coordination preserves normal merge ancestry with ops usage-ledger updates.
 No force push/direct ops/main write. Both worktrees remain unmerged and are retained.
-Final source publication head: 37c1341251b455e004e2ed4d37d5df6d706c2f0b.
+Final source publication head: 74406c4d77eb93c4bb8a8636864055a8082ab58f.
 
 Final source staged PII and diff guards passed before commit37c13412. PR181 publication was
 verified by push and exact remote head. Current coordination staged guards are checked
 before its final commit; the historical inspector-role failure remains separately disclosed.
+
+PR180 handoff commitabfe1a6e and both updated PR summaries were published successfully.
+Final source head74406c4d adds only the historical hash-label clarification after37c13412.
+Final source and coordination diff/PII checks passed before those commits. The subsequent
+ops state-format merge preserves its historical Decisions alongside the current completed
+Prospecting state; no old authentication blocker is restored.

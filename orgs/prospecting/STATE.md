@@ -2,7 +2,7 @@
 
 Updated 2026-09-12T04:37:21.798672+00:00. The assigned infrastructure implementation and validation are complete.
 Final publication is on the existing draft PR181 (source) and PR180 (coordination).
-Accepted implementation f9da2881, generated P1 record67218ba5, final source documentation37c13412 is published;
+Accepted implementation f9da2881, generated P1 record67218ba5, final source documentation74406c4d is published;
 exact publication head is retained in the canonical handoff.
 
 Full-suite179:2147 passed,0 failures/errors/skips,738.964s JUnit (739.41s CLI,
@@ -37,3 +37,7 @@ No implementation blocker remains for the assigned scope. Protected merge/deploy
 source attestation, human readiness and outreach are separate future actions.
 Canonical handoff: handoffs/2026-09-11-prospecting-infrastructure.md, retained as requested.
 Completion audit: docs/superpowers/reviews/2026-09-12-prospecting-completion-audit.md on PR181.
+
+## Decisions
+- 2026-09-04 — Deliver only people with confidently found emails; substitute prospect then firm — shallow rows are worthless to outreach
+- 2026-09-07 — LinkedIn facts fetched via Daniel's own Chrome (override of the dedicated-profile rule) — firm bio pages too thin
