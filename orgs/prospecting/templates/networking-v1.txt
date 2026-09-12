@@ -1,0 +1,10 @@
+template_id: networking
+template_version: 1
+intent: networking
+subject: A question about {company}
+body:
+Hi {first_name},
+
+{why_them} I am exploring how people build effective operating careers, and your path at {company} stood out. {sender_proof} I would value your perspective on the work, the choices that shaped your path, and what you would focus on when learning the field today. {ask}
+
+{signature}

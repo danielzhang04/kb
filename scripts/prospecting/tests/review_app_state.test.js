@@ -1,0 +1,2350 @@
+"use strict";
+
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
+const test = require("node:test");
+const vm = require("node:vm");
+
+class Classes {
+  constructor() { this.values = new Set(); }
+  add(value) { this.values.add(value); }
+  remove(value) { this.values.delete(value); }
+  contains(value) { return this.values.has(value); }
+}
+
+class Element {
+  constructor(id, owner) {
+    this.id = id;
+    this.owner = owner;
+    this.value = "";
+    this.textContent = "";
+    this.hidden = false;
+    this.dataset = {};
+    this.attributes = {};
+    this.classList = new Classes();
+    this.listeners = {};
+    this._innerHTML = "";
+  }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  dispatch(type) {
+    for (const callback of this.listeners[type] || []) callback({target: this, preventDefault() {}});
+  }
+  setAttribute(name, value) { this.attributes[name] = String(value); }
+  focus() {}
+  reset() {}
+  closest() { return this; }
+  set innerHTML(value) {
+    this._innerHTML = value;
+    if (this.id === "draftDetail") this.owner.hydrateDraft(value);
+  }
+  get innerHTML() { return this._innerHTML; }
+}
+
+class Document {
+  constructor(html) {
+    this.elements = new Map();
+    this.listeners = {};
+    this.body = new Element("body", this);
+    this.documentElement = new Element("html", this);
+    for (const match of html.matchAll(/id="([^"]+)"/g)) this.getElementById(match[1]);
+    for (const id of ["draftSubject", "draftBody", "feedbackDisposition", "feedbackText", "localDraftNotice", "draftError"])
+      this.getElementById(id);
+  }
+  getElementById(id) {
+    if (!this.elements.has(id)) this.elements.set(id, new Element(id, this));
+    return this.elements.get(id);
+  }
+  querySelector(selector) {
+    if (selector === 'meta[name="csrf-token"]') return {content: "csrf-test"};
+    return null;
+  }
+  querySelectorAll() { return []; }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
+  emit(type, target) {
+    for (const callback of this.listeners[type] || []) callback({target, preventDefault() {}});
+  }
+  hydrateDraft(html) {
+    const decode = value => String(value || "").replaceAll("&quot;", '"').replaceAll("&#39;", "'").replaceAll("&lt;", "<").replaceAll("&gt;", ">").replaceAll("&amp;", "&");
+    const subject = html.match(/id="draftSubject" value="([^"]*)"/);
+    const body = html.match(/<textarea id="draftBody"[^>]*>([\s\S]*?)<\/textarea>/);
+    const feedback = html.match(/<textarea id="feedbackText"[^>]*>([\s\S]*?)<\/textarea>/);
+    if (subject) this.getElementById("draftSubject").value = decode(subject[1]);
+    if (body) this.getElementById("draftBody").value = decode(body[1]);
+    if (feedback) this.getElementById("feedbackText").value = decode(feedback[1]);
+    this.getElementById("feedbackDisposition").value = "tone";
+  }
+}
+
+const tick = () => new Promise(resolve => setImmediate(resolve));
+
+function sessionStore(initial = {}) {
+  const values = new Map(Object.entries(initial));
+  return {
+    values,
+    getItem: key => (values.has(key) ? values.get(key) : null),
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: key => values.delete(key),
+  };
+}
+
+function snapshot(campaign, subject = "Server subject", body = "Server body") {
+  const campaigns = ["A", "B"].map(id => ({campaign_id: id, intent: `campaign_${id}`, status: "draft", next_action: "review_drafts"}));
+  return {
+    campaigns, sender_profiles: [{sender_profile_id: "profile", sender_name: "Saved profile"}], mailboxes: ["mailbox"], campaign: campaign ? campaigns.find(item => item.campaign_id === campaign) : null,
+    people: [], schedule: [], activity: [], control: null, pipeline: null, funding: null,
+    editorial_pipeline: [], next_action: {},
+    drafts: campaign ? [{campaign_id: campaign, person_id: `person-${campaign}`, full_name: `Person ${campaign}`, revision_id: `rev-${campaign}`,
+      step: 0, subject, body, evidence: [], candidate_id: null, candidate_subject: null, candidate_body: null,
+      candidate_state: null, qa_failure_codes: [], candidate_history: [], editorial_state: "review_required",
+      approval_state: "missing", feedback_state: null}] : [],
+  };
+}
+
+function harness(options = {}) {
+  const htmlPath = path.join(__dirname, "..", "review_app.html");
+  const html = fs.readFileSync(htmlPath, "utf8");
+  const source = html.match(/<script>\s*([\s\S]*?)\s*<\/script>/)[1];
+  const document = new Document(html);
+  const requests = [];
+  let uuid = 0;
+  const globals = {
+    console, document, encodeURIComponent, setTimeout, clearTimeout,
+    crypto: {randomUUID: () => `aaaaaaaa-aaaa-4aaa-8aaa-${(++uuid).toString(16).padStart(12, "a")}`},
+    fetch(url, init = {}) {
+      return new Promise((resolve, reject) => requests.push({url, init, resolve, reject}));
+    },
+  };
+  if (Object.prototype.hasOwnProperty.call(options, "localStorage")) globals.localStorage = options.localStorage;
+  if (Object.prototype.hasOwnProperty.call(options, "sessionStorage")) globals.sessionStorage = options.sessionStorage;
+  const context = vm.createContext(globals);
+  const defaults = {
+    purpose: "networking", targetCount: "20", tone: "warm", conversationAsk: "informational_call", minutes: "15",
+    industry: "", role: "", location: "", advancedBrief: "", priorCareer: "", mustHave: "", preferred: "",
+    modelVersion: "", senderProfile: "profile", mailboxId: "mailbox",
+  };
+  for (const [id, value] of Object.entries(defaults)) document.getElementById(id).value = value;
+  vm.runInContext(source, context, {filename: htmlPath});
+  return {
+    context, document, requests,
+    reply(request, value, ok = true) { request.resolve({ok, async json() { return value; }}); },
+    evaluate(source) { return vm.runInContext(source, context); },
+  };
+}
+
+test("latest campaign load wins and accepted failure clears prior projections", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+
+  app.evaluate('state.campaign="A"; globalThis.loadA=load("A")');
+  const loadA = app.requests.shift();
+  app.evaluate('state.campaign="B"; globalThis.loadB=load("B")');
+  const loadB = app.requests.shift();
+  const current = snapshot("B");
+  current.funding = {
+    state: "awaiting_qualification_factcheck", candidate_count: 1,
+    provisional_match_count: 0, provisional_excluded_count: 0, unknown_count: 1,
+    collision_count: 0, provisional_shortfall: 1,
+    companies: [{name: "Current B Funding", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.reply(loadB, current);
+  await app.context.loadB;
+  const obsolete = snapshot("A");
+  obsolete.funding = {
+    state: "awaiting_qualification_factcheck", candidate_count: 1,
+    provisional_match_count: 1, provisional_excluded_count: 0, unknown_count: 0,
+    collision_count: 0, provisional_shortfall: 0,
+    companies: [{name: "Obsolete A Funding", provisional_state: "provisional_match",
+      reason_codes: [], latest_stage: "series_a", latest_announced_at: "2025-01-01",
+      sources: []}],
+  };
+  app.reply(loadA, obsolete);
+  await app.context.loadA;
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(app.evaluate("state.data.campaign.campaign_id"), "B");
+  assert.equal(app.document.getElementById("draftSubject").value, "Server subject");
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Current B Funding/);
+  assert.doesNotMatch(app.document.getElementById("campaignDetail").innerHTML, /Obsolete A Funding/);
+
+  app.evaluate('state.campaign="A"; globalThis.failed=load("A")');
+  const failed = app.requests.shift();
+  assert.equal(app.evaluate("state.data.drafts.length"), 0, "old B projections clear while A loads");
+  app.reply(failed, {error: "campaign_missing"}, false);
+  await app.context.failed;
+  assert.equal(app.evaluate("state.campaign"), "A");
+  assert.equal(app.evaluate("state.data.drafts.length"), 0);
+  assert.equal(app.document.getElementById("nextTitle").textContent, "Review data unavailable");
+  assert.equal(app.document.body.classList.contains("loading"), false);
+});
+
+test("newer draft and feedback typing survives an older save and reload", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loaded=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.loaded;
+
+  const subject = app.document.getElementById("draftSubject");
+  const body = app.document.getElementById("draftBody");
+  const feedback = app.document.getElementById("feedbackText");
+  subject.value = "Submitted subject"; app.document.emit("input", subject);
+  body.value = "Submitted body"; app.document.emit("input", body);
+  feedback.value = "Keep this note"; app.document.emit("input", feedback);
+  app.document.emit("click", {closest: () => ({dataset: {edit: "rev-A"}})});
+  const save = app.requests.shift();
+
+  subject.value = "Newer unsaved subject"; app.document.emit("input", subject);
+  body.value = "Newer unsaved body"; app.document.emit("input", body);
+  feedback.value = "Newer unsaved feedback"; app.document.emit("input", feedback);
+  app.reply(save, {revision_id: "rev-A", state: "pending_qa"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  assert.ok(reload.url.includes("campaign_id=A"));
+  app.reply(reload, snapshot("A", "Submitted subject", "Submitted body"));
+  await tick(); await tick();
+
+  assert.equal(subject.value, "Newer unsaved subject");
+  assert.equal(body.value, "Newer unsaved body");
+  assert.equal(feedback.value, "Newer unsaved feedback");
+  assert.equal(app.evaluate('state.editors[editorKey("A","rev-A")].dirty'), true);
+
+  app.evaluate('state.campaign="B"; globalThis.toB=load("B")');
+  app.reply(app.requests.shift(), snapshot("B"));
+  await app.context.toB;
+  app.evaluate('state.campaign="A"; globalThis.backA=load("A")');
+  app.reply(app.requests.shift(), snapshot("A", "Submitted subject", "Submitted body"));
+  await app.context.backA;
+  assert.equal(subject.value, "Newer unsaved subject");
+  assert.equal(feedback.value, "Newer unsaved feedback");
+});
+
+test("background completion does not change selection and request IDs follow payload", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="B"; state.data=' + JSON.stringify(snapshot("B")));
+  app.evaluate('globalThis.preparing=prepareDrafts("A")');
+  const prepare = app.requests.shift();
+  app.reply(prepare, {campaign_id: "A", step: 0, candidates: 1, revisions_created: 1, out_of_band: 0, qa_failed: 0, slots_clamped: 0, failure_codes: []});
+  await app.context.preparing;
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(app.requests.length, 0, "prepare completion did not refresh A");
+
+  app.evaluate('globalThis.mutating=mutate("ready:rev-A","/api/drafts/ready",{campaign_id:"A",expected_revision_id:"rev-A",ready:true},"draftError")');
+  const mutation = app.requests.shift();
+  app.reply(mutation, {revision_id: "rev-A", state: "ready"});
+  await app.context.mutating;
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(app.requests.length, 0, "mutation completion did not refresh A");
+
+  const ids = app.evaluate(`(() => {
+    const one={brief_text:"same",sender_profile_id:"p",mailbox_id:"m"}; campaignRequest(one);
+    const two={brief_text:"same",sender_profile_id:"p",mailbox_id:"m"}; campaignRequest(two);
+    const three={brief_text:"changed",sender_profile_id:"p",mailbox_id:"m"}; campaignRequest(three);
+    const first=mutationRequest("edit:r",{subject:"same"});
+    const retry=mutationRequest("edit:r",{subject:"same"});
+    const changed=mutationRequest("edit:r",{subject:"changed"});
+    return [one.request_id,two.request_id,three.request_id,first.id,retry.id,changed.id];
+  })()`);
+  assert.equal(ids[0], ids[1], "unchanged campaign retry retains its request ID");
+  assert.notEqual(ids[1], ids[2], "changed campaign payload gets a new request ID");
+  assert.equal(ids[3], ids[4], "unchanged mutation retry retains its request ID");
+  assert.notEqual(ids[4], ids[5], "changed mutation payload gets a new request ID");
+
+  const blocked = app.evaluate('prepareSummary({campaign_id:"B",candidates:2,revisions_created:0,out_of_band:1,qa_failed:1,slots_clamped:0,failure_codes:[["affinity_below_minimum",1]]},"B")');
+  assert.match(blocked, /No drafts were prepared; 2 saved selections were blocked/);
+  assert.doesNotMatch(blocked, /No additional drafts were needed/);
+  assert.match(blocked, /fit below approved minimum/);
+});
+
+test("obsolete campaign-create success and error cannot replace newer UI context", async () => {
+  const afterNew = harness();
+  afterNew.reply(afterNew.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const originalId = afterNew.evaluate("state.campaignRequest.id");
+  afterNew.document.getElementById("campaignForm").dispatch("submit");
+  const oldSuccess = afterNew.requests.shift();
+  assert.equal(JSON.parse(oldSuccess.init.body).request_id, originalId);
+  afterNew.document.getElementById("newCampaign").dispatch("click");
+  const replacementId = afterNew.evaluate("state.campaignRequest.id");
+  assert.notEqual(replacementId, originalId, "New campaign creates a distinct retry identity");
+  afterNew.reply(oldSuccess, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  assert.equal(afterNew.evaluate("state.campaign"), "");
+  assert.equal(afterNew.evaluate("state.campaignSaved"), false);
+  assert.equal(afterNew.requests.length, 0, "obsolete success did not start an old-campaign load");
+
+  const afterSwitch = harness();
+  afterSwitch.reply(afterSwitch.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  afterSwitch.document.getElementById("newCampaign").dispatch("click");
+  afterSwitch.document.getElementById("senderProfile").value = "profile";
+  afterSwitch.document.getElementById("mailboxId").value = "mailbox";
+  afterSwitch.document.getElementById("campaignForm").dispatch("submit");
+  const oldError = afterSwitch.requests.shift();
+  const retryId = JSON.parse(oldError.init.body).request_id;
+  const picker = afterSwitch.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  const loadB = afterSwitch.requests.shift();
+  afterSwitch.reply(loadB, snapshot("B"));
+  await tick(); await tick();
+  afterSwitch.reply(oldError, {error: "sender_profile_missing"}, false);
+  await tick(); await tick();
+  assert.equal(afterSwitch.evaluate("state.campaign"), "B");
+  assert.equal(afterSwitch.document.getElementById("campaignError").textContent, "");
+  assert.equal(afterSwitch.document.getElementById("campaignError").classList.contains("show"), false);
+  assert.equal(afterSwitch.evaluate("state.campaignRequest.id"), retryId, "navigation does not alter unchanged retry identity");
+  assert.equal(afterSwitch.requests.length, 0);
+});
+
+test("New campaign and a blank picker synchronously clear campaign projections", async () => {
+  const afterNew = harness();
+  afterNew.reply(afterNew.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  const subject = afterNew.document.getElementById("draftSubject");
+  subject.value = "Unsaved A subject";
+  afterNew.document.emit("input", subject);
+  afterNew.document.getElementById("newCampaign").dispatch("click");
+  assert.equal(afterNew.evaluate('[state.data.people.length,state.data.drafts.length,state.data.schedule.length,state.data.activity.length].join(",")'), "0,0,0,0");
+  assert.equal(afterNew.evaluate("state.campaign"), "");
+  assert.match(afterNew.document.getElementById("peopleList").innerHTML, /No matching people/);
+  assert.match(afterNew.document.getElementById("draftList").innerHTML, /No drafts yet/);
+  assert.match(afterNew.document.getElementById("scheduleList").innerHTML, /No messages are scheduled/);
+  assert.match(afterNew.document.getElementById("activityList").innerHTML, /No campaign activity/);
+  assert.equal(afterNew.evaluate('state.editors[editorKey("A","rev-A")].subject'), "Unsaved A subject");
+  assert.equal(afterNew.document.getElementById("campaignCreateFields").hidden, false);
+  assert.equal(afterNew.document.getElementById("saveCampaign").hidden, false);
+  assert.equal(afterNew.document.getElementById("campaignDetailCard").hidden, true);
+  assert.equal(afterNew.document.getElementById("campaignEditorTitle").textContent, "Create a campaign");
+
+  const afterBlank = harness();
+  afterBlank.reply(afterBlank.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  const picker = afterBlank.document.getElementById("campaignSelect");
+  picker.value = "";
+  picker.dispatch("change");
+  const pending = afterBlank.requests.shift();
+  assert.equal(pending.url, "/api/review");
+  assert.equal(afterBlank.evaluate('[state.data.people.length,state.data.drafts.length,state.data.schedule.length,state.data.activity.length].join(",")'), "0,0,0,0");
+  assert.equal(afterBlank.evaluate("state.campaign"), "");
+  assert.equal(afterBlank.document.getElementById("campaignCreateFields").hidden, false);
+  assert.equal(afterBlank.document.getElementById("campaignDetailCard").hidden, true);
+  assert.match(afterBlank.document.getElementById("draftList").innerHTML, /No drafts yet/);
+  afterBlank.reply(pending, snapshot(null));
+  await tick(); await tick();
+});
+
+test("selected campaign puts saved evidence first and keeps only research editing visible", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const selected = snapshot("A");
+  selected.pipeline = {
+    state: "awaiting_research_adapter", campaign_id: "A", requested_companies: 8,
+    requested_people_per_company: 2, funding_window_years: 3,
+    next_stage: "research_adapter", intake_revision: 1, run_id: "run-A",
+  };
+  selected.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 0, provisional_excluded_count: 0,
+    unknown_count: 1, collision_count: 0, provisional_shortfall: 8,
+    companies: [{name: "Saved Research Company", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.evaluate('state.campaign="A"; globalThis.selectedLoad=load("A")');
+  app.reply(app.requests.shift(), selected);
+  await app.context.selectedLoad;
+
+  assert.equal(app.document.getElementById("campaignCreateFields").hidden, true);
+  assert.equal(app.document.getElementById("saveCampaign").hidden, true);
+  assert.equal(app.document.getElementById("campaignDetailCard").hidden, false);
+  assert.equal(app.document.getElementById("campaignEditorTitle").textContent, "Edit research brief");
+  assert.equal(app.document.getElementById("researchBriefSummary").textContent, "Edit research brief");
+  assert.equal(app.document.getElementById("saveResearchBrief").hidden, false);
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Saved Research Company/);
+
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0, "selected-campaign form cannot create another campaign");
+});
+
+test("campaign workspace cards are full width with saved detail ordered before the editor", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "review_app.html"), "utf8");
+  assert.match(html, /id="campaignEditorCard"[^>]*class="card full campaign-editor"|class="card full campaign-editor"[^>]*id="campaignEditorCard"/);
+  assert.match(html, /id="campaignDetailCard"[^>]*class="card full campaign-detail"|class="card full campaign-detail"[^>]*id="campaignDetailCard"/);
+  assert.match(html, /\.campaign-detail\{order:1\}\s*\.campaign-editor\{order:2\}/);
+  assert.match(html, /#campaignCreateFields\[hidden\]\{display:none\}/);
+});
+
+test("feedback remains visible on its child and fulfillment uses the projected revision", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.feedback = [{
+    feedback_id: "feedback-A", campaign_id: "A", person_id: "person-A",
+    original_revision_id: "rev-original-A", original_subject: "Original <subject>",
+    original_body: "Original body", disposition: "tone", tags: ["warmer"],
+    feedback_text: "Use a warmer opening.", requested_at: "2026-09-09T04:00:00Z",
+    state: "ready_to_record", automated_rewrite_state: "unavailable",
+    eligible_revision_id: "rev-A", eligible_subject: "Server subject",
+    eligible_body: "Server body", fulfilled_at: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.feedbackLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.feedbackLoad;
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /No automated rewrite is running/);
+  assert.match(detail, /Use a warmer opening/);
+  assert.match(detail, /Original &lt;subject&gt;/);
+  assert.match(detail, /Record correction fulfilled/);
+
+  app.document.emit("click", {closest: () => ({dataset: {
+    fulfillFeedback: "feedback-A", feedbackChild: "rev-A",
+  }})});
+  const fulfill = app.requests.shift();
+  assert.equal(fulfill.url, "/api/feedback/fulfill");
+  const payload = JSON.parse(fulfill.init.body);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.feedback_id, "feedback-A");
+  assert.equal(payload.expected_child_revision_id, "rev-A");
+  assert.match(payload.request_id, /^[0-9a-f-]{36}$/);
+  app.reply(fulfill, {state: "fulfilled", child_revision_id: "rev-A"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  value.feedback[0].state = "fulfilled";
+  value.feedback[0].fulfilled_at = "2026-09-09T05:00:00Z";
+  app.reply(reload, value);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("draftDetail").innerHTML, /Correction recorded/);
+});
+
+test("saved source upload sends only the selected URL and local bytes before confirmation", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.people = [{
+    person_id: "person-A", full_name: "Person A", title: "Principal", company: "Example A",
+    linkedin_url: "https://profile.example.test/a", selected: true, state: "selected",
+    identity_source_state: "source_missing", identity_sources: [], current_observation_id: "obs-prior",
+  }];
+  app.evaluate('state.campaign="A"; globalThis.sourceLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.sourceLoad;
+  const sourceUrl = app.document.getElementById("sourceUrl");
+  const sourceFile = app.document.getElementById("sourceFile");
+  sourceUrl.value = "https://profile.example.test/saved";
+  sourceFile.files = [{size: 37, name: "private-local-file.html", async text() {
+    return "Person A is Principal at Example A";
+  }}];
+  app.document.emit("click", {closest: () => ({dataset: {importSource: "person-A"}})});
+  await tick(); await tick();
+  const upload = app.requests.shift();
+  assert.equal(upload.url, "/api/people/import-source");
+  const payload = JSON.parse(upload.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), ["body", "campaign_id", "person_id", "source_url"]);
+  assert.equal(payload.body, "Person A is Principal at Example A");
+  assert.equal(JSON.stringify(payload).includes("private-local-file.html"), false);
+  app.reply(upload, {campaign_id: "A", person_id: "person-A", snapshot_id: "snapshot-A", state: "source_available"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  value.people[0].identity_source_state = "confirmation_required";
+  value.people[0].identity_sources = [{observation_id: "source-A", excerpt: payload.body,
+    source_url: payload.source_url, retrieved_at: "2026-09-09T04:00:00Z"}];
+  app.reply(reload, value);
+  await tick(); await tick();
+  const detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(detail, /Confirm current role source/);
+  assert.match(detail, /I confirm this source shows Person A/);
+});
+
+test("draft card keeps exact source confirmation and missing contact beside the email", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    identity_source_state: "confirmation_required",
+    identity_source: {
+      observation_id: "source-A", snapshot_id: "snapshot-A",
+      source_url: "https://profile.example.test/source",
+      excerpt: "Person A is <Lead> at Example A", retrieved_at: "2026-09-09T04:00:00Z",
+      expires_at: "2099-01-01T00:00:00Z", is_current: false,
+    },
+    current_observation_id: "source-prior-A", contact_state: "missing",
+    source_error_code: null,
+  });
+  app.evaluate('state.campaign="A"; globalThis.sourceDraftLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.sourceDraftLoad;
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Source confirmation needed/);
+  assert.match(detail, /Person A is &lt;Lead&gt; at Example A/);
+  assert.match(detail, /Open exact source/);
+  assert.match(detail, /Contact address missing/);
+  assert.match(detail, /cannot be approved, scheduled, or sent/);
+  assert.doesNotMatch(detail, /Person A is <Lead>/);
+
+  const button = {
+    disabled: false,
+    dataset: {
+      verifySource: "source-A", personId: "person-A",
+      expectedSource: "source-prior-A", sourceError: "draftError",
+    },
+    closest() { return this; },
+  };
+  app.document.emit("click", button);
+  const mutation = app.requests.shift();
+  assert.equal(mutation.url, "/api/people/verify-source");
+  const payload = JSON.parse(mutation.init.body);
+  assert.deepEqual(
+    Object.keys(payload).sort(),
+    ["attested", "campaign_id", "expected_observation_id", "observation_id", "person_id", "request_id"],
+  );
+  assert.equal(payload.attested, true);
+  assert.equal(payload.observation_id, "source-A");
+  assert.equal(payload.expected_observation_id, "source-prior-A");
+});
+
+test("editorial stages and exact suggestion actions stay beside the source-bound email", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const waiting = snapshot("A");
+  Object.assign(waiting.drafts[0], {
+    editorial_gate_code: "editorial_receipts_missing",
+    identity_source_state: "confirmation_required",
+    identity_source: {
+      observation_id: "source-A", source_url: "https://profile.example.test/source",
+      excerpt: "Person A is Principal at Example A", is_current: false,
+    },
+    current_observation_id: "source-prior-A", contact_state: "missing",
+  });
+  waiting.editorial_pipeline = [{
+    revision_id: "rev-A", item: {
+      item_id: "item-A", campaign_id: "A", person_id: "person-A",
+      base_revision_id: "rev-A", state: "awaiting_humanizer_adapter",
+      next_stage: "humanizer", repair_cycle: 0,
+    },
+    source_proof: null, suggestion_id: null, suggestion_subject: null,
+    suggestion_body: null, proposed_revision_hash: null, decision: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.editorialLoad=load("A")');
+  app.reply(app.requests.shift(), waiting);
+  await app.context.editorialLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Canonical local email draft/);
+  assert.match(detail, /Editorial review waiting/);
+  assert.match(detail, /Waiting for humanizer/);
+  assert.match(detail, /No provider activity is launched/);
+  assert.match(detail, /Source confirmation needed/);
+  assert.match(detail, /Contact address missing/);
+
+  const suggestion = structuredClone(waiting);
+  Object.assign(suggestion.editorial_pipeline[0], {
+    suggestion_id: "suggestion-A", suggestion_subject: "A <better> subject",
+    suggestion_body: "A careful & sourced body", proposed_revision_hash: "a".repeat(64),
+  });
+  Object.assign(suggestion.editorial_pipeline[0].item, {state: "human_review", next_stage: null});
+  app.evaluate('globalThis.suggestionLoad=load("A")');
+  app.reply(app.requests.shift(), suggestion);
+  await app.context.suggestionLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Agent suggestion/);
+  assert.match(detail, /A &lt;better&gt; subject/);
+  assert.match(detail, /A careful &amp; sourced body/);
+  assert.doesNotMatch(detail, /A <better>/);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialAccept: "item-A", editorialParent: "rev-A",
+  }})});
+  const accept = app.requests.shift();
+  assert.equal(accept.url, "/api/editorial/accept");
+  const payload = JSON.parse(accept.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "expected_parent_revision_id", "item_id", "request_id",
+  ]);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.item_id, "item-A");
+  assert.equal(payload.expected_parent_revision_id, "rev-A");
+  app.reply(accept, {decision_id: "decision-A", revision_id: "rev-B",
+    revision_hash: "b".repeat(64), unchanged: false, replayed: false});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  app.reply(reload, suggestion);
+  await tick(); await tick();
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialReject: "item-A", editorialParent: "rev-A",
+  }})});
+  const reject = app.requests.shift();
+  assert.equal(reject.url, "/api/editorial/reject");
+  const rejectPayload = JSON.parse(reject.init.body);
+  assert.equal(rejectPayload.item_id, "item-A");
+  assert.equal(rejectPayload.expected_parent_revision_id, "rev-A");
+  assert.notEqual(rejectPayload.request_id, payload.request_id);
+  app.reply(reject, {decision_id: "decision-B", item_id: "item-A", replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), suggestion);
+  await tick(); await tick();
+});
+
+test("editorial start retry is payload-bound and Mark ready still requires human source confirmation", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    editorial_gate_code: "editorial_receipts_missing",
+    identity_source_state: "confirmation_required", contact_state: "missing",
+  });
+  app.evaluate('state.campaign="A"; globalThis.startLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.startLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review has not started/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialStart: "rev-A",
+  }})});
+  const start = app.requests.shift();
+  assert.equal(start.url, "/api/editorial/start");
+  const first = JSON.parse(start.init.body);
+  assert.deepEqual(Object.keys(first).sort(), ["campaign_id", "request_id", "revision_id"]);
+  app.reply(start, {item_id: "item-A", campaign_id: "A", person_id: "person-A",
+    base_revision_id: "rev-A", state: "awaiting_humanizer_adapter", next_stage: "humanizer", repair_cycle: 0});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+
+  value.drafts[0].editorial_gate_code = null;
+  app.evaluate('globalThis.acceptedLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.acceptedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial checks complete/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  value.drafts[0].identity_source_state = "source_ready";
+  app.evaluate('globalThis.confirmedLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.confirmedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /data-ready="rev-A" >Mark ready/);
+  assert.match(detail, /Contact address missing/);
+  assert.match(detail, /cannot be approved, scheduled, or sent/);
+  const ready = app.document.getElementById("draftReady");
+  assert.equal(ready.disabled, false);
+  const subject = app.document.getElementById("draftSubject");
+  subject.value = "Unsaved visible subject";
+  app.document.emit("input", subject);
+  assert.equal(ready.disabled, true);
+  app.document.emit("click", ready);
+  assert.equal(app.requests.length, 0, "unsaved visible text cannot ready the stored revision");
+});
+
+test("an exhausted review offers exactly one payload-bound restart from the changed edit", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const parked = snapshot("A");
+  parked.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  parked.editorial_pipeline = [{
+    revision_id: "rev-A", item: {
+      item_id: "item-old", campaign_id: "A", person_id: "person-A",
+      base_revision_id: "rev-A", state: "parked", next_stage: null, repair_cycle: 2,
+    },
+    source_proof: null, suggestion_id: null, suggestion_subject: null,
+    suggestion_body: null, proposed_revision_hash: null, decision: null,
+  }];
+  app.evaluate('state.campaign="A"; globalThis.parkedLoad=load("A")');
+  app.reply(app.requests.shift(), parked);
+  await app.context.parkedLoad;
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review stopped/);
+  assert.match(detail, /Save a changed edit above/);
+  assert.doesNotMatch(detail, /data-editorial-(start|restart)=/);
+
+  const offer = snapshot("A", "Edited subject", "Edited body");
+  offer.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  offer.editorial_pipeline = [{
+    revision_id: "rev-A", exhausted_item_id: "item-old", state: "restart_available", code: null,
+  }];
+  app.evaluate('globalThis.offerLoad=load("A")');
+  app.reply(app.requests.shift(), offer);
+  await app.context.offerLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Start new review from this edit/);
+  assert.equal(detail.match(/data-editorial-restart=/g).length, 1);
+  assert.doesNotMatch(detail, /Run editorial review|data-editorial-start=/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+
+  const click = () => app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    editorialRestart: "rev-A", editorialExhausted: "item-old",
+  }})});
+  click();
+  const first = app.requests.shift();
+  assert.equal(first.url, "/api/editorial/start");
+  const payload = JSON.parse(first.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "exhausted_item_id", "request_id", "revision_id",
+  ]);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.revision_id, "rev-A");
+  assert.equal(payload.exhausted_item_id, "item-old");
+  assert.equal("actor" in payload, false);
+  app.reply(first, {error: "request_failed"}, false);
+  await tick(); await tick();
+  click();
+  const retry = app.requests.shift();
+  assert.equal(JSON.parse(retry.init.body).request_id, payload.request_id);
+  app.reply(retry, {item_id: "item-new", campaign_id: "A", person_id: "person-A",
+    base_revision_id: "rev-A", state: "awaiting_humanizer_adapter", next_stage: "humanizer", repair_cycle: 0});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), offer);
+  await tick(); await tick();
+
+  const blocked = structuredClone(offer);
+  blocked.editorial_pipeline = [{
+    revision_id: "rev-A", exhausted_item_id: "item-old", state: "restart_blocked",
+    code: "human_edit_unresolved",
+  }];
+  app.evaluate('globalThis.blockedLoad=load("A")');
+  app.reply(app.requests.shift(), blocked);
+  await app.context.blockedLoad;
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Editorial review stopped/);
+  assert.match(detail, /human edit unresolved/);
+  assert.doesNotMatch(detail, /data-editorial-(start|restart)=/);
+});
+
+test("history selection disables readiness and the click guard refuses unsaved text", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  Object.assign(value.drafts[0], {
+    editorial_gate_code: null, identity_source_state: "source_ready",
+    contact_state: "valid", candidate_history: [{
+      subject: "Earlier saved subject", body: "Earlier saved body",
+      qa_state: "revision_created", is_current_parent: false,
+    }],
+  });
+  app.evaluate('state.campaign="A"; globalThis.historyLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.historyLoad;
+  const ready = app.document.getElementById("draftReady");
+  assert.equal(ready.disabled, false);
+
+  app.document.emit("click", {closest: () => ({disabled: false, dataset: {
+    historyIndex: "0",
+  }})});
+  assert.equal(app.document.getElementById("draftSubject").value, "Earlier saved subject");
+  assert.equal(ready.disabled, true);
+  assert.equal(app.requests.length, 0);
+
+  ready.disabled = false;
+  ready.dataset.ready = "rev-A";
+  app.document.emit("click", ready);
+  assert.equal(app.requests.length, 0, "defensive click guard blocks dirty stored revision");
+  assert.match(app.document.getElementById("draftError").textContent, /Save and complete review/);
+});
+
+test("control action sends only the selected opaque request and reports acknowledgement", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.control = {
+    enabled: true, campaign_id: "A", configured_request_id: "ctlreq_fixture",
+    control_ref: "ctl_fixture", operation: "status", grant_state: "active",
+    receipt_state: null, remote_acknowledgement: "not_applicable", code: "ready", counts: {},
+  };
+  app.evaluate('state.campaign="A"; globalThis.controlLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.controlLoad;
+  assert.match(app.document.getElementById("controlPanel").innerHTML, /Check campaign status/);
+
+  app.evaluate('globalThis.controlRun=processControl("ctlreq_fixture")');
+  const process = app.requests.shift();
+  assert.equal(process.url, "/api/control/process");
+  assert.deepEqual(JSON.parse(process.init.body), {
+    campaign_id: "A", configured_request_id: "ctlreq_fixture",
+  });
+  app.reply(process, {...value.control, receipt_state: "succeeded",
+    remote_acknowledgement: "confirmed", code: "status", counts: {due: 2}});
+  await app.context.controlRun;
+  const panel = app.document.getElementById("controlPanel").innerHTML;
+  assert.match(panel, /succeeded/);
+  assert.match(panel, /due/);
+  assert.doesNotMatch(panel, /Confirm result receipt/);
+});
+
+test("research brief retries keep the request identity and drafts stay campaign-scoped", () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  app.evaluate(`state.campaign="A"; Object.assign($("asOfDate"),{value:"2026-09-09"});
+    Object.assign($("fundingStageMin"),{value:"series_a"}); Object.assign($("fundingStageMax"),{value:"series_c"});
+    Object.assign($("fundingWindowYears"),{value:"3"}); Object.assign($("stageInterpretation"),{value:"latest_known"});
+    Object.assign($("geoMode"),{value:"unknown"}); Object.assign($("sectorMode"),{value:"unknown"});
+    Object.assign($("companyCount"),{value:"20"}); Object.assign($("peoplePerCompany"),{value:"2"});
+    Object.assign($("roleFamilies"),{value:"operations"}); Object.assign($("outreachGoal"),{value:"A goal"}); captureResearchBrief();
+    globalThis.firstSave=saveResearchBrief("A",state.researchDrafts.A.value)`);
+  const first = app.requests.shift();
+  assert.equal(first.url, "/api/pipeline/start");
+  const firstPayload = JSON.parse(first.init.body);
+  app.evaluate('globalThis.retrySave=saveResearchBrief("A",state.researchDrafts.A.value)');
+  const retry = app.requests.shift();
+  const retryPayload = JSON.parse(retry.init.body);
+  assert.equal(retryPayload.request_id, firstPayload.request_id, "unchanged retry retains identity");
+  app.evaluate('state.campaign="B"; hydrateResearchBrief(null); $("outreachGoal").value="B goal"; captureResearchBrief(); state.campaign="A"; hydrateResearchBrief(null)');
+  assert.equal(app.document.getElementById("outreachGoal").value, "A goal");
+  app.evaluate('state.campaign="B"; hydrateResearchBrief(null)');
+  assert.equal(app.document.getElementById("outreachGoal").value, "B goal");
+});
+
+
+test("draft readiness stays disabled while required review stages are unavailable", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loaded=load("A")');
+  const value = snapshot("A");
+  value.drafts[0].editorial_gate_code = "editorial_receipts_missing";
+  app.reply(app.requests.shift(), value);
+  await app.context.loaded;
+  const markup = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(markup, /data-ready="rev-A" disabled/);
+  assert.match(markup, /Editorial review has not started/);
+  assert.match(markup, /Run editorial review/);
+  app.document.emit("click", {closest: () => ({disabled: true, dataset: {ready: "rev-A"}})});
+  assert.equal(app.requests.length, 0);
+  assert.equal(app.document.getElementById("draftBody").value, "Server body");
+});
+
+test("funding evidence renders escaped provisional details and recorded source types without mutations", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 1, provisional_excluded_count: 0,
+    unknown_count: 0, collision_count: 0, provisional_shortfall: 1,
+    companies: [{
+      name: '<img src=x onerror="bad">', provisional_state: "provisional_match",
+      reason_codes: ["latest_event_eligible_with_current_coverage"],
+      latest_stage: "series_b", latest_announced_at: "2025-05-01",
+      sources: [
+        {source_url: "https://source.invalid/item?a=1&b=2", source_kind: '<issuer & "claimed">', binding_kind: "funding_event", retrieved_at: "2026-09-10T12:00:00Z"},
+        {source_url: "javascript:bad()", source_kind: "issuer", binding_kind: "funding_event", retrieved_at: "2026-09-10T12:00:00Z"},
+      ],
+    }],
+  };
+  app.evaluate('state.campaign="A"; globalThis.fundingLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.fundingLoad;
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Funding evidence &middot; provisional/);
+  assert.match(markup, /Awaiting funding factcheck/);
+  assert.match(markup, /Provisional match - factual review pending/);
+  assert.match(markup, /&lt;img src=x onerror=&quot;bad&quot;&gt;/);
+  assert.doesNotMatch(markup, /<img src=x/);
+  assert.match(markup, /href="https:\/\/source\.invalid\/item\?a=1&amp;b=2"/);
+  assert.match(markup, /Recorded type: &lt;issuer &amp; &quot;claimed&quot;&gt;/);
+  assert.doesNotMatch(markup, /javascript:bad/);
+  assert.doesNotMatch(markup, /data-(approve|confirm|qualif)/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("funding section hides without P15 and stale or corrupt states replace prior company rows", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const valid = snapshot("A");
+  valid.funding = {
+    state: "awaiting_qualification_factcheck", batch_id: "batch_aaaaaaaaaaaaaaaa",
+    candidate_count: 1, provisional_match_count: 0, provisional_excluded_count: 0,
+    unknown_count: 1, collision_count: 0, provisional_shortfall: 2,
+    companies: [{name: "Prior Synthetic Company", provisional_state: "unknown",
+      reason_codes: ["current_coverage_missing"], latest_stage: null,
+      latest_announced_at: null, sources: []}],
+  };
+  app.evaluate('state.campaign="A"; globalThis.validFunding=load("A")');
+  app.reply(app.requests.shift(), valid);
+  await app.context.validFunding;
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Prior Synthetic Company/);
+
+  const stale = snapshot("A");
+  stale.funding = {state: "source_stale", code: "source_stale", companies: []};
+  app.evaluate('globalThis.staleFunding=load("A")');
+  app.reply(app.requests.shift(), stale);
+  await app.context.staleFunding;
+  let markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Saved evidence expired/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+
+  const corrupt = snapshot("A");
+  corrupt.funding = {state: "unavailable", code: "source_changed", companies: []};
+  app.evaluate('globalThis.corruptFunding=load("A")');
+  app.reply(app.requests.shift(), corrupt);
+  await app.context.corruptFunding;
+  markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Funding view unavailable/);
+  assert.match(markup, /source changed/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+
+  const hidden = snapshot("A");
+  app.evaluate('globalThis.hiddenFunding=load("A")');
+  app.reply(app.requests.shift(), hidden);
+  await app.context.hiddenFunding;
+  markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.doesNotMatch(markup, /Funding evidence/);
+  assert.doesNotMatch(markup, /Prior Synthetic Company/);
+  assert.equal(app.requests.length, 0);
+});
+
+const DIGEST = "a".repeat(64);
+const BATCH = "f".repeat(64);
+const PREDECESSOR = "b".repeat(64);
+
+function selectedPerson(overrides = {}) {
+  return {
+    person_rank_id: "rank-A", person_id: "person-A", company_id: "company-A",
+    rank_ordinal: 1, mapped_family: "operations", match_kind: "exact_title",
+    qualification_outcome: "match", reason_codes: ["role_family_match"],
+    state: "available", error_code: null, title: "Head of Operations",
+    employment_id: "emp-A", source_context_digest: DIGEST,
+    candidate_observation_id: "obs-A", employment_observation_id: "obs-emp-A",
+    snapshot_id: "snap-A", head_revision_id: null, bound_revision_id: null,
+    expected_revision_id: null, expected_predecessor_binding_hash: null,
+    has_prior_binding: false, ...overrides,
+  };
+}
+
+function selectedSnapshot(person, options = {}) {
+  const value = snapshot("A");
+  value.campaign.next_action = options.nextAction || "prepare_drafts";
+  value.drafts = options.drafts || [];
+  value.people = [{
+    person_id: "person-A", full_name: "Person A", title: person.title,
+    company: options.company || "Example A", linkedin_url: null, fit_score: null,
+    eligibility_state: null, contact_id: null, email: null, contact_state: null,
+    selected: true, state: "selected",
+    identity_source_state: options.identitySourceState || "confirmation_required",
+    identity_sources: [], current_observation_id: null,
+    person_rank_id: person.person_rank_id, run_id: "run-A",
+    ranking_batch_hash: BATCH, source_context_digest: person.source_context_digest,
+    projection_error_code: person.error_code,
+  }];
+  value.selected_pipeline = {
+    projection_version: "selected-review-projection-v1", campaign_id: "A",
+    state: "ready", error_code: null, run_id: "run-A",
+    intake_hash: "d".repeat(64), campaign_policy_hash: "e".repeat(64),
+    ranking_batch_id: "batch-A", ranking_batch_hash: BATCH,
+    role_policy_version: "role-policy-v1", role_policy_hash: "0".repeat(64),
+    companies: [{
+      company_rank_id: "crank-A", company_id: "company-A",
+      qualification_item_id: "qitem-A", qualification_artifact_id: "qart-A",
+      qualification_output_hash: "c".repeat(64), company_outcome: "match",
+      desired_count: 2, eligible_count: 2, selected_count: 1, shortfall: 1,
+      reason_codes: ["people_shortfall"], people: [person],
+    }],
+    counts: {
+      companies: 1, selected_people: 1,
+      available_people: person.state === "available" ? 1 : 0,
+      unavailable_people: person.state === "available" ? 0 : 1,
+      people_shortfall: 1, companies_with_shortfall: 1,
+    },
+  };
+  return value;
+}
+
+function selectedDraft(overrides = {}) {
+  const value = snapshot("A").drafts[0];
+  return Object.assign(value, {
+    editorial_gate_code: null, identity_source_state: "confirmation_required",
+    selected_source_scope: true, source_revision_id: "rev-A",
+    source_context_digest: DIGEST, contact_state: "missing", source_error_code: null,
+    identity_source: {
+      observation_id: "obs-A", snapshot_id: "snap-A",
+      source_url: "https://source.example.test/a",
+      excerpt: "Person A is Head of Operations at Example A",
+      retrieved_at: "2026-09-09T04:00:00Z", expires_at: "2099-01-01T00:00:00Z",
+      is_current: false,
+    },
+  }, overrides);
+}
+
+async function loadSelected(app, value) {
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.selectedReady=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.selectedReady;
+}
+
+function fakeButton(dataset, disabled = false) {
+  return {disabled, dataset, closest() { return this; }};
+}
+
+function attestBinding(overrides = {}) {
+  return {
+    attestCampaign: "A", attestPerson: "person-A", attestRevision: "rev-A",
+    attestDigest: DIGEST, attestObservation: "obs-A", ...overrides,
+  };
+}
+
+function sourceCheckbox(binding, checked = true) {
+  return {checked, dataset: {selectedSourceCheck: "1", ...binding}};
+}
+
+test("selected people are inspectable before any draft and the first prepare sends exactly five keys", async () => {
+  const app = harness();
+  await loadSelected(app, selectedSnapshot(selectedPerson()));
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Current ranked selection/);
+  assert.match(markup, /Ready to prepare/);
+  assert.match(markup, /1 selected of 2 eligible/);
+  assert.match(markup, /1 fewer people than the 2 requested/);
+  assert.match(markup, /Prepare draft for this person/);
+  assert.doesNotMatch(markup, /Refresh draft for changed context/);
+  assert.doesNotMatch(markup, /data-prepare=/, "no legacy campaign-wide prepare for selected people");
+
+  const button = fakeButton({
+    selectedPrepare: "1", selectedCampaign: "A", selectedRun: "run-A",
+    selectedRank: "rank-A", selectedHash: BATCH, selectedPerson: "person-A",
+  });
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/selected-drafts/materialize");
+  assert.equal(button.disabled, true, "the displayed action is held while its own request is in flight");
+  const payload = JSON.parse(post.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "expected_ranking_batch_hash", "person_rank_id", "request_id", "run_id",
+  ]);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.run_id, "run-A");
+  assert.equal(payload.person_rank_id, "rank-A");
+  assert.equal(payload.expected_ranking_batch_hash, BATCH);
+  assert.match(payload.request_id, /^[0-9a-f-]{36}$/);
+
+  app.reply(post, {error: "store_busy"}, false);
+  await tick(); await tick();
+  assert.equal(button.disabled, false);
+  assert.match(app.document.getElementById("campaignError").textContent, /busy with another change/);
+  app.document.emit("click", button);
+  const retry = app.requests.shift();
+  assert.equal(JSON.parse(retry.init.body).request_id, payload.request_id,
+    "unchanged retry reuses the same request identity");
+  app.reply(retry, {state: "bound", replayed: false, revision_id: "rev-A"});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  assert.ok(reload.url.includes("campaign_id=A"));
+});
+
+test("refreshing an existing selected draft is labelled honestly and sends both pins together", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  await loadSelected(app, selectedSnapshot(person));
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Refresh draft for changed context/);
+  assert.doesNotMatch(markup, /Prepare draft for this person/);
+  assert.match(markup, /does not mean it needs refreshing/);
+  assert.match(markup, /refused and the existing draft stays exactly as it is/);
+  assert.match(markup, /Earlier drafts and their saved history are preserved/);
+
+  app.document.emit("click", fakeButton({
+    selectedRegenerate: "1", selectedRevision: "rev-A", selectedPredecessor: PREDECESSOR,
+    selectedCampaign: "A", selectedRun: "run-A", selectedRank: "rank-A",
+    selectedHash: BATCH, selectedPerson: "person-A",
+  }));
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/selected-drafts/materialize");
+  const payload = JSON.parse(post.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "campaign_id", "expected_predecessor_binding_hash", "expected_ranking_batch_hash",
+    "expected_revision_id", "person_rank_id", "request_id", "run_id",
+  ]);
+  assert.equal(payload.expected_revision_id, "rev-A");
+  assert.equal(payload.expected_predecessor_binding_hash, PREDECESSOR);
+  app.reply(post, {error: "regeneration_context_unchanged"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent,
+    /Nothing changed for this person/);
+});
+
+test("a half-pinned refresh is never offered and never sent", async () => {
+  const app = harness();
+  const person = selectedPerson({has_prior_binding: true, bound_revision_id: "rev-A"});
+  await loadSelected(app, selectedSnapshot(person));
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /disabled data-selected-regenerate="1"/);
+  assert.match(markup, /Refreshing needs both the current draft and its recorded binding/);
+
+  app.document.emit("click", fakeButton({
+    selectedRegenerate: "1", selectedCampaign: "A", selectedRun: "run-A",
+    selectedRank: "rank-A", selectedHash: BATCH, selectedPerson: "person-A",
+  }, true));
+  assert.equal(app.requests.length, 0, "a disabled refresh sends nothing");
+
+  app.evaluate(`materializeSelectedDraft({disabled:false,dataset:{selectedCampaign:"A",
+    selectedRun:"run-A",selectedRank:"rank-A",selectedHash:"${BATCH}",
+    selectedRevision:"rev-A"}},true)`);
+  assert.equal(app.requests.length, 0, "a missing predecessor pin refuses locally");
+});
+
+test("an unavailable selected person disables every selected action", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    state: "unavailable", error_code: "source_stale", title: null,
+    source_context_digest: null, candidate_observation_id: null, snapshot_id: null,
+  });
+  await loadSelected(app, selectedSnapshot(person));
+
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Unavailable/);
+  assert.match(markup, /The saved source expired/);
+  assert.match(markup, /No earlier ranking or unrelated record is shown in its place/);
+  assert.doesNotMatch(markup, /data-selected-prepare/);
+  assert.doesNotMatch(markup, /data-selected-regenerate/);
+  assert.doesNotMatch(markup, /data-prepare=/);
+
+  const detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(detail, /Current source unavailable/);
+  assert.doesNotMatch(detail, /data-import-source/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("a selected person is never offered the legacy upload or the legacy confirmation", async () => {
+  const app = harness();
+  await loadSelected(app, selectedSnapshot(selectedPerson()));
+
+  const detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(detail, /Source confirmation happens on the draft/);
+  assert.match(detail, /Prepare this person’s draft from Campaigns first/);
+  assert.doesNotMatch(detail, /Add a saved source page/);
+  assert.doesNotMatch(detail, /data-import-source/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.doesNotMatch(detail, /id="sourceUrl"/);
+  assert.doesNotMatch(detail, /id="sourceFile"/);
+});
+
+test("a human or agent descendant draft still confirms its own draft-bound source", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-root",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  await loadSelected(app, selectedSnapshot(person, {drafts: [selectedDraft()]}));
+
+  const campaign = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(campaign, /data-selected-revision="rev-A"/,
+    "the refresh pin is the displayed head, not the binding root");
+  assert.match(campaign, /draft rev-root/);
+
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.doesNotMatch(detail, /Confirmation is unavailable in this view/,
+    "a genuine descendant of the binding root is still provable from its own proof");
+  assert.match(detail, /data-attest-revision="rev-A"/);
+  assert.match(detail, new RegExp(`data-attest-digest="${DIGEST}"`));
+  assert.match(detail, /data-attest-observation="obs-A"/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+
+  const binding = attestBinding();
+  app.document.emit("change", sourceCheckbox(binding));
+  app.document.emit("click", fakeButton({selectedAttest: "1", ...binding}));
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/selected-sources/attest");
+  const payload = JSON.parse(post.init.body);
+  assert.equal(payload.expected_revision_id, "rev-A");
+  assert.equal(payload.expected_source_context_digest, DIGEST);
+  assert.equal(payload.expected_candidate_observation_id, "obs-A");
+});
+
+test("confirming a selected source needs an actual checkbox toggle and sends the exact payload", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  const value = selectedSnapshot(person, {drafts: [selectedDraft()]});
+  await loadSelected(app, value);
+
+  let detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Source confirmation needed/);
+  assert.match(detail, /I read this source and confirm it shows Person A/);
+  assert.match(detail, /<input type="checkbox" data-selected-source-check="1"/);
+  assert.doesNotMatch(detail, /data-selected-source-check="1"[^>]*checked/,
+    "the confirmation box is unchecked on first render");
+  assert.match(detail, /disabled data-selected-attest="1"/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.match(detail, /data-ready="rev-A" disabled/);
+  assert.equal(app.evaluate("state.selectedCheck"), null);
+
+  const binding = attestBinding();
+  const button = fakeButton({selectedAttest: "1", ...binding});
+  app.document.emit("click", button);
+  assert.equal(app.requests.length, 0, "an unticked confirmation sends nothing");
+  assert.match(app.document.getElementById("draftError").textContent, /Tick the confirmation box/);
+
+  app.document.emit("change", sourceCheckbox(binding, true));
+  app.document.emit("change", sourceCheckbox(binding, false));
+  app.document.emit("click", button);
+  assert.equal(app.requests.length, 0, "clearing the box withdraws the confirmation");
+
+  app.document.emit("change", sourceCheckbox(binding, true));
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/selected-sources/attest");
+  const payload = JSON.parse(post.init.body);
+  assert.deepEqual(Object.keys(payload).sort(), [
+    "attested", "campaign_id", "expected_candidate_observation_id",
+    "expected_revision_id", "expected_source_context_digest", "person_id", "request_id",
+  ]);
+  assert.equal(payload.attested, true);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.person_id, "person-A");
+  assert.equal(payload.expected_revision_id, "rev-A");
+  assert.equal(payload.expected_source_context_digest, DIGEST);
+  assert.equal(payload.expected_candidate_observation_id, "obs-A");
+
+  app.reply(post, {state: "attested", attested: true, replayed: true,
+    revision_id: "rev-historical", source_context_digest: DIGEST});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  assert.ok(reload.url.includes("campaign_id=A"), "the current view is refreshed");
+  app.reply(reload, value);
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.draft"), "rev-A",
+    "a historical receipt revision is never treated as the new head");
+  detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.doesNotMatch(detail, /data-selected-source-check="1"[^>]*checked/,
+    "the confirmation box is unchecked again after a refresh");
+  assert.equal(app.evaluate("state.selectedCheck"), null);
+});
+
+test("an unprovable selected source context keeps confirmation disabled and names the field", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  await loadSelected(app, selectedSnapshot(person, {
+    drafts: [selectedDraft({source_revision_id: "rev-older"})],
+  }));
+
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Confirmation is unavailable in this view/);
+  assert.match(detail, /Needed: drafts\[\]\.source_revision_id/);
+  assert.doesNotMatch(detail, /data-selected-attest/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("a changed selected source offers no legacy upload, verification, or confirmation", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    state: "unavailable", error_code: "source_changed", title: null,
+    source_context_digest: null, candidate_observation_id: null, snapshot_id: null,
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+  });
+  await loadSelected(app, selectedSnapshot(person, {drafts: [selectedDraft({
+    identity_source: null, identity_source_state: "source_unavailable",
+    source_context_digest: null, source_error_code: "source_changed",
+  })]}));
+
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Current source unavailable/);
+  assert.match(detail, /changed after it was recorded/);
+  assert.match(detail, /No earlier ranking, saved-page upload, or unrelated record/);
+  assert.doesNotMatch(detail, /data-selected-attest/);
+  assert.doesNotMatch(detail, /data-selected-source-check/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.doesNotMatch(detail, /data-draft-source-check/);
+
+  const person_detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(person_detail, /Current source unavailable/);
+  assert.doesNotMatch(person_detail, /data-import-source/);
+  assert.doesNotMatch(person_detail, /data-verify-source/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("untrusted selected title, excerpt and source scheme are escaped or refused", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    title: '<img src=x onerror="bad">', has_prior_binding: true,
+    head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  const draft = selectedDraft({
+    identity_source: {
+      observation_id: "obs-A", snapshot_id: "snap-A", source_url: "javascript:bad()",
+      excerpt: "Person A is <Lead> & operator at Example A",
+      retrieved_at: "2026-09-09T04:00:00Z", expires_at: "2099-01-01T00:00:00Z",
+      is_current: false,
+    },
+  });
+  await loadSelected(app, selectedSnapshot(person, {
+    drafts: [draft], company: 'Example <A> & Co',
+  }));
+
+  const campaign = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(campaign, /&lt;img src=x onerror=&quot;bad&quot;&gt;/);
+  assert.doesNotMatch(campaign, /<img src=x/);
+  assert.match(campaign, /Example &lt;A&gt; &amp; Co/);
+
+  const detail = app.document.getElementById("draftDetail").innerHTML;
+  assert.match(detail, /Person A is &lt;Lead&gt; &amp; operator at Example A/);
+  assert.doesNotMatch(detail, /Person A is <Lead>/);
+  assert.doesNotMatch(detail, /javascript:bad/);
+  assert.doesNotMatch(detail, /Open exact source/);
+});
+
+test("a late selected materialization after a campaign switch cannot disturb the newer editor", async () => {
+  const app = harness();
+  await loadSelected(app, selectedSnapshot(selectedPerson()));
+
+  app.document.emit("click", fakeButton({
+    selectedPrepare: "1", selectedCampaign: "A", selectedRun: "run-A",
+    selectedRank: "rank-A", selectedHash: BATCH, selectedPerson: "person-A",
+  }));
+  const pending = app.requests.shift();
+  assert.equal(pending.url, "/api/selected-drafts/materialize");
+
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  app.reply(app.requests.shift(), snapshot("B"));
+  await tick(); await tick();
+  const subject = app.document.getElementById("draftSubject");
+  subject.value = "Unsaved B subject";
+  app.document.emit("input", subject);
+
+  app.reply(pending, {state: "bound", replayed: false, revision_id: "rev-A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(app.evaluate("state.selectedResult"), null);
+  assert.equal(app.requests.length, 0, "the late completion started no campaign A load");
+  assert.equal(subject.value, "Unsaved B subject");
+  assert.equal(app.evaluate('state.editors[editorKey("B","rev-B")].dirty'), true);
+});
+
+test("a late selected confirmation after a campaign switch cannot disturb the newer editor", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  await loadSelected(app, selectedSnapshot(person, {drafts: [selectedDraft()]}));
+
+  const binding = attestBinding();
+  app.document.emit("change", sourceCheckbox(binding));
+  app.document.emit("click", fakeButton({selectedAttest: "1", ...binding}));
+  const pending = app.requests.shift();
+  assert.equal(pending.url, "/api/selected-sources/attest");
+
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  app.reply(app.requests.shift(), snapshot("B"));
+  await tick(); await tick();
+  const subject = app.document.getElementById("draftSubject");
+  subject.value = "Unsaved B subject";
+  app.document.emit("input", subject);
+
+  app.reply(pending, {state: "attested", attested: true, replayed: false,
+    revision_id: "rev-A", source_context_digest: DIGEST});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(app.requests.length, 0, "the late confirmation started no campaign A load");
+  assert.equal(subject.value, "Unsaved B subject");
+  assert.equal(app.evaluate('state.editors[editorKey("B","rev-B")].dirty'), true);
+
+  app.document.emit("click", fakeButton({selectedAttest: "1", ...binding}));
+  assert.equal(app.requests.length, 0, "a stale campaign binding confirms nothing");
+});
+
+test("an unavailable ranking is reported while a missing research prerequisite explains the workflow", async () => {
+  const app = harness();
+  const value = selectedSnapshot(selectedPerson());
+  await loadSelected(app, value);
+  assert.match(app.document.getElementById("campaignDetail").innerHTML, /Current ranked selection/);
+
+  const broken = snapshot("A");
+  broken.campaign.next_action = "prepare_drafts";
+  broken.selected_pipeline = {
+    projection_version: "selected-review-projection-v1", campaign_id: "A",
+    state: "unavailable", error_code: "ranking_projection_unavailable", run_id: "run-A",
+    companies: [], counts: {},
+  };
+  app.evaluate('globalThis.brokenLoad=load("A")');
+  app.reply(app.requests.shift(), broken);
+  await app.context.brokenLoad;
+  let markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Selected ranking unavailable/);
+  assert.match(markup, /No earlier ranking is shown in its place/);
+  assert.match(markup, /ranking projection unavailable/);
+  assert.doesNotMatch(markup, /Prepare draft for this person/);
+  assert.doesNotMatch(markup, /data-prepare=/, "an unavailable ranking offers no legacy fallback");
+  assert.equal(app.requests.length, 0);
+
+  for (const code of ["funding_batch_missing", "person_batch_missing", "qualification_missing"]) {
+    const waiting = snapshot("A");
+    waiting.selected_pipeline = {
+      projection_version: "selected-review-projection-v1", campaign_id: "A",
+      state: "unavailable", error_code: code, run_id: "run-A",
+      companies: [], counts: {},
+    };
+    app.evaluate('globalThis.waitingLoad=load("A")');
+    app.reply(app.requests.shift(), waiting);
+    await app.context.waitingLoad;
+    markup = app.document.getElementById("campaignDetail").innerHTML;
+    assert.match(markup, /People have not been ranked yet/);
+    assert.match(markup, /Run the saved research workflow for this campaign/);
+    assert.doesNotMatch(markup, /Selected ranking unavailable/);
+    assert.doesNotMatch(markup, /No earlier ranking is shown in its place/);
+    assert.doesNotMatch(markup, /data-selected-prepare/);
+  }
+  assert.equal(app.requests.length, 0);
+});
+
+test("D1: a selected success notice never resurfaces after switching campaigns away and back", async () => {
+  const app = harness();
+  const value = selectedSnapshot(selectedPerson());
+  await loadSelected(app, value);
+
+  app.document.emit("click", fakeButton({
+    selectedPrepare: "1", selectedCampaign: "A", selectedRun: "run-A",
+    selectedRank: "rank-A", selectedHash: BATCH, selectedPerson: "person-A",
+  }));
+  app.reply(app.requests.shift(), {state: "bound", replayed: false, revision_id: "rev-A"});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignDetail").innerHTML,
+    /A draft was prepared for this person/);
+
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  assert.equal(app.evaluate("state.selectedResult"), null,
+    "leaving the campaign drops its selected outcome");
+  app.reply(app.requests.shift(), snapshot("B"));
+  await tick(); await tick();
+
+  picker.value = "A";
+  picker.dispatch("change");
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.selectedResult"), null);
+  assert.doesNotMatch(app.document.getElementById("campaignDetail").innerHTML,
+    /A draft was prepared for this person/,
+    "a prior visit's success is never asserted again on return");
+});
+
+test("D1: a refused selected refresh removes the earlier success notice instead of contradicting it", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+  const value = selectedSnapshot(person);
+  await loadSelected(app, value);
+
+  const refresh = () => app.document.emit("click", fakeButton({
+    selectedRegenerate: "1", selectedRevision: "rev-A", selectedPredecessor: PREDECESSOR,
+    selectedCampaign: "A", selectedRun: "run-A", selectedRank: "rank-A",
+    selectedHash: BATCH, selectedPerson: "person-A",
+  }));
+
+  refresh();
+  app.reply(app.requests.shift(), {state: "regenerated", replayed: false, revision_id: "rev-A2"});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignDetail").innerHTML,
+    /A refreshed draft was prepared/);
+
+  refresh();
+  app.reply(app.requests.shift(), {error: "regeneration_context_unchanged"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent,
+    /Nothing changed for this person/);
+  assert.equal(app.evaluate("state.selectedResult"), null);
+  assert.doesNotMatch(app.document.getElementById("campaignDetail").innerHTML,
+    /A refreshed draft was prepared/,
+    "no stale success notice sits above a live refusal");
+});
+
+test("D3: a successful selected retry clears the earlier busy notice", async () => {
+  const app = harness();
+  const value = selectedSnapshot(selectedPerson());
+  await loadSelected(app, value);
+  const box = app.document.getElementById("campaignError");
+  const button = fakeButton({
+    selectedPrepare: "1", selectedCampaign: "A", selectedRun: "run-A",
+    selectedRank: "rank-A", selectedHash: BATCH, selectedPerson: "person-A",
+  });
+
+  app.document.emit("click", button);
+  app.reply(app.requests.shift(), {error: "store_busy"}, false);
+  await tick(); await tick();
+  assert.match(box.textContent, /busy with another change/);
+  assert.equal(box.classList.contains("show"), true);
+
+  app.document.emit("click", button);
+  const retry = app.requests.shift();
+  assert.equal(box.textContent, "", "the stale busy notice clears when the retry starts");
+  assert.equal(box.classList.contains("show"), false);
+  app.reply(retry, {state: "bound", replayed: false, revision_id: "rev-A"});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), value);
+  await tick(); await tick();
+  assert.equal(box.textContent, "");
+  assert.equal(box.classList.contains("show"), false);
+  assert.match(app.document.getElementById("campaignDetail").innerHTML,
+    /A draft was prepared for this person/);
+});
+
+test("D2: the People view never derives selected source confirmation from the person row", async () => {
+  const app = harness();
+  const person = selectedPerson({
+    has_prior_binding: true, head_revision_id: "rev-A", bound_revision_id: "rev-A",
+    expected_revision_id: "rev-A", expected_predecessor_binding_hash: PREDECESSOR,
+  });
+
+  const confirmed = selectedSnapshot(person, {
+    drafts: [selectedDraft({identity_source_state: "source_ready"})],
+    identitySourceState: "confirmation_required",
+  });
+  await loadSelected(app, confirmed);
+  assert.match(app.document.getElementById("draftDetail").innerHTML,
+    /Current role source confirmed/,
+    "the draft view reports the genuine P24 confirmation");
+  let detail = app.document.getElementById("personDetail").innerHTML;
+  assert.match(detail, /Open this person’s draft in Drafts to inspect its exact saved source and its current confirmation status/);
+  assert.doesNotMatch(detail, /read the exact saved source shown there, and confirm it/,
+    "a confirmed source is never sent back for redundant re-confirmation");
+  assert.doesNotMatch(detail, /You confirmed this exact saved source/);
+  assert.doesNotMatch(detail, /Current role source confirmed/);
+
+  const legacy = selectedSnapshot(person, {
+    drafts: [selectedDraft()], identitySourceState: "source_ready",
+  });
+  app.evaluate('globalThis.legacyLoad=load("A")');
+  app.reply(app.requests.shift(), legacy);
+  await app.context.legacyLoad;
+  detail = app.document.getElementById("personDetail").innerHTML;
+  assert.doesNotMatch(detail, /You confirmed this exact saved source/,
+    "a legacy row can never claim a draft attestation");
+  assert.doesNotMatch(detail, /Current role source confirmed/);
+  assert.match(detail, /Source confirmation happens on the draft/);
+  assert.match(detail, /Open this person’s draft in Drafts to inspect its exact saved source and its current confirmation status/);
+  assert.doesNotMatch(detail, /data-verify-source/);
+  assert.doesNotMatch(detail, /data-import-source/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("selected draft format renders explicit missing, configured, and unavailable states without posting", () => {
+  const app = harness();
+  app.requests.shift();
+  const missing = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"missing",policy_state_hash:"' + "a".repeat(64) + '"},"A")');
+  const configured = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"configured",policy_state_hash:"' + "b".repeat(64) + '"},"A")');
+  const unavailable = app.evaluate('selectedDraftFormat({campaign_id:"A",state:"unavailable",code:"copy_profile_missing"},"A")');
+  assert.match(missing, /Configure draft format/);
+  assert.match(missing, /36.*50 subject characters and 75.*125 body words/);
+  assert.match(configured, /Draft format configured/);
+  assert.doesNotMatch(configured, /data-selected-format/);
+  assert.match(unavailable, /Draft format unavailable/);
+  assert.equal(app.requests.length, 0);
+});
+
+function selectedFormatSnapshot(campaignId, hash) {
+  return {...snapshot(campaignId), selected_draft_format: {
+    campaign_id: campaignId, state: "missing", policy_state_hash: hash,
+  }};
+}
+
+test("selected draft format posts only after an explicit current click and stays pending through refresh", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "c".repeat(64);
+  app.evaluate('state.campaign="A"; state.campaignGeneration=4; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  const error = app.document.getElementById("campaignError");
+  error.textContent = "Configure a draft format for this campaign first.";
+  error.classList.add("show");
+  app.document.emit("click", button);
+  assert.equal(error.textContent, "", "a valid explicit click clears the prior prerequisite error");
+  assert.equal(error.classList.contains("show"), false);
+  assert.equal(button.disabled, true);
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/campaigns/A/selected-draft-format");
+  assert.deepEqual(JSON.parse(post.init.body), {campaign_id: "A", expected_policy_state_hash: hash});
+  assert.equal(post.init.headers["X-CSRF-Token"], "csrf-test");
+  app.reply(post, {campaign_id: "A", state: "configured", changed: true});
+  await tick(); await tick();
+  const refresh = app.requests.shift();
+  assert.ok(refresh.url.includes("campaign_id=A"));
+  assert.equal(button.disabled, true, "the action stays pending until the current snapshot refresh completes");
+  app.reply(refresh, selectedFormatSnapshot("A", hash));
+  await tick(); await tick();
+  assert.equal(button.disabled, false);
+});
+
+test("selected draft format rejects stale clicks and stale completions without posting or refreshing", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "d".repeat(64);
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  app.evaluate('state.campaign="B"; state.campaignGeneration=5; state.data=' + JSON.stringify(selectedFormatSnapshot("B", hash)));
+  const error = app.document.getElementById("campaignError");
+  error.textContent = "Other campaign error";
+  error.classList.add("show");
+  app.document.emit("click", button);
+  assert.equal(app.requests.length, 0, "a button from another campaign cannot mutate the current campaign");
+  assert.equal(error.textContent, "Other campaign error", "a stale click cannot clear another campaign's error");
+  assert.equal(error.classList.contains("show"), true);
+  assert.equal(button.disabled, false);
+
+  app.evaluate('state.campaign="A"; state.campaignGeneration=6; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  app.evaluate('state.campaign="B"; state.campaignGeneration=7; state.data=' + JSON.stringify(selectedFormatSnapshot("B", hash)));
+  app.reply(post, {campaign_id: "A", state: "configured", changed: true});
+  await tick(); await tick();
+  assert.equal(app.requests.length, 0, "a stale success never refreshes the new campaign");
+  assert.equal(app.document.getElementById("campaignError").textContent, "");
+});
+
+test("selected draft format failure restores the explicit action without refresh", async () => {
+  const app = harness();
+  app.requests.shift();
+  const hash = "e".repeat(64);
+  app.evaluate('state.campaign="A"; state.campaignGeneration=1; state.data=' + JSON.stringify(selectedFormatSnapshot("A", hash)));
+  const button = fakeButton({selectedFormat: "1", formatCampaign: "A", formatStateHash: hash});
+  app.document.emit("click", button);
+  const post = app.requests.shift();
+  app.reply(post, {error: "copy_profile_invalid"}, false);
+  await tick(); await tick();
+  assert.equal(button.disabled, false);
+  assert.match(app.document.getElementById("campaignError").textContent, /saved draft format is invalid/);
+  assert.equal(app.requests.length, 0);
+});
+
+function setResearch(app, values) {
+  for (const [id, value] of Object.entries(values)) {
+    const field = app.document.getElementById(id);
+    field.value = value;
+    field.dispatch("change");
+    field.dispatch("input");
+  }
+}
+
+test("research text typed before create is buffered, attached to the new campaign, and still needs its own save", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Ask about operations hiring"});
+  assert.equal(app.evaluate('state.researchDrafts[""].value.outreach_goal'), "Ask about operations hiring");
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const create = app.requests.shift();
+  assert.equal(create.url, "/api/campaigns");
+  app.reply(create, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  const reload = app.requests.shift();
+  assert.ok(reload.url.includes("campaign_id=A"));
+  app.reply(reload, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "A");
+  assert.equal(app.document.getElementById("outreachGoal").value, "Ask about operations hiring");
+  assert.equal(app.evaluate("state.researchDrafts.A.value.outreach_goal"), "Ask about operations hiring");
+  assert.equal(app.evaluate("state.researchDrafts.A.dirty"), true);
+  assert.equal(app.evaluate('state.researchDrafts[""]'), undefined);
+  assert.match(app.document.getElementById("campaignSavedNotice").textContent, /still local unsaved text/);
+  assert.equal(app.requests.length, 0, "creating a campaign starts no research run");
+});
+
+test("a failed create keeps the buffered research text and reuses the unchanged retry identity", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this goal"});
+  const form = app.document.getElementById("campaignForm");
+  form.dispatch("submit");
+  const failed = app.requests.shift();
+  const first = JSON.parse(failed.init.body).request_id;
+  app.reply(failed, {error: "sender_profile_missing"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent, /sender profile/i);
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this goal");
+  assert.equal(app.evaluate('state.researchDrafts[""].value.outreach_goal'), "Keep this goal");
+  assert.equal(app.document.getElementById("saveCampaign").disabled, false);
+  form.dispatch("submit");
+  const retry = app.requests.shift();
+  assert.equal(JSON.parse(retry.init.body).request_id, first);
+});
+
+test("an unchanged research brief disables save and an exact repeat reuses the same intake request", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadedA=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.loadedA;
+  setResearch(app, {outreachGoal: "Operations leaders in New York"});
+  const save = app.document.getElementById("saveResearchBrief");
+  assert.equal(save.disabled, false);
+  save.dispatch("click");
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/pipeline/start");
+  const payload = JSON.parse(post.init.body);
+  assert.equal(payload.campaign_id, "A");
+  assert.equal(payload.outreach_goal, "Operations leaders in New York");
+  app.reply(post, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  const saved = snapshot("A");
+  saved.pipeline = {...payload, state: "awaiting_research_adapter", intake_revision: 1, run_id: "prun_a"};
+  app.reply(app.requests.shift(), saved);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Operations leaders in New York");
+  assert.equal(save.disabled, true, "an unchanged brief cannot create a fresh intake revision");
+  save.dispatch("click");
+  assert.equal(app.requests.length, 0);
+  app.evaluate('globalThis.forced=saveResearchBrief("A",state.researchDrafts.A.value)');
+  const forced = app.requests.shift();
+  assert.equal(JSON.parse(forced.init.body).request_id, payload.request_id);
+  setResearch(app, {outreachGoal: "Changed goal"});
+  assert.equal(save.disabled, false, "a changed brief can be saved again");
+});
+
+test("edits typed while a research save is in flight are preserved and stay savable", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.inflight=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.inflight;
+  setResearch(app, {outreachGoal: "Submitted goal"});
+  const save = app.document.getElementById("saveResearchBrief");
+  save.dispatch("click");
+  const post = app.requests.shift();
+  assert.equal(save.disabled, true, "the save is held while it is in flight");
+  setResearch(app, {outreachGoal: "Newer unsaved goal"});
+  app.reply(post, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Newer unsaved goal");
+  assert.equal(app.evaluate("state.researchDrafts.A.dirty"), true);
+  assert.equal(save.disabled, false);
+});
+
+test("an obsolete research save cannot unlock a newer save after starting a new campaign", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Save for A"});
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  const oldSave = app.requests.shift();
+
+  app.document.getElementById("newCampaign").dispatch("click");
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  const loadB = app.requests.shift();
+  app.reply(loadB, snapshot("B"));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Save for B"});
+  const save = app.document.getElementById("saveResearchBrief");
+  save.dispatch("click");
+  const newSave = app.requests.shift();
+  assert.equal(save.disabled, true);
+
+  app.reply(oldSave, {run_id: "prun_a", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  assert.equal(save.disabled, true, "the obsolete completion cannot unlock B's save");
+
+  app.reply(newSave, {run_id: "prun_b", intake_revision: 1, replayed: false});
+  await tick(); await tick();
+  app.reply(app.requests.shift(), snapshot("B"));
+  await tick(); await tick();
+});
+
+test("an advanced compiler field that overrides a visible selection is rejected without any POST", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const industry = app.document.getElementById("industry");
+  industry.value = "software"; industry.dispatch("input");
+  const advanced = app.document.getElementById("advancedBrief");
+  const box = app.document.getElementById("advancedBriefError");
+  advanced.value = "industry:fintech"; advanced.dispatch("input");
+  assert.match(box.textContent, /already set by a field above/);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0, "a conflicting advanced field never reaches the service");
+  advanced.value = "seniority:vp seniority:director"; advanced.dispatch("input");
+  assert.match(box.textContent, /listed more than once/);
+  advanced.value = "please find me some vps"; advanced.dispatch("input");
+  assert.match(box.textContent, /free prose is never compiled/);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0);
+  advanced.value = "seniority:vp"; advanced.dispatch("input");
+  assert.equal(box.textContent, "");
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const create = app.requests.shift();
+  const brief = JSON.parse(create.init.body).brief_text;
+  assert.match(brief, /industry:software/);
+  assert.match(brief, /seniority:vp/);
+});
+
+test("scope values are disabled outside specific mode and an oversized brief context blocks the save", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.scopeLoad=load("A")');
+  app.reply(app.requests.shift(), snapshot("A"));
+  await app.context.scopeLoad;
+  setResearch(app, {geoMode: "specific"});
+  const geoValues = app.document.getElementById("geoValues");
+  assert.equal(geoValues.disabled, false);
+  setResearch(app, {geoValues: "New York, Boston"});
+  assert.equal(app.evaluate("state.researchDrafts.A.value.geography.values.join('|')"), "New York|Boston");
+  setResearch(app, {geoMode: "any"});
+  assert.equal(geoValues.disabled, true);
+  assert.match(app.document.getElementById("geoValuesHint").textContent, /not applied in this mode/i);
+  assert.equal(geoValues.value, "New York, Boston", "typed values are kept, not discarded");
+  assert.equal(app.evaluate("state.researchDrafts.A.value.geography.values.length"), 0);
+  setResearch(app, {outreachGoal: "é".repeat(6000), originalSpecification: "é".repeat(3000)});
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  assert.equal(app.requests.length, 0, "the oversized brief is never sent");
+  assert.match(app.document.getElementById("outreachGoalError").textContent, /16384/);
+});
+
+test("the campaign checklist reports saved setup as waiting and never claims work is running", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const value = snapshot("A");
+  value.drafts = [];
+  value.pipeline = {state: "awaiting_research_adapter", campaign_id: "A", requested_companies: 8,
+    requested_people_per_company: 2, funding_window_years: 3, next_stage: "research",
+    intake_revision: 1, run_id: "run-A"};
+  app.evaluate('state.campaign="A"; globalThis.checklistLoad=load("A")');
+  app.reply(app.requests.shift(), value);
+  await app.context.checklistLoad;
+  const markup = app.document.getElementById("campaignDetail").innerHTML;
+  assert.match(markup, /Setup checklist/);
+  assert.match(markup, /<b>Done<\/b> Campaign saved/);
+  assert.match(markup, /<b>Done<\/b> Research brief saved/);
+  assert.match(markup, /<b>Waiting<\/b> Captured company sources/);
+  assert.match(markup, /<b>Waiting<\/b> People selected/);
+  assert.match(markup, /run the configured workflow separately/i);
+  assert.doesNotMatch(markup, /all ready/i);
+  assert.doesNotMatch(markup, /\d+%/);
+  assert.equal(app.requests.length, 0);
+});
+
+test("the create button is held while a create is in flight and a second click sends nothing", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  const save = app.document.getElementById("saveCampaign");
+  const form = app.document.getElementById("campaignForm");
+  form.dispatch("submit");
+  assert.equal(save.disabled, true);
+  assert.equal(app.requests.length, 1);
+  form.dispatch("submit");
+  assert.equal(app.requests.length, 1, "no duplicate in-flight create");
+  app.reply(app.requests.shift(), {error: "request_conflict"}, false);
+  await tick(); await tick();
+  assert.equal(save.disabled, false);
+  assert.match(app.document.getElementById("campaignError").textContent, /changed after an earlier request/);
+});
+
+test("theme boot defaults to dark with no storage available and issues no theme-related network request", () => {
+  const app = harness();
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(app.requests.length, 1, "only the initial review load fetch was issued at boot");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("a valid persisted light preference is honored at boot and an invalid value falls back to dark", () => {
+  const store = new Map([["mc-theme", "light"]]);
+  const fakeStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, value),
+  };
+  const light = harness({localStorage: fakeStorage});
+  assert.equal(light.document.documentElement.dataset.theme, "light");
+  light.reply(light.requests.shift(), snapshot(null));
+
+  const garbled = harness({localStorage: {getItem: () => "not-a-real-theme", setItem: () => {}}});
+  assert.equal(garbled.document.documentElement.dataset.theme, "dark");
+  garbled.reply(garbled.requests.shift(), snapshot(null));
+});
+
+test("a storage that throws on every call never crashes boot or the toggle, and the toggle issues no fetch", () => {
+  const throwing = {
+    getItem() { throw new Error("storage disabled"); },
+    setItem() { throw new Error("storage disabled"); },
+  };
+  const app = harness({localStorage: throwing});
+  assert.equal(app.document.documentElement.dataset.theme, "dark", "a throwing getItem is swallowed and defaults dark");
+  const toggle = app.document.getElementById("themeToggle");
+  assert.doesNotThrow(() => toggle.dispatch("click"));
+  assert.equal(app.document.documentElement.dataset.theme, "light", "the toggle still flips the in-memory theme even though persistence throws");
+  assert.doesNotThrow(() => toggle.dispatch("click"));
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(app.requests.length, 1, "only the initial review load fetch exists; the toggle issued no network request");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("toggling theme persists a plain string only, flips aria-pressed, and never touches the network", () => {
+  const store = new Map();
+  const fakeStorage = {
+    getItem: key => (store.has(key) ? store.get(key) : null),
+    setItem: (key, value) => store.set(key, String(value)),
+  };
+  const app = harness({localStorage: fakeStorage});
+  const toggle = app.document.getElementById("themeToggle");
+  assert.equal(toggle.attributes["aria-pressed"], "false");
+
+  toggle.dispatch("click");
+  assert.equal(app.document.documentElement.dataset.theme, "light");
+  assert.equal(store.get("mc-theme"), "light");
+  assert.equal(toggle.attributes["aria-pressed"], "true");
+
+  toggle.dispatch("click");
+  assert.equal(app.document.documentElement.dataset.theme, "dark");
+  assert.equal(store.get("mc-theme"), "dark");
+  assert.equal(toggle.attributes["aria-pressed"], "false");
+  assert.equal(store.size, 1, "only the single theme key is ever written");
+  assert.equal(app.requests.length, 1, "toggling theme issued no additional fetch beyond the initial load");
+  app.reply(app.requests.shift(), snapshot(null));
+});
+
+test("the theme helper never mutates state.* or issues requests directly", () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  assert.equal(typeof app.evaluate("globalThis.__mcTheme.applyTheme"), "function");
+  assert.equal(app.requests.length, 0);
+});
+
+test("a lost create response is recovered after reload from only its persisted request UUID", async () => {
+  const storage = sessionStore();
+  const first = harness({sessionStorage: storage});
+  first.reply(first.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  first.document.getElementById("campaignForm").dispatch("submit");
+  const lost = first.requests.shift();
+  const requestId = JSON.parse(lost.init.body).request_id;
+  assert.deepEqual([...storage.values.entries()], [["mc-campaign-create-request-v1", requestId]]);
+  assert.match(requestId, /^[0-9a-f-]{36}$/);
+
+  const reloaded = harness({sessionStorage: storage});
+  const status = reloaded.requests.shift();
+  const initialReview = reloaded.requests.shift();
+  assert.equal(status.url, `/api/campaigns/creation-status?request_id=${requestId}`);
+  assert.equal(status.init.method, undefined);
+  reloaded.reply(initialReview, snapshot(null));
+  await tick(); await tick();
+  reloaded.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  const recoveredLoad = reloaded.requests.shift();
+  assert.ok(recoveredLoad.url.includes("campaign_id=A"));
+  reloaded.reply(recoveredLoad, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(reloaded.evaluate("state.campaign"), "A");
+  assert.equal(storage.values.size, 0);
+  assert.match(reloaded.document.getElementById("campaignSavedNotice").textContent, /^Campaign save confirmed\./);
+});
+
+test("not_found clears the pending UUID and requires a fresh explicit form submission", async () => {
+  const requestId = "11111111-1111-1111-1111-111111111111";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  const review = app.requests.shift();
+  app.reply(review, snapshot(null));
+  app.reply(status, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaignRecoveryId"), "");
+  assert.equal(storage.values.size, 0);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /No campaign was saved.*Re-enter the form/);
+  assert.equal(app.requests.length, 0, "status lookup never creates a campaign automatically");
+});
+
+test("malformed recovery keys and responses cannot bind or unlock campaign creation", async () => {
+  const malformedStorage = sessionStore({"mc-campaign-create-request-v1": "not-a-uuid"});
+  const malformed = harness({sessionStorage: malformedStorage});
+  assert.equal(malformed.requests.length, 1, "an invalid key is never sent to the service");
+  assert.equal(malformed.document.getElementById("saveCampaign").disabled, true);
+  assert.equal(malformed.document.getElementById("campaignRecoveryAbandon").hidden, false);
+  malformed.reply(malformed.requests.shift(), snapshot(null));
+  malformed.document.getElementById("campaignRecoveryAbandon").dispatch("click");
+  assert.equal(malformedStorage.values.size, 0);
+  assert.equal(malformed.evaluate("state.campaignRecoveryId"), "");
+  assert.match(malformed.document.getElementById("campaignRecoveryText").textContent, /Stopped checking.*does not cancel/);
+
+  const requestId = "22222222-2222-2222-2222-222222222222";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  app.reply(app.requests.shift(), snapshot(null));
+  app.reply(status, {state: "saved", request_id: "33333333-3333-3333-3333-333333333333", campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "");
+  assert.equal(app.evaluate("state.campaignRecoveryId"), requestId);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+  app.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(app.requests.length, 0);
+});
+
+test("a failed status lookup retains the UUID and retries only on the explicit status action", async () => {
+  const requestId = "44444444-4444-4444-4444-444444444444";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  app.reply(app.requests.shift(), snapshot(null));
+  status.reject(new Error("offline"));
+  await tick(); await tick();
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.document.getElementById("saveCampaign").disabled, true);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /could not be checked/);
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const retry = app.requests.shift();
+  assert.equal(retry.url, `/api/campaigns/creation-status?request_id=${requestId}`);
+  app.reply(retry, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(storage.values.size, 0);
+  assert.equal(app.requests.length, 0);
+});
+
+test("same-page status recovery attaches pretyped research before loading the saved campaign", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this local research"});
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  post.reject(new Error("connection lost"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const status = app.requests.shift();
+  const requestId = JSON.parse(post.init.body).request_id;
+  app.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate('state.researchDrafts.A.value.outreach_goal'), "Keep this local research");
+  assert.equal(app.evaluate('state.researchDrafts.A.dirty'), true);
+  const load = app.requests.shift();
+  app.reply(load, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this local research");
+});
+
+test("same-page not_found preserves local research without telling the user to re-enter it", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  setResearch(app, {outreachGoal: "Keep this local research"});
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  const requestId = JSON.parse(post.init.body).request_id;
+  post.reject(new Error("connection lost"));
+  await tick(); await tick();
+  app.document.getElementById("campaignRecoveryRetry").dispatch("click");
+  const status = app.requests.shift();
+  app.reply(status, {state: "not_found", request_id: requestId, campaign_id: null});
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("outreachGoal").value, "Keep this local research");
+  assert.equal(app.evaluate('state.researchDrafts[""].dirty'), true);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /local research text remains/);
+  assert.doesNotMatch(app.document.getElementById("campaignRecoveryText").textContent, /Re-enter/);
+});
+
+test("a known create refusal remains visible while its status can be checked", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  app.reply(post, {error: "duplicate_brief_field"}, false);
+  await tick(); await tick();
+  assert.match(app.document.getElementById("campaignError").textContent, /Each advanced field can appear only once/);
+  assert.doesNotMatch(app.document.getElementById("campaignError").textContent, /duplicate_brief_field/);
+  assert.equal(app.document.getElementById("campaignError").classList.contains("show"), true);
+  assert.equal(app.document.getElementById("campaignRecoveryRetry").hidden, false);
+});
+
+test("throwing session storage leaves the old create flow usable with an honest reload warning", async () => {
+  const throwing = {
+    getItem() { throw new Error("blocked"); },
+    setItem() { throw new Error("blocked"); },
+    removeItem() { throw new Error("blocked"); },
+  };
+  const app = harness({sessionStorage: throwing});
+  assert.equal(app.requests.length, 1);
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  assert.equal(post.url, "/api/campaigns");
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /Reload recovery is unavailable/);
+  assert.equal(app.evaluate("state.campaignRecoveryId"), "");
+  app.reply(post, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  const load = app.requests.shift();
+  app.reply(load, snapshot("A"));
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "A");
+});
+
+test("campaign switches make in-flight recovery responses stale without clearing their UUID", async () => {
+  const requestId = "55555555-5555-5555-5555-555555555555";
+  const storage = sessionStore({"mc-campaign-create-request-v1": requestId});
+  const app = harness({sessionStorage: storage});
+  const status = app.requests.shift();
+  const initialReview = app.requests.shift();
+  const picker = app.document.getElementById("campaignSelect");
+  picker.value = "B";
+  picker.dispatch("change");
+  const loadB = app.requests.shift();
+  app.reply(initialReview, snapshot(null));
+  app.reply(loadB, snapshot("B"));
+  await tick(); await tick();
+  app.reply(status, {state: "saved", request_id: requestId, campaign_id: "A"});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "B");
+  assert.equal(storage.values.get("mc-campaign-create-request-v1"), requestId);
+  assert.equal(app.requests.length, 0);
+});
+
+test("explicit New campaign abandons a pending create and its late response stays obsolete", async () => {
+  const storage = sessionStore();
+  const app = harness({sessionStorage: storage});
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.document.getElementById("campaignForm").dispatch("submit");
+  const post = app.requests.shift();
+  assert.equal(storage.values.size, 1);
+  app.document.getElementById("newCampaign").dispatch("click");
+  assert.equal(storage.values.size, 0);
+  assert.match(app.document.getElementById("campaignRecoveryText").textContent, /Stopped checking.*does not cancel/);
+  app.reply(post, {campaign_id: "A", created: true});
+  await tick(); await tick();
+  assert.equal(app.evaluate("state.campaign"), "");
+  assert.equal(app.requests.length, 0);
+});
+
+test("campaign save ignores incomplete unsaved research while research save keeps its own validation", async () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "review_app.html"), "utf8");
+  assert.match(html, /<form id="campaignForm" novalidate>/);
+
+  const createApp = harness();
+  const createData = snapshot(null);
+  createData.sender_profiles = [{sender_profile_id: "profile", sender_name: "Saved profile"}];
+  createData.mailboxes = ["mailbox"];
+  createApp.reply(createApp.requests.shift(), createData);
+  await tick(); await tick();
+  createApp.document.getElementById("asOfDate").value = "";
+  createApp.document.getElementById("campaignForm").dispatch("submit");
+  assert.equal(createApp.requests.shift().url, "/api/campaigns", "campaign validation does not inspect the unsaved research fields");
+
+  const researchApp = harness();
+  researchApp.reply(researchApp.requests.shift(), snapshot("A"));
+  await tick(); await tick();
+  setResearch(researchApp, {asOfDate: ""});
+  researchApp.document.getElementById("saveResearchBrief").dispatch("click");
+  assert.equal(researchApp.requests.length, 0, "invalid research is never sent by its separate save action");
+  assert.equal(researchApp.document.getElementById("researchBriefEditor").open, true);
+  assert.equal(researchApp.document.getElementById("asOfDate").attributes["aria-invalid"], "true");
+});
+
+test("refresh keeps valid unsaved picker choices and clears choices removed from the current lists", async () => {
+  const app = harness();
+  const available = snapshot(null);
+  available.sender_profiles = [{sender_profile_id: "profile-2", sender_name: "Second profile"}];
+  available.mailboxes = ["mailbox-2"];
+  app.reply(app.requests.shift(), available);
+  await tick(); await tick();
+
+  app.document.getElementById("senderProfile").value = "profile-2";
+  app.document.getElementById("mailboxId").value = "mailbox-2";
+  app.document.getElementById("refresh").dispatch("click");
+  app.reply(app.requests.shift(), available);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("senderProfile").value, "profile-2");
+  assert.equal(app.document.getElementById("mailboxId").value, "mailbox-2");
+
+  const removed = snapshot(null);
+  removed.sender_profiles = [];
+  removed.mailboxes = [];
+  app.document.getElementById("refresh").dispatch("click");
+  app.reply(app.requests.shift(), removed);
+  await tick(); await tick();
+  assert.equal(app.document.getElementById("senderProfile").value, "");
+  assert.equal(app.document.getElementById("mailboxId").value, "");
+  assert.match(app.document.getElementById("mailboxHint").textContent, /no saved mailbox/i);
+});
+
+
+function savedResearchSnapshot(campaign, scopeId, scopeValue) {
+  const data = snapshot(campaign);
+  data.pipeline = {
+    campaign_id: campaign,
+    state: "awaiting_research_adapter",
+    intake_revision: 1,
+    run_id: `run-${campaign}`,
+    as_of_date: "2026-09-12",
+    funding_stage_min: "series_a",
+    funding_stage_max: "series_c",
+    funding_window_years: 3,
+    funding_stage_interpretation: "latest_known",
+    geography: {mode: scopeId === "geography" ? "specific" : "unknown", values: scopeId === "geography" ? [scopeValue] : []},
+    sector: {mode: scopeId === "sector" ? "specific" : "unknown", values: scopeId === "sector" ? [scopeValue] : []},
+    requested_companies: 20,
+    requested_people_per_company: 2,
+    role_families: ["operations"],
+    original_specification: "",
+    outreach_goal: "",
+  };
+  return data;
+}
+
+for (const [scopeId, modeId, valuesId] of [["geography", "geoMode", "geoValues"], ["sector", "sectorMode", "sectorValues"]]) {
+  test(`${scopeId} keeps a current dirty specific value through refresh after restoring an inactive value`, async () => {
+    const app = harness();
+    app.reply(app.requests.shift(), snapshot(null));
+    await tick(); await tick();
+    app.evaluate('state.campaign="A"; globalThis.loadScoped=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.loadScoped;
+
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[]", "inactive values never enter the request payload");
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "Boston");
+    setResearch(app, {[valuesId]: "New York"});
+
+    app.evaluate('globalThis.refreshScoped=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.refreshScoped;
+    assert.equal(app.document.getElementById(valuesId).value, "New York", "refresh must not replace the current dirty value from cache");
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[\"New York\"]");
+    app.document.getElementById("saveResearchBrief").dispatch("click");
+    const post = app.requests.shift();
+    assert.deepEqual(JSON.parse(post.init.body)[scopeId].values, ["New York"], "Save sends the current value");
+  });
+
+  test(`${scopeId} inactive values stay with their campaign and restore without payload leakage`, async () => {
+    const app = harness();
+    app.reply(app.requests.shift(), snapshot(null));
+    await tick(); await tick();
+    app.evaluate('state.campaign="A"; globalThis.loadScopeA=load("A")');
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await app.context.loadScopeA;
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("A").${scopeId}.values`)), "[]");
+
+    const picker = app.document.getElementById("campaignSelect");
+    picker.value = "B";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("B", "other", ""));
+    await tick(); await tick();
+    assert.equal(app.document.getElementById(valuesId).value, "");
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "", "A's cached value does not leak into B");
+    setResearch(app, {[modeId]: "any"});
+    assert.equal(JSON.stringify(app.evaluate(`pipelineRequestValue("B").${scopeId}.values`)), "[]");
+
+    picker.value = "A";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await tick(); await tick();
+    assert.equal(app.document.getElementById(modeId).value, "any");
+    picker.value = "B";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("B", "other", ""));
+    await tick(); await tick();
+    picker.value = "A";
+    picker.dispatch("change");
+    app.reply(app.requests.shift(), savedResearchSnapshot("A", scopeId, "Boston"));
+    await tick(); await tick();
+    setResearch(app, {[modeId]: "specific"});
+    assert.equal(app.document.getElementById(valuesId).value, "Boston", "A's inactive value is restored after returning");
+  });
+}
+
+
+test("changing one restored scope never replaces the other dirty specific scope", async () => {
+  const app = harness();
+  const saved = () => {
+    const data = savedResearchSnapshot("A", "geography", "Boston");
+    data.pipeline.sector = {mode: "specific", values: ["Software"]};
+    return data;
+  };
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadBothScopes=load("A")');
+  app.reply(app.requests.shift(), saved());
+  await app.context.loadBothScopes;
+
+  setResearch(app, {geoMode: "any"});
+  setResearch(app, {geoMode: "specific"});
+  setResearch(app, {geoValues: "New York"});
+  setResearch(app, {sectorMode: "any"});
+  setResearch(app, {sectorMode: "specific"});
+  setResearch(app, {sectorValues: "Healthcare"});
+  assert.equal(app.document.getElementById("geoValues").value, "New York");
+
+  app.evaluate('globalThis.refreshBothScopes=load("A")');
+  app.reply(app.requests.shift(), saved());
+  await app.context.refreshBothScopes;
+  assert.equal(app.document.getElementById("geoValues").value, "New York");
+  assert.equal(app.document.getElementById("sectorValues").value, "Healthcare");
+  assert.equal(JSON.stringify(app.evaluate('pipelineRequestValue("A").geography.values')), "[\"New York\"]");
+  assert.equal(JSON.stringify(app.evaluate('pipelineRequestValue("A").sector.values')), "[\"Healthcare\"]");
+  app.document.getElementById("saveResearchBrief").dispatch("click");
+  const post = app.requests.shift();
+  const payload = JSON.parse(post.init.body);
+  assert.deepEqual(payload.geography.values, ["New York"]);
+  assert.deepEqual(payload.sector.values, ["Healthcare"]);
+});
+
+test("an unchanged interaction keeps a saved research brief labeled as saved and disabled", async () => {
+  const app = harness();
+  app.reply(app.requests.shift(), snapshot(null));
+  await tick(); await tick();
+  app.evaluate('state.campaign="A"; globalThis.loadSaved=load("A")');
+  app.reply(app.requests.shift(), savedResearchSnapshot("A", "geography", "Boston"));
+  await app.context.loadSaved;
+  const date = app.document.getElementById("asOfDate");
+  date.dispatch("input");
+  assert.equal(app.document.getElementById("saveResearchBrief").disabled, true);
+  assert.match(app.document.getElementById("researchStatus").textContent, /matches the last saved values/);
+  assert.equal(app.evaluate("state.researchDrafts.A.saved"), true);
+});

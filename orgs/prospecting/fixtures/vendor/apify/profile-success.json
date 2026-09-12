@@ -1,0 +1,16 @@
+{
+  "url": "https://profile-fixture.test/person",
+  "status": "success",
+  "profile": {
+    "identifier": "synthetic-person",
+    "first_name": "Synthetic",
+    "full_name": "Synthetic Person",
+    "title": "Synthetic Role",
+    "location": {"default": "Synthetic Location"},
+    "company": {
+      "name": "Synthetic Company",
+      "linkedin_url": "https://company-fixture.test/company"
+    }
+  },
+  "_metadata": {"extracted_at": "2026-09-03T00:00:00Z"}
+}

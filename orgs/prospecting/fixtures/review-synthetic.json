@@ -1,0 +1,29 @@
+{
+  "review_app": {
+    "contact_email": "taylor@example.test",
+    "private_error_email": "private@example.test"
+  },
+  "review_service": {
+    "contact_a": "a@fixture.test",
+    "contact_b_old": "b-old@fixture.test",
+    "contact_b_new": "b-new@fixture.test",
+    "contact_c": "c@fixture.test",
+    "contact_e": "e@fixture.test",
+    "delivery_message_ids": {
+      "a": "<a@fixture.test>",
+      "b": "<b@fixture.test>"
+    },
+    "mismatched_message_id": "<mismatch@fixture.test>"
+  },
+  "review_pipeline": {
+    "contact_email": "synthetic@fixture.test",
+    "reply_email": "reply@fixture.test"
+  },
+  "affinity_templates_v2": {
+    "contact_email": "sample@affinity.test",
+    "suppression_email": " SAMPLE@AFFINITY.TEST "
+  },
+  "affinity_fill_fit": {
+    "contact_email": "top@synthetic.test"
+  }
+}

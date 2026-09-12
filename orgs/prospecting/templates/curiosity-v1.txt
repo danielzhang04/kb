@@ -1,0 +1,10 @@
+template_id: curiosity
+template_version: 1
+intent: curiosity
+subject: Curious about your work at {company}
+body:
+Hi {first_name},
+
+{why_them} I am comparing how different teams approach {topic}, and the work at {company} gives me a useful perspective to learn from. {sender_proof} I would especially value your view on what the role looks like in practice, which tradeoffs matter most, and what outsiders usually misunderstand. {ask}
+
+{signature}

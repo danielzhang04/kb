@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "nodeids": [
+    "scripts/prospecting/tests/test_affinity_pii_guard.py::test_the_shared_stdout_boundary_rejects_every_pii_class[body-[[message-body: synthetic]]]",
+    "scripts/prospecting/tests/test_affinity_pii_guard.py::test_the_shared_stdout_boundary_rejects_every_pii_class[email-sample@prospect.test]",
+    "scripts/prospecting/tests/test_affinity_pii_guard.py::test_the_shared_stdout_boundary_rejects_every_pii_class[excerpt-[[source-excerpt: synthetic]]]",
+    "scripts/prospecting/tests/test_affinity_pii_guard.py::test_the_shared_stdout_boundary_rejects_every_pii_class[note-[[person-note: synthetic]]]",
+    "scripts/prospecting/tests/test_affinity_pii_guard.py::test_the_shared_stdout_boundary_rejects_every_pii_class[phone-202-555-0101]",
+    "scripts/prospecting/tests/test_pii_guard.py::test_39b_precommit_blocks_all_marker_classes[[[message-body:synthetic-message-body]]-body]",
+    "scripts/prospecting/tests/test_pii_guard.py::test_39b_precommit_blocks_all_marker_classes[[[person-note:synthetic-private-note]]-note]",
+    "scripts/prospecting/tests/test_pii_guard.py::test_39b_precommit_blocks_all_marker_classes[[[source-excerpt:synthetic-source-excerpt]]-excerpt]"
+  ]
+}

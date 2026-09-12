@@ -1,0 +1,9 @@
+{
+  "changed_at":"2026-09-01",
+  "new_company":{"company_id":"company-2","name":"Second Example","website_url":"https://second.example.test","linkedin_url":null,"one_line_summary":"Synthetic destination","industry":"Testing","location":"Boston, MA","source_lane":"manual","dedupe_key":"second.example.test"},
+  "observations":[
+    {"observation_id":"observation-role-close","entity_type":"employment","entity_id":"employment-1","field":"valid_to","value":"\"2026-09-01\"","source":"synthetic","seen_at":"2026-09-01","retrieved_at":"2026-09-03T00:00:00Z","confidence":1.0,"snapshot_id":null},
+    {"observation_id":"observation-role-open","entity_type":"employment","entity_id":"employment-2","field":"title","value":"\"Director\"","source":"synthetic","seen_at":"2026-09-01","retrieved_at":"2026-09-03T00:00:00Z","confidence":1.0,"snapshot_id":null}
+  ],
+  "new_employment":{"employment_id":"employment-2","person_id":"person-1","company_id":"company-2","title":"Director","valid_from":"2026-09-01","valid_to":null,"source_observation_id":"observation-role-open","confidence":1.0}
+}

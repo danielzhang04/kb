@@ -1,0 +1,12 @@
+template_id: startup_current_role_hook
+template_version: 1
+intent: networking
+subject: A question about your operating work
+body:
+Hi {first_name},
+
+{recipient_hook} I noticed {firm_specific_hook}. {sender_intro} {sender_proof}
+
+I would value a practical view of how you decide what needs attention when priorities shift, and how you explain those choices to the people who depend on them. I am interested in the tradeoffs that become clear only after a decision is made, especially once the team begins acting on it. Would you have {ask_minutes} minutes for an {ask_mode} in {time_window}?
+
+{signature}

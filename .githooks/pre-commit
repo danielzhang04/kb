@@ -16,3 +16,4 @@ python scripts/sync_skills.py --check || {
   echo "commit blocked: edit skills/curated, never generated mirrors; then run: python scripts/sync_skills.py";
   exit 1;
 }
+py -3 -m scripts.prospecting.pii_guard --staged || exit 1

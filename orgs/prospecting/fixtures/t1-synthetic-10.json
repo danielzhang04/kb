@@ -1,0 +1,22 @@
+{
+  "tier": "T1",
+  "batch_id": "batch_7f3a9c2d18e6405b",
+  "approval": {
+    "approval_id": "apr_51db826f4e0a3c79",
+    "status": "approved",
+    "tier": "T1",
+    "approver": "human:synthetic-fixture"
+  },
+  "contacts": [
+    {"person_id": "per_0000000000000001", "contact_id": "cp_0000000000000001", "revision_id": "rev_0000000000000001", "email": "synthetic-0@fixture.test", "revision_hash": "000000000000000000000000000000000000000000000000000000000000000b"},
+    {"person_id": "per_0000000000000002", "contact_id": "cp_0000000000000002", "revision_id": "rev_0000000000000002", "email": "synthetic-1@fixture.test", "revision_hash": "000000000000000000000000000000000000000000000000000000000000000c"},
+    {"person_id": "per_0000000000000003", "contact_id": "cp_0000000000000003", "revision_id": "rev_0000000000000003", "email": "synthetic-2@fixture.test", "revision_hash": "000000000000000000000000000000000000000000000000000000000000000d"},
+    {"person_id": "per_0000000000000004", "contact_id": "cp_0000000000000004", "revision_id": "rev_0000000000000004", "email": "synthetic-3@fixture.test", "revision_hash": "000000000000000000000000000000000000000000000000000000000000000e"},
+    {"person_id": "per_0000000000000005", "contact_id": "cp_0000000000000005", "revision_id": "rev_0000000000000005", "email": "synthetic-4@fixture.test", "revision_hash": "000000000000000000000000000000000000000000000000000000000000000f"},
+    {"person_id": "per_0000000000000006", "contact_id": "cp_0000000000000006", "revision_id": "rev_0000000000000006", "email": "synthetic-5@fixture.test", "revision_hash": "0000000000000000000000000000000000000000000000000000000000000010"},
+    {"person_id": "per_0000000000000007", "contact_id": "cp_0000000000000007", "revision_id": "rev_0000000000000007", "email": "synthetic-6@fixture.test", "revision_hash": "0000000000000000000000000000000000000000000000000000000000000011"},
+    {"person_id": "per_0000000000000008", "contact_id": "cp_0000000000000008", "revision_id": "rev_0000000000000008", "email": "synthetic-7@fixture.test", "revision_hash": "0000000000000000000000000000000000000000000000000000000000000012"},
+    {"person_id": "per_0000000000000009", "contact_id": "cp_0000000000000009", "revision_id": "rev_0000000000000009", "email": "synthetic-8@fixture.test", "revision_hash": "0000000000000000000000000000000000000000000000000000000000000013"},
+    {"person_id": "per_000000000000000a", "contact_id": "cp_000000000000000a", "revision_id": "rev_000000000000000a", "email": "synthetic-9@fixture.test", "revision_hash": "0000000000000000000000000000000000000000000000000000000000000014"}
+  ]
+}

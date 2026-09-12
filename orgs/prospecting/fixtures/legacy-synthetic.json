@@ -1,0 +1,97 @@
+{
+  "p6_support": {
+    "contact_email": "synthetic@fixture.test",
+    "root_message_id": "<p6-refire-root@kb.test>"
+  },
+  "test_affinity_pii_guard": {
+    "email": "sample@prospect.test",
+    "phone": "202-555-0101",
+    "note": "[[person-note: synthetic]]",
+    "excerpt": "[[source-excerpt: synthetic]]",
+    "body": "[[message-body: synthetic]]"
+  },
+  "test_approval_integration": {
+    "git_email": "test@example.test",
+    "contact_email": "casey@example.test"
+  },
+  "test_bridge": {
+    "private_error_email": "x@example.test"
+  },
+  "test_campaigner_release": {
+    "contact_email": "synthetic@invalid.test",
+    "root_message_id": "<root@kb.test>",
+    "deterministic_message_id": "<deterministic@prospecting.test>"
+  },
+  "test_campaigner_replies": {
+    "root_message_id": "<root@kb.test>"
+  },
+  "test_campaigner_schedule": {
+    "contact_email": "synthetic@invalid.test"
+  },
+  "test_deployment": {
+    "from_email": "synthetic@kb.test"
+  },
+  "test_end_to_end_live_guard": {
+    "warning_email": "warning@google.test"
+  },
+  "test_fake_gmail": {
+    "root_message_id": "<root@kb.test>",
+    "follow_message_id": "<follow@kb.test>",
+    "bad_message_id": "<bad@kb.test>"
+  },
+  "test_gate": {
+    "unsafe_node_id_phone": "+1-202-555-0142"
+  },
+  "test_gate_p5": {
+    "email": "fixture@example.test",
+    "phone": "+1-202-555-0101"
+  },
+  "test_gmail_adapter": {
+    "root_message_id": "<root@kb.test>",
+    "reply_message_id": "<reply@kb.test>",
+    "missing_message_id": "<missing@kb.test>",
+    "draft_message_id": "<draft@kb.test>",
+    "contact_email": "synthetic@invalid.test"
+  },
+  "test_jobs": {
+    "email": "person@example.test",
+    "policy_phone": "+1-202-555-0101",
+    "note_phone": "+1-202-555-0100",
+    "alternate_policy_phone": "+1-202-555-0102"
+  },
+  "test_model_io": {
+    "email": "a@example.test",
+    "phone": "+1 202 555 0100"
+  },
+  "test_operator": {
+    "alias_email_template": "{prospect}-alias@alpha.test",
+    "existing_email": "existing@synthetic.test",
+    "person_email": "person@example.test",
+    "email_shaped_campaign": "email-shaped@value.test"
+  },
+  "test_operator_fill": {
+    "recovered_email": "recovered@alpha.test",
+    "avery_email": "avery@alpha.test"
+  },
+  "test_sender_profile": {
+    "email": "daniel@example.test",
+    "phone": "+1 202 555 0100"
+  },
+  "test_snov_domain_lane": {
+    "private_error_url": "https://client-private:secret-private@vendor.test"
+  },
+  "test_snov_email_search": {
+    "avery_alias_email": "avery-alias@alpha.test",
+    "avery_email": "avery@alpha.test",
+    "private_error_url": "https://client-private:secret-private@vendor.test"
+  },
+  "test_store": {
+    "person_email": "person@example.test"
+  },
+  "test_t1_release": {
+    "prior_message_id": "<prior@fixture.test>",
+    "reply_email": "reply@fixture.test",
+    "unrelated_message_id": "<unrelated@fixture.test>",
+    "warning_email": "warning@google.test"
+  }
+}

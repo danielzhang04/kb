@@ -1,0 +1,6 @@
+{
+  "fixture": "approval-replay",
+  "assertion_ref": "webauthn:approval-replay",
+  "parent_nonce": "nonce-parent-001",
+  "expected_rejection": "approval_replay"
+}

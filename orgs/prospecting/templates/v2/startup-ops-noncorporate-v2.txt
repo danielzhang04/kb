@@ -1,0 +1,12 @@
+template_id: startup_ops_noncorporate
+template_version: 2
+intent: networking
+subject: Quick question on your operating choices
+body:
+Hi {first_name},
+
+{shared_signal_sentence} I noticed {firm_specific_hook}, and I was interested in your {their_role} perspective at {firm}, alongside the transition from {transition_from} to {transition_to}. {sender_intro} {sender_proof}
+
+I would value hearing about the choices that mattered in your work and transition. That practical judgment is what I am trying to understand better. Would you have {ask_minutes} minutes for an {ask_mode} in {time_window}?
+
+{signature}

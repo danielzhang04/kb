@@ -1,0 +1,10 @@
+template_id: alumni
+template_version: 1
+intent: alumni
+subject: Learning from your path
+body:
+Hi {first_name},
+
+{why_them} Your path to {company} is especially relevant as I think through my own next steps. {sender_proof} I would be grateful for your perspective on the transition, the work you now find most important, and advice you would give someone approaching the field thoughtfully. {ask}
+
+{signature}

@@ -1,0 +1,12 @@
+{
+  "companies": [
+    {"company_id":"company-1","name":"Example Test","website_url":"https://example.test","linkedin_url":null,"one_line_summary":"Synthetic company","industry":"Testing","location":"New York, NY","source_lane":"manual","dedupe_key":"example.test"}
+  ],
+  "people": [
+    {"person_id":"person-1","first_name":"Casey","full_name":"Casey Example","linkedin_url":null,"location":"New York, NY","one_line_blurb":"Synthetic person","source_lane":"manual","dedupe_key":"casey|company-1|associate"}
+  ],
+  "contacts": [
+    {"contact_id":"contact-1","person_id":"person-1","employer_company_id":"company-1","email":"casey@example.test","provider":"manual","adapter_version":"v1","retrieved_at":"2026-09-03T00:00:00Z","verified_at":"2026-09-03T00:00:00Z","state":"valid","confidence":1.0,"bounce_history":0}
+  ],
+  "synthetic_phone": "+1-202-555-0142"
+}

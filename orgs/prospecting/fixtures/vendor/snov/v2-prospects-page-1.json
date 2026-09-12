@@ -1,0 +1,9 @@
+{
+  "data": [
+    {"first_name": "Avery", "last_name": "Synthetic", "position": "Senior Associate", "source_page": "https://profiles.test/avery", "search_emails_start": "https://api.snov.io/v2/prospect/avery/search-emails/start"},
+    {"first_name": "Morgan", "last_name": "Synthetic", "position": "Associate Partner", "source_page": "https://profiles.test/morgan", "search_emails_start": "https://api.snov.io/v2/prospect/morgan/search-emails/start"}
+  ],
+  "meta": {"domain": "alpha.test", "tab": "prospects", "page": 1, "positions": ["associate", "director"], "task_hash": "synthetic-task-page-1", "total_count": 2},
+  "links": {"next": "https://api.snov.io/v2/domain-search/prospects/start?domain=alpha.test&page=2"},
+  "status": "completed"
+}

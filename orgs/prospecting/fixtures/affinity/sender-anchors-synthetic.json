@@ -1,0 +1,42 @@
+{
+  "_note": "Synthetic fixture only; no live sender data.",
+  "sender": {
+    "name": "Sample Sender",
+    "headline": "Synthetic operator profile",
+    "location": "Test Harbor",
+    "linkedin": "https://social.test/sample-sender",
+    "instagram": "https://images.test/sample-sender",
+    "letterboxd": "https://films.test/sample-sender"
+  },
+  "schools": [
+    {
+      "name": "Newtown University",
+      "unit": "School of Business",
+      "degrees": ["BBA"],
+      "years": "2099",
+      "aliases": ["Newtown University School of Business"]
+    }
+  ],
+  "activities": ["Synthetic Finance Society"],
+  "employers": [
+    {
+      "name": "Meridian Bank",
+      "unit": "Strategy",
+      "role": "Analyst",
+      "period": "2099-2101",
+      "kind": "bank",
+      "aliases": ["Meridian Bank, N.A."]
+    }
+  ],
+  "career_track": ["bank", "vc"],
+  "domains": ["enterprise software"],
+  "geography": {
+    "home": "Test Harbor",
+    "current": "Example City",
+    "aliases": ["Harbor District"]
+  },
+  "heritage_language": ["synthetic-language"],
+  "interests": ["synthetic cinema"],
+  "skills": ["market research"],
+  "proof_points": ["Built a synthetic research project."]
+}

@@ -1,0 +1,10 @@
+{
+  "data": [
+    {"first_name": "Avery", "last_name": "Synthetic", "position": "Senior Associate", "source_page": "https://profiles.test/avery", "search_emails_start": "https://api.snov.io/v2/prospect/avery/search-emails/start"},
+    {"first_name": "Casey", "last_name": "Synthetic", "position": "Executive Assistant", "source_page": "https://profiles.test/casey", "search_emails_start": "https://api.snov.io/v2/prospect/casey/search-emails/start"},
+    {"first_name": "Riley", "last_name": "Synthetic", "position": "Co-Founder & Partner", "source_page": "https://profiles.test/riley", "search_emails_start": "https://api.snov.io/v2/prospect/riley/search-emails/start"}
+  ],
+  "meta": {"domain": "alpha.test", "page": 1, "task_hash": "synthetic-unfiltered-page-1", "total_count": 4},
+  "links": {"next": "https://api.snov.io/v2/domain-search/prospects/start?domain=alpha.test&page=2"},
+  "status": "completed"
+}

@@ -1,0 +1,475 @@
+{
+  "schema_version": 2,
+  "rows": [
+    {
+      "person_id": "person-networking-1",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-networking-1",
+      "first_name": "Casey1",
+      "company": "Example Networking 1",
+      "title": "operations",
+      "intent": "networking",
+      "snapshot_id": "snapshot-networking-1",
+      "evidence_id": "evidence-networking-1",
+      "evidence_claim": "Casey1 follows a documented networking path in team operations at Example Networking 1.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented networking path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-networking-1",
+          "company": "evidence-networking-1",
+          "why_them": "evidence-networking-1"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-networking-2",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-networking-2",
+      "first_name": "Casey2",
+      "company": "Example Networking 2",
+      "title": "operations",
+      "intent": "networking",
+      "snapshot_id": "snapshot-networking-2",
+      "evidence_id": "evidence-networking-2",
+      "evidence_claim": "Casey2 follows a documented networking path in team operations at Example Networking 2.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented networking path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-networking-2",
+          "company": "evidence-networking-2",
+          "why_them": "evidence-networking-2"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-networking-3",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-networking-3",
+      "first_name": "Casey3",
+      "company": "Example Networking 3",
+      "title": "operations",
+      "intent": "networking",
+      "snapshot_id": "snapshot-networking-3",
+      "evidence_id": "evidence-networking-3",
+      "evidence_claim": "Casey3 follows a documented networking path in team operations at Example Networking 3.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented networking path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-networking-3",
+          "company": "evidence-networking-3",
+          "why_them": "evidence-networking-3"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-networking-4",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-networking-4",
+      "first_name": "Casey4",
+      "company": "Example Networking 4",
+      "title": "operations",
+      "intent": "networking",
+      "snapshot_id": "snapshot-networking-4",
+      "evidence_id": "evidence-networking-4",
+      "evidence_claim": "Casey4 follows a documented networking path in team operations at Example Networking 4.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented networking path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-networking-4",
+          "company": "evidence-networking-4",
+          "why_them": "evidence-networking-4"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-networking-5",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-networking-5",
+      "first_name": "Casey5",
+      "company": "Example Networking 5",
+      "title": "operations",
+      "intent": "networking",
+      "snapshot_id": "snapshot-networking-5",
+      "evidence_id": "evidence-networking-5",
+      "evidence_claim": "Casey5 follows a documented networking path in team operations at Example Networking 5.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented networking path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-networking-5",
+          "company": "evidence-networking-5",
+          "why_them": "evidence-networking-5"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-recruiting_live-1",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-recruiting_live-1",
+      "first_name": "Casey1",
+      "company": "Example Recruiting_Live 1",
+      "title": "operations",
+      "intent": "recruiting_live",
+      "snapshot_id": "snapshot-recruiting_live-1",
+      "evidence_id": "evidence-recruiting_live-1",
+      "evidence_claim": "Casey1 follows a documented recruiting_live path in team operations at Example Recruiting_Live 1.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented recruiting_live path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-recruiting_live-1",
+          "company": "evidence-recruiting_live-1",
+          "role": "evidence-recruiting_live-1",
+          "why_them": "evidence-recruiting_live-1"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-recruiting_live-2",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-recruiting_live-2",
+      "first_name": "Casey2",
+      "company": "Example Recruiting_Live 2",
+      "title": "operations",
+      "intent": "recruiting_live",
+      "snapshot_id": "snapshot-recruiting_live-2",
+      "evidence_id": "evidence-recruiting_live-2",
+      "evidence_claim": "Casey2 follows a documented recruiting_live path in team operations at Example Recruiting_Live 2.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented recruiting_live path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-recruiting_live-2",
+          "company": "evidence-recruiting_live-2",
+          "role": "evidence-recruiting_live-2",
+          "why_them": "evidence-recruiting_live-2"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-recruiting_live-3",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-recruiting_live-3",
+      "first_name": "Casey3",
+      "company": "Example Recruiting_Live 3",
+      "title": "operations",
+      "intent": "recruiting_live",
+      "snapshot_id": "snapshot-recruiting_live-3",
+      "evidence_id": "evidence-recruiting_live-3",
+      "evidence_claim": "Casey3 follows a documented recruiting_live path in team operations at Example Recruiting_Live 3.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented recruiting_live path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-recruiting_live-3",
+          "company": "evidence-recruiting_live-3",
+          "role": "evidence-recruiting_live-3",
+          "why_them": "evidence-recruiting_live-3"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-recruiting_live-4",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-recruiting_live-4",
+      "first_name": "Casey4",
+      "company": "Example Recruiting_Live 4",
+      "title": "operations",
+      "intent": "recruiting_live",
+      "snapshot_id": "snapshot-recruiting_live-4",
+      "evidence_id": "evidence-recruiting_live-4",
+      "evidence_claim": "Casey4 follows a documented recruiting_live path in team operations at Example Recruiting_Live 4.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented recruiting_live path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-recruiting_live-4",
+          "company": "evidence-recruiting_live-4",
+          "role": "evidence-recruiting_live-4",
+          "why_them": "evidence-recruiting_live-4"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-recruiting_live-5",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-recruiting_live-5",
+      "first_name": "Casey5",
+      "company": "Example Recruiting_Live 5",
+      "title": "operations",
+      "intent": "recruiting_live",
+      "snapshot_id": "snapshot-recruiting_live-5",
+      "evidence_id": "evidence-recruiting_live-5",
+      "evidence_claim": "Casey5 follows a documented recruiting_live path in team operations at Example Recruiting_Live 5.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented recruiting_live path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-recruiting_live-5",
+          "company": "evidence-recruiting_live-5",
+          "role": "evidence-recruiting_live-5",
+          "why_them": "evidence-recruiting_live-5"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-curiosity-1",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-curiosity-1",
+      "first_name": "Casey1",
+      "company": "Example Curiosity 1",
+      "title": "operations",
+      "intent": "curiosity",
+      "snapshot_id": "snapshot-curiosity-1",
+      "evidence_id": "evidence-curiosity-1",
+      "evidence_claim": "Casey1 follows a documented curiosity path in team operations at Example Curiosity 1.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented curiosity path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-curiosity-1",
+          "company": "evidence-curiosity-1",
+          "topic": "evidence-curiosity-1",
+          "why_them": "evidence-curiosity-1"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-curiosity-2",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-curiosity-2",
+      "first_name": "Casey2",
+      "company": "Example Curiosity 2",
+      "title": "operations",
+      "intent": "curiosity",
+      "snapshot_id": "snapshot-curiosity-2",
+      "evidence_id": "evidence-curiosity-2",
+      "evidence_claim": "Casey2 follows a documented curiosity path in team operations at Example Curiosity 2.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented curiosity path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-curiosity-2",
+          "company": "evidence-curiosity-2",
+          "topic": "evidence-curiosity-2",
+          "why_them": "evidence-curiosity-2"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-curiosity-3",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-curiosity-3",
+      "first_name": "Casey3",
+      "company": "Example Curiosity 3",
+      "title": "operations",
+      "intent": "curiosity",
+      "snapshot_id": "snapshot-curiosity-3",
+      "evidence_id": "evidence-curiosity-3",
+      "evidence_claim": "Casey3 follows a documented curiosity path in team operations at Example Curiosity 3.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented curiosity path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-curiosity-3",
+          "company": "evidence-curiosity-3",
+          "topic": "evidence-curiosity-3",
+          "why_them": "evidence-curiosity-3"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-curiosity-4",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-curiosity-4",
+      "first_name": "Casey4",
+      "company": "Example Curiosity 4",
+      "title": "operations",
+      "intent": "curiosity",
+      "snapshot_id": "snapshot-curiosity-4",
+      "evidence_id": "evidence-curiosity-4",
+      "evidence_claim": "Casey4 follows a documented curiosity path in team operations at Example Curiosity 4.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented curiosity path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-curiosity-4",
+          "company": "evidence-curiosity-4",
+          "topic": "evidence-curiosity-4",
+          "why_them": "evidence-curiosity-4"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-curiosity-5",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-curiosity-5",
+      "first_name": "Casey5",
+      "company": "Example Curiosity 5",
+      "title": "operations",
+      "intent": "curiosity",
+      "snapshot_id": "snapshot-curiosity-5",
+      "evidence_id": "evidence-curiosity-5",
+      "evidence_claim": "Casey5 follows a documented curiosity path in team operations at Example Curiosity 5.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented curiosity path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-curiosity-5",
+          "company": "evidence-curiosity-5",
+          "topic": "evidence-curiosity-5",
+          "why_them": "evidence-curiosity-5"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-alumni-1",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-alumni-1",
+      "first_name": "Casey1",
+      "company": "Example Alumni 1",
+      "title": "operations",
+      "intent": "alumni",
+      "snapshot_id": "snapshot-alumni-1",
+      "evidence_id": "evidence-alumni-1",
+      "evidence_claim": "Casey1 follows a documented alumni path in team operations at Example Alumni 1.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented alumni path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-alumni-1",
+          "company": "evidence-alumni-1",
+          "why_them": "evidence-alumni-1"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-alumni-2",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-alumni-2",
+      "first_name": "Casey2",
+      "company": "Example Alumni 2",
+      "title": "operations",
+      "intent": "alumni",
+      "snapshot_id": "snapshot-alumni-2",
+      "evidence_id": "evidence-alumni-2",
+      "evidence_claim": "Casey2 follows a documented alumni path in team operations at Example Alumni 2.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented alumni path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-alumni-2",
+          "company": "evidence-alumni-2",
+          "why_them": "evidence-alumni-2"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-alumni-3",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-alumni-3",
+      "first_name": "Casey3",
+      "company": "Example Alumni 3",
+      "title": "operations",
+      "intent": "alumni",
+      "snapshot_id": "snapshot-alumni-3",
+      "evidence_id": "evidence-alumni-3",
+      "evidence_claim": "Casey3 follows a documented alumni path in team operations at Example Alumni 3.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented alumni path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-alumni-3",
+          "company": "evidence-alumni-3",
+          "why_them": "evidence-alumni-3"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-alumni-4",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-alumni-4",
+      "first_name": "Casey4",
+      "company": "Example Alumni 4",
+      "title": "operations",
+      "intent": "alumni",
+      "snapshot_id": "snapshot-alumni-4",
+      "evidence_id": "evidence-alumni-4",
+      "evidence_claim": "Casey4 follows a documented alumni path in team operations at Example Alumni 4.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented alumni path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-alumni-4",
+          "company": "evidence-alumni-4",
+          "why_them": "evidence-alumni-4"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    },
+    {
+      "person_id": "person-alumni-5",
+      "campaign_id": "campaign-p3",
+      "company_id": "company-alumni-5",
+      "first_name": "Casey5",
+      "company": "Example Alumni 5",
+      "title": "operations",
+      "intent": "alumni",
+      "snapshot_id": "snapshot-alumni-5",
+      "evidence_id": "evidence-alumni-5",
+      "evidence_claim": "Casey5 follows a documented alumni path in team operations at Example Alumni 5.",
+      "model_response": {
+        "angle": "why_them",
+        "why_them": "The documented alumni path in operations provides a specific professional experience to learn from.",
+        "ask": "Would you have 15 minutes for an informational conversation?",
+        "evidence_ids_used": {
+          "first_name": "evidence-alumni-5",
+          "company": "evidence-alumni-5",
+          "why_them": "evidence-alumni-5"
+        },
+        "self_critique": "One supported point and one informational ask."
+      }
+    }
+  ]
+}

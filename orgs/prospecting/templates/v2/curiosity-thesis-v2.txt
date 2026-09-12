@@ -1,0 +1,12 @@
+template_id: curiosity_thesis
+template_version: 2
+intent: curiosity
+subject: Question on your investment perspective
+body:
+Hi {first_name},
+
+{shared_signal_sentence} I noticed {firm_specific_hook}, and your {their_role} perspective at {firm} made me curious about the transition from {transition_from} to {transition_to}. {sender_intro} {sender_proof}
+
+I would value hearing how you frame that work and the questions you return to. I am trying to learn how people make that move while staying close to the work itself. Would you have {ask_minutes} minutes for an {ask_mode} in {time_window}?
+
+{signature}

@@ -1,0 +1,16 @@
+{
+  "single_signal": [
+    ["shared_school", 30, true],
+    ["shared_prior_employer", 28, true],
+    ["path_match_strong", 26, true],
+    ["path_match_partial", 18, false],
+    ["own_writing", 14, false],
+    ["weak_only", 0, false]
+  ],
+  "path_ratios": [
+    [["bank", "startup"], ["bank", "startup"], "startup", 100],
+    [["bank", "consultancy", "startup"], ["bank", "startup"], "startup", 95],
+    [["corporate", "bigtech", "vc"], ["bank", "vc"], "vc", 55],
+    [["corporate", "bigtech"], ["bank", "vc"], "bigtech", 0]
+  ]
+}
