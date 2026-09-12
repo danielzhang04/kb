@@ -228,31 +228,25 @@ def test_usage_line_absent_when_sidecar_missing_does_not_block_payload(tmp_path)
     assert "[preamble]" in ctx  # the rest of the payload still emitted normally
 
 
-def test_session_model_note_written_when_event_carries_model(tmp_path):
+def test_no_session_model_note_is_written(tmp_path):
+    """fix wave M3: the '## Session model' store note is DELETED, not merely unused. Its only
+    intended reader, context_guard.js, resolves the model from the transcript tail instead
+    (event.model is absent from every payload in this build, so the note was empty every time).
+    A store section with no writer worth having and no reader at all is a thing to remove -- this
+    pins that it does not come back by habit."""
     kb_root = make_kb_root(tmp_path)
     repo = make_project_repo(tmp_path)
     store_dir = tmp_path / "store"
     r = run_hook(
         {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo),
-         "model": "claude-opus-5"},
-        kb_root, store_dir,
-    )
-    assert r.returncode == 0 and r.stderr == b""
-    sections = read_store_sections(store_dir, "s1")
-    assert section_body(sections, "Session model") == "claude-opus-5"
-
-
-def test_session_model_note_absent_when_event_has_no_model(tmp_path):
-    kb_root = make_kb_root(tmp_path)
-    repo = make_project_repo(tmp_path)
-    store_dir = tmp_path / "store"
-    r = run_hook(
-        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+         "model": "claude-opus-5"},  # even when the harness DOES send one
         kb_root, store_dir,
     )
     assert r.returncode == 0 and r.stderr == b""
     sections = read_store_sections(store_dir, "s1")
     assert section_body(sections, "Session model") is None
+    hook_src = (REPO / "scripts" / "hooks" / "project_frame_session_start.js").read_text(encoding="utf-8")
+    assert "writeSessionModel" not in hook_src
 
 
 def test_full_payload_on_startup(tmp_path):

@@ -19,11 +19,11 @@ DECISIONS_MAX_BULLETS = 10
 RULED_RE = re.compile(r"^_Ruled:\s*\d{4}-\d{2}-\d{2}_?\s*$", re.MULTILINE)
 UPDATED_RE = re.compile(r"^_Updated:\s*\d{4}-\d{2}-\d{2}(?:\s+\d{2}:\d{2})?_?\s*$", re.MULTILINE)
 HEADING_RE = re.compile(r"^##\s+(.+?)\s*$", re.MULTILINE)
-# `- 2026-09-11 — ruling — why` (date, ruling, why). The em dash is the canonical separator;
-# a plain ` - ` is accepted too. The date's own internal hyphens are consumed by the
-# `\d{4}-\d{2}-\d{2}` literal before either separator alternative is tried, so there is no
-# ambiguity between them.
-DECISION_BULLET_RE = re.compile(r"^[-*]\s+\d{4}-\d{2}-\d{2}\s+(?:—|-)\s+\S.*(?:—|-)\s+\S")
+# `- 2026-09-11 — ruling — why` (date, ruling, why). The em dash is the canonical separator; the
+# en dash `–` (what most editors and several agents actually emit) and a plain ` - ` are accepted
+# too. The date's own internal hyphens are consumed by the `\d{4}-\d{2}-\d{2}` literal before any
+# separator alternative is tried, so there is no ambiguity between them.
+DECISION_BULLET_RE = re.compile(r"^[-*]\s+\d{4}-\d{2}-\d{2}\s+(?:—|–|-)\s+\S.*(?:—|–|-)\s+\S")
 
 
 def _heading_matches(actual: str, wanted: str) -> bool:
@@ -54,13 +54,27 @@ def _section_body(text: str, wanted: str) -> str | None:
     return None
 
 
+def _is_bullet(line: str) -> bool:
+    """A BULLET is a line whose first non-whitespace character is `-` or `*`.
+
+    Everything else inside `## Decisions` -- a wrapped continuation of the previous bullet, an
+    indented sub-note, a stray sentence -- is not a bullet and is ignored entirely (fix wave I1).
+    The previous version treated every non-empty line as a bullet, so one bullet wrapped across
+    two lines reported a bogus "lacks the YYYY-MM-DD — ruling — why shape" for its own second half
+    AND counted twice against DECISIONS_MAX_BULLETS, which is how a 10-bullet cap could fail on
+    six decisions. The lint's job is the shape of the decisions, not the wrapping of the file.
+    """
+    return line.lstrip()[:1] in ("-", "*")
+
+
 def _check_decisions(path: Path, text: str) -> list[str]:
-    """Inside `## Decisions` only: every non-empty line must be a bullet matching
-    `DECISION_BULLET_RE`, and there must be no more than `DECISIONS_MAX_BULLETS` of them."""
+    """Inside `## Decisions` only: every BULLET line (see `_is_bullet`) must match
+    `DECISION_BULLET_RE`, and there must be no more than `DECISIONS_MAX_BULLETS` of them.
+    Non-bullet lines are ignored for both the shape check and the count."""
     body = _section_body(text, "Decisions")
     if body is None:
         return []
-    bullets = [line.strip() for line in body.splitlines() if line.strip()]
+    bullets = [line.strip() for line in body.splitlines() if _is_bullet(line)]
     problems = [
         f"{path}: Decisions bullet {i} lacks the YYYY-MM-DD — ruling — why shape"
         for i, bullet in enumerate(bullets, start=1)

@@ -261,6 +261,27 @@ function resolveBudget(mode, requested) {
   return Math.max(0, Math.min(Math.floor(n), ceiling));
 }
 
+/**
+ * The ` | latest decision: ...` tail of one rollup project line, capped at DECISION_SUFFIX_MAX
+ * chars including the label (fix wave I4).
+ *
+ * A rollup line's job is "which project, where is it, how fresh" -- the decision is a POINTER,
+ * and an uncapped one is not. The rollup budget is 1500 chars for ALL projects (MODE_BUDGETS),
+ * and a decision bullet may legitimately run to a full line of prose; two verbose ones crowded
+ * the later projects out of the frame entirely via truncateLastFirst, so a session was told a
+ * lot about project one and nothing at all about project five. The full bullet is one read of
+ * orgs/<id>/STATE.md away.
+ */
+const DECISION_SUFFIX_MAX = 80;
+
+function decisionSuffix(decision) {
+  if (!decision) return "";
+  const suffix = ` | latest decision: ${decision}`;
+  return suffix.length <= DECISION_SUFFIX_MAX
+    ? suffix
+    : suffix.slice(0, DECISION_SUFFIX_MAX - 3) + "...";
+}
+
 function frame(opts) {
   const o = opts || {};
   const env = o.env || process.env;
@@ -277,8 +298,10 @@ function frame(opts) {
       const now = firstLine(sectionBodyByPrefix(sections, "Now")) || "(no ## Now)";
       const updated = updatedStamp(stateText) || "unknown";
       const decision = firstLine(sectionBodyByPrefix(sections, "Decisions"));
-      const decisionSuffix = decision ? ` | latest decision: ${decision}` : "";
-      entries.push({ label: null, body: `${id}: ${now} (updated ${updated})${decisionSuffix}` });
+      entries.push({
+        label: null,
+        body: `${id}: ${now} (updated ${updated})${decisionSuffix(decision)}`,
+      });
     }
     const rollupResumed = resumedSummaryEntry(o.sessionId, env);
     if (rollupResumed) entries.push(rollupResumed);
@@ -325,4 +348,5 @@ module.exports = {
   projectHandoffs,
   readOpsFile,
   sectionBodyByPrefix,
+  DECISION_SUFFIX_MAX,
 };

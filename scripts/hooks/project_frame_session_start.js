@@ -173,18 +173,6 @@ function writeGoverningSections(sessionId, project, cwd, env) {
   );
 }
 
-/** '## Session model' -- a write-once-per-turn note of `event.model` (when the harness sends
- * one), read by scripts/hooks/context_guard.js's Fable/Opus PDF/image-read rule. NOT one of
- * context_store's five reserved HEADINGS -- an ordinary extra section, so lib/context_store.js
- * needs no change (renderSections already preserves unknown headings verbatim). */
-const SESSION_MODEL_HEADING = "Session model";
-
-function writeSessionModel(sessionId, event, env) {
-  const model = typeof event.model === "string" && event.model.trim() ? event.model.trim() : null;
-  if (!sessionId || !model) return;
-  store.updateStore(sessionId, (sections) => store.upsertSection(sections, SESSION_MODEL_HEADING, model), env);
-}
-
 function main() {
   // Fails open ("{}", exit 0) inside this call on: no stdin, malformed JSON, a non-object
   // payload, or a `hook_event_name` naming a different event. A missing `hook_event_name` is
@@ -214,7 +202,11 @@ function main() {
   // post-compact re-grounding needs fresh sections to read even on a turn where THIS hook stays
   // silent).
   writeGoverningSections(sessionId, project, cwd, env);
-  writeSessionModel(sessionId, event, env);
+  // NOTE (fix wave M3): a '## Session model' store note used to be written here from `event.model`.
+  // It had exactly one intended reader, context_guard.js, which does not read it -- Task 0 proved
+  // `event.model` is absent from every SessionStart/PreToolUse payload in this build, so the note
+  // was empty every time, and the guard resolves the model from the transcript tail instead.
+  // A write with no reader and no content is not a seam for later, it is a thing to delete.
 
   if (event.source === "compact") {
     io.noop(); // U7 owns the compact re-injection -- never returns

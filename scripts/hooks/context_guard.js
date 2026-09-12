@@ -14,9 +14,9 @@
  *
  * ── HOW THE SESSION MODEL IS KNOWN (ruling, 2026-09-11; revised in fix round 1) ─────────────────
  * Task 0's probe proved `event.model` is ABSENT on every PreToolUse/SessionStart payload in this
- * build, so project_frame_session_start.js's `## Session model` store note (written from
- * `event.model` when present) is EMPTY in practice, every time. This guard does NOT read or write
- * that store note at all (Task 1's SessionStart writer is left alone; it just has no reader here).
+ * build, so the `## Session model` store note project_frame_session_start.js used to write from
+ * `event.model` was EMPTY in practice, every time; with this guard reading the transcript instead,
+ * that note had no reader and no content, and fix wave M3 deleted it.
  * Instead it ALWAYS tail-reads `event.transcript_path` fresh, on every call (last <=
  * TRANSCRIPT_TAIL_BYTES, via a seek -- never the whole file, which can be many MB). Measured 0.09s
  * on a 100 MB transcript -- cheap enough to skip caching, and caching would go stale across a

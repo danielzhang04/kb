@@ -359,6 +359,42 @@ def test_rollup_mode_appends_latest_decision_when_present(tmp_path):
     assert "| latest decision: 2026-09-11 — example ruling — why" in text
 
 
+def test_rollup_decision_suffix_is_capped(tmp_path):
+    """fix wave I4. One rollup line's job is "which project, where, how fresh"; the decision is a
+    POINTER. Uncapped, two verbose decisions ate the 1500-char rollup budget and truncateLastFirst
+    dropped the LAST projects entirely -- a session told everything about project one and nothing
+    about project five."""
+    long_decision = "2026-09-11 — " + ("a very long ruling that keeps going " * 6) + "— why"
+    repo = _build_ops_repo_with_decisions(tmp_path / "repo6", decisions_body=long_decision)
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{mode:"rollup", cwd:{json.dumps(str(repo))}, env:{{}}}}); '
+        f'process.stdout.write(JSON.stringify({{text: r.text, max: pf.DECISION_SUFFIX_MAX}}));'
+    )
+    out = json.loads(run_node(body))
+    assert out["max"] == 80
+    line = next(l for l in out["text"].splitlines() if "latest decision:" in l)
+    suffix = line[line.index(" | latest decision:"):]
+    assert len(suffix) == 80, suffix
+    assert suffix.endswith("...")
+    assert "a very long ruling" in suffix  # still a usable pointer, not just an ellipsis
+
+
+def test_rollup_decision_suffix_short_enough_is_left_intact(tmp_path):
+    """The cap truncates only what exceeds it -- a normal one-line decision arrives whole."""
+    repo = _build_ops_repo_with_decisions(
+        tmp_path / "repo7", decisions_body="2026-09-11 — example ruling — why"
+    )
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{mode:"rollup", cwd:{json.dumps(str(repo))}, env:{{}}}}); '
+        f'process.stdout.write(r.text);'
+    )
+    text = run_node(body)
+    assert "| latest decision: 2026-09-11 — example ruling — why" in text
+    assert "..." not in text
+
+
 def test_rollup_mode_omits_decision_suffix_when_absent(tmp_path):
     repo = _build_ops_repo_with_decisions(tmp_path / "repo5", decisions_body=None)
     body = (
