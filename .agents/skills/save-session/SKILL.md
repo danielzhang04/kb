@@ -28,8 +28,14 @@ Do NOT write to `~/.claude/session-data`. Three surfaces, three jobs:
   `handoffs/` follows the ops-branch coordination flow (pull --rebase before, push after).
   LIFECYCLE: `handoffs/` holds only ACTIVE work. If this session RESUMED from a
   handoff, `git rm` that consumed handoff in the same push that adds your new one
-  (or that completes the work — completed work leaves no handoff). Git history
-  keeps every deleted file recoverable.
+  (or that completes the work — completed work leaves no handoff). Before writing
+  a NEW handoff for a scope you did NOT resume from, check `handoffs/` for any
+  existing file with the same `<scope>` token (`ls handoffs/*-<scope>-*.md`); if
+  one exists, `git rm` it in the SAME push as the new one — the new handoff is
+  the current resume state for that scope, and `scripts/handoffs_sweep.py`
+  already flags a same-scope supersession it finds later, so doing it at write
+  time closes the gap between "flagged" and "deleted". Git history keeps every
+  deleted file recoverable.
 - LESSONS (reusable what-worked/what-failed patterns) → appended to
   `memory/<agent-id>.md` under a dated heading. Not the handoff content — just lessons.
 - `orgs/<project>/STATE.md` → update the current-state sections in place if the

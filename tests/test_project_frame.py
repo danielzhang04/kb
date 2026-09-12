@@ -295,6 +295,81 @@ def test_kb_project_override_is_ignored_when_it_is_not_a_project_id(ops_repo):
         assert result == "prospecting", bad  # fell through to the branch, never honoured `bad`
 
 
+def _build_ops_repo_with_decisions(repo, decisions_body=None):
+    """Like `_build_ops_repo` but the `prospecting` STATE.md optionally carries a
+    `## Decisions` section, for the Task 2 Decisions-surfacing tests."""
+    repo.mkdir()
+    git(repo, "init", "-q")
+    git(repo, "checkout", "-q", "-b", "main")
+    (repo / "README.md").write_text("x", encoding="utf-8")
+    git(repo, "add", "README.md")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "init")
+
+    git(repo, "checkout", "-q", "-b", "ops")
+    orgs = repo / "orgs" / "prospecting"
+    orgs.mkdir(parents=True)
+    (orgs / "GOAL.md").write_text(textwrap.dedent("""\
+        # prospecting — GOAL
+        _Ruled: 2026-09-01_
+        ## North star
+        Deliver qualified leads.
+        ## Invariants
+        Never fabricate an email.
+        """), encoding="utf-8")
+    state = (
+        "# prospecting — STATE\n"
+        "_Updated: 2026-09-10 12:00_\n"
+        "## Now\n"
+        "Batch 2 running.\n"
+        "## Current gate\n"
+        "Daniel reviews batch 2.\n"
+    )
+    if decisions_body is not None:
+        state += "## Decisions\n" + decisions_body + "\n"
+    (orgs / "STATE.md").write_text(state, encoding="utf-8")
+    git(repo, "add", "orgs")
+    git(repo, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "seed orgs")
+    git(repo, "checkout", "-q", "main")
+
+    sha = git(repo, "rev-parse", "ops").strip()
+    git(repo, "update-ref", "refs/remotes/origin/ops", sha)
+    git(repo, "branch", "-D", "ops")
+    return repo
+
+
+def test_full_mode_includes_decisions_section(tmp_path):
+    """Step 2: `## Decisions` must join the `full`-mode entries after `Findings`, per Task 2."""
+    repo = _build_ops_repo_with_decisions(
+        tmp_path / "repo3", decisions_body="2026-09-11 — example ruling — why"
+    )
+    text = _frame_text(repo, "full")
+    assert "2026-09-11 — example ruling" in text
+
+
+def test_rollup_mode_appends_latest_decision_when_present(tmp_path):
+    repo = _build_ops_repo_with_decisions(
+        tmp_path / "repo4", decisions_body="2026-09-11 — example ruling — why"
+    )
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{mode:"rollup", cwd:{json.dumps(str(repo))}, env:{{}}}}); '
+        f'process.stdout.write(r.text);'
+    )
+    text = run_node(body)
+    assert "| latest decision: 2026-09-11 — example ruling — why" in text
+
+
+def test_rollup_mode_omits_decision_suffix_when_absent(tmp_path):
+    repo = _build_ops_repo_with_decisions(tmp_path / "repo5", decisions_body=None)
+    body = (
+        f'const pf = require({json.dumps(str(LIB))}); '
+        f'const r = pf.frame({{mode:"rollup", cwd:{json.dumps(str(repo))}, env:{{}}}}); '
+        f'process.stdout.write(r.text);'
+    )
+    text = run_node(body)
+    assert "| latest decision:" not in text
+
+
 def test_kb_project_override_is_ignored_on_a_boss_branch_too(ops_repo):
     """Same rule with no branch fallback available: the answer is null, never the bad value."""
     git(ops_repo, "checkout", "-q", "-b", "claude/boss-2026-09-11")

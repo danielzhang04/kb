@@ -36,3 +36,7 @@ def test_ecc_suppression_compatibility_contract():
     env = json.loads(SETTINGS.read_text(encoding="utf-8"))["env"]
     assert env["ECC_GATEGUARD"] == "off"
     assert "pre:bash:dispatcher" in set(env["ECC_DISABLED_HOOKS"].split(","))
+
+def test_auto_compact_window_is_set():
+    data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    assert data["autoCompactWindow"] == "150k"

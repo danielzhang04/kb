@@ -12,7 +12,7 @@ import sys
 from pathlib import Path
 
 GOAL_HEADINGS = ["North star", "Success conditions", "Invariants", "Governing docs"]
-STATE_HEADINGS = ["Now", "Current gate", "Next", "Blocked", "Findings", "Infra"]
+STATE_HEADINGS = ["Now", "Current gate", "Decisions", "Next", "Blocked", "Findings", "Infra"]
 STATE_MAX_LINES = 60
 GOAL_MAX_LINES = 80
 RULED_RE = re.compile(r"^_Ruled:\s*\d{4}-\d{2}-\d{2}_?\s*$", re.MULTILINE)

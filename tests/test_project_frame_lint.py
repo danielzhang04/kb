@@ -37,6 +37,8 @@ GOOD_STATE = textwrap.dedent("""\
     running
     ## Current gate
     review
+    ## Decisions
+    2026-09-11 — example ruling — why
     ## Next
     ship
     ## Blocked
@@ -91,6 +93,14 @@ def test_heading_with_suffix_passes_by_prefix_match(tmp_path):
     _write(tmp_path, "demo", GOOD_GOAL, state)
     r = run_lint(tmp_path)
     assert r.returncode == 0, r.stdout
+
+
+def test_state_missing_decisions_fails(tmp_path):
+    bad_state = GOOD_STATE.replace("## Decisions\n2026-09-11 — example ruling — why\n", "")
+    _write(tmp_path, "demo", GOOD_GOAL, bad_state)
+    r = run_lint(tmp_path)
+    assert r.returncode == 1
+    assert "missing ## Decisions" in r.stdout
 
 
 def test_heading_prefix_match_requires_word_boundary(tmp_path):

@@ -273,9 +273,12 @@ function frame(opts) {
     for (const id of listProjects(cwd, env)) {
       const stateText = readOpsFile(cwd, `orgs/${id}/STATE.md`, env);
       if (!stateText) continue;
-      const now = firstLine(sectionBodyByPrefix(parseSections(stateText), "Now")) || "(no ## Now)";
+      const sections = parseSections(stateText);
+      const now = firstLine(sectionBodyByPrefix(sections, "Now")) || "(no ## Now)";
       const updated = updatedStamp(stateText) || "unknown";
-      entries.push({ label: null, body: `${id}: ${now} (updated ${updated})` });
+      const decision = firstLine(sectionBodyByPrefix(sections, "Decisions"));
+      const decisionSuffix = decision ? ` | latest decision: ${decision}` : "";
+      entries.push({ label: null, body: `${id}: ${now} (updated ${updated})${decisionSuffix}` });
     }
     const rollupResumed = resumedSummaryEntry(o.sessionId, env);
     if (rollupResumed) entries.push(rollupResumed);
@@ -299,7 +302,7 @@ function frame(opts) {
     "Invariants",
     "Governing docs",
   ]).concat(
-    bodiesFor(stateSections, ["Now", "Current gate", "Next", "Blocked", "Findings", "Infra"])
+    bodiesFor(stateSections, ["Now", "Current gate", "Decisions", "Next", "Blocked", "Findings", "Infra"])
   );
   for (const name of projectHandoffs(cwd, project)) {
     const loadList = loadListFor(cwd, name);
