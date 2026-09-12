@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { appendFile, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -48,7 +49,7 @@ async function repoFixture(): Promise<{ repo: string; ledger: string }> {
   return { repo, ledger };
 }
 
-function buildRunner(capturedArgv: string[][]): RunStudioGenPlan {
+function buildRunner(capturedArgv: string[][], fixturePersonas?: string): RunStudioGenPlan {
   return (async (command, args) => {
     expect(command).toBe(python.command);
     capturedArgv.push([...args]);
@@ -57,6 +58,7 @@ function buildRunner(capturedArgv: string[][]): RunStudioGenPlan {
       ...python.prefixArgs, FIXTURE_SCRIPT, 'plan',
       '--creator', at('--creator'), '--stage', at('--stage'),
       '--out', at('--out'), '--ledger-dir', at('--ledger-dir'),
+      ...(fixturePersonas === undefined ? [] : ['--fixture-personas', fixturePersonas]),
     ], { timeout: REVALIDATE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
   }) as RunStudioGenPlan;
 }
@@ -91,7 +93,7 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
       const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('D'.repeat(32)) });
       expect(first.statusCode).toBe(200);
       const prepared = first.json();
-      const planPath = join(repo, '_private', 'figment-studio', 'gen-plans', prepared.id, 'plan.json');
+      const planPath = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', prepared.id, 'plan.json');
       const fresh = await execFileP(python.command, [...python.prefixArgs, FIXTURE_SCRIPT, 'revalidate', '--plan', planPath], { timeout: REVALIDATE_TIMEOUT_MS });
       expect(JSON.parse(fresh.stdout.trim()).launched_count).toBe(1);
     } finally { await app.close(); }
@@ -119,12 +121,12 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
     const argv = capturedArgv[0];
     expect(argv.slice(argv.indexOf('plan'))).toEqual([
       'plan', '--creator', 'creator-001', '--stage', 'gen',
-      '--out', join(repo, '_private', 'figment-studio', 'gen-plans', prepared.id),
+      '--out', join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', prepared.id),
       '--ledger-dir', join(repo, 'ledgers', 'cost'),
     ]);
     expect(argv).not.toContain('--skip-pin-verify');
 
-    const publishedDir = join(repo, '_private', 'figment-studio', 'gen-plans', prepared.id);
+    const publishedDir = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', prepared.id);
     const planPath = join(publishedDir, 'plan.json');
     const plan = JSON.parse(await readFile(planPath, 'utf8'));
     expect(plan.schema).toBe('figment/train-plan@1');
@@ -186,4 +188,84 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
 
     await app.close();
   }, REVALIDATE_TIMEOUT_MS * 3);
+});
+
+
+describe('Studio allocation to real content-assignment authority', () => {
+  it('binds the exact new prepared plan through real producers and rejects a separately compiled legacy plan without losing legacy replay', async () => {
+    const { repo, ledger } = await repoFixture();
+    const figment = join(repo, 'orgs', 'figment');
+    const assignmentFixture = resolve(dirname(fileURLToPath(import.meta.url)), 'studio_assignment_fixture.py');
+    await execFileP(python.command, [...python.prefixArgs, '-B', assignmentFixture, 'init', '--root', figment],
+      { timeout: REVALIDATE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+    const capturedArgv: string[][] = [];
+    const app = Fastify({ logger: false });
+    registerFigmentStudioGenPlan(app, { repoRoot: repo, ledgerDir: ledger, sessionConfig, platform: process.platform,
+      runStudioGenPlan: buildRunner(capturedArgv, join(figment, 'personas')) });
+    await app.ready();
+    try {
+      const key = 'P'.repeat(32);
+      const posted = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers(key) });
+      expect(posted.statusCode).toBe(200);
+      const prepared = posted.json();
+      const planPath = join(figment, '_private', 'figment-studio', 'gen-plans', prepared.id, 'plan.json');
+      const markerPath = join(dirname(planPath), 'published.json');
+      const before = await Promise.all([planPath, markerPath].map((path) => readFile(path)));
+      expect(createHash('sha256').update(before[0]).digest('hex')).toBe(prepared.planSha256);
+      expect(capturedArgv).toHaveLength(1);
+      expect(capturedArgv[0].slice(capturedArgv[0].indexOf('plan'))).toEqual([
+        'plan', '--creator', 'creator-001', '--stage', 'gen', '--out', dirname(planPath), '--ledger-dir', ledger,
+      ]);
+      expect(capturedArgv[0]).not.toContain('--fixture-personas');
+      expect(capturedArgv[0]).not.toContain('--skip-pin-verify');
+
+      const legacyId = '00000000-0000-4000-8000-000000000001';
+      const legacyOut = join(repo, '_private', 'figment-studio', 'gen-plans', legacyId);
+      const bound = await execFileP(python.command, [...python.prefixArgs, '-B', assignmentFixture, 'bind',
+        '--root', figment, '--plan', planPath, '--legacy-out', legacyOut, '--ledger-dir', ledger],
+      { timeout: REVALIDATE_TIMEOUT_MS * 2, maxBuffer: 16 * 1024 * 1024 });
+      const result = JSON.parse(bound.stdout.trim());
+      expect(result).toMatchObject({ schema: 'figment/studio-assignment-fixture@1', positive_exit: 0, legacy_exit: 2,
+        plan_sha256: prepared.planSha256, plan_and_marker_unchanged: true, legacy_plan_unchanged: true, base_unchanged: true });
+      expect(result.legacy_error).toMatch(/relative|escapes|traversal/);
+      expect(await Promise.all([planPath, markerPath].map((path) => readFile(path)))).toEqual(before);
+      const assignment = JSON.parse(await readFile(join(figment, result.assignment), 'utf8'));
+      const briefRaw = await readFile(join(figment, result.brief)); const brief = JSON.parse(briefRaw.toString('utf8'));
+      const persona = JSON.parse(await readFile(join(figment, 'personas', 'creator-001', 'persona.yaml'), 'utf8'));
+      expect(brief.creator.canonical_reference.declared_path).toBe(persona.identity.references[0]);
+      expect(assignment).toMatchObject({ schema: 'figment/content-asset-assignment@1', creator: 'creator-001', not_promotable: true,
+        brief: { path: result.brief, sha256: createHash('sha256').update(briefRaw).digest('hex') } });
+      expect(assignment.assignments).toHaveLength(2);
+      for (const [index, row] of assignment.assignments.entries()) {
+        const slot = brief.content.required_asset_slots[index];
+        expect(row).toMatchObject({ slot_index: slot.index, role: slot.role, taxonomy_type: slot.taxonomy_type, kind: slot.kind,
+          asset: { kind: 'approved-gen-still', source_plan: { path: relative(figment, planPath).split(sep).join('/'), sha256: prepared.planSha256 } } });
+      }
+      expect(new Set(assignment.assignments.map((row: { asset: { image_id: string } }) => row.asset.image_id)).size).toBe(2);
+      expect(createHash('sha256').update(await readFile(join(figment, result.base_brief))).digest('hex')).not.toBe(assignment.brief.sha256);
+
+      // Retain the separately built old-layout fixture using the original marker
+      // schema and its own produced digest. Nothing is moved from the new allocation.
+      const legacyRaw = await readFile(join(legacyOut, 'plan.json'));
+      const legacySha = createHash('sha256').update(legacyRaw).digest('hex');
+      expect(legacySha).toBe(result.legacy_plan_sha256);
+      const legacyKey = 'L'.repeat(32);
+      await writeFile(join(legacyOut, 'published.json'), JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: legacyId,
+        plan_sha256: legacySha, intent_sha256: createHash('sha256').update(JSON.stringify(['operator', legacyKey])).digest('hex'),
+        created_utc: '2026-09-10T00:00:00.000Z' }), { flag: 'wx' });
+      const legacyMarker = await readFile(join(legacyOut, 'published.json'));
+      const listed = await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: headers(key) });
+      expect(listed.statusCode).toBe(200);
+      expect(Object.keys(listed.json()).sort()).toEqual(['executionRecords', 'plans', 'preparation', 'requestScope', 'schema']);
+      expect(listed.json()).toMatchObject({ schema: 'figment/studio-gen-plans@2', preparation: 'at-capacity',
+        plans: [{ id: legacyId, planSha256: legacySha }, prepared], executionRecords: [{ id: legacyId, planSha256: legacySha }, { id: prepared.id, planSha256: prepared.planSha256 }] });
+      const legacyReplay = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { ...headers(legacyKey), 'x-figment-intent-scope': listed.json().requestScope } });
+      expect(legacyReplay.statusCode).toBe(200);
+      expect(legacyReplay.json()).toEqual(listed.json().plans[0]);
+      expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers(key) })).json()).toEqual(prepared);
+      expect(capturedArgv).toHaveLength(1);
+      expect(await readFile(join(legacyOut, 'plan.json'))).toEqual(legacyRaw);
+      expect(await readFile(join(legacyOut, 'published.json'))).toEqual(legacyMarker);
+    } finally { await app.close(); }
+  }, REVALIDATE_TIMEOUT_MS * 4);
 });

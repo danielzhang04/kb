@@ -1,4 +1,4 @@
-import { cpSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -168,5 +168,28 @@ describe('wirePlaneA', () => {
     expect(event.channel).toBe('planeA');
     expect(event.kind).toBe('cards');
     expect(event.path).toContain('card-bus.md');
+  }, 15_000);
+});
+
+
+describe('Figment allocation paths never reach the hub bus', () => {
+  it('keeps private initial and changing files off the bus while publishing a neighboring STATE change', async () => {
+    const repo = scratchRepo();
+    const hiddenRoot = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans');
+    mkdirSync(join(hiddenRoot, 'private-allocation'), { recursive: true });
+    const secret = join(hiddenRoot, 'private-allocation', 'private-stage.json'); writeFileSync(secret, '{}');
+    const state = join(repo, 'orgs', 'figment', 'STATE.md'); writeFileSync(state, '# Figment\n');
+    const bus = createBus(); const seen: HubEvent[] = []; const unsubscribe = bus.subscribe((event) => seen.push(event));
+    try {
+      watcher = await wirePlaneA(bus, repo, { debounceMs: 10 });
+      const added = join(hiddenRoot, 'private-marker.json'); writeFileSync(added, '{}'); writeFileSync(secret, '{"changed":true}'); unlinkSync(added);
+      // Exercise the ingress guard through the actual watcher-to-bus composition too.
+      for (const event of ['add', 'change', 'unlink']) watcher.emit(event, secret);
+      await new Promise<void>((done) => setTimeout(done, 150)); expect(seen).toEqual([]);
+      writeFileSync(state, '# Figment updated\n');
+      await waitFor(() => seen.some((event) => event.path === state));
+      expect(seen).toEqual([{ channel: 'planeA', kind: 'states', path: state }]);
+      expect(JSON.stringify(seen)).not.toMatch(/private-allocation|private-stage|private-marker|gen-plans/);
+    } finally { unsubscribe(); await watcher?.close(); watcher = undefined; rmSync(repo, { recursive: true, force: true }); }
   }, 15_000);
 });

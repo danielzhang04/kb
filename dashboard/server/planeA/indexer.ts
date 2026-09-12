@@ -4,7 +4,7 @@
  * chokidar file-watch. No SQLite, no source-of-truth store — git stays the database.
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve, sep } from 'node:path';
 import { watch } from 'chokidar';
 import type { FSWatcher } from 'chokidar';
 import { CARD_QUEUE_DIRS, cardTitle, groupByState, parseValidatedCard } from './cards.ts';
@@ -144,7 +144,18 @@ export function watchPlaneA(
   // and fans out an onChange the SSE bridge already forwards to the UI's /api/human-inbox refetch.
   targets.push(join(repoRoot, 'STOP'));
 
-  const watcher = watch(targets, { ignoreInitial: true, persistent: true });
+  // Studio's new plan location is inside orgs, unlike its legacy top-level private root.
+  // Exclude only this exact allocation tree, both before traversal and at event ingress.
+  const normalized = (path: string): string => {
+    const absolute = resolve(path);
+    return process.platform === 'win32' ? absolute.toLowerCase() : absolute;
+  };
+  const privatePlans = normalized(join(repoRoot, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans'));
+  const privatePlanPath = (path: string): boolean => {
+    const absolute = normalized(path);
+    return absolute === privatePlans || absolute.startsWith(`${privatePlans}${sep}`);
+  };
+  const watcher = watch(targets, { ignoreInitial: true, persistent: true, ignored: privatePlanPath });
   opts.onWatcher?.(watcher);
 
   const pending = new Map<PlaneASlice, string>();
@@ -173,7 +184,7 @@ export function watchPlaneA(
   };
 
   const onEvent = (path: string): void => {
-    if (closed) return;
+    if (closed || privatePlanPath(path)) return;
     const kind = classify(repoRoot, path);
     pending.set(kind, path); // debounce: last path per slice wins
     if (timer) clearTimeout(timer);

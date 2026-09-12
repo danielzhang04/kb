@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -127,5 +127,84 @@ describe('watchPlaneA', () => {
     await new Promise((settle) => { setTimeout(settle, 250); });
 
     expect(deltas).toEqual([]);
+  }, 10_000);
+});
+
+
+const allocationWatchRoot = (repo: string) => join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans');
+const normalizeWatchPath = (path: string) => process.platform === 'win32' ? path.replaceAll('\\', '/').toLowerCase() : path.replaceAll('\\', '/');
+function expectNotTraversed(open: FSWatcher, root: string): void {
+  const excluded = normalizeWatchPath(root);
+  for (const directory of Object.keys(open.getWatched())) {
+    const normalized = normalizeWatchPath(directory);
+    expect(normalized === excluded || normalized.startsWith(`${excluded}/`)).toBe(false);
+  }
+}
+const settleWatch = () => new Promise<void>((done) => setTimeout(done, 150));
+
+describe('exact Figment allocation privacy at the Plane-A watcher', () => {
+  it('does not traverse an existing allocation tree and emits no private add/change/unlink path', async () => {
+    const repo = scratchRepo(); const hiddenRoot = allocationWatchRoot(repo);
+    const secret = join(hiddenRoot, '00000000-0000-4000-8000-000000000001', 'private-stage.json');
+    mkdirSync(join(secret, '..'), { recursive: true }); writeFileSync(secret, '{}');
+    const state = join(repo, 'orgs', 'figment', 'STATE.md'); writeFileSync(state, '# Figment\n');
+    const deltas: string[] = [];
+    try {
+      watcher = await watchPlaneA(repo, (delta) => deltas.push(delta.path), { debounceMs: 10 });
+      expectNotTraversed(watcher, hiddenRoot);
+      const added = join(hiddenRoot, 'private-add.json'); writeFileSync(added, '{}'); writeFileSync(secret, '{"changed":true}'); unlinkSync(added);
+      await settleWatch(); expect(deltas).toEqual([]); expectNotTraversed(watcher, hiddenRoot);
+      writeFileSync(state, '# Figment changed\n');
+      await vi.waitFor(() => expect(deltas).toContain(state), { timeout: 2000 });
+      expect(deltas.some((path) => normalizeWatchPath(path).startsWith(normalizeWatchPath(hiddenRoot)))).toBe(false);
+    } finally { await watcher?.close(); watcher = undefined; rmSync(repo, { recursive: true, force: true }); }
+  }, 10_000);
+
+  it('excludes a later-created private tree while still watching neighboring content', async () => {
+    const repo = scratchRepo(); const hiddenRoot = allocationWatchRoot(repo);
+    const content = join(repo, 'orgs', 'figment', 'content', 'briefs'); mkdirSync(content, { recursive: true });
+    const deltas: string[] = [];
+    try {
+      watcher = await watchPlaneA(repo, (delta) => deltas.push(delta.path), { debounceMs: 10 });
+      mkdirSync(join(hiddenRoot, 'later-allocation'), { recursive: true });
+      writeFileSync(join(hiddenRoot, 'later-allocation', 'private-plan.json'), '{}');
+      await settleWatch(); expectNotTraversed(watcher, hiddenRoot); expect(deltas).toEqual([]);
+      const brief = join(content, 'public-planning-neighbor.json'); writeFileSync(brief, '{}');
+      await vi.waitFor(() => expect(deltas).toContain(brief), { timeout: 2000 });
+      expect(deltas).toEqual([brief]);
+    } finally { await watcher?.close(); watcher = undefined; rmSync(repo, { recursive: true, force: true }); }
+  }, 10_000);
+
+  it.each(['add', 'change', 'unlink'] as const)('blocks directly injected private %s events before debounce even when traversal is bypassed', async (event) => {
+    const repo = scratchRepo(); const hiddenRoot = allocationWatchRoot(repo); const deltas: string[] = [];
+    try {
+      watcher = await watchPlaneA(repo, (delta) => deltas.push(delta.path), { debounceMs: 10 });
+      const privatePaths = [hiddenRoot, join(hiddenRoot, 'uuid', 'published.json')];
+      if (process.platform === 'win32') privatePaths.push(hiddenRoot.toUpperCase(), join(hiddenRoot, 'uuid', 'stage.json').replaceAll('\\', '/'));
+      for (const path of privatePaths) watcher.emit(event, path);
+      await settleWatch(); expect(deltas).toEqual([]);
+      const stop = join(repo, 'STOP'); watcher.emit(event, stop);
+      await vi.waitFor(() => expect(deltas).toEqual([stop]), { timeout: 2000 });
+    } finally { await watcher?.close(); watcher = undefined; rmSync(repo, { recursive: true, force: true }); }
+  }, 10_000);
+
+  it('preserves exact parents, similar prefixes, sibling private trees and other org events', async () => {
+    const repo = scratchRepo(); const deltas: string[] = [];
+    try {
+      watcher = await watchPlaneA(repo, (delta) => deltas.push(delta.path), { debounceMs: 10 });
+      const neighbors = [
+        join(repo, 'orgs', 'figment', 'STATE.md'),
+        join(repo, 'orgs', 'figment', '_private', 'figment-studio'),
+        join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans-old', 'plan.json'),
+        join(repo, 'orgs', 'figment', '_private', 'other-feature', 'record.json'),
+        join(repo, 'orgs', 'figment', 'content', 'briefs', 'brief.json'),
+        join(repo, 'orgs', 'other', '_private', 'figment-studio', 'gen-plans', 'plan.json'),
+      ];
+      for (const path of neighbors) {
+        watcher.emit('change', path);
+        await vi.waitFor(() => expect(deltas).toContain(path), { timeout: 2000 });
+      }
+      expect(deltas).toEqual(neighbors);
+    } finally { await watcher?.close(); watcher = undefined; rmSync(repo, { recursive: true, force: true }); }
   }, 10_000);
 });

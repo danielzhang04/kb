@@ -1,32 +1,26 @@
 /** Durable, provider-free preparation of one current Figment generation plan. */
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, open, opendir, realpath, rm } from 'node:fs/promises';
-import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { mkdir, open, rm } from 'node:fs/promises';
+import { basename, join, resolve } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { resolvePython } from '../runtime/python.ts';
 import { runStudioPlanProcess, StudioPlanProcessError } from './studioPlanProcess.ts';
 import { collectPreparedGenStatus, type PreparedGenStatus } from './cloudExperiment.ts';
+import {
+  ID, MAX_PUBLISHED, assertInventoryRoots, assertPublishedStudioCapacity, entryExists,
+  publishedPlan, readBounded, readPublishedStudioPlans, safePath, safeProspective, safeRoot,
+  studioPlanRoots, summary, type Marker, type SafeRoot, type StudioGenPlan,
+} from './studioPublishedPlans.ts';
 
 const CREATOR = 'creator-001';
 const STAGE = 'gen';
 const TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 16 * 1024;
-const MAX_PLAN_BYTES = 64 * 1024;
-const MAX_TREE_BYTES = 256 * 1024 * 1024;
-const MAX_ROOT_BYTES = 512 * 1024 * 1024;
-const MAX_PUBLISHED = 2;
-const MAX_ENTRIES = 2048;
-const MAX_DEPTH = 16;
-const SHA256 = /^[a-f0-9]{64}$/;
 const INTENT = /^[A-Za-z0-9_-]{32,64}$/;
-const ID = /^[0-9a-f-]{36}$/;
 
-export interface StudioGenPlan {
-  schema: 'figment/studio-gen-plan@1'; id: string; status: 'prepared'; creator: 'creator-001'; stage: 'gen';
-  runCount: 1; declaredCeilingUsd: number; planSha256: string;
-}
+export type { StudioGenPlan } from './studioPublishedPlans.ts';
 export type StudioPreparation = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
 /** Discovery read: prepared plans are existing POST DTOs, never approval or launch authority. */
 export interface StudioGenPlans {
@@ -42,199 +36,19 @@ export interface StudioGenPlanOptions {
   /** Fault-injection seam; production uses exclusive fsynced publication. */
   publishMarker?: (path: string, content: string) => Promise<void>;
 }
-interface SafeRoot { path: string; real: string; }
-interface Marker { schema: 'figment/studio-gen-plan-marker@1'; id: string; plan_sha256: string; intent_sha256: string; created_utc: string; }
-interface Published { saved: Marker; directory: string; }
-interface Inventory { published: Published[]; unmarked: boolean; directories: string[]; }
-
 function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
-}
-function ceiling(value: unknown): number | null {
-  if (typeof value !== 'string' || value.length > 16 || !/^\d+(?:\.\d{1,2})?$/.test(value)) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 50 ? parsed : null;
-}
-function inside(root: string, candidate: string): boolean {
-  const part = relative(root, candidate);
-  return part === '' || (!part.startsWith(`..${sep}`) && part !== '..' && !isAbsolute(part));
-}
-async function safeRoot(path: string): Promise<SafeRoot | null> {
-  try {
-    const absolute = resolve(path);
-    const info = await lstat(absolute);
-    return info.isDirectory() && !info.isSymbolicLink()
-      ? { path: absolute, real: await realpath(absolute) } : null;
-  } catch { return null; }
-}
-async function currentRoot(root: SafeRoot): Promise<boolean> {
-  const current = await safeRoot(root.path);
-  return current !== null && current.real === root.real;
-}
-async function safePath(root: SafeRoot, candidate: string, kind: 'file' | 'directory'): Promise<string | null> {
-  const absolute = resolve(candidate);
-  if (!inside(root.path, absolute) || !await currentRoot(root)) return null;
-  try {
-    let cursor = root.path;
-    for (const segment of relative(root.path, absolute).split(/[\\/]/).filter(Boolean)) {
-      cursor = join(cursor, segment);
-      if ((await lstat(cursor)).isSymbolicLink()) return null;
-    }
-    const info = await lstat(absolute);
-    return (kind === 'file' ? info.isFile() : info.isDirectory())
-      && !info.isSymbolicLink() && inside(root.real, await realpath(absolute)) ? absolute : null;
-  } catch { return null; }
-}
-async function safeProspective(root: SafeRoot, candidate: string): Promise<boolean> {
-  const absolute = resolve(candidate);
-  if (!inside(root.path, absolute) || !await currentRoot(root)) return false;
-  let cursor = root.path;
-  for (const segment of relative(root.path, absolute).split(/[\\/]/).filter(Boolean)) {
-    cursor = join(cursor, segment);
-    try {
-      const info = await lstat(cursor);
-      if (!info.isDirectory() || info.isSymbolicLink() || !inside(root.real, await realpath(cursor))) return false;
-    } catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
-  }
-  return true;
-}
-async function entryExists(path: string): Promise<boolean> {
-  try { await lstat(path); return true; }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return false;
-    throw error;
-  }
-}
-async function readBounded(path: string): Promise<Buffer | null> {
-  let handle: Awaited<ReturnType<typeof open>> | null = null;
-  try {
-    handle = await open(path, 'r');
-    const before = await handle.stat();
-    if (!before.isFile() || before.size < 1 || before.size > MAX_PLAN_BYTES) return null;
-    const value = Buffer.allocUnsafe(before.size);
-    let offset = 0;
-    while (offset < value.length) {
-      const read = await handle.read(value, offset, value.length - offset, offset);
-      if (read.bytesRead < 1) return null;
-      offset += read.bytesRead;
-    }
-    const after = await handle.stat();
-    return after.isFile() && after.size === before.size && after.mtimeMs === before.mtimeMs ? value : null;
-  } catch { return null; }
-  finally { await handle?.close().catch(() => {}); }
-}
-function summary(value: unknown, id: string, planSha256: string): StudioGenPlan | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const plan = value as Record<string, unknown>;
-  const stages = plan.stages;
-  if (plan.schema !== 'figment/train-plan@1' || plan.creator !== CREATOR
-    || typeof stages !== 'object' || stages === null || Array.isArray(stages)
-    || Object.keys(stages).length !== 1 || !Object.hasOwn(stages, STAGE)) return null;
-  const gen = (stages as Record<string, unknown>).gen;
-  if (typeof gen !== 'object' || gen === null || Array.isArray(gen)) return null;
-  const runs = (gen as Record<string, unknown>).runs;
-  if (!Array.isArray(runs) || runs.length !== 1 || typeof runs[0] !== 'object'
-    || runs[0] === null || Array.isArray(runs[0])) return null;
-  const declaredCeilingUsd = ceiling((runs[0] as Record<string, unknown>).ceiling_usd);
-  return declaredCeilingUsd === null ? null : {
-    schema: 'figment/studio-gen-plan@1', id, status: 'prepared', creator: CREATOR,
-    stage: STAGE, runCount: 1, declaredCeilingUsd, planSha256,
-  };
-}
-async function sizeOf(root: SafeRoot, directory: string): Promise<number | null> {
-  let total = 0;
-  let count = 0;
-  const pending = [{ path: directory, depth: 0 }];
-  try {
-    while (pending.length) {
-      const current = pending.pop()!;
-      if (current.depth > MAX_DEPTH || await safePath(root, current.path, 'directory') === null) return null;
-      const entries = await opendir(current.path);
-      for await (const entry of entries) {
-        if (++count > MAX_ENTRIES) return null;
-        const next = join(current.path, entry.name);
-        const info = await lstat(next);
-        if (info.isSymbolicLink()) return null;
-        if (info.isDirectory()) pending.push({ path: next, depth: current.depth + 1 });
-        else if (info.isFile()) {
-          if (await safePath(root, next, 'file') === null) return null;
-          total += info.size;
-          if (total > MAX_ROOT_BYTES) return total;
-        } else return null;
-      }
-    }
-    return total;
-  } catch { return null; }
-}
-function marker(value: unknown): Marker | null {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
-  const item = value as Record<string, unknown>;
-  const expected = ['schema', 'id', 'plan_sha256', 'intent_sha256', 'created_utc'];
-  if (Object.keys(item).length !== expected.length || expected.some((key) => !Object.hasOwn(item, key))) return null;
-  return item.schema === 'figment/studio-gen-plan-marker@1'
-    && typeof item.id === 'string' && ID.test(item.id)
-    && typeof item.plan_sha256 === 'string' && SHA256.test(item.plan_sha256)
-    && typeof item.intent_sha256 === 'string' && SHA256.test(item.intent_sha256)
-    && typeof item.created_utc === 'string' && item.created_utc.length === 24
-    && Number.isFinite(Date.parse(item.created_utc))
-    && new Date(item.created_utc).toISOString() === item.created_utc ? item as unknown as Marker : null;
 }
 async function publishMarker(path: string, content: string): Promise<void> {
   const handle = await open(path, 'wx');
   try { await handle.writeFile(content); await handle.sync(); }
   finally { await handle.close(); }
 }
-/** Bounded metadata discovery; recursive capacity failures do not hide safe published summaries. */
-async function scanPlanMarkers(root: SafeRoot, plansRoot: string): Promise<Inventory> {
-  if (await safePath(root, plansRoot, 'directory') === null) throw new Error('unsafe-root');
-  const published: Published[] = [];
-  const directories: string[] = [];
-  let unmarked = false;
-  const entries = await opendir(plansRoot);
-  let count = 0;
-  for await (const entry of entries) {
-    if (++count > MAX_ENTRIES || !entry.isDirectory() || !ID.test(entry.name)) throw new Error('unsafe-plan-entry');
-    const directory = join(plansRoot, entry.name);
-    if (await safePath(root, directory, 'directory') === null) throw new Error('unsafe-plan-entry');
-    directories.push(directory);
-    const markerName = join(directory, 'published.json');
-    if (!await entryExists(markerName)) { unmarked = true; continue; }
-    const markerPath = await safePath(root, markerName, 'file');
-    const raw = markerPath === null ? null : await readBounded(markerPath);
-    const saved = raw === null ? null : marker(JSON.parse(raw.toString('utf8')));
-    if (saved === null || saved.id !== entry.name) throw new Error('bad-marker');
-    published.push({ saved, directory });
-  }
-  if (published.length > MAX_PUBLISHED) throw new Error('capacity');
-  return { published, unmarked, directories };
-}
-/** The original tree limits and unsafe-descendant checks still gate every preparation/replay. */
-async function assertPlanCapacity(root: SafeRoot, plansRoot: string, inventory: Inventory): Promise<void> {
-  const rootBytes = await sizeOf(root, plansRoot);
-  if (rootBytes === null || rootBytes > MAX_ROOT_BYTES) throw new Error('unsafe-capacity');
-  for (const directory of inventory.directories) {
-    const bytes = await sizeOf(root, directory);
-    if (bytes === null || bytes > MAX_TREE_BYTES) throw new Error('unsafe-plan-entry');
-  }
-}
-async function scanPlans(root: SafeRoot, plansRoot: string): Promise<Inventory> {
-  const inventory = await scanPlanMarkers(root, plansRoot);
-  await assertPlanCapacity(root, plansRoot, inventory);
-  return inventory;
-}
-/** The published summary, only when the plan bytes still hash to the marker. */
-async function publishedPlan(root: SafeRoot, entry: Published): Promise<StudioGenPlan | null> {
-  const planPath = await safePath(root, join(entry.directory, 'plan.json'), 'file');
-  const raw = planPath === null ? null : await readBounded(planPath);
-  if (raw === null || sha256(raw) !== entry.saved.plan_sha256) return null;
-  return summary(JSON.parse(raw.toString('utf8')), entry.saved.id, entry.saved.plan_sha256);
-}
-
 export function registerFigmentStudioGenPlan(app: FastifyInstance, options: StudioGenPlanOptions): void {
   const repoRoot = resolve(options.repoRoot);
   const ledgerDir = resolve(options.ledgerDir);
   const script = join(repoRoot, 'orgs', 'figment', 'pipeline', 'figment_train.py');
-  const plansRoot = join(repoRoot, '_private', 'figment-studio', 'gen-plans');
+  const { legacy: legacyRoot, allocation: plansRoot } = studioPlanRoots(repoRoot);
   const python = resolvePython(options.platform ?? process.platform);
   const run = options.runStudioGenPlan ?? runStudioPlanProcess;
   const publish = options.publishMarker ?? publishMarker;
@@ -248,7 +62,8 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
     const root = await safeRoot(repoRoot);
     if (root === null || await safePath(root, script, 'file') === null
       || await safePath(root, ledgerDir, 'directory') === null
-      || !await safeProspective(root, plansRoot)) throw new Error('unsafe-root');
+      || !await safeProspective(root, plansRoot)
+      || !await safeProspective(root, legacyRoot)) throw new Error('unsafe-root');
     return root;
   };
   // Read-only discovery: no mkdir, spawn, audit, deletion, or uncertainty reset.
@@ -266,28 +81,22 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
     let result: StudioGenPlans;
     try {
       const root = await openRoot();
-      if (!await entryExists(plansRoot)) {
-        result = view(terminationUncertain ? 'maintenance-required' : 'available');
-      } else {
-        const inventory = await scanPlanMarkers(root, plansRoot);
-        const ordered = [...inventory.published].sort((a, b) => a.saved.created_utc.localeCompare(b.saved.created_utc)
-          || a.saved.id.localeCompare(b.saved.id));
-        const plans: StudioGenPlan[] = [];
-        const executionRecords: StudioGenPlans['executionRecords'] = [];
-        for (const entry of ordered) {
-          const prepared = await publishedPlan(root, entry);
-          if (prepared === null) throw new Error('stale-plan');
-          plans.push(prepared);
-          executionRecords.push({ id: prepared.id, planSha256: prepared.planSha256,
-            state: collectPreparedGenStatus(entry.directory, entry.saved.plan_sha256) });
-        }
-        let capacityAvailable = true;
-        try { await assertPlanCapacity(root, plansRoot, inventory); }
-        catch { capacityAvailable = false; }
-        if (await safePath(root, plansRoot, 'directory') === null) throw new Error('unsafe-root');
-        result = view(terminationUncertain || inventory.unmarked || !capacityAvailable ? 'maintenance-required'
-          : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans, executionRecords);
+      const inventory = await readPublishedStudioPlans(root);
+      const plans: StudioGenPlan[] = [];
+      const executionRecords: StudioGenPlans['executionRecords'] = [];
+      for (const entry of inventory.published) {
+        const prepared = await publishedPlan(root, entry);
+        if (prepared === null) throw new Error('stale-plan');
+        plans.push(prepared);
+        executionRecords.push({ id: prepared.id, planSha256: prepared.planSha256,
+          state: collectPreparedGenStatus(entry.directory, entry.saved.plan_sha256) });
       }
+      let capacityAvailable = true;
+      try { await assertPublishedStudioCapacity(root, inventory); }
+      catch { capacityAvailable = false; }
+      await assertInventoryRoots(root, inventory);
+      result = view(terminationUncertain || inventory.unmarked || !capacityAvailable ? 'maintenance-required'
+        : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans, executionRecords);
     } catch {
       request.log.warn('Figment generation-plan discovery unavailable');
       result = view('unavailable');
@@ -323,8 +132,9 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
     };
     try {
       root = await openRoot();
-      await mkdir(plansRoot, { recursive: true });
-      const { published, unmarked } = await scanPlans(root, plansRoot);
+      const inventory = await readPublishedStudioPlans(root);
+      await assertPublishedStudioCapacity(root, inventory);
+      const { published, unmarked } = inventory;
       const replays = published.filter((entry) => entry.saved.intent_sha256 === intentSha);
       if (replays.length > 1) throw new Error('duplicate-intent');
       if (replays.length === 1) {
@@ -341,6 +151,7 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       // explicit operator work.
       if (unmarked) throw new Error('unmarked-allocation');
       if (published.length >= MAX_PUBLISHED) throw new Error('capacity');
+      await mkdir(plansRoot, { recursive: true });
       const id = randomUUID();
       allocated = join(plansRoot, id);
       if (!await safeProspective(root, allocated)) throw new Error('unsafe-allocation');
@@ -355,10 +166,13 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       if (raw === null) throw new Error('missing-plan');
       const planSha256 = sha256(raw);
       const prepared = summary(JSON.parse(raw.toString('utf8')), id, planSha256);
-      const bytes = await sizeOf(root, allocated);
-      const finalRootBytes = await sizeOf(root, plansRoot);
-      if (prepared === null || bytes === null || bytes > MAX_TREE_BYTES
-        || finalRootBytes === null || finalRootBytes > MAX_ROOT_BYTES) throw new Error('invalid-plan');
+      if (prepared === null) throw new Error('invalid-plan');
+      const finalInventory = await readPublishedStudioPlans(root);
+      await assertPublishedStudioCapacity(root, finalInventory);
+      if (finalInventory.published.length >= MAX_PUBLISHED
+        || finalInventory.published.some((entry) => entry.saved.id === id || entry.saved.intent_sha256 === intentSha)
+        || finalInventory.directories.some((directory) => directory !== allocated
+          && !finalInventory.published.some((entry) => entry.directory === directory))) throw new Error('changed-inventory');
       const publishedMarker: Marker = { schema: 'figment/studio-gen-plan-marker@1', id,
         plan_sha256: planSha256, intent_sha256: intentSha, created_utc: new Date().toISOString() };
       if (await safePath(root, allocated, 'directory') === null) throw new Error('unsafe-publication');

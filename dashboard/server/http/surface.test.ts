@@ -370,6 +370,7 @@ describe('write surface — composition chain', () => {
 
   describe('Studio generation-plan fleet gate', () => {
     const studioPlans = join(REPO_A, '_private', 'figment-studio');
+    const newStudioPlans = join(REPO_A, 'orgs', 'figment', '_private', 'figment-studio');
     const genPlan = (withToken = true, origin = GOOD_ORIGIN) => ({
       method: 'POST' as const,
       url: '/api/figment/studio/gen-plan',
@@ -390,6 +391,7 @@ describe('write surface — composition chain', () => {
       expect(runPreamble).toHaveBeenCalledWith(REPO_A);
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
       expect(existsSync(join(REPO_A, 'ledgers', 'audit'))).toBe(false);
     });
 
@@ -403,6 +405,7 @@ describe('write surface — composition chain', () => {
       expect(res.body).not.toContain('secret');
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
     });
 
     it('refuses a degraded outbox 503 before the preamble, allocation, or audit', async () => {
@@ -416,6 +419,7 @@ describe('write surface — composition chain', () => {
       expect(runPreamble).not.toHaveBeenCalled();
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
       expect(existsSync(join(REPO_A, 'ledgers', 'audit'))).toBe(false);
     });
 
@@ -440,6 +444,7 @@ describe('write surface — composition chain', () => {
       expect(runPreamble).toHaveBeenCalledWith(REPO_A);
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
     });
 
     const genPlans = (withToken = true, origin = GOOD_ORIGIN) => ({
@@ -462,6 +467,7 @@ describe('write surface — composition chain', () => {
       expect((await app.inject(genPlan())).json()).toEqual({ error: refusal });
       expect(audit.rows).toHaveLength(0);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
     });
 
     it('exempts only the exact discovery GET: origin, session, and read-rate gates still apply', async () => {
@@ -473,6 +479,7 @@ describe('write surface — composition chain', () => {
       expect((await app.inject(genPlans(true, 'https://wrong.example'))).statusCode).toBe(403);
       expect((await app.inject(genPlans())).statusCode).toBe(429);
       expect(existsSync(studioPlans)).toBe(false);
+      expect(existsSync(newStudioPlans)).toBe(false);
     });
   });
 

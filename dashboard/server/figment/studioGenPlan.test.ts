@@ -50,7 +50,7 @@ async function recordedFixture() {
   const posted = await item.app.inject({ method: 'POST', url: POST, headers: headers() });
   expect(posted.statusCode).toBe(200);
   const prepared = posted.json() as { id: string; planSha256: string };
-  const directory = join(item.repo, '_private/figment-studio/gen-plans', prepared.id);
+  const directory = join(item.repo, 'orgs/figment/_private/figment-studio/gen-plans', prepared.id);
   const expected = { status: 'recorded', planSha256: prepared.planSha256, creator: 'creator-001', stage: 'gen',
     execution: 'no-stage-record', liveness: 'unknown', quality: 'not-assessed', declaredCeilingUsd: 2.5, maxMinutes: 115, receipt: null };
   return { ...item, prepared, directory, expected };
@@ -61,7 +61,7 @@ describe('Studio generation-plan preparation', () => {
     const { app, repo, ledger, runner, audit } = await fixture(); const response = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() });
     expect(response.statusCode).toBe(200); expect(response.json()).toMatchObject({ schema: 'figment/studio-gen-plan@1', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5 }); expect(response.body).not.toMatch(/argv|checkpoint|prompt|path/i);
     const [, args, options] = (runner as ReturnType<typeof vi.fn>).mock.calls[0] as [string, string[], { cwd: string; timeout: number; maxBuffer: number; windowsHide: boolean }];
-    expect(args).toEqual(['-3', join(repo, 'orgs', 'figment', 'pipeline', 'figment_train.py'), 'plan', '--creator', 'creator-001', '--stage', 'gen', '--out', args[8], '--ledger-dir', ledger]); expect(args).not.toContain('--skip-pin-verify'); expect(options).toEqual({ cwd: repo, timeout: 30_000, maxBuffer: 16 * 1024, windowsHide: true }); expect(await readdir(args[8])).toContain('published.json'); expect(audit).toHaveBeenCalledTimes(1); await app.close();
+    expect(args).toEqual(['-3', join(repo, 'orgs', 'figment', 'pipeline', 'figment_train.py'), 'plan', '--creator', 'creator-001', '--stage', 'gen', '--out', args[8], '--ledger-dir', ledger]); expect(args[8]).toBe(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', response.json().id)); expect(existsSync(join(repo, '_private', 'figment-studio'))).toBe(false); expect(args).not.toContain('--skip-pin-verify'); expect(options).toEqual({ cwd: repo, timeout: 30_000, maxBuffer: 16 * 1024, windowsHide: true }); expect(await readdir(args[8])).toContain('published.json'); expect(audit).toHaveBeenCalledTimes(1); await app.close();
   });
 
   it('requires an empty body and a bounded idempotency key before spawning', async () => {
@@ -79,19 +79,19 @@ describe('Studio generation-plan preparation', () => {
   });
 
   it('refuses a replay marker whose opaque id does not bind its allocated directory', async () => {
-    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const root = join(repo, '_private', 'figment-studio', 'gen-plans'); const marker = join(root, id, 'published.json'); const plan = JSON.stringify(PLAN); await writeFile(marker, JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: '00000000-0000-4000-8000-000000000000', plan_sha256: createHash('sha256').update(plan).digest('hex'), intent_sha256: createHash('sha256').update(JSON.stringify(['operator', key])).digest('hex'), created_utc: '2026-09-10T00:00:00.000Z' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503); expect(runner).toHaveBeenCalledTimes(1); await app.close();
+    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const root = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans'); const marker = join(root, id, 'published.json'); const plan = JSON.stringify(PLAN); await writeFile(marker, JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: '00000000-0000-4000-8000-000000000000', plan_sha256: createHash('sha256').update(plan).digest('hex'), intent_sha256: createHash('sha256').update(JSON.stringify(['operator', key])).digest('hex'), created_utc: '2026-09-10T00:00:00.000Z' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503); expect(runner).toHaveBeenCalledTimes(1); await app.close();
   });
 
   it('does not reuse a key when its published plan bytes are stale, and reserves two published plans', async () => {
-    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const plan = join(repo, '_private', 'figment-studio', 'gen-plans', id, 'plan.json'); await writeFile(plan, JSON.stringify({ ...PLAN, generated_utc: 'changed' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(409); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('B'.repeat(32)) })).statusCode).toBe(200); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('C'.repeat(32)) })).json()).toEqual({ error: 'preparation-unavailable' }); expect(runner).toHaveBeenCalledTimes(2); await app.close();
+    const { app, repo, runner } = await fixture(); const first = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() }); const { id } = first.json() as { id: string }; const plan = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', id, 'plan.json'); await writeFile(plan, JSON.stringify({ ...PLAN, generated_utc: 'changed' }), 'utf8'); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(409); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('B'.repeat(32)) })).statusCode).toBe(200); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers('C'.repeat(32)) })).json()).toEqual({ error: 'preparation-unavailable' }); expect(runner).toHaveBeenCalledTimes(2); await app.close();
   });
 
   it('refuses unsafe existing allocation entries before the planner starts', async () => {
-    const { app, repo, runner } = await fixture(); await mkdir(join(repo, '_private', 'figment-studio', 'gen-plans', 'not-an-opaque-id'), { recursive: true }); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' }); expect(runner).not.toHaveBeenCalled(); await app.close();
+    const { app, repo, runner } = await fixture(); await mkdir(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', 'not-an-opaque-id'), { recursive: true }); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' }); expect(runner).not.toHaveBeenCalled(); await app.close();
   });
 
   it('fails closed and removes only its current unmarked directory on child failure', async () => {
-    const { app, repo } = await fixture(async (_command, args) => { await writeFile(join(args[args.indexOf('--out') + 1], 'partial'), 'x'); throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); }); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' }); const root = join(repo, '_private', 'figment-studio', 'gen-plans'); expect(await readdir(root)).toEqual([]); await app.close();
+    const { app, repo } = await fixture(async (_command, args) => { await writeFile(join(args[args.indexOf('--out') + 1], 'partial'), 'x'); throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); }); expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' }); const root = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans'); expect(await readdir(root)).toEqual([]); await app.close();
   });
 });
 
@@ -104,7 +104,7 @@ describe('Studio preparation repair boundaries', () => {
       await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(plan));
     });
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503);
-    expect(await readdir(join(repo, '_private', 'figment-studio', 'gen-plans'))).toEqual([]);
+    expect(await readdir(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans'))).toEqual([]);
     await app.close();
   });
 
@@ -130,7 +130,7 @@ describe('Studio preparation repair boundaries', () => {
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).json()).toEqual({ error: 'preparation-unavailable' });
     const replay = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() });
     expect(replay.statusCode).toBe(200);
-    expect(await readFile(join(repo, '_private', 'figment-studio', 'gen-plans', replay.json().id, 'published.json'), 'utf8')).toContain('figment/studio-gen-plan-marker@1');
+    expect(await readFile(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', replay.json().id, 'published.json'), 'utf8')).toContain('figment/studio-gen-plan-marker@1');
     expect(runner).toHaveBeenCalledTimes(1);
     expect(audit).toHaveBeenCalledTimes(3);
     expect(new Set(audit.mock.calls.map(([subject, id, sha]) => `${subject}|${id}|${sha}`))).toEqual(new Set([`operator|${replay.json().id}|${replay.json().planSha256}`]));
@@ -189,7 +189,7 @@ describe('Studio preparation repair boundaries', () => {
   it('refuses a linked allocation before invoking the planner', async () => {
     const { app, repo, runner } = await fixture();
     const outside = await mkdtemp(join(tmpdir(), 'figment-studio-outside-')); temporary.push(outside);
-    const root = join(repo, '_private', 'figment-studio', 'gen-plans');
+    const root = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans');
     await mkdir(root, { recursive: true });
     await symlink(outside, join(root, '00000000-0000-4000-8000-000000000000'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeFile(join(outside, 'sentinel'), 'unchanged');
@@ -202,7 +202,7 @@ describe('Studio preparation repair boundaries', () => {
   it('checks the full inventory before returning an otherwise valid replay', async () => {
     const { app, repo, runner } = await fixture();
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(200);
-    await mkdir(join(repo, '_private', 'figment-studio', 'gen-plans', 'zz-invalid'));
+    await mkdir(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', 'zz-invalid'));
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503);
     expect(runner).toHaveBeenCalledTimes(1);
     await app.close();
@@ -216,7 +216,7 @@ describe('Studio preparation repair boundaries', () => {
       try { await file.truncate(257 * 1024 * 1024); } finally { await file.close(); }
     });
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: headers() })).statusCode).toBe(503);
-    expect(await readdir(join(repo, '_private', 'figment-studio', 'gen-plans'))).toEqual([]);
+    expect(await readdir(join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans'))).toEqual([]);
     await app.close();
   });
 
@@ -226,7 +226,7 @@ describe('Studio preparation repair boundaries', () => {
       const response = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { ...headers(), 'x-figment-intent-scope': scope } });
       expect(response.statusCode).toBe(409); expect(response.json()).toEqual({ error: 'intent-scope-conflict' });
     }
-    expect(runner).not.toHaveBeenCalled(); expect(existsSync(join(repo, '_private'))).toBe(false);
+    expect(runner).not.toHaveBeenCalled(); expect(existsSync(join(repo, '_private'))).toBe(false); expect(existsSync(join(repo, 'orgs/figment/_private'))).toBe(false);
     const scope = (await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: read('other-operator') })).json().requestScope;
     expect((await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { ...headers(), 'x-figment-intent-scope': scope } })).statusCode).toBe(409);
     expect(runner).not.toHaveBeenCalled();
@@ -235,7 +235,7 @@ describe('Studio preparation repair boundaries', () => {
 
   it('refuses a deep existing tree before the planner and preserves it', async () => {
     const { app, repo, runner } = await fixture();
-    const root = join(repo, '_private', 'figment-studio', 'gen-plans', '00000000-0000-4000-8000-000000000000');
+    const root = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', '00000000-0000-4000-8000-000000000000');
     const deep = join(root, ...Array.from({ length: 17 }, () => 'd'));
     await mkdir(deep, { recursive: true });
     await writeFile(join(deep, 'sentinel'), 'preserved');
@@ -247,14 +247,14 @@ describe('Studio preparation repair boundaries', () => {
 });
 
 describe('Studio generation-plan discovery', () => {
-  const plansRootOf = (repo: string) => join(repo, '_private', 'figment-studio', 'gen-plans');
+  const plansRootOf = (repo: string) => join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans');
 
   it('reports a safely absent root as available without creating, spawning, or auditing', async () => {
     const { app, repo, runner, audit } = await fixture();
     const response = await app.inject({ method: 'GET', url: GET, headers: read() });
     expect(response.statusCode).toBe(200);
     expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [], executionRecords: [], preparation: 'available' });
-    expect(existsSync(join(repo, '_private'))).toBe(false); expect(runner).not.toHaveBeenCalled(); expect(audit).not.toHaveBeenCalled();
+    expect(existsSync(join(repo, '_private'))).toBe(false); expect(existsSync(join(repo, 'orgs/figment/_private'))).toBe(false); expect(runner).not.toHaveBeenCalled(); expect(audit).not.toHaveBeenCalled();
     expectPrivateFree(response.body, repo);
     await app.close();
   });
@@ -266,7 +266,7 @@ describe('Studio generation-plan discovery', () => {
     expect((await app.inject({ method: 'GET', url: `${GET}?`, headers: read() })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: GET, headers: { ...read(), 'content-type': 'application/json' }, payload: '{}' })).json()).toEqual({ error: 'body-not-allowed' });
     expect((await app.inject({ method: 'GET', url: GET })).statusCode).toBe(401);
-    expect(existsSync(join(repo, '_private'))).toBe(false);
+    expect(existsSync(join(repo, '_private'))).toBe(false); expect(existsSync(join(repo, 'orgs/figment/_private'))).toBe(false);
     await app.close();
   });
 
@@ -456,8 +456,8 @@ describe('Studio generation-plan recorded execution discovery', () => {
     try {
       const outside = await mkdtemp(join(tmpdir(), 'figment-status-root-')); temporary.push(outside);
       await writeFile(join(outside, 'sentinel'), 'untouched');
-      await mkdir(join(item.repo, '_private/figment-studio'), { recursive: true });
-      await symlink(outside, join(item.repo, '_private/figment-studio/gen-plans'), process.platform === 'win32' ? 'junction' : 'dir');
+      await mkdir(join(item.repo, 'orgs/figment/_private/figment-studio'), { recursive: true });
+      await symlink(outside, join(item.repo, 'orgs/figment/_private/figment-studio/gen-plans'), process.platform === 'win32' ? 'junction' : 'dir');
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
       expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
       expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
@@ -468,7 +468,7 @@ describe('Studio generation-plan recorded execution discovery', () => {
   it.each(['oversized-marker', 'linked-marker', 'oversized-plan', 'third-published-id'] as const)('refuses unsafe inventory metadata %s as a whole', async (failure) => {
     const item = await recordedFixture();
     try {
-      const root = join(item.repo, '_private/figment-studio/gen-plans');
+      const root = join(item.repo, 'orgs/figment/_private/figment-studio/gen-plans');
       if (failure === 'oversized-marker' || failure === 'oversized-plan') {
         const path = join(item.directory, failure === 'oversized-marker' ? 'published.json' : 'plan.json');
         const oversized = (await readFile(path, 'utf8')) + ' '.repeat(256 * 1024 + 1);
@@ -485,7 +485,7 @@ describe('Studio generation-plan recorded execution discovery', () => {
       } else {
         const marker = JSON.parse(await readFile(join(item.directory, 'published.json'), 'utf8'));
         for (const id of ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002']) {
-          await mkdir(join(root, id)); await writeFile(join(root, id, 'published.json'), JSON.stringify({ ...marker, id }));
+          await mkdir(join(root, id)); await writeFile(join(root, id, 'published.json'), JSON.stringify({ ...marker, id, intent_sha256: createHash('sha256').update(id).digest('hex') }));
           await writeFile(join(root, id, 'plan.json'), await readFile(join(item.directory, 'plan.json')));
         }
       }
@@ -494,5 +494,171 @@ describe('Studio generation-plan recorded execution discovery', () => {
       expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
       expectPrivateFree(response.body, item.repo); expect((await readdir(root)).sort()).toEqual(before); expect(item.runner).toHaveBeenCalledTimes(1);
     } finally { await item.app.close(); }
+  });
+});
+
+
+const legacyRootOf = (repo: string) => join(repo, '_private', 'figment-studio', 'gen-plans');
+const allocationRootOf = (repo: string) => join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans');
+const FIXED_A = '00000000-0000-4000-8000-000000000001';
+const FIXED_B = '00000000-0000-4000-8000-000000000002';
+async function seedPublished(root: string, id: string, intent: string, stamp = '2026-09-10T00:00:00.000Z') {
+  // A retained legacy-format marker/plan fixture, not a relocated live plan or approval.
+  const directory = join(root, id); await mkdir(directory, { recursive: true });
+  const raw = JSON.stringify({ ...PLAN, fixtureId: id });
+  const planSha256 = createHash('sha256').update(raw).digest('hex');
+  await writeFile(join(directory, 'plan.json'), raw);
+  await writeFile(join(directory, 'published.json'), JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id,
+    plan_sha256: planSha256, intent_sha256: createHash('sha256').update(JSON.stringify(['operator', intent])).digest('hex'), created_utc: stamp }));
+  const prepared = { schema: 'figment/studio-gen-plan@1', id, status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256 };
+  return { directory, prepared, bytes: await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(directory, name)))) };
+}
+
+describe('Studio two-root allocation and legacy replay', () => {
+  it.each([[false, false], [true, false], [false, true], [true, true]])('reads empty roots (legacy=%s, new=%s) without creating either missing root', async (legacy, current) => {
+    const item = await fixture();
+    try {
+      if (legacy) await mkdir(legacyRootOf(item.repo), { recursive: true });
+      if (current) await mkdir(allocationRootOf(item.repo), { recursive: true });
+      const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available', plans: [], executionRecords: [] });
+      expect(existsSync(legacyRootOf(item.repo))).toBe(legacy); expect(existsSync(allocationRootOf(item.repo))).toBe(current);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
+    } finally { await item.app.close(); }
+  });
+
+  it('discovers and replays a legacy intent with unchanged scope, original bytes and no new child', async () => {
+    const item = await fixture();
+    try {
+      const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
+      const listed = (await item.app.inject({ method: 'GET', url: GET, headers: read() })).json();
+      expect(listed).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available', plans: [old.prepared], executionRecords: [unavailableExecution(old.prepared)] });
+      expect(existsSync(allocationRootOf(item.repo))).toBe(false);
+      const replay = await item.app.inject({ method: 'POST', url: POST, headers: { ...headers(), 'x-figment-intent-scope': listed.requestScope } });
+      expect(replay.statusCode).toBe(200); expect(replay.json()).toEqual(old.prepared);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).toHaveBeenCalledTimes(1); expect(item.audit).toHaveBeenCalledWith('operator', FIXED_A, old.prepared.planSha256);
+      expect(await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(old.directory, name))))).toEqual(old.bytes);
+      if (existsSync(allocationRootOf(item.repo))) expect(await readdir(allocationRootOf(item.repo))).toEqual([]);
+    } finally { await item.app.close(); }
+  });
+
+  it.each(['legacy-only', 'mixed'] as const)('keeps a global two-plan limit for %s and permits only original replays', async (placement) => {
+    const item = await fixture();
+    try {
+      const first = await seedPublished(legacyRootOf(item.repo), FIXED_B, key);
+      const second = await seedPublished(placement === 'mixed' ? allocationRootOf(item.repo) : legacyRootOf(item.repo), FIXED_A, 'B'.repeat(32));
+      const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'at-capacity',
+        plans: [second.prepared, first.prepared], executionRecords: [unavailableExecution(second.prepared), unavailableExecution(first.prepared)] });
+      for (const [intent, expected] of [[key, first.prepared], ['B'.repeat(32), second.prepared]] as const) {
+        expect((await item.app.inject({ method: 'POST', url: POST, headers: headers(intent) })).json()).toEqual(expected);
+      }
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers('C'.repeat(32)) })).statusCode).toBe(503);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).toHaveBeenCalledTimes(2);
+      expectPrivateFree(listed.body, item.repo);
+    } finally { await item.app.close(); }
+  });
+
+  it('allocates the remaining slot only in the new root and leaves the legacy published bytes intact', async () => {
+    const item = await fixture();
+    try {
+      const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
+      const posted = await item.app.inject({ method: 'POST', url: POST, headers: headers('B'.repeat(32)) });
+      expect(posted.statusCode).toBe(200);
+      expect(await readdir(legacyRootOf(item.repo))).toEqual([FIXED_A]);
+      expect(await readdir(allocationRootOf(item.repo))).toEqual([posted.json().id]);
+      expect(await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(old.directory, name))))).toEqual(old.bytes);
+      expect(item.runner).toHaveBeenCalledTimes(1);
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json().preparation).toBe('at-capacity');
+    } finally { await item.app.close(); }
+  });
+
+  it.each(['uuid', 'intent'] as const)('rejects duplicate %s across roots before replay even when both records parse', async (duplicate) => {
+    const item = await fixture();
+    try {
+      const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
+      const newer = await seedPublished(allocationRootOf(item.repo), duplicate === 'uuid' ? FIXED_A : FIXED_B, duplicate === 'intent' ? key : 'B'.repeat(32));
+      const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
+      for (const record of [old, newer]) expect(await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(record.directory, name))))).toEqual(record.bytes);
+    } finally { await item.app.close(); }
+  });
+
+  it('retains a legacy unmarked allocation and refuses a fresh intent without starting a child', async () => {
+    const item = await fixture();
+    try {
+      const directory = join(legacyRootOf(item.repo), FIXED_A); await mkdir(directory, { recursive: true });
+      await writeFile(join(directory, 'partial'), 'retained uncertain legacy work');
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'maintenance-required', plans: [], executionRecords: [] });
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
+      expect(await readFile(join(directory, 'partial'), 'utf8')).toBe('retained uncertain legacy work');
+      if (existsSync(allocationRootOf(item.repo))) expect(await readdir(allocationRootOf(item.repo))).toEqual([]);
+    } finally { await item.app.close(); }
+  });
+
+  it.each(['legacy', 'new'] as const)('refuses a linked %s root without entering its target', async (where) => {
+    const item = await fixture();
+    try {
+      const outside = await mkdtemp(join(tmpdir(), 'figment-two-root-outside-')); temporary.push(outside);
+      await writeFile(join(outside, 'sentinel'), 'unchanged');
+      const target = where === 'legacy' ? legacyRootOf(item.repo) : allocationRootOf(item.repo);
+      await mkdir(join(target, '..'), { recursive: true });
+      await symlink(outside, target, process.platform === 'win32' ? 'junction' : 'dir');
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
+      expect(item.runner).not.toHaveBeenCalled(); expect(await readFile(join(outside, 'sentinel'), 'utf8')).toBe('unchanged');
+    } finally { await item.app.close(); }
+  });
+
+  it('refuses malformed metadata in legacy inventory before replaying an otherwise valid new plan', async () => {
+    const item = await fixture();
+    try {
+      const newer = await seedPublished(allocationRootOf(item.repo), FIXED_A, key);
+      const old = await seedPublished(legacyRootOf(item.repo), FIXED_B, 'B'.repeat(32));
+      await writeFile(join(old.directory, 'published.json'), '{');
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json().preparation).toBe('unavailable');
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
+      expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
+      expect(await readFile(join(newer.directory, 'published.json'))).toEqual(newer.bytes[1]);
+    } finally { await item.app.close(); }
+  });
+
+  it('cleans only a failed new allocation and never changes the legacy published plan', async () => {
+    const item = await fixture(async (_command, args) => { await writeFile(join(args[args.indexOf('--out') + 1], 'partial'), 'new failed work'); throw new Error('fixture child failure'); });
+    try {
+      const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
+      expect((await item.app.inject({ method: 'POST', url: POST, headers: headers('B'.repeat(32)) })).statusCode).toBe(503);
+      expect(await readdir(allocationRootOf(item.repo))).toEqual([]); expect(await readdir(legacyRootOf(item.repo))).toEqual([FIXED_A]);
+      expect(await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(old.directory, name))))).toEqual(old.bytes);
+      expect(item.runner).toHaveBeenCalledTimes(1);
+    } finally { await item.app.close(); }
+  });
+});
+
+
+describe('Studio final publication rechecks both roots', () => {
+  it.each(['same-intent', 'full-capacity', 'unmarked'] as const)('refuses a competing legacy %s state appearing while the child prepares', async (conflict) => {
+    let entered!: () => void; const started = new Promise<void>((done) => { entered = done; });
+    let release!: () => void; const waiting = new Promise<void>((done) => { release = done; });
+    const item = await fixture(async (_command, args) => { entered(); await waiting; await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(PLAN)); });
+    const pending = item.app.inject({ method: 'POST', url: POST, headers: headers() });
+    try {
+      await started;
+      if (conflict === 'unmarked') {
+        const retained = join(legacyRootOf(item.repo), FIXED_A); await mkdir(retained, { recursive: true }); await writeFile(join(retained, 'partial'), 'competing work');
+      } else {
+        await seedPublished(legacyRootOf(item.repo), FIXED_A, conflict === 'same-intent' ? key : 'B'.repeat(32));
+        if (conflict === 'full-capacity') await seedPublished(legacyRootOf(item.repo), FIXED_B, 'C'.repeat(32));
+      }
+      const retainedNames = (await readdir(legacyRootOf(item.repo))).sort();
+      release(); const response = await pending;
+      expect(response.statusCode).toBe(503); expect(response.json()).toEqual({ error: 'preparation-unavailable' });
+      expect(await readdir(allocationRootOf(item.repo))).toEqual([]);
+      expect((await readdir(legacyRootOf(item.repo))).sort()).toEqual(retainedNames);
+      expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).not.toHaveBeenCalled();
+    } finally { release(); await pending; await item.app.close(); }
   });
 });

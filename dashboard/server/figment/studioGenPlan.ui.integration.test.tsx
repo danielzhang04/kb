@@ -200,7 +200,7 @@ describe('Studio generation-plan: real planner + real HTTP control + real Studio
       await waitFor(() => expect(sessionStorage.getItem(PENDING_STORAGE_KEY)).toBeNull());
 
       // Sanity: the published bytes on disk are the exact real producer's plan.
-      const planPath = join(repo, '_private', 'figment-studio', 'gen-plans', prepared.id, 'plan.json');
+      const planPath = join(repo, 'orgs', 'figment', '_private', 'figment-studio', 'gen-plans', prepared.id, 'plan.json');
       const approvalRaw = JSON.parse(await readFile(planPath, 'utf8')).training.chosen_checkpoint_approval;
       expect(isAbsolute(String(approvalRaw))).toBe(true);
       const approvalRelative = relative(repo, await realpath(resolve(String(approvalRaw))));
