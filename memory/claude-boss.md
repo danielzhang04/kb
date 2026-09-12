@@ -357,3 +357,21 @@
   recorded. Measure from the transcripts themselves (`usage` fields; Codex `total_token_usage` max per file).
 - **Hand off at a boundary, not at a number.** Mid-loop resets lose the reviewer's findings; boundary resets lose
   nothing if the SDD ledger is current. Practiced it: this session closed at ~240k avg after the spec commit.
+
+## 2026-09-12 — token discipline build (PR #183)
+- **Live checks find what reviews cannot.** Three defects surfaced only by running a real `claude -p` session: the frame
+  hook spawning the parser (spec said "never") passed every test; the haiku extractor was judged by the PARENT's transcript
+  and blocked in a circle; the VM preamble gate would have clobbered the ops ledger. One live run per armed path, always.
+- **A reviewer that "cleans up" the tree is a saboteur.** A read-only reviewer ran `git checkout --` on files another agent
+  was mid-editing; the work vanished with no reflog. Every reviewer brief now says: never checkout/reset/stash/sync; note
+  a dirty tree and continue. Parallel agents in one worktree only with that rule.
+- **Implementer pushback with evidence beats the controller's hunch.** I ordered `mcpServers` restored on fyt-runner; the
+  implementer cited two lines proving it never uploads. Verified, reversed, ledgered. Read the pushback before re-issuing.
+- **Detach, don't budget.** A daily parser that walks 12 GB will never fit a hook's 5 s; launching it detached with an
+  atomic lock (O_EXCL, stale after 10 min, Job-Object breakaway) made the timing irrelevant and the data complete.
+- **Codex day dirs drift by UTC.** A session started late local day D lands in the D+1 directory; scan D-1 and D, and
+  attribute by content timestamp. A unit fixture written to the wrong assumption passed; the live run showed $0.
+- **`git cat-file --batch`** slices by header byte size BEFORE decoding; `endswith(" missing")` before any split.
+- **Measure with UTF-8 or you measure wrong** (cp1252 default inflated 6999 → 7035 and nearly caused a bogus fix).
+- **Opt-in beats detection for anything that publishes.** Gating the ledger on an env var only operator sessions set is
+  simpler and safer than trying to detect "am I the VM"; plus a data-sanity refusal (zero rows, turn count never regresses).
