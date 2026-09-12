@@ -1,4 +1,4 @@
-import subprocess
+import time
 from datetime import datetime, timedelta, timezone
 
 import preamble
@@ -52,23 +52,72 @@ def test_scoped_key_wins_over_the_legacy_key(tmp_path):
     assert any("budget" in p.lower() for p in problems)
 
 
+class _FakePopen:
+    def __init__(self, *a, **k):
+        pass
+
+
 def test_maybe_run_usage_ledger_skips_when_file_exists(tmp_path, monkeypatch):
     root = tmp_path
+    monkeypatch.setenv("LOCALAPPDATA", str(tmp_path / "appdata"))
     (root / "ledgers" / "usage").mkdir(parents=True)
     day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
     (root / "ledgers" / "usage" / f"{day}.tsv").write_text("x", encoding="utf-8")
     calls = []
-    monkeypatch.setattr(preamble.subprocess, "run", lambda *a, **k: calls.append(a) or None)
+    monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
     preamble._maybe_run_usage_ledger(root)
     assert calls == []
 
 
-def test_maybe_run_usage_ledger_calls_script_when_missing(tmp_path, monkeypatch):
+def test_maybe_run_usage_ledger_launches_detached_when_missing(tmp_path, monkeypatch):
+    """fix round 1, C1c: the call is now a detached, non-blocking Popen -- not a synchronous
+    subprocess.run(timeout=5) -- and it is guarded by a lock file under the state dir."""
     root = tmp_path
+    appdata = tmp_path / "appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(appdata))
     (root / "scripts").mkdir(parents=True)
     (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
     calls = []
-    monkeypatch.setattr(preamble.subprocess, "run", lambda *a, **k: calls.append((a, k)) or subprocess.CompletedProcess(a, 0))
+    monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
     preamble._maybe_run_usage_ledger(root)
     assert len(calls) == 1
-    assert calls[0][1]["timeout"] == 5
+    # never a blocking timeout kwarg -- this call must not wait on the child at all.
+    assert "timeout" not in calls[0][1]
+    day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    assert (appdata / "kb-usage-ledger" / f"{day}.lock").exists()
+
+
+def test_maybe_run_usage_ledger_skips_when_lock_is_fresh(tmp_path, monkeypatch):
+    root = tmp_path
+    appdata = tmp_path / "appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(appdata))
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
+    day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    state_dir = appdata / "kb-usage-ledger"
+    state_dir.mkdir(parents=True)
+    (state_dir / f"{day}.lock").write_text("recent", encoding="utf-8")  # fresh mtime (just written)
+    calls = []
+    monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
+    preamble._maybe_run_usage_ledger(root)
+    assert calls == []  # another launcher is presumed already running -- no duplicate parser
+
+
+def test_maybe_run_usage_ledger_retries_when_lock_is_stale(tmp_path, monkeypatch):
+    import os
+    root = tmp_path
+    appdata = tmp_path / "appdata"
+    monkeypatch.setenv("LOCALAPPDATA", str(appdata))
+    (root / "scripts").mkdir(parents=True)
+    (root / "scripts" / "usage_ledger.py").write_text("", encoding="utf-8")
+    day = (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    state_dir = appdata / "kb-usage-ledger"
+    state_dir.mkdir(parents=True)
+    lock_file = state_dir / f"{day}.lock"
+    lock_file.write_text("stale", encoding="utf-8")
+    stale_time = time.time() - preamble._LOCK_STALE_SECONDS - 1
+    os.utime(lock_file, (stale_time, stale_time))
+    calls = []
+    monkeypatch.setattr(preamble.subprocess, "Popen", lambda *a, **k: calls.append((a, k)) or _FakePopen())
+    preamble._maybe_run_usage_ledger(root)
+    assert len(calls) == 1  # a lock older than 10 minutes is treated as abandoned, not active
