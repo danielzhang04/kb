@@ -40,7 +40,7 @@ needs a separately fixed parent admission, current cost revalidation, and
 staged-inventory verification. The current 20-train/2-eval dataset is accepted only for bounded research and its v2 train and five-image tester completed with verified teardown. All five tester candidates were subsequently culled; no selected checkpoint, accepted held-out still, current video result, or production acceptance exists. Neither component writes an operator dataset acceptance, production training plan, checkpoint decision, or LoRA export.
 
 
-### Recorded coverage gap, September10
+### Recorded coverage gap and follow-through, September 10–11
 
 A local metadata/header audit found zero close/shoulders-up labels in the20-row research
 training set:18 rows extend to thighs/knees/fullbody and2 are waist-up. The actual trainer
@@ -48,6 +48,16 @@ used512/768/1024 resolutions and corresponding aspect buckets; it was not512-onl
 This is a source-coverage hypothesis to test, not an explanation proven by the current
 outputs. The public base misses the crop too. Preserve source/eval ancestry when planning
 any close-face variant. See the [curation audit](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md).
+
+The later intervention selectively cropped and recaptioned five accepted training rows and fixed a
+training seed, then completed a new checkpoint and ten-image LoRA/base diagnostic. All ten images
+still missed shoulders-up framing, and root found no material identity improvement over the
+historical checkpoint. Mixed blinded reviews did not resolve the identity question. This follow-through
+supports keeping face coverage and proportion drift as open source/evaluation problems; it does not
+prove that cropping cannot help. Crop, caption and seed changed together, and the evaluation remains
+within the same `g01`-derived lineage, so neither a single-variable cause nor independent-reference
+identity generalization is established. See the
+[September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
 
 
 ## Separate seed audition ? September10

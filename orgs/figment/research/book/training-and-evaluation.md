@@ -1,6 +1,26 @@
 # Training and evaluation
 
-## Current status — 2026-09-09, after final launch review
+## Current status — 2026-09-12
+
+The latest selective-crop/caption/seed intervention completed its fixed training and paired
+ten-image LoRA/base diagnostic. All ten new images missed the intended shoulders-up framing,
+and root found no material identity improvement over the historical checkpoint. The three blinded
+reviews were mixed and weak. The technical image-binding audit passed all 252 checks, which
+establishes lineage mechanics rather than visual success. Because crop, caption and training seed
+changed together against an unseeded historical baseline, and the diagnostic lineage was reused,
+this result isolates neither a crop effect nor fresh generalization. The experiment is stopped with
+no selected checkpoint, accepted held-out still or automatic sweep. More training alone is not a
+supported next step; a new discriminating question is required.
+
+The experimental executor's default authenticated branch is also accepted locally. Prepare and
+dry-run modes construct no default session. Only an explicitly admitted live call uses the existing
+ambient-auth factory; it installs terminal redaction before fallible setup, passes one API/logger/
+redactor set to the harness, closes its owned session, and preserves the operational primary failure
+over receipt or cleanup failures. The separate 35-test evidence in the
+[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) proves this scoped
+lifecycle contract, not a provider call, paid authority, output quality or full dependency closure.
+
+### Historical September 9 launch checkpoint
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
@@ -52,7 +72,7 @@ Current status, 2026-09-09: OmniGen2 V3 and Qwen each completed a two-image refe
 
 ## What the current state means for training
 
-The completed 100-step current-caption fit and its finite checkpoints demonstrate historical runtime only. The offline CLI's dataset acceptance, train-first, tester selection, and `gen` joins are locally verified. The current bounded research dataset has 20 train rows and two eval-only rows, but its shared single-anchor ancestry does not establish a diverse identity set, independent-reference identity evidence, a production LoRA, or a consistent still set. V2's completed tester produced five PNGs; the root-attributed all-cull leaves no selected checkpoint or quality acceptance. The reviewed local-research board keeps automatic rows false/`unavailable: judge` and makes no external judge invocation. V3 remains rejected research evidence rather than a training row. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/2026-09-09-local-research-review.md), and [delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md).
+The completed 100-step current-caption fit, later 1250-step selective-crop/caption/seed fit, and their finite checkpoints demonstrate bounded runtime only. The offline CLI's dataset acceptance, train-first, tester selection, and `gen` joins are locally verified. The current bounded research dataset has 20 train rows and two eval-only rows, but its shared single-anchor ancestry does not establish a diverse identity set, independent-reference identity evidence, a production LoRA, or a consistent still set. V2's five tester outputs were culled, and the later ten-image diagnostic produced no framing pass or material identity improvement. No checkpoint or still has quality acceptance. The reviewed local-research board keeps automatic rows false/`unavailable: judge` and makes no external judge invocation. V3 remains rejected research evidence rather than a training row. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/2026-09-09-local-research-review.md), [delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md), and [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
 
 Future dataset curation therefore has to state diversity and source overlap explicitly, per image, before any dataset acceptance. The stop protocol stays the same for the new route as for the ladders: one fixed probe, matched seeds, independent review at original resolution, persisted outcome, and no automatic retry, training or promotion from a single result.
 
@@ -63,6 +83,11 @@ while an explicit live call needs a fixed parent admission, fresh accounting,
 exact staged inventory, and verified artifact receipt. Its 23 focused tests
 passed independently and in the parent review, but those fixtures used
 synthetic 20-row evidence. The current 20-train/2-eval set satisfies the bounded-research input count and its v2 run completed training and tester execution; all five tester outputs were culled, leaving no selected checkpoint. Execution remains non-promotable and is not production acceptance or authorization to export a LoRA.
+
+The accepted September 12 default-auth repair completes only the executor's owned-session
+composition for that explicit live branch. It does not weaken admission, accounting, dispatch or
+revalidation requirements, and it does not change any dataset, checkpoint or visual gate. See the
+[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md).
 
 ### Future option: one-observation diagnostic
 

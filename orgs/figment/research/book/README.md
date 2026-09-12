@@ -4,7 +4,7 @@ This book is a decision record for a fictional adult creator system: a clothed a
 persona whose identity, realism, age presentation, and provenance can be reviewed
 independently. Instagram/accounts/posting/optimization remain deferred.
 
-## Current status — 2026-09-11
+## Current status — 2026-09-12
 
 - **Nonpersona native-source binding**: root accepted v3 at `bb9b8db2` after the final
   mixed-flow fixture repair and a real producer/binder-to-collector/UI join. The accepted
@@ -31,15 +31,29 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   authenticate a human, approve real media quality, or create a delivery. The old helper pin makes
   derived native records stale; fresh preparation is required before retained/NVR/delivery reuse.
   See the [delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
-- **Repair diff `150978d8..ec58decf`** (Studio, video terminal authority, motion-source
-  binding, HTTP surface): reviewed **READY**, full video suite 187 passed in 392.98s. See
-  the [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md).
-- **Studio stored-plan inventory/scope server slice**: reviewed **READY**, landed locally
-  at `749abdca`. See the [inventory server review](../../../../docs/figment/2026-09-11-studio-inventory-server-review.md).
-- **Studio UI (`StudioGenPlans`)**: 41 component tests, 33 workspace tests, a real
-  planner/API/UI join pass, and typecheck/build all passing, reviewed READY. See the
-  [Studio resume UI review](../../../../docs/figment/2026-09-11-studio-resume-ui-review.md).
-  This bounded slice is complete; full Studio input/launch/review remains incomplete.
+- **Studio review-claim read path**: the standalone contract, route and panel are accepted
+  at `4fa11242`; governed server/UI composition is accepted at `e4ac72c6`; and the real
+  Python-reader/owned-runner fixture join is accepted at `a1fef9be`. The joins use
+  configured server-owned paths and opaque client IDs, inherit the authenticated Studio
+  scope, require an explicit operator POST, and return a sanitized, non-promotable view of
+  self-reported claims. The standalone suite passed 137/137; the wiring suite passed 117/117
+  plus typecheck/build; and the real join passed 2/2 plus typecheck over a synthetic chain,
+  including stale-claim refusal and recovery after exact restoration. These are separate
+  scoped runs, not combined closure. The wiring Vitest process's numeric exit status was not
+  captured even though its complete JSON case report passed; see the
+  [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+  Typecheck and build passed for the accepted wiring. Bounded browser attempts failed, so
+  there is no screenshot or rendered-UI proof. Full input/launch/review recovery, a working
+  brief-write route, deployment and real media quality remain incomplete.
+- **Local input and authentication repairs**: bounded content-brief revision and the
+  experimental executor's default authenticated live branch are accepted at source/test
+  checkpoints `6b88e564`/`3291c4a0` and `29b37c76`. Revision publishes a fresh local-Windows
+  brief directory while preserving the base bytes; consumers that need current final-path
+  proof must revalidate it. Prepare and dry-run executor modes create no default authenticated
+  session; an explicitly admitted default live call owns and closes its ambient-auth session
+  while preserving the primary operational failure over cleanup failures. See the
+  [operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
+  interfaces, test counts and limits. No provider call or paid action follows from acceptance.
 - **Identity/coverage diagnostic (V4, ten clothed images, original checkpoint)**: completed
   with independently verified pod teardown; estimated cost $0.247567. Root and an
   independent Opus review agree the LoRA condition shows stronger resemblance cues to
@@ -80,7 +94,7 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   the framing-pass claim for the base-model control at seed 271828, since it shows
   torso to elbows. Neither LoRA image at that seed passes framing. The technical image-binding audit passed all 252 of 252 checks at 19:53 UTC; see
   `MAIN/_private/figment-selective-crop-heldout-control-20260911-v1/diagnostic/audit-review-v3.json`.
-  Today's three paid rows (training plus both diagnostics) total an estimated $2.859835,
+  September 11's three paid rows (training plus both diagnostics) total an estimated $2.859835,
   bringing the arc to about $33.489565/$50. Root has stopped this experiment without
   promoting any media or automatically sweeping other checkpoints, prompts, or training
   recipes; a new discriminating question and bounded plan are required before further
@@ -88,13 +102,20 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 - **Nonpersona content preparation**: an image-free nonpersona preparation slice landed
   locally at `e1ceac49` with reviewed acceptance; see the
   [nonpersona preparation review](../../../../docs/figment/2026-09-11-nonpersona-preparation-review.md).
-  No image generation, native rendering, review, slot binding, or delivery approval has
-  happened; independent review and the native compiler/tests are in progress and not yet
-  complete or accepted.
+  Current accepted local mechanics now cover preparation, a three-cell base-model native
+  compiler, native-source binding, direct-NVR materialization and a bound delivery ruling.
+  They remain non-promotable planning and technical evidence. No real nonpersona scene image
+  has been generated, visually reviewed or delivery-approved. One fresh current-schema
+  ceramic-cup fixture compiled and revalidated before and after the real harness `--dry-run`;
+  all three fixed-seed jobs produced only 36-byte synthetic placeholders. The verifier and
+  child exited successfully without timeout, provider authentication or network activity.
+  This is offline infrastructure proof, not a paid pilot, actual render or identity evidence.
+  See the [current native offline join review](../../../../docs/figment/2026-09-12-native-offline-join-review.md).
 - **Brief text contract**: repaired and independently reviewed at `a3d87a8c`, with 29 Python
   tests, 11 collector tests and a real compiler-to-collector boundary check passing.
   See the [content input contract review](../../../../docs/figment/2026-09-11-content-input-contract-review.md).
-  The Studio brief editor remains in design.
+  The separate bounded revision producer is now accepted as described above. The Studio
+  brief editor remains in design; no working write route exists.
 - The public sampler/wording comparison and the two-image alternate seed-B control are
   closed lines of inquiry, not reopened by the above.
 
@@ -144,4 +165,5 @@ this README. Each entry is a pointer, not a retelling.
 - **Reference-conditioned generation**: [OmniGen2 independent review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md) (stopped before the six-row pilot); [Qwen reference cloud result](../../../../docs/figment/2026-09-09-qwen-reference-cloud-result.md) and [independent review](../../../../docs/figment/2026-09-09-qwen-reference-pair-independent-review.md) (stopped before expansion); [component licence evidence](../../../../docs/figment/2026-09-09-qwen-component-license-evidence.md) (metadata only, not clearance).
 - **Local ComfyUI runtime**: [local capability record](../../../../docs/figment/2026-09-08-local-comfy-capability.md), [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audit.md), [crop review](../../../../docs/figment/2026-09-08-local-crop-diagnostic-review.md), [simple-portrait review](../../../../docs/figment/2026-09-08-local-simple-portrait-review.md) (local executor proven; all visual candidates rejected).
 - **Studio/video infrastructure (pre-repair)**: [end-to-end delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md), [content-asset binding plan](../../../../docs/figment/2026-09-10-content-asset-binding-plan.md), [stage coverage audit](../../../../docs/figment/2026-09-10-stage-coverage-audit.md), [video candidate producer review](../../../../docs/figment/2026-09-10-video-candidate-producer-review.md), [video review preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md) — superseded operationally by the 2026-09-11 repair checkpoint above.
+- **Studio repair/resume history**: [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md), [inventory server review](../../../../docs/figment/2026-09-11-studio-inventory-server-review.md), and [resume UI review](../../../../docs/figment/2026-09-11-studio-resume-ui-review.md) — retained as dated evidence beneath the September 12 status.
 - **Sampling/official audit**: [official sampling audit](../../../../docs/figment/2026-09-10-official-sampling-audit.md) — public-only sampler comparison, closed after both visual reviews stopped it.

@@ -1,10 +1,23 @@
 # Image production
 
-## Current status — 2026-09-09, after final launch review
+## Current status — 2026-09-12
+
+The latest selective-crop/caption/seed training run and paired ten-image diagnostic completed with
+verified technical bindings. All ten new images missed shoulders-up framing, and root found no
+material identity improvement over the historical checkpoint; blinded reviews were mixed and weak.
+No checkpoint or held-out creator still is accepted. Because the intervention changed crop, caption
+and seed together and reused the existing diagnostic lineage, it does not isolate a causal image-
+production improvement. Technical binding, process success and Studio display tests do not resolve
+identity, realism, apparent age, framing or production acceptance. See the
+[September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+
+### Historical September 9 launch checkpoint
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
 The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent is pending. The public-base-only control's current state is recorded in the [book README](README.md); it exports no private weights or images. See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+
+### Production doctrine
 
 Image production is a chain of bounded transformations: choose the frozen identity condition, render a scene, optionally repair localized defects, then review the output at original resolution. The package describes a passport prompt with pose, face inventory, skin texture, wardrobe, camera, and lighting clauses. Its later prompt guide adds pores and imperfections but also beauty-smoothing language. Figment should retain concrete texture and wardrobe descriptions while treating gloss reduction as an experiment rather than a cosmetic default.
 

@@ -1,6 +1,43 @@
 # Architecture and operations
 
-## Current status — 2026-09-09, after final launch review
+## Current status — 2026-09-12
+
+The governed Studio review-claim path is accepted locally. Its configuration is parsed once
+from a server-owned source before side-effect setup; an explicit null disables it and invalid
+non-null configuration fails with a fixed refusal. The route inherits the authenticated Studio
+scope, origin policy and separate read/write limits. This video-ruling route's exact discovery GET
+is exempt from admission and the preamble/fleet check; its POST retains both. Existing generation-
+plan discovery exemptions are unchanged. The browser sends only an opaque configured ID, and the
+panel mounts beside Records without posting on navigation or refresh. Confirmed-dead failures
+release the registrar's one shared slot; uncertain termination quarantines it.
+
+The standalone route/panel, governed wiring and real Python-reader/owned-runner fixture join are
+accepted at `4fa11242`, `e4ac72c6` and `a1fef9be`. The real join used synthetic auth and producer
+evidence, exercised stale external-claim refusal and recovery, and returned no raw paths, notes or
+attribution. This proves a bounded local producer-to-reader-to-route connection, not human
+attribution, playback, visual quality, deployment or a complete operator journey. Typecheck/build
+passed for the wiring, but bounded browser attempts failed and no screenshot or rendered-UI claim
+is available. Exact scoped counts and their limits are in the
+[September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+
+Two other local lifecycle repairs are accepted. Content-brief revision preserves the base pair and
+publishes a fresh sibling directory by exclusive local-Windows rename; final-path consumers still
+revalidate. The experimental executor creates no default authenticated session in prepare or dry-run
+mode. An explicitly admitted default live call uses the existing ambient-auth factory, installs
+terminal redaction before fallible setup, owns and closes the session, and keeps the operational
+failure primary when receipt or cleanup work also fails. The
+[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) records the interfaces,
+separate 58-test and 35-test evidence, and limits. This acceptance includes no provider call,
+credential handling, paid-run authority or creator-quality result.
+
+One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
+before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed
+jobs wrote synthetic 36-byte placeholders; the owned child exited without timeout and without
+provider authentication or network activity. Root independently rehashed the finite emitted
+source and result set. This proves the offline compiler-to-harness connection only: no paid pod,
+model execution, real image, visual review, identity result or wider dependency closure follows.
+
+### Historical September 9 launch checkpoint
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
@@ -9,6 +46,8 @@ The ten-cell LoRA/base compiler is independently READY and its final V3 native d
 The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
 
 The generated-input gallery is now complete at `adcf4591` and independently READY. Its 124 affected tests, typecheck, and actual original-route probe passed; the dashboard production build also passed. No screenshot or deployment was performed, and the display does not establish accepted identity or output quality.
+
+### Durable operational doctrine
 
 Every run has an immutable manifest, an intent, an acquired resource ID, a receipt, output hashes, and a teardown record. The recovery path must persist the acquired ID before optional provider metadata parsing, refuse foreign or ambiguous resources, and verify absence independently. The timestamp correction's regression checks establish parser behavior. Separately, the completed retry followed that repair; its journal recorded the acquired ID and its teardown verified absence. The code/tests establish error-path behavior, while the successful retry supplies only live lifecycle evidence in [the live report](../2026-09-08-live-tester.md).
 

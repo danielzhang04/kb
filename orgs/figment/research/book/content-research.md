@@ -6,7 +6,7 @@ The two growth SOP PDFs were subsequently read and summarized in [r15, section 5
 
 Use a research queue with one hypothesis per card: “This hook improves completion among the defined audience under this format.” Pre-register the asset, caption family, posting window, and comparison. Record null results and confounders such as distribution, novelty, and account history. Keep adult, clothed presentation and disclosure requirements in the content brief before production begins.
 
-## Current nonpersona source boundary — 2026-09-11
+## Current nonpersona source boundary — 2026-09-12
 
 The accepted v3 native-source binding (`bb9b8db2`) lets a source-planning brief record a
 nonpersona C/D/E scene against an exact current slot, creator, retained evidence, and externally
@@ -28,6 +28,23 @@ assessed real media or transform quality, approved publication, or created a rea
 Records derived from the old content-brief pin are stale; retain the historical receipts and require fresh
 current preparation before retained/NVR/delivery reuse. See the
 [delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
+
+The accepted bounded brief-revision interface is a separate planning producer. It accepts one
+existing `creator-001` brief directory, a closed three-field edits object, and a fresh output
+directory. It preserves the original request and brief bytes, rebuilds the revised pair through the
+current compiler, and publishes an owned sibling staging directory by one exclusive rename. The
+publication contract is CPython on local Windows, rejects UNC roots before filesystem validation,
+and assumes cooperative writers. Before the exclusive rename, failures cannot publish the final
+pair. A failure observed after publication or in a surrounding process/transport layer does not by
+itself prove that the final pair is absent or current; consumers must call
+`revalidate_content_brief` when they need final-path proof. Cleanup targets only staging whose
+identity the operation can establish, so uncertain remnants are retained for local inspection.
+
+This revision changes a dated hypothesis and intended metric, not observed outcomes. It generates
+no media, performs no delivery review, and authorizes no publication or account action. The Studio
+brief editor remains a design and has no working write route. See the
+[September 12 operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
+API/CLI shape and the separate 58-test acceptance evidence.
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
