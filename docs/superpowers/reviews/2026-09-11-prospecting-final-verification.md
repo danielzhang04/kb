@@ -54,13 +54,32 @@ the existing source-only vCPU; responding Opus5/Sonnet5 identities were verified
 
 ## Full-suite history and remaining acceptance
 
-The original full-suite123 JUnit records2087tests:2082passed,5failed,0errors/skips,
-1245.491seconds. It is not a green full-suite result and remains the only completed broad
-result; a new full-suite run under run171 is in progress and has produced no result
-here. Three historical failures concern gate inventories/results:
+Full-suite run171 completed:2147tests,2143passed,4failed,0errors/skips,908.982seconds
+parsed from JUnit full-suite-171.xml (911.108s process wall time). It is not a green
+full-suite result. The earlier full-suite123 JUnit remains as history and records2087tests:
+2082passed,5failed,0errors/skips,1245.491seconds. Two of the four run171 failures are the
+historical gate-inventory nodes below, which require the absent P1 record. Three historical
+failures concern gate inventories/results:
 - test_deployment::test_p6_manifest_is_numeric_and_complete
 - test_p2_prerequisite::test_p2_00_p1_record_verifies
 - test_p4_p1_contract::test_p4_00_p1_record_verifies
+
+The other two run171 failures were test-side, not production-side:
+test_capture_import_cli::test_store_selection_is_validated_before_the_store_is_opened and
+test_research_capture_cli::test_store_selection_is_bounded_and_each_invocation_releases_the_store.
+Both expected a path outside the approved roots, but the run's basetemp lay under the actual
+shared private area, which made the constructed path legitimately approved. The same two
+unmodified tests passed in1.05s under a non-private basetemp; an initial baseline attempt
+produced2 setup errors from a missing parent directory and was corrected.
+
+Sonnet175b repaired only the two test files: a controlled synthetic checkout with a real
+.git/private and the module `__file__`. Production guards are unchanged. A failing
+open_store sentinel proves refusal happens before the store is opened, with a byte-unchanged
+check and a positive case after the patch context. All50tests in both affected modules now
+pass in32.08s CLI under a private basetemp, and the same two target checks pass in1.74s
+under a non-private basetemp (capture-private-final-175c.xml,
+capture-nonprivate-final-175c.xml). Full-suite179 is now running; no completed post-repair full run exists yet, so the
+current full suite is not claimed green.
 
 Two other failures passed focused reruns: the person-scope temp-root case and an HTTP
 connection abort. The latter now has a source repair and focused acceptance above.
@@ -89,8 +108,8 @@ public edit/restart, Windows link guards and bounded timer wiring. The first cor
 run159b had11pass1fail;159c repaired the Row/tuple error and strengthened weak URI/metadata
 checks. No production pipeline behavior changed for these browser checks. Source PR181 and coordination PR180 remain drafts;
 no merge, deployment or release is claimed. P1/P6 inventory and direct-run evidence is recorded
-in the section below; no gate.main record and no independent grade exist, so the gate is not
-complete and no grade is claimed. Exact
+in the section below; independent P1 inspection and an actual passing gate record now exist as detailed below.
+The full infrastructure goal remains open for broad regression and completion audit. Exact
 publication heads and private receipt paths are in the canonical coordination handoff.
 
 ## P1/P6 inventories and direct P1 gate run
@@ -105,8 +124,8 @@ existing file closure plus hashes; all other criteria are unchanged.
 A direct P1 gate.run_tests/evaluate_run collected122 and passed122, with0 failures, skips,
 xfails, warnings, external calls and unguarded children; all measured test criteria were met
 in61.158seconds parsed from JUnit ORCH/p1-direct-168.xml and its .json, on Python3.13.7,
-SQLite3.50.4 and Datasette0.65.1. There is no gate.main record and no independent grade yet,
-and the new DRAFT was not tracked at verification time. Source commit c220266c now tracks
+SQLite3.50.4 and Datasette0.65.1. This direct run preceded the independent grade and formal gate record;
+the new DRAFT was not tracked at that verification time. Source commit c220266c now tracks
 all P1 artifacts; the post-commit tracking, manifest and file checks pass.
 
 Earlier run166 had120passed,2failed and9warnings from
@@ -116,3 +135,27 @@ intentional refusal; the boss preserved the prior counters0and7 and the producti
 unchanged. Opus166 supplied a collector scratch fix, and Sonnet169 focused tests passed14 in
 3.451seconds (JUnit inventory-final-169.xml), including P6 completeness. The fixture run
 passed26 in18.868seconds (JUnit on313).
+
+A fresh, separate Opus174 inspector requested C1-C15 checks through a desktop tool relay,
+then resumed its own source-only session to evaluate raw results and additional named source.
+All29 initially inspected source hashes were unchanged. Its fresh P1 run passed122 in exact
+manifest order with all measured criteria met. The verified responding model was claude-opus-5.
+It graded bounded card01M29VGYQJ9KSTR8S7D37YKG01 at95/100, PASS for T2: correctness96,
+scope95, evidence92, safety98. The grade covers commitc220266c, not the parent infrastructure
+goal. grade.record_grade wrote the paired rows; commit33754a51 on PR180 credits the actual
+inspector role as author and the Codex tool relay as committer. The writer used actual UTC,
+replacing a future timestamp supplied in the report without changing any judgment field.
+
+The general PII scanner flagged the required inspector role address in those coordination
+rows. A sequencing error allowed the grade commit to run after that check failed. The rows
+were independently parsed and verified to contain only mandated role metadata; no prospect
+identity was present. That scan is recorded as failed, not passed (ORCH/inspector-role-guard-178.json).
+
+The actual gate command --phase P1 --inspector-score 95 --record then passed all122 tests
+and generated orgs/prospecting/gate-results/P1.json. It is published as67218ba5. Recorded
+hashes cover exactly all current P1 artifacts; --verify-recorded reports matched:true.
+The36 P2/P4/P5 prerequisite and record-contract checks pass (p1-prerequisites-178.xml).
+The gate ran without --strict-allowlist:137 paths remain unlisted,135 pre-existing plus the
+two new refresher files. The inspector classified the new files' missing declaration as a
+minor residual gap and the wider strict-allowlist mismatch as pre-existing. These limitations
+remain visible; neither a strict-allowlist pass nor parent-goal completion is claimed.
