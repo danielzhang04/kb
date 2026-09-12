@@ -24,6 +24,6 @@ The initial security finding concerned a hostile writer replacing a file between
 
 ## Remaining acceptance
 
-The real publisher/reader/collector integration run is separate and pending at this checkpoint. Next comes governed surface wiring, its guard/audit tests, then an explicit-submit Research form and rendered verification. No real project brief, provider, media, account, external publication or paid action was exercised by these unit tests.
+At this original checkpoint the real publisher/reader/collector integration was pending. It subsequently exposed and resolved a Windows newline protocol defect and passed2/2; see the [real join acceptance](2026-09-12-brief-real-join-review.md). Governed surface wiring and its guard/audit tests now precede an explicit-submit Research form and rendered verification. No real project brief, provider, media, account, external publication or paid action was exercised by these unit tests.
 
 MAIN is `C:/Users/danie/kb`. Binding implementation plan: [brief revision route plan](2026-09-12-brief-revision-route-plan.md). Next composition plan: [Studio integration plan](2026-09-12-brief-studio-integration-plan.md).

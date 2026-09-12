@@ -118,10 +118,27 @@ authority, so it can be called without `-B`. Keep `-B` for package invocation:
 package imports can occur before the adapter body gets a chance to suppress
 bytecode.
 
-The independent adapter suite passed 12 scoped local tests, including the real
+The initial adapter acceptance passed 12 scoped local tests, including the real
 producer-to-adapter path and direct-script bytecode behavior with synthetic
-canonical-reference bytes. This is a validator projection only; it does not
-create a Studio write route or a working brief editor.
+canonical-reference bytes. That result is historical: it used text-mode
+subprocess capture, which normalized Windows newlines and did not exercise the
+reader's exact stdout bytes.
+
+The accepted binary-stdout repair is commit `734f1a80`. The reader now writes
+its explicit UTF-8 JSON bytes through binary stdout, avoiding Windows CRLF
+translation. Its fresh independent suite passed 14/14 with native exit `0`,
+including direct-CLI raw-byte and write/flush refusal cases. See the
+[brief revision real-process join acceptance](2026-09-12-brief-real-join-review.md).
+
+The real brief join then passed 2/2 cases with native exit `0` in v3. Over
+synthetic temporary repositories, it exercised the actual builder, collector,
+revision route, final validator, and contained Windows runner. It proved one
+successful local planning revision and conservative retained recovery after a
+stale-input refusal, including refusal after a fresh registrar restart. It did
+not use a provider, network, real media, account, or paid action. This remains
+a local validator/publication path; the governed surface wiring has been
+authored but is awaiting acceptance, and the explicit-submit Studio form has
+not been implemented.
 
 ## Experimental executor modes and default authentication
 
@@ -159,7 +176,10 @@ admission contract.
 ## Local evidence and limits
 
 The independent brief suite passed 58 tests on the accepted revision interface.
-The independent experimental-auth suite passed 35 tests on the accepted auth
-interface. These are local technical regression results, not a full transitive
-dependency closure, an actual creator-quality review, a provider call, or a
-paid-operation authorization.
+The current reader suite passed 14/14 with native exit `0`; the earlier 12-test
+adapter result is historical for the reason above. The real brief join passed
+2/2 with native exit `0` in v3. The independent experimental-auth suite passed
+35 tests on the accepted auth interface. These are local technical regression
+results, not a full transitive dependency closure, a mounted and accepted
+Studio write surface, a working Studio brief editor, an actual creator-quality
+review, a provider call, or a paid-operation authorization.
