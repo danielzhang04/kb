@@ -1,6 +1,6 @@
 # Prospecting infrastructure handoff ? 2026-09-11
 
-Updated 2026-09-12T01:10:37.103235+00:00. Source work verified and published; external acceptance remains.
+Updated 2026-09-12T02:42:52.482828+00:00. Published pipeline source and visible browser acceptance verified; fixture proof and record-gate audit active.
 
 ## Goal and roots
 
@@ -84,9 +84,62 @@ Task152b replaced stale source status in place and corrected the format lock doc
 Worker diffs may contain wrong hunk counts or mixed newlines: root verified input hashes,
 allowed paths and unique exact normalized contexts before applying. No patch auto-applies.
 
-Actual supported getBrowser(about:blank) reports ?No browser is available.? Visible UI
-acceptance is unverified. Empty inventory alone is not proof; explicit initialization was tried.
-No alternate acquisition transport was substituted.
+Actual Chrome DevTools CLI1.9.0 successfully attaches to the existing user Chrome through
+session9e9063aa-56ea-44d8-a68c-777d790b77ad. The old CUA getBrowser failure was specific to
+that surface, not proof that Chrome DevTools was unavailable. User explicitly rejected
+native/Sky desktop control and new browser profiles: use DevTools on existing Chrome only.
+Installed CLI: AppData/Local/npm-cache/_npx/15c61037b1978c83/node_modules/chrome-devtools-mcp/
+build/src/bin/chrome-devtools.js, via installed Node. Use --sessionId and --output-format=json;
+CHROME_DEVTOOLS_MCP_NO_USAGE_STATISTICS=1 and CHROME_DEVTOOLS_MCP_NO_UPDATE_CHECKS=1.
+Do not start/status/stop before each command. list_pages returns pages directly; filter to
+local Prospecting URLs before output. Private snapshots/text never go to stdout or workers.
+
+Existing Chrome page3 is http://127.0.0.1:8765/ and displays Drafts. Owned review server32400
+serves PILOT sibling review-preview-f882f089297d411dbc08a540f9585394.sqlite, a SQLite backup;
+original PILOT/store.sqlite is unchanged. Revalidate live handles before use. The connector
+is attached with autoConnect and restricted file paths; no private screenshots were captured.
+
+Browser acceptance: one exact selected draft/source, source checkbox unticked, confirmation
+and readiness disabled, native keyboard input sets dirty state, edits survive view switches.
+Unchanged-context refresh gives the expected refusal and changes no watched domain/authority
+counts. ORCH/ui156-initial-state.json, ui156-draft-navigation.json, ui156-native-input.json,
+ui156-no-change-verified.json record only booleans/counts/opaque metadata.
+
+Sonnet157 built a reusable synthetic fixture. Nine synthetic adapter calls through run_next
+parked a genuine item at cycle2; no prewritten edit/reset. In existing Chrome's synthetic tab6,
+real Save edit produced a QA-passed child and exactly one restart action. Enter on that action
+created one reset/new cycle0 item; old item stayed parked2. Source-file drift removed the
+excerpt/attestation, retained selected scope and disabled readiness without legacy fallback;
+restoring exact bytes restored the source. Zero attestations/approvals/exec/send records.
+Evidence: ORCH/ui157-saved-edit.json, ui157-restart-verified.json, ui157-source-drift.json.
+Synthetic tab6 was closed and owned server48812 stopped after these checks; root retained
+ORCH/ui157-synthetic-acceptance and returned Chrome to page3. Native model quality is separate.
+
+Opus158 found fixture identity checks followed mutating open_store. Accepted repair validates
+through ordinary mode=ro first; root proved unrelated-store refusal leaves bytes unchanged and
+creates no WAL/SHM (ORCH/ui158-readonly-refusal.json), and post-restart identity still validates.
+Sonnet159 source refinements use Path.as_uri and reject Windows junctions. Its test proposal
+was rejected: _saved_human_edit is a direct-lineage fixture, not the public edit service;
+the timer assertion also did not prove shutdown. Corrective Sonnet159b is running.
+Sonnet156 audit was partly useful, but its selector for regenerate was in the wrong panel and
+its accept/reject-to-exhaust recommendation was rejected. Real exhaustion uses critic repair.
+
+Opus160 corrected the inherited gate classification. Source gate_manifest*.json are phase-owned
+inventory declarations, distinct from human MANIFEST.sha256 and generated gate-results/Pn.json.
+P1 verify-recorded fails because P1.json is absent. A passing generated record requires a real
+independent inspector score (minimum90), never a self-chosen score. P6 inventory drift is
+repairable on the work branch: root current collector found741 old entries versus904 required,
+10 stale and173 missing. P1 manifest validation found one missing artifact, worktree STATE.md,
+and10 changed source hashes. The original P1 plan explicitly requires that work-product DRAFT
+(lines21/42/84), separate from ops STATE. Sonnet161 is restoring it and implementing a draft-only
+inventory refresh; it may not change outcomes, inspector grades, MANIFEST.sha256, or gate records.
+
+Sonnet159b corrected the public-edit test, but pytest found11pass1fail in68.73s: SQLite Row was
+compared to a tuple. Its URI test also used SELECT1 (insufficient identity proof), and four
+metadata parameter cases repeated expensive valid preparation rather than bad-count refusal.
+Opus159c is fixing those concrete test gaps. Existing source fixture remains reviewed, browser
+acceptance remains valid, and the new regression module is not yet accepted. Original full
+suite remains historical2082pass5fail; no new full-suite pass is claimed.
 
 ## Exact private pins
 
@@ -107,12 +160,14 @@ Public probe scripts are in ORCH; do not print private review projections or mes
 
 ## Exact next step
 
-Resume visible private UI acceptance when a supported browser is available. Load the existing
-pilot/run and inspect the selected draft through the supported private review surface;
-verify changed-input/source and restart interaction against the already-tested backend.
-Do not repeat qualification or configure the already-configured campaign. Human P1/P6
-record refresh and release review remain separate; agents never bless manifests or fabricate
-source attestations. Source and focused independent work are complete for the published scope.
+Poll exec84929 for ui-fixture-proof-159c and exec56201 for gate-inventory-161; both were
+confirmed live at this update. Review returned JSONL models and exact source hashes, then
+apply only allowed proposals. Run the corrected fixture tests, review draft manifest changes
+independently, and obtain genuine independent inspector evidence before any gate --record.
+Do not invent scores or skip phase criteria. Preserve the P1 DRAFT/ops STATE separation.
+DELIVERY source fixture/tests and plan/verification edits are uncommitted. No production
+pipeline behavior changed in this browser-acceptance turn. Commit/publish after acceptance.
+Do not repeat completed private qualification, format setup or real browser checks.
 
 ## Operating constraints and remaining gates
 
@@ -123,10 +178,8 @@ No credentials as objects, paid fallback, capability/cap increases, sends or man
 
 Coordination changes use the existing PR180 branch, preserving published normal merge
 ancestry. Plain rebase previously replayed duplicateae3573e3 and was aborted. Fetch origin/ops
-and verify ancestry before writes; no force push/direct ops/main/merge/deploy. No active
-Claude, Codex-worker or pytest task remains. Keepawake PID17176 has an existing bounded lease
-until about07:16UTC; preserve unrelated worktrees and retained private artifacts. Card remains
-working for visible UI and human record/release acceptance, not unfinished source implementation.
+and verify ancestry before writes; no force push/direct ops/main/merge/deploy. Two bounded source-only Claude jobs are active (159c and161); no pytest run is active. Keepawake PID17176 has an existing bounded lease
+until about07:16UTC; preserve unrelated worktrees and retained private artifacts. Card remains working for fixture regression and declared gate inventory repair; visible UI is now verified.
 
 ## Load list
 
@@ -135,6 +188,7 @@ working for visible UI and human record/release acceptance, not unfinished sourc
 - DELIVERY/docs/superpowers/plans/2026-09-09-prospecting-startup-pilot.md.
 - DELIVERY/docs/superpowers/reviews/2026-09-11-prospecting-final-verification.md and 2026-09-11-prospecting-selected-native-acceptance.md.
 - ORCH/real-format-draft-evidence.json, task134/real-pilot-evidence.json and public probes.
+- ORCH/ui156-*.json, ui157-*.json, ui158-readonly-refusal.json and ui-fixture-proof-159b / record-gate-audit-160 receipts/results.
 - ORCH/format-security-148, format-isolation-149, format-boundaries-150, http-boundary-151b, http-repair-153, http-review-154, http-proof-155/155b receipt/result/JSONL files.
 
 Publication history: the first c8643caf push was auto-review rejected because PR181's

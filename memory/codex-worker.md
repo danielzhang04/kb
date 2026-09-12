@@ -724,3 +724,19 @@ hid a second coalesced response. Keep the negative mutation evidence beside the 
 Publication review initially lacked destination trust. Read-only PR metadata proved the
 existing user-owned repository and exact branch, permitting re-review; this is a legitimate
 new-evidence path, not bypassing a rejection. Record subsequent explicit user approval too.
+
+## 2026-09-12 - Verify the requested browser control and public test boundary
+
+An unavailable CUA browser surface did not mean Chrome DevTools was unavailable. The installed
+DevTools CLI with autoConnect reached the existing signed-in Chrome. Honor the requested
+control method, filter outputs to the task tab, and inspect private UI with local equality
+checks and metadata only. Browser tests then proved a gap that simulated DOM tests cannot:
+public Save edit and restart execute through real HTTP/SQLite, with one reset and preserved
+old budget. Reject tests that call a direct-lineage helper while naming it a public edit;
+a stale helper comment is weaker evidence than a successful real service/browser probe.
+
+Separate an inventory declaration from a generated pass record and a human-blessed eval
+manifest. The absent P1 result was mislabeled as a human-only blocker. The original plan
+requires a worktree DRAFT STATE independent of ops STATE; gate source hashes/inventory can
+be repaired on the work branch, but --record still requires a real independent inspector
+grade. Read the writer and the original acceptance contract before treating a gate as external.
