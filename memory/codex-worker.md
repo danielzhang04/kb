@@ -771,3 +771,25 @@ while preserving history. Four native adapters include qualification plus three 
 roles; deterministic initial drafting does not imply unavailable native refinement.
 Use SQLite uri=True for read-only URLs, -X utf8 for Windows report output, and account for
 sparse checkout removing directory materialization before writing completed cards.
+
+
+## 2026-09-12 - Keep local UI cache separate from projection and hydration
+
+A disabled scope value needs a per-campaign in-memory cache, but payload construction and server
+hydration must be pure. Cache only while leaving an enabled specific control, restore only the field
+that actually changed back to Specific, and never let a peer scope transition or a refresh overwrite a
+dirty current value. Test both fields together through mode changes, refresh, and the eventual save
+payload; one-field tests missed the cross-field restoration bug. Record browser and test evidence at its
+actual scope: a launcher teardown failure is not a green full suite, and configured native model names
+are not verified responding identities or token usage.
+
+
+## 2026-09-12 - Treat final evidence limits as facts, not pending work
+
+A screenshot daemon timeout without an image limits the evidence from that daemon; it does not undo a
+separate actual-browser geometry check or make a completed implementation pending. State the exact test
+boundary too: an isolated launcher test that passes once is not the same claim as a full suite, and a
+sandbox teardown failure supports only its observed/inferred cause. When UI state has coupled controls,
+keep payload projection, local cache, and hydration separate and test their interaction through the actual
+save payload. Publish completion records only after source head, card location, activity ledger, and cost
+rows all agree; keep prior residuals distinct from the new scope.

@@ -1,46 +1,30 @@
 # Prospecting current state
 
-Active follow-up: UI/UX refinement assigned2026-09-12; card01M29VGYQJ9KSTR8S7D37YKG02,
-KB-family design, clear input/save contracts and campaign setup/back-end consistency.
-Opus185/Sonnet186 audits running; prior infrastructure completion below is the baseline.
+The UI/UX refinement card01M29VGYQJ9KSTR8S7D37YKG02 is complete. Source head
+`7bbe4f4e9fe8cdc2e9ae2f5f5f5a91ccbce8ba91` is published on PR181; this coordination update records completion on PR180.
+Updated 2026-09-12T06:48:18Z.
 
-Updated 2026-09-12T04:37:21.798672+00:00. The assigned infrastructure implementation and validation are complete.
-Final publication is on the existing draft PR181 (source) and PR180 (coordination).
-Accepted implementation f9da2881, generated P1 record67218ba5, final source documentation74406c4d is published;
-exact publication head is retained in the canonical handoff.
+DELIVERY now has the KB-family review UI, separated campaign/research validation, UUID-only creation
+recovery, truthful saved-intake/setup status, preserved current pickers, and a per-campaign in-memory
+scope cache. Scope payload projection is pure: Any/Unknown carries no disabled-specific values, and
+restoring one scope cannot replace a dirty peer scope. No action starts research, ranking, drafting, or
+outreach without its separately configured workflow.
 
-Full-suite179:2147 passed,0 failures/errors/skips,738.964s JUnit (739.41s CLI,
-741.130s process), supported Python3.13.7. Full171's four failures were repaired:
-two capture fixture ambient-path assumptions and two absent-record prerequisites.
-The capture modules pass50 checks with a private basetemp; two boundary checks pass
-with a non-private basetemp. Production store guards were not weakened.
+Evidence: root final Node state suite passed72/72; the unchanged isolated launcher test under desktop escalation passed once
+in4.21s; actual Chrome passed all five views at390/852/1366 in both themes without overflow and verified
+recovery, cache, refresh, validation, duplicate-click behavior, final CSS geometry, and loaded/visible
+review UI after foregrounding the existing tab. Server health is listener8765 PythonPID14968 with expected
+copy/module and review-server exec36840; resume uses PID14968, not historical PID32400. Screenshot205 was
+viewed. Screenshot209/211 daemon attempts timed out without an image. Python run202 had2168 passing tests
+plus one sandbox launcher teardown failure; the strong inference is a sandbox process-cleanup restriction; the precise error was not captured
+by the test, so no false full-suite-green claim is made.
 
-Fresh verified Opus174/174b graded only the bounded P1 repair95/100, T2 PASS;
-paired role-authored evidence is published33754a51. The actual gate command passed122
-and generated P1.json, whose current artifact set and --verify-recorded match.
-Thirty-six prerequisite/contract checks pass. P6 inventory904 validates/collects.
+Limits: no formal new inspector grade; native responding model identity/token usage is unverified and
+cost entries record subscription cost unavailable. The existing review tab was foregrounded and UI loaded/visible
+was verified. No deployment, protected merge, source attestation, human readiness, or outreach occurred. Historical infrastructure residuals remain documented in the canonical handoff and are separate
+from this completed UI/UX scope.
 
-Actual native qualification and Humanizer/fact-check/critic calls prove desktop auth.
-All four public native adapters/canary passed on the accepted bundle. Real P19 completed
-3 items/3 artifacts/4 cumulative attempts; ranking and selected-draft replay matched.
-The original store has1 selected draft binding and0 attestations/approvals/exec/sends.
-Chrome DevTools controls the existing signed-in Chrome session, page3 localhost8765;
-loaded/visible was reverified. Review-copy and synthetic edit/restart/drift checks passed.
-Source-only Claude development stayed on the existing vCPU. All jobs through183b returned.
-
-Residuals: strict allowlist137 unlisted versus135 baseline, including2 new utilities;
-no strict pass or P6 generated record is claimed. Native responding identity, real
-predecessor-relation binding and optional CodexVM backend remain unverified. Cleanup is
-bounded proof, not reboot persistence or universal trace absence. Operator browser
-acquisition and deterministic initial templates are the supported product flow.
-The inspector-role email scan failed; a sequencing error published the role-only rows
-before review of that failure. Later schema/content checks proved role metadata only;
-the original scan remains failed. Final publication scans are separate.
-
-No implementation blocker remains for the assigned scope. Protected merge/deployment,
-source attestation, human readiness and outreach are separate future actions.
-Canonical handoff: handoffs/2026-09-11-prospecting-infrastructure.md, retained as requested.
-Completion audit: docs/superpowers/reviews/2026-09-12-prospecting-completion-audit.md on PR181.
+No active implementation work remains. A new product request is required to reopen scope.
 
 ## Decisions
 - 2026-09-04 — Deliver only people with confidently found emails; substitute prospect then firm — shallow rows are worthless to outreach

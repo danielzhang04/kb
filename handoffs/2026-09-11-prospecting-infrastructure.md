@@ -1,65 +1,47 @@
-# ACTIVE follow-up: Prospecting UI/UX - 2026-09-12
+# Completed Prospecting UI/UX handoff - 2026-09-12
 
-The previous infrastructure scope below is complete; the newly assigned UI/UX scope IS NOT.
-User requests KB dashboard styling, consistent spacing, clear accepted inputs/save behavior,
-truthful campaign/backend workflow, and useful HubSpot/Mailchimp/Apollo patterns implemented
-and reviewed. Active card queue/working/01M29VGYQJ9KSTR8S7D37YKG02.md. Running plan on DELIVERY:
-docs/superpowers/plans/2026-09-12-prospecting-ux.md. Both existing draft PR branches remain in use.
+Updated 2026-09-12T06:48:18Z. The assigned UI/UX follow-up is complete. Source is published at
+`7bbe4f4e9fe8cdc2e9ae2f5f5f5a91ccbce8ba91` on PR181. This coordination update closes card
+01M29VGYQJ9KSTR8S7D37YKG02; historical infrastructure evidence below remains the baseline.
 
-Current source uncommitted: 189 manual-lane refusal repair, 187b neutral styling/theme/tests,
-190 authenticated read-only creation-status lookup/tests. 189 actual red: 1 failed/2 passed;
-green affected suite: 115 passed with 2 JUnit-family warnings. 190: 96 passed, no warnings.
-Synthetic browser server49831 now owns8766 after old timer expired. Root Chrome found
-misaligned groups/hints, missing geoValues/sectorValues labels, and native research fields
-can block campaign Save while closed; workers repairing. Desktop/558px all5views nooverflow;
-390px phone emulation still pending, do not claim mobilepass from clamped resize.
-187b first JS run: 44 passed/1 failed, an existing literal CSS adjacency assertion now sees
-newlines; no false green. Needs worker repair, final merged suite and actual Chrome acceptance.
-188 timed out at1200sec/exit1, but emitted a complete fenced diff in assistant610; root verified all original input hashes and unique old contexts, reviewed/applied it. Current JS53:52pass/1CSS-adjacency assertion failure; behavior checks green. No final acceptance yet.
-187 original visual proposal rejected; 187b corrected it. Verify frozen original188 inputs in
-ORCH/ux-frozen-base-187188 before merging its proposal with accepted187b/189/190 changes.
+## Completed scope
 
-Next: integrate188, implement UI recovery via190 lookup using ONLY opaque request UUID in
-sessionStorage (no private form payload), independent Claude UX/code/security review and
-repairs, synthetic Chrome checks, full regression, source and coordination publication.
-Existing Chrome DevTools session9e9063aa-56ea-44d8-a68c-777d790b77ad; page7 synthetic8766,
-page3 real review-copy8765. Do not touch unrelated tabs. Fixture server8382 is bounded20min
-and reads HTML at startup, so restart owned8766 after changes. Never mutate original pilot.
-Claude191 hit weekly limit with synthetic sentinel, no real model response. 192 failed before launch because empty allowed_outputs violates helper schema; no model ran. User-authorized Codex fallback is active: native workers ux_recovery_191c (sol/high), ux_review_192c (sol/high, read-only), ux_layout_polish_193c (terra/high, static HTML/CSS). Repo dispatch script auto-pushes protected ops so native interface used; root accounting stays PR180. Claude returns only when available after agreed switch time. Desktop runtime stays local. No sends, deployment, protected merges or credentials in scope.
+- The review UI now follows the KB-family neutral dark/light design with shared spacing tokens, 6px
+  controls, 10px panels, system sans typography, focused blue controls, full-width form sections,
+  accessible labels/help, and aligned control tracks. CSS206 keeps paired controls aligned when hints wrap.
+- Campaign and research saves validate only their own phase. Creation keeps local research local;
+  refresh preserves still-available pickers and clearly handles removed choices. UUID-only creation
+  recovery, strict integer handling, duplicate compiler-key refusal, and pending-save generation guards
+  are included.
+- Saved intake is distinguished from unresolved fields. Setup copy describes separately configured
+  capture/import and Refresh review without implying unavailable launch controls. Scope values are cached
+  in memory per campaign; Any/Unknown payloads contain no disabled-specific values, and restoring one
+  scope cannot overwrite a dirty peer scope or current dirty value.
 
-Coordination merged upstreamff342093 after a read-only merge preview proved only three
-upstream token-discipline handoff/memory changes; no Prospecting/ledger/queue deletion.
-Automatic approval initially rejected a misleading two-branch diff, then accepted the
-verified merge-tree result. Preserve published ancestry; do not rebase or force-push.
+## Evidence and limits
 
-## Review/acceptance checkpoint (active repairs)
+- Root final Node state suite: 72 passed, 0 failed. The combined geography/sector regression verifies
+  transitions, Refresh, and Save payloads. The unchanged isolated launcher test under desktop escalation passed once in
+  4.21 seconds.
+- Python run202 reported 2168 passed plus one sandbox launcher teardown failure. The strong inference is a sandbox process-cleanup restriction; the precise error was not captured by the test; it is not represented as a green full suite, and
+  no launcher or store test was changed to suppress it.
+- Actual Chrome verified all five views at 390, 852, and 1366 pixels in both themes without overflow,
+  including recovery, cache, refresh, validation, and duplicate-click paths. Final CSS geometry was
+  confirmed and screenshot205 was viewed. Screenshot209/211 daemon attempts timed out without an image;
+  that limitation is recorded, not treated as unfinished product work. The existing review copy was
+  restarted on the final source; the existing review tab was foregrounded and UI loaded/visible was
+  verified. Final server health is listener 8765 Python PID14968 with expected copy/module and live
+  review-server exec36840; old test PIDs6260/4240 were exact UX launcher/store and datasette processes,
+  task-killed successfully, and old ports are absent. Resume uses PID14968, never historical PID32400.
+- No formal new inspector grade is claimed. Native model configuration was recorded with unverified
+  responding identity, token use, and billing. No outreach, deployment, protected merge, credential
+  handling, or original-pilot mutation occurred.
 
-Actual browser evidence ORCH/ux-browser-checkpoint-194.json: five views at actual390px
-in both themes, no document overflow; successful create preserves pretyped research and
-only posts campaign; double research save posts once and disables unchanged-save button.
-Fixture originally had a noncanonical sender identity; root added existing test_campaigns
-_profile canonical synthetic profile after fixture marker/store identity validation. No
-production source relaxation or original pilot mutation. Failed create preserved research.
+## Published follow-up
 
-Fresh reviewer192c confirmed: input_pending can be a durably saved intake (separate missing
-criteria from save status); checklist implies research/ranking launch buttons that do not
-exist; disabled specific scope values are lost on campaign switch; direct campaign API
-silently accepts duplicate compiler keys. Creation-status auth/Host/closed query/read-only
-and full integrity checks had no confirmed privacy defect. General compiler list-dedup
-semantics are intentional and are not being changed. Node-only tests miss native form
-constraint validation: closed research inputs can block campaign create; refresh resets
-mailbox selection.193c static layout/label/helper changes done; now194c phase validation and
-picker preservation.192c after read-only review now195c campaign-boundary duplicate-key
-refusal/tests (no general compiler semantics or historic resume changes).191c recovery
-continues. Next196c checklist and scope cache fixes, then independent cross-review/full
-regression/Chrome final acceptance and publication. Current source remains uncommitted.
-
-Synthetic server49831 remains LIVE: exact listener127.0.0.1:8766 PID49448 verified via desktop
-permissions. A sandboxed listener query was inconclusive; earlier root statement that the
-server timed out was corrected. Confirm current exact PID/argv before restart. HTML is read
-at startup so current browser still shows pre193 source. Chrome page7 device emulation390px,
-light theme; restore desktop after final acceptance. P1 hash set and P6 inventory904 remain
-unchanged as of this checkpoint, refresh CLI dry-run reports change:none.
+PR181 contains the UI/UX source changes at the head above. PR180 records the completion, evidence,
+known limitations, cost/activity rows, and the preserved prior-infrastructure residuals. No implementation
+continuation remains without a new assigned product request.
 
 ## Previous infrastructure handoff (historical baseline)
 
