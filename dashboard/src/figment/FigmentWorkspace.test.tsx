@@ -21,6 +21,50 @@ describe('FigmentWorkspace', () => {
     expect(fetchImpl).toHaveBeenCalledWith('/api/figment', { headers: { authorization: 'Bearer session' } });
   });
 
+  it('mounts video review claims only in Runs & review while preserving records and fetch context', async () => {
+    const inventory = { schema: 'figment/studio-video-rulings@1', ids: ['clip-1'], availability: 'available' };
+    const fetchImpl = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/figment') return response(projection);
+      if (url === '/api/figment/video-rulings') return response(inventory);
+      return Promise.reject(new Error(`unexpected request: ${url}`));
+    }) as unknown as typeof fetch;
+    render(<FigmentWorkspace token="current-session" fetchImpl={fetchImpl} />);
+
+    await screen.findByText('creator-a');
+    expect(screen.queryByRole('heading', { name: 'Video review claims' })).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Runs & review' }));
+    await screen.findByRole('heading', { name: 'Video review claims' });
+    expect(screen.getByText('runs/a/run.json')).toBeTruthy();
+    expect(fetchImpl).toHaveBeenCalledWith('/api/figment/video-rulings', {
+      headers: { authorization: 'Bearer current-session' },
+    });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
+    expect(screen.queryByRole('heading', { name: 'Video review claims' })).toBeNull();
+  });
+
+  it('never auto-POSTs from default mount, Runs & review navigation, or status refresh', async () => {
+    const inventory = { schema: 'figment/studio-video-rulings@1', ids: ['clip-1'], availability: 'available' };
+    const fetchImpl = vi.fn((input: RequestInfo | URL, _init?: RequestInit) => {
+      const url = String(input);
+      if (url === '/api/figment') return response(projection);
+      if (url === '/api/figment/video-rulings') return response(inventory);
+      return Promise.reject(new Error(`unexpected request: ${url}`));
+    });
+    render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+
+    await screen.findByText('creator-a');
+    expect(fetchImpl.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(false);
+    fireEvent.click(screen.getByRole('tab', { name: 'Runs & review' }));
+    await screen.findByRole('combobox');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh status' }));
+    await waitFor(() => expect(fetchImpl.mock.calls.filter(([url]) => String(url) === '/api/figment/video-rulings')).toHaveLength(2));
+    expect(fetchImpl.mock.calls.some(([, init]) => (init as RequestInit | undefined)?.method === 'POST')).toBe(false);
+  });
+
   it('shows loading then a recoverable unavailable state', async () => {
     const fetchImpl = vi.fn().mockRejectedValue(new Error('offline')) as unknown as typeof fetch;
     render(<FigmentWorkspace fetchImpl={fetchImpl} />);

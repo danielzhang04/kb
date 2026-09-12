@@ -60,6 +60,8 @@ import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import type { ActivationReaderPort } from '../home/project.ts';
+import type { VideoRulingConfig } from '../figment/videoRulingRead.ts';
+import type { runStudioPlanProcessCapture } from '../figment/studioPlanProcess.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -73,6 +75,10 @@ export interface SurfaceContext {
   runtimeCapabilities: RuntimeCapabilities;
   /** Canonical ops worktree used for live reads and coordination writes. */
   repoRoot: string;
+  /** Optional server-owned configuration for the bounded Figment video-ruling reader. */
+  figmentVideoRulingConfig?: VideoRulingConfig | null;
+  /** Injectable bounded process seam for the Figment video-ruling reader. */
+  figmentVideoRulingRunProcess?: typeof runStudioPlanProcessCapture;
   /**
    * P4 W6.2 [P4-C33]: the ONE server-owned reconciliation publisher, composed once at the surface root
    * over the real store/ops ports. Present for step 2's callers (card/inbox transitions, schedule

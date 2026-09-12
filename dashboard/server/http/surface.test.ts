@@ -38,6 +38,7 @@ import { runtimeCapabilities } from '../runtime/capabilities.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { acquireWriterLease } from '../control/writerLease.ts';
 import { normalizedTextSha256 } from '../control/textArtifactHash.ts';
+import { VIDEO_RULING_LIMITATIONS } from '../../shared/figmentVideoRuling.ts';
 
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 /** What a successful composition-time host probe publishes; nothing constructs a PTY without it. */
@@ -92,6 +93,67 @@ const noRunnerSignal: NonNullable<SurfaceContext['triggerRunner']> = (owner) => 
   status: 'triggered', owner, task: 'test-runner',
 });
 const frozenPreamble: PreambleRunner = () => ({ exitCode: 1, stdout: 'PREAMBLE FAIL: STOP file present — fleet frozen', stderr: '' });
+
+const VIDEO_RULING_PYTHON_LIMITATIONS = [
+  'playback_observation, correspondence_review, temporal_review, detail_crop_review, template_fit_review, and all audio_* fields are self-reported claims by the declared attribution, not observations made by this reader.',
+  'The bound_subject_sha256/bound_review_directory match and the ruling_file hash only prove this claim is bound to the current prepared evidence at read time; they do not prove the claim is true.',
+  'unauthenticated_attribution is an unverified, self-declared string; no authentication of the claimed author was performed.',
+  'No human review of the video was observed or performed by this reader; it never watches, decodes, or renders the media itself.',
+  'This reader grants no delivery, media-quality, promotion, or publication authority; not_promotable is always true.',
+  'The reused prepared-delivery store (video_delivery_review.py) has its own separately documented technical limitations.',
+  'Equality checks across the two validate_prepared_delivery calls and the two byte snapshots establish cooperative freshness only; they are not atomicity guarantees against a hostile concurrent writer.',
+];
+
+function videoRulingConfig(...ids: string[]): NonNullable<SurfaceContext['figmentVideoRulingConfig']> {
+  return {
+    pythonExecutable: join(REPO_A, 'private-python.exe'),
+    entries: ids.map((id) => ({
+      id,
+      root: join(REPO_A, 'private-video-root'),
+      evaluationPath: 'prepared/evaluation.json',
+      rulingPath: 'rulings/operator.json',
+    })),
+  };
+}
+
+function rawVideoRulingResult(): Record<string, unknown> {
+  const subjectSha256 = 'a'.repeat(64);
+  return {
+    schema: 'figment/video-delivery-ruling-result@1',
+    projection: {
+      review_directory: 'prepared/review',
+      subject_sha256: subjectSha256,
+      accepted_lineage: {},
+      source_movie: {},
+      derivative: {},
+      template: {},
+      transform_declaration: {},
+      extraction_receipt: {},
+      tools: {},
+    },
+    ruling: {
+      schema: 'figment/video-delivery-ruling-assertion@1',
+      bound_subject_sha256: subjectSha256,
+      bound_review_directory: 'prepared/review',
+      playback_observation: 'watched_full',
+      correspondence_review: 'pass',
+      temporal_review: 'pass',
+      detail_crop_review: 'pass',
+      template_fit_review: 'pass',
+      audio_presence_claim: 'present',
+      audio_licensing_review: 'pass',
+      audio_mix_sync_review: 'pass',
+      notes: 'PRIVATE_OPERATOR_NOTES',
+      unauthenticated_attribution: 'PRIVATE_ATTRIBUTION',
+      recorded_at: '2026-09-12T00:00:00Z',
+    },
+    ruling_file: { path: 'rulings/operator.json', bytes: 123, sha256: 'b'.repeat(64) },
+    derived_outcome: 'reported_pass',
+    not_promotable: true,
+    attribution_authenticated: false,
+    limitations: VIDEO_RULING_PYTHON_LIMITATIONS,
+  };
+}
 
 /** A v2 session id: `pty-` plus 32 lowercase hex digits, the only grammar the registry mints. */
 const HOST_SESSION_ID = 'pty-0123456789abcdef0123456789abcdef';
@@ -148,7 +210,10 @@ function recordingSessionHost(): {
   };
 }
 
-function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstance; ctx: SurfaceContext } {
+function buildApp(
+  overrides: Partial<SurfaceContext> = {},
+  activation: Parameters<typeof makeProductionSurfaceContext>[1] = {},
+): { app: FastifyInstance; ctx: SurfaceContext } {
   const app = Fastify({ logger: false });
   const ctx = makeSurfaceContext({
     repoRoot: REPO_A,
@@ -157,7 +222,7 @@ function buildApp(overrides: Partial<SurfaceContext> = {}): { app: FastifyInstan
     runPreamble: okPreamble,
     triggerRunner: noRunnerSignal,
     ...overrides,
-  });
+  }, activation);
   registerWriteSurface(app, ctx);
   return { app, ctx };
 }
@@ -307,6 +372,168 @@ describe('write surface — composition chain', () => {
       expect((await app.inject(genPlans(true, 'https://wrong.example'))).statusCode).toBe(403);
       expect((await app.inject(genPlans())).statusCode).toBe(429);
       expect(existsSync(studioPlans)).toBe(false);
+    });
+  });
+
+  describe('Studio video-ruling wiring', () => {
+    const inventory = (ids: string[] = []) => ({
+      schema: 'figment/studio-video-rulings@1', ids, availability: 'available',
+    });
+    const getRulings = (withToken = true, origin = GOOD_ORIGIN) => ({
+      method: 'GET' as const,
+      url: '/api/figment/video-rulings',
+      headers: { origin, host: GOOD_HOST, ...(withToken ? { authorization: `Bearer ${token()}` } : {}) },
+    });
+    const readRuling = (withToken = true, origin = GOOD_ORIGIN) => ({
+      method: 'POST' as const,
+      url: '/api/figment/video-rulings/clip-1/read',
+      headers: { origin, host: GOOD_HOST, ...(withToken ? { authorization: `Bearer ${token()}` } : {}) },
+    });
+
+    it('defaults to a disabled inventory and resolves a valid environment configuration once', async () => {
+      ({ app } = buildApp({}, { env: {} }));
+      expect((await app.inject(getRulings())).json()).toEqual(inventory());
+      await app.close();
+      app = undefined;
+
+      const configured = videoRulingConfig('clip-1', 'clip_2');
+      const env = { DASHBOARD_FIGMENT_VIDEO_RULINGS_JSON: JSON.stringify(configured) };
+      ({ app } = buildApp({}, { env }));
+      env.DASHBOARD_FIGMENT_VIDEO_RULINGS_JSON = JSON.stringify(videoRulingConfig('mutated-after-composition'));
+      const response = await app.inject(getRulings());
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(inventory(['clip-1', 'clip_2']));
+    });
+
+    it('fails startup with one fixed error for malformed non-null environment configuration', () => {
+      const privateConfig = 'PRIVATE_CONFIG_PATH';
+      let message = '';
+      try {
+        makeSurfaceContext(
+          { repoRoot: REPO_A },
+          { env: { DASHBOARD_FIGMENT_VIDEO_RULINGS_JSON: JSON.stringify({ root: privateConfig }) } },
+        );
+      } catch (error) {
+        message = error instanceof Error ? error.message : String(error);
+      }
+      expect(message).toBe('invalid Figment video ruling configuration');
+      expect(message).not.toContain(privateConfig);
+    });
+
+    it('honors an explicit null override ahead of configured environment input', async () => {
+      ({ app } = buildApp(
+        { figmentVideoRulingConfig: null },
+        { env: { DASHBOARD_FIGMENT_VIDEO_RULINGS_JSON: JSON.stringify(videoRulingConfig('private-id')) } },
+      ));
+      const response = await app.inject(getRulings());
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toEqual(inventory());
+      expect(response.body).not.toContain('private-id');
+    });
+
+    it('inherits origin, session, and separate read/write rate limits', async () => {
+      const { lockout, rateLimit } = await import('../security/ratelimit.ts');
+      const readRateGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+      const writeRateGuard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
+      const runner = vi.fn(async () => ({ stdout: Buffer.from(JSON.stringify(rawVideoRulingResult())) })) as unknown as NonNullable<SurfaceContext['figmentVideoRulingRunProcess']>;
+      ({ app } = buildApp({
+        figmentVideoRulingConfig: videoRulingConfig('clip-1'),
+        figmentVideoRulingRunProcess: runner,
+        readRateGuard,
+        rateGuard: writeRateGuard,
+      }));
+
+      expect((await app.inject(getRulings(true, 'https://wrong.example'))).statusCode).toBe(403);
+      expect((await app.inject(getRulings(false))).statusCode).toBe(401);
+      expect((await app.inject(getRulings())).statusCode).toBe(429);
+      expect((await app.inject(readRuling(true, 'https://wrong.example'))).statusCode).toBe(403);
+      expect((await app.inject(readRuling(false))).statusCode).toBe(401);
+      expect((await app.inject(readRuling())).statusCode).toBe(429);
+      expect(runner).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['frozen', 'fleet-frozen'],
+      ['degraded', 'outbox-degraded'],
+    ] as const)('keeps exact discovery available while %s POST admission refuses before the runner', async (state, refusal) => {
+      const runner = vi.fn(async () => ({ stdout: Buffer.from(JSON.stringify(rawVideoRulingResult())) })) as unknown as NonNullable<SurfaceContext['figmentVideoRulingRunProcess']>;
+      const runPreamble = vi.fn(state === 'frozen' ? frozenPreamble : okPreamble);
+      const degraded = { pending: 100, oldestAgeMs: 1_000, degraded: true, reasons: ['pending-limit'] };
+      ({ app } = buildApp({
+        figmentVideoRulingConfig: videoRulingConfig('clip-1'),
+        figmentVideoRulingRunProcess: runner,
+        runPreamble,
+        ...(state === 'degraded' ? { admission: (kind) => admit(kind, degraded) } : {}),
+      }));
+
+      const discovery = await app.inject(getRulings());
+      expect(discovery.statusCode).toBe(200);
+      expect(discovery.json()).toEqual(inventory(['clip-1']));
+      expect(runPreamble).not.toHaveBeenCalled();
+
+      const read = await app.inject(readRuling());
+      expect(read.statusCode).toBe(503);
+      expect(read.json()).toEqual({ error: refusal });
+      expect(runner).not.toHaveBeenCalled();
+      if (state === 'frozen') expect(runPreamble).toHaveBeenCalledWith(REPO_A);
+      else expect(runPreamble).not.toHaveBeenCalled();
+    });
+
+    it('orders admission and preamble before one configured runner call and returns only the public result', async () => {
+      const events: string[] = [];
+      const admission: SurfaceContext['admission'] = (kind) => {
+        events.push(`admission:${kind}`);
+        return { ok: true };
+      };
+      const runPreamble: PreambleRunner = (repoRoot) => {
+        expect(repoRoot).toBe(REPO_A);
+        events.push('preamble');
+        return okPreamble(repoRoot);
+      };
+      const runner = vi.fn(async () => {
+        events.push('runner');
+        return { stdout: Buffer.from(JSON.stringify(rawVideoRulingResult()), 'utf8') };
+      }) as unknown as NonNullable<SurfaceContext['figmentVideoRulingRunProcess']>;
+      const config = videoRulingConfig('clip-1');
+      ({ app } = buildApp({
+        admission,
+        runPreamble,
+        figmentVideoRulingConfig: config,
+        figmentVideoRulingRunProcess: runner,
+      }));
+
+      const response = await app.inject(readRuling());
+      expect(response.statusCode).toBe(200);
+      expect(events).toEqual(['admission:new-work', 'preamble', 'runner']);
+      expect(runner).toHaveBeenCalledOnce();
+      expect(response.json()).toEqual({
+        schema: 'figment/studio-video-ruling@1',
+        id: 'clip-1',
+        subjectSha256: 'a'.repeat(64),
+        rulingSha256: 'b'.repeat(64),
+        derivedOutcome: 'reported_pass',
+        criteria: {
+          playbackObservation: 'watched_full',
+          correspondenceReview: 'pass',
+          temporalReview: 'pass',
+          detailCropReview: 'pass',
+          templateFitReview: 'pass',
+          audioPresenceClaim: 'present',
+          audioLicensingReview: 'pass',
+          audioMixSyncReview: 'pass',
+        },
+        notPromotable: true,
+        attributionAuthenticated: false,
+        limitations: VIDEO_RULING_LIMITATIONS,
+      });
+      for (const privateValue of [
+        config.pythonExecutable,
+        config.entries[0]!.root,
+        config.entries[0]!.evaluationPath,
+        config.entries[0]!.rulingPath,
+        'PRIVATE_OPERATOR_NOTES',
+        'PRIVATE_ATTRIBUTION',
+      ]) expect(response.body).not.toContain(privateValue);
     });
   });
 
