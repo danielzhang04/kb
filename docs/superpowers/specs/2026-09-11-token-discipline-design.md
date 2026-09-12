@@ -54,12 +54,13 @@ totals appear in the SessionStart frame; (d) the repo is smaller after this PR t
 - **Decisions log.** `orgs/<p>/STATE.md` gains `## Decisions` (≤ 10 bullets, newest first, each
   `YYYY-MM-DD — <ruling> — <why>`); the boss writes a bullet the moment Daniel rules in chat, and the
   frame injects it. Older bullets roll into the arc's handoff on close. The lint enforces the heading.
-- **Compact path.** PreCompact (armed) writes the deterministic summary; compact-time SessionStart
-  (armed) re-injects GOAL/STATE/Decisions/summary. Threshold and custom compact instructions are set if
-  Claude Code exposes them (verification pending; the guide agent's answer is recorded in §9 before
-  build). If neither is configurable: the PostToolUse re-ground payload carries a `Context: ~N k` line
-  once the session passes 150k (from the statusline-visible count if a hook can read it, else from
-  the store's activity count as a proxy) and the boss follows the boundary rule by hand.
+- **Compact path.** `.claude/settings.json` sets `autoCompactWindow: "150k"` (project scope). PreCompact
+  (armed) writes the deterministic summary; compact-time SessionStart (armed) re-injects
+  GOAL/STATE/Decisions/summary. The compact prompt is not customizable, so nothing durable may live
+  only in the transcript: rulings go to `## Decisions`, task state to the SDD ledger, at the moment
+  they happen. Auto-compact may fire mid-loop; that is acceptable because the ledger is written per
+  step (ruling 2026-09-11). Hooks cannot read the context size; the statusline shows
+  `context_window.used_percentage`, which is the boss's cue for the manual boundary rule.
 - **Boundary rule (BOSS.md, Daniel edits; proposed text in the handoff).** Past 150k: finish the current
   task's review or fix round, write the ledger/handoff, then either let auto-compact run or end the turn
   with "restart me". Running subagents continue; their notifications arrive after compaction.
@@ -100,8 +101,19 @@ totals appear in the SessionStart frame; (d) the repo is smaller after this PR t
 - Root-level stray files in the main checkout (`*.png`, `*_tmp.txt`, `p5_plan_b380.md`, …) are untracked
   and not this PR's; listed in the handoff for Daniel to delete.
 
-## 9. Verification facts (filled from the guide agent before build)
-_Recorded at build start; if a fact changes a mechanism above, the change is a ruling in the SDD ledger._
+## 9. Verification facts (claude-code-guide, 2026-09-11, official docs)
+- `autoCompactWindow` setting: absolute tokens, 100k–1M, forms `150000` / `150k`; default per model undocumented;
+  no hook or model can trigger compaction (docs: model-config, cli-reference).
+- Compact summary prompt: not customizable; what survives is not exhaustively documented (commands, prompt-caching).
+- Subagent notifications after compaction: undocumented; verified empirically in Task 0 (dispatch, force
+  `/compact`, confirm the notification arrives).
+- MCP: no lazy connect; `enabledMcpServers` / `disabledMcpServers` / `--mcp-config` / `--strict-mcp-config`
+  choose servers; subagents inherit unless the agent definition sets `mcpServers`; deferred tools cost ~120
+  tokens for the listing vs ~10% of the window for full schemas (docs: mcp, sub-agents). Ruling 2 outcome:
+  servers stay; per-agent `mcpServers` restriction for builders/reviewers is the only change.
+- Statusline JSON: `context_window.total_input_tokens`, `context_window_size`, `used_percentage`,
+  `current_usage.*` (docs: statusline). Hooks have no supported access.
+- Codex compaction / per-dispatch effort: not in public docs; Task 0 probes `codex --help` and config.
 
 ## 10. Tests
 - `tests/test_usage_ledger.py`: fixture transcripts (Claude + Codex shapes), idempotent day file, max-per-file
