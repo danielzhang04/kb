@@ -32,6 +32,35 @@ upstream token-discipline handoff/memory changes; no Prospecting/ledger/queue de
 Automatic approval initially rejected a misleading two-branch diff, then accepted the
 verified merge-tree result. Preserve published ancestry; do not rebase or force-push.
 
+## Review/acceptance checkpoint (active repairs)
+
+Actual browser evidence ORCH/ux-browser-checkpoint-194.json: five views at actual390px
+in both themes, no document overflow; successful create preserves pretyped research and
+only posts campaign; double research save posts once and disables unchanged-save button.
+Fixture originally had a noncanonical sender identity; root added existing test_campaigns
+_profile canonical synthetic profile after fixture marker/store identity validation. No
+production source relaxation or original pilot mutation. Failed create preserved research.
+
+Fresh reviewer192c confirmed: input_pending can be a durably saved intake (separate missing
+criteria from save status); checklist implies research/ranking launch buttons that do not
+exist; disabled specific scope values are lost on campaign switch; direct campaign API
+silently accepts duplicate compiler keys. Creation-status auth/Host/closed query/read-only
+and full integrity checks had no confirmed privacy defect. General compiler list-dedup
+semantics are intentional and are not being changed. Node-only tests miss native form
+constraint validation: closed research inputs can block campaign create; refresh resets
+mailbox selection.193c static layout/label/helper changes done; now194c phase validation and
+picker preservation.192c after read-only review now195c campaign-boundary duplicate-key
+refusal/tests (no general compiler semantics or historic resume changes).191c recovery
+continues. Next196c checklist and scope cache fixes, then independent cross-review/full
+regression/Chrome final acceptance and publication. Current source remains uncommitted.
+
+Synthetic server49831 remains LIVE: exact listener127.0.0.1:8766 PID49448 verified via desktop
+permissions. A sandboxed listener query was inconclusive; earlier root statement that the
+server timed out was corrected. Confirm current exact PID/argv before restart. HTML is read
+at startup so current browser still shows pre193 source. Chrome page7 device emulation390px,
+light theme; restore desktop after final acceptance. P1 hash set and P6 inventory904 remain
+unchanged as of this checkpoint, refresh CLI dry-run reports change:none.
+
 ## Previous infrastructure handoff (historical baseline)
 
 # Prospecting infrastructure handoff ? 2026-09-12
