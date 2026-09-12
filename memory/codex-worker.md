@@ -740,3 +740,19 @@ manifest. The absent P1 result was mislabeled as a human-only blocker. The origi
 requires a worktree DRAFT STATE independent of ops STATE; gate source hashes/inventory can
 be repaired on the work branch, but --record still requires a real independent inspector
 grade. Read the writer and the original acceptance contract before treating a gate as external.
+
+## 2026-09-12 - Separate a gate unit test from its live accounting
+
+The loopback guard test reset the same class counter a live gate reads, then left its
+intentional refusal counted as an external call. A local subclass owns the synthetic counter;
+verify both zero and nonzero ambient detections survive. Never reset real detections to make
+a gate green. Direct P1 tests now pass, but a direct run is not a generated gate record.
+
+PYTEST_ADDOPTS uses shell-like parsing on Windows: Path strings with backslashes lost
+separators and inflated relative paths. Use quoted forward-slash paths and a short owned
+basetemp. JUnit record_property requires legacy format to avoid introduced warnings. A
+cleanup timeout in a restricted process requires scoped cleanup access, not a test skip.
+Scope process cleanup to the exact child command; broad command-line substring searches
+can match the cleanup shell itself. Reject documentation that changes run labels into test
+counts; verify against parsed JUnit before publication. Read/write UTF-8 explicitly in
+Windows orchestration scripts; default cp1252 can fail on existing memory files.

@@ -1,6 +1,6 @@
 # Prospecting infrastructure handoff ? 2026-09-11
 
-Updated 2026-09-12T02:57:23.429424+00:00. Published pipeline source and visible browser acceptance verified; fixture proof and record-gate audit active.
+Updated 2026-09-12T03:37:41.639468+00:00. Source ed929a16 published; direct P1 and inventory checks pass; full suite171 live, independent grading/record pending.
 
 ## Goal and roots
 
@@ -16,9 +16,9 @@ not the deliverable. Root orchestrates, reviews, applies and verifies; workers i
 
 ## What worked
 
-Published source HEAD1644aa00 is on draft PR181: browser fixture/verification follows canonical
-format c8643caf and HTTP repair7c1b2ab4. Only the unreviewed refresh_gate_inventory.py proposal
-and pre-existing .tmp/temp-pc-a83b4c21 are untracked in DELIVERY.
+Published source ed929a16 (docs) and c220266c (gate repair) are on draft PR181, following
+browser fixture1644aa00, canonical formatc8643caf and HTTP repair7c1b2ab4. Reviewed source
+is committed; only pre-existing .tmp/temp-pc-a83b4c21 remain untracked in DELIVERY.
 Final merge simulation against origin/main was clean (24behind/46ahead). PR180's summary and
 handoff26eb2d61 were explicitly approved and published; this refreshed coordination record
 follows them on the same branch. Runtime transfer and source/HTTP publication were also
@@ -52,8 +52,8 @@ P15?P22 workflow. Affected185:184pass1WinError10053; isolated case passed;2 snap
 passed. After149, HTTP30:29pass1WinError10053; the failing CSRF case and new sentinel case
 passed2/2. Retained XMLs: ORCH/temp-pc-5df4a821/task138-affected.xml, ORCH/test149-final-http.xml and ORCH/test149-rerun.xml.
 
-Original full-suite123:2087tests,2082pass5fail,0errors/skips,1245.491s. Three historical
-P1/P6 declaration/result failures remain under active repair: test_deployment::test_p6_manifest_is_numeric_and_complete,
+Original full-suite123:2087tests,2082pass5fail,0errors/skips,1245.491s. Historical
+P1/P6 declaration/result failures were: test_deployment::test_p6_manifest_is_numeric_and_complete,
 test_p2_prerequisite::test_p2_00_p1_record_verifies,
 test_p4_p1_contract::test_p4_00_p1_record_verifies. Two other failures passed focused reruns.
 Do not claim the full suite green or fabricate recorded gate/inspector outcomes. Prior focused acceptance:320 selected/native,
@@ -121,7 +121,7 @@ through ordinary mode=ro first; root proved unrelated-store refusal leaves bytes
 creates no WAL/SHM (ORCH/ui158-readonly-refusal.json), and post-restart identity still validates.
 Sonnet159 source refinements use Path.as_uri and reject Windows junctions. Its test proposal
 was rejected: _saved_human_edit is a direct-lineage fixture, not the public edit service;
-the timer assertion also did not prove shutdown. Corrective Sonnet159b is running.
+the timer assertion also did not prove shutdown. Corrective Sonnet159b was subsequently repaired by159c as recorded below.
 Sonnet156 audit was partly useful, but its selector for regenerate was in the wrong panel and
 its accept/reject-to-exhaust recommendation was rejected. Real exhaustion uses critic repair.
 
@@ -144,10 +144,49 @@ were staged-PII/diff checked, committed and published as1644aa00 on PR181. The a
 is the explicit browser/SQLite four-table check; a broad table-name tripwire in the test is
 not treated as authority proof. No new full-suite pass is claimed.
 
-Sonnet161 proposed refresh_gate_inventory.py but omitted the explicitly required DRAFT and
-has write/validation/timeout gaps. It is applied untracked for review, NOT RUN; manifests are
-unchanged. Opus162 is reviewing/completing it and adding bounded proof. Last verified live
-handle exec33944, job gate-inventory-review-162; receipt/result/JSONL are under ORCH.
+Sonnet161's proposal was completed by Opus162 and passed12 focused tests. It restored the
+plan-required DRAFT and validates declarations before writing, without modifying generated
+results or human MANIFEST.sha256. P6 write initially refused8 PII-like parameter IDs. Sonnet164
+added descriptive labels to11 cases;164b corrected two labels. Payloads/assertions stayed
+unchanged. Sonnet165 corrected3 stale P1 parameter IDs. Final inventories122/904 validate,
+hash-match and replay as no-ops; all other criteria and file lists are preserved.
+
+First P1 direct run166:120pass2fail9warnings. PYTEST_ADDOPTS used backslashes parsed as escapes,
+creating malformed relative output paths and WinError206 in nested tests. Use forward-slash
+short paths, e.g. --basetemp=C:/Users/danie/kb/_private/t168, and -o junit_family=legacy when
+record_property and JUnit coexist. Restricted taskkill caused a launcher cleanup timeout;
+correctly scoped elevated verification passed both failed tests in14.85s. Retained malformed
+artifacts were moved by exact verified paths to ORCH, not deleted. One broad process cleanup
+attempt also matched its own command and exited-1; never repeat broad command-line matching.
+
+A genuine test50 isolation bug reset and leaked the production external-call counter.
+Verified Sonnet167 moved the intentional refusal onto a local subclass. Root checked both
+prior counter0 and7 survive, with production guard/criteria unchanged. P1 direct run168 on
+exact Python3.13.7/SQLite3.50.4/Datasette0.65.1 passed all122 with0 failures/skips/xfails/
+warnings/network calls/unguarded children and evaluate_run errors[]. JUnit61.158s;
+ORCH/p1-direct-168.json/.xml. Measurements: PII class/sink126, blocked commits3, audit
+rejections2, WAL writers2, Datasette reads20/write refusals10, shared-policy campaigns2,
+raw agent capabilities0. All artifacts are now tracked after source commitc220266c.
+
+Independent Opus166 reviewed declaration/result semantics and confined collector basetemp
+to the existing TemporaryDirectory, with zoneinfo as a sibling. Sonnet169 added live argv/env,
+sentinel and timeout/success cleanup proof. Final inventory14pass,0other,3.451s JUnit
+(ORCH/inventory-final-169.xml), including P6 completeness. Fixture26pass on313 in18.868s
+JUnit (test163-supported.xml). Both refresher dry runs are now no-ops.
+
+Sonnet170/170b documentation proposals were rejected for misreporting evidence. Opus172's
+replacement was reviewed, measured-test wording clarified, and published ased929a16.
+No inspector grade or generated gate pass was fabricated. Opus166 is a source reviewer,
+not a formal fresh promotion inspector. The existing broad card remains working.
+
+## Working checklist
+
+- [x] Native/real nonsending and existing-Chrome acceptance.
+- [x] Restore and validate P1/P6 declarations; track all P1 artifacts.
+- [x] P1 direct122 and inventory14 checks; publish reviewed repair and evidence.
+- [ ] Finish full-suite171 and repair actual remaining regressions.
+- [ ] Genuine fresh independent inspection, then actual P1 --record and verification.
+- [ ] Final requirement-by-requirement completion audit and current handoff.
 
 ## Exact private pins
 
@@ -168,14 +207,20 @@ Public probe scripts are in ORCH; do not print private review projections or mes
 
 ## Exact next step
 
-Poll exec33944 / inspect ORCH/gate-inventory-review-162 receipt/result. Do not restart a
-quiet live job. Verify actual assistant model and exact input hashes, review its allowed
-DRAFT/updater/tests patch, then run focused tests. Compare dry-run P6 inventory to the root's
-904-node metadata and preserve all unrelated criteria/artifact/fixture paths before --write.
-P1 worktree DRAFT restoration is explicitly required by the original P1 plan, separate from
-ops STATE. Obtain a genuine fresh independent inspector grade before any passing --record;
-never self-supply a score. Re-run final relevant regression after these actual gate repairs.
-No pytest task is live. Original private pilot/native/browser acceptance need no repeat.
+Poll exec session53303 (full-suite171, child PID520 at launch). The handle was confirmed live
+this turn. Read ORCH/full-suite-171-result.json/.xml once terminal; never restart solely from
+an observation timeout or quiet log. Exact command is in full-suite-171-process.json; supported
+Python313, project test directory, no-network marker1, private short basetempt171, legacyJUnit.
+No model worker is live. Repair new failures through verified Claude workers. Two tests are
+expected to require the absent P1 record, but inspect actual evidence rather than assuming.
+
+Then arrange genuine fresh independent inspection of the relevant completed P1 work and
+named artifacts; root cannot grade itself, and source reviewers166/172 cannot become fresh
+inspectors after advising. No grade has been emitted. Only a real score may be supplied to
+gate --phase P1 --inspector-score <real> --record. All122 direct tests and declaration/tracking
+checks now pass; do not rerun native pilot/browser acceptance. The original full-goal card
+must remain working until its entire scope is met. P1 record must bind current full artifact
+hashes; verify_recorded alone checks only recorded keys, while p5_contracts verifies coverage.
 
 ## Operating constraints and remaining gates
 
@@ -186,8 +231,7 @@ No credentials as objects, paid fallback, capability/cap increases, sends or man
 
 Coordination changes use the existing PR180 branch, preserving published normal merge
 ancestry. Plain rebase previously replayed duplicateae3573e3 and was aborted. Fetch origin/ops
-and verify ancestry before writes; no force push/direct ops/main/merge/deploy. One bounded source-only Claude job162 is active; no pytest run is active. Keepawake PID17176 has an existing bounded lease
-until about07:16UTC; preserve unrelated worktrees and retained private artifacts. Card remains working for fixture regression and declared gate inventory repair; visible UI is now verified.
+and verify ancestry before writes; no force push/direct ops/main/merge/deploy. Full-suite171 is active; all model jobs are returned. Keepawake PID17176 historically had a bounded lease until about07:16UTC; verify a live process before relying on it. Preserve unrelated worktrees and retained private artifacts. The card remains working for full regression, independent grading and actual gate recording.
 
 ## Load list
 
@@ -196,6 +240,8 @@ until about07:16UTC; preserve unrelated worktrees and retained private artifacts
 - DELIVERY/docs/superpowers/plans/2026-09-09-prospecting-startup-pilot.md.
 - DELIVERY/docs/superpowers/reviews/2026-09-11-prospecting-final-verification.md and 2026-09-11-prospecting-selected-native-acceptance.md.
 - ORCH/real-format-draft-evidence.json, task134/real-pilot-evidence.json and public probes.
+- ORCH/p1-direct-168.json/.xml, inventory-final-169.xml, full-suite-171-process.json/.txt/.xml and eventual -result.json.
+- ORCH/gate-record-review-166, gate-counter-isolation-167, inventory-scratch-proof-169 and gate-verification-doc-172 receipts/results/JSONL.
 - ORCH/ui156-*.json, ui157-*.json, ui158-readonly-refusal.json and ui-fixture-proof-159c / record-gate-audit-160 / gate-inventory-review-162 receipts/results.
 - ORCH/format-security-148, format-isolation-149, format-boundaries-150, http-boundary-151b, http-repair-153, http-review-154, http-proof-155/155b receipt/result/JSONL files.
 
