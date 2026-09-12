@@ -732,6 +732,53 @@ def test_build_record_stamps_workflow_thread(repo, tmp_path):
     assert card.meta["workflow"] == "019f-abc"
 
 
+def test_default_effort_is_medium_when_unspecified(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo)])
+    assert seen["effort"] == "medium"
+
+
+def test_explicit_effort_overrides_default(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo), "--effort", "low"])
+    assert seen["effort"] == "low"
+
+
+def test_follow_up_allowed_within_hop_limit(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-1")
+    rc1 = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                               "--follow-up", "thread-1"])
+    rc2 = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                               "--follow-up", "thread-1"])
+    assert rc1 == 0 and rc2 == 0
+
+
+def test_follow_up_refused_past_hop_limit(repo, prompt_file, tmp_path, monkeypatch):
+    _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-2")
+    for _ in range(codex_dispatch.FOLLOW_UP_HOP_LIMIT):
+        rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                                  "--follow-up", "thread-2"])
+        assert rc == 0
+    rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                              "--follow-up", "thread-2"])
+    assert rc == 2
+
+
+def test_follow_up_hop_refusal_message_names_the_thread(repo, prompt_file, tmp_path, monkeypatch, capsys):
+    _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-3")
+    for _ in range(codex_dispatch.FOLLOW_UP_HOP_LIMIT):
+        codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                             "--follow-up", "thread-3"])
+    capsys.readouterr()
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                         "--follow-up", "thread-3"])
+    out = capsys.readouterr().out
+    assert "thread-3" in out and "DISPATCH REFUSED" in out and "--cwd" in out
+
+
 def test_agent_version_stamp_is_present_only_for_a_valid_declared_agent(repo):
     import cards
 

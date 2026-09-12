@@ -299,6 +299,35 @@ def parse_thread_id(log_file: Path) -> str | None:
     return None
 
 
+FOLLOW_UP_HOP_LIMIT = 2  # ruling 2026-09-11: past this, start a fresh --cwd dispatch instead
+                          # (lesson: codex-followup-loses-cwd.md)
+
+
+def load_hops() -> dict:
+    """{thread_id: hop_count}. Corrupt/missing -> empty, never fatal -- a lost counter
+    under-counts (a thread gets a few extra hops before the limit re-engages), never
+    over-refuses a thread that should still be allowed."""
+    try:
+        hops = json.loads((STATE_ROOT / "follow_up_hops.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return hops if isinstance(hops, dict) else {}
+
+
+def record_hop(thread_id: str | None) -> int:
+    if not thread_id:
+        return 0
+    hops = load_hops()
+    count = int(hops.get(thread_id, 0)) + 1
+    hops[thread_id] = count
+    try:
+        (STATE_ROOT / "follow_up_hops.json").parent.mkdir(parents=True, exist_ok=True)
+        (STATE_ROOT / "follow_up_hops.json").write_text(json.dumps(hops, indent=1), encoding="utf-8")
+    except OSError:
+        pass  # best-effort -- see load_hops' fail-open note
+    return count
+
+
 def load_threads() -> dict:
     """{thread_id: concrete model} — what each resumable session actually ran on.
     A missing or corrupt map is empty, never fatal: it rebuilds from later
@@ -624,7 +653,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--model", default=None,
                     help=f"default {DEFAULT_MODEL}; on --follow-up, defaults to the "
                          "model that session already ran on")
-    ap.add_argument("--effort", choices=EFFORTS, default=None)
+    ap.add_argument("--effort", choices=EFFORTS, default="medium",
+                    help="default medium (ruling 2026-09-11: child dispatches run lower effort "
+                         "than the gpt-6-astra interactive boss terminal)")
     ap.add_argument("--cwd", default=None)
     ap.add_argument("--sandbox", choices=("read-only", "workspace-write"),
                     default=None, help="default workspace-write; refused on --follow-up")
@@ -651,6 +682,13 @@ def main(argv: list[str] | None = None) -> int:
         if bad:
             print("DISPATCH REFUSED: --follow-up resumes the worker's own session "
                   f"(its cwd and sandbox are fixed); drop {', '.join(bad)}")
+            return 2
+        hops = load_hops()
+        if hops.get(args.follow_up, 0) >= FOLLOW_UP_HOP_LIMIT:
+            print(f"DISPATCH REFUSED: session {args.follow_up} has already used "
+                  f"{hops[args.follow_up]} --follow-up hops (limit {FOLLOW_UP_HOP_LIMIT}) -- "
+                  "start a fresh dispatch with --cwd instead of extending this thread "
+                  "(lesson: codex-followup-loses-cwd.md)")
             return 2
     sandbox = args.sandbox or "workspace-write"
 
@@ -760,6 +798,8 @@ def main(argv: list[str] | None = None) -> int:
     # so an unpinned --follow-up keeps this model; a resume whose log never named
     # the thread is still the session the caller asked to resume
     remember_thread(thread_id or args.follow_up, model)
+    if args.follow_up:
+        record_hop(args.follow_up)
     # stdout is the ONLY channel the answer reaches the caller on: print it
     # BEFORE the audit publish, which is best-effort and may raise.
     print(result_text)
