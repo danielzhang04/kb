@@ -5,7 +5,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 HOOK = REPO / "scripts" / "hooks" / "regrounding_hook.js"
-GOAL_STATE = REPO / "docs" / "plans" / "2026-08-18-agent-platform-GOAL-STATE.md"
+GOAL_STATE = REPO / "tests" / "fixtures" / "regrounding-source-fixture.md"
 MAX_CONTEXT_CHARS = 1700
 
 EVENT = {"hook_event_name": "UserPromptSubmit", "user_prompt": "carry on"}

@@ -29,6 +29,10 @@ Spawn a codex worker like an Agent-tool subagent: dispatch, keep working, the re
 
 ## Models
 
+Every dispatch runs `-c model_reasoning_effort=medium` by default (ruling 2026-09-11 — pass
+`--effort <low|high|xhigh|max>` to override; the interactive `gpt-6-astra` BOSS terminal is
+untouched by this default, it only applies to dispatched children):
+
 - `codex-cheap` (gpt-5.6-luna) — mechanical/bulk work
 - `codex` (gpt-5.6-terra, default) — standard build/review work
 - `codex-deep` (gpt-5.6-sol) — hard design/debugging; add `--effort xhigh` for the hardest
@@ -76,6 +80,9 @@ is one a sweep has claimed and is publishing.
   both runtimes.
 - Refuses on: STOP file, `ANTHROPIC_API_KEY` set (preamble gate), `OPENAI_API_KEY`/`CODEX_API_KEY`
   in env, stale codex login, unknown model. Fix the cause; never work around a refusal.
+- `--follow-up` is capped at 2 hops per thread (ruling 2026-09-11); the 3rd extension is
+  refused with the thread id and a reminder to start fresh with `--cwd` — see
+  codex-followup-loses-cwd.md for why a stale --cwd is worse than a new dispatch.
 - Failed runs still land as a `done` card, Result starting `FAILED: ...` (footer names the
   JSONL log); default timeout 2700s (45 min), `--timeout <seconds>` to change — a timeout kills
   the worker and records the same shape.

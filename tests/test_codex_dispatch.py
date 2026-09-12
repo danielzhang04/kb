@@ -302,6 +302,25 @@ def test_spawn_builds_exact_command(tmp_path, monkeypatch):
     assert seen["timeout"] == codex_dispatch.DEFAULT_TIMEOUT
 
 
+def test_spawn_marks_worker_env(monkeypatch, tmp_path):
+    seen_env = {}
+    class FakeProc:
+        pid = 111
+        def communicate(self, input=None, timeout=None):
+            return (b"", b"")
+        returncode = 0
+    def fake_popen(cmd, **kwargs):
+        seen_env.update(kwargs.get("env") or {})
+        return FakeProc()
+    monkeypatch.setattr(codex_dispatch.shutil, "which", lambda _: "codex.cmd")
+    monkeypatch.setattr(codex_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(codex_dispatch, "update_marker", lambda *a, **k: None)
+    monkeypatch.setattr(codex_dispatch, "process_start_time", lambda *_: None)
+    codex_dispatch.spawn("hi", "gpt-5.6-terra", None, tmp_path, "workspace-write",
+                          tmp_path / "out.txt", tmp_path / "log.txt")
+    assert seen_env.get("KB_INSIDE_CODEX_WORKER") == "1"
+
+
 def test_main_unknown_model_refuses_before_spawn(repo, tmp_path, monkeypatch, capsys):
     called = []
     monkeypatch.setenv("KB_DISPATCH_TEST", "1")
@@ -711,6 +730,53 @@ def test_build_record_stamps_workflow_thread(repo, tmp_path):
     card, _ = codex_dispatch.build_record(
         _mk_args(), repo, "0000aaaa-11112222", "gpt-5.6-terra", 0, "P", "R", log)
     assert card.meta["workflow"] == "019f-abc"
+
+
+def test_default_effort_is_medium_when_unspecified(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo)])
+    assert seen["effort"] == "medium"
+
+
+def test_explicit_effort_overrides_default(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo), "--effort", "low"])
+    assert seen["effort"] == "low"
+
+
+def test_follow_up_allowed_within_hop_limit(repo, prompt_file, tmp_path, monkeypatch):
+    seen = _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-1")
+    rc1 = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                               "--follow-up", "thread-1"])
+    rc2 = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                               "--follow-up", "thread-1"])
+    assert rc1 == 0 and rc2 == 0
+
+
+def test_follow_up_refused_past_hop_limit(repo, prompt_file, tmp_path, monkeypatch):
+    _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-2")
+    for _ in range(codex_dispatch.FOLLOW_UP_HOP_LIMIT):
+        rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                                  "--follow-up", "thread-2"])
+        assert rc == 0
+    rc = codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                              "--follow-up", "thread-2"])
+    assert rc == 2
+
+
+def test_follow_up_hop_refusal_message_names_the_thread(repo, prompt_file, tmp_path, monkeypatch, capsys):
+    _main_env(monkeypatch, tmp_path)
+    monkeypatch.setattr(codex_dispatch, "parse_thread_id", lambda *_: "thread-3")
+    for _ in range(codex_dispatch.FOLLOW_UP_HOP_LIMIT):
+        codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                             "--follow-up", "thread-3"])
+    capsys.readouterr()
+    codex_dispatch.main(["--prompt-file", str(prompt_file), "--repo-root", str(repo),
+                         "--follow-up", "thread-3"])
+    out = capsys.readouterr().out
+    assert "thread-3" in out and "DISPATCH REFUSED" in out and "--cwd" in out
 
 
 def test_agent_version_stamp_is_present_only_for_a_valid_declared_agent(repo):

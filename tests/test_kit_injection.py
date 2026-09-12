@@ -386,4 +386,5 @@ def test_the_kit_never_creates_an_injection_on_its_own(tmp_path):
 
 
 def test_the_hook_still_declares_itself_inert():
-    assert "INERT" in HOOK.read_text(encoding="utf-8")
+    # PR #182 (2026-09-11, project-frame-hooks) armed this hook -- it is no longer INERT.
+    assert "ARMED 2026-09-11" in HOOK.read_text(encoding="utf-8")

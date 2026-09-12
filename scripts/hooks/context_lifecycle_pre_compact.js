@@ -21,7 +21,8 @@
  *
  * Status:
  *   ARMED 2026-09-11 via .claude/settings.json (project scope) — PreCompact. See
- *   docs/proposals/context-lifecycle-hooks.md.
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the context-lifecycle-hooks.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * Contract:
  *   - Reads env: KB_CONTEXT_STORE_DIR (store root), KB_PRECOMPACT_TURNS (default 12).

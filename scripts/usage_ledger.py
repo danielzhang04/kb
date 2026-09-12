@@ -1,0 +1,774 @@
+#!/usr/bin/env python3
+"""scripts/usage_ledger.py — daily Claude Code + Codex token usage ledger (measure only).
+
+Read-only over ~/.claude/projects/**/*.jsonl (+ subagents/*.jsonl) and the DATE-PARTITIONED
+~/.codex/sessions/<yyyy>/<mm>/<dd>/rollout-*.jsonl directories for target_day-1 and target_day
+(NOT a full-tree rglob -- fix round 1, C1a: real transcript volume on an operator's machine made a
+full-tree walk the dominant cost). Writes one row per (runtime, model, session, top|subagent) to
+ledgers/usage/<YYYY-MM-DD>.tsv, plus a `_totals` row, ALSO writes a `ledgers/usage/<date>.summary`
+sidecar (fix round 3) containing exactly the `--summary` line, then publishes both files to the ops
+branch TOGETHER in one commit via a detached worktree -- same contention handling as
+scripts/codex_dispatch.py's publish_ops (ported, not re-derived: rebuild-on-conflict, ancestry
+check instead of head-equality), PLUS (fix round 1, C2) a same-content short-circuit before ever
+committing, so a retry that finds the files already correct on origin/ops reports success without
+an empty commit.
+
+The sidecar exists so `scripts/hooks/project_frame_session_start.js`'s '## Usage (yesterday)' line
+can be a PURE FILE READ (spec S3: that hook must never spawn this parser, full stop) -- see
+`write_summary_sidecar`.
+
+COLUMN SPLIT (fix round 1, C4 ruling): `max_ctx_tokens` (per-turn peak of input+cache_read, a
+CONTEXT-WINDOW signal) is Claude-only; Codex rows carry that column empty and instead populate
+`codex_cumulative_total` (`total_token_usage.total_tokens`, max per rollout file) -- the two
+runtimes' token-accounting models are not comparable, so they get separate columns rather than
+one column silently mixing two different signals. `_totals` reports the Claude-only peak in
+`max_ctx_tokens` and the summed Codex cumulative total in `codex_cumulative_total`; `--summary`
+prints them as "peak ctx <N>k" (Claude) and "codex total <N>M" (Codex), separately.
+
+stdlib only. Invoked as `py -3 scripts/usage_ledger.py [--date YYYY-MM-DD] [--summary]
+[--no-publish] [--root <path>] [--full]`. Ruling 2026-09-11 Section 0.1: measure only -- this
+script enforces nothing, warns nothing, and never blocks anything it is called from.
+
+`--full` is a NO-OP alias kept for one release (fix wave M2): the 64 MB per-file skip and the
+2-day mtime upper bound it used to disable are both gone, because they excluded precisely the
+transcripts worth measuring (a long-lived boss terminal is both the largest file and the one whose
+mtime is always "now"). The run is detached, so scan time costs nobody anything. Passing --full
+prints one stderr note and changes nothing.
+
+WRITE/PUBLISH REFUSALS (fix wave F1, both about never publishing a hollow day over a real one):
+a collected day with ZERO Claude rows writes no files and publishes nothing (one stderr line,
+exit 0) -- a run from a machine with no local transcripts must not overwrite the operator real
+ledger; and publish_to_ops refuses to overwrite an EXISTING ops file whose `_totals` turn count is
+HIGHER than the one being pushed (a later run of the same day can only ever add turns).
+
+NEVER run this from inside a Codex worker's shell: it reads ~/.codex/sessions/**/rollout-*.jsonl,
+and a worker that reads its OWN rollout file mid-session can inject megabytes of its own history
+back into its context (openai/codex#27131). The STRUCTURAL guard: scripts/codex_dispatch.py's
+spawn() sets KB_INSIDE_CODEX_WORKER=1 in every worker's environment; this script refuses
+immediately (exit 3, one stderr line, no file touched) whenever that variable is set. This is a
+belt, not the buckle -- the real guard is that no dispatch-codex brief, SKILL.md instruction, or
+fleet cadence ever names this script as a worker's job. The daily preamble.py call launches it
+DETACHED (fix round 1, C1c) from the operator's own shell, which never carries that variable.
+"""
+from __future__ import annotations
+
+import argparse
+import os
+import random
+import shutil
+import subprocess
+import sys
+import tempfile
+import time
+from collections import defaultdict
+from datetime import date, datetime, timedelta, timezone
+from pathlib import Path
+
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+# ---------------------------------------------------------------------------
+# Pricing -- an ESTIMATE for cross-session comparison, not a real bill (subscription usage is
+# not metered in dollars). Ported from the Task 0 evidence prototype
+# (docs/superpowers/specs/2026-09-11-token-discipline-evidence/analyze_tokens.py) -- same rates,
+# same caveats. Every derived column is named est_... so nobody mistakes it for an invoice.
+# ---------------------------------------------------------------------------
+CLAUDE_PRICING = {  # model_class -> (input $/1M, output $/1M)
+    "opus": (15.00, 75.00),
+    "sonnet": (3.00, 15.00),
+    "haiku": (0.80, 4.00),
+    "fable": (15.00, 75.00),  # ASSUMPTION: no public Fable price; Opus-tier used (flagged)
+    "default": (3.00, 15.00),
+}
+CACHE_READ_MULT = 0.10
+CACHE_CREATE_MULT = 1.25
+CODEX_INPUT_PRICE = 1.25
+CODEX_OUTPUT_PRICE = 10.00
+CODEX_CACHE_MULT = 0.50
+
+RATE_TABLE_HEADER = (
+    "# est_ rates (per 1M tokens, comparison-only, NOT a real subscription bill): "
+    "claude opus 15/75 sonnet 3/15 haiku 0.8/4 fable 15/75(assumed) cache-read 10% cache-create 125% "
+    "| codex input 1.25 output 10.00 cached-input 50% "
+    "| max_ctx_tokens = Claude-only per-turn peak (input+cache_read); codex_cumulative_total = "
+    "Codex-only total_token_usage.total_tokens max-per-file -- the two are NOT the same signal, "
+    "hence separate columns (fix round 1, C4)"
+)
+
+# runtime-specific columns: max_ctx_tokens is Claude-only (empty for codex rows);
+# codex_cumulative_total is Codex-only (empty for claude rows). See module docstring "COLUMN SPLIT".
+TSV_FIELDS = [
+    "runtime", "model", "session", "kind", "project",
+    "input_tokens", "cache_creation_tokens", "cache_read_tokens", "output_tokens",
+    "turns", "max_ctx_tokens", "codex_cumulative_total", "est_usd",
+]
+
+
+def classify_claude_model(model_name):
+    m = (model_name or "").lower()
+    for key in ("opus", "haiku", "fable", "sonnet"):
+        if key in m:
+            return key
+    return "default"
+
+
+def claude_cost(model_class, inp, cache_create, cache_read, out):
+    in_p, out_p = CLAUDE_PRICING.get(model_class, CLAUDE_PRICING["default"])
+    return (
+        (inp / 1e6) * in_p
+        + (cache_create / 1e6) * in_p * CACHE_CREATE_MULT
+        + (cache_read / 1e6) * in_p * CACHE_READ_MULT
+        + (out / 1e6) * out_p
+    )
+
+
+def codex_cost(input_tok, cached_tok, output_tok):
+    uncached = max(0, input_tok - cached_tok)
+    return (
+        (uncached / 1e6) * CODEX_INPUT_PRICE
+        + (cached_tok / 1e6) * CODEX_INPUT_PRICE * CODEX_CACHE_MULT
+        + (output_tok / 1e6) * CODEX_OUTPUT_PRICE
+    )
+
+
+# ---------------------------------------------------------------------------
+# True line-by-line JSONL streaming. Holds at most ONE line buffered (never loads a whole
+# transcript into memory) and drops a final line with no trailing newline -- a session file the
+# current terminal is still writing is a NORMAL input, not an error ("skips a partial last line").
+# ---------------------------------------------------------------------------
+
+def _ends_with_newline(path: Path) -> bool:
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return True
+    if size == 0:
+        return True
+    try:
+        with path.open("rb") as fb:
+            fb.seek(-1, os.SEEK_END)
+            return fb.read(1) == b"\n"
+    except OSError:
+        return True  # fail open: treat as complete rather than silently drop everything
+
+
+def _iter_complete_json_lines(path: Path):
+    import json
+    complete_tail = _ends_with_newline(path)
+    try:
+        f = path.open("r", encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    with f:
+        pending = None
+        for line in f:
+            if pending is not None:
+                stripped = pending.strip()
+                if stripped:
+                    try:
+                        yield json.loads(stripped)
+                    except json.JSONDecodeError:
+                        pass
+            pending = line
+        if pending is not None and complete_tail:
+            stripped = pending.strip()
+            if stripped:
+                try:
+                    yield json.loads(stripped)
+                except json.JSONDecodeError:
+                    pass
+
+
+# ---------------------------------------------------------------------------
+# Claude Code transcripts
+# ---------------------------------------------------------------------------
+
+def process_claude_file(path: Path, kind: str, session_id: str, project: str, target_day: str):
+    """Rows (one per model class actually seen) for ONE Claude transcript, filtered to records
+    whose OWN timestamp falls on target_day -- a long-lived session file spans many days, and
+    attributing its whole history to whichever day it was last touched would misreport "yesterday".
+    `codex_cumulative_total` is always None here -- that column is Codex-only (C4)."""
+    per_model = defaultdict(lambda: defaultdict(float))
+    ctx_per_turn = []
+    for rec in _iter_complete_json_lines(path):
+        if not isinstance(rec, dict) or rec.get("type") != "assistant":
+            continue
+        ts = rec.get("timestamp") or ""
+        if ts[:10] != target_day:
+            continue
+        msg = rec.get("message") or {}
+        usage = msg.get("usage") or {}
+        if not usage:
+            continue
+        mclass = classify_claude_model(msg.get("model"))
+        inp = usage.get("input_tokens", 0) or 0
+        cc = usage.get("cache_creation_input_tokens", 0) or 0
+        cr = usage.get("cache_read_input_tokens", 0) or 0
+        out = usage.get("output_tokens", 0) or 0
+        row = per_model[mclass]
+        row["input"] += inp
+        row["cache_creation"] += cc
+        row["cache_read"] += cr
+        row["output"] += out
+        row["turns"] += 1
+        ctx_per_turn.append(inp + cr)
+    if not per_model:
+        return []
+    max_ctx = max(ctx_per_turn) if ctx_per_turn else 0
+    rows = []
+    for mclass, row in per_model.items():
+        rows.append({
+            "runtime": "claude", "model": mclass, "session": session_id, "kind": kind, "project": project,
+            "input_tokens": int(row["input"]), "cache_creation_tokens": int(row["cache_creation"]),
+            "cache_read_tokens": int(row["cache_read"]), "output_tokens": int(row["output"]),
+            "turns": int(row["turns"]), "max_ctx_tokens": int(max_ctx), "codex_cumulative_total": None,
+            "est_usd": round(claude_cost(mclass, row["input"], row["cache_creation"], row["cache_read"], row["output"]), 4),
+        })
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Codex rollouts -- session-level attribution (spec: "total_token_usage = max per rollout file"),
+# NOT per-record like Claude: a session is attributed to its OWN start day only, matching table A3's
+# "cumulative session totals attributed to session-start day".
+# ---------------------------------------------------------------------------
+
+def process_codex_file(path: Path, target_day: str):
+    """`max_ctx_tokens` is always None here -- that column is Claude-only (C4). The Codex signal
+    (`total_token_usage.total_tokens`, max per file) lives in `codex_cumulative_total` instead."""
+    session_id = None
+    model = None
+    turns = 0
+    max_usage = None
+    start_day = None
+    for rec in _iter_complete_json_lines(path):
+        if not isinstance(rec, dict):
+            continue
+        rtype = rec.get("type")
+        if rtype == "session_meta":
+            p = rec.get("payload") or {}
+            session_id = p.get("session_id") or p.get("id") or session_id
+            ts = p.get("timestamp") or rec.get("timestamp")
+            if ts:
+                start_day = str(ts)[:10]
+        elif rtype == "turn_context":
+            model = (rec.get("payload") or {}).get("model") or model
+        elif rtype == "event_msg":
+            p = rec.get("payload") or {}
+            if p.get("type") == "task_started":
+                turns += 1
+                model = p.get("model") or model
+            elif p.get("type") == "token_count":
+                info = p.get("info") or {}
+                tu = info.get("total_token_usage")
+                if tu and (max_usage is None or (tu.get("total_tokens", 0) or 0) > (max_usage.get("total_tokens", 0) or 0)):
+                    max_usage = tu
+    if start_day != target_day or max_usage is None:
+        return None
+    input_tok = max_usage.get("input_tokens", 0) or 0
+    cached_tok = max_usage.get("cached_input_tokens", 0) or 0
+    output_tok = max_usage.get("output_tokens", 0) or 0
+    return {
+        "runtime": "codex", "model": model or "unknown", "session": session_id or path.stem,
+        "kind": "top", "project": "-",
+        "input_tokens": int(input_tok), "cache_creation_tokens": 0,
+        "cache_read_tokens": int(cached_tok), "output_tokens": int(output_tok),
+        "turns": turns, "max_ctx_tokens": None,
+        "codex_cumulative_total": int(max_usage.get("total_tokens", 0) or 0),
+        "est_usd": round(codex_cost(input_tok, cached_tok, output_tok), 4),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Enumeration
+# ---------------------------------------------------------------------------
+
+def _home(env) -> Path:
+    return Path(env.get("USERPROFILE") or env.get("HOME") or str(Path.home()))
+
+
+def _claude_projects_dir(env) -> Path:
+    return Path(env.get("KB_CLAUDE_PROJECTS_DIR") or (_home(env) / ".claude" / "projects"))
+
+
+def _codex_sessions_dir(env) -> Path:
+    return Path(env.get("KB_CODEX_SESSIONS_DIR") or (_home(env) / ".codex" / "sessions"))
+
+
+def _day_start_epoch(day: str) -> float:
+    d = date.fromisoformat(day)
+    return datetime(d.year, d.month, d.day, tzinfo=timezone.utc).timestamp()
+
+
+def collect_claude_rows(env, target_day: str) -> list[dict]:
+    """The mtime filter is a FLOOR only (fix wave M2): a file untouched since before target_day
+    began cannot contain target_day rows, so skipping it is free. Both of C1b's narrowing filters
+    are GONE, and they were wrong for the same reason -- the file they excluded is exactly the file
+    that matters:
+
+      * the 2-day mtime UPPER bound excluded any still-open transcript (a long-lived boss terminal
+        has mtime "now" forever), i.e. the single biggest token consumer on the machine;
+      * the 64 MB size skip excluded those same files by another route.
+
+    Both were justified by run time. That justification is void: scripts/preamble.py launches this
+    parser DETACHED (fix round 1, C1c), so nothing waits on it and a slow full scan costs nobody
+    anything. process_claude_file still streams line by line and never holds a whole transcript in
+    memory.
+    """
+    root = _claude_projects_dir(env)
+    if not root.is_dir():
+        return []
+    start_epoch = _day_start_epoch(target_day)
+
+    def _maybe_process(entry: Path, kind: str, session_id: str, project: str) -> list[dict]:
+        try:
+            st = entry.stat()
+        except OSError:
+            return []
+        if st.st_mtime < start_epoch:
+            return []
+        return process_claude_file(entry, kind, session_id, project, target_day)
+
+    rows: list[dict] = []
+    for proj_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+        project = proj_dir.name
+        for entry in sorted(proj_dir.iterdir()):
+            try:
+                if entry.is_file() and entry.suffix == ".jsonl":
+                    rows.extend(_maybe_process(entry, "top", entry.stem, project))
+                elif entry.is_dir():
+                    sub = entry / "subagents"
+                    if sub.is_dir():
+                        for sf in sorted(sub.iterdir()):
+                            if sf.suffix == ".jsonl":
+                                rows.extend(_maybe_process(sf, "subagent", entry.name, project))
+            except OSError:
+                continue
+    return rows
+
+
+def _codex_day_dirs(root: Path, target_day: str) -> list[Path]:
+    """Rollout files are date-partitioned into <root>/<yyyy>/<mm>/<dd>/ by LOCAL wall-clock day at
+    file-creation, while a session's OWN start_day (the value actually used for attribution, in
+    process_codex_file) is read from the session_meta record's timestamp, which IS UTC.
+
+    EMPIRICALLY VERIFIED on the operator's own machine (fix round 1 correction -- the first
+    version of this function scanned target_day and target_day+1, which was backwards and
+    silently dropped every Codex row for a day; caught by the live-run wall-time check, not by a
+    unit test, because the fixtures matched the wrong assumption too):
+
+        ~/.codex/sessions/2026/09/10/rollout-2026-09-10T23-55-32-....jsonl
+        -> first record timestamp "2026-09-11T03:57:57Z"
+
+    This machine's local clock is UTC-4. A session created at 23:55 LOCAL on day D is already
+    03:57 UTC on day D+1 -- so the LOCAL-day directory D can hold a session whose UTC start_day is
+    D+1. Directory D never holds a session whose UTC start_day is D-1 (local never runs AHEAD of
+    UTC here). So for a UTC target_day T, the candidate directories are T (most sessions: created
+    early enough in local day T that UTC hadn't rolled over yet) and T-1 (a session created in the
+    last few hours of local day T-1, after UTC had already rolled over to T) -- NOT T+1.
+
+    Content-based attribution, not directory-based: process_codex_file's own
+    `start_day != target_day: return None` check never depends on which directory holds the file,
+    so scanning fewer directories can only ever risk MISSING a target_day session filed a day
+    early in this sense -- it can never wrongly attribute a different day's session to this one.
+
+    ASSUMPTION, stated plainly: this covers a local clock BEHIND UTC (this machine: UTC-4, and any
+    positive UTC offset in the Americas). A host whose local clock runs AHEAD of UTC (local day
+    later than the UTC start_day) would need T and T+1 instead -- the exact reverse -- and is not
+    covered here; not observed on kb's machines, flagged rather than silently assumed away.
+    """
+    d = date.fromisoformat(target_day)
+    dirs = []
+    for delta in (-1, 0):
+        dd = d + timedelta(days=delta)
+        dirs.append(root / f"{dd.year:04d}" / f"{dd.month:02d}" / f"{dd.day:02d}")
+    return dirs
+
+
+def collect_codex_rows(env, target_day: str) -> list[dict]:
+    """C1a: lists only the (at most two) date-partitioned directories that could hold a
+    target_day session -- see `_codex_day_dirs` -- instead of an `rglob` over the entire
+    ~/.codex/sessions tree, which on a real machine can span months of accumulated history."""
+    root = _codex_sessions_dir(env)
+    if not root.is_dir():
+        return []
+    rows: list[dict] = []
+    seen: set[Path] = set()
+    for day_dir in _codex_day_dirs(root, target_day):
+        if not day_dir.is_dir():
+            continue
+        for path in sorted(day_dir.glob("rollout-*.jsonl")):
+            if path in seen:
+                continue
+            seen.add(path)
+            row = process_codex_file(path, target_day)
+            if row:
+                rows.append(row)
+    return rows
+
+
+# ---------------------------------------------------------------------------
+# Totals, TSV I/O, summary
+# ---------------------------------------------------------------------------
+
+def build_totals_row(rows: list[dict]) -> dict:
+    """C4: `max_ctx_tokens` in the totals row is the PEAK across Claude rows only (never summed --
+    it is a context-window signal, not a token-volume signal); `codex_cumulative_total` is the SUM
+    across Codex rows (each row is already a per-session max, so summing rows aggregates sessions)."""
+    totals = defaultdict(float)
+    claude_peak = 0
+    codex_total = 0
+    for r in rows:
+        for f in ("input_tokens", "cache_creation_tokens", "cache_read_tokens", "output_tokens", "turns", "est_usd"):
+            totals[f] += r[f]
+        if r["runtime"] == "claude" and r.get("max_ctx_tokens"):
+            claude_peak = max(claude_peak, r["max_ctx_tokens"])
+        if r["runtime"] == "codex" and r.get("codex_cumulative_total"):
+            codex_total += r["codex_cumulative_total"]
+    return {
+        "runtime": "_totals", "model": "-", "session": "-", "kind": "-", "project": "-",
+        "input_tokens": int(totals["input_tokens"]), "cache_creation_tokens": int(totals["cache_creation_tokens"]),
+        "cache_read_tokens": int(totals["cache_read_tokens"]), "output_tokens": int(totals["output_tokens"]),
+        "turns": int(totals["turns"]), "max_ctx_tokens": int(claude_peak),
+        "codex_cumulative_total": int(codex_total),
+        "est_usd": round(totals["est_usd"], 4),
+    }
+
+
+def _cell(value) -> str:
+    """None -> empty TSV cell (the runtime-specific columns, C4); everything else -> str()."""
+    return "" if value is None else str(value)
+
+
+def write_ledger(path: Path, rows: list[dict]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    totals = build_totals_row(rows)
+    with path.open("w", encoding="utf-8", newline="") as f:
+        f.write(RATE_TABLE_HEADER + "\n")
+        f.write("\t".join(TSV_FIELDS) + "\n")
+        for r in rows + [totals]:
+            f.write("\t".join(_cell(r.get(k)) for k in TSV_FIELDS) + "\n")
+
+
+def read_existing_rows(path: Path):
+    """Idempotent-read path: an already-written day is read back, never recomputed.
+
+    Returns None (fix round 1, Minor) when the file doesn't carry the expected `#`-prefixed
+    rate-table header -- the caller then regenerates the day and logs one stderr line, instead of
+    silently treating a corrupt/foreign/truncated file as "zero usage that day".
+    """
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if len(lines) < 2 or not lines[0].startswith("#"):
+        return None
+    header = lines[1].split("\t")
+    rows = []
+    for line in lines[2:]:
+        if not line:
+            continue
+        values = line.split("\t")
+        row = dict(zip(header, values))
+        for k in ("input_tokens", "cache_creation_tokens", "cache_read_tokens", "output_tokens", "turns"):
+            row[k] = int(row.get(k, 0) or 0)
+        for k in ("max_ctx_tokens", "codex_cumulative_total"):
+            row[k] = int(row[k]) if row.get(k) else None
+        row["est_usd"] = float(row.get("est_usd", 0) or 0)
+        rows.append(row)
+    if rows and rows[-1]["runtime"] == "_totals":
+        rows = rows[:-1]  # summary_line recomputes totals from the non-totals rows
+    return rows
+
+
+def summary_line(rows: list[dict], target_day: str) -> str:
+    totals = build_totals_row(rows)
+    claude_usd = sum(r["est_usd"] for r in rows if r["runtime"] == "claude")
+    codex_usd = sum(r["est_usd"] for r in rows if r["runtime"] == "codex")
+    peak_ctx_k = int(totals["max_ctx_tokens"]) // 1000
+    codex_total_m = totals["codex_cumulative_total"] / 1e6
+    line = (
+        f"{target_day}: claude ${claude_usd:.2f}-eq / codex ${codex_usd:.2f}-eq "
+        f"| {int(totals['turns'])} turns | peak ctx {peak_ctx_k}k | codex total {codex_total_m:.1f}M"
+    )
+    return line[:200]
+
+
+def write_summary_sidecar(path: Path, rows: list[dict], target_day: str) -> None:
+    """The `.summary` sidecar (fix round 3): a live headless check (`claude -p`) showed
+    '## Usage (yesterday)' simply absent from a real session's startup context, because the
+    SessionStart hook was spawning `usage_ledger.py --summary --no-publish` under a 3s timeout to
+    get this same line -- a live spec violation (S3: the hook must NEVER run the parser, not just
+    "run it fast"). This file is written alongside the TSV every time a day is computed or
+    regenerated, containing EXACTLY the `--summary` line (<=200 chars, one line, LF-terminated) so
+    the hook can satisfy '## Usage (yesterday)' with a pure file read instead.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    line = summary_line(rows, target_day)
+    path.write_text(line + "\n", encoding="utf-8", newline="\n")
+
+
+# ---------------------------------------------------------------------------
+# Ops publish -- PORTED from scripts/codex_dispatch.py:publish_ops (same contention handling:
+# never rebase, rebuild from a fresh fetch; ancestry check, not head equality, decides "landed").
+# fix round 1, C2: before ever committing, check whether a target path is already tracked AND
+# identical to what we're about to write -- if so, this IS success (already on ops), and treating
+# an empty "nothing to commit" as a retry-worthy failure was the bug. `git diff --quiet` alone is
+# NOT enough: it reports "no difference" for an untracked path too (verified empirically -- git
+# diff never looks at untracked files), which would have falsely reported "already on ops" for a
+# BRAND NEW date's file that was never committed at all. `git ls-files --error-unmatch` first
+# confirms the path is actually tracked before trusting the diff.
+# fix round 3: takes a LIST of (local_path, rel_path) pairs and publishes them together in ONE
+# commit -- the TSV and its `.summary` sidecar must land on ops atomically, never as two separate
+# commits where a reader could observe one without the other.
+# ---------------------------------------------------------------------------
+
+def totals_turns(text: str) -> int | None:
+    """The `turns` cell of a ledger TSV `_totals` row, or None when `text` is not a ledger TSV
+    (the `.summary` sidecar, an empty file, a foreign file). None means "no opinion" -- callers
+    treat it as "no comparison possible", never as zero."""
+    lines = text.splitlines()
+    if len(lines) < 2 or not lines[0].startswith("#"):
+        return None
+    header = lines[1].split("\t")
+    if "runtime" not in header or "turns" not in header:
+        return None
+    ri, ti = header.index("runtime"), header.index("turns")
+    for line in reversed(lines[2:]):
+        cells = line.split("\t")
+        if len(cells) > max(ri, ti) and cells[ri] == "_totals":
+            try:
+                return int(cells[ti])
+            except ValueError:
+                return None
+    return None
+
+
+def _turn_count_regression(existing: Path, new_content: bytes) -> str | None:
+    """fix wave F1c. A day's ledger can only ever GROW: every later run of the same date sees at
+    least the transcripts the earlier run saw. So a push whose `_totals` turn count is LOWER than
+    what is already on ops is not an update, it is a run that could not see the data -- the VM's
+    detached preamble run against a near-empty `~/.claude/projects` being the case that actually
+    happened. Refuse it and keep the richer file.
+
+    Returns a reason string when the overwrite must be refused, else None (file absent, either side
+    not a ledger TSV, or the new count is >= the existing one). Fail-open by construction: anything
+    unparseable yields None and the publish proceeds exactly as before.
+    """
+    try:
+        if not existing.is_file():
+            return None
+        old_turns = totals_turns(existing.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return None
+    if old_turns is None:
+        return None
+    new_turns = totals_turns(new_content.decode("utf-8", errors="replace"))
+    if new_turns is None or new_turns >= old_turns:
+        return None
+    return (
+        f"already on ops with {old_turns} turns, refusing to overwrite it with {new_turns} "
+        "(a later run of the same day can only add turns -- this run could not see the data)"
+    )
+
+
+def publish_to_ops(repo_root: Path, files: list[tuple[Path, str]]) -> tuple[bool, str]:
+    def git(*a, cwd=repo_root, timeout=120):
+        try:
+            return subprocess.run(["git", *a], cwd=str(cwd), capture_output=True, text=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return subprocess.CompletedProcess(a, 1, "", "git timed out")
+
+    def landed(sha):
+        return bool(sha) and git("merge-base", "--is-ancestor", sha, "FETCH_HEAD").returncode == 0
+
+    def already_identical(cwd, rel_path) -> bool:
+        tracked = git("ls-files", "--error-unmatch", "--", rel_path, cwd=cwd).returncode == 0
+        return tracked and git("diff", "--quiet", "--", rel_path, cwd=cwd).returncode == 0
+
+    contents = [(rel_path, local_path.read_bytes()) for local_path, rel_path in files]
+    tmp_parent = Path(tempfile.mkdtemp(prefix="usage-ledger-"))
+    wt = tmp_parent / "wt"
+    local_sha = ""
+    try:
+        for attempt in range(3):
+            if attempt:
+                time.sleep(random.uniform(0.5, 2.0))
+            if git("fetch", "origin", "ops").returncode != 0:
+                continue
+            if landed(local_sha):
+                return True, "pushed"
+            if wt.exists():
+                git("reset", "--hard", "origin/ops", cwd=wt)
+                git("clean", "-fdq", cwd=wt)
+            elif git("worktree", "add", "--detach", str(wt), "origin/ops").returncode != 0:
+                continue
+            changed = []
+            for rel_path, content in contents:
+                target = wt / rel_path
+                regression = _turn_count_regression(target, content)
+                if regression:
+                    return False, f"refused: {rel_path} {regression}"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(content)
+                if not already_identical(wt, rel_path):
+                    changed.append(rel_path)
+            if not changed:
+                return True, "already on ops (identical content)"
+            git("add", "--", *changed, cwd=wt)
+            if git("commit", "-m", f"chore(usage-ledger): record {', '.join(changed)}", cwd=wt).returncode != 0:
+                continue
+            local_sha = git("rev-parse", "HEAD", cwd=wt).stdout.strip()
+            if git("push", "origin", "HEAD:refs/heads/ops", cwd=wt).returncode != 0:
+                continue
+            if git("fetch", "origin", "ops").returncode == 0 and landed(local_sha):
+                return True, "pushed"
+        return False, "publish failed after 3 rebuilt attempts (local files kept)"
+    finally:
+        # I3: `worktree remove --force` on OUR temp dir only. The `git worktree prune` that used to
+        # follow it ran in the OPERATOR'S main checkout and deleted the administrative records of
+        # every other worktree whose directory happened to be missing at that moment (an unplugged
+        # external drive, a dir being moved, a lease another agent was mid-way through creating) --
+        # a global side effect from a local cleanup. `remove --force` already prunes the record of
+        # the worktree it removes. The mkdtemp PARENT is ours too and was leaked on every publish.
+        git("worktree", "remove", "--force", str(wt))
+        shutil.rmtree(tmp_parent, ignore_errors=True)
+
+
+# ---------------------------------------------------------------------------
+# fix round 1, C3: a failed publish is tracked in a small state dir so the NEXT invocation for the
+# same date retries it, even though the day's TSV already exists (the normal idempotent-read path
+# would otherwise never look at publish status again).
+# ---------------------------------------------------------------------------
+
+def _state_dir() -> Path:
+    base = os.environ.get("LOCALAPPDATA") or str(Path.home() / ".local" / "share")
+    return Path(base) / "kb-usage-ledger"
+
+
+def _pending_marker(target_day: str) -> Path:
+    return _state_dir() / f"{target_day}.pending"
+
+
+def _publish_and_track(root: Path, files: list[tuple[Path, str]], target_day: str) -> None:
+    ok, msg = publish_to_ops(root, files)
+    marker = _pending_marker(target_day)
+    # A "refused:" result (fix wave F1c) is TERMINAL, not contention: the local file is thinner
+    # than the one on ops and re-running the identical publish would refuse identically. It clears
+    # the pending marker like a success does -- while still printing the reason and reporting
+    # failure -- so it never turns into a publish retried at every single session start.
+    if ok or msg.startswith("refused:"):
+        try:
+            marker.unlink()
+        except OSError:
+            pass
+    else:
+        try:
+            marker.parent.mkdir(parents=True, exist_ok=True)
+            marker.write_text(msg, encoding="utf-8")
+        except OSError:
+            pass
+    if not ok:
+        rel_paths = ", ".join(rel for _, rel in files)
+        print(f"usage_ledger: publish failed for {rel_paths}: {msg}", file=sys.stderr)
+
+
+def has_claude_rows(rows: list[dict]) -> bool:
+    return any(r["runtime"] == "claude" for r in rows)
+
+
+def _run(env, root: Path, target_day: str) -> tuple[list[dict], Path | None, Path | None]:
+    """Collect the day and write the TSV + sidecar -- UNLESS the day collected zero Claude rows,
+    in which case nothing is written and `(rows, None, None)` is returned (fix wave F1b).
+
+    A zero-Claude-row day is not a real measurement, it is a measurement taken somewhere there is
+    nothing to measure: the VM preamble gates run this same `main()` against a checkout with no
+    `ledgers/usage/` and a near-empty `~/.claude/projects`. Writing that day and publishing it
+    replaced the operator real ledger on ops with a hollow one. A day on which the operator
+    genuinely ran no Claude session is indistinguishable from that case and equally worthless, so
+    both are declined; the file simply stays absent and the next run recomputes it.
+    """
+    rows = collect_claude_rows(env, target_day) + collect_codex_rows(env, target_day)
+    rows.sort(key=lambda r: (r["runtime"], r["model"], r["session"], r["kind"]))
+    out_path = root / "ledgers" / "usage" / f"{target_day}.tsv"
+    sidecar_path = root / "ledgers" / "usage" / f"{target_day}.summary"
+    if not has_claude_rows(rows):
+        print(
+            f"usage_ledger: {target_day} collected 0 Claude rows -- writing nothing and publishing "
+            "nothing (a run with no local transcripts must not overwrite the real ledger on ops)",
+            file=sys.stderr,
+        )
+        return rows, None, None
+    write_ledger(out_path, rows)
+    write_summary_sidecar(sidecar_path, rows, target_day)
+    return rows, out_path, sidecar_path
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--date", default=None, help="YYYY-MM-DD, default yesterday (UTC)")
+    parser.add_argument("--summary", action="store_true", help="print the one-line summary")
+    parser.add_argument("--no-publish", action="store_true", help="skip the ops publish (tests, dry runs)")
+    parser.add_argument("--root", default=None, help="repo root override (tests only)")
+    parser.add_argument("--full", action="store_true",
+                        help="no-op alias kept for one release (the size/mtime skips it disabled are gone)")
+    args = parser.parse_args(argv)
+
+    env = os.environ
+    if env.get("KB_INSIDE_CODEX_WORKER"):
+        print(
+            "usage_ledger.py refuses to run inside a codex worker (KB_INSIDE_CODEX_WORKER=1) -- "
+            "self-ingestion hazard (openai/codex#27131); run it from the operator shell instead.",
+            file=sys.stderr,
+        )
+        return 3
+
+    target_day = args.date or (datetime.now(timezone.utc).date() - timedelta(days=1)).isoformat()
+    try:
+        date.fromisoformat(target_day)
+    except ValueError:
+        print(f"bad --date {target_day!r}, expected YYYY-MM-DD", file=sys.stderr)
+        return 2
+
+    root = Path(args.root) if args.root else REPO_ROOT
+    out_path = root / "ledgers" / "usage" / f"{target_day}.tsv"
+    sidecar_path = root / "ledgers" / "usage" / f"{target_day}.summary"
+    rel_path = f"ledgers/usage/{target_day}.tsv"
+    sidecar_rel = f"ledgers/usage/{target_day}.summary"
+
+    if args.full:
+        print("usage_ledger: --full is a no-op alias (fix wave M2); nothing is skipped any more",
+              file=sys.stderr)
+
+    need_publish = False
+    if out_path.exists():
+        rows = read_existing_rows(out_path)
+        if rows is None:
+            print(f"usage_ledger: {out_path} missing the expected header, regenerating", file=sys.stderr)
+            rows, out_path, sidecar_path = _run(env, root, target_day)
+            if out_path is None:
+                return 0  # nothing collected -- the bad file is left exactly as it was
+            need_publish = True
+        else:
+            # fix round 3: the sidecar is regenerated on the idempotent-read path if it's missing
+            # (an older ledger written before this fix, or a partial prior run) -- the TSV alone
+            # is not enough for the SessionStart hook's pure-file-read '## Usage (yesterday)'.
+            if not sidecar_path.exists():
+                write_summary_sidecar(sidecar_path, rows, target_day)
+                need_publish = True
+            if _pending_marker(target_day).exists():
+                need_publish = True
+    else:
+        rows, out_path, sidecar_path = _run(env, root, target_day)
+        if out_path is None:
+            return 0  # zero Claude rows -- see _run docstring
+        need_publish = True
+
+    if need_publish and not args.no_publish:
+        _publish_and_track(root, [(out_path, rel_path), (sidecar_path, sidecar_rel)], target_day)
+
+    if args.summary:
+        print(summary_line(rows, target_day))
+    else:
+        print(f"wrote {out_path} ({len(rows)} rows)")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

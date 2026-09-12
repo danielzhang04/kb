@@ -110,6 +110,29 @@ function handoffFlags(root, timeoutMs) {
 }
 
 /**
+ * The `.summary` sidecar's one line for '## Usage (yesterday)', or null when it doesn't exist yet
+ * (in ops HEAD or the working tree). PURE FILE READ -- fix round 3 ruling (spec S3): this hook
+ * must NEVER spawn the Python parser, full stop, no matter how short the timeout. The prior
+ * version spawned `usage_ledger.py --summary --no-publish` under a 3s timeout even on the
+ * idempotent-read path; a live headless check (`claude -p`) showed the line simply absent from a
+ * real session's startup context, because that spawn lost its race under real host load -- a
+ * timeout budget is still a spawn, and the spec forbids the spawn outright, not just a slow one.
+ *
+ * `usage_ledger.py` now writes `ledgers/usage/<day>.summary` alongside the TSV every time it
+ * computes or regenerates a day (see its `write_summary_sidecar`), so this hook only ever reads
+ * what has already been computed elsewhere. `pf.readOpsFile` supplies the fallback order this
+ * needs for free: ops HEAD first (the normal case, once preamble.py's detached launch has
+ * published it), the working tree second (a same-machine run that hasn't landed on ops yet).
+ */
+function usageLine(cwd, env) {
+  const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const text = pf.readOpsFile(cwd, "ledgers/usage/" + yesterday + ".summary", env);
+  const line = pf.firstLine(text);
+  if (!line) return null;
+  return line.length > 200 ? line.slice(0, 200) : line;
+}
+
+/**
  * Write this session's governing sections from the active project's GOAL.md/STATE.md, WITHOUT
  * touching any section this hook does not own. A no-op when there is no session, no project, or
  * neither ops file yields any of the three headings -- `updateStore` (and the locked
@@ -179,6 +202,11 @@ function main() {
   // post-compact re-grounding needs fresh sections to read even on a turn where THIS hook stays
   // silent).
   writeGoverningSections(sessionId, project, cwd, env);
+  // NOTE (fix wave M3): a '## Session model' store note used to be written here from `event.model`.
+  // It had exactly one intended reader, context_guard.js, which does not read it -- Task 0 proved
+  // `event.model` is absent from every SessionStart/PreToolUse payload in this build, so the note
+  // was empty every time, and the guard resolves the model from the transcript tail instead.
+  // A write with no reader and no content is not a seam for later, it is a thing to delete.
 
   if (event.source === "compact") {
     io.noop(); // U7 owns the compact re-injection -- never returns
@@ -201,6 +229,8 @@ function main() {
   const flagsBlock = flags.length
     ? SEPARATOR + "## Stale handoffs" + NEWLINE + flags.map((f) => "- " + f).join(NEWLINE)
     : "";
+  const usage = usageLine(cwd, env);
+  const usageBlock = usage ? SEPARATOR + "## Usage (yesterday)" + NEWLINE + usage : "";
 
   const frameResult = pf.frame({
     project,
@@ -208,10 +238,10 @@ function main() {
     cwd,
     sessionId,
     env,
-    budget: budget - preambleLine.length - SEPARATOR.length - flagsBlock.length,
+    budget: budget - preambleLine.length - SEPARATOR.length - flagsBlock.length - usageBlock.length,
   });
 
-  const combined = preambleLine + SEPARATOR + frameResult.text + flagsBlock;
+  const combined = preambleLine + SEPARATOR + frameResult.text + flagsBlock + usageBlock;
 
   // A GUARD, not the strategy: the reservation above already keeps the total inside `budget` in
   // every normal case, so this only fires when the preamble line and the flags block ALONE overrun

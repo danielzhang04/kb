@@ -36,3 +36,19 @@ def test_ecc_suppression_compatibility_contract():
     env = json.loads(SETTINGS.read_text(encoding="utf-8"))["env"]
     assert env["ECC_GATEGUARD"] == "off"
     assert "pre:bash:dispatcher" in set(env["ECC_DISABLED_HOOKS"].split(","))
+
+def test_auto_compact_window_is_set():
+    data = json.loads(SETTINGS.read_text(encoding="utf-8"))
+    assert data["autoCompactWindow"] == "150k"
+
+def test_usage_ledger_opt_in_is_set_for_operator_sessions():
+    """fix wave F1a. scripts/preamble.py launches the usage-ledger parser ONLY when
+    KB_USAGE_LEDGER=1 is in the environment, and this file is the only thing that sets it: it is
+    loaded by Claude Code sessions on the operator's machine, and by nothing on the VM (whose
+    preamble gates -- dashboard/server/write/preambleGate.ts, broker/preambleGate.ts -- shell out
+    to preamble.py directly, in a checkout with no ledgers/usage/ and a near-empty
+    ~/.claude/projects, where the parser computed a hollow day and published it over the real one
+    on ops). Deleting this key silently turns the daily ledger off; changing its value anywhere
+    else silently turns the VM's copy back on."""
+    env = json.loads(SETTINGS.read_text(encoding="utf-8"))["env"]
+    assert env["KB_USAGE_LEDGER"] == "1"

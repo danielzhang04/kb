@@ -15,6 +15,7 @@ import json
 import os
 import subprocess
 import time
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
@@ -41,6 +42,36 @@ def make_kb_root(tmp_path, preamble_body='print("PREAMBLE OK")\n', with_sweep=Fa
         )
         (root / "scripts" / "handoffs_sweep.py").write_text(body, encoding="utf-8")
     return root
+
+
+def yesterday_utc() -> str:
+    """Matches the hook's own `new Date(Date.now() - 24*60*60*1000).toISOString().slice(0, 10)`."""
+    return (datetime.now(timezone.utc) - timedelta(days=1)).date().isoformat()
+
+
+def add_ops_only_file(repo, rel_path, content):
+    """Commits `rel_path` onto whatever `refs/remotes/origin/ops` currently points to, via a
+    detached worktree, WITHOUT touching the checked-out working branch -- simulates ops carrying a
+    file (fix round 3: scripts/usage_ledger.py's `.summary` sidecar, published by its own
+    publish_to_ops) that this particular local checkout has never had in its own working tree."""
+    wt = repo.parent / (repo.name + "_ops_wt")
+    git(repo, "worktree", "add", "--detach", str(wt), "refs/remotes/origin/ops")
+    target = wt / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
+    git(wt, "add", "--", rel_path)
+    git(wt, "-c", "user.email=t@t", "-c", "user.name=t", "commit", "-q", "-m", "add ops-only file")
+    new_sha = git(wt, "rev-parse", "HEAD").strip()
+    git(repo, "worktree", "remove", "--force", str(wt))
+    git(repo, "update-ref", "refs/remotes/origin/ops", new_sha)
+
+
+def add_working_tree_only_file(repo, rel_path, content):
+    """Writes `rel_path` directly into the checked-out working tree, deliberately UNCOMMITTED --
+    exercises `readOpsFile`'s working-tree fallback path (ops HEAD doesn't have it)."""
+    target = repo / rel_path
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
 
 
 def make_project_repo(tmp_path, updated="2026-09-10 12:00", name="proj", project="prospecting"):
@@ -135,6 +166,87 @@ def section_body(sections, heading):
         if section.get("heading") == heading:
             return section.get("body")
     return None
+
+
+def test_usage_line_read_from_ops_only_sidecar(tmp_path):
+    """fix round 3: usageLine() is a PURE FILE READ -- no python spawn. When the `.summary`
+    sidecar exists on `origin/ops` (the normal case, once usage_ledger.py's own publish has
+    landed) but NOT in this particular local working tree, `readOpsFile`'s ops-first git-show path
+    must still surface it."""
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    day = yesterday_utc()
+    add_ops_only_file(
+        repo, f"ledgers/usage/{day}.summary",
+        f"{day}: claude $12.34-eq / codex $5.00-eq | 900 turns | peak ctx 210k | codex total 3.2M\n",
+    )
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Usage (yesterday)" in ctx
+    assert "claude $12.34-eq" in ctx
+
+
+def test_usage_line_read_from_working_tree_only_sidecar(tmp_path):
+    """fix round 3: when the sidecar exists only in the local working tree (a same-machine run
+    that computed it but hasn't published to ops yet), `readOpsFile`'s fallback path picks it up."""
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    day = yesterday_utc()
+    add_working_tree_only_file(
+        repo, f"ledgers/usage/{day}.summary",
+        f"{day}: claude $9.00-eq / codex $0.00-eq | 42 turns | peak ctx 55k | codex total 0.0M\n",
+    )
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Usage (yesterday)" in ctx
+    assert "claude $9.00-eq" in ctx
+
+
+def test_usage_line_absent_when_sidecar_missing_does_not_block_payload(tmp_path):
+    """Absent sidecar -> no block: the hook still emits its normal payload (governing sections,
+    preamble line, frame), just without a '## Usage (yesterday)' block."""
+    kb_root = make_kb_root(tmp_path)  # no ledgers/usage/<day>.summary anywhere
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo)},
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    ctx = json.loads(r.stdout)["hookSpecificOutput"]["additionalContext"]
+    assert "## Usage (yesterday)" not in ctx
+    assert "[preamble]" in ctx  # the rest of the payload still emitted normally
+
+
+def test_no_session_model_note_is_written(tmp_path):
+    """fix wave M3: the '## Session model' store note is DELETED, not merely unused. Its only
+    intended reader, context_guard.js, resolves the model from the transcript tail instead
+    (event.model is absent from every payload in this build, so the note was empty every time).
+    A store section with no writer worth having and no reader at all is a thing to remove -- this
+    pins that it does not come back by habit."""
+    kb_root = make_kb_root(tmp_path)
+    repo = make_project_repo(tmp_path)
+    store_dir = tmp_path / "store"
+    r = run_hook(
+        {"hook_event_name": "SessionStart", "source": "startup", "session_id": "s1", "cwd": str(repo),
+         "model": "claude-opus-5"},  # even when the harness DOES send one
+        kb_root, store_dir,
+    )
+    assert r.returncode == 0 and r.stderr == b""
+    sections = read_store_sections(store_dir, "s1")
+    assert section_body(sections, "Session model") is None
+    hook_src = (REPO / "scripts" / "hooks" / "project_frame_session_start.js").read_text(encoding="utf-8")
+    assert "writeSessionModel" not in hook_src
 
 
 def test_full_payload_on_startup(tmp_path):

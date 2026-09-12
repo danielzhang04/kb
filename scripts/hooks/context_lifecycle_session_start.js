@@ -16,7 +16,9 @@
  * Status:
  *   INERT. Nothing in .claude/settings*.json references this file. The exact settings snippet that
  *   WOULD arm it — together with the decision-notes on reclaim scope, store location and retention —
- *   lives in docs/proposals/context-lifecycle-hooks.md.
+ *   lives in docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the
+ *   context-lifecycle-hooks.md proposal that originated this design is deleted, 2026-09-11
+ *   token-discipline cleanup).
  *
  * Contract:
  *   - Reads env: KB_CONTEXT_STORE_DIR (store root), KB_SESSION_START_MAX_CHARS (cap, default 4000).

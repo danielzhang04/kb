@@ -1,0 +1,65 @@
+# scripts/hooks/context_guard.rules.yaml — kb PreToolUse context guard, Daniel-owned rule config.
+#
+# LOCATION RULING (2026-09-11): this file overrides the spec's suggested `governance/` path.
+# `governance/` is human-edited only per the constitution; this file is meant to be tuned by any
+# agent without a human committing YAML, so it lives beside the hook that reads it instead.
+#
+# PARSED BY A HAND-ROLLED SCANNER, not a YAML library -- kb hooks take no dependencies (see
+# scripts/hooks/lib/model_audit.js's parseAllowedModels for the established precedent reading
+# governance/model-routing.yaml the same way). Keep every value on ONE line; arrays are
+# flow-style only (`[a, b]`); the `rules:` list uses `- id: ...` at 2-space indent and further
+# fields at deeper indent, one `key: value` per line. A reformat outside this shape is NOT an
+# error -- context_guard.js fails OPEN on anything it can't parse (fewer or zero rules loaded,
+# never a crash), and tests/test_context_guard.py's config-shape test is the safety net that
+# catches a silent reformat.
+#
+# NAMING NOTE: an earlier controller ruling described this schema with different top-level key
+# names (`read_deny_extensions`, `bash_verbose_patterns`, `max_cat_bytes`, `guarded_models`). The
+# task-3 brief's own Interfaces section (`loadRules(filePath) -> {readExtensions[], readModels[],
+# readMessage, rules[]}`) and its worked Step-3 example both use the names below instead, and the
+# pinned config-shape test (tests/test_context_guard.py::test_rules_file_has_required_rule_ids)
+# asserts these exact spellings (`read_extensions:`, `read_models:`, `rules:`, `id: <rule-id>`) --
+# so this file follows the pinned test/interface, not the ruling's prose. Same four behaviors
+# either way: a read-extension denylist, a guarded-model list, a byte limit, and a list of Bash
+# verbose-command rules.
+
+read_extensions: [.pdf, .png, .jpg, .jpeg, .gif, .webp, .bmp, .tiff]
+read_models: [fable, opus]
+read_message: delegate to a haiku extractor (Agent, model haiku) and read its summary
+
+# COMMAND POSITION (fix wave F2). Every Bash trigger below starts with the same prefix group
+# `(^|[;&|]\s*|\$\(\s*)` -- start of the command line, just after a `;`/`&`/`|` separator, or just
+# inside a `$(` substitution. A bare `\bpytest\b` matched the WORD anywhere, so `grep pytest`,
+# `cat pytest.ini` and `git commit -m "pytest"` were all blocked with advice to add `-q` to a
+# command that never ran pytest at all. A guard that blocks commands it does not understand is
+# worse than no guard: it teaches the operator to work around it. The optional
+# `(?:py\s+-3\s+-m\s+|python3?\s+-m\s+)` keeps the real invocation form used in this repo
+# (`py -3 -m pytest`) inside the trigger.
+rules:
+  - id: bash-pytest-no-filter
+    tool: Bash
+    trigger: (^|[;&|]\s*|\$\(\s*)(?:py\s+-3\s+-m\s+|python3?\s+-m\s+)?pytest\b
+    escape: (-q{1,2}\b|--quiet\b|--maxfail|-x\b|--tb=|::|\|\s*(tail|head|grep)\b|>\s*\S)
+    message: re-run as `pytest -q` or pipe through `| tail -n 50` -- a full pytest run floods the tool result
+  - id: bash-git-log-unbounded
+    tool: Bash
+    trigger: (^|[;&|]\s*|\$\(\s*)git\s+log\b
+    escape: (-n\s*\d|-\d+\b|--max-count|--oneline\s+-\d|-p\b|\.\.|\|\s*(head|tail|grep)\b|>\s*\S)
+    message: re-run as `git log -n 20` or `git log --oneline -n 20`
+  - id: bash-find-root
+    tool: Bash
+    trigger: (^|[;&|]\s*|\$\(\s*)find\s+/(\s|$)
+    escape: (-maxdepth\b|\|\s*(head|tail|grep)\b|>\s*\S)
+    message: scope `find` to a subdirectory, e.g. `find . -name ...`, never the filesystem root
+  # This trigger is deliberately NOT widened to the prefix group above: it is already anchored at
+  # command position (`^\s*cat`), and context_guard.js's resolveCatTarget re-derives the same
+  # `^\s*cat\s+(\S+)` shape to decide WHICH file to stat. Widening only this trigger would make
+  # the rule fire on `... ; cat big` while resolveCatTarget failed to resolve the path, which
+  # fails open anyway -- no gain, and two regexes silently out of step.
+  - id: bash-cat-large-file
+    tool: Bash
+    kind: cat-size
+    trigger: ^\s*cat\s+(\S+)
+    escape: \|\s*(head|tail|grep|less|more)\b
+    limit_bytes: 51200
+    message: file is over 50 KB -- pipe through `| tail -c 50000` or delegate the read to a subagent

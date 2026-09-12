@@ -11,7 +11,9 @@
  *
  * Status:
  *   ARMED 2026-09-11 via .claude/settings.json (project scope) — PreToolUse, matcher
- *   `"Agent|Task"`. Decision-notes: docs/proposals/spawn-model-verify-hooks.md.
+ *   `"Agent|Task"`. Decision-notes:
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the spawn-model-verify-hooks.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * ── THE TOOL IS CALLED "Agent". "Task" IS ONLY AN ALIAS. ────────────────────────────────────────
  * Verified against the installed harness (Claude Code 2.1.234): the bundle declares

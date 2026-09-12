@@ -13,7 +13,9 @@
  *
  * Status:
  *   ARMED 2026-09-11 via .claude/settings.json (project scope) — SessionStart (matcher
- *   "compact"), UserPromptSubmit, and PostToolUse. See docs/proposals/regrounding-hook.md.
+ *   "compact"), UserPromptSubmit, and PostToolUse. See
+ *   docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the regrounding-hook.md
+ *   proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
  *
  * Contract:
  *   - Reads env: KB_GOAL_STATE_PATH (default: the event's session_id resolved through
@@ -61,8 +63,9 @@ const WANTED_SECTIONS = ["North star", "Invariants", "Current gate", "Resumed-se
 
 // Hard cap on the emitted additionalContext, in characters.
 // 1700 fits the current source whole (North star 941 + Invariants 526 + labels and
-// separators) while still bounding pathological sources — see
-// docs/proposals/regrounding-hook.md decision-notes.
+// separators) while still bounding pathological sources — see decision-notes in
+// docs/superpowers/specs/2026-09-11-project-frame-hooks-design.md (the regrounding-hook.md
+// proposal that originated this design is deleted, 2026-09-11 token-discipline cleanup).
 const MAX_CONTEXT_CHARS = 1700;
 
 const DEFAULT_EVERY_CALLS = 25;
