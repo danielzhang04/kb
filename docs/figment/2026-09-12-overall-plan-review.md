@@ -1,5 +1,7 @@
 # Figment overall plan review - September 12
 
+Current execution checkpoint,07:05UTC: standalone Studio4fa11242 (137/137), governed wiring e4ac72c6 (117/117 plus typecheck/build), default-auth29b37c76 (35/35) and brief source6b88e564/regressions3291c4a0 (58/58) are locally accepted after independent review. Counts are separate scoped runs; exact evidence limits live in the active tasklist. Real Python reader/owned-runner integration is now executing; rendered UI, full operator journey, descendant revalidation, media preflight and actual creator quality remain open. User approved the bounded Studio source work; actual subsequent Claude weekly quota exhaustion activated the standing Codex fallback. The initial-state analysis and older chronological checkpoint below are historical wherever superseded here.
+
 Owner: Codex boss, implementation and testing through verified Claude workers. This is the root's planning judgment after the operator selected all three remaining tracks: Studio integration, revisiting input/auth repairs, and preparing the next media diagnostic. It supersedes the earlier optional-priority question and the blanket instruction to leave those repair tracks untouched. It does not accept either rejected repair candidate or restart an old paid attempt.
 
 ## Outcome we still owe
