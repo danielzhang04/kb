@@ -9,9 +9,13 @@ docs/superpowers/plans/2026-09-12-prospecting-ux.md. Both existing draft PR bran
 Current source uncommitted: 189 manual-lane refusal repair, 187b neutral styling/theme/tests,
 190 authenticated read-only creation-status lookup/tests. 189 actual red: 1 failed/2 passed;
 green affected suite: 115 passed with 2 JUnit-family warnings. 190: 96 passed, no warnings.
+Synthetic browser server49831 now owns8766 after old timer expired. Root Chrome found
+misaligned groups/hints, missing geoValues/sectorValues labels, and native research fields
+can block campaign Save while closed; workers repairing. Desktop/558px all5views nooverflow;
+390px phone emulation still pending, do not claim mobilepass from clamped resize.
 187b first JS run: 44 passed/1 failed, an existing literal CSS adjacency assertion now sees
 newlines; no false green. Needs worker repair, final merged suite and actual Chrome acceptance.
-188 form/workflow proposal still running at checkpoint; exact exec95678, bounded1200sec.
+188 timed out at1200sec/exit1, but emitted a complete fenced diff in assistant610; root verified all original input hashes and unique old contexts, reviewed/applied it. Current JS53:52pass/1CSS-adjacency assertion failure; behavior checks green. No final acceptance yet.
 187 original visual proposal rejected; 187b corrected it. Verify frozen original188 inputs in
 ORCH/ux-frozen-base-187188 before merging its proposal with accepted187b/189/190 changes.
 
@@ -21,8 +25,7 @@ repairs, synthetic Chrome checks, full regression, source and coordination publi
 Existing Chrome DevTools session9e9063aa-56ea-44d8-a68c-777d790b77ad; page7 synthetic8766,
 page3 real review-copy8765. Do not touch unrelated tabs. Fixture server8382 is bounded20min
 and reads HTML at startup, so restart owned8766 after changes. Never mutate original pilot.
-All implementation workers remain verified Claude on existing source-only vCPU; desktop
-runtime stays local. No sends, deployment, protected merges or credentials in scope.
+Claude191 hit weekly limit with synthetic sentinel, no real model response. 192 failed before launch because empty allowed_outputs violates helper schema; no model ran. User-authorized Codex fallback is active: native workers ux_recovery_191c (sol/high), ux_review_192c (sol/high, read-only), ux_layout_polish_193c (terra/high, static HTML/CSS). Repo dispatch script auto-pushes protected ops so native interface used; root accounting stays PR180. Claude returns only when available after agreed switch time. Desktop runtime stays local. No sends, deployment, protected merges or credentials in scope.
 
 Coordination merged upstreamff342093 after a read-only merge preview proved only three
 upstream token-discipline handoff/memory changes; no Prospecting/ledger/queue deletion.
