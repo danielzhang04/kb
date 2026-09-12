@@ -1,0 +1,135 @@
+actual_cost	list_price_estimate_usd	requested_model	responding_model	status	task	ts	usd
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed independent runner review; request changes	vm_review	2026-09-09T04:00:54.632665+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	gate_repair followup implementation active	campaign-create-resume	2026-09-09T04:00:54.634251+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	remote_protocol followup active	vm-runner-review-fixes	2026-09-09T04:00:54.641660+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	vm_review followup harness active	codex-capability-probe	2026-09-09T04:00:54.648682+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed READY; native model metadata unavailable	runner-rereview	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review followup active	campaign-service-review-and-ui	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair followup active	workflow-local-file-integration	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol followup active	review-service-and-feedback	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	failed before provider startup; cleanup verified	codex-proof-09bd8603	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM CLI exit0; output collection recovery pending	codex-proof-0703893f	2026-09-09T04:32:05.796318+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed;8677 input31 output tokens; cleaned verified	codex-proof-0703893f	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed advisory; cleaned verified	cadence-review-59ecdc91	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM implementation active	cadence-build-baa11449	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM independent review active	workflow-cli-review-60923568	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native independent READY27tests	campaign-integrity-rereview	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair followup active	local-stage-gap-analysis	2026-09-09T04:52:21.488090+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed; production subsetWIP, testreplacementrejected; cleanedverified	cadence-build-baa11449	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed; twoHIGHsaccepted; cleanedverified	workflow-cli-review-60923568	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM active preserveexistingregressions	cadence-tests-repair-0a6acb59	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	nativegate_repair active	workflow-real-bridge-repair	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	nativeremote_protocol active	pending-edit-optimistic-replacement	2026-09-09T05:05:27.640982+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	timed out; no output applied; collected and cleanup absence verified	cadence-tests-repair-0a6acb59	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed advisory; fixes accepted; cleanup absence verified	workflow-bridge-rereview-8ad64e84	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	UI READY; cadence calendar repair requested; cleanup absence verified	ui-cadence-review-896d3e6a	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM independent source review active	qa-context-review-26aaae71	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review found three medium projection defects; repairs active	p10-independent-review	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol frozen; 112 combined checks passed	p11-owner-layer	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review completed one real-service restart and scope test	review-http-integration	2026-09-09T05:31:23.484120+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed; legacy provenance correction accepted; cleanup absence verified	qa-context-review-26aaae71	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	completed; proposals base-verified and root corrected; committed; cleanup absence verified	workflow-docs-fd9fd846	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native gate_repair implementation active	direct-p8-first-draft	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native remote_protocol implementation active	review-qa-preparer-integration	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native vm_review implementation active	review-ui-history-preparer	2026-09-09T05:55:32.555005+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	completed READY; collected and cleanup absence verified	review-service-core-09784090	2026-09-09T06:18:11.995140+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	NOT READY two findings; collected cleaned absence verified	first-draft-integration-cdfe6926	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	running on VM; bounded lease	evidence-binding-repair-1321cddf	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	running on VM; bounded lease	review-form-compatibility-1222a0c6	2026-09-09T07:35:09.072860+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	noteonly rejected; cleaned absenceverified	review-form-compatibility-1222a0c6	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	empty output rejected; cleaned absenceverified	review-form-repair-c39aa859	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	proposal rejected; cleaned absenceverified	evidence-binding-repair-1321cddf	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	proposal rejected; cleaned absenceverified	evidence-binding-delta-bccb57a8	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	accepted rootintegration45tests; cleaned absenceverified	review-form-delta-eb78a098	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-6-astra	unavailable	running bounded VMjob	evidence-binding-final-9ce1c4a0	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	running bounded VMjob	form-compatibility-review-335be294	2026-09-09T07:52:28.559033+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	READY; collected cleaned absenceverified	form-compatibility-review-335be294	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-6-astra	unavailable	failed unsupported CLI version; collected cleaned absenceverified	evidence-binding-final-9ce1c4a0	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	WIPapplied; diagnosticfail; collected cleaned absenceverified	evidence-binding-supported-84368076	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-luna	unavailable	accepted rootcorrections committed; cleaned absenceverified	review-app-access-docs-37f2ebe6	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	partial outofscope proposal unapplied; cleaned absenceverified	evidence-integration-fix-0c7072d7	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native repair active; userinformed	gate_repair-native-resumed	2026-09-09T08:11:05.204690+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	active; source-only static UI review	final-ui-state-review-37655373	2026-09-09T08:22:27.558645+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	request changes; collected cleaned exact absence verified	final-ui-state-review-37655373	2026-09-09T08:26:13.515706+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native focused UI state repair active	vm_review-native-resumed	2026-09-09T08:26:13.515706+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	active frozen producer independent review	provenance-final-review-d7a1baed	2026-09-09T08:42:34.313598+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	request changes; collected cleaned exact absence verified	provenance-final-review-d7a1baed	2026-09-09T08:46:04.057183+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	active final UI static re-review	ui-state-final-rereview-6126fbef	2026-09-09T08:46:04.057183+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native bounded board and fill caller repair resumed	gate_repair-native-final-caller	2026-09-09T08:46:04.057183+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	one campaign-create completion finding; collected cleaned absence verified	ui-state-final-rereview-6126fbef	2026-09-09T08:50:14.022020+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native final campaign-create state repair	vm_review-native-final-completion	2026-09-09T08:50:14.022020+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native bounded synthetic whole-flow acceptance	remote_protocol-native-acceptance	2026-09-09T08:50:14.022020+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	READY; collected cleaned exact absence verified	provenance-caller-final-review-dd7baf47	2026-09-09T09:07:20.778026+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native distinct-person count regression only	gate_repair-native-count-final	2026-09-09T09:07:20.778026+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native newform clear fix root5JS accepted	vm_review-native-clear-final	2026-09-09T09:07:20.778026+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native T0 real revision ID compatibility repair	remote_protocol-native-revision-id	2026-09-09T09:14:57.108705+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native bounded staging guard diagnosis only	vm_review-native-pii-diagnosis	2026-09-09T09:14:57.108705+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VM review collected cleaned exact absence; finding under wiring adjudication	revision-id-final-review-57f1df1b	2026-09-09T09:31:27.439086+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	exact synthetic fixture migration and guard regression	vm_review-native-pii-fixture	2026-09-09T09:31:27.439086+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	distinct person count final17passed frozen	gate_repair-native-count-resumed	2026-09-09T09:31:27.439086+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source acceptance report and task plan refresh	gate_repair-native-final-docs	2026-09-09T09:31:27.439086+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	readonly consolidated source scope and wiring audit	remote_protocol-native-delivery-audit	2026-09-09T09:31:27.439086+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	delivery24test fixtures mechanical	vm_review-native-legacy-fixtures	2026-09-09T09:43:44.051174+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	narrow staged metadata and SSH classifier guard	gate_repair-native-staging-types	2026-09-09T09:43:44.051174+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	historical fixture references and EOF whitespace	remote_protocol-native-delivery-docs	2026-09-09T09:43:44.051174+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	VMfinal staging boundary review started420s deadline3600scollection	staging-boundary-final-review-9420afc5	2026-09-09T10:04:34.326223+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collectedcleanedabsent; duplicateJSONkeys finding	staging-boundary-final-review-9420afc5-result	2026-09-09T10:11:41.223626+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	narrowall-depth duplicateJSONfixture rejection	vm_review-native-duplicate-json	2026-09-09T10:11:41.223626+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	readonly3deploymentintegrationfailure adjudication	gate_repair-native-deployment-audit	2026-09-09T10:11:41.223626+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	exact bridge signature and local cadence harness; final 7 checks passed	gate_repair-native-deployment-fix	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent duplicate JSON review READY	remote_protocol-native-duplicate-review	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent deployment review; flag gap repaired	remote_protocol-native-deployment-review	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source plan and PR claims audited; wording corrected	remote_protocol-native-final-claims	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		unavailable	unavailable	352 source paths verified; normal commit and draft main PR181	boss-native-source-delivery	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup	gate_repair-native-closeout	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	owned completed test scratch cleanup; failure evidence retained	vm_review-native-closeout	2026-09-09T10:30:15.389437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	independent inspector integration diagnosis	gate_repair-resume-design	2026-09-09T16:36:27.450548+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	opaque saved request orchestration diagnosis	remote_protocol-resume-design	2026-09-09T16:36:27.450575+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source evidence correction and UI diagnosis	vm_review-resume-design	2026-09-09T16:36:27.450585+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source-only architecture review; deadline480s collection3600s	vm-resumed-control-3a3d79af	2026-09-09T16:45:36.454893+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collected validated cleaned exact absence; boundary findings retained	vm-resumed-control-3a3d79af-result	2026-09-09T16:48:25.423983+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	desktop pull status and T0 queue_due; strict receipts and ephemeral spool	remote_protocol-control-v1-build	2026-09-09T16:48:25.424025+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	canonical manager run command result cache correlation; T2 bar95	gate_repair-binding-build	2026-09-09T16:56:16.091976+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source snapshot import and audited role-verification UI	vm_review-source-review-build	2026-09-09T16:56:16.092009+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	four-file edit proposal;480sdeadline3600scollection	vm-runtime-hermetic-7104dd85	2026-09-09T16:56:16.092021+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collectedcleanedabsent;4exactCRLFanchorededitsvalidatedandapplied	vm-runtime-hermetic-7104dd85-result	2026-09-09T17:06:47.029203+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	source-only review;600sdeadline3600scollection;10inputs123941bytes	vm-manager-binding-26d1ef29	2026-09-09T17:25:15.002866+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	review collected/cleaned/exactabsence; REQUEST CHANGES assigned to gate_repair	vm-manager-binding-26d1ef29-result	2026-09-09T17:30:26.086437+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	15source/skills149516bytes;600sdeadline3600scollection;collectedcleanedabsent;3findings assigned	vm-control-review-562bb12f	2026-09-09T17:49:48.384509+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	16source/skills313174bytes;600sdeadline3600scollection;collectedcleanedabsent;2findings triaged assigned	vm-evidence-review-7a4ba779	2026-09-09T17:49:48.393716+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	bounded manual fulfillment design accepted; no auto rewriter or model calls	vm_review-feedback-lifecycle	2026-09-09T17:49:48.402938+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	collected-cleaned; repairs accepted; responding model unavailable; report sha51ae93e5e91678729fb91827aac9d462b6fcb5dc67d50e04aecad6686f8ddfa8	vm-manager-recovery-ed301828	2026-09-09T18:05:37.684665+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	collected-cleaned; model identity not independently available	feedback-fulfillment-review-20260909 job39 5b7dd61107ba4c1d96e33555facec29a; READY; report sha4c925c1c2b295bab1740251799e5b34e93b1611c07c1aa1682738041508e3010	2026-09-09T18:34:00Z	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	collected-cleaned; responding model unavailable; one bounded recovery repair	control-review-adapter-20260909 job40 45d4c3e6725445c3917f281d24ee9579; report shaf51d2d5e0c906855947b29feec4518f7633cff0de99d52d95b0eb1bf4f448132	2026-09-09T18:54:34Z	0
+unknown; ambient subscription	unknown	Codex; per-task routing	unavailable	local closeout complete; publication blocked; zero is accounting placeholder, not free usage	resumed closeout orchestration and native followups	2026-09-09T19:36:46.485663+00:00	0
+unknown; ambient subscription	unknown	Codex; per-task routing	unavailable	same-browser MCP acceptance coordination; actual usage unknown; zero is accounting placeholder, not free usage	browser-acceptance-coordination	2026-09-09T22:23:16.097033+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	pilot setup and independent review; zero is accounting placeholder, not free usage	pilot_infra_audit	2026-09-09T22:45:35.710433+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	pilot setup and independent review; zero is accounting placeholder, not free usage	pilot_flow_audit	2026-09-09T22:45:35.727068+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-terra	unavailable	pilot setup and independent review; zero is accounting placeholder, not free usage	pilot_email_context	2026-09-09T22:45:35.745558+00:00	0
+unknown; ambient subscription	unknown	Codex root	unavailable	pilot setup and independent review; zero is accounting placeholder, not free usage	pilot_orchestration	2026-09-09T22:45:35.765045+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_flow_audit intake build and repair	2026-09-09T23:18:29.271153+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-terra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_email_context intake UI build and repair	2026-09-09T23:18:29.271179+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit independent backend and combined review	2026-09-09T23:18:29.271185+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	VM runtime design e94ed000d88b46f8b524614c80a8eff0	2026-09-09T23:18:29.271188+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_flow_audit synthetic private runtime feasibility	2026-09-09T23:43:10.899554+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-terra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_email_context template proposal and review repair	2026-09-09T23:43:10.899582+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit independent template review	2026-09-09T23:43:10.899587+00:00	0
+unknown; ambient subscription	unknown	Codex root	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot intake browser acceptance and checkpoint	2026-09-09T23:43:10.899591+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_flow_audit synthetic adapter implementation	2026-09-10T00:09:43.758523+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-terra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_email_context typed fallback implementation	2026-09-10T00:09:43.758550+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit adapter and fallback interface review	2026-09-10T00:09:43.758555+00:00	0
+unknown; ambient subscription	unknown	Codex root	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot orchestration and resumable state consolidation	2026-09-10T00:09:43.758558+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit editorial gate build and independent runtime template CLI acceptance	2026-09-10T02:11:02.550596+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_flow_audit runtime repairs and Phase B controller implementation	2026-09-10T02:11:02.567677+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_intake_cli hardened intake implementation tests and research seam design	2026-09-10T02:11:02.584157+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit Phase B consumer and live runtime feasibility review	2026-09-10T02:11:02.599403+00:00	0
+unknown; ambient subscription	unknown	Codex root	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot independent checks shared Chrome authority and local checkpoints 0f70c81c 34fd9b86 8d166011 437ec5e8	2026-09-10T02:11:02.618076+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_intake_cli Phase B consumer wiring delegated after research design	2026-09-10T02:29:00.801088+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit corrected P17 design and sterile override sink probe ov2	2026-09-10T02:44:49.616954+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit auth1 auth2 and private login method classifier21checks	2026-09-10T03:17:20.842568+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit live synthetic smoke and bounded stdin design	2026-09-10T03:17:20.842596+00:00	0
+unknown; ambient subscription	unknown	Codex root	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	root classifier source review ChatGPT metadata check and PhaseB gate review	2026-09-10T03:17:20.842602+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	source-only VM P16 core review b599f0738b974366b034134d3996e236	2026-09-10T03:33:03.057157+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	root single synthetic Humanizer smoke timedout30668ms attemptdeleted	2026-09-10T03:42:55.069310+00:00	0
+unknown; ambient subscription	unknown	gpt-5.6-sol	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_flow_audit smoke cleanup11checks and PhaseB review repairs	2026-09-10T03:42:55.078636+00:00	0
+unknown; ambient subscription	unknown	gpt-6-astra	unavailable	actual usage unknown; zero is accounting placeholder, not free usage	pilot_infra_audit core21checks independent4edgeprobes and VM finding reconciliation	2026-09-10T03:42:55.087332+00:00	0

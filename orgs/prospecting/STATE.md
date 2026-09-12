@@ -1,54 +1,31 @@
-# prospecting — STATE
-_Updated: 2026-09-12 01:30_
+# Prospecting current state
 
-## Now
-P1-P8 built across integrated worktrees `C:/Users/danie/kb-worktrees/prospecting-p{1..8}`, all
-branches UNPUSHED. P8 affinity gate 953/953 recorded at HEAD 52067386 (`claude/prospecting-p8`,
-cut from P6). Live-tested against the real desktop store: campaign `camp_3147b42db58c4c15`
-(fit hash 383fcaa3...) — batch 1 (10 profiles, 9 functional-role) scored 3 above fit, 2 delivered
-at 1 firm, all Gate P8-B acceptance criteria green.
+The UI/UX refinement card01M29VGYQJ9KSTR8S7D37YKG02 is complete. Source head
+`7bbe4f4e9fe8cdc2e9ae2f5f5f5a91ccbce8ba91` is published on PR181; this coordination update records completion on PR180.
+Updated 2026-09-12T06:48:18Z.
 
-## Current gate
-Gate P8-B (Datasette `deliverable_v2` acceptance) — held by Daniel; needs his "batch 2" go-ahead
-to fetch 10 pre-selected investing-titled profiles (`linkedin-batch-2.json`, 9 firms) via his own
-Chrome, then re-run research -> score -> fill-fit -> acceptance check.
+DELIVERY now has the KB-family review UI, separated campaign/research validation, UUID-only creation
+recovery, truthful saved-intake/setup status, preserved current pickers, and a per-campaign in-memory
+scope cache. Scope payload projection is pure: Any/Unknown carries no disabled-specific values, and
+restoring one scope cannot replace a dirty peer scope. No action starts research, ranking, drafting, or
+outreach without its separately configured workflow.
 
-## Next
-1. Daniel says "batch 2" -> boss fetches 20 LinkedIn subpages via his Chrome (chrome-devtools),
-   writes `linkedin-pages/<person_id>.txt`.
-2. Run `research run --linkedin-pages-dir ...` -> score -> fill-fit (`run-p8-live.ps1`).
-3. Run `p8b_acceptance.py` -> confirm Gate P8-B criteria green in Datasette.
-4. `codex login` owed (CLI auth store fails to decrypt; codex dispatches down since 2026-09-07
-   ~01:00; sonnet builders used in the interim).
-5. Copy-polish pass with Daniel on `orgs/prospecting/templates/v2/*.txt` before `affinity draft`
-   produces real send-ready drafts.
+Evidence: root final Node state suite passed72/72; the unchanged isolated launcher test under desktop escalation passed once
+in4.21s; actual Chrome passed all five views at390/852/1366 in both themes without overflow and verified
+recovery, cache, refresh, validation, duplicate-click behavior, final CSS geometry, and loaded/visible
+review UI after foregrounding the existing tab. Server health is listener8765 PythonPID14968 with expected
+copy/module and review-server exec36840; resume uses PID14968, not historical PID32400. Screenshot205 was
+viewed. Screenshot209/211 daemon attempts timed out without an image. Python run202 had2168 passing tests
+plus one sandbox launcher teardown failure; the strong inference is a sandbox process-cleanup restriction; the precise error was not captured
+by the test, so no false full-suite-green claim is made.
 
-## Blocked
-Codex dispatches (auth broken, `codex login` owed) — not blocking P8-B, workaround via sonnet.
+Limits: no formal new inspector grade; native responding model identity/token usage is unverified and
+cost entries record subscription cost unavailable. The existing review tab was foregrounded and UI loaded/visible
+was verified. No deployment, protected merge, source attestation, human readiness, or outreach occurred. Historical infrastructure residuals remain documented in the canonical handoff and are separate
+from this completed UI/UX scope.
+
+No active implementation work remains. A new product request is required to reopen scope.
 
 ## Decisions
 - 2026-09-04 — Deliver only people with confidently found emails; substitute prospect then firm — shallow rows are worthless to outreach
 - 2026-09-07 — LinkedIn facts fetched via Daniel's own Chrome (override of the dedicated-profile rule) — firm bio pages too thin
-
-## Findings
-- Real-store live run surfaced 16 defects not caught by synthetic-fixture gates (fixtures never
-  modeled two campaigns with equal target policies, untyped legacy ids, rejected requests, or
-  foreign queued work) — see memory lesson `fix-dont-defer-to-daniel`.
-- Firm sites 403 the default Python UA; P8 sends its own browser headers (P2's fetcher stays
-  frozen).
-- Bio pages are thin even with browser UA (~15 of 35 firms had no team page) — LinkedIn backfill
-  carries more load than the spec assumed.
-- Datasette python process must be killed before any store write (was killed at session close).
-- Old campaigns `camp_c57b52cc14d54104` / `camp_842bf7a6b415488b` are dead; their 12 reserve firms
-  carry UUID ids, skipped by P8 as `untyped_id`.
-- Deferred review items owed Daniel's sign-off at merge: M6 (adapter blanket except), L1/L4/L5,
-  N3 (P6 completeness-test edit outside the approved fold), `deploy_preflight` gate list
-  hardcoded P1-P5 (merge-wave divergence, not P8's to fix).
-
-## Infra
-- Desktop store `%LOCALAPPDATA%\kb-prospecting\store.sqlite` (P2/P4/P6/P8 migrations applied;
-  backups `store.sqlite.bak-pre-p8-*`).
-- Datasette: `serve_datasette.ps1 -Port 8765`; campaign SQL URL in `deliverable-v2-url.txt`.
-- Sender anchors `sender-anchors.json`; live ask `nyc-vc-ask.txt`; wrappers `run-p8-live.ps1`,
-  `run-p8-score.ps1`, `run-executor.ps1`, `probe_p8.py`, `p8b_acceptance.py` — all desktop-local.
-- Live campaign id `camp_3147b42db58c4c15` (`current-campaign.txt`).

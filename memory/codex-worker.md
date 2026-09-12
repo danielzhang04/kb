@@ -441,3 +441,355 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+
+## 2026-09-08 — Verify remote execution independently of dashboard health
+
+- WORKED: SSH proved VM capacity and a tool-disabled Opus CLI probe succeeded despite a failed dashboard. Separate transport, subscription/model response, broker health, and governed workflow execution in claims.
+- FAILED then recovered: transient OAuth refresh contention cleared on one bounded retry; Windows PowerShell CRLF required LF-normalized remote scripts. Never repair credentials as objects.
+- REMAINS: remote edits/build/test and Fable are untested. CLI modelUsage included an auxiliary Haiku call; Opus worker verification does not imply all internal calls used Opus. Read newer local coordination worktrees as well as origin/ops before describing the live handoff board.
+
+- Operator clarification: direct SSH offloading is independent of dashboard work; clean owned remote artifacts and disclose unavoidable log limits. Remote filesystem/skills/connectors require explicit parity setup. Batch main changes into one session-end PR; avoid per-small-task PRs. Two owned probe transcripts removed and absence verified.
+
+## 2026-09-08 ? Gate evidence must exercise the real producer/consumer contract
+
+- WORKED: all historical hashes matched, but a real gate invocation plus actual workflow prerequisite call exposed a JSON-versus-marker mismatch hidden by fixtures that invented both sides. Validate the real contract before trusting a large test count.
+- FAILED then corrected: a broad tool-disabled remote review timed out; a two-file Opus question completed quickly. Python seen inside the sandbox differed from the existing user runtime. Sparse checkout omitted a gate-bound hook. Separate these infrastructure gaps from product failures.
+- REMAINS: prospecting scope/offline-retention choices and detached worker lifecycle. Non-persistence proved absence of one session transcript, not zero provider/system bookkeeping or complete tool parity.
+
+## 2026-09-08 - Runtime isolation must be measured
+
+- WORKED: actual VM CLI help/login status established Codex0.152.0 presence without auth-object access; synthetic outer bwrap succeeds.
+- FAILED: nested Codex sandbox cannot create its namespace. Read-only auth mounts prevent writes but do not prevent model shell reads; keep shell disabled until effective denial is verified. Never change global VM security to make a worker fit.
+- REMAINS: detached synthetic lifecycle proof, tool-disabled Codex proof, product integration/UI. User answered all scope questions and switched every new subagent to Codex.
+
+
+### 2026-09-09 ? Remote proposals need coverage and runtime checks
+A successful CLI exit and valid file hash do not establish an acceptable patch. Compare existing
+regression inventory before applying full-file model output: a cadence worker silently replaced
+PII, race and transaction tests with a much smaller suite. Reject lost coverage and request a
+bounded correction. Separately, a native CLI process file-size limit can kill startup before any
+log; reproduce with credential-free controlled limits. systemd active/exited can legitimately have
+an empty ControlGroup, so terminal ownership/recovery tests must use real observed tuples.
+
+## 2026-09-09 ? Prospecting provenance and selection boundaries
+
+- An equal content hash does not prove an old revision was produced from newly supplied QA bindings. New revisions record context atomically; retries require existing equal context and refuse legacy backfill.
+- A custom database selection must bind dependent sender profiles/anchors, stage directories and child environment to that same context. Correct source DB selection alone did not prevent wrong-root execution.
+- Reuse a real drafting owner before adding a qualification bridge. Empty predicate outcomes would have manufactured eligibility; preserve a truthful P8-selected state until target predicates are actually evaluated.
+
+- Source-only VM JSON edit artifacts reduce full-file rewrite churn, but their output manifest protects the artifact path, not the eventual source targets. Verify target input hashes and unique old-text anchors separately before applying. Empty output or exit0 is not implementation acceptance.
+
+## 2026-09-09 - Prospecting delivery closeout
+
+- Consolidate from the merge-base source delta onto current main; a two-dot snapshot diff can reverse unrelated newer main work. Verify exact outgoing paths after hooks, exclude operational history, and scan complete staged files rather than only edited hunks.
+- JSON allowlist validation must reject duplicate decoded keys at every depth; ordinary json.loads can discard unsafe earlier values that are still present in the raw exempted fixture. Exercise the actual staged hook with adversarial fixtures.
+- Joined tests through real application owners expose identifier and adapter contract mismatches that mocked handoffs miss. Confirm actual adapter registration before accepting a review finding based on a default handler.
+- Keep real source-proof failures intact. Name/title/company cooccurrence does not establish current-role provenance; synthetic end-to-end acceptance cannot replace real draft and browser review.
+- Native worker send_message does not wake a completed agent; followup_task does. VM source-only review and local tool-enabled editing have different capabilities. Report that split honestly.
+- Delivery PR181 is draft. Resume current canonical prospecting handoff for real evidence/browser/human gate work; no active VM job remains.
+
+## 2026-09-09 - Separate source completion, remote acknowledgement and semantic retry scope
+
+- A clean local commit is not published evidence. Automatic approval review can reject the exact
+  destination/payload after all source checks pass; record the local SHA and unchanged remote head,
+  then request explicit publication approval instead of retrying or bypassing the gate.
+- A local terminal receipt does not prove the VM received it. Read-only projections must label
+  acknowledgement unverified; only an actual process response can confirm it. Exact retry may resend
+  the stored validated result or reclaim the matching expired claim, but must never rerun the local
+  operation.
+- Content hash, URL and person identity are insufficient dedup keys when the semantic role changes.
+  Bind snapshot reuse to the canonical current company/title excerpt; otherwise preserve the old
+  immutable candidate and create new bounded provenance.
+- Synthetic status/lost-ack cleanup evidence does not establish a physical laptop-close test, live
+  campaign execution, browser acceptance, real source quality, independent inspection, or sending
+  readiness. Keep those gates explicit even when focused and integration suites are green.
+
+- Serialize scratch cleanup after nested pytest collection finishes; parent-directory discovery can race sibling deletion. Repeat the affected suite after a confirmed cleanup race, and preserve the original result honestly.
+- Match scratch cleanup to its creating Windows security context; validate exact roots and contained reparse targets before unlinking. Do not solve local ownership differences by changing ACLs.
+
+## 2026-09-09 - Reuse the user-mandated browser through the packaged MCP path
+
+- When acceptance requires the user's already-open Chrome, use Chrome DevTools MCP's supported
+  `--autoConnect` path. A direct `/json/version` probe can return404 even while the packaged MCP
+  discovers and attaches correctly; do not replace it with a headless browser, isolated profile or
+  OS-level input tool.
+- Drain stderr continuously for a long-lived stdio MCP child and close the owned SDK transport.
+  Successful navigation and form interaction do not establish visual acceptance when screenshots
+  time out.
+- The canonical bootstrap is a one-use unauthenticated redirect that sets the session cookie,
+  followed by an authenticated root load. Test unauthenticated retry, authenticated retry, root
+  reload and expiry as distinct states.
+
+## 2026-09-09 - Keep retry identity outside cached editable payloads
+
+An intake save appended request_id to its cached form object. On a lost response, that mutation
+changed the next payload signature and produced a new UUID, so retry could create a second intake.
+Next time I see a client cache feeding an idempotent mutation, I will clone the business payload
+before adding transport identity and test a server-committed/lost-response retry through the actual
+bundled JavaScript. The signal is unchanged visible input producing a different request ID.
+Also exercise completion after a campaign switch or newer typing; a correct service transaction
+cannot prevent the UI from overwriting the wrong local state.
+
+## 2026-09-09 - Shared browser authority and truthful pipeline stage boundaries
+
+- Chrome autoConnect requests user approval per new debugging session. Keep one root-owned client
+  and route worker browser operations through it; repeated close/reconnect cannot preserve consent.
+  Declared MCP roots can safely enable private snapshot output without unrestricted path settings.
+- A worktree under the main checkout's _private directory is still a source tree. Approve store
+  locations relative to the active repository first, and reject nested checkout roots explicitly.
+- Editorial UI refusal does not gate queued external execution. Trace approval creation, queueing,
+  transactional send consumption and T0 draft creation separately, including post-CAS rechecks.
+- Agent Humanizer acceptance must retain automation origin and must not imitate a manual edit in
+  feedback lineage. Exact unchanged output still needs a separate explicit human review decision.
+
+
+## 2026-09-10 - Separate initialization, inference and cleanup evidence
+
+Next time a CLI grows a redirected database without emitting progress, I will inspect the
+pinned startup path before extending timeouts. A new state directory can trigger backfill
+from an ambient home; configuration isolation does not imply empty-data initialization.
+Here, letting the CLI initialize a cache under an empty synthetic home and testing a second
+home proved a supported way to avoid that import, without manually forging backfill state.
+Signal: database growth precedes every event, while a legitimately primed cache emits events
+quickly. Preserve primary failure, bounded scan result and cleanup independently so a scan
+limit cannot erase the actual timeout or process error.
+
+## 2026-09-10 - Authentication presence is not usable authorization
+
+Next time login status succeeds but inference fails, I will distinguish stored-auth presence,
+server authorization and refresh capability before retrying. Pinned CLI status maps managed
+and external ChatGPT token modes to the same text, while normal execution already attempts
+401 recovery. Its interactive login revokes existing shared auth before asking the user, so
+it is not a harmless refresh probe. Signal: genuine request errors classify HTTP401 despite
+successful status; preserve the shared account, request user-controlled recovery and continue
+independent work rather than editing stores, trying paid credentials or looping requests.
+
+## 2026-09-10 - Keep provisional scope, runtime capability and browser completion distinct
+
+Next time a company-level target is aggregated across a candidate pool, compute each company
+deficit separately using distinct people; surplus at one company must not hide an empty company.
+A hash-bound metadata file is evidence, not proof of execution: keep runtime capability process-local
+and mint it only after the actual synthetic preflight. Also distinguish the MCP client deadline from
+the browser handler lifetime; a timed-out screenshot may still hold the global tool mutex, so queued
+retries compound the stall. A saved-text research render is useful evidence inspection but cannot
+be counted as visual acceptance of the browser UI.
+
+## 2026-09-10 - Repair acquisition before weakening proof
+
+When a source has all identity fields but no compact supported excerpt, preserve the unresolved
+result and capture a targeted individual source. Do not concatenate distant page fragments or
+infer employment from the host. Match source-backed geography to the requested scalar scope
+granularity; preserve richer addresses in evidence and use exact-predecessor replacement history.
+
+## 2026-09-10 - Bind behavior and preserve independent failure evidence
+
+When accepting an adapter bundle, bind wrapper prompts as well as schemas and skill bodies.
+An unchanged hash after a prompt edit is evidence of incomplete binding. Check process timeout
+before stream completeness; retain primary and cleanup failures separately. A transport canary
+and bounded substring scan are evidence with explicit limits, not full skill quality or absence
+of all sensitive logs. For retry bounds, hash semantic input context independently of request IDs
+and reject same-context replacement resets; UUID changes must not buy another attempt budget.
+
+
+## 2026-09-10 - Terminal validation and actual CSS acceptance
+
+When tightening an adapter exception boundary, test malformed JSON values through the real
+controller, including unhashable enum and citation fields. A parser refusal must leave a fixed
+terminal attempt, not a claimed lease. Test computed browser styles as well as DOM hidden flags: an
+author display:grid rule can override the default hidden style despite passing JavaScript tests.
+
+
+## 2026-09-10 - Recoverability requires an explicit scope interface
+
+When current projections reject stale evidence, provide a separate safe predecessor scope so a fresh
+session can recover without remembered stdout or direct SQL. Test replacement B and historical A
+replay through public commands. Root should broker shared browser access, not become the manual
+acquisition pipeline. Signal: the user asks for adaptable infrastructure while progress counts only
+manually gathered records. Return effort to reusable seams and use a small real acceptance case.
+
+## 2026-09-10 - Exit status and directory absence are not task completion
+
+A VM CLI can exit0 with files:[] and accomplish no repair. Require task-level acceptance. Collection
+must bind the entire accepted output directory to current response hashes, including omitted paths.
+Directory absence does not prove units absent: verify exact owned resources and refuse destructive
+cleanup if ownership cannot be proved. Independent synthetic probes reproduced both defects. A review's
+missing-tests claim was a staged-bundle omission; inspect actual checkout before generalizing.
+
+
+## 2026-09-11 - Prove the failing runtime layer before requesting login
+
+The native login worked outside the parent sandbox via OS keyring, but the adapter ignored user config and silently chose file auth. Explicit keyring fixed auth and exposed strict provider schema rejection; typed canary fields then passed actual inference. Separate CLI binary drift, OS credential accessibility, provider schema, and actual stage acceptance. Include exact command policy and canary bytes in runtime fingerprints; a passing canary does not accept the full editorial runtime. Workers must report verified responding model and distinguish proposals from test execution.
+
+
+## 2026-09-11 - Model output needs the verifier contract
+
+A live canary and valid output schema did not prove editorial success: three actual factchecks reportedpass but deterministicQArefused invented senderreferenceIDs and extraquestions. Supply exact binding references, body/subjectlimits and askconstraints to model stages; keep validatorsstrict. Realistic synthetic authored senderfacts make a qualitytrial meaningful. Treat an agent prose claim without returned source as no implementation; split large timed-out proposals. A real P19 failure exposed dynamic source bindings absent from a one-person fixture despite valid provider JSON schema. Next time native schema passes but semantic validation rejects, I will add closed diagnostic categories and a genuine supplemental-history fixture before another real attempt; keep every validator and attempt limit unchanged. Verify exact stagedpaths in sparseworktrees before commit, since gitadd can omit out-of-cone tests.
+
+### 2026-09-11T06:32:59.647046+00:00 - Review actual patches and distinguish quality from runtime
+
+Two source-only worker reports claimed validator/prompt/test changes absent from their patches. Compare report to actual allowed-path diff before applying; use a complete replacement proposal when nothing landed. A synthetic unit fixture with literal placeholder claims can make a critic repair impossible under correct exact-binding gates. Full stage execution and bounded refusal prove runtime/recovery, not positive copy acceptance; switch to a coherent fixture rather than weakening the verifier. A selected-source confirmation must not rewrite employment provenance already bound into P19/P20; preserve the source edge and record attestation separately.
+
+
+## 2026-09-11 - Shared invariants need every real producer
+
+A canonical claim-counting fix passed focused tests and independent review but broke nine legacy CLI cases: its exact identity-ref allowlist omitted sender.signature, a real producer alias for sender_name. Compare representative existing producers before accepting a shared invariant change; prefer exact documented references over slot-name or value heuristics. Baseline27CLI tests passed; currentfullsuite exposedregression. Freshrequestreusinganimmutable result stillneedsitsown durable request/hashreceipt; attestation22 missedthat despite15passingtests. Use ordinaryTEMP foroutside-private fixtures andMAIN/_privateforprivate-scopedfixtures; movingeverytesttoonebasetemp changes what the test actually exercises.
+
+## 2026-09-11 - Recoverability and narrow exceptions need executable checks
+
+Validate a known missing output root before charging a bounded attempt; retain lease-first
+ordering for the actual export and honest post-commit recovery. A safe refusal can still
+leave a workflow permanently stuck: explicit regeneration needs both the edited current
+head and predecessor binding, with an immutable supersession receipt and one shared
+ancestry walk. Test real controller acceptance/reset separately from directly constructed
+corruption fixtures. For static import exceptions, match exact file paths and inspect
+both from-import modules and aliases, including relative imports; a basename whitelist
+and alias-only scan each admitted concrete forbidden cases despite passing initial tests.
+
+## 2026-09-11 - Repair loops must preserve the work being repaired
+
+An actual selected-draft trial exposed a controller defect invisible to happy-path stage
+stubs: after a critic repair improved copy, a later factcheck failure caused the next
+Humanizer to receive the original revision and only the last negative result. The draft
+regressed and the same critique recurred. Bound prior candidate and relevant negative
+feedback into the next stage input; current evidence/context remains authority. Keep
+actual deterministic QA distinct from a model-reported pass. Independent review can
+misread units: verify claimed failures against API field names and execution before
+changing correct fixtures.
+
+### Validate returned patches before claiming progress
+
+Claude proposals can contain exact-context omissions and syntax errors despite correct design. Check output scope, source hashes and syntax before acceptance; return implementation corrections to the assigned Claude worker. A repeated cache-prime scan failure under desktop permissions is evidence against assuming sandbox permissions caused it; collect fixed operation metadata while preserving fail-closed checks.
+
+### Keep private test paths short on this Windows host
+
+Cache priming succeeded with maximum path252; a synthetic path probe hit WinError206 at265. The same failing cache-prime test passed with a short private base, and the full106testgroup passed. Do not misdiagnose this as authentication or weaken bounded file checks.
+
+### Carry exact proof metadata on the displayed draft
+
+A selected binding root is not necessarily the current edited draft head. Frontend equality between binding root and displayed revision disables valid descendant confirmation. Project source digest and observation IDs through the same verified revision proof, including staleness refusals, rather than reconstructing authority from latest selection.
+
+### Preserve local validation when adapting provider schemas
+
+A successful authentication canary and three editorial stages did not validate the fourth
+adapter's schema. Qualification failed in four seconds because the provider rejected
+uniqueItems. Two layers of generic error translation concealed the cause. A manual probe
+preserving original refusals and emitting only a closed provider-error category exposed it.
+Adapt provider wire format separately from local validation and bind both into acceptance.
+Negative tests must sit on the decision boundary: an extra substantive sender claim made
+14 exact-reference tests pass even under the wrong identity classification.
+
+### Accept one coherent runtime bundle
+
+A fourth adapter can reject a schema even when authentication and three editorial stages
+work. Bind provider wire schema and strict local schema separately, validate all adapters
+on the same bundle, then check the public pinned entry point and cleanup. Native success
+is execution evidence; an unknown qualification is not positive source support.
+
+## 2026-09-11 - Read-only verification still needs concurrency semantics
+
+A verifier used an ordinary opener that migrated the database; changing to a hand-built
+SQLite URI then misparsed a valid Windows#filename and created a sibling store. Trying
+immutable mode to suppress coordination files introduced a stale-WAL race. Next time I see
+a read-only path wrapping a mutating opener, I will use URI encoding, mode=ro/query_only,
+exact file identity, and ordinary locking; I will test concurrent commits and schema invariants
+separately from optional WAL/SHM coordination. Signal: tests assert zero files and tempt an
+immutable flag on a store whose quiescence is not enforced.
+
+## 2026-09-12 - Separate target identity from draft context
+
+A missing copy profile blocked real selected drafting even after successful qualification.
+The manager had coupled format to fit approval. Check the exact hash inputs before
+invalidating completed work: targeting excludes copy format, while selected revisions bind
+full render context. An explicit canonical-only, guarded transaction can add format without
+inventing fit approval or repeating model calls. Verify saved campaign integrity, guard-table
+presence, replay and unchanged upstream hashes through public services.
+
+## 2026-09-12 - Intermittent HTTP errors still need source investigation
+
+Repeated Windows connection aborts across unrelated refusal tests were initially classified
+as environment-sensitive after isolated passes. The handler closes with request body unread,
+a plausible reset race that timing changes can expose. A rerun is evidence of intermittency,
+not proof that product code is correct. Review response/close ordering and verify with a
+split-header/body test; any discard must have byte and total-time bounds after refusal.
+
+## 2026-09-12 - Prove a regression can detect its missing fix
+
+Two socket response-shape tests passed with refusal draining removed. TCP timing alone did
+not prove the discard policy. Counting actual bytes read made the requirement observable;
+counting attempts separately proved no-read refusals, because a timed-out call can return no
+bytes. Also preserve trailing response bytes in the test parser: slicing to Content-Length
+hid a second coalesced response. Keep the negative mutation evidence beside the passing suite.
+
+Publication review initially lacked destination trust. Read-only PR metadata proved the
+existing user-owned repository and exact branch, permitting re-review; this is a legitimate
+new-evidence path, not bypassing a rejection. Record subsequent explicit user approval too.
+
+## 2026-09-12 - Verify the requested browser control and public test boundary
+
+An unavailable CUA browser surface did not mean Chrome DevTools was unavailable. The installed
+DevTools CLI with autoConnect reached the existing signed-in Chrome. Honor the requested
+control method, filter outputs to the task tab, and inspect private UI with local equality
+checks and metadata only. Browser tests then proved a gap that simulated DOM tests cannot:
+public Save edit and restart execute through real HTTP/SQLite, with one reset and preserved
+old budget. Reject tests that call a direct-lineage helper while naming it a public edit;
+a stale helper comment is weaker evidence than a successful real service/browser probe.
+
+Separate an inventory declaration from a generated pass record and a human-blessed eval
+manifest. The absent P1 result was mislabeled as a human-only blocker. The original plan
+requires a worktree DRAFT STATE independent of ops STATE; gate source hashes/inventory can
+be repaired on the work branch, but --record still requires a real independent inspector
+grade. Read the writer and the original acceptance contract before treating a gate as external.
+
+## 2026-09-12 - Separate a gate unit test from its live accounting
+
+The loopback guard test reset the same class counter a live gate reads, then left its
+intentional refusal counted as an external call. A local subclass owns the synthetic counter;
+verify both zero and nonzero ambient detections survive. Never reset real detections to make
+a gate green. Direct P1 tests now pass, but a direct run is not a generated gate record.
+
+PYTEST_ADDOPTS uses shell-like parsing on Windows: Path strings with backslashes lost
+separators and inflated relative paths. Use quoted forward-slash paths and a short owned
+basetemp. JUnit record_property requires legacy format to avoid introduced warnings. A
+cleanup timeout in a restricted process requires scoped cleanup access, not a test skip.
+Scope process cleanup to the exact child command; broad command-line substring searches
+can match the cleanup shell itself. Reject documentation that changes run labels into test
+counts; verify against parsed JUnit before publication. Read/write UTF-8 explicitly in
+Windows orchestration scripts; default cp1252 can fail on existing memory files.
+
+## 2026-09-12 - Close evidence gaps without changing acceptance scope
+
+A fresh inspector can request desktop checks through a source-only relay. Keep its own
+session/raw judgments separate from developers and boss review. Preserve judgment but
+use the mandated writer's actual time if the worker supplies a future timestamp.
+Never sequence commit/publication after a guard before inspecting its exit. Safe role
+metadata does not turn an email scanner failure into a pass; record both facts honestly.
+Scope synthetic fixture repositories explicitly when basetemp is inside a real shared
+private root; an open-store sentinel proves refusal before mutation. Full-suite terminal
+JUnit, not focused retries, closes broad regression. Reconcile stale status paragraphs
+while preserving history. Four native adapters include qualification plus three editorial
+roles; deterministic initial drafting does not imply unavailable native refinement.
+Use SQLite uri=True for read-only URLs, -X utf8 for Windows report output, and account for
+sparse checkout removing directory materialization before writing completed cards.
+
+
+## 2026-09-12 - Keep local UI cache separate from projection and hydration
+
+A disabled scope value needs a per-campaign in-memory cache, but payload construction and server
+hydration must be pure. Cache only while leaving an enabled specific control, restore only the field
+that actually changed back to Specific, and never let a peer scope transition or a refresh overwrite a
+dirty current value. Test both fields together through mode changes, refresh, and the eventual save
+payload; one-field tests missed the cross-field restoration bug. Record browser and test evidence at its
+actual scope: a launcher teardown failure is not a green full suite, and configured native model names
+are not verified responding identities or token usage.
+
+
+## 2026-09-12 - Treat final evidence limits as facts, not pending work
+
+A screenshot daemon timeout without an image limits the evidence from that daemon; it does not undo a
+separate actual-browser geometry check or make a completed implementation pending. State the exact test
+boundary too: an isolated launcher test that passes once is not the same claim as a full suite, and a
+sandbox teardown failure supports only its observed/inferred cause. When UI state has coupled controls,
+keep payload projection, local cache, and hydration separate and test their interaction through the actual
+save payload. Publish completion records only after source head, card location, activity ledger, and cost
+rows all agree; keep prior residuals distinct from the new scope.

@@ -1,0 +1,36 @@
+actual_cost	list_price_estimate_usd	requested_model	responding_model	status	task	ts	usd
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable; usd0 accounting placeholder	P16 final core alias repair and PhaseC stdin implementation	2026-09-10T04:12:49.359663+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	P16 independent35-pass closure and bounded startup diagnosis	2026-09-10T04:12:49.360383+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable; usd0 accounting placeholder	consumer test guard repair and no-paid research capability design	2026-09-10T04:12:49.365134+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	root final31-pass verification and one90s synthetic diagnostic timeout	2026-09-10T04:12:49.370461+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable; usd0 accounting placeholder	pinned stdin repair accepted and proof-pending draft backend	2026-09-10T04:35:19.361640+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable; usd0 accounting placeholder	draft-first local review service and UI integration	2026-09-10T04:35:19.367567+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	runtime source review, synthetic cache proofs and fixed-category failure diagnosis	2026-09-10T04:35:19.372686+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	root runtime24-test verification and one primed-cache synthetic invocation failed	2026-09-10T04:35:19.378851+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	root one error-classifying synthetic call HTTP401; user auth recovery pending; independent draft-first work continues	2026-09-10T04:47:08.964524+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable; usd0 accounting placeholder	root draft-first freeze orchestration, cookie isolation finding, ongoing independent review and funding design	2026-09-10T05:08:44.572198+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	started; usage unavailable; usd0 accounting placeholder	source-only VM funding design89eebfdb2ac9450a89a1bd17677d458c;600s deadline and3600s collection lease	2026-09-10T05:15:54.241494+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage unavailable; usd0 accounting placeholder	VM funding design89eeb completed90s; collected/hash validated; exact owned root and units absent	2026-09-10T05:37:38.660287+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage unavailable; usd0 accounting placeholder	root draft-first244 Python and14 JS verification; same-Chrome final script hash matched; browser acceptance underway	2026-09-10T05:37:38.667784+00:00	0
+unavailable	unavailable	gpt-5.6-sol/gpt-6-astra	unavailable	usage_unavailable	p17-final-build-cli-review-and-root-verification	2026-09-10T06:32:39.734574+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable	p18-source-only-vm-design-collected-cleaned	2026-09-10T06:32:39.738954+00:00	0
+unavailable	unavailable	gpt-5.6-sol/gpt-6-astra	unavailable	usage_unavailable	p18-person-import-dashboard-interface-design	2026-09-10T06:32:39.770105+00:00	0
+unavailable	unavailable	gpt-5.6-sol/gpt-6-astra	unavailable	usage_unavailable	p18-build-review-root-checkpoint	2026-09-10T21:15:03.457554+00:00	0
+unavailable	unavailable	gpt-5.6-sol/gpt-6-astra	unavailable	usage_unavailable	p18-cli-private-import-scope-review	2026-09-10T21:15:03.457554+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable	p16-private-adapter-gated-design-and-build-start	2026-09-10T21:15:03.457554+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable	p18-banner-source-guidance-root-and-independent-review	2026-09-10T21:34:51.265966+00:00	0
+unavailable	unavailable	unavailable	unavailable	usage_unavailable	p18-real-private-import-replay-and-source-acquisition	2026-09-10T21:34:51.265966+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable	qualification-ranking-bridge-read-only-analysis-start	2026-09-10T21:34:51.265966+00:00	0
+unavailable	unavailable	unavailable	unavailable	usage_unavailable	p18-private-person-replacement-replay-and-chrome-status-review	2026-09-10T21:49:46.343629+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable	p19-qualification-design-independent-review	2026-09-10T21:49:46.343629+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable	p19-qualification-three-file-build-start	2026-09-10T21:49:46.343629+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable	p16-runtime-root78-and-independent-changes-requested	2026-09-10T22:13:09.355805+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unavailable	usage_unavailable	p19-combined-checks-and-owned-launcher-cleanup	2026-09-10T22:13:09.355805+00:00	0
+unavailable	unavailable	unavailable	unavailable	usage_unavailable	p18-chrome-visual-and-second-company-private-research	2026-09-10T22:13:09.355805+00:00	0
+unavailable	unavailable	gpt-6-astra	unavailable	usage_unavailable	p16-gated-runtime-final-acceptance-and-private-research-checkpoint	2026-09-10T22:27:18.400687+00:00	0
+		gpt-6-astra	unverified	usage_unavailable	prospecting-ui-p19-acceptance-resume	2026-09-10T22:55:53.887102+00:00	0
+		gpt-6-astra	unverified	usage_unavailable	prospecting-qualification-runtime-ranking-research-checkpoint	2026-09-10T23:43:28.340318+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unverified	prepared_usage_unavailable	prospecting-vm-recovery-review-2971dcc6d6644a28925312b4354dc339	2026-09-11T00:07:24.132962+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unverified	completed_collected_cleaned_usage_measured	prospecting-vm-recovery-review-2971dcc6d6644a28925312b4354dc339	2026-09-11T00:15:20.778418+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unverified	prepared_usage_unavailable	prospecting-vm-recovery-fix-08da1673d1eb42f9999adb698a5600ba	2026-09-11T00:20:26.461800+00:00	0
+unavailable	unavailable	gpt-5.6-sol	unverified	task_failed_empty_proposal_collected_cleaned	prospecting-vm-recovery-fix-08da1673d1eb42f9999adb698a5600ba	2026-09-11T00:40:53.543955+00:00	0

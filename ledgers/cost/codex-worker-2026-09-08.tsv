@@ -1,0 +1,13 @@
+actual_cost	list_price_estimate_usd	requested_model	responding_model	status	task	ts	usd
+unknown; ambient subscription		runtime-selected	unavailable	boss-orientation; parent model id and token usage unavailable	boss-remote-context-20260908	2026-09-08T22:34:36.330310+00:00	0
+unknown; ambient subscription	0	opus	none	oauth-refresh failure; zero model usage	boss-remote-context-20260908	2026-09-08T22:34:36.335849+00:00	0
+unknown; ambient subscription	0.043675	opus	claude-opus-5	completed; one tool-disabled remote turn	boss-remote-context-20260908	2026-09-08T22:34:36.355180+00:00	0
+unknown; ambient subscription	0.001091	CLI-internal	claude-haiku-4-5-20251001	auxiliary usage reported by CLI; not requested worker	boss-remote-context-20260908	2026-09-08T22:34:36.381623+00:00	0
+unknown; ambient subscription		opus	unavailable	broad review timed out; usage unknown	prospecting-e2e-20260908	2026-09-08T22:58:34.153735+00:00	0
+unknown; ambient subscription		opus	claude-opus-5	bounded prerequisite review completed	prospecting-e2e-20260908	2026-09-08T22:58:34.159253+00:00	0
+unknown; ambient subscription		CLI-internal	claude-haiku-4-5-20251001	auxiliary reported usage; not requested worker	prospecting-e2e-20260908	2026-09-08T22:58:34.165949+00:00	0
+unknown; ambient subscription	0.080442	opus	claude-opus-5	completed architecture advice; historical pre-routing-change	remote-lifecycle-design	2026-09-08T23:32:52.069565+00:00	0
+unknown; ambient subscription		opus	claude-opus-5	220s timeout; no usable code; no retry	dev-protocol-build	2026-09-08T23:32:52.092953+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native Codex requested; responding model not exposed	gate_repair	2026-09-08T23:32:52.117219+00:00	0
+unknown; ambient subscription		gpt-5.6-sol	unavailable	native Codex requested; responding model not exposed	remote_protocol	2026-09-08T23:32:52.140710+00:00	0
+unknown; ambient subscription		gpt-6-astra	unavailable	native Codex requested; responding model not exposed	vm_runner	2026-09-08T23:32:52.160336+00:00	0
