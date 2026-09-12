@@ -149,3 +149,22 @@ exited on signal 25 before a request, while 128 MiB reached the fake provider wi
 no warnings, and the expected HTTP 400. The startup failure is therefore tied to the 1 MiB
 process limit. Authenticated Codex mode still requires a successful controlled rerun under the
 bounded 128 MiB ceiling before acceptance.
+
+## Current routing status
+
+That startup failure and its probe isolation are historical evidence and are preserved
+above unchanged. Current development work is routed to verified source-only Claude
+workers on the existing vCPU; the responding Opus5/Sonnet5 identities were verified from
+JSONL. That route is operational for source-only proposals. Product model calls use the existing
+native Codex runtime on the Windows desktop, where actual native calls
+prove desktop authentication works; that desktop evidence is not evidence about this VM
+and the earlier VM startup failure is not the same issue as a desktop 401.
+
+An authenticated Codex VM rerun is not established by this evidence; the optional
+Codex VM backend provider proof remains explicitly unverified. Successful Claude VM lifecycle jobs and
+successful desktop native calls do not imply an authenticated provider success inside
+Codex mode on this VM. The live synthetic lifecycle cleanup tests recorded in review
+remain verified within their stated limits: they establish the tested lifecycle on the
+existing VM, not persistence across reboot and not universal absence of operating-system
+or provider traces. Nothing here claims a new VM authentication test, a reboot result, or
+the absence of provider traces.
