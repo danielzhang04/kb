@@ -108,9 +108,9 @@ def main(argv: list[str] | None = None) -> int:
         projection = revalidate_content_brief_projection(
             Path(args.root), args.request, args.brief,
         )
-        encoded = _canonical_json(projection)
-        sys.stdout.write(encoded)
-        sys.stdout.flush()
+        encoded = _canonical_json(projection).encode("utf-8")
+        sys.stdout.buffer.write(encoded)
+        sys.stdout.buffer.flush()
     except Exception:
         print(CLI_REFUSAL, file=sys.stderr)
         return 2

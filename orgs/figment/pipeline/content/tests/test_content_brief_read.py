@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import os
 import shutil
@@ -106,7 +107,9 @@ def _copied_direct_script(tmp_path: Path) -> Path:
     return copied / "content_brief_read.py"
 
 
-def _run_direct(script: Path, root: Path, request: str, brief: str) -> subprocess.CompletedProcess[str]:
+def _run_direct(
+    script: Path, root: Path, request: str, brief: str, *, text: bool = True,
+) -> subprocess.CompletedProcess:
     # Deliberately omit -B: direct-script startup must suppress dependency bytecode itself.
     child_env = dict(os.environ)
     child_env.pop("PYTHONDONTWRITEBYTECODE", None)
@@ -114,7 +117,7 @@ def _run_direct(script: Path, root: Path, request: str, brief: str) -> subproces
         [PYTHON, str(script), "--root", str(root), "--request", request, "--brief", brief],
         cwd=script.parent,
         capture_output=True,
-        text=True,
+        text=text,
         check=False,
         env=child_env,
         timeout=30,
@@ -129,6 +132,22 @@ def _assert_exact_projection(stdout: str, root: Path, request: str, brief: str) 
         "request_sha256": _sha(root / request),
         "brief_sha256": _sha(root / brief),
     }
+
+
+def _canonical_projection_bytes(root: Path, request: str, brief: str) -> bytes:
+    return (
+        json.dumps(
+            {
+                "schema": "figment/content-brief-revalidation@1",
+                "request_sha256": _sha(root / request),
+                "brief_sha256": _sha(root / brief),
+            },
+            ensure_ascii=True,
+            allow_nan=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        ) + "\n"
+    ).encode("utf-8")
 
 
 def test_projection_calls_the_sole_validator_once_and_never_writes(tmp_path: Path, monkeypatch):
@@ -201,14 +220,64 @@ def test_direct_cli_projects_real_pair_without_dependency_bytecode_or_file_mutat
     before = _tree_bytes(root)
     copied_before = _tree_bytes(script.parent)
 
-    completed = _run_direct(script, root, request, brief)
+    completed = _run_direct(script, root, request, brief, text=False)
 
     assert completed.returncode == 0
-    assert completed.stderr == ""
-    _assert_exact_projection(completed.stdout, root, request, brief)
+    assert completed.stderr == b""
+    assert completed.stdout == _canonical_projection_bytes(root, request, brief)
+    assert b"\r\n" not in completed.stdout
     assert _tree_bytes(root) == before
     assert _tree_bytes(script.parent) == copied_before
     assert not list(script.parent.rglob("__pycache__"))
+
+
+@pytest.mark.parametrize("failure", ["write", "flush"])
+def test_main_refuses_binary_stdout_write_or_flush_failure_without_leaking_detail(
+    monkeypatch, failure: str,
+):
+    sentinel = f"PRIVATE-BINARY-{failure}-SENTINEL"
+    projection = {
+        "schema": "figment/content-brief-revalidation@1",
+        "request_sha256": "a" * 64,
+        "brief_sha256": "b" * 64,
+    }
+
+    class FailingBinary:
+        def __init__(self):
+            self.writes: list[bytes] = []
+
+        def write(self, value: bytes) -> int:
+            self.writes.append(value)
+            if failure == "write":
+                raise OSError(sentinel)
+            return len(value)
+
+        def flush(self) -> None:
+            if failure == "flush":
+                raise RuntimeError(sentinel)
+
+    class BinaryStdout:
+        def __init__(self, buffer: FailingBinary):
+            self.buffer = buffer
+
+        def write(self, _value: str) -> int:
+            raise AssertionError("main must use the binary stdout buffer")
+
+        def flush(self) -> None:
+            raise AssertionError("main must flush the binary stdout buffer")
+
+    binary = FailingBinary()
+    stderr = io.StringIO()
+    monkeypatch.setattr(reader, "revalidate_content_brief_projection", lambda *_args: projection)
+    monkeypatch.setattr(reader.sys, "stdout", BinaryStdout(binary))
+    monkeypatch.setattr(reader.sys, "stderr", stderr)
+
+    assert reader.main(["--root", "fixture", "--request", "request.json", "--brief", "brief.json"]) == 2
+    assert binary.writes == [json.dumps(
+        projection, ensure_ascii=True, allow_nan=False, sort_keys=True, separators=(",", ":"),
+    ).encode("utf-8") + b"\n"]
+    assert stderr.getvalue() == REFUSAL
+    assert sentinel not in stderr.getvalue()
 
 
 def test_cli_routes_root_relative_confinement_to_existing_authority(tmp_path: Path):
