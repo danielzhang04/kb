@@ -56,6 +56,15 @@ screenshots and checked 26 unchanged inputs plus exact cleanup. This accepts the
 local status display, with no launch control or live-provider claim; see the
 [status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
 
+Stage A now prepares new plans inside the Figment content-authority root while
+retaining legacy inventory/replay and global capacity limits. Its exact private-tree
+exclusion prevents watcher traversal and event/bus path disclosure without hiding
+neighboring coordination changes. The actual synthetic content producer accepted
+the new allocation and rejected the legacy root. This retains a cooperative,
+single-service writer model and adds no execution or assignment UI. See the
+[allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md) for
+181 distinct passing cases across the retained v1 and focused v2 runs, and their limits.
+
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
 before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed
 jobs wrote synthetic 36-byte placeholders; the owned child exited without timeout and without

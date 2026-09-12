@@ -6,6 +6,13 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 ## Current status — 2026-09-12
 
+- **Preparation allocation accepted (Stage A)** at `b591d05e`: new plans fit the existing Figment
+  content-authority root; legacy discovery/replay and exact watcher privacy are
+  preserved. V1 retained 180/181 passes; the repaired integration passed 3/3 with
+  typecheck/build, establishing 181 distinct passes across runs. The actual synthetic
+  producer join passed; recorded assignment display/navigation remain Stage B.
+  See the [allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md).
+
 - **Prepared-plan recorded status accepted**: GET @2 now pairs stored plans with recorded
   execution metadata while preserving preparation POST @1 and pending-intent recovery.
   Six suites passed 268/268 cases, including both real planner integration files, with
@@ -15,14 +22,13 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   current-evidence/assignment journey remain open. See the
   [status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
 
-- **Square framing diagnostic, 22:15 UTC update**: both retained public-base controls were
-  actually reviewed and failed framing. Candidate offline verification passed 80 checks with
-  18 unchanged named inputs. One authorized two-cell square-treatment attempt made a single
-  create request at 22:13 UTC, refused with HTTP 500 / no instances available. No pod ID, jobs
-  or new images resulted; estimated cost is zero and the arc is unchanged. Separate status at
-  22:15:35 UTC returned zero pods; the original run/journal's conservative false/uncertain
-  termination record remains retained. There is no square result or new identity conclusion,
-  and no automatic placement retry follows.
+- **Square framing diagnostic, 23:00 UTC update**: the retained controls fail framing.
+  Both separately admitted SECURE and COMMUNITY two-image square attempts ended in
+  HTTP 500/no capacity, producing no pod ID or new images. Offline checks passed 80
+  and 84 respectively; they establish no square-treatment result. The latest separate
+  status at 23:00 UTC returned zero pods, while original false/uncertain run records
+  remain retained. Estimated cost is zero, not an invoice; the paid arc is unchanged
+  and the COMMUNITY $0.40 reserve remains pending reconciliation. No retry follows.
 
 - **Nonpersona native-source binding**: root accepted v3 at `bb9b8db2` after the final
   mixed-flow fixture repair and a real producer/binder-to-collector/UI join. The accepted

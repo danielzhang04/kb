@@ -50,6 +50,12 @@ brief process join passed 2/2. These bounded checks do not establish actual medi
 [September 12 operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
 API/CLI shape and the separate 58-test acceptance evidence.
 
+The [Stage A allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md)
+now also verifies an actual revised-brief/content-binding producer against a new
+Studio preparation, with exact plan digest and two slot identities; a separately
+produced legacy outside-root plan is refused. The media and judgments are synthetic.
+Recorded assignment display/navigation and actual content quality remain open.
+
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
 | Package evidence | r15 summarizes both growth SOPs and separates useful content patterns from rejected operating tactics. | Vendor claims and suggested cadences are not measured Figment results; analytics were not supplied. |

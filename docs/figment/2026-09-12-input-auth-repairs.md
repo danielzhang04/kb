@@ -193,6 +193,14 @@ The [accepted status-wiring review](2026-09-12-gen-status-wiring-review.md) reco
 typecheck/build and four root-viewed synthetic browser states. A full live
 browser/backend execution and assignment journey remains open.
 
+New preparations now allocate beneath the Figment content-authority root. Existing
+legacy plans remain visible and retain their original pending-intent replay; keep
+them in place rather than copying or re-signing them. The real content-binding
+producer accepted a newly prepared plan and rejected a separately produced legacy
+outside-root plan in the [Stage A allocation review](2026-09-12-studio-allocation-review.md).
+That evidence uses synthetic media and real authority/binding checks. It does not
+add assignment display, navigation or execution to Studio; those remain separate work.
+
 The executor has three separate modes:
 
 ```text
