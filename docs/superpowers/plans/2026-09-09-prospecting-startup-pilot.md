@@ -1,6 +1,6 @@
 # Prospecting infrastructure execution plan
 
-Updated 2026-09-12T01:07:51.056028+00:00. Independent source work verified; browser and human record gates remain.
+Updated 2026-09-12T01:07:51.056028+00:00. Browser acceptance verified; fixture regression and human record gates remain.
 
 ## Goal
 
@@ -26,16 +26,20 @@ real case. Tests identify infrastructure gaps; a prospect quota is not the deliv
 - [x] Run all four actual native adapters on one new bundle and verify public pin/canary cleanup.
 - [x] Finish whole-project synthetic regression and classify remaining failures.
   2,082 passed / 5 failed; two environment-sensitive cases passed focused reruns.
-  Three recorded P6/P1/P2/P4 gate checks remain human-owned and unresolved.
+  Three recorded P6/P1/P2/P4 checks remain unresolved; Opus160 identified repairable inventory drift and a missing inspector-backed P1 result.
 - [x] Complete the approved bounded real P19 batch and deterministic P20 ranking. The metadata-only receipt records 3/3 items machine-reviewed: 4 attempts total (one initial qualification_output_invalid refusal, then three succeeded) and 3 artifacts. P20 ranking/replay completed and matched. This proves bounded runtime execution and deterministic replay, not source confirmation or outbound authority.
 - [x] Implement and independently review explicit canonical draft-format configuration (Task138/139), then configure the pilot and verify materialization/replay. Preserve targeting hashes; format configuration changes the separate render context.
   Opus148 closed the low optional-status SQLite error-isolation gap (Task149, tested); Opus150 closed the exec_request indirect-shape concern through the existing revision/approval guards, and root closed a missing-imports issue by reading affinity/templates_v2.py's load_campaign_render_context selection of campaign.ask_minutes and p2_store's compile/hash exclusion of copy_profile. The real public configure call succeeded with a backup created; a read-only replay was a no-op with target/P19/P20 hashes verified unchanged, and real selected-draft materialization succeeded with an exact replay producing the same binding and revision.
 - [x] Repair bounded HTTP refusal handling and finish independent review (Tasks151?155).
   Final42 HTTP tests passed. Long numeric headers are bounded before conversion, refusal bodies are drained only under byte/total-time caps, and the strengthened regression fails with draining disabled. Ambiguous/oversized framing has zero read attempts. See final verification record for exact historical results.
-- [ ] Verify visible private UI, changed input/source and restart with supported browser access.
-  Browser inventory is empty; a real browser check returned "no browser is available", so visible UI acceptance remains pending; do not substitute an unapproved acquisition transport.
+- [x] Verify visible private UI, changed input/source and restart through actual Chrome DevTools.
+  Existing Chrome tab3 shows the saved pilot review copy: one exact draft/source, no confirmation or readiness. Actual keyboard input preserves dirty text across navigation. Unchanged-context refresh refuses without new domain/authority rows. A separate synthetic tab completed public Save edit and one atomic restart: old item stays parked at cycle2, new item starts at cycle0. Changed snapshot bytes withdraw source text/attestation without legacy fallback; exact restoration restores the source view. Original private pilot is unchanged.
+- [x] Finish the reviewed reusable synthetic browser fixture and its focused regression proof (Tasks157-159c).
+  Genuine exhaustion uses nine synthetic stage calls. Opus158 moved identity validation before mutating open_store; root proved unrelated-store refusal leaves bytes unchanged. URI identity/read-only mode, malformed metadata, Windows link refusals, public edit/restart and timer wiring pass26 tests in12.63s. Earlier159b had11pass1fail and was repaired; no retry hides that failure.
+- [ ] Restore the plan-required P1 worktree DRAFT and refresh stale gate declarations without inventing a pass (Tasks161-162), then obtain independent inspector evidence for generated records.
+  Opus160 corrected the stale human-only classification. P6 requires904 current nodes instead of741; P1 lacks its DRAFT artifact and has10 changed hashes. First updater proposal omitted the DRAFT and had validation/write gaps; Opus162 is reviewing and completing it. No manifest or gate-result write has run.
 - [x] Publish reviewed source and coordination commits to existing PR branches.
-  PR181 title/body updated. The prepared PR180 summary publication was explicitly approved and published; source published baseline is `35ac5517`.
+  PR181 title/body updated. The prepared PR180 summary publication was explicitly approved and published; source published head is `7c1b2ab4`.
 - [x] Package the reviewed format and HTTP repair for the existing PR181 branch.
   Format c8643caf is published. Final repair publication heads are recorded in the canonical handoff after staged PII/diff guards.
 - [x] Refresh the canonical handoff, STATE, assigned card and reusable lessons with verified results.
@@ -76,5 +80,5 @@ Private prospect data remains desktop-local except an explicitly authorized runt
 No credential objects, paid API fallback, sends, cap increases or eval-manifest blessing.
 Normal read-only SQLite access may use WAL/SHM coordination files; export verification makes
 no domain/schema writes or migrations and does not use immutable mode on a changing store.
-Recorded P6 manifests and historical gates remain human-owned. Canonical handoff resides only
+Declared source gate inventories can be refreshed on the work branch; generated pass records require the real passing gate and independent inspector grade. Human MANIFEST.sha256 remains untouched. Canonical handoff resides only
 under handoffs/ in the coordination worktree; this file is the live work plan.

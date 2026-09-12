@@ -56,7 +56,7 @@ the existing source-only vCPU; responding Opus5/Sonnet5 identities were verified
 
 The original full-suite123 JUnit records2087tests:2082passed,5failed,0errors/skips,
 1245.491seconds. It is not a green full-suite result and was not rerun after these focused
-changes. Three failures remain human-owned records:
+changes. Three historical failures concern gate inventories/results:
 
 - test_deployment::test_p6_manifest_is_numeric_and_complete
 - test_p2_prerequisite::test_p2_00_p1_record_verifies
@@ -66,7 +66,27 @@ Two other failures passed focused reruns: the person-scope temp-root case and an
 connection abort. The latter now has a source repair and focused acceptance above.
 Agents have not modified or blessed the recorded evaluation manifests.
 
-Supported browser initialization explicitly returns ?No browser is available,? so visible
-private UI acceptance remains unverified. Source PR181 and coordination PR180 remain drafts;
-no merge, deployment or release is claimed. Exact publication heads, private receipt paths
-and remaining human gates are recorded in the canonical coordination handoff.
+Actual Chrome DevTools CLI1.9.0 attached to the user's existing Chrome and brought forward
+Prospecting Review. Earlier CUA initialization failure was specific to that control surface;
+it did not establish that Chrome DevTools was unavailable.
+
+Browser acceptance now verifies the real pilot review copy has one exact selected draft and
+source excerpt, disabled source confirmation/readiness, preserved unsaved input across views,
+and an unchanged-context refusal with unchanged domain/authority counts. Actual DevTools
+keyboard input exercised the editor. On a separate synthetic store, nine deterministic stage
+calls genuinely exhausted the repair budget; the real browser saved a changed draft and
+created one atomic reset. The old item remained parked at cycle2, the new item began at
+humanizer/cycle0, and zero source attestations/approvals/exec requests/sends were created.
+A changed source snapshot removed the excerpt and attestation control without legacy fallback;
+restoring the exact bytes restored the source projection. These checks used the real DOM,
+HTTP handlers and SQLite services; synthetic adapters prove orchestration, not model quality.
+Metadata-only evidence is retained under ORCH/ui156-*.json and ORCH/ui157-*.json.
+
+The reusable synthetic fixture now passes26 focused tests in12.63s (ORCH/test159c.xml).
+Opus158 reviewed its read-only identity check before mutating store open; subsequent tests
+prove exact special-character URI identity/read-only mode, malformed metadata refusals,
+public edit/restart, Windows link guards and bounded timer wiring. The first corrected test
+run159b had11pass1fail;159c repaired the Row/tuple error and strengthened weak URI/metadata
+checks. No production pipeline behavior changed for these browser checks. Source PR181 and coordination PR180 remain drafts;
+no merge, deployment or release is claimed. P1/P6 inventory/result work remains unresolved; declaration refresh is authorized, while a generated pass requires independent inspector evidence. Exact
+publication heads and private receipt paths are in the canonical coordination handoff.
