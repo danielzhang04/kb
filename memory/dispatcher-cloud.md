@@ -828,3 +828,19 @@
   flagged for figment-expand; 6aa39cda tonight's, done at commit), done 1579, approvals 1.
 - Approvals: figment GATE A 65d8f246 (T3) still parked; nothing on approvals ref keyed to my card,
   so no step-4b verification needed this run.
+
+## 2026-09-13 nightly (dispatcher-cloud, ran on claude-opus-4-8)
+- Clean run, DIRECT-PUSH intended. preamble OK, pyyaml OK, sync_skills --check clean.
+- daemon-dirs gate: sync_daemon_dirs.py STILL absent from ops; ran main's copy refs-fallback
+  -> exit 1, same lone ops-only orgs/kb-ops/workflows/acceptance-run.md. Filed
+  wake-daniel-2026-09-13-sync-daemon-dirs-drift (now the 5th open card on this exact issue:
+  08-15/08-30/09-10/09-11/09-13). Dedup clause for step 2b still not added — Daniel-owed.
+- Dispatched 1 card 6aa63d74 (cadence:nightly-review, routed sonnet-5, self-executed on opus-4-8).
+  Ran preamble+sync_skills, regenerated both dashboards, committed to ops.
+- Working-card ages must come from `git log -1 --format=%cI -- <file>`, NOT mtime: this is a
+  FRESH CLONE so every file mtime is clone time (~06:05Z). Real ages: d126c410 figment replicate
+  ~6d (stale >48h); 6a6bc3dd kb-ops iter-smoke-t2 state:halted stranded in working/ ~45d.
+- d126c410 still has MALFORMED yaml (unquoted colon in `action:`) -> cards.parse ScannerError;
+  read its frontmatter raw. Owned by figment-expand.
+- Ledgers: 2026-09-12 had ZERO dispatch/cost/activity rows — nightly may not have fired 09-12;
+  flagged in handover. Budget: $0.00 of $30 today.
