@@ -1,22 +1,22 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 08:25 UTC; Opus5 design review complete, driver/tests/reader implementation workers active; B1 accepted at fefb858b, 103/103; RTX terminal/framing 0/2. Owner: Codex boss (codex-worker). Worktree: codex/figment-research-review-20260909. Full goal remains open.
+Updated:2026-09-13 09:55UTC. Owner: Codex boss/codex-worker; existing Figment REVIEW worktree. Full goal open; terminal actively working.
 
 ## Live B2 worklist
 
-- [x] Verify approved packet: 391208 bytes, SHA256 bc9b26878c9f05e8a32e67f0f1b5749e38dad865cce8aaf6c35e60419295261c; all 15 members match current source.
-- [x] Dispatch tools-disabled subscription CLI workers with the exact approved source plus bounded instructions. Opus independent discovery/security review started08:08 UTC: PID50360, capture45305, running. Sonnet driver v1 returned verified claude-sonnet-5/native0 but no patch, only a proposed shell check; no tool call occurred and root rejected it as incomplete. Corrected driver v2 uses an explicit code-output system prompt, started08:12 UTC: PID51196/capture74506, running. Independent Sonnet test author started08:16 UTC: PID50904/capture70334, running; it has not seen the implementation draft. These three active jobs' responding IDs and terminal outcomes remain pending.
-- [x] Read the complete actual claude-opus-5 independent review, terminal native0 at08:19:15; review SHA b714f123d6697ce16e484a2ea2d0e78d2fbc84918f0272012d9f982ebb999ced. Verdict NEEDS_CHANGES: explicit CLI caller authority, gen manifest digest binding, code-cache isolation and concrete role/operation bounds. Fifteen-helper inventory confirmed complete. Root will enforce these findings before acceptance; original reader stays unchanged.
-- [ ] Review Sonnet driver and test outputs, then actual reader implementation; resolve source/discovery defects before acceptance. Driver v2 is still running and has emitted actual claude-sonnet-5 identity; no completed patch is yet available.
-- [x] Continue reader implementation despite the additional-review transfer gate: tools-disabled Opus task approved-b2-opus-adapter-original-v1 launched08:24:12, PID49792/capture85913, using ONLY the original approved packet and ordinary implementation instructions. No derived review was transmitted in that task. Its actual responding identity/result remain pending.
-- [ ] Delegate focused regressions and corrected current-source adapter/CLI implementation to Claude; root and independent code/security reviews.
-- [ ] Run bounded real copied-producer and cold-process verification; retain failures and native evidence, repair and recheck affected cases.
-- [ ] Integrate the verified current-source result into the operator HTTP/UI journey and verify it through the real local route/browser.
-- [ ] Continue creator-quality work separately; original RTX outputs remain framing failures and no checkpoint is accepted.
+- [x] Reload plan/rules and verify keep-awake armed, supervisor26568/owner41840 alive05:50NY; cap approximately09:13NY.
+- [x] Preserve original approved source packet and all failed/incomplete worker artifacts; retain actual model/native evidence.
+- [x] Assemble17 driver definitions; root and fresh Opus review find source forwarding/default behavior sound.
+- [x] Complete independent reader review; identify bootstrap-baseline and output-failure repairs.
+- [ ] Opus authority-tests-v3 active09:53UTC PID44228/capture27995: cover full genuine synthetic approval/checkpoint/gen authority and default/observed parity.
+- [ ] Opus reader-repair-v3 active09:54UTC PID52956/capture9593: fix module baseline and binary output errors; preserve all read budgets and checks.
+- [ ] Review returned source/tests and run bounded local driver tests; production remains unchanged until reviewed application.
+- [ ] Complete reader CLI cold-process tests and real copied-producer authority/layout/size acceptance.
+- [ ] Integrate current-source result into actual local HTTP/UI journey and verify.
+- [ ] Continue actual creator-quality work; RTX is terminal0/2 framing, no accepted checkpoint or paid retry.
+- [ ] Keep tasklist/handoff/state/accounting current throughout async work.
 
-Evidence root: MAIN/_private/figment-claude-overnight-20260913/approved-b2-{opus-review,sonnet-driver}-v1. No private worker ran while the prior exact-consent gate remained unresolved. Keep-awake checked at04:07 New York: armed, supervisor26568 and root41840 alive; current supervisor cap approximately09:13 New York. Earlier pending-consent and worker-state statements below are historical.
-
-Additional gate: automatic review rejected approved-b2-sonnet-adapter-v1 before process creation because its413307-byte prompt (b53720cb1c53eb60759370e0a9b3138f2f58a7a42bd5a4295d8e8f851c85f8c3) adds the derived Opus review and root corrections to the approved source. Exact consent question is pending for that added review-sharing payload. Do not run it without consent; the independently assigned original-packet Opus implementation above was separately allowed and is active. Keep-awake rechecked04:19 New York armed/alive.
+Evidence root MAIN/_private/figment-claude-overnight-20260913. Driver candidate assembled-driver-v1.py SHA8eb3b696...; complete independent reports in approved-{driver,reader}-independent-review-v1. New repair/test jobs use only approved source revisions. The separately rejected413307-byte generated-review sharing packet remains unexecuted; allowed source-only work continues. B1/103 and SliceA/224 remain separately accepted historical runs; no B2 tests have run yet.
 
 ## Resumed work in progress
 
