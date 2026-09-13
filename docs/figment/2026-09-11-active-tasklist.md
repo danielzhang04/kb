@@ -1,8 +1,10 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 12:55 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
+Updated: 2026-09-13 13:10 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
 
 Goal: a usable local Studio journey from a fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent stills and video meeting operator quality criteria. Synthetic technical acceptance and actual media acceptance remain separate.
+
+Consolidated consent is now prepared: BASE/remaining-source-consent-v2/packet.json,1,557,885bytes/SHA41f082c88cc25426f6875d79df9995f0d18cf6ef5bd78d6904b8f943d66ecf62. One pending question covers43 current source/config/design members,17 named new targets, the three original pending packets, named revisions and derived review text to Sonnet/Opus. Root verified all member bytes; no transfer attempted. This is not consent or paid-run admission. See its README/manifest/root-verification before dispatch.
 
 ## Live worklist
 
