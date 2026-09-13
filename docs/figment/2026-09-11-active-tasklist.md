@@ -1,6 +1,6 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 11:35 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal continues asynchronous work.
+Updated: 2026-09-13 11:42 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
 
 Goal: a usable local Studio journey from a fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent stills and video meeting operator quality criteria. Synthetic technical acceptance and actual media acceptance remain separate.
 
@@ -13,7 +13,7 @@ Goal: a usable local Studio journey from a fictional-adult reference through gen
 - [x] Real copied-producer join cf175888: actual planner/grader/rulings/genplanner and isolated reader; V2 3/3/native0, 43 stable inputs. Checkpoint/persona drift refuse and recover after restoration. Synthetic artifacts/operator rulings only.
 - [x] Reader operator guide reviewed against exact source; docs/figment/2026-09-13-current-source-reader-guide.md.
 - [x] Public-primary framing research and hypothesis review terminal; four-image experiment specified in docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md.
-- [ ] ACTIVE root work: finish HTTP/UI acceptance matrix and local configuration/ownership review while source-transfer questions remain pending.
+- [x] Root HTTP/UI acceptance matrix and local configuration/ownership review completed: docs/figment/2026-09-13-current-source-http-acceptance-plan.md. Independent design and implementation remain pending.
 - [ ] HTTP/UI independent design and implementation: exact198248-byte Opus packet consent pending. Then shared decoder/manual POST/UI, independent reviews, native HTTP/session/rendered journey. No GET/render/poll-driven process.
 - [ ] Diagnostic preflight: exact2251-byte repair and16517-byte verifier Sonnet packet consent pending. Manifest node/node_id bug retained; no verifier or paid run yet. Then independent review and source-pinned local effective-graph verification.
 - [ ] Diagnostic admission/execution: only after accepted preflight, fresh budget/status reconciliation and precise one-placement card. Proposed95minutes/$2.10+$0.40reserve within$2.50 and existing$50 arc. No automatic retry/promotion.
