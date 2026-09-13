@@ -1,5 +1,14 @@
 # Figment overall plan review - September 12
 
+## Current plan assessment — September13, 11:35 UTC
+
+Producer-to-reader integration is accepted (cf175888); the reader operator guide is reviewed. The next functional gate is manual HTTP/UI current-source observation, followed by a real native process/session/rendered journey. Root is specifying the acceptance matrix while the exact Opus source-transfer consent is pending. Earlier descriptions of an unimplemented reader or active producer worker below are historical.
+
+The media track now has a concrete paired four-image prompt-span hypothesis and completed primary-source research. Its manifest is deliberately unaccepted because two job substitutions use the wrong harness key. The exact Sonnet repair/verifier packets await specific consent after automatic review rejected the new harness-source transfer. No new paid run or offline pass exists. See the September13 diagnostic plan for invariants, interpretation and proposed bounded admission. Current-source functionality and actual creator quality remain separate; more training alone still lacks justification.
+
+The terminal continues other local review work and retains keep-awake. Completed research/guide workers are terminal and accounted, not represented as still running. The live tasklist is authoritative; older sections retain historical evidence.
+
+
 ## Current plan assessment - September 13, 11:00 UTC
 
 The operator journey and actual creator-media quality remain the two unfinished outcomes. Input/auth repairs, Research composition, allocation, recorded assignments, Records rendering and the observed-read foundation are accepted in separate bounded runs. The current-source driver is now committed at a44ade03 (31/31/native0,23 stable inputs). Its isolated reader is committed at ebcdd705 (56 distinct passing cases across retained55/56 plus focused1/1,26 stable inputs each). These two milestones close the former implementation gap; older statements below saying there is no implementation authorization are superseded.

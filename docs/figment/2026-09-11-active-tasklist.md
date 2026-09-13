@@ -1,21 +1,28 @@
 # Figment active tasklist
 
-Updated:2026-09-13 11:10UTC. Owner: Codex boss/codex-worker. Full goal open; terminal actively working. Earlier sections are historical checkpoints.
+Updated: 2026-09-13 11:35 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal continues asynchronous work.
 
-## Live remaining worklist
+Goal: a usable local Studio journey from a fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent stills and video meeting operator quality criteria. Synthetic technical acceptance and actual media acceptance remain separate.
 
-- [x] Keep-awake verified07:07NY, armed and owned processes alive, cap~09:13NY.
-- [x] Observed-read Slice A19264c74 and B1fefb858b accepted; historical224 and103 cases remain separate.
-- [x] Driver a44ade03 accepted:31/31/native0,23 stable inputs, synthetic-record authority parity and stale/upload refusals.
-- [x] Isolated reader ebcdd705 accepted:56 distinct passes across retained55/56 plus focused1/1,26 stable inputs each; Windows fixture-path failure resolved solely by shorter path.
-- [x] Genuine copied producer join cf175888: actual planner/grader/rulings/genplanner then isolatedreader; V2 3/3/native0,43 stable inputs; V1 missing fixture dependency retained. Both stale negatives re-prove success after restoration. Synthetic-only media/operator/provider evidence.
-- [ ] Current-source HTTP/UI design: exact sourcepacket consent pending after automaticreview rejection beforelaunch. No reroute. Then implementation, reviews, nativeHTTP/session/rendered journey.
-- [ ] ACTIVE media planning: Claude public-primary Krea2 framing research (PID51208/session11120), no private source or paid run. Actual creator checkpoint/identity/still/video quality remains open; RTX0/2framing terminal.
-- [ ] Keep handoff/state/accounting current and terminal working across async work/gates; renew owned keep-awake beforecap ifneeded.
+## Live worklist
 
-Evidence BASE=MAIN/_private/figment-claude-overnight-20260913: driver-evidence-root-review.json, reader-evidence-root-review.json, producer-evidence-root-review.json. Producer V1/V2 in MAIN/_private/fgrp1 and fgrp2. No HTTP/UI, launch-ready or creator-quality acceptance claim. PendingHTTPpacket198248bytes/SHAa03f82b2... toOpus has no process.json. All producer/reader workers terminal; publicresearch remains active.
+- [x] Keep-awake verified 07:25 NY: armed; supervisor26568 and owner41840 alive. Renew before its approximately09:13 NY cap if still working.
+- [x] Observed-read foundations: Slice A19264c74 and B1fefb858b; historical224/103 cases remain separate.
+- [x] Driver a44ade03: 31/31/native0, 23 stable inputs.
+- [x] Isolated reader ebcdd705: 56 distinct passes across retained55/56 plus focused1/1, 26 stable inputs each. Windows path setup failure resolved by shorter fixture root alone.
+- [x] Real copied-producer join cf175888: actual planner/grader/rulings/genplanner and isolated reader; V2 3/3/native0, 43 stable inputs. Checkpoint/persona drift refuse and recover after restoration. Synthetic artifacts/operator rulings only.
+- [x] Reader operator guide reviewed against exact source; docs/figment/2026-09-13-current-source-reader-guide.md.
+- [x] Public-primary framing research and hypothesis review terminal; four-image experiment specified in docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md.
+- [ ] ACTIVE root work: finish HTTP/UI acceptance matrix and local configuration/ownership review while source-transfer questions remain pending.
+- [ ] HTTP/UI independent design and implementation: exact198248-byte Opus packet consent pending. Then shared decoder/manual POST/UI, independent reviews, native HTTP/session/rendered journey. No GET/render/poll-driven process.
+- [ ] Diagnostic preflight: exact2251-byte repair and16517-byte verifier Sonnet packet consent pending. Manifest node/node_id bug retained; no verifier or paid run yet. Then independent review and source-pinned local effective-graph verification.
+- [ ] Diagnostic admission/execution: only after accepted preflight, fresh budget/status reconciliation and precise one-placement card. Proposed95minutes/$2.10+$0.40reserve within$2.50 and existing$50 arc. No automatic retry/promotion.
+- [ ] Actual creator checkpoint/identity/still/video/audio/delivery quality. Latest RTX0/2framing remains terminal; no accepted identity-quality result.
+- [ ] Keep tasklist, handoff, state and subscription accounting current; keep terminal responsive across async jobs and pending replies.
 
-## Resumed work in progress
+Last paid estimate: $33.590210 plus two separately retained$0.40 reserves, not invoices. No new live pod this preparation. Evidence BASE=MAIN/_private/figment-claude-overnight-20260913: driver/reader/producer-evidence-root-review.json, media-preparation-root-review.json, reader-guide-application.json. All seven new research/guide workers terminal; no Claude quota failure observed. Three pending transfers have no process.json. Reader source remains efe45489...; documentation adds no HTTP/UI, launch or quality acceptance.
+
+## Historical checkpoints — superseded by the live worklist above
 
 - [ ] Next functional task: independent Claude review of the frozen B2 three-phase discovery design62054f36..., then implement the remaining15 driver helpers plus factored gen source read and complete isolated CLI; integrate HTTP/UI only after real copied-producer acceptance. Keep current256file/1GiB/2GiB/1024operation ceilings and all original observations/rechecks. Root read the design and checkpoint arithmetic; no B2 implementation exists. RTX terminal technical/visual/card/accounting accepted at REVIEW06a9c703/OPSb046a345; two outputs0/2framing, exact-owned termination verified, cost estimate0.100645 and arc33.590210 with two retained0.40reserves. No pod remains pending, no new paid run, no accepted checkpoint/identity/video-quality result.
 
