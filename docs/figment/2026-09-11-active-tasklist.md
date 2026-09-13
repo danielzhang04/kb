@@ -1,19 +1,19 @@
 # Figment active tasklist
 
-Updated:2026-09-13 10:50UTC. Owner: Codex boss/codex-worker. Full goal open; terminal actively working. Earlier sections are historical checkpoints.
+Updated:2026-09-13 11:10UTC. Owner: Codex boss/codex-worker. Full goal open; terminal actively working. Earlier sections are historical checkpoints.
 
 ## Live remaining worklist
 
-- [x] Reload plan and rules; keep-awake verified06:47NY, owned processes alive, cap~09:13NY.
-- [x] Observed-read Slice A19264c74 and B1fefb858b accepted; historical224 and103 test cases remain separate.
-- [x] Driver a44ade03 accepted:31/31/native0,23 stable inputs, full synthetic-record default/observed parity and stale/upload refusals.
-- [x] Isolated reader ebcdd705 accepted after root/independent source reviews and repairs:56 distinct passing cases across55/56 then focused1/1,26 stable inputs each. Failure was267-character Windows fixture path; shorter fixture root alone resolved it.
-- [ ] ACTIVE: genuine copied planner/grade/rulings producer integration, using existing producer fixture with offline controls and real isolated reader.
-- [ ] Current-source HTTP/UI integration and actual rendered operator journey; retain read-only/auth/source-vs-approval semantics.
-- [ ] Actual creator-media quality remains open: no accepted checkpoint/identity/video result; terminal RTX0/2 framing, no new paid retry admitted.
-- [ ] Keep canonical handoff/state/accounting current; continue Claude subscription workers and owned keep-awake supervision.
+- [x] Keep-awake verified07:07NY, armed and owned processes alive, cap~09:13NY.
+- [x] Observed-read Slice A19264c74 and B1fefb858b accepted; historical224 and103 cases remain separate.
+- [x] Driver a44ade03 accepted:31/31/native0,23 stable inputs, synthetic-record authority parity and stale/upload refusals.
+- [x] Isolated reader ebcdd705 accepted:56 distinct passes across retained55/56 plus focused1/1,26 stable inputs each; Windows fixture-path failure resolved solely by shorter path.
+- [x] Genuine copied producer join cf175888: actual planner/grader/rulings/genplanner then isolatedreader; V2 3/3/native0,43 stable inputs; V1 missing fixture dependency retained. Both stale negatives re-prove success after restoration. Synthetic-only media/operator/provider evidence.
+- [ ] Current-source HTTP/UI design: exact sourcepacket consent pending after automaticreview rejection beforelaunch. No reroute. Then implementation, reviews, nativeHTTP/session/rendered journey.
+- [ ] ACTIVE media planning: Claude public-primary Krea2 framing research (PID51208/session11120), no private source or paid run. Actual creator checkpoint/identity/still/video quality remains open; RTX0/2framing terminal.
+- [ ] Keep handoff/state/accounting current and terminal working across async work/gates; renew owned keep-awake beforecap ifneeded.
 
-Evidence: MAIN/_private/figment-claude-overnight-20260913/{driver-evidence-root-review.json,reader-evidence-root-review.json,reader-review-adjudication.md}; reader runs in that BASE/reader-verification-v1 and MAIN/_private/fgrv2. No complete real-producer or HTTP/UI claim yet. Source-current never means human/quality approval or launch-ready. All prior Claude reader workers terminal; prepare next concrete integration task.
+Evidence BASE=MAIN/_private/figment-claude-overnight-20260913: driver-evidence-root-review.json, reader-evidence-root-review.json, producer-evidence-root-review.json. Producer V1/V2 in MAIN/_private/fgrp1 and fgrp2. No HTTP/UI, launch-ready or creator-quality acceptance claim. PendingHTTPpacket198248bytes/SHAa03f82b2... toOpus has no process.json. All producer/reader workers terminal; publicresearch remains active.
 
 ## Resumed work in progress
 
