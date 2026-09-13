@@ -1,20 +1,19 @@
 # Figment active tasklist
 
-Updated:2026-09-13 10:20UTC. Owner: Codex boss/codex-worker; existing Figment REVIEW worktree. Full goal open; terminal actively working.
+Updated:2026-09-13 10:50UTC. Owner: Codex boss/codex-worker. Full goal open; terminal actively working. Earlier sections are historical checkpoints.
 
-## Live B2 worklist
+## Live remaining worklist
 
-- [x] Reload rules/plan; keep-awake armed05:50NY, supervisor26568/owner41840 alive, cap~09:13NY.
-- [x] Root and independent review of17 driver definitions and complete synthetic authority tests.
-- [x] Accept driver a44ade03: one31/31/native0 run;23 before/after/current pins verified, no failures/skips. Includes default/observed complete authority parity, native-I/O traps, dual checkpoint hashes/recheck and intended stale/upload guards.
-- [x] Full reader source/dependency review: bootstrap/routing/producer layout sound; three exact output/docs repairs generated and root-reviewed, reader still unapplied.
-- [ ] Collect Opus boundary-tests-v1 PID48448/session85671 and Sonnet compact authority-CLI-tests-v2 PID25652/session53594.
-- [ ] Correct remaining documentation precision; independent final reader/test review, apply and bounded isolated CLI verification.
-- [ ] Genuine copied planner/grade/rulings producer acceptance, then current-source HTTP/UI journey integration.
-- [ ] Actual creator-media quality: no accepted checkpoint/identity/video result; terminal RTX0/2 framing, no paid retry.
-- [ ] Keep handoff/state/accounting and supervisor current while terminal continues.
+- [x] Reload plan and rules; keep-awake verified06:47NY, owned processes alive, cap~09:13NY.
+- [x] Observed-read Slice A19264c74 and B1fefb858b accepted; historical224 and103 test cases remain separate.
+- [x] Driver a44ade03 accepted:31/31/native0,23 stable inputs, full synthetic-record default/observed parity and stale/upload refusals.
+- [x] Isolated reader ebcdd705 accepted after root/independent source reviews and repairs:56 distinct passing cases across55/56 then focused1/1,26 stable inputs each. Failure was267-character Windows fixture path; shorter fixture root alone resolved it.
+- [ ] ACTIVE: genuine copied planner/grade/rulings producer integration, using existing producer fixture with offline controls and real isolated reader.
+- [ ] Current-source HTTP/UI integration and actual rendered operator journey; retain read-only/auth/source-vs-approval semantics.
+- [ ] Actual creator-media quality remains open: no accepted checkpoint/identity/video result; terminal RTX0/2 framing, no new paid retry admitted.
+- [ ] Keep canonical handoff/state/accounting current; continue Claude subscription workers and owned keep-awake supervision.
 
-Driver evidence BASE/driver-verification-v1: JUnit a44a3920..., source8eb3b696..., tests81e12345...,31 actual cases. Accepted SliceA/224 and B1/103 remain separate historical runs. Reader candidate BASE/approved-reader-small-repair-v4/candidate-tests.py39940bytes/SHA3466375d... remains unaccepted until runtime gates. Current validators do not reread every fixture ruling record; source-current must never become a human-approval or quality claim. BASE=MAIN/_private/figment-claude-overnight-20260913. Added generated-review transfer remains unexecuted; approved source-revision work proceeds.
+Evidence: MAIN/_private/figment-claude-overnight-20260913/{driver-evidence-root-review.json,reader-evidence-root-review.json,reader-review-adjudication.md}; reader runs in that BASE/reader-verification-v1 and MAIN/_private/fgrv2. No complete real-producer or HTTP/UI claim yet. Source-current never means human/quality approval or launch-ready. All prior Claude reader workers terminal; prepare next concrete integration task.
 
 ## Resumed work in progress
 
