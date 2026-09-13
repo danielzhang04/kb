@@ -11,9 +11,6 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
-from PIL import Image
-
-
 APPROVAL_SCHEMA = "figment/approval-lineage@1"
 EVALUATION_SCHEMA = "figment/evaluation-inputs@1"
 DATASET_APPROVAL_SCHEMA = "figment/dataset-approval@1"
@@ -52,7 +49,9 @@ class LineageError(ValueError):
     pass
 
 
-def sha256_file(path: Path) -> str:
+def sha256_file(path: Path, *, reads=None) -> str:
+    if reads is not None:
+        return reads.sha256(path)
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -85,7 +84,17 @@ def persona_input_projection(persona: dict[str, Any]) -> dict[str, Any]:
     return projected
 
 
-def file_entry(path: Path, *, name: str | None = None) -> dict[str, Any]:
+def file_entry(path: Path, *, name: str | None = None, reads=None) -> dict[str, Any]:
+    if reads is not None:
+        path = reads.resolve(path)
+        observed = reads.file(path, required=True)
+        if observed is None or observed.size <= 0:
+            raise LineageError(f"lineage input is missing or empty: {path}")
+        return {
+            "name": name if name is not None else path.name,
+            "bytes": observed.size,
+            "sha256": sha256_file(path, reads=reads),
+        }
     path = Path(path).resolve()
     if not path.is_file() or path.stat().st_size <= 0:
         raise LineageError(f"lineage input is missing or empty: {path}")
@@ -109,21 +118,26 @@ def review_subject(
     threshold_path: Path,
     score_path: Path,
     checkpoint_inputs: Any = None,
+    reads=None,
 ) -> dict[str, Any]:
+    if reads is not None:
+        for collection in (manifest_paths, images, anchors):
+            if type(collection) not in (list, tuple) or len(collection) > 64:
+                raise LineageError("observed review input collection exceeds its finite bound")
     subject = {
         "creator": creator,
         "stage": stage,
-        "plan": file_entry(plan_path, name="plan.json"),
-        "manifests": [file_entry(path, name=path.name) for path in manifest_paths],
+        "plan": file_entry(plan_path, name="plan.json", reads=reads),
+        "manifests": [file_entry(path, name=path.name, reads=reads) for path in manifest_paths],
         "images": [
-            {"image_id": row["image_id"], **file_entry(Path(row["path"]), name=Path(row["path"]).name)}
+            {"image_id": row["image_id"], **file_entry(Path(row["path"]), name=Path(row["path"]).name, reads=reads)}
             for row in images
         ],
-        "anchors": [file_entry(path, name=path.name) for path in anchors],
+        "anchors": [file_entry(path, name=path.name, reads=reads) for path in anchors],
         "persona": persona_input_projection(persona),
         "training": training_input_projection(training),
-        "thresholds": file_entry(threshold_path, name=threshold_path.name),
-        "numeric_gate": file_entry(score_path, name=score_path.name),
+        "thresholds": file_entry(threshold_path, name=threshold_path.name, reads=reads),
+        "numeric_gate": file_entry(score_path, name=score_path.name, reads=reads),
         "checkpoint_inputs": deepcopy(checkpoint_inputs),
     }
     return subject
@@ -215,6 +229,8 @@ def _single_seed_read_json(path: Path, *, name: str) -> tuple[dict[str, Any], di
 def _single_seed_image_entry(
     path: Path, *, name: str, formats: tuple[str, ...] | None = None,
 ) -> dict[str, Any]:
+    from PIL import Image
+
     entry = _single_seed_file_entry(path, name=name, maximum=SINGLE_SEED_MAX_IMAGE_BYTES)
     try:
         with Image.open(path, formats=formats) as image:
@@ -276,8 +292,10 @@ def single_seed_crop_box(box: Any, width: int, height: int) -> tuple[int, int, i
     return left, top, right, bottom
 
 
-def _single_seed_decode(path: Path, entry: dict[str, Any]) -> Image.Image:
+def _single_seed_decode(path: Path, entry: dict[str, Any]) -> Any:
     """Decode exactly the bytes whose hash is already bound, under the decoded limits."""
+    from PIL import Image
+
     name = entry["name"]
     try:
         if (_single_seed_is_reparse(path) or not path.is_file()
