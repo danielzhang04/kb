@@ -54,7 +54,13 @@ The [Stage A allocation review](../../../../docs/figment/2026-09-12-studio-alloc
 now also verifies an actual revised-brief/content-binding producer against a new
 Studio preparation, with exact plan digest and two slot identities; a separately
 produced legacy outside-root plan is refused. The media and judgments are synthetic.
-Recorded assignment display/navigation and actual content quality remain open.
+Stage B recorded assignment display/navigation is now accepted at `dcd78f3b`.
+**View brief slot** selects only the exact unique revision and slot; a stale target
+requires explicit **Refresh brief records**. Ordinary unassigned drafts leave other
+valid matches available. The real synthetic producer/HTTP/session/browser journey
+passed with four root-viewed screenshots; 430 distinct runtime cases and
+typecheck/build passed. These are matching planning records, not usage history,
+current source approval or actual content quality. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|

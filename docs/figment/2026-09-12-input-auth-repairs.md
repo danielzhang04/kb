@@ -184,22 +184,45 @@ state retains a safe summary and recorded status while disabling new preparation
 Unsafe metadata makes discovery unavailable. Preparation still validates current
 checkpoint/source authority when it runs; a readable stored plan is not that proof.
 
-GET uses exact `figment/studio-gen-plans@2`; preparation POST remains @1 with
+Current GET uses exact `figment/studio-gen-plans@3`, adding paired recorded assignments; preparation POST remains @1 with
 existing intent/replay behavior. Navigation and refresh do not POST, and no
 execution button was added. Preserve a pending preparation key after an uncertain
 response; use the existing explicit resume flow rather than creating another intent.
 The [accepted status-wiring review](2026-09-12-gen-status-wiring-review.md) records
 268 passing cases across six suites, including both real planner integration files,
-typecheck/build and four root-viewed synthetic browser states. A full live
-browser/backend execution and assignment journey remains open.
+typecheck/build and four root-viewed synthetic browser states. The later Stage B local browser/assignment evidence is described below; live
+execution and current-source authority remain open.
 
 New preparations now allocate beneath the Figment content-authority root. Existing
 legacy plans remain visible and retain their original pending-intent replay; keep
 them in place rather than copying or re-signing them. The real content-binding
 producer accepted a newly prepared plan and rejected a separately produced legacy
 outside-root plan in the [Stage A allocation review](2026-09-12-studio-allocation-review.md).
-That evidence uses synthetic media and real authority/binding checks. It does not
-add assignment display, navigation or execution to Studio; those remain separate work.
+That evidence uses synthetic media and real authority/binding checks. Stage B adds recorded assignment display and navigation as described below;
+execution and fresh source authority remain separate work.
+
+## Open a recorded brief slot
+
+Under **Frozen plans**, **Refresh status** reads bounded matching planning assignments.
+Rows show a brief ID, revision digest prefix, slot and role. **View brief slot**
+changes the Research selection locally without a request or preparation. Only the
+unique full brief revision and exact slot can be highlighted. A stale, missing or
+duplicated target shows **The recorded brief revision or slot is unavailable in this
+snapshot.** Use **Refresh brief records** explicitly; a same-name newer revision is
+not substituted. Ordinary unassigned drafts do not hide other valid matches.
+
+These are recorded planning snapshots, not current source/quality approval or an
+exhaustive usage history. Legacy preparations retain discovery/replay but report
+assignment evidence unavailable outside the authority root. Stage B passed 430
+distinct runtime cases across two runs, typecheck/build, and a four-state real
+synthetic producer/loopback HTTP/session/browser journey. Root viewed all four
+screenshots; exact restoration, cleanup and 126 inputs were verified. This is
+narrower than full buildApp/deployed authentication. See the
+[assignment review](2026-09-12-recorded-assignment-review.md) for retained failures
+and repairs. Populated Records rendering and current-source checks remain separate
+work; the proposed thin source-check adapter was withdrawn pending a complete read policy.
+
+## Experimental executor modes
 
 The executor has three separate modes:
 

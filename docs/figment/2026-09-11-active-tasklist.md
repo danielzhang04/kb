@@ -1,14 +1,15 @@
 # Figment active tasklist
 
-Updated: 2026-09-12, Stage A runtime verified through 23:23 UTC. Owner: Codex boss (codex-worker). Worktree: codex/figment-research-review-20260909. Full goal remains open.
+Updated: 2026-09-12, Stage B runtime and real local browser accepted through 00:20 UTC September 13. Owner: Codex boss (codex-worker). Worktree: codex/figment-research-review-20260909. Full goal remains open.
 
 ## Resumed work in progress
 
 - [x] Research composition and GET @2 recorded-plan status accepted at the prior checkpoints; their browser and runtime evidence remain separately scoped.
 - [x] Stage A allocation and watcher privacy accepted at `b591d05e`: v1 retained 180/181 passes after a fixture import failure; the exact fixture-flag repair passed all three affected integration cases in v2, then typecheck/build passed. There are 181 distinct passing cases across runs. Root and independent review verified 83 v1 pins before repair and 91 v2 pins. The real content producer accepts the new allocation and rejects the legacy outside-root plan while legacy replay remains. See [allocation review](2026-09-12-studio-allocation-review.md).
-- [ ] Stage B recorded assignments and exact brief-revision navigation are active under work order c21cd45b... and sketch acbaa1fb...: Operator owns five production files, Square server tests/fixtures, and workspace_verification_resume the two UI test files. Root and Square review UI tests; this worker reviews production/server tests it did not author. No runtime before frozen inputs and root admission. Production execution/current-authority joins and actual creator quality are still unfinished.
+- [x] Stage B recorded assignments and exact revision/slot navigation accepted after independent source/test review: 430 distinct passing cases across retained V1 and focused V2, then V3 typecheck/build, with 98 stable inputs per run. Both helper-only and type-only fixture repairs are recorded. Real browser V1 retained a Chrome startup failure/zero PNGs; V2 passed with 126 stable inputs, actual HTTP/session checks, exact navigation/stale recovery, original-byte restoration and cleanup. Root viewed all four desktop screenshots. See the [assignment review](2026-09-12-recorded-assignment-review.md).
+- [ ] Complete remaining operator/current-source and creator-quality work. Populated Records visual verification is being prepared separately. The thin current-source adapter design was withdrawn after read-policy gaps; a superseding observed-read design needs review and no implementation is authorized. No execution/current-authority or creator-quality acceptance follows from Stage B.
 - [x] SECURE and COMMUNITY square attempts both ended in HTTP 500 capacity refusal, with no pod ID or images. Original uncertain receipts remain separate from later zero-pod observations (latest 23:00 UTC). The paid arc remains $33.489565/$50; estimated $0 is not an invoice, and the COMMUNITY $0.40 reserve remains pending reconciliation. Both completed cards must not be replayed.
-- [x] Keep-awake last root-verified armed at 19:16:56 New York; owned root PID 41840 and hidden supervisor PID 15532 alive. Earlier observations below are historical.
+- [x] Keep-awake last root-verified armed at 20:26:07 New York; owned root PID 41840 and hidden supervisor PID 15532 alive. Earlier observations below are historical.
 
 Goal: a source-backed research book and usable Studio taking a fictional-adult reference through identity-consistent training, still/video review and research-driven content. Technical fixture tests and actual creator-media quality require separate evidence.
 

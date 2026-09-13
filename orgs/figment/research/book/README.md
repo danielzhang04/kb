@@ -6,11 +6,20 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 ## Current status — 2026-09-12
 
+- **Recorded assignments and exact navigation accepted (Stage B)** at `dcd78f3b`:
+  GET @3 and hub @2 pair bounded planning records with exact brief revisions/slots.
+  There are 430 distinct passing cases across retained/focused runs, then successful
+  typecheck/build. The corrected browser run passed the actual synthetic
+  producer/loopback HTTP/session journey; root viewed four screenshots, with 126
+  stable inputs, original-byte restoration and cleanup. The first Chrome startup
+  failure is preserved. Current source/creator quality and populated Records
+  rendering remain open. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
+
 - **Preparation allocation accepted (Stage A)** at `b591d05e`: new plans fit the existing Figment
   content-authority root; legacy discovery/replay and exact watcher privacy are
   preserved. V1 retained 180/181 passes; the repaired integration passed 3/3 with
   typecheck/build, establishing 181 distinct passes across runs. The actual synthetic
-  producer join passed; recorded assignment display/navigation remain Stage B.
+  producer join passed; subsequent Stage B display/navigation is accepted above.
   See the [allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md).
 
 - **Prepared-plan recorded status accepted**: GET @2 now pairs stored plans with recorded

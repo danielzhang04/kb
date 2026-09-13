@@ -65,6 +65,18 @@ single-service writer model and adds no execution or assignment UI. See the
 [allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md) for
 181 distinct passing cases across the retained v1 and focused v2 runs, and their limits.
 
+Stage B (`dcd78f3b`) extends discovery to exact GET @3 assignment records and hub @2
+brief digests. It validates whole assignments before matching direct persona slots,
+rechecks safe absence and original file observations, and keeps stale owner responses
+from restoring data. Local navigation requires a unique full revision/slot match.
+430 distinct cases across retained/focused runs and typecheck/build passed. The
+real synthetic HTTP/session/browser journey passed after a preserved Chrome startup
+failure; root viewed four screenshots and verified 126 stable inputs/restoration/cleanup.
+This uses real handlers and session middleware, not full buildApp/deployed auth.
+The [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md) bounds those claims. Populated Records visuals and current-source
+checking remain separate; the proposed thin adapter was withdrawn because its read
+bindings did not cover all direct data access. No new implementation is authorized.
+
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
 before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed
 jobs wrote synthetic 36-byte placeholders; the owned child exited without timeout and without
