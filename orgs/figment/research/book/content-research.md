@@ -61,6 +61,9 @@ valid matches available. The real synthetic producer/HTTP/session/browser journe
 passed with four root-viewed screenshots; 430 distinct runtime cases and
 typecheck/build passed. These are matching planning records, not usage history,
 current source approval or actual content quality. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
+The separate [Records view](../../../../docs/figment/2026-09-12-populated-records-review.md)
+now has populated-render acceptance; its claim refresh does not update the generic
+record snapshot or approve a planning/content outcome.
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|

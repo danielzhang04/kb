@@ -73,8 +73,11 @@ from restoring data. Local navigation requires a unique full revision/slot match
 real synthetic HTTP/session/browser journey passed after a preserved Chrome startup
 failure; root viewed four screenshots and verified 126 stable inputs/restoration/cleanup.
 This uses real handlers and session middleware, not full buildApp/deployed auth.
-The [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md) bounds those claims. Populated Records visuals and current-source
-checking remain separate; the proposed thin adapter was withdrawn because its read
+The [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md) bounds those claims. Populated Records now also has an accepted real collector/HTTP/session/browser
+check: claim Refresh repeats claim discovery without reclassifying generic rows;
+root viewed distinct current/unknown/stale/unreviewed badges and readable paths. See
+the [Records review](../../../../docs/figment/2026-09-12-populated-records-review.md). Current-source
+checking remains separate; the proposed thin adapter was withdrawn because its read
 bindings did not cover all direct data access. No new implementation is authorized.
 
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation

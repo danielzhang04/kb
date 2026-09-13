@@ -219,8 +219,30 @@ synthetic producer/loopback HTTP/session/browser journey. Root viewed all four
 screenshots; exact restoration, cleanup and 126 inputs were verified. This is
 narrower than full buildApp/deployed authentication. See the
 [assignment review](2026-09-12-recorded-assignment-review.md) for retained failures
-and repairs. Populated Records rendering and current-source checks remain separate
-work; the proposed thin source-check adapter was withdrawn pending a complete read policy.
+and repairs. Populated Records rendering is accepted below; current-source checking
+remains separate, with the thin adapter withdrawn pending a complete read policy.
+
+## Inspect Runs & review
+
+Open **Runs & review** for the Workspace's generic record snapshot. **Machine gate
+current** can appear beside **Approval unknown**; stale gates, unknown checkpoint
+snapshots and unreviewed plans/runs are distinct states. A filename or digest match
+does not approve a checkpoint or image. **Copy path** identifies the displayed
+relative record path; the visual check verified its label without changing the clipboard.
+
+The claim panel's **Refresh status** refreshes only claim discovery. Reload the
+Workspace for a fresh generic hub snapshot; the existing rows are not reclassified
+by a claim refresh. When configured, an explicit recorded-review check reads an
+existing self-reported claim and does not observe playback. The
+[populated Records review](2026-09-12-populated-records-review.md) verifies this
+separation through real filesystem/HTTP/session/browser behavior with synthetic
+metadata. It does not repeat the earlier configured-claim reader acceptance.
+
+The local journey is now documented across separate accepted checks: **Research**
+creates a local planning revision explicitly; **Frozen plans** prepares/resumes with
+retained intent; **View brief slot** navigates to an exact recorded revision;
+**Runs & review** inspects recorded evidence. This map is not one newly executed
+end-to-end workflow or a current-source/creator-quality approval.
 
 ## Experimental executor modes
 

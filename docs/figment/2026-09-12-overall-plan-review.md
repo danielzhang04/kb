@@ -1,6 +1,6 @@
 # Figment overall plan review - September 12
 
-Current execution checkpoint, September 12 through 00:20 UTC September 13: governed brief wiring is accepted at `a3ab95ef` (83/83 and typecheck); the isolated form and decoder at `8218350f` (47 and 16 cases across separate runs); and Research composition has passed 41/41 cases with native exit 0, TypeScript no-emit and Vite build. Root viewed and accepted all four synthetic desktop states: initial form, local success, explicit inventory refresh and ambiguity without repeat submission. The initial composition invocation failed before loading tests because the forks worker did not start; one distinct threads-pool run passed without changing source or configuration. All 20 test inputs and 28 browser inputs remained unchanged. These finite checks do not establish a live browser/backend session or complete operator journey. See the [composition review](2026-09-12-brief-workspace-review.md).
+Current execution checkpoint, September 12 through 00:35 UTC September 13: governed brief wiring is accepted at `a3ab95ef` (83/83 and typecheck); the isolated form and decoder at `8218350f` (47 and 16 cases across separate runs); and Research composition has passed 41/41 cases with native exit 0, TypeScript no-emit and Vite build. Root viewed and accepted all four synthetic desktop states: initial form, local success, explicit inventory refresh and ambiguity without repeat submission. The initial composition invocation failed before loading tests because the forks worker did not start; one distinct threads-pool run passed without changing source or configuration. All 20 test inputs and 28 browser inputs remained unchanged. These finite checks do not establish a live browser/backend session or complete operator journey. See the [composition review](2026-09-12-brief-workspace-review.md).
 
 Prepared-generation recorded-status wiring is now accepted: GET @2 pairs ordered ID/digest records, with POST @1 and intent replay preserved. One six-file run passed 268/268 cases, including both real planner integration files, followed by native-zero typecheck/build; root verified 68 unchanged named inputs. Root viewed all four synthetic status-card screenshots and verified 26 unchanged inputs plus cleanup. Capacity-only refusal preserves valid summaries/status while preparation requires maintenance. These are recorded observations with unknown liveness/history where applicable and unassessed media quality. See the [wiring acceptance](2026-09-12-gen-status-wiring-review.md).
 
@@ -22,7 +22,10 @@ journey, exact local navigation and stale recovery, with 126 stable inputs, orig
 brief restoration and cleanup. Root viewed all four 1440x1200 screenshots. This
 bounded loopback composition does not establish full buildApp/deployed auth or
 current source/creator quality. See the [assignment acceptance](2026-09-12-recorded-assignment-review.md).
-Populated Records visual preparation remains active. The thin current-source adapter
+Populated Records rendering is accepted through the actual collector/HTTP/session
+journey: five unchanged rows, claim-only refresh and no POST, with 56 source/runtime
+and eight fixture pins stable plus cleanup. Root viewed the single desktop PNG. See
+the [Records acceptance](2026-09-12-populated-records-review.md). The thin current-source adapter
 design was withdrawn after read-policy omissions; a superseding observed-read design
 requires review and has no implementation authorization.
 
@@ -35,6 +38,13 @@ READY, jobs or images resulted. Separate status at 23:00 UTC observed zero pods;
 the new original uncertain run/journal remains unchanged, the paid arc is unchanged,
 and estimated $0 is not an invoice. Retain the reserve pending reconciliation;
 neither completed attempt is permission for a retry.
+
+Fresh Sonnet availability at 20:34 New York failed with weekly rate_limit, native 1,
+reporting reset at 9 PM. No responding model was verified; the earlier root SyntaxError
+occurred before CLI launch and is not a provider result. Codex workers continue without
+an automatic switch timer. The GPU-alternative feasibility review found no existing
+admission-ready replacement; exact alternate hardware fit/rate/capacity and the
+cross-hardware comparison limitation remain unresolved. No alternative is admitted.
 
 Owner: Codex boss, implementation and testing through delegated workers. The operator explicitly requested Codex subagents on this continuation; earlier native fallback followed observed Claude limits. This is the root's planning judgment after the operator selected all three remaining tracks: Studio integration, input/auth repairs, and the next media diagnostic. It supersedes the earlier optional-priority question and the blanket instruction to leave those repair tracks untouched. It does not accept rejected repair candidates or restart an old paid attempt.
 
@@ -49,7 +59,7 @@ A usable local Studio journey from a fictional-adult reference through generatio
 | Research and book | Seven-chapter September12 refresh independently reviewed at8feb9bc7; visual-status corrections root-reviewed at615ed2d9. | Keep subsequent accepted functionality and quality findings current; distinguish measured evidence, source advice and hypotheses. September8 source review does not cover newer content. |
 | Training and still quality | Bounded live training/diagnostics, checkpoint transfer, download verification and teardown have worked. Selective-crop diagnostic passed252 technical binding checks. | No accepted production checkpoint or held-out creator stills. All ten new diagnostic images missed framing; no material identity improvement over the old checkpoint. More training alone is not a justified next step. |
 | Evidence and delivery | Native/still binding, still preparation/ruling, immutable video preparation and external video review-claim reader are accepted. Video preparation had75/75 fresh tests; reader101/101; still ruling107/107. | These checks do not establish genuine playback, identity, correspondence, temporal quality, audio rights/mix, template fit or human attribution. Stale descendants must revalidate through current authorities. |
-| Studio | Stage A allocation/privacy and Stage B GET @3 recorded assignments/exact revision navigation accepted at dcd78f3b; 430 distinct Stage B passing cases, typecheck/build and four root-viewed real local HTTP/session/browser states with 126 stable inputs. | Populated Records rendering is being prepared. Execution/current-source authority, full deployed authentication and actual creator media remain open. The thin source-check adapter design was withdrawn; no implementation is authorized. |
+| Studio | Stage A allocation/privacy and Stage B GET @3 recorded assignments/exact revision navigation accepted at dcd78f3b; 430 distinct Stage B passing cases, typecheck/build and four root-viewed real local HTTP/session/browser states with 126 stable inputs. | Populated Records rendering is accepted with distinct unknown/stale/unreviewed states and claim-only refresh. Execution/current-source authority, full deployed authentication and actual creator media remain open. The thin source-check adapter design was withdrawn; no implementation is authorized. |
 | Inputs and default execution | Brief publication, binary final-validator adapter, default-auth ownership/redaction, real producer/reader/collector join, governed route and explicit-submit Research form accepted. | Preserve uncertain publication recovery and revalidate descendants through current authorities. Historical untracked input-plan must not be implemented unchanged. |
 | Live diagnostic | Retained public-base controls fail framing. SECURE offline 80 and COMMUNITY offline 84 checks passed; each single live create was refused for capacity, with no pod ID or images. Latest separate status at 23:00 UTC returned zero pods; paid arc remains unchanged. | Preserve both original uncertain run/journals and separate absence observations. No square-treatment or identity result; estimates are not invoices and the COMMUNITY $0.40 reserve remains pending reconciliation. Do not replay either completed card. |
 

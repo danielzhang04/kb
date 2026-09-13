@@ -12,8 +12,13 @@ independently. Instagram/accounts/posting/optimization remain deferred.
   typecheck/build. The corrected browser run passed the actual synthetic
   producer/loopback HTTP/session journey; root viewed four screenshots, with 126
   stable inputs, original-byte restoration and cleanup. The first Chrome startup
-  failure is preserved. Current source/creator quality and populated Records
-  rendering remain open. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
+  failure is preserved. Current source/creator quality remain open. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
+
+- **Populated Records rendering accepted** through the real collector, loopback
+  HTTP/session and current Workspace. Machine-current/approval-unknown, stale and
+  unreviewed states remain distinct; claim Refresh leaves generic rows unchanged.
+  Root viewed the populated desktop screenshot. See the
+  [Records review](../../../../docs/figment/2026-09-12-populated-records-review.md).
 
 - **Preparation allocation accepted (Stage A)** at `b591d05e`: new plans fit the existing Figment
   content-authority root; legacy discovery/replay and exact watcher privacy are
