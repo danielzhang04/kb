@@ -1,22 +1,20 @@
 # Figment active tasklist
 
-Updated:2026-09-13 09:55UTC. Owner: Codex boss/codex-worker; existing Figment REVIEW worktree. Full goal open; terminal actively working.
+Updated:2026-09-13 10:20UTC. Owner: Codex boss/codex-worker; existing Figment REVIEW worktree. Full goal open; terminal actively working.
 
 ## Live B2 worklist
 
-- [x] Reload plan/rules and verify keep-awake armed, supervisor26568/owner41840 alive05:50NY; cap approximately09:13NY.
-- [x] Preserve original approved source packet and all failed/incomplete worker artifacts; retain actual model/native evidence.
-- [x] Assemble17 driver definitions; root and fresh Opus review find source forwarding/default behavior sound.
-- [x] Complete independent reader review; identify bootstrap-baseline and output-failure repairs.
-- [ ] Opus authority-tests-v3 active09:53UTC PID44228/capture27995: cover full genuine synthetic approval/checkpoint/gen authority and default/observed parity.
-- [ ] Opus reader-repair-v3 active09:54UTC PID52956/capture9593: fix module baseline and binary output errors; preserve all read budgets and checks.
-- [ ] Review returned source/tests and run bounded local driver tests; production remains unchanged until reviewed application.
-- [ ] Complete reader CLI cold-process tests and real copied-producer authority/layout/size acceptance.
-- [ ] Integrate current-source result into actual local HTTP/UI journey and verify.
-- [ ] Continue actual creator-quality work; RTX is terminal0/2 framing, no accepted checkpoint or paid retry.
-- [ ] Keep tasklist/handoff/state/accounting current throughout async work.
+- [x] Reload rules/plan; keep-awake armed05:50NY, supervisor26568/owner41840 alive, cap~09:13NY.
+- [x] Root and independent review of17 driver definitions and complete synthetic authority tests.
+- [x] Accept driver a44ade03: one31/31/native0 run;23 before/after/current pins verified, no failures/skips. Includes default/observed complete authority parity, native-I/O traps, dual checkpoint hashes/recheck and intended stale/upload guards.
+- [x] Full reader source/dependency review: bootstrap/routing/producer layout sound; three exact output/docs repairs generated and root-reviewed, reader still unapplied.
+- [ ] Collect Opus boundary-tests-v1 PID48448/session85671 and Sonnet compact authority-CLI-tests-v2 PID25652/session53594.
+- [ ] Correct remaining documentation precision; independent final reader/test review, apply and bounded isolated CLI verification.
+- [ ] Genuine copied planner/grade/rulings producer acceptance, then current-source HTTP/UI journey integration.
+- [ ] Actual creator-media quality: no accepted checkpoint/identity/video result; terminal RTX0/2 framing, no paid retry.
+- [ ] Keep handoff/state/accounting and supervisor current while terminal continues.
 
-Evidence root MAIN/_private/figment-claude-overnight-20260913. Driver candidate assembled-driver-v1.py SHA8eb3b696...; complete independent reports in approved-{driver,reader}-independent-review-v1. New repair/test jobs use only approved source revisions. The separately rejected413307-byte generated-review sharing packet remains unexecuted; allowed source-only work continues. B1/103 and SliceA/224 remain separately accepted historical runs; no B2 tests have run yet.
+Driver evidence BASE/driver-verification-v1: JUnit a44a3920..., source8eb3b696..., tests81e12345...,31 actual cases. Accepted SliceA/224 and B1/103 remain separate historical runs. Reader candidate BASE/approved-reader-small-repair-v4/candidate-tests.py39940bytes/SHA3466375d... remains unaccepted until runtime gates. Current validators do not reread every fixture ruling record; source-current must never become a human-approval or quality claim. BASE=MAIN/_private/figment-claude-overnight-20260913. Added generated-review transfer remains unexecuted; approved source-revision work proceeds.
 
 ## Resumed work in progress
 
