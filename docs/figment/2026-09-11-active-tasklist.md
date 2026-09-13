@@ -1,12 +1,12 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 11:42 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
+Updated: 2026-09-13 12:55 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
 
 Goal: a usable local Studio journey from a fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent stills and video meeting operator quality criteria. Synthetic technical acceptance and actual media acceptance remain separate.
 
 ## Live worklist
 
-- [x] Keep-awake verified 07:25 NY: armed; supervisor26568 and owner41840 alive. Renew before its approximately09:13 NY cap if still working.
+- [x] Keep-awake renewed08:55NY: armed; new supervisor16644 and owner41840 alive, same sole lease and saved baseline preserved. Four-hour cap approximately12:55NY; receipt BASE/keep-awake-renewal-0855.json.
 - [x] Observed-read foundations: Slice A19264c74 and B1fefb858b; historical224/103 cases remain separate.
 - [x] Driver a44ade03: 31/31/native0, 23 stable inputs.
 - [x] Isolated reader ebcdd705: 56 distinct passes across retained55/56 plus focused1/1, 26 stable inputs each. Windows path setup failure resolved by shorter fixture root alone.
