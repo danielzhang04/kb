@@ -23,8 +23,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -71,12 +72,14 @@ def _load_gates():
     return module
 
 
-def load_document(path: Path) -> Any:
+def load_document(path: Path, *, reads=None) -> Any:
     """Parse `path` as JSON, falling back to the harness's simple-YAML subset.
 
     Exactly `runpod_run.load_manifest`'s own two-step strategy — reused, not
-    reimplemented.
+    reimplemented. A supplied reader instead permits only its admitted JSON read.
     """
+    if reads is not None:
+        return reads.read_json(Path(path))
     text = Path(path).read_text(encoding="utf-8")
     try:
         return json.loads(text)
@@ -167,12 +170,12 @@ def _fail(message: str) -> None:
     raise PersonaError(message)
 
 
-def _require_matching_sha256(resolved: Path, declared: str, field: str) -> None:
+def _require_matching_sha256(resolved: Path, declared: str, field: str, *, reads=None) -> None:
     """Fail closed unless `declared` equals `resolved`'s live sha256 digest (design
     §2.2 / module docstring: drift between a spec doc and its persona-recorded hash
     must be detectable, not silent). Only called when the file is known to exist —
     the caller's own missing-file check runs first and takes precedence."""
-    actual = _load_gates().sha256_file(resolved)
+    actual = reads.sha256(resolved) if reads is not None else _load_gates().sha256_file(resolved)
     if actual != declared:
         _fail(
             f"persona.{field} does not match the live file digest for {resolved}: "
@@ -199,15 +202,60 @@ def _require_nonempty_str(value: Any, field: str) -> str:
     return value
 
 
+def _observed_reference_parts(rel: str, field: str) -> tuple[int, tuple[str, ...]]:
+    """Validate raw Windows spelling before Path can discard components."""
+    if len(rel) > 4096:
+        _fail(f"persona.{field} exceeds the observed reference length limit")
+    parsed = PureWindowsPath(rel)
+    parts = rel.replace("\\", "/").split("/")
+    if parsed.drive or parsed.root or len(parts) > 64:
+        _fail(f"persona.{field} has unsupported observed reference spelling")
+    leading = 0
+    while leading < len(parts) and parts[leading] == "..":
+        leading += 1
+    if leading > 2 or leading == len(parts):
+        _fail(f"persona.{field} has unsupported observed parent traversal")
+    for part in parts[leading:]:
+        if (not part or part in (".", "..") or part.endswith((".", " "))
+                or any(ord(char) < 32 or char in ':<>"|?*' for char in part)
+                or re.fullmatch(r"(?:CON|PRN|AUX|NUL|CLOCK\$|CONIN\$|CONOUT\$|COM[1-9¹²³]|LPT[1-9¹²³])(?:\..*)?", part, re.I)):
+            _fail(f"persona.{field} has unsupported observed reference component")
+    return leading, tuple(parts[leading:])
+
+
 def _resolve_reference(
-    base_dir: Path, rel: Any, field: str, *, must_stay_within: bool
+    base_dir: Path, rel: Any, field: str, *, must_stay_within: bool, reads=None
 ) -> Path:
+    """The observed caller supplies a directory base from its admitted topology.
+
+    The training loader derives this from the observed persona file's parent.
+    reads.resolve itself accepts file and directory operands; it is not a
+    standalone directory-kind assertion for an arbitrary private-helper caller.
+    """
     if not isinstance(rel, str) or not rel.strip():
         _fail(f"persona.{field} must be a non-empty relative path string, got {rel!r}")
-    resolved = (base_dir / rel).resolve()
+    if reads is not None:
+        leading, parts = _observed_reference_parts(rel, field)
+        chain = [base_dir]
+        for _ in range(leading):
+            chain.append(chain[-1].parent)
+        candidate = chain[-1].joinpath(*parts)
+        if must_stay_within:
+            try:
+                candidate.relative_to(base_dir)
+            except ValueError:
+                _fail(f"persona.{field} = {rel!r} escapes the persona directory {base_dir}")
+        # Check the highest anchor first: outside-root safety observations are
+        # not admitted operands. Every removed base ancestor must also be bound.
+        for directory in reversed(chain):
+            base_resolved = reads.resolve(directory)
+        resolved = reads.resolve(candidate)
+    else:
+        resolved = (base_dir / rel).resolve()
+        base_resolved = base_dir.resolve() if must_stay_within else base_dir
     if must_stay_within:
         try:
-            resolved.relative_to(base_dir.resolve())
+            resolved.relative_to(base_resolved)
         except ValueError:
             _fail(
                 f"persona.{field} = {rel!r} escapes the persona directory "
@@ -279,7 +327,7 @@ def _validate_tokens(values: Any, allowed: frozenset, field: str) -> list[str]:
 
 
 def validate_persona(
-    data: dict, *, base_dir: Path, require_assets: bool = True
+    data: dict, *, base_dir: Path, require_assets: bool = True, reads=None
 ) -> None:
     """Raise `PersonaError` unless `data` fully satisfies the persona contract.
 
@@ -288,6 +336,9 @@ def validate_persona(
     gates only filesystem existence checks; every structural/schema check (unknown
     keys, duplicate references, allocation arithmetic, token vocabulary, path escape)
     runs unconditionally, `require_assets=False` or not.
+
+    Supplied reads own metadata and hashes; the caller owns final recheck.
+    Schema-only mode still requires admitted resolution under that policy.
     """
     base_dir = Path(base_dir)
     if not isinstance(data, dict):
@@ -310,16 +361,24 @@ def validate_persona(
     references = _require_list(identity.get("references"), "identity.references")
     if not references:
         _fail("persona.identity.references must not be empty")
+    if reads is not None and len(references) > 64:
+        _fail("persona.identity.references exceeds the observed list limit")
+    if reads is not None:
+        observed_history = identity.get("history")
+        if isinstance(observed_history, list) and len(observed_history) > 64:
+            _fail("persona.identity.history exceeds the observed list limit")
     seen_stems: set[str] = set()
     for rel in references:
         resolved = _resolve_reference(
-            base_dir, rel, "identity.references[]", must_stay_within=True
+            base_dir, rel, "identity.references[]", must_stay_within=True, reads=reads
         )
         stem = Path(rel).stem
         if stem in seen_stems:
             _fail(f"persona.identity.references contains a duplicate reference: {stem!r}")
         seen_stems.add(stem)
-        if require_assets and not resolved.is_file():
+        if require_assets and not (
+            reads.file(resolved, required=True) if reads is not None else resolved.is_file()
+        ):
             _fail(f"persona.identity.references[] points at a missing file: {resolved}")
 
     # Anchor-stage promotion (figment/train-plan@1 apply-rulings --stage anchor) appends
@@ -336,13 +395,13 @@ def validate_persona(
     spec = _require_dict(identity.get("spec"), "identity.spec")
     spec_path = spec.get("path")
     resolved_spec = _resolve_reference(
-        base_dir, spec_path, "identity.spec.path", must_stay_within=True
+        base_dir, spec_path, "identity.spec.path", must_stay_within=True, reads=reads
     )
     spec_sha256 = _require_nonempty_str(spec.get("sha256"), "identity.spec.sha256")
     if require_assets:
-        if not resolved_spec.is_file():
+        if not (reads.file(resolved_spec, required=True) if reads is not None else resolved_spec.is_file()):
             _fail(f"persona.identity.spec.path points at a missing file: {resolved_spec}")
-        _require_matching_sha256(resolved_spec, spec_sha256, "identity.spec.sha256")
+        _require_matching_sha256(resolved_spec, spec_sha256, "identity.spec.sha256", reads=reads)
 
     floor = _require_dict(identity.get("floor"), "identity.floor")
     for key in ("anchor_cosine_p5", "min_face_px"):
@@ -412,14 +471,14 @@ def validate_persona(
     register = _require_dict(data["register"], "register")
     register_spec = _require_dict(register.get("spec"), "register.spec")
     resolved_register_spec = _resolve_reference(
-        base_dir, register_spec.get("path"), "register.spec.path", must_stay_within=False
+        base_dir, register_spec.get("path"), "register.spec.path", must_stay_within=False, reads=reads
     )
     register_spec_sha256 = _require_nonempty_str(register_spec.get("sha256"), "register.spec.sha256")
     _require_nonempty_str(register_spec.get("section"), "register.spec.section")
     if require_assets:
-        if not resolved_register_spec.is_file():
+        if not (reads.file(resolved_register_spec, required=True) if reads is not None else resolved_register_spec.is_file()):
             _fail(f"persona.register.spec.path points at a missing file: {resolved_register_spec}")
-        _require_matching_sha256(resolved_register_spec, register_spec_sha256, "register.spec.sha256")
+        _require_matching_sha256(resolved_register_spec, register_spec_sha256, "register.spec.sha256", reads=reads)
     settings = _require_dict(register.get("settings"), "register.settings")
     _require_nonempty_str(settings.get("makeup"), "register.settings.makeup")
     _require_nonempty_str(settings.get("skin"), "register.settings.skin")

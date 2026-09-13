@@ -201,24 +201,31 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
 
 
 def load_persona_with_training(
-    persona_path: Path, *, require_assets: bool = True,
+    persona_path: Path, *, require_assets: bool = True, reads=None,
 ) -> dict[str, Any]:
-    """Validate the base persona and merge one optional training definition."""
+    """Validate the base persona and merge one optional training definition.
+
+    Supplied reads observe the sidecar even with inline training. The caller
+    owns final recheck after composing this result with its other observations.
+    """
     persona_path = Path(persona_path)
     persona_module = _load_persona_module()
-    raw = persona_module.load_document(persona_path)
+    raw = persona_module.load_document(persona_path, reads=reads)
     if not isinstance(raw, dict):
         raise TrainingConfigError("persona document must be an object")
     base = dict(raw)
     inline = base.pop("training", None)
     persona_module.validate_persona(
-        base, base_dir=persona_path.parent, require_assets=require_assets,
+        base, base_dir=persona_path.parent, require_assets=require_assets, reads=reads,
     )
 
     sidecar_path = persona_path.with_name("training.yaml")
     sidecar = None
-    if sidecar_path.is_file():
-        document = persona_module.load_document(sidecar_path)
+    if (
+        reads.file(sidecar_path, required=False)
+        if reads is not None else sidecar_path.is_file()
+    ):
+        document = persona_module.load_document(sidecar_path, reads=reads)
         if not isinstance(document, dict) or set(document) != {"training"}:
             raise TrainingConfigError(
                 f"{sidecar_path} must contain exactly one top-level 'training' object"
