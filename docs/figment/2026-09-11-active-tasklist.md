@@ -1,28 +1,30 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 13:10 UTC. Owner: Codex boss/codex-worker. Goal remains open; terminal remains available for pending consent replies. All dispatched jobs are terminal.
-
-Goal: a usable local Studio journey from a fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent stills and video meeting operator quality criteria. Synthetic technical acceptance and actual media acceptance remain separate.
-
-Consolidated consent is now prepared: BASE/remaining-source-consent-v2/packet.json,1,557,885bytes/SHA41f082c88cc25426f6875d79df9995f0d18cf6ef5bd78d6904b8f943d66ecf62. One pending question covers43 current source/config/design members,17 named new targets, the three original pending packets, named revisions and derived review text to Sonnet/Opus. Root verified all member bytes; no transfer attempted. This is not consent or paid-run admission. See its README/manifest/root-verification before dispatch.
+Goal: usable local Studio from fictional-adult reference through generation, current evidence, review and content assignment, plus actual identity-consistent still/video quality. Technical tests and media quality remain separate.
 
 ## Live worklist
 
-- [x] Keep-awake renewed08:55NY: armed; new supervisor16644 and owner41840 alive, same sole lease and saved baseline preserved. Four-hour cap approximately12:55NY; receipt BASE/keep-awake-renewal-0855.json.
-- [x] Observed-read foundations: Slice A19264c74 and B1fefb858b; historical224/103 cases remain separate.
-- [x] Driver a44ade03: 31/31/native0, 23 stable inputs.
-- [x] Isolated reader ebcdd705: 56 distinct passes across retained55/56 plus focused1/1, 26 stable inputs each. Windows path setup failure resolved by shorter fixture root alone.
-- [x] Real copied-producer join cf175888: actual planner/grader/rulings/genplanner and isolated reader; V2 3/3/native0, 43 stable inputs. Checkpoint/persona drift refuse and recover after restoration. Synthetic artifacts/operator rulings only.
-- [x] Reader operator guide reviewed against exact source; docs/figment/2026-09-13-current-source-reader-guide.md.
-- [x] Public-primary framing research and hypothesis review terminal; four-image experiment specified in docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md.
-- [x] Root HTTP/UI acceptance matrix and local configuration/ownership review completed: docs/figment/2026-09-13-current-source-http-acceptance-plan.md. Independent design and implementation remain pending.
-- [ ] HTTP/UI independent design and implementation: exact198248-byte Opus packet consent pending. Then shared decoder/manual POST/UI, independent reviews, native HTTP/session/rendered journey. No GET/render/poll-driven process.
-- [ ] Diagnostic preflight: exact2251-byte repair and16517-byte verifier Sonnet packet consent pending. Manifest node/node_id bug retained; no verifier or paid run yet. Then independent review and source-pinned local effective-graph verification.
-- [ ] Diagnostic admission/execution: only after accepted preflight, fresh budget/status reconciliation and precise one-placement card. Proposed95minutes/$2.10+$0.40reserve within$2.50 and existing$50 arc. No automatic retry/promotion.
-- [ ] Actual creator checkpoint/identity/still/video/audio/delivery quality. Latest RTX0/2framing remains terminal; no accepted identity-quality result.
-- [ ] Keep tasklist, handoff, state and subscription accounting current; keep terminal responsive across async jobs and pending replies.
+- [x] Consolidated named-source/revisions/reviews consent accepted; allsourcejobs stay within it.
+- [x] Keep-awake verifiedarmed,liveowner/supervisor.
+- [x] Driver a44ade03,reader ebcdd705,actualproducer cf175888 andreaderguide accepted.
+- [x] Opt-in containedrunner stderr guard:32/32 andindependentREADY.
+- [x] SharedstrictJSON/DTO:104/104 afterretaineddiscoveryfailure; independentreview.
+- [x] Manualroute/UI/wiring drafted,repaired,typechecknative0.
+- [ ] Backendfilesystem/config/process boundarytests andUIownership/timeouttests — Claudeauthorsactive.
+- [ ] GovernedbuildAppauth/origin/rate/admission/preambletests, existingparentregressions, finalreview/build.
+- [ ] Actualsyntheticproducer/nativecontainedrunner/HTTP/session/browserjourney andrenderedinspection.
+- [x] Four-imagepromptspanmanifest,65offlinechecks,13regressionmethods, freshstatus/budget/card/rootadmission.
+- [x] Sole RunPod diagnostic completed, exact owned teardown verified; four images/graphs/costs reviewed. Framing 0/4, no clear paired improvement.
+- [ ] Actualcreatoridentity/still/video/audio/deliveryquality remainsopen; previousRTX0/2framing notsuccess.
+- [ ] Keep branch/tasklist/handoff/modelaccounting current; nopush/merge/deploy/publish.
 
-Last paid estimate: $33.590210 plus two separately retained$0.40 reserves, not invoices. No new live pod this preparation. Evidence BASE=MAIN/_private/figment-claude-overnight-20260913: driver/reader/producer-evidence-root-review.json, media-preparation-root-review.json, reader-guide-application.json. All seven new research/guide workers terminal; no Claude quota failure observed. Three pending transfers have no process.json. Reader source remains efe45489...; documentation adds no HTTP/UI, launch or quality acceptance.
+Updated September 13, 20:34 UTC. The sole four-image prompt-span diagnostic COMPLETED at 20:21:10 UTC, native exit 0. Exact pod wd3sk2zzur88vy is terminated and its original recovery journal verifies absence. No active pod or retry is owned by this task. Root inspected all four original-resolution images: clearly adult presentation and opaque clothing; 0/4 absolute framing passes, 0/2 clear paired improvements. Both 481516234 outputs extend below upper chest; both 90210 outputs also clip the crown. No quarantine needed. The prompt hypothesis is unsupported on these two seeds; no automatic follow-up or promotion.
+
+Root terminal evidence: MAIN/_private/figment-phrase-ablation-20260913-v1/terminal-root-review.json, 5534 bytes, SHA256 536eab1c98ebf31cd5ccddedfc3b63d7f8196e282cb28b9b7b156ae5a3792887. All 29 frozen inputs matched before/after/current before this checkpoint changed the terminal card. Four fully decoded 1448-square RGB PNGs have exact embedded graph equality with the offline graphs, including model bindings. Original ten paid ledger pins are unchanged. The sole new harness ledger row is 0.133170 USD, giving paid arc estimate 33.723380 USD. Old COMMUNITY/RTX reserves and this run's 0.40 reserve remain retained: 1.20 USD total, estimated arc plus reserves 34.923380/50 USD. These are estimates, not invoice reconciliation; the admission reservation is superseded by the terminal estimate plus retained reserve.
+
+Claude Sonnet 5 backend/UI V1 test drafts returned native 0 but root rejected them before execution for unreachable success fixtures, ineffective mutation cases, and late-response tests without actual late completion. Backend repair http-backend-tests-v2 (session89859/pid49688), UI repair http-ui-tests-v2 (session97874/pid45828), and governed integration author http-governed-tests-v1 (session12217/pid36136) launched 20:29 UTC under consolidated consent. No repaired tests applied or passing claim yet. Read terminal result/model and complete output before assembly. Accepted runner32/shared104 foundations remain unchanged. Final review, integration/browser journey, and actual creator media quality remain open.
+
+Keep-awake verified armed at16:25 NY, root28968 and supervisor47220 alive; current lease remains capped around07:40 NY September14 while owner stays alive. Continue async work with Claude CLIs, not an early final after dispatch.
 
 ## Historical checkpoints — superseded by the live worklist above
 

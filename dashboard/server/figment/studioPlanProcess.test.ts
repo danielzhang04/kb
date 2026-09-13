@@ -33,12 +33,14 @@ if (mode === 'capture-ok') {
   process.stderr.write('separate-stderr-not-in-stdout');
   process.exit(0);
 }
+if (mode === 'stderr-then-ok') { process.stderr.write('benign-stderr-then-exit'); process.exit(0); }
 const stdio = mode === 'orphan-ignore' ? 'ignore' : 'inherit';
 const g = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { stdio });
 g.on('spawn', () => {
   fs.writeFileSync(pidFile + '.tmp', JSON.stringify({ child: process.pid, grandchild: g.pid }));
   fs.renameSync(pidFile + '.tmp', pidFile);
   if (mode === 'overflow') { process.stdout.write('o'.repeat(600)); process.stderr.write('e'.repeat(600)); }
+  if (mode === 'stderr-sleep') process.stderr.write('benign-stderr-while-alive');
   if (mode === 'orphan' || mode === 'orphan-ignore') process.exit(0);
   setInterval(() => {}, 1000);
 });
@@ -108,6 +110,38 @@ describe('runStudioPlanProcess', () => {
   it('resolves on exit 0', async () => {
     await expect(runStudioPlanProcess(node, [script, 'ok', nextPidFile()], opts())).resolves.toBeUndefined();
   });
+
+  it('permits stderr by default (requireEmptyStderr unset)', async () => {
+    await expect(runStudioPlanProcess(node, [script, 'stderr-then-ok', nextPidFile()], opts()))
+      .resolves.toBeUndefined();
+  });
+
+  it('permits stderr when requireEmptyStderr is explicitly false', async () => {
+    await expect(runStudioPlanProcess(node, [script, 'stderr-then-ok', nextPidFile()], opts({ requireEmptyStderr: false })))
+      .resolves.toBeUndefined();
+  });
+
+  it('rejects a nonboolean requireEmptyStderr before spawning', async () => {
+    let spawns = 0;
+    const deps: StudioPlanProcessDeps = {
+      ...studioPlanProcessDefaults,
+      spawn: ((..._args: unknown[]) => { spawns += 1; return stuckWrapper(); }) as unknown as StudioPlanProcessDeps['spawn'],
+    };
+    const error = await failure(runStudioPlanProcessWith(deps, node, [script, 'ok'], opts({ requireEmptyStderr: 'yes' as unknown as boolean })));
+    expect(error.code).toBe('invalid_options');
+    expect(spawns).toBe(0);
+  });
+
+  it('opt-in requireEmptyStderr rejects nonempty stderr and confirms whole-tree teardown', async () => {
+    const pidFile = nextPidFile();
+    const error = await failure(runStudioPlanProcess(node, [script, 'stderr-sleep', pidFile], opts({ requireEmptyStderr: true, timeout: 15_000 })));
+    expect(error.code).toBe('stderr_output');
+    expect(error.terminationUncertain).toBe(false);
+    expect(error.message).not.toMatch(/benign-stderr/);
+    const pids = readPids(pidFile);
+    expect(await goneWithin(pids.child)).toBe(true);
+    expect(await goneWithin(pids.grandchild)).toBe(true);
+  }, 20_000);
 
   it('rejects nonzero exit with a sanitized message', async () => {
     const error = await failure(runStudioPlanProcess(node, [script, 'fail', nextPidFile()], opts()));
@@ -291,6 +325,73 @@ function deferredJob(): { job: WindowsJob; resolve: (v: boolean) => void; closes
 function waitForSpawn(child: ChildProcess): Promise<void> {
   return new Promise((resolve) => child.once('spawn', () => resolve()));
 }
+
+describe('requireEmptyStderr fake-event timing races', () => {
+  it('rejects with stderr_output when stderr arrives after exit(0) but before close, preventing the pending clean-exit resolve', async () => {
+    const { child, stderr } = fakeCaptureChild();
+    const deps: StudioPlanProcessDeps = {
+      ...studioPlanProcessDefaults,
+      platform: 'win32',
+      createJob: () => ({ assign: () => true, terminateAndConfirmEmpty: async () => true, close: () => {} }),
+      spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+      closeGraceMs: 500,
+    };
+    const run = runStudioPlanProcessWith(deps, node, [script, 'ok'], opts({ requireEmptyStderr: true }));
+    await waitForSpawn(child);
+    (child as unknown as { exitCode: number }).exitCode = 0;
+    child.emit('exit', 0, null);
+    // Stderr arriving strictly between exit and close must still latch failure.
+    stderr.emit('data', Buffer.from('late-stderr-after-exit'));
+    child.emit('close', 0, null);
+    const error = await run.then(() => null, (e: unknown) => e as StudioPlanProcessError);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    expect(error!.code).toBe('stderr_output');
+    expect(error!.message).not.toMatch(/late-stderr-after-exit/);
+  });
+
+  it('flags uncertain teardown when stderr is rejected but the owned tree cannot be confirmed empty', async () => {
+    const { child, stderr } = fakeCaptureChild();
+    const helper = deferredJob();
+    const { job, resolve } = helper;
+    const deps: StudioPlanProcessDeps = {
+      ...studioPlanProcessDefaults,
+      platform: 'win32',
+      createJob: () => job,
+      spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+      closeGraceMs: 500,
+    };
+    const run = runStudioPlanProcessWith(deps, node, [script, 'ok'], opts({ requireEmptyStderr: true }));
+    await waitForSpawn(child);
+    stderr.emit('data', Buffer.from('stderr-before-uncertain-teardown'));
+    (child as unknown as { exitCode: number }).exitCode = 0;
+    child.emit('exit', 0, null);
+    expect(helper.called).toBe(true);
+    child.emit('close', 0, null);
+    resolve(false); // synthetic: confirmation withheld
+    const error = await run.then(() => null, (e: unknown) => e as StudioPlanProcessError);
+    expect(error).toBeInstanceOf(StudioPlanProcessError);
+    expect(error!.code).toBe('stderr_output');
+    expect(error!.terminationUncertain).toBe(true);
+  });
+
+  it('does not fail on an empty stderr chunk even with requireEmptyStderr set', async () => {
+    const { child, stderr } = fakeCaptureChild();
+    const deps: StudioPlanProcessDeps = {
+      ...studioPlanProcessDefaults,
+      platform: 'win32',
+      createJob: () => ({ assign: () => true, terminateAndConfirmEmpty: async () => true, close: () => {} }),
+      spawn: (() => child) as unknown as StudioPlanProcessDeps['spawn'],
+      closeGraceMs: 500,
+    };
+    const run = runStudioPlanProcessWith(deps, node, [script, 'ok'], opts({ requireEmptyStderr: true }));
+    await waitForSpawn(child);
+    stderr.emit('data', Buffer.alloc(0));
+    (child as unknown as { exitCode: number }).exitCode = 0;
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
+    await expect(run).resolves.toBeUndefined();
+  });
+});
 
 describe('runStudioPlanProcessCapture', () => {
   it('resolves with exactly the binary/chunked stdout Buffer, excluding stderr, after clean exit + close + owned-tree confirmation', async () => {

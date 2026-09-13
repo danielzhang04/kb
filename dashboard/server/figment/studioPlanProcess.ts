@@ -18,6 +18,8 @@ export type StudioPlanProcessOptions = {
   timeout: number;
   maxBuffer: number;
   windowsHide: boolean;
+  /** Opt-in: any nonempty stderr chunk becomes a typed `stderr_output` failure. Default undefined/false preserves existing stderr-permitting behavior. */
+  requireEmptyStderr?: boolean;
 };
 
 export type StudioPlanProcessFailure =
@@ -26,7 +28,8 @@ export type StudioPlanProcessFailure =
   | 'exit_nonzero'
   | 'timeout'
   | 'output_overflow'
-  | 'containment_failed';
+  | 'containment_failed'
+  | 'stderr_output';
 
 export class StudioPlanProcessError extends Error {
   readonly code: StudioPlanProcessFailure;
@@ -139,7 +142,8 @@ export function gateEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
 
 function validOptions(options: StudioPlanProcessOptions): boolean {
   const positive = (n: number) => Number.isFinite(n) && n > 0;
-  return positive(options.timeout) && positive(options.maxBuffer) && typeof options.cwd === 'string';
+  return positive(options.timeout) && positive(options.maxBuffer) && typeof options.cwd === 'string'
+    && (options.requireEmptyStderr === undefined || typeof options.requireEmptyStderr === 'boolean');
 }
 
 /** Opt-in capture result: stdout bytes only, never stderr body. */
@@ -190,6 +194,7 @@ function runStudioPlanProcessCore(
     let closed = false;
     let bytes = 0;
     let overflowed = false;
+    let stderrRejected = false;
     const stdoutChunks: Buffer[] = [];
     const closeWaiters: Array<() => void> = [];
     const settle = (error?: StudioPlanProcessError) => {
@@ -222,9 +227,15 @@ function runStudioPlanProcessCore(
         child.stderr?.destroy();
       }
       const uncertain = !(confirmed && closedInTime);
-      // Overflow may land during these awaits (after exit, before close): a
-      // pending success finalize must not resolve once that happens.
-      const effectiveFailure = failure === null && overflowed ? 'output_overflow' : failure;
+      // Overflow (and, when opted in, any nonempty stderr) may land during
+      // these awaits (after exit, before close): a pending success finalize
+      // must not resolve once that happens. Overflow keeps priority as the
+      // pre-existing safety budget signal.
+      const effectiveFailure = failure === null && overflowed
+        ? 'output_overflow'
+        : failure === null && stderrRejected
+          ? 'stderr_output'
+          : failure;
       if (effectiveFailure === null) settle(uncertain ? new StudioPlanProcessError('containment_failed', true) : undefined);
       else settle(new StudioPlanProcessError(effectiveFailure, uncertain));
     };
@@ -253,6 +264,12 @@ function runStudioPlanProcessCore(
       }
       bytes = total;
       if (capture && isStdout) stdoutChunks.push(chunk);
+      // Opt-in: any nonempty stderr chunk latches a contained finalize. Never
+      // retains or exposes the stderr bytes; empty chunks never fail.
+      if (!isStdout && chunk.length > 0 && options.requireEmptyStderr && !stderrRejected) {
+        stderrRejected = true;
+        void finalize('stderr_output');
+      }
     };
     // Keep draining (and discarding/capturing) so a held pipe cannot stall
     // termination, and so a stdout tail after exit but before close is kept.
