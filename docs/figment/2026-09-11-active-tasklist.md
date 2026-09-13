@@ -1,6 +1,18 @@
 # Figment active tasklist
 
-Updated: 2026-09-13 03:27 UTC; B1 accepted at fefb858b,103/103; RTX terminal/framing0/2; Claude transition and exact packet consent pending. Owner: Codex boss (codex-worker). Worktree: codex/figment-research-review-20260909. Full goal remains open.
+Updated: 2026-09-13 08:12 UTC; exact packet consent received and both Claude jobs launched; B1 accepted at fefb858b, 103/103; RTX terminal/framing 0/2. Owner: Codex boss (codex-worker). Worktree: codex/figment-research-review-20260909. Full goal remains open.
+
+## Live B2 worklist
+
+- [x] Verify approved packet: 391208 bytes, SHA256 bc9b26878c9f05e8a32e67f0f1b5749e38dad865cce8aaf6c35e60419295261c; all 15 members match current source.
+- [x] Dispatch tools-disabled subscription CLI workers with the exact approved source plus bounded instructions. Opus independent discovery/security review started08:08 UTC: PID50360, capture45305, running. Sonnet driver v1 returned verified claude-sonnet-5/native0 but no patch, only a proposed shell check; no tool call occurred and root rejected it as incomplete. Corrected driver v2 uses an explicit code-output system prompt, started08:12 UTC: PID51196/capture74506, running. Independent Sonnet test author started08:16 UTC: PID50904/capture70334, running; it has not seen the implementation draft. These three active jobs' responding IDs and terminal outcomes remain pending.
+- [ ] Review Opus findings and Sonnet diff; resolve every concrete source/discovery blocker before accepting implementation.
+- [ ] Delegate focused regressions and corrected current-source adapter/CLI implementation to Claude; root and independent code/security reviews.
+- [ ] Run bounded real copied-producer and cold-process verification; retain failures and native evidence, repair and recheck affected cases.
+- [ ] Integrate the verified current-source result into the operator HTTP/UI journey and verify it through the real local route/browser.
+- [ ] Continue creator-quality work separately; original RTX outputs remain framing failures and no checkpoint is accepted.
+
+Evidence root: MAIN/_private/figment-claude-overnight-20260913/approved-b2-{opus-review,sonnet-driver}-v1. No private worker ran while the prior exact-consent gate remained unresolved. Keep-awake checked at04:07 New York: armed, supervisor26568 and root41840 alive; current supervisor cap approximately09:13 New York. Earlier pending-consent and worker-state statements below are historical.
 
 ## Resumed work in progress
 
