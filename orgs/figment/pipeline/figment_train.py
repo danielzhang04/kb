@@ -190,8 +190,10 @@ def _verify_pins_preflight(pins: dict[str, Any], selected_stages: list[str]) -> 
         raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
 
 
-def _read_json(path: Path) -> Any:
+def _read_json(path: Path, *, reads=None) -> Any:
     try:
+        if reads is not None:
+            return reads.read_json(Path(path))
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise FigmentTrainError(f"cannot read JSON document {path}: {exc}") from exc
@@ -223,7 +225,9 @@ def _write_frozen_json(path: Path, value: Any) -> None:
         raise FigmentTrainError(f"refusing to overwrite frozen diagnostic protocol: {path}") from exc
 
 
-def _sha256(path: Path) -> str:
+def _sha256(path: Path, *, reads=None) -> str:
+    if reads is not None:
+        return reads.sha256(Path(path))
     digest = hashlib.sha256()
     with Path(path).open("rb") as handle:
         for block in iter(lambda: handle.read(1024 * 1024), b""):
@@ -231,7 +235,11 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _relative(path: Path, root: Path) -> str:
+def _relative(path: Path, root: Path, *, reads=None) -> str:
+    if reads is not None:
+        resolved = reads.resolve(Path(path))
+        base = reads.resolve(Path(root))
+        return resolved.relative_to(base).as_posix()
     return path.resolve().relative_to(root.resolve()).as_posix()
 
 
@@ -2275,9 +2283,12 @@ def verify_run_record(
     return data
 
 
-def _load_plan(creator_id: str, plan_path: Path) -> tuple[dict[str, Any], Path]:
-    plan_path = Path(plan_path).resolve()
-    plan = _read_json(plan_path)
+def _load_plan(creator_id: str, plan_path: Path, *, reads=None) -> tuple[dict[str, Any], Path]:
+    if reads is not None:
+        plan_path = reads.resolve(Path(plan_path))
+    else:
+        plan_path = Path(plan_path).resolve()
+    plan = _read_json(plan_path, reads=reads)
     if not isinstance(plan, dict) or plan.get("schema") != "figment/train-plan@1":
         raise FigmentTrainError("plan.json has an unsupported schema")
     if plan.get("creator") != creator_id:
@@ -2287,10 +2298,11 @@ def _load_plan(creator_id: str, plan_path: Path) -> tuple[dict[str, Any], Path]:
     return plan, plan_path.parent
 
 
-def _stage_state(path: Path, creator_id: str, plan_path: Path) -> dict[str, Any]:
-    plan_digest = _sha256(plan_path)
-    if path.is_file():
-        state = _read_json(path)
+def _stage_state(path: Path, creator_id: str, plan_path: Path, *, reads=None) -> dict[str, Any]:
+    plan_digest = _sha256(plan_path, reads=reads)
+    exists = reads.file(Path(path), required=False) if reads is not None else Path(path).is_file()
+    if exists:
+        state = _read_json(path, reads=reads)
         if state.get("creator") != creator_id or state.get("plan_sha256") != plan_digest:
             raise FigmentTrainError("stage.json belongs to a different creator or plan")
         return state
@@ -2309,32 +2321,49 @@ def _write_stage_state(path: Path, state: dict[str, Any]) -> None:
     _write_json(path, state)
 
 
-def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
-    if stage == "gen":
-        _revalidate_planned_gen_authority(plan)
-        expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
-        if not isinstance(expected, str):
-            raise FigmentTrainError("gen plan has no accepted checkpoint digest")
-        for run in plan["stages"]["gen"]["runs"]:
-            manifest_path = root / run["manifest"]
-            manifest = _read_json(manifest_path)
-            checkpoint_files = [
-                value
-                for upload in manifest.get("uploads") or []
-                for value in upload.get("files") or []
-                if isinstance(value, str) and value.endswith(".safetensors")
-            ]
-            if len(checkpoint_files) != 1 or any(ch in checkpoint_files[0] for ch in "*?[]"):
-                raise FigmentTrainError("gen manifest must upload exactly one explicit checkpoint")
-            staged = (manifest_path.parent / checkpoint_files[0]).resolve()
-            try:
-                staged.relative_to(root.resolve())
-            except ValueError as exc:
-                raise FigmentTrainError("gen checkpoint upload escapes the reviewed plan root") from exc
+def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
+    _revalidate_planned_gen_authority(plan, reads=reads)
+    expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
+    if not isinstance(expected, str):
+        raise FigmentTrainError("gen plan has no accepted checkpoint digest")
+    for run in plan["stages"]["gen"]["runs"]:
+        manifest_path = root / run["manifest"]
+        manifest = _read_json(manifest_path, reads=reads)
+        checkpoint_files = [
+            value
+            for upload in manifest.get("uploads") or []
+            for value in upload.get("files") or []
+            if isinstance(value, str) and value.endswith(".safetensors")
+        ]
+        if len(checkpoint_files) != 1 or any(ch in checkpoint_files[0] for ch in "*?[]"):
+            raise FigmentTrainError("gen manifest must upload exactly one explicit checkpoint")
+        staged_operand = manifest_path.parent / checkpoint_files[0]
+        if reads is not None:
+            staged = reads.resolve(staged_operand)
+            root_resolved = reads.resolve(root)
+        else:
+            staged = staged_operand.resolve()
+            root_resolved = root.resolve()
+        try:
+            staged.relative_to(root_resolved)
+        except ValueError as exc:
+            raise FigmentTrainError("gen checkpoint upload escapes the reviewed plan root") from exc
+        if reads is not None:
+            observed = reads.file(staged, required=False)
+            if observed is None or _sha256(staged, reads=reads) != expected:
+                raise FigmentTrainError(
+                    "staged gen checkpoint changed after planning; create a fresh gen plan"
+                )
+        else:
             if not staged.is_file() or _sha256(staged) != expected:
                 raise FigmentTrainError(
                     "staged gen checkpoint changed after planning; create a fresh gen plan"
                 )
+
+
+def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
+    if stage == "gen":
+        _validate_gen_source_inputs(plan, root)
         return
     if stage not in ("smoke", "train"):
         return
@@ -2431,14 +2460,14 @@ def _tester_checkpoint_inputs(plan: dict[str, Any], root: Path, run: dict[str, A
     ]
 
 
-def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path) -> None:
+def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path, *, reads=None) -> None:
     """Recheck the durable, non-cost portion of a completed tester receipt.
 
     Live execution already performs full ledger reconciliation before recording a run
     complete. Promotion repeats the receipt/job checks so later edits cannot turn a
     failed or unrelated tester run into checkpoint provenance.
     """
-    receipt = _read_json(Path(out_dir) / "run.json")
+    receipt = _read_json(Path(out_dir) / "run.json", reads=reads)
     if not isinstance(receipt, dict) or receipt.get("error"):
         raise FigmentTrainError("checkpoint promotion requires a successful tester receipt")
     if receipt.get("dry_run") is not False:
@@ -2831,30 +2860,41 @@ def _load_persona_document_for_gate(plan: dict[str, Any]) -> dict[str, Any]:
     return _read_json(persona_path)
 
 
-def _persona_path_for_plan(plan: dict[str, Any]) -> Path:
-    return (ROOT / plan["assets"]["persona_dir"] / "persona.yaml").resolve()
+def _persona_path_for_plan(plan: dict[str, Any], *, reads=None) -> Path:
+    persona_path = ROOT / plan["assets"]["persona_dir"] / "persona.yaml"
+    return reads.resolve(persona_path) if reads is not None else persona_path.resolve()
 
 
-def _current_persona_training(plan: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
-    persona_path = _persona_path_for_plan(plan)
+def _current_persona_training(
+    plan: dict[str, Any], *, reads=None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    persona_path = _persona_path_for_plan(plan, reads=reads)
     try:
-        merged = _training_config_module().load_persona_with_training(persona_path)
+        merged = _training_config_module().load_persona_with_training(
+            persona_path, reads=reads,
+        )
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"current persona/training configuration is invalid: {exc}") from exc
     return merged, merged["training"]
 
 
 def _current_review_subject(
-    plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any],
+    plan: dict[str, Any], root: Path, stage: str, grading: dict[str, Any], *, reads=None,
 ) -> dict[str, Any]:
-    persona, training = _current_persona_training(plan)
+    persona, training = _current_persona_training(plan, reads=reads)
     manifest_paths = [root / run["manifest"] for run in plan["stages"][stage]["runs"]]
-    anchors = [(root / value).resolve() for value in plan["assets"]["anchors"]]
+    anchors = [
+        reads.resolve(root / value) if reads is not None else (root / value).resolve()
+        for value in plan["assets"]["anchors"]
+    ]
     checkpoint_inputs = None
     if stage == "tester":
         state_path = root / "stage.json"
-        if state_path.is_file():
-            state = _stage_state(state_path, plan["creator"], root / "plan.json")
+        state_exists = (
+            reads.file(state_path, required=False) if reads is not None else state_path.is_file()
+        )
+        if state_exists:
+            state = _stage_state(state_path, plan["creator"], root / "plan.json", reads=reads)
             checkpoint_inputs = [
                 {
                     "manifest": run["manifest"],
@@ -2873,29 +2913,33 @@ def _current_review_subject(
             persona=persona, training=training, threshold_path=HERE / "gate.yaml",
             score_path=root / "grade" / stage / "gate.json",
             checkpoint_inputs=checkpoint_inputs,
+            reads=reads,
         )
     except (OSError, ValueError) as exc:
         raise FigmentTrainError(f"cannot establish {stage} review lineage: {exc}") from exc
 
 
 def _load_current_approval(
-    plan: dict[str, Any], root: Path, stage: str, *, required: bool = True,
+    plan: dict[str, Any], root: Path, stage: str, *, required: bool = True, reads=None,
 ) -> dict[str, Any] | None:
     grade_dir = root / "grade" / stage
     approval_path = grade_dir / "approval-lineage.json"
-    if not approval_path.is_file():
+    approval_exists = (
+        reads.file(approval_path, required=False) if reads is not None else approval_path.is_file()
+    )
+    if not approval_exists:
         if required:
             raise FigmentTrainError(
                 f"{stage} has no current operator approval; run grade and apply-rulings first"
             )
         return None
-    grading = _read_json(grade_dir / "grading-manifest.json")
-    approval = _read_json(approval_path)
+    grading = _read_json(grade_dir / "grading-manifest.json", reads=reads)
+    approval = _read_json(approval_path, reads=reads)
     if approval.get("schema") != _lineage_module().APPROVAL_SCHEMA:
         raise FigmentTrainError(f"unsupported approval lineage at {approval_path}")
     try:
         _lineage_module().assert_current(
-            approval, _current_review_subject(plan, root, stage, grading),
+            approval, _current_review_subject(plan, root, stage, grading, reads=reads),
             label=f"{stage} operator approval",
         )
     except ValueError as exc:
@@ -3224,7 +3268,9 @@ def _normalize_rulings(
     }
 
 
-def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[str, Any]:
+def _checkpoint_candidate(
+    plan: dict[str, Any], root: Path, step: int, *, reads=None,
+) -> dict[str, Any]:
     training = plan["training"]
     allowed = _checkpoint_steps(training["steps"], training["save_every"]) + [training["steps"]]
     if step not in allowed:
@@ -3235,9 +3281,9 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
     tester_matches: list[tuple[dict[str, Any], dict[str, Any], str]] = []
     for run in plan["stages"]["tester"]["runs"]:
         manifest_path = root / run["manifest"]
-        if _sha256(manifest_path) != run["sha256"]:
+        if _sha256(manifest_path, reads=reads) != run["sha256"]:
             raise FigmentTrainError("tester manifest changed after the reviewed plan was written")
-        manifest = _read_json(manifest_path)
+        manifest = _read_json(manifest_path, reads=reads)
         for job in manifest.get("jobs") or []:
             values = [
                 item.get("value") for item in job.get("substitutions") or []
@@ -3252,11 +3298,14 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
 
     tester_run, tester_manifest, tester_image_id = tester_matches[0]
     state_path = root / "stage.json"
-    if not state_path.is_file():
+    state_exists = (
+        reads.file(state_path, required=False) if reads is not None else state_path.is_file()
+    )
+    if not state_exists:
         raise FigmentTrainError(
             "checkpoint promotion requires this plan's completed train and tester stages"
         )
-    state = _stage_state(state_path, plan["creator"], root / "plan.json")
+    state = _stage_state(state_path, plan["creator"], root / "plan.json", reads=reads)
     if "train" not in state.get("completed_stages", []):
         raise FigmentTrainError("checkpoint promotion requires this plan's completed train stage")
     if "tester" not in state.get("completed_stages", []):
@@ -3270,20 +3319,26 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
             "completed tester run has no checkpoint digest inventory; rerun under the current "
             "driver before promoting a candidate"
         )
-    _verify_tester_receipt_evidence(tester_manifest, root / tester_run["out"])
+    _verify_tester_receipt_evidence(tester_manifest, root / tester_run["out"], reads=reads)
 
     matches: list[tuple[dict[str, Any], Path]] = []
     for run in plan["stages"].get("train", {}).get("runs", []):
         manifest_path = root / run["manifest"]
-        if _sha256(manifest_path) != run["sha256"]:
+        if _sha256(manifest_path, reads=reads) != run["sha256"]:
             raise FigmentTrainError("train manifest changed after the reviewed plan was written")
-        manifest = _read_json(manifest_path)
+        manifest = _read_json(manifest_path, reads=reads)
         if filename not in [item.get("local") for item in manifest.get("artifacts") or []]:
             continue
         if state.get("runs", {}).get(run["manifest"], {}).get("status") != "complete":
             continue
-        run_out = (root / run["out"]).resolve()
-        checkpoint = (run_out / filename).resolve()
+        run_out = (
+            reads.resolve(root / run["out"]) if reads is not None
+            else (root / run["out"]).resolve()
+        )
+        checkpoint = (
+            reads.resolve(run_out / filename) if reads is not None
+            else (run_out / filename).resolve()
+        )
         try:
             checkpoint.relative_to(run_out)
         except ValueError as exc:
@@ -3294,12 +3349,20 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
             f"checkpoint {filename!r} is not a unique artifact of this plan's completed train run"
         )
     run, checkpoint = matches[0]
-    if not checkpoint.is_file() or checkpoint.stat().st_size <= 0:
+    if reads is not None:
+        observed_checkpoint = reads.file(checkpoint, required=True)
+        checkpoint_missing = observed_checkpoint is None or observed_checkpoint.size <= 0
+    else:
+        checkpoint_missing = not checkpoint.is_file() or checkpoint.stat().st_size <= 0
+    if checkpoint_missing:
         raise FigmentTrainError(f"produced checkpoint is missing or empty: {checkpoint}")
-    receipt = _read_json(checkpoint.parent / "run.json")
+    receipt = _read_json(checkpoint.parent / "run.json", reads=reads)
     artifact_rows = [
         item for item in receipt.get("artifacts") or []
-        if item.get("remote") == filename and item.get("bytes") == checkpoint.stat().st_size
+        if item.get("remote") == filename and item.get("bytes") == (
+            reads.file(checkpoint, required=True).size if reads is not None
+            else checkpoint.stat().st_size
+        )
     ]
     if (receipt.get("error") is not None or receipt.get("dry_run") is not False
             or receipt.get("termination_verified") is not True
@@ -3313,9 +3376,12 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
     ]
     current_input = {
         "filename": filename,
-        "path": _relative(checkpoint, root),
-        "bytes": checkpoint.stat().st_size,
-        "sha256": _sha256(checkpoint),
+        "path": _relative(checkpoint, root, reads=reads),
+        "bytes": (
+            reads.file(checkpoint, required=True).size if reads is not None
+            else checkpoint.stat().st_size
+        ),
+        "sha256": _sha256(checkpoint, reads=reads),
     }
     if len(recorded_inputs) != 1 or recorded_inputs[0] != current_input:
         raise FigmentTrainError(
@@ -3327,8 +3393,11 @@ def _checkpoint_candidate(plan: dict[str, Any], root: Path, step: int) -> dict[s
         "filename": filename,
         "tester_image_id": tester_image_id,
         "path": str(checkpoint),
-        "bytes": checkpoint.stat().st_size,
-        "sha256": _sha256(checkpoint),
+        "bytes": (
+            reads.file(checkpoint, required=True).size if reads is not None
+            else checkpoint.stat().st_size
+        ),
+        "sha256": _sha256(checkpoint, reads=reads),
         "train_manifest": run["manifest"],
         "train_manifest_sha256": run["sha256"],
     }
@@ -3360,9 +3429,10 @@ def _persist_checkpoint_selection(
     _write_json(target, document)
 
 
-def _resolve_config_path(value: str) -> Path:
+def _resolve_config_path(value: str, *, reads=None) -> Path:
     path = Path(value)
-    return path.resolve() if path.is_absolute() else (ROOT / path).resolve()
+    candidate = path if path.is_absolute() else (ROOT / path)
+    return reads.resolve(candidate) if reads is not None else candidate.resolve()
 
 
 def apply_rulings(
@@ -3684,7 +3754,9 @@ def apply_rulings(
     return result
 
 
-def _validated_accepted_checkpoint(persona: dict[str, Any], training: dict[str, Any]) -> dict[str, Any]:
+def _validated_accepted_checkpoint(
+    persona: dict[str, Any], training: dict[str, Any], *, reads=None,
+) -> dict[str, Any]:
     """Return still-current checkpoint authority without copying source bytes."""
     step = training.get("chosen_checkpoint_step")
     digest = training.get("chosen_checkpoint_sha256")
@@ -3698,35 +3770,49 @@ def _validated_accepted_checkpoint(persona: dict[str, Any], training: dict[str, 
             "legacy chosen_checkpoint_step has no checkpoint hash/provenance; re-apply the "
             "tester rulings with --checkpoint-step"
         )
-    approval_path = _resolve_config_path(approval_value)
+    approval_path = _resolve_config_path(approval_value, reads=reads)
     if approval_path.name != "accepted-checkpoint.json" or approval_path.parent.name != "tester":
         raise FigmentTrainError("chosen checkpoint approval must be a tester accepted-checkpoint.json")
     expected_plan_path = approval_path.parents[2] / "plan.json"
-    accepted = _read_json(approval_path)
+    accepted = _read_json(approval_path, reads=reads)
     if (accepted.get("schema") != _lineage_module().CHECKPOINT_SCHEMA
             or accepted.get("creator") != persona["id"]):
         raise FigmentTrainError("chosen checkpoint approval is malformed or belongs to another creator")
-    source_plan_path = Path(accepted.get("source_plan", "")).resolve()
-    if source_plan_path != expected_plan_path.resolve():
+    source_plan_raw = Path(accepted.get("source_plan", ""))
+    source_plan_path = (
+        reads.resolve(source_plan_raw) if reads is not None else source_plan_raw.resolve()
+    )
+    expected_plan_resolved = (
+        reads.resolve(expected_plan_path) if reads is not None else expected_plan_path.resolve()
+    )
+    if source_plan_path != expected_plan_resolved:
         raise FigmentTrainError("chosen checkpoint approval names a plan outside its own review root")
-    if _sha256(source_plan_path) != accepted.get("source_plan_sha256"):
+    if _sha256(source_plan_path, reads=reads) != accepted.get("source_plan_sha256"):
         raise FigmentTrainError("chosen checkpoint source plan changed after promotion")
-    source_plan, source_root = _load_plan(persona["id"], source_plan_path)
+    source_plan, source_root = _load_plan(persona["id"], source_plan_path, reads=reads)
     approval_lineage = approval_path.with_name("approval-lineage.json")
     try:
-        approval_lineage_sha256 = _sha256(approval_lineage)
+        approval_lineage_sha256 = _sha256(approval_lineage, reads=reads)
     except OSError as exc:
         raise FigmentTrainError("tester approval lineage is missing after checkpoint promotion") from exc
-    if (Path(accepted.get("approval_lineage", "")).resolve() != approval_lineage.resolve()
+    recorded_lineage_raw = Path(accepted.get("approval_lineage", ""))
+    recorded_lineage = (
+        reads.resolve(recorded_lineage_raw) if reads is not None
+        else recorded_lineage_raw.resolve()
+    )
+    approval_lineage_resolved = (
+        reads.resolve(approval_lineage) if reads is not None else approval_lineage.resolve()
+    )
+    if (recorded_lineage != approval_lineage_resolved
             or approval_lineage_sha256 != accepted.get("approval_lineage_sha256")):
         raise FigmentTrainError("tester approval lineage changed after checkpoint promotion")
-    _load_current_approval(source_plan, source_root, "tester")
+    _load_current_approval(source_plan, source_root, "tester", reads=reads)
     expected_inputs = _lineage_module().training_input_projection(training)
     if (accepted.get("training_inputs") != expected_inputs
             or accepted.get("training_inputs")
             != _lineage_module().training_input_projection(source_plan["training"])):
         raise FigmentTrainError("training inputs changed after checkpoint promotion")
-    candidate = _checkpoint_candidate(source_plan, source_root, step)
+    candidate = _checkpoint_candidate(source_plan, source_root, step, reads=reads)
     recorded = accepted.get("checkpoint")
     if not isinstance(recorded, dict):
         raise FigmentTrainError("chosen checkpoint approval has no checkpoint record")
@@ -3747,18 +3833,22 @@ def _validated_accepted_checkpoint(persona: dict[str, Any], training: dict[str, 
     }
 
 
-def _accepted_checkpoint_snapshot(accepted_checkpoint: dict[str, Any]) -> dict[str, str]:
+def _accepted_checkpoint_snapshot(
+    accepted_checkpoint: dict[str, Any], *, reads=None,
+) -> dict[str, str]:
     """The approval/source binding compiled into a reviewed gen plan."""
     candidate = accepted_checkpoint["candidate"]
     return {
-        "approval_sha256": _sha256(accepted_checkpoint["approval_path"]),
-        "source_plan_sha256": _sha256(accepted_checkpoint["source_plan_path"]),
-        "approval_lineage_sha256": _sha256(accepted_checkpoint["approval_lineage_path"]),
+        "approval_sha256": _sha256(accepted_checkpoint["approval_path"], reads=reads),
+        "source_plan_sha256": _sha256(accepted_checkpoint["source_plan_path"], reads=reads),
+        "approval_lineage_sha256": _sha256(
+            accepted_checkpoint["approval_lineage_path"], reads=reads,
+        ),
         "checkpoint_sha256": candidate["sha256"],
     }
 
 
-def _revalidate_planned_gen_authority(plan: dict[str, Any]) -> None:
+def _revalidate_planned_gen_authority(plan: dict[str, Any], *, reads=None) -> None:
     """Reject a compiled gen plan when its current source authority has changed."""
     planned_training = plan.get("training")
     planned_persona_sha256 = plan.get("persona_sha256")
@@ -3771,9 +3861,10 @@ def _revalidate_planned_gen_authority(plan: dict[str, Any]) -> None:
     if (not isinstance(snapshot, dict) or set(snapshot) != required
             or any(not isinstance(value, str) for value in snapshot.values())):
         raise FigmentTrainError("gen plan has no captured selected-checkpoint provenance; replan")
-    persona, training = _current_persona_training(plan)
-    persona_path = _persona_path_for_plan(plan)
-    if persona.get("id") != plan.get("creator") or _sha256(persona_path) != planned_persona_sha256:
+    persona, training = _current_persona_training(plan, reads=reads)
+    persona_path = _persona_path_for_plan(plan, reads=reads)
+    if (persona.get("id") != plan.get("creator")
+            or _sha256(persona_path, reads=reads) != planned_persona_sha256):
         raise FigmentTrainError("current persona changed after gen planning; create a fresh gen plan")
     if training != planned_training:
         raise FigmentTrainError(
@@ -3781,7 +3872,7 @@ def _revalidate_planned_gen_authority(plan: dict[str, Any]) -> None:
         )
     try:
         current_snapshot = _accepted_checkpoint_snapshot(
-            _validated_accepted_checkpoint(persona, training)
+            _validated_accepted_checkpoint(persona, training, reads=reads), reads=reads,
         )
     except OSError as exc:
         raise FigmentTrainError(
