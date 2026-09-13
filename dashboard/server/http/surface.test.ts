@@ -462,7 +462,7 @@ describe('write surface — composition chain', () => {
       ({ app } = buildApp({ appendAudit: audit.fn, ...overrides, runPreamble }));
       const read = await app.inject(genPlans());
       expect(read.statusCode).toBe(200);
-      expect(read.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/), plans: [], executionRecords: [], preparation: expect.any(String) });
+      expect(read.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/), plans: [], executionRecords: [], assignmentRecords: [], preparation: expect.any(String) });
       expect(runPreamble).not.toHaveBeenCalled();
       expect((await app.inject(genPlan())).json()).toEqual({ error: refusal });
       expect(audit.rows).toHaveLength(0);

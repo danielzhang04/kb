@@ -2,12 +2,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { FigmentWorkspace } from './FigmentWorkspace';
+import { Suspense, startTransition, useLayoutEffect, useState } from 'react';
+import * as StudioPlansModule from './StudioGenPlans';
 
-const projection = { schema: 'figment/hub@1' as const, available: true, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
+const projection = { schema: 'figment/hub@2' as const, available: true, contentBriefs: { status: 'not-configured' as const, items: [] }, creators: [{ id: 'creator-a', persona: 'valid' as const, loraTier: 'provisional', loraTrigger: null, accountTiers: ['instagram'] }], creatorsTruncated: false, records: [{ path: 'runs/a/run.json', type: 'run', creator: 'creator-a', reviewState: 'unknown' as const, machineGateState: 'current' as const, schema: 'figment/runpod-run@1' }], recordsTruncated: false, plans: { items: [{ path: 'runs/a/driver-plan.json', creator: 'creator-a', variant: 'studio-preview', stages: [{ name: 'train', runCount: 1, declaredCeilingUsd: 1.25 }, { name: 'tester', runCount: 2, declaredCeilingUsd: null }], declaredCeilingUsd: 1.25 }], truncated: false }, research: { available: true, artifacts: [{ area: 'book' as const, name: 'chapter.md', bytes: 2048, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, references: { items: [{ creator: 'creator-a', name: 'g01.jpg', bytes: 90, sha256: 'b'.repeat(64), width: 4, height: 3, modifiedAt: '2026-09-08T00:00:00Z' }], truncated: false }, generatedInputs: { available: false, items: [], truncated: false }, diagnostic: { status: 'diagnostic-not-promotable' as const, dryRun: false, podId: 'pod', artifacts: [], artifactsTruncated: false } };
 const response = (body: unknown, status = 200) => Promise.resolve(new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } }));
-const recordedBriefs = (hypothesis = 'A recorded planning hypothesis.') => ({ status: 'recorded' as const, recordKind: 'planning-snapshot' as const, currentSourceRevalidated: false as const, items: [{ briefId: 'summer-test', briefDate: '2026-09-08', creatorId: 'creator-a', surface: 'carousel' as const, templateId: 'CT-2', requiredAssetCount: 2, requiredAssetSlots: [{ role: 'hook', kind: 'persona' as const }, { role: 'payoff', kind: 'persona' as const }], hypothesis, intendedMetric: 'saves per reached account', sourceCount: 1, sourceDates: ['2026-09-07'], observedMetrics: null, renderAs: 'text' as const }] });
+const recordedBriefs = (hypothesis = 'A recorded planning hypothesis.') => ({ status: 'recorded' as const, recordKind: 'planning-snapshot' as const, currentSourceRevalidated: false as const, items: [{ briefId: 'summer-test', briefSha256: 'f'.repeat(64), assignment: 'missing' as const, briefDate: '2026-09-08', creatorId: 'creator-a', surface: 'carousel' as const, templateId: 'CT-2', requiredAssetCount: 2, requiredAssetSlots: [{ role: 'hook', kind: 'persona' as const }, { role: 'payoff', kind: 'persona' as const }], hypothesis, intendedMetric: 'saves per reached account', sourceCount: 1, sourceDates: ['2026-09-07'], observedMetrics: null, renderAs: 'text' as const }] });
 
-afterEach(cleanup);
+afterEach(() => { cleanup(); vi.restoreAllMocks(); sessionStorage.clear(); });
 
 describe('FigmentWorkspace', () => {
   it('renders evidence states without treating a machine gate as checkpoint approval', async () => {
@@ -93,7 +95,7 @@ describe('FigmentWorkspace', () => {
   });
 
   it('wires the Frozen plans tab to the gen-plans endpoint with the session token and no POST on mount', async () => {
-    const genPlansBody = { schema: 'figment/studio-gen-plans@2' as const, requestScope: 'a'.repeat(64), plans: [], executionRecords: [], preparation: 'available' as const };
+    const genPlansBody = { schema: 'figment/studio-gen-plans@3' as const, requestScope: 'a'.repeat(64), plans: [], executionRecords: [], assignmentRecords: [], preparation: 'available' as const };
     const fetchImpl: ReturnType<typeof vi.fn> = vi.fn((url: string) => url === '/api/figment' ? response(projection) : url === '/api/figment/studio/gen-plans' ? response(genPlansBody) : Promise.reject(new Error(`unexpected request: ${url}`)));
     render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
     await screen.findByText('creator-a');
@@ -341,10 +343,11 @@ describe('FigmentWorkspace', () => {
     expect(screen.getByText('Recorded source footage; delivery review pending')).toBeTruthy();
   });
 
-  it('labels recorded native scene sources honestly without rendering private metadata', async () => {
-    const base = recordedBriefs();
+  it('explicit legacy hub @1 labels recorded native scene sources without rendering private metadata', async () => {
+    const current = recordedBriefs();
+    const base = { ...current, items: current.items.map(({ briefSha256: _digest, ...item }) => item) };
     const contentBriefs = { ...base, items: base.items.map((item) => ({ ...item, requiredAssetSlots: [{ role: 'scene', kind: 'nonpersona' as const }], requiredAssetCount: 1, assignment: 'recorded-native-source-snapshot' as const, privateNativePath: 'private/rulings/scene.json', reviewer: 'human-reviewer' })) };
-    const fetchImpl = vi.fn(() => response({ ...projection, contentBriefs })) as unknown as typeof fetch;
+    const fetchImpl = vi.fn(() => response({ ...projection, schema: 'figment/hub@1', contentBriefs })) as unknown as typeof fetch;
     const rendered = render(<FigmentWorkspace fetchImpl={fetchImpl} />); await screen.findByText('creator-a');
     fireEvent.click(screen.getByRole('tab', { name: 'Research' }));
     expect(screen.getByText('Recorded plan; scene images still need delivery review')).toBeTruthy();
@@ -502,6 +505,207 @@ function fillRevisionForm(): void {
 
 const figmentGets = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.filter(([url]) => String(url) === '/api/figment');
 const revisionPosts = (mock: ReturnType<typeof vi.fn>) => mock.mock.calls.filter(([url, init]) => String(url) === '/api/figment/studio/content-brief-revisions' && (init as RequestInit | undefined)?.method === 'POST');
+
+const navigationSlot = (overrides: Partial<StudioPlansModule.RecordedSlot> = {}): StudioPlansModule.RecordedSlot => ({
+  briefId: 'revision-a', briefSha256: 'a'.repeat(64), slotIndex: 1, role: 'hook', kind: 'persona', taxonomyType: 'A', ...overrides,
+});
+const navigationBriefs = () => {
+  const base = recordedBriefs();
+  return { ...base, items: [
+    { ...base.items[0], briefId: 'unassigned-base', creatorId: 'creator-001', hypothesis: 'An ordinary unassigned draft.' },
+    { ...base.items[0], briefId: 'revision-a', briefSha256: 'a'.repeat(64), creatorId: 'creator-001', assignment: 'recorded-snapshot' as const, hypothesis: 'First assigned revision.' },
+    { ...base.items[0], briefId: 'revision-b', briefSha256: 'b'.repeat(64), creatorId: 'creator-001', assignment: 'recorded-snapshot' as const, hypothesis: 'Second assigned revision.' },
+  ] };
+};
+const navigationPlans = (slots = [navigationSlot(), navigationSlot({ briefId: 'revision-b', briefSha256: 'b'.repeat(64), slotIndex: 2, role: 'payoff' })]) => {
+  const plan = { schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'c'.repeat(64) };
+  return { schema: 'figment/studio-gen-plans@3', requestScope: 'a'.repeat(64), plans: [plan], preparation: 'available',
+    executionRecords: [{ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } }],
+    assignmentRecords: [{ id: plan.id, planSha256: plan.planSha256, state: { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots } }],
+  };
+};
+function delayedResponse() {
+  let resolve!: (response: Response) => void;
+  const promise = new Promise<Response>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+function CommitProbe({ observe }: { observe: () => void }) { useLayoutEffect(() => { observe(); }); return null; }
+const unavailableSlotCopy = 'The recorded brief revision or slot is unavailable in this snapshot.';
+
+describe('FigmentWorkspace recorded assignment navigation', () => {
+  it('reloads the current hub after an owner B transition renders then suspends without committing', async () => {
+    const original = delayedResponse(), fresh = delayedResponse(), suspended = new Promise<never>(() => {});
+    let requests = 0;
+    const fetchImpl = vi.fn((_url: string, _init?: RequestInit) => ++requests === 1 ? original.promise : fresh.promise);
+    let renderedB = 0, enterB!: () => void, returnA!: () => void;
+    function Tail({ owner }: { owner: string }) { if (owner === 'b') { renderedB += 1; throw suspended; } return null; }
+    function Harness() {
+      const [mode, setMode] = useState({ owner: 'a', revision: 0 });
+      enterB = () => startTransition(() => setMode({ owner: 'b', revision: 1 }));
+      returnA = () => setMode({ owner: 'a', revision: 2 });
+      return <Suspense fallback={<p>Suspended hub fallback</p>}><FigmentWorkspace token={mode.owner} fetchImpl={fetchImpl as unknown as typeof fetch} /><Tail owner={mode.owner} /></Suspense>;
+    }
+    render(<Harness />); await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1));
+    await act(async () => enterB());
+    expect(renderedB).toBeGreaterThan(0); expect(screen.queryByText('Suspended hub fallback')).toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    act(() => returnA()); await waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(2));
+    await act(async () => original.resolve(await response(projection)));
+    expect(screen.queryByText('creator-a')).toBeNull();
+    await act(async () => fresh.resolve(await response({ ...projection, creators: [{ ...projection.creators[0], id: 'fresh-after-discard' }] })));
+    await screen.findByText('fresh-after-discard');
+    expect(screen.getByRole('tab', { name: 'Research' })).toBeTruthy();
+    expect(fetchImpl.mock.calls.every(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer a' && init?.method !== 'POST')).toBe(true);
+  });
+
+  it('navigates to each exact revision and slot alongside an ordinary draft without fetching or posting on navigation', async () => {
+    const fetchImpl = vi.fn((url: string, _init?: RequestInit) => url === '/api/figment' ? response({ ...projection, contentBriefs: navigationBriefs() })
+      : url === '/api/figment/studio/gen-plans' ? response(navigationPlans()) : Promise.reject(new Error(`unexpected URL: ${url}`)));
+    const view = render(<FigmentWorkspace token="session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('creator-a');
+    for (const [id, index, role, hypothesis] of [['revision-a', 1, 'hook', 'First assigned revision.'], ['revision-b', 2, 'payoff', 'Second assigned revision.']] as const) {
+      fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+      const open = await screen.findByRole('button', { name: `View ${id} slot ${index}` });
+      const count = fetchImpl.mock.calls.length;
+      fireEvent.click(open);
+      expect(screen.getByRole('tab', { name: 'Research' }).getAttribute('aria-selected')).toBe('true');
+      const selected = view.container.querySelectorAll('article[aria-current="true"]');
+      expect(selected).toHaveLength(1); expect(selected[0]?.textContent).toContain(hypothesis);
+      expect(screen.getByLabelText(`Recorded assignment slot ${index}: ${role}`)).toBeTruthy();
+      expect(screen.getByText('An ordinary unassigned draft.')).toBeTruthy();
+      expect(screen.queryByText(unavailableSlotCopy)).toBeNull();
+      expect(fetchImpl.mock.calls).toHaveLength(count); expect(revisionPosts(fetchImpl)).toHaveLength(0);
+    }
+    expect(fetchImpl.mock.calls.every(([, init]) => (init as RequestInit | undefined)?.method !== 'POST')).toBe(true);
+  });
+
+  it.each(['different revision', 'missing brief', 'duplicate brief', 'wrong role', 'wrong kind', 'missing slot', 'legacy hub'] as const)(
+    'never highlights a %s target and offers only explicit refresh', async (variant) => {
+      const original = navigationBriefs();
+      let items = original.items;
+      if (variant === 'different revision') items = items.map((item) => item.briefId === 'revision-a' ? { ...item, briefSha256: 'd'.repeat(64) } : item);
+      if (variant === 'missing brief') items = items.filter((item) => item.briefId !== 'revision-a');
+      if (variant === 'duplicate brief') items = [...items, { ...items[1] }];
+      if (variant === 'wrong role') items = items.map((item) => item.briefId === 'revision-a' ? { ...item, requiredAssetSlots: [{ role: 'different', kind: 'persona' as const }, item.requiredAssetSlots[1]] } : item);
+      if (variant === 'missing slot') items = items.map((item) => item.briefId === 'revision-a' ? { ...item, requiredAssetCount: 1, requiredAssetSlots: [item.requiredAssetSlots[0]] } : item);
+      const contentBriefs = variant === 'legacy hub' ? { ...original, items: items.map(({ briefSha256: _digest, ...item }) => item) }
+        : variant === 'wrong kind' ? { ...original, items: items.map((item) => item.briefId === 'revision-a' ? { ...item, requiredAssetSlots: [{ role: 'hook', kind: 'nonpersona' }, item.requiredAssetSlots[1]] } : item) }
+          : { ...original, items };
+      const target = variant === 'missing slot' ? navigationSlot({ slotIndex: 2, role: 'payoff' }) : navigationSlot();
+      let hubGets = 0;
+      const fetchImpl = vi.fn((url: string, _init?: RequestInit) => {
+        if (url === '/api/figment') { hubGets += 1; return response({ ...projection, schema: variant === 'legacy hub' ? 'figment/hub@1' : projection.schema, contentBriefs }); }
+        if (url === '/api/figment/studio/gen-plans') return response(navigationPlans([target]));
+        return Promise.reject(new Error(`unexpected URL: ${url}`));
+      });
+      const view = render(<FigmentWorkspace fetchImpl={fetchImpl as unknown as typeof fetch} />);
+      await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+      const open = await screen.findByRole('button', { name: `View revision-a slot ${target.slotIndex}` });
+      const calls = fetchImpl.mock.calls.length; fireEvent.click(open);
+      expect(screen.getByText(unavailableSlotCopy)).toBeTruthy();
+      expect(view.container.querySelector('article[aria-current="true"]')).toBeNull();
+      expect(fetchImpl.mock.calls).toHaveLength(calls); expect(hubGets).toBe(1);
+      fireEvent.click(screen.getByRole('button', { name: 'Refresh brief records' }));
+      await waitFor(() => expect(hubGets).toBe(2));
+      expect(fetchImpl.mock.calls.every(([, init]) => init?.method !== 'POST')).toBe(true);
+    });
+
+  it('highlights a formerly stale target only after an explicit hub refresh returns its exact revision', async () => {
+    let hubGets = 0;
+    const fetchImpl = vi.fn((url: string, _init?: RequestInit) => {
+      if (url === '/api/figment') { hubGets += 1; const briefs = navigationBriefs(); return response({ ...projection, contentBriefs: hubGets === 1 ? { ...briefs, items: briefs.items.map((item) => ({ ...item, briefSha256: 'd'.repeat(64) })) } : briefs }); }
+      return url === '/api/figment/studio/gen-plans' ? response(navigationPlans()) : Promise.reject(new Error('unexpected request'));
+    });
+    const view = render(<FigmentWorkspace token="current-session" fetchImpl={fetchImpl as unknown as typeof fetch} />);
+    await screen.findByText('creator-a'); fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'View revision-a slot 1' }));
+    expect(screen.getByText(unavailableSlotCopy)).toBeTruthy(); expect(hubGets).toBe(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh brief records' }));
+    await screen.findByLabelText('Recorded assignment slot 1: hook');
+    expect(view.container.querySelectorAll('article[aria-current="true"]')).toHaveLength(1);
+    expect(figmentGets(fetchImpl)[1]?.[1]).toEqual({ headers: { authorization: 'Bearer current-session' } });
+    expect(hubGets).toBe(2); expect(revisionPosts(fetchImpl)).toHaveLength(0);
+  });
+
+  it.each(['missing digest', 'short digest', 'uppercase digest', 'extra item field', 'legacy with digest'] as const)(
+    'fails closed on %s in the versioned hub brief contract', async (variant) => {
+      const base = recordedBriefs();
+      const items = base.items.map((item) => {
+        if (variant === 'missing digest') { const { briefSha256: _digest, ...rest } = item; return rest; }
+        if (variant === 'short digest') return { ...item, briefSha256: 'a'.repeat(63) };
+        if (variant === 'uppercase digest') return { ...item, briefSha256: 'A'.repeat(64) };
+        return variant === 'extra item field' ? { ...item, privatePath: 'private-hub-record' } : item;
+      });
+      const fetchImpl = vi.fn(() => response({ ...projection, schema: variant === 'legacy with digest' ? 'figment/hub@1' : projection.schema, contentBriefs: { ...base, items } }));
+      render(<FigmentWorkspace fetchImpl={fetchImpl as unknown as typeof fetch} />);
+      await screen.findByText('Figment records are unavailable.');
+      expect(screen.queryByText('creator-a')).toBeNull(); expect(document.body.textContent).not.toContain('private-hub-record');
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    });
+
+  it.each(['token', 'fetch'] as const)('removes all old hub content before passive effects across %s A-B-A ownership changes', async (kind) => {
+    const second = delayedResponse(), third = delayedResponse(); let aCalls = 0;
+    const fetchA = vi.fn((_url: string, init?: RequestInit) => {
+      if (kind === 'token' && new Headers(init?.headers).get('authorization') === 'Bearer owner-b') return second.promise;
+      aCalls += 1; return aCalls === 1 ? response({ ...projection, contentBriefs: navigationBriefs() }) : third.promise;
+    });
+    const fetchB = vi.fn(() => second.promise);
+    const observed: string[] = [];
+    const renderOwner = (owner: 'a' | 'b') => <><FigmentWorkspace token={kind === 'token' && owner === 'b' ? 'owner-b' : 'owner-a'} fetchImpl={(kind === 'fetch' && owner === 'b' ? fetchB : fetchA) as unknown as typeof fetch} /><CommitProbe observe={() => observed.push(document.body.textContent ?? '')} /></>;
+    const view = render(renderOwner('a')); await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Research' })); expect(screen.getByText('First assigned revision.')).toBeTruthy();
+    observed.length = 0; view.rerender(renderOwner('b'));
+    expect(observed).toHaveLength(1); expect(observed[0]).not.toMatch(/First assigned revision|chapter\.md|creator-a/);
+    view.rerender(renderOwner('a'));
+    expect(observed[1]).not.toMatch(/First assigned revision|chapter\.md|creator-a/);
+    expect(screen.queryByText('First assigned revision.')).toBeNull();
+    await act(async () => second.resolve(await response({ ...projection, creators: [{ ...projection.creators[0], id: 'stale-b' }] })));
+    expect(screen.queryByText('stale-b')).toBeNull();
+    await act(async () => third.resolve(await response({ ...projection, creators: [{ ...projection.creators[0], id: 'fresh-a' }] })));
+    if (!screen.queryByText('fresh-a')) fireEvent.click(screen.getByRole('tab', { name: 'Creators' }));
+    await screen.findByText('fresh-a');
+    expect(document.body.textContent).not.toMatch(/owner-a|owner-b/);
+  });
+
+  it.each(['token', 'fetch'] as const)('ignores an original %s A response after A-B-A even though the owner values match again', async (kind) => {
+    const original = delayedResponse(), b = delayedResponse(), current = delayedResponse(); let aCalls = 0;
+    const fetchA = vi.fn((_url: string, init?: RequestInit) => {
+      if (kind === 'token' && new Headers(init?.headers).get('authorization') === 'Bearer b') return b.promise;
+      aCalls += 1; return aCalls === 1 ? original.promise : current.promise;
+    });
+    const fetchB = vi.fn(() => b.promise);
+    const props = (owner: 'a' | 'b') => ({ token: kind === 'token' ? owner : 'a', fetchImpl: (kind === 'fetch' && owner === 'b' ? fetchB : fetchA) as unknown as typeof fetch });
+    const view = render(<FigmentWorkspace {...props('a')} />); view.rerender(<FigmentWorkspace {...props('b')} />); view.rerender(<FigmentWorkspace {...props('a')} />);
+    await act(async () => original.resolve(await response(projection)));
+    expect(screen.queryByText('creator-a')).toBeNull();
+    await act(async () => current.resolve(await response({ ...projection, creators: [{ ...projection.creators[0], id: 'new-owner-a' }] })));
+    await screen.findByText('new-owner-a');
+    await act(async () => b.resolve(await response(projection)));
+    expect(screen.queryByText('creator-a')).toBeNull(); expect(screen.getByText('new-owner-a')).toBeTruthy();
+  });
+
+  it.each(['token', 'fetch'] as const)('rejects a captured slot callback from an earlier %s owner generation', async (kind) => {
+    const spy = vi.spyOn(StudioPlansModule, 'StudioGenPlans');
+    const fetchA = vi.fn((url: string) => url === '/api/figment' ? response({ ...projection, contentBriefs: navigationBriefs() }) : response(navigationPlans()));
+    const fetchB = vi.fn(() => response({ ...projection, contentBriefs: navigationBriefs() }));
+    const props = (owner: 'a' | 'b') => ({ token: kind === 'token' ? owner : 'a', fetchImpl: (kind === 'fetch' && owner === 'b' ? fetchB : fetchA) as unknown as typeof fetch });
+    const view = render(<FigmentWorkspace {...props('a')} />); await screen.findByText('creator-a');
+    fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' })); await screen.findByRole('button', { name: 'View revision-a slot 1' });
+    const oldCallback = spy.mock.calls.at(-1)?.[0].onOpenRecordedSlot;
+    expect(oldCallback).toBeTypeOf('function');
+    fireEvent.click(screen.getByRole('button', { name: 'View revision-a slot 1' }));
+    expect(screen.getByLabelText('Recorded assignment slot 1: hook')).toBeTruthy();
+    view.rerender(<FigmentWorkspace {...props('b')} />); await screen.findByRole('tab', { name: 'Creators' });
+    expect(screen.queryByLabelText('Recorded assignment slot 1: hook')).toBeNull();
+    fireEvent.click(screen.getByRole('tab', { name: 'Creators' }));
+    view.rerender(<FigmentWorkspace {...props('a')} />); await screen.findByRole('tab', { name: 'Creators' });
+    const count = fetchA.mock.calls.length + fetchB.mock.calls.length;
+    act(() => oldCallback?.(navigationSlot()));
+    expect(screen.getByRole('tab', { name: 'Creators' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.queryByLabelText('Recorded assignment slot 1: hook')).toBeNull();
+    expect(fetchA.mock.calls.length + fetchB.mock.calls.length).toBe(count);
+  });
+});
 
 describe('FigmentWorkspace content-brief revision composition', () => {
   it('offers only recorded creator-001 briefs as revision bases', async () => {

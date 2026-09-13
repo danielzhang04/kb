@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { renderMarkdown } from '../lib/markdown';
-import { StudioGenPlans } from './StudioGenPlans';
+import { StudioGenPlans, type RecordedSlot } from './StudioGenPlans';
 import { VideoRulingRead } from './VideoRulingRead';
 import { ContentBriefRevisionForm } from './ContentBriefRevisionForm';
 import './figment.css';
@@ -26,10 +26,10 @@ type CloudExperiment = { status: 'not-configured' } | { status: 'unavailable'; r
 type TrainFirst = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; planSha256: string; creator: string; stage: 'train' | 'tester'; execution: 'planned' | 'running' | 'failed' | 'completed'; liveness: 'unknown' | null; maxMinutes: number; maxUsd: number; startedUtc: string | null; finishedUtc: string | null; terminationVerified: boolean | null; checkpoints: Array<{ name: string; bytes: number }>; outputCount: number; quality: 'not-reviewed' | 'recorded-rejection' | 'unavailable' };
 type CloudPairReview = { disposition: 'stop'; source: string; observations: { identity: string; realism: string; composition: string; clothing: string; safety: string } };
 type CloudPairGallery = { status: 'not-configured' } | { status: 'unavailable'; reason: 'evidence-unavailable' } | { status: 'recorded'; experimentId: string; modelFamily: string; notPromotable: true; trainingEligible: false; rows: Array<{ seed: number; asset: { assetId: string; sha256: string; bytes: number; width: number; height: number }; reviews: { root: CloudPairReview; independent: CloudPairReview } }> };
-type ContentBriefItem = { briefId: string; briefDate: string; creatorId: string; surface: 'carousel' | 'reel'; templateId: string; requiredAssetCount: number; requiredAssetSlots: Array<{ role: string; kind: 'persona' | 'nonpersona' }>; hypothesis: string; intendedMetric: string; sourceCount: number; sourceDates: string[]; observedMetrics: null; renderAs: 'text'; assignment?: 'missing' | 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot' | 'unavailable' };
+type ContentBriefItem = { briefId: string; briefSha256?: string; briefDate: string; creatorId: string; surface: 'carousel' | 'reel'; templateId: string; requiredAssetCount: number; requiredAssetSlots: Array<{ role: string; kind: 'persona' | 'nonpersona' }>; hypothesis: string; intendedMetric: string; sourceCount: number; sourceDates: string[]; observedMetrics: null; renderAs: 'text'; assignment?: 'missing' | 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot' | 'unavailable' };
 type ContentBriefs = { status: 'not-configured'; items: [] } | { status: 'empty'; recordKind: 'planning-snapshot'; currentSourceRevalidated: false; items: [] } | { status: 'unavailable'; reason: 'evidence-unavailable'; items: [] } | { status: 'recorded'; recordKind: 'planning-snapshot'; currentSourceRevalidated: false; items: ContentBriefItem[] };
 interface Projection {
-  schema: 'figment/hub@1'; available: boolean;
+  schema: 'figment/hub@1' | 'figment/hub@2'; available: boolean;
   creators: Array<{ id: string; persona: 'valid' | 'malformed'; loraTier: string | null; loraTrigger: string | null; accountTiers: string[] }>;
   creatorsTruncated: boolean; records: RecordRow[]; recordsTruncated: boolean;
   plans: { items: Array<{ path: string; creator: string; variant: string | null; stages: Array<{ name: string; runCount: number; declaredCeilingUsd: number | null }>; declaredCeilingUsd: number }>; truncated: boolean };
@@ -158,9 +158,14 @@ function cloudPairGallery(value: unknown): CloudPairGallery | null {
   for (const row of value.rows) { if (!object(row) || !finite(row.seed) || !object(row.asset) || !string(row.asset.assetId) || !sha256(row.asset.sha256) || !finite(row.asset.bytes) || row.asset.bytes < 1 || row.asset.bytes > 8 * 1024 * 1024 || !finite(row.asset.width) || !finite(row.asset.height) || !object(row.reviews)) return null; for (const role of ['root', 'independent']) { const review = row.reviews[role]; if (!object(review) || review.disposition !== 'stop' || !string(review.source) || !object(review.observations)) return null; const observations = review.observations; if (!fields.every((key) => string(observations[key]))) return null; } }
   return value as unknown as CloudPairGallery;
 }
-function contentBriefs(value: unknown): ContentBriefs | null {
-  if (value === undefined) return { status: 'not-configured', items: [] };
+function contentBriefs(value: unknown, withDigest: boolean): ContentBriefs | null {
+  if (value === undefined) return withDigest ? null : { status: 'not-configured', items: [] };
   if (!object(value) || !Array.isArray(value.items)) return null;
+  if (withDigest) {
+    const keys = value.status === 'not-configured' ? ['status', 'items'] : value.status === 'unavailable'
+      ? ['status', 'reason', 'items'] : ['status', 'recordKind', 'currentSourceRevalidated', 'items'];
+    if (Object.keys(value).length !== keys.length || keys.some((key) => !Object.hasOwn(value, key))) return null;
+  }
   if (value.status === 'not-configured' && value.items.length === 0) return { status: 'not-configured', items: [] };
   if (value.status === 'empty' && value.recordKind === 'planning-snapshot' && value.currentSourceRevalidated === false && value.items.length === 0) return value as unknown as ContentBriefs;
   if (value.status === 'unavailable' && value.reason === 'evidence-unavailable' && value.items.length === 0) return value as unknown as ContentBriefs;
@@ -168,14 +173,19 @@ function contentBriefs(value: unknown): ContentBriefs | null {
   const safeText = (item: unknown, maximum: number): item is string => typeof item === 'string' && item.length > 0 && item.length <= maximum && !/[\u0000-\u001f\u007f]/.test(item);
   const isoDate = (item: unknown): item is string => typeof item === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(item) && new Date(`${item}T00:00:00Z`).toISOString().slice(0, 10) === item;
   for (const item of value.items) {
+    if (!object(item)) return null;
+    if (withDigest) {
+      const keys = ['briefId', 'briefSha256', 'briefDate', 'creatorId', 'surface', 'templateId', 'requiredAssetCount', 'requiredAssetSlots', 'hypothesis', 'intendedMetric', 'sourceCount', 'sourceDates', 'observedMetrics', 'renderAs', 'assignment'];
+      if (Object.keys(item).length !== keys.length || keys.some((key) => !Object.hasOwn(item, key)) || !sha256(item.briefSha256)) return null;
+    } else if (Object.hasOwn(item, 'briefSha256')) return null;
     if (!object(item) || !safeText(item.briefId, 128) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.briefId) || !isoDate(item.briefDate) || !safeText(item.creatorId, 80) || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(item.creatorId) || (item.surface !== 'carousel' && item.surface !== 'reel') || !safeText(item.templateId, 16) || (item.surface === 'carousel' ? !/^CT-[1-7]$/.test(item.templateId) : !/^RT-[1-6]$/.test(item.templateId)) || !Number.isSafeInteger(item.requiredAssetCount) || !Array.isArray(item.requiredAssetSlots) || item.requiredAssetSlots.length !== item.requiredAssetCount || item.requiredAssetSlots.length < 1 || item.requiredAssetSlots.length > 16 || !safeText(item.hypothesis, 4096) || !safeText(item.intendedMetric, 4096) || !Number.isSafeInteger(item.sourceCount) || !Array.isArray(item.sourceDates) || item.sourceDates.length !== item.sourceCount || item.sourceDates.length < 1 || item.sourceDates.length > 16 || !item.sourceDates.every(isoDate) || item.observedMetrics !== null || item.renderAs !== 'text' || (item.assignment !== undefined && item.assignment !== 'missing' && item.assignment !== 'recorded-snapshot' && item.assignment !== 'recorded-source-snapshot' && item.assignment !== 'recorded-native-source-snapshot' && item.assignment !== 'unavailable')) return null;
-    if (!item.requiredAssetSlots.every((slot) => object(slot) && safeText(slot.role, 80) && (slot.kind === 'persona' || slot.kind === 'nonpersona'))) return null;
+    if (!item.requiredAssetSlots.every((slot) => object(slot) && (!withDigest || (Object.keys(slot).length === 2 && Object.hasOwn(slot, 'role') && Object.hasOwn(slot, 'kind'))) && safeText(slot.role, 80) && (slot.kind === 'persona' || slot.kind === 'nonpersona'))) return null;
   }
   return value as unknown as ContentBriefs;
 }
 
 function valid(value: unknown): Projection | null {
-  if (!object(value) || value.schema !== 'figment/hub@1' || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.references) || !bounded(value.references.items) || typeof value.references.truncated !== 'boolean' || !object(value.generatedInputs) || typeof value.generatedInputs.available !== 'boolean' || !bounded(value.generatedInputs.items) || typeof value.generatedInputs.truncated !== 'boolean' || !object(value.diagnostic)) return null;
+  if (!object(value) || (value.schema !== 'figment/hub@1' && value.schema !== 'figment/hub@2') || typeof value.available !== 'boolean' || !bounded(value.creators) || typeof value.creatorsTruncated !== 'boolean' || !bounded(value.records) || typeof value.recordsTruncated !== 'boolean' || !object(value.plans) || !bounded(value.plans.items) || typeof value.plans.truncated !== 'boolean' || !object(value.research) || typeof value.research.available !== 'boolean' || !bounded(value.research.artifacts) || typeof value.research.truncated !== 'boolean' || !object(value.references) || !bounded(value.references.items) || typeof value.references.truncated !== 'boolean' || !object(value.generatedInputs) || typeof value.generatedInputs.available !== 'boolean' || !bounded(value.generatedInputs.items) || typeof value.generatedInputs.truncated !== 'boolean' || !object(value.diagnostic)) return null;
   if (!value.creators.every((row) => object(row) && string(row.id) && (row.persona === 'valid' || row.persona === 'malformed') && nullableString(row.loraTier) && nullableString(row.loraTrigger) && bounded(row.accountTiers) && row.accountTiers.every(string))) return null;
   if (!value.records.every((row) => object(row) && string(row.path) && string(row.type) && nullableString(row.creator) && nullableString(row.schema) && states.has(row.reviewState as ReviewState) && (row.machineGateState === null || row.machineGateState === 'current' || row.machineGateState === 'stale'))) return null;
   if (!value.plans.items.every((plan) => object(plan) && string(plan.path) && string(plan.creator) && nullableString(plan.variant) && finite(plan.declaredCeilingUsd) && bounded(plan.stages) && plan.stages.every((stage) => object(stage) && string(stage.name) && finite(stage.runCount) && (stage.declaredCeilingUsd === null || finite(stage.declaredCeilingUsd))))) return null;
@@ -191,7 +201,7 @@ function valid(value: unknown): Projection | null {
   const cloud = value.cloudExperiment === undefined ? { status: 'not-configured' } : cloudExperiment(value.cloudExperiment);
   const currentTrain = trainFirst(value.trainFirst);
   const pair = value.cloudPairGallery === undefined ? { status: 'not-configured' } : cloudPairGallery(value.cloudPairGallery);
-  const briefs = contentBriefs(value.contentBriefs);
+  const briefs = contentBriefs(value.contentBriefs, value.schema === 'figment/hub@2');
   return training === null || results === null || gallery === null || profile === null || cloud === null || currentTrain === null || pair === null || briefs === null ? null : { ...value, localTraining: training, localTrainingResults: results, matchedGallery: gallery, profileGallery: profile, cloudExperiment: cloud, trainFirst: currentTrain, cloudPairGallery: pair, contentBriefs: briefs } as unknown as Projection;
 }
 
@@ -232,7 +242,7 @@ function Records({ rows, truncated }: { rows: RecordRow[]; truncated: boolean })
   return <><div className="figment__records">{rows.map((r) => <article className="figment__record" key={r.path}><div><h2>{r.type.replaceAll('-', ' ')}</h2><p>{r.creator ?? 'Shared Figment record'}{r.schema ? ` · ${r.schema}` : ''}</p><code className="figment__record-path">{r.path}</code></div><div className="figment__evidence"><span className={`figment__badge figment__badge--${r.reviewState}`}>{approval(r.reviewState)}</span>{r.machineGateState ? <span className={`figment__badge figment__badge--machine-${r.machineGateState}`}>Machine gate {r.machineGateState}</span> : null}<CopyPath path={r.path} /></div></article>)}</div>{truncated ? <p className="figment__notice">The record list reached its safe display limit.</p> : null}</>;
 }
 
-function Plans({ plans, token, fetchImpl }: { plans: Projection['plans']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
+function Plans({ plans, token, fetchImpl, onOpenRecordedSlot }: { plans: Projection['plans']; token?: string; fetchImpl: typeof fetch; onOpenRecordedSlot: (target: RecordedSlot) => void }): React.JSX.Element {
   const [preview, setPreview] = useState<TesterPreview | null>(null); const [pending, setPending] = useState(false); const [error, setError] = useState<string | null>(null);
   const generateTesterPreview = (): void => {
     setPending(true); setError(null); setPreview(null);
@@ -242,7 +252,7 @@ function Plans({ plans, token, fetchImpl }: { plans: Projection['plans']; token?
       setPreview(decoded);
     }).catch((cause) => setError(cause instanceof Error ? cause.message : 'The offline tester preview is unavailable.')).finally(() => setPending(false));
   };
-  return <><p className="figment__inert">Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.</p><StudioGenPlans token={token} fetchImpl={fetchImpl} /><section className="figment__preview"><h2>Tester plan preview</h2><p>Builds a fresh, local-only tester plan for creator-001 with pin verification skipped. It cannot run a pod, create an approval, or promote a checkpoint.</p><button type="button" className="mc-btn" onClick={generateTesterPreview} disabled={pending}>{pending ? 'Building preview…' : 'Preview tester plan'}</button>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}{preview ? <p role="status">{preview.creator} · {preview.stage} · {preview.runCount} planned run{preview.runCount === 1 ? '' : 's'} · declared ${preview.declaredCeilingUsd.toFixed(2)} · manifest {preview.manifestSha256.slice(0, 12)}</p> : null}</section>{plans.items.length ? <div className="figment__plans">{plans.items.map((plan) => <article className="figment__plan" key={plan.path}><h2>{plan.creator}{plan.variant ? ` · ${plan.variant}` : ''}</h2><code className="figment__record-path">{plan.path}</code><p>Declared ceiling: ${plan.declaredCeilingUsd.toFixed(2)}</p><ul>{plan.stages.map((stage) => <li key={stage.name}><strong>{stage.name}</strong> · {stage.runCount} run{stage.runCount === 1 ? '' : 's'} · declared ${stage.declaredCeilingUsd?.toFixed(2) ?? 'unavailable'}</li>)}</ul></article>)}</div> : <p className="figment__empty">No frozen Figment plans are available.</p>}{plans.truncated ? <p className="figment__notice">The plan list reached its safe display limit.</p> : null}</>;
+  return <><p className="figment__inert">Offline preview of existing plans. Declared ceilings are not live estimates and this page cannot start a run.</p><StudioGenPlans token={token} fetchImpl={fetchImpl} onOpenRecordedSlot={onOpenRecordedSlot} /><section className="figment__preview"><h2>Tester plan preview</h2><p>Builds a fresh, local-only tester plan for creator-001 with pin verification skipped. It cannot run a pod, create an approval, or promote a checkpoint.</p><button type="button" className="mc-btn" onClick={generateTesterPreview} disabled={pending}>{pending ? 'Building preview…' : 'Preview tester plan'}</button>{error ? <p className="figment__reader-error" role="alert">{error}</p> : null}{preview ? <p role="status">{preview.creator} · {preview.stage} · {preview.runCount} planned run{preview.runCount === 1 ? '' : 's'} · declared ${preview.declaredCeilingUsd.toFixed(2)} · manifest {preview.manifestSha256.slice(0, 12)}</p> : null}</section>{plans.items.length ? <div className="figment__plans">{plans.items.map((plan) => <article className="figment__plan" key={plan.path}><h2>{plan.creator}{plan.variant ? ` · ${plan.variant}` : ''}</h2><code className="figment__record-path">{plan.path}</code><p>Declared ceiling: ${plan.declaredCeilingUsd.toFixed(2)}</p><ul>{plan.stages.map((stage) => <li key={stage.name}><strong>{stage.name}</strong> · {stage.runCount} run{stage.runCount === 1 ? '' : 's'} · declared ${stage.declaredCeilingUsd?.toFixed(2) ?? 'unavailable'}</li>)}</ul></article>)}</div> : <p className="figment__empty">No frozen Figment plans are available.</p>}{plans.truncated ? <p className="figment__notice">The plan list reached its safe display limit.</p> : null}</>;
 }
 
 function DeclaredReferences({ references, token, fetchImpl }: { references: Projection['references']; token?: string; fetchImpl: typeof fetch }): React.JSX.Element {
@@ -445,7 +455,7 @@ function TrainingReadiness({ training, results, current }: { training: LocalTrai
   return <section aria-label="Training readiness"><h2>Training readiness</h2>{currentLifecycle}{preparation}{completed}</section>;
 }
 
-function Research({ research, contentBriefs, token, fetchImpl, onRefreshRequested }: { research: Projection['research']; contentBriefs: ContentBriefs; token?: string; fetchImpl: typeof fetch; onRefreshRequested: () => void }): React.JSX.Element {
+function Research({ research, contentBriefs, token, fetchImpl, onRefreshRequested, selectedSlot }: { research: Projection['research']; contentBriefs: ContentBriefs; token?: string; fetchImpl: typeof fetch; onRefreshRequested: () => void; selectedSlot: RecordedSlot | null }): React.JSX.Element {
   const [article, setArticle] = useState<{ path: string; content: string | null }>({ path: '', content: null });
   const [error, setError] = useState<string | null>(null);
   const request = useRef<{ generation: number; controller: AbortController | null }>({ generation: 0, controller: null });
@@ -486,7 +496,16 @@ function Research({ research, contentBriefs, token, fetchImpl, onRefreshRequeste
   const revisionForm = contentBriefs.status === 'recorded'
     ? <ContentBriefRevisionForm bases={revisionBases} token={token} fetchImpl={fetchImpl} onRefreshRequested={onRefreshRequested} />
     : null;
-  const briefs = contentBriefs.status === 'not-configured' ? null : <section className="figment__references" aria-label="Recorded content briefs"><h2>Recorded content briefs</h2><p className="figment__inert">Offline planning snapshots only. Sources and compiler inputs are not revalidated here, and observed results are not recorded.</p>{contentBriefs.status === 'unavailable' ? <p className="figment__empty">Content brief planning records are unavailable.</p> : contentBriefs.status === 'empty' ? <p className="figment__empty">No compiled content briefs are recorded.</p> : <div className="figment__grid">{contentBriefs.items.map((brief) => <article className="figment__card" key={brief.briefId}><h2>{brief.creatorId} · {brief.surface} {brief.templateId}</h2><time dateTime={brief.briefDate}>{brief.briefDate}</time><p>{brief.hypothesis}</p><dl><dt>Intended metric</dt><dd>{brief.intendedMetric}</dd><dt>Required assets</dt><dd>{brief.requiredAssetCount}: {brief.requiredAssetSlots.map((slot) => `${slot.role} (${slot.kind})`).join(', ')}</dd><dt>Assignment</dt><dd>{brief.assignment === 'recorded-native-source-snapshot' ? 'Recorded plan; scene images still need delivery review' : brief.assignment === 'recorded-source-snapshot' ? 'Recorded source footage; delivery review pending' : brief.assignment === 'recorded-snapshot' ? 'Recorded planning snapshot' : brief.assignment === 'unavailable' ? 'Assignment evidence unavailable' : 'No recorded assignment'}</dd><dt>Sources</dt><dd>{brief.sourceCount}: {brief.sourceDates.join(', ')}</dd><dt>Observed metrics</dt><dd>Not recorded</dd></dl></article>)}</div>}</section>;
+  const selectedBriefs = selectedSlot && contentBriefs.status === 'recorded'
+    ? contentBriefs.items.filter((brief) => brief.briefId === selectedSlot.briefId) : [];
+  const candidate = selectedBriefs.length === 1 ? selectedBriefs[0] : null;
+  const candidateSlot = selectedSlot ? candidate?.requiredAssetSlots[selectedSlot.slotIndex - 1] : null;
+  const selectedBrief = selectedSlot && candidate?.briefSha256 === selectedSlot.briefSha256
+    && candidate.creatorId === 'creator-001' && candidateSlot?.role === selectedSlot.role
+    && candidateSlot.kind === selectedSlot.kind ? candidate : null;
+  const selectionNotice = selectedSlot && !selectedBrief
+    ? <div className="figment__reader-error" role="alert"><p>The recorded brief revision or slot is unavailable in this snapshot.</p><button type="button" className="mc-btn" onClick={onRefreshRequested}>Refresh brief records</button></div> : null;
+  const briefs = contentBriefs.status === 'not-configured' ? selectionNotice : <section className="figment__references" aria-label="Recorded content briefs"><h2>Recorded content briefs</h2>{selectionNotice}<p className="figment__inert">Offline planning snapshots only. Sources and compiler inputs are not revalidated here, and observed results are not recorded.</p>{contentBriefs.status === 'unavailable' ? <p className="figment__empty">Content brief planning records are unavailable.</p> : contentBriefs.status === 'empty' ? <p className="figment__empty">No compiled content briefs are recorded.</p> : <div className="figment__grid">{contentBriefs.items.map((brief) => <article className="figment__card" key={brief.briefId} aria-current={brief === selectedBrief ? "true" : undefined}><h2>{brief.creatorId} · {brief.surface} {brief.templateId}</h2><p>{brief.briefId}{brief.briefSha256 ? ` · revision ${brief.briefSha256.slice(0, 12)}` : ""}</p>{brief === selectedBrief && selectedSlot ? <p className="figment__notice" aria-label={`Recorded assignment slot ${selectedSlot.slotIndex}: ${selectedSlot.role}`}>Recorded planning assignment · slot {selectedSlot.slotIndex}: {selectedSlot.role}</p> : null}<time dateTime={brief.briefDate}>{brief.briefDate}</time><p>{brief.hypothesis}</p><dl><dt>Intended metric</dt><dd>{brief.intendedMetric}</dd><dt>Required assets</dt><dd>{brief.requiredAssetCount}: {brief.requiredAssetSlots.map((slot) => `${slot.role} (${slot.kind})`).join(', ')}</dd><dt>Assignment</dt><dd>{brief.assignment === 'recorded-native-source-snapshot' ? 'Recorded plan; scene images still need delivery review' : brief.assignment === 'recorded-source-snapshot' ? 'Recorded source footage; delivery review pending' : brief.assignment === 'recorded-snapshot' ? 'Recorded planning snapshot' : brief.assignment === 'unavailable' ? 'Assignment evidence unavailable' : 'No recorded assignment'}</dd><dt>Sources</dt><dd>{brief.sourceCount}: {brief.sourceDates.join(', ')}</dd><dt>Observed metrics</dt><dd>Not recorded</dd></dl></article>)}</div>}</section>;
   if (!research.available) return <>{revisionForm}{briefs}<p className="figment__empty">Research records are unavailable.</p></>;
   if (article.path) return <section className="figment__reader" aria-label="Research reader"><button type="button" className="figment__back" onClick={() => { invalidateRequest(); setArticle({ path: '', content: null }); setError(null); }}>Back to research index</button><p className="figment__reader-path">{article.path}</p>{error ? <div className="figment__reader-error" role="alert"><p>{error}</p><button type="button" className="mc-btn" onClick={() => open(article.path)}>Retry</button></div> : article.content === null ? <p role="status">Loading research artifact…</p> : <article className="figment__reader-content" onClick={followLink} dangerouslySetInnerHTML={{ __html: renderMarkdown(article.content, { tables: true }) }} />}</section>;
   if (!research.artifacts.length) return <>{revisionForm}{briefs}<p className="figment__empty">No research or book artifacts are recorded.</p></>;
@@ -494,9 +513,44 @@ function Research({ research, contentBriefs, token, fetchImpl, onRefreshRequeste
 }
 
 export function FigmentWorkspace({ token, fetchImpl = fetch }: { token?: string; fetchImpl?: typeof fetch }): React.JSX.Element {
-  const [projection, setProjection] = useState<Projection | null>(null); const [error, setError] = useState(false); const [refresh, setRefresh] = useState(0); const [tab, setTab] = useState<Tab>('creators');
-  useEffect(() => { let live = true; setError(false); setProjection(null); void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => { if (!response.ok) throw new Error('figment unavailable'); const decoded = valid(await response.json()); if (!decoded) throw new Error('invalid figment projection'); if (live) setProjection(decoded); }).catch(() => { if (live) setError(true); }); return () => { live = false; }; }, [fetchImpl, refresh, token]);
-  if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={() => setRefresh((v) => v + 1)}>Retry</button> : null}</main>;
+  type Owner = { token: string | undefined; fetchImpl: typeof fetch; generation: number };
+  const owner = useRef<Owner>({ token, fetchImpl, generation: 0 });
+  if (owner.current.token !== token || owner.current.fetchImpl !== fetchImpl) {
+    owner.current = { token, fetchImpl, generation: owner.current.generation + 1 };
+  }
+  const renderOwner = owner.current;
+  const [snapshot, setSnapshot] = useState<{ owner: Owner; data: Projection } | null>(null);
+  const [failedOwner, setFailedOwner] = useState<Owner | null>(null);
+  const [selection, setSelection] = useState<{ owner: Owner; target: RecordedSlot } | null>(null);
+  const [refresh, setRefresh] = useState(0);
+  const [tab, setTab] = useState<Tab>('creators');
+  const sequence = useRef(0);
+  const projection = snapshot?.owner === renderOwner ? snapshot.data : null;
+  const error = failedOwner === renderOwner;
+  const selectedSlot = selection?.owner === renderOwner ? selection.target : null;
+  const refreshRecords = (): void => {
+    if (owner.current === renderOwner) setRefresh((value) => value + 1);
+  };
+  const openRecordedSlot = (target: RecordedSlot): void => {
+    if (owner.current !== renderOwner || projection === null) return;
+    setSelection({ owner: renderOwner, target });
+    setTab('research');
+  };
+  useEffect(() => {
+    let live = true;
+    const request = ++sequence.current;
+    setFailedOwner(null); setSnapshot(null);
+    void fetchImpl('/api/figment', requestOptions(token)).then(async (response) => {
+      if (!response.ok) throw new Error('figment unavailable');
+      const decoded = valid(await response.json());
+      if (!decoded) throw new Error('invalid figment projection');
+      if (live && owner.current === renderOwner && sequence.current === request) setSnapshot({ owner: renderOwner, data: decoded });
+    }).catch(() => {
+      if (live && owner.current === renderOwner && sequence.current === request) setFailedOwner(renderOwner);
+    });
+    return () => { live = false; };
+  }, [fetchImpl, refresh, token, renderOwner]);
+  if (!projection) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p role="status">{error ? 'Figment records are unavailable.' : 'Loading Figment records…'}</p>{error ? <button type="button" className="mc-btn" onClick={refreshRecords}>Retry</button> : null}</main>;
   if (!projection.available) return <main className="figment" aria-label="Figment workspace"><h1>Figment</h1><p className="figment__empty">The Figment project records are unavailable.</p></main>;
-  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Project evidence and local planning. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => setTab(id)}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} matchedGallery={projection.matchedGallery} profileGallery={projection.profileGallery} cloudExperiment={projection.cloudExperiment} cloudPairGallery={projection.cloudPairGallery} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} current={projection.trainFirst} /> : tab === 'records' ? <><Records rows={projection.records} truncated={projection.recordsTruncated} /><VideoRulingRead token={token} fetchImpl={fetchImpl} /></> : <Research research={projection.research} contentBriefs={projection.contentBriefs} token={token} fetchImpl={fetchImpl} onRefreshRequested={() => setRefresh((value) => value + 1)} />}</section></main>;
+  return <main className="figment" aria-label="Figment workspace"><header className="figment__header"><div><h1>Figment</h1><p>Project evidence and local planning. Machine-gate state does not approve a checkpoint.</p></div><p className={`figment__diagnostic figment__diagnostic--${projection.diagnostic.status}`}>{diagnostic(projection.diagnostic)}</p></header><div className="figment__tabs" role="tablist" aria-label="Figment workspace sections">{([['creators', 'Creators'], ['assets', 'Asset review'], ['plans', 'Frozen plans'], ['training', 'Training readiness'], ['records', 'Runs & review'], ['research', 'Research']] as const).map(([id, label]) => <button key={id} type="button" role="tab" aria-selected={tab === id} className={tab === id ? 'figment__tab figment__tab--active' : 'figment__tab'} onClick={() => { if (owner.current === renderOwner) setTab(id); }}>{label}</button>)}</div><section role="tabpanel" className="figment__panel">{tab === 'creators' ? <Creators rows={projection.creators} truncated={projection.creatorsTruncated} /> : tab === 'assets' ? <Assets diagnostic={projection.diagnostic} references={projection.references} generatedInputs={projection.generatedInputs} matchedGallery={projection.matchedGallery} profileGallery={projection.profileGallery} cloudExperiment={projection.cloudExperiment} cloudPairGallery={projection.cloudPairGallery} token={token} fetchImpl={fetchImpl} /> : tab === 'plans' ? <Plans plans={projection.plans} token={token} fetchImpl={fetchImpl} onOpenRecordedSlot={openRecordedSlot} /> : tab === 'training' ? <TrainingReadiness training={projection.localTraining} results={projection.localTrainingResults} current={projection.trainFirst} /> : tab === 'records' ? <><Records rows={projection.records} truncated={projection.recordsTruncated} /><VideoRulingRead token={token} fetchImpl={fetchImpl} /></> : <Research research={projection.research} contentBriefs={projection.contentBriefs} token={token} fetchImpl={fetchImpl} onRefreshRequested={refreshRecords} selectedSlot={selectedSlot} />}</section></main>;
 }

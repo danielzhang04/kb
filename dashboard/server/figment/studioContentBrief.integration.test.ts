@@ -314,6 +314,7 @@ describe('Studio content-brief route: real builder, collector, publisher, reader
       expect(projection.items.map((item) => item.briefId)).toEqual([BRIEF_ID, BASE_ID]);
       expect(projection.items.find((item) => item.briefId === BRIEF_ID)).toMatchObject({
         briefDate: requestBody.briefDate,
+        briefSha256,
         creatorId: 'creator-001',
         hypothesis: requestBody.hypothesis,
         intendedMetric: requestBody.intendedMetric,

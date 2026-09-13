@@ -76,6 +76,7 @@ describe('Figment read projection', () => {
     const paths = await fixture();
     const projection = buildFigmentProjection(paths.repo, paths.diagnostic);
     expect(projection.available).toBe(true);
+    expect(projection.schema).toBe('figment/hub@2');
     expect(projection.creatorsTruncated).toBe(false);
     expect(projection.creators).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'creator-a', persona: 'valid', loraTier: 'provisional' }),
@@ -367,5 +368,20 @@ describe('Figment read projection', () => {
     await writeFile(plan, 'x'.repeat(1_048_577), 'utf8');
     projection = buildFigmentProjection(paths.repo);
     expect(projection.records.find((record) => record.type === 'accepted-checkpoint')?.reviewState).toBe('unknown');
+  });
+});
+
+
+describe('Figment hub brief digest contract', () => {
+  it('publishes the digest of the same current brief bytes in hub @2', async () => {
+    const item = await fixture();
+    const path = join(item.repo, 'orgs/figment/content/briefs/digest-revision/brief.json');
+    await mkdir(join(path, '..'), { recursive: true });
+    const bytes = JSON.stringify(contentBrief()); await writeFile(path, bytes);
+    const projection = buildFigmentProjection(item.repo);
+    expect(projection.schema).toBe('figment/hub@2');
+    expect(projection.contentBriefs).toMatchObject({ status: 'recorded', items: expect.arrayContaining([expect.objectContaining({ briefId: 'digest-revision', briefSha256: digest(bytes) })]) });
+    const changed = JSON.stringify({ ...contentBrief(), hypothesis: 'Different exact brief revision.' }); await writeFile(path, changed);
+    expect(buildFigmentProjection(item.repo).contentBriefs).toMatchObject({ items: expect.arrayContaining([expect.objectContaining({ briefId: 'digest-revision', briefSha256: digest(changed) })]) });
   });
 });

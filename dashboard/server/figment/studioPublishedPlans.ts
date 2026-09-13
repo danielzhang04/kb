@@ -1,5 +1,6 @@
 /** Shared bounded metadata index for current and legacy Studio preparations. */
 import { createHash } from 'node:crypto';
+import type { Stats } from 'node:fs';
 import { lstat, open, opendir, realpath } from 'node:fs/promises';
 import { isAbsolute, join, relative, resolve, sep } from 'node:path';
 
@@ -21,6 +22,7 @@ export interface SafeRoot { path: string; real: string; }
 export interface Marker { schema: 'figment/studio-gen-plan-marker@1'; id: string; plan_sha256: string; intent_sha256: string; created_utc: string; }
 export interface Published { saved: Marker; directory: string; }
 export interface Inventory { published: Published[]; unmarked: boolean; directories: string[]; roots: string[]; }
+export type PublishedObservations = Array<() => Promise<boolean>>;
 
 /** Both locations are server-owned; only the Figment-contained root accepts new plans. */
 export function studioPlanRoots(repoRoot: string): { legacy: string; allocation: string } {
@@ -88,12 +90,18 @@ export async function entryExists(path: string): Promise<boolean> {
     throw error;
   }
 }
-export async function readBounded(path: string): Promise<Buffer | null> {
+function sameFile(a: Stats, b: Stats): boolean {
+  return a.isFile() && b.isFile() && !a.isSymbolicLink() && !b.isSymbolicLink()
+    && a.dev === b.dev && a.ino === b.ino && a.size === b.size
+    && a.mtimeMs === b.mtimeMs && a.ctimeMs === b.ctimeMs;
+}
+async function readBoundedRecord(path: string): Promise<{ bytes: Buffer; identity: Stats } | null> {
   let handle: Awaited<ReturnType<typeof open>> | null = null;
   try {
+    const namedBefore = await lstat(path);
     handle = await open(path, 'r');
     const before = await handle.stat();
-    if (!before.isFile() || before.size < 1 || before.size > MAX_PLAN_BYTES) return null;
+    if (!sameFile(before, namedBefore) || before.size < 1 || before.size > MAX_PLAN_BYTES) return null;
     const value = Buffer.allocUnsafe(before.size);
     let offset = 0;
     while (offset < value.length) {
@@ -102,9 +110,24 @@ export async function readBounded(path: string): Promise<Buffer | null> {
       offset += read.bytesRead;
     }
     const after = await handle.stat();
-    return after.isFile() && after.size === before.size && after.mtimeMs === before.mtimeMs ? value : null;
+    const namedAfter = await lstat(path);
+    return sameFile(before, after) && sameFile(before, namedAfter) ? { bytes: value, identity: before } : null;
   } catch { return null; }
   finally { await handle?.close().catch(() => {}); }
+}
+export async function readBounded(path: string): Promise<Buffer | null> {
+  return (await readBoundedRecord(path))?.bytes ?? null;
+}
+async function readObserved(root: SafeRoot, path: string, observations?: PublishedObservations): Promise<Buffer | null> {
+  if (await safePath(root, path, 'file') === null) return null;
+  const original = await readBoundedRecord(path);
+  if (original === null) return null;
+  observations?.push(async () => {
+    if (await safePath(root, path, 'file') === null) return false;
+    const current = await readBoundedRecord(path);
+    return current !== null && sameFile(original.identity, current.identity) && original.bytes.equals(current.bytes);
+  });
+  return original.bytes;
 }
 export function summary(value: unknown, id: string, planSha256: string): StudioGenPlan | null {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
@@ -163,7 +186,7 @@ function marker(value: unknown): Marker | null {
     && new Date(item.created_utc).toISOString() === item.created_utc ? item as unknown as Marker : null;
 }
 /** Bounded metadata discovery; recursive capacity failures do not hide safe published summaries. */
-async function scanPlanMarkers(root: SafeRoot, plansRoot: string): Promise<Inventory> {
+async function scanPlanMarkers(root: SafeRoot, plansRoot: string, observations?: PublishedObservations): Promise<Inventory> {
   if (await safePath(root, plansRoot, 'directory') === null) throw new Error('unsafe-root');
   const published: Published[] = [];
   const directories: string[] = [];
@@ -178,7 +201,7 @@ async function scanPlanMarkers(root: SafeRoot, plansRoot: string): Promise<Inven
     const markerName = join(directory, 'published.json');
     if (!await entryExists(markerName)) { unmarked = true; continue; }
     const markerPath = await safePath(root, markerName, 'file');
-    const raw = markerPath === null ? null : await readBounded(markerPath);
+    const raw = markerPath === null ? null : await readObserved(root, markerPath, observations);
     const saved = raw === null ? null : marker(JSON.parse(raw.toString('utf8')));
     if (saved === null || saved.id !== entry.name) throw new Error('bad-marker');
     published.push({ saved, directory });
@@ -198,14 +221,14 @@ export async function assertInventoryRoots(root: SafeRoot, inventory: Inventory)
 }
 
 /** One bounded marker index, with global identity/count limits across old and new locations. */
-export async function readPublishedStudioPlans(root: SafeRoot): Promise<Inventory> {
+export async function readPublishedStudioPlans(root: SafeRoot, observations?: PublishedObservations): Promise<Inventory> {
   const result: Inventory = { published: [], unmarked: false, directories: [], roots: [] };
   const ids = new Set<string>();
   const intents = new Set<string>();
   for (const path of Object.values(studioPlanRoots(root.path))) {
     if (!await safeProspective(root, path)) throw new Error('unsafe-root');
     if (!await entryExists(path)) continue;
-    const inventory = await scanPlanMarkers(root, path);
+    const inventory = await scanPlanMarkers(root, path, observations);
     result.roots.push(path);
     result.unmarked ||= inventory.unmarked;
     result.directories.push(...inventory.directories);
@@ -239,9 +262,9 @@ export async function assertPublishedStudioCapacity(root: SafeRoot, inventory: I
   await assertInventoryRoots(root, inventory);
 }
 /** The published summary, only when the plan bytes still hash to the marker. */
-export async function publishedPlan(root: SafeRoot, entry: Published): Promise<StudioGenPlan | null> {
+export async function publishedPlan(root: SafeRoot, entry: Published, observations?: PublishedObservations): Promise<StudioGenPlan | null> {
   const planPath = await safePath(root, join(entry.directory, 'plan.json'), 'file');
-  const raw = planPath === null ? null : await readBounded(planPath);
+  const raw = planPath === null ? null : await readObserved(root, planPath, observations);
   if (raw === null || sha256(raw) !== entry.saved.plan_sha256) return null;
   return summary(JSON.parse(raw.toString('utf8')), entry.saved.id, entry.saved.plan_sha256);
 }

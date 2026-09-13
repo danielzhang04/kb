@@ -12,6 +12,7 @@ const FORBIDDEN_KEY = /(approv|accept|decision|promot|publish|post)/i;
 interface Root { path: string; real: string; }
 export interface ContentBriefItem {
   briefId: string;
+  briefSha256: string;
   briefDate: string;
   creatorId: string;
   surface: 'carousel' | 'reel';
@@ -66,7 +67,7 @@ function absent(parent: Root, name: string): boolean {
   return false;
 }
 function sameFile(left: import('node:fs').Stats, right: import('node:fs').Stats): boolean { return left.isFile() && right.isFile() && left.size === right.size && left.dev === right.dev && left.ino === right.ino && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs; }
-function bounded(path: string): Buffer | null {
+function boundedRecord(path: string): { bytes: Buffer; identity: import('node:fs').Stats } | null {
   let descriptor: number | null = null;
   try {
     descriptor = openSync(path, 'r'); const before = fstatSync(descriptor), namedBefore = lstatSync(path);
@@ -74,7 +75,7 @@ function bounded(path: string): Buffer | null {
     const bytes = Buffer.allocUnsafe(before.size);
     for (let offset = 0; offset < bytes.length;) { const count = readSync(descriptor, bytes, offset, bytes.length - offset, offset); if (count <= 0) return null; offset += count; }
     const after = fstatSync(descriptor), namedAfter = lstatSync(path);
-    return sameFile(before, after) && sameFile(before, namedAfter) ? bytes : null;
+    return sameFile(before, after) && sameFile(before, namedAfter) ? { bytes, identity: before } : null;
   } catch { return null; } finally { if (descriptor !== null) try { closeSync(descriptor); } catch { /* failed reads stay unavailable */ } }
 }
 function shallow(source: string): boolean {
@@ -102,7 +103,7 @@ function snapshotRef(value: unknown): boolean {
   if (!object(value) || typeof value.path !== 'string' || value.path.length < 1 || value.path.length > 512 || !plain(value.path) || typeof value.sha256 !== 'string' || !SHA256.test(value.sha256)) return false;
   return !isAbsolute(value.path) && !value.path.includes('\\') && value.path.split('/').every((segment) => segment.length > 0 && segment !== '.' && segment !== '..');
 }
-interface ParsedBrief { item: Omit<ContentBriefItem, 'assignment'>; slots: Array<{ index: number; role: string; taxonomyType: string; kind: 'persona' | 'nonpersona' }>; creatorId: string; }
+interface ParsedBrief { item: Omit<ContentBriefItem, 'assignment' | 'briefSha256'>; slots: Array<{ index: number; role: string; taxonomyType: string; kind: 'persona' | 'nonpersona' }>; creatorId: string; }
 function contentBrief(value: unknown, briefId: string): ParsedBrief | null {
   if (!object(value) || hasForbiddenKey(value) || value.schema !== 'figment/content-brief@1' || !Object.prototype.hasOwnProperty.call(value, 'observed_metrics') || value.observed_metrics !== null) return null;
   const briefDate = date(value.brief_date), creator = object(value.creator) ? value.creator : null, content = object(value.content) ? value.content : null;
@@ -161,7 +162,21 @@ function nativeSourceAsset(value: unknown): boolean {
     && visualRuling.authority === 'human-visual-ruling' && visualRuling.decision === 'accept-native'
     && text(visualRuling.decided_by, 256) !== null && timestamp(visualRuling.decided_at);
 }
-function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot' | null {
+export interface StudioPlanIdentity { id: string; planSha256: string; creator: 'creator-001'; authorityRelativePlanPath: string | null; }
+export interface RecordedSlot { briefId: string; briefSha256: string; slotIndex: number; role: string; kind: 'persona'; taxonomyType: string; }
+export type StudioAssignmentState = { status: 'recorded'; recordKind: 'planning-snapshot'; currentSourceRevalidated: false; slots: RecordedSlot[] }
+  | { status: 'unavailable'; reason: 'evidence-unavailable' | 'outside-content-authority-root' };
+export interface StudioAssignmentRecord { id: string; planSha256: string; state: StudioAssignmentState; }
+interface ParsedAssignment {
+  state: 'recorded-snapshot' | 'recorded-source-snapshot' | 'recorded-native-source-snapshot';
+  briefRef: { path: string; sha256: string };
+  directStills: Array<Omit<RecordedSlot, 'briefId' | 'briefSha256'> & { sourcePlan: { path: string; sha256: string } }>;
+}
+interface JoinEvidence {
+  complete: boolean; checks: Array<() => boolean>;
+  rows: Array<{ briefId: string; briefSha256: string; creatorId: string; assignment: ParsedAssignment }>;
+}
+function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): ParsedAssignment | null {
   if (!object(value) || !keys(value, ['schema', 'not_promotable', 'provenance', 'brief', 'request', 'rulings', 'creator', 'assignments'])) return null;
   const briefRef = object(value.brief) ? value.brief : null;
   const motion = brief.slots.some((slot) => slot.taxonomyType === 'G');
@@ -171,6 +186,7 @@ function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'r
   if ((nonpersona && (motion || brief.item.surface !== 'carousel' || !brief.slots.filter((slot) => slot.kind === 'nonpersona').every((slot) => slot.taxonomyType === 'C' || slot.taxonomyType === 'D' || slot.taxonomyType === 'E'))) || value.schema !== expectedSchema || value.not_promotable !== true || text(value.provenance) === null || (nonpersona && value.provenance !== v3Provenance) || value.creator !== brief.creatorId || briefRef === null || !snapshotRef(briefRef) || !snapshotRef(value.request) || !snapshotRef(value.rulings) || !Array.isArray(value.assignments) || value.assignments.length !== brief.slots.length) return null;
   if (briefRef.sha256 !== briefSha256) return null;
   const imageIds = new Set<string>();
+  const directStills: ParsedAssignment['directStills'] = [];
   for (const [index, row] of value.assignments.entries()) {
     const expected = brief.slots[index];
     const recordedAsset = object(row) && object(row.asset) ? row.asset : null;
@@ -181,8 +197,14 @@ function assignment(value: unknown, brief: ParsedBrief, briefSha256: string): 'r
     const imageId = rawId === null || typeof rawId !== 'string' ? null : `${isNativeNonpersona ? 'visually-ruled-nonpersona-still' : isMotion ? 'accepted-video-source' : 'approved-gen-still'}:${rawId}`;
     if (!object(row) || !keys(row, ['slot_index', 'role', 'taxonomy_type', 'kind', 'slot_fit', 'asset']) || row.slot_index !== expected.index || row.role !== expected.role || row.taxonomy_type !== expected.taxonomyType || row.kind !== expected.kind || !object(row.slot_fit) || !keys(row.slot_fit, ['decision', 'decided_by', 'decided_at']) || row.slot_fit.decision !== 'fit' || text(row.slot_fit.decided_by, 256) === null || !timestamp(row.slot_fit.decided_at) || !(isNativeNonpersona ? nativeSourceAsset(row.asset) : isMotion ? videoAsset(row.asset) : expected.kind === 'persona' && asset(row.asset)) || imageId === null || imageIds.has(imageId)) return null;
     imageIds.add(imageId);
+    if (!isMotion && !isNativeNonpersona) {
+      const source = recordedAsset!.source_plan as { path: string; sha256: string };
+      directStills.push({ slotIndex: expected.index, role: expected.role, kind: 'persona', taxonomyType: expected.taxonomyType,
+        sourcePlan: { path: source.path, sha256: source.sha256 } });
+    }
   }
-  return nonpersona ? 'recorded-native-source-snapshot' : motion ? 'recorded-source-snapshot' : 'recorded-snapshot';
+  return { state: nonpersona ? 'recorded-native-source-snapshot' : motion ? 'recorded-source-snapshot' : 'recorded-snapshot',
+    briefRef: { path: briefRef.path as string, sha256: briefSha256 }, directStills };
 }
 function entries(root: Root): import('node:fs').Dirent[] | null {
   try {
@@ -197,11 +219,44 @@ function entries(root: Root): import('node:fs').Dirent[] | null {
  * Reads recorded planning snapshots only. It does not revalidate compiler inputs,
  * persona files, references, citations, generated assets, quality, or publication state.
  */
-export function collectContentBriefs(repoRoot?: string | null): ContentBriefsProjection {
+function observeDirectory(root: Root, evidence?: JoinEvidence): void {
+  if (!evidence) return;
+  const before = lstatSync(root.path);
+  evidence.checks.push(() => {
+    try {
+      const after = lstatSync(root.path);
+      return after.isDirectory() && !reparse(root.path) && realpathSync(root.path) === root.real
+        && before.dev === after.dev && before.ino === after.ino && before.mtimeMs === after.mtimeMs && before.ctimeMs === after.ctimeMs;
+    } catch { return false; }
+  });
+}
+function readObserved(root: Root, name: string, path: string, evidence?: JoinEvidence): Buffer | null {
+  const observed = boundedRecord(path);
+  if (observed === null) return null;
+  evidence?.checks.push(() => {
+    const currentPath = file(root, name);
+    const current = currentPath === null ? null : boundedRecord(currentPath);
+    return current !== null && sameFile(observed.identity, current.identity) && current.bytes.equals(observed.bytes);
+  });
+  return observed.bytes;
+}
+function assignmentAbsent(root: Root): boolean {
+  // The folder itself must remain present: ancestor ENOENT is not file absence.
+  try { if (!lstatSync(root.path).isDirectory() || reparse(root.path) || realpathSync(root.path) !== root.real) return false; }
+  catch { return false; }
+  try { lstatSync(join(root.path, 'assignment.json')); return false; }
+  catch (error) { return (error as NodeJS.ErrnoException).code === 'ENOENT'; }
+}
+function readContentBriefs(repoRoot?: string | null, evidence?: JoinEvidence): ContentBriefsProjection {
   if (repoRoot == null || !repoRoot.trim()) return { status: 'not-configured', items: [] };
   const repo = openRoot(repoRoot); if (repo === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+  observeDirectory(repo, evidence);
   const briefs = childRoot(repo, 'orgs/figment/content/briefs');
-  if (briefs === null) return absent(repo, 'orgs/figment/content/briefs') ? { status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] } : { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+  if (briefs === null) {
+    evidence?.checks.push(() => absent(repo, 'orgs/figment/content/briefs'));
+    return absent(repo, 'orgs/figment/content/briefs') ? { status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] } : { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+  }
+  observeDirectory(briefs, evidence);
   const listed = entries(briefs); if (listed === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
   const items: ContentBriefItem[] = [];
   for (const entry of listed.sort((left, right) => left.name.localeCompare(right.name))) {
@@ -209,28 +264,83 @@ export function collectContentBriefs(repoRoot?: string | null): ContentBriefsPro
     if (!entry.isDirectory()) { if (!entry.isFile()) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] }; continue; }
     if (entry.name.length > MAX_ID || !BRIEF_ID.test(entry.name)) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
     const folder = childRoot(briefs, entry.name); if (folder === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+    observeDirectory(folder, evidence);
     const briefPath = file(folder, 'brief.json');
-    if (briefPath === null) { if (absent(folder, 'brief.json')) continue; return { status: 'unavailable', reason: 'evidence-unavailable', items: [] }; }
-    const raw = bounded(briefPath); if (raw === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
+    if (briefPath === null) { if (evidence) evidence.complete = false; if (absent(folder, 'brief.json')) continue; return { status: 'unavailable', reason: 'evidence-unavailable', items: [] }; }
+    const raw = readObserved(folder, 'brief.json', briefPath, evidence); if (raw === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
     try {
       const source = raw.toString('utf8');
       if (!shallow(source)) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
       const parsed = contentBrief(JSON.parse(source) as unknown, entry.name);
       if (parsed === null) return { status: 'unavailable', reason: 'evidence-unavailable', items: [] };
       const assignmentPath = file(folder, 'assignment.json');
+      const briefSha256 = createHash('sha256').update(raw).digest('hex');
       let assignmentState: ContentBriefItem['assignment'];
-      if (assignmentPath === null) assignmentState = absent(folder, 'assignment.json') ? 'missing' : 'unavailable';
+      if (assignmentPath === null) {
+        assignmentState = assignmentAbsent(folder) ? 'missing' : 'unavailable';
+        evidence?.checks.push(() => assignmentAbsent(folder));
+      }
       else {
-        const assignmentRaw = bounded(assignmentPath);
+        const assignmentRaw = readObserved(folder, 'assignment.json', assignmentPath, evidence);
         try {
           const assignmentSource = assignmentRaw?.toString('utf8');
-          assignmentState = assignmentSource !== undefined && shallow(assignmentSource) ? assignment(JSON.parse(assignmentSource) as unknown, parsed, createHash('sha256').update(raw).digest('hex')) ?? 'unavailable' : 'unavailable';
+          const parsedAssignment = assignmentSource !== undefined && shallow(assignmentSource)
+            ? assignment(JSON.parse(assignmentSource) as unknown, parsed, briefSha256) : null;
+          assignmentState = parsedAssignment?.state ?? 'unavailable';
+          if (evidence && parsedAssignment !== null) {
+            if (parsedAssignment.briefRef.path !== `content/briefs/${entry.name}/brief.json`) evidence.complete = false;
+            evidence.rows.push({ briefId: entry.name, briefSha256, creatorId: parsed.creatorId, assignment: parsedAssignment });
+          }
         } catch { assignmentState = 'unavailable'; }
       }
-      items.push({ ...parsed.item, assignment: assignmentState });
+      if (evidence && assignmentState === 'unavailable') evidence.complete = false;
+      items.push({ ...parsed.item, briefSha256, assignment: assignmentState });
     } catch { return { status: 'unavailable', reason: 'evidence-unavailable', items: [] }; }
   }
   if (items.length === 0) return { status: 'empty', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items: [] };
   items.sort((left, right) => right.briefDate.localeCompare(left.briefDate) || left.briefId.localeCompare(right.briefId));
   return { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, items };
+}
+
+export function collectContentBriefs(repoRoot?: string | null): ContentBriefsProjection { return readContentBriefs(repoRoot); }
+
+/** Recorded direct-still associations only; no source approval or media revalidation. */
+export function collectStudioAssignmentRecords(repoRoot: string, identities: readonly StudioPlanIdentity[]): StudioAssignmentRecord[] {
+  const unavailable = (): StudioAssignmentRecord[] => identities.map(({ id, planSha256, authorityRelativePlanPath }) => ({ id, planSha256,
+    state: { status: 'unavailable', reason: authorityRelativePlanPath === null ? 'outside-content-authority-root' : 'evidence-unavailable' } }));
+  const evidence: JoinEvidence = { complete: true, checks: [], rows: [] };
+  try {
+    if (identities.length > 2) return unavailable();
+    const ids = new Set<string>(), paths = new Set<string>();
+    for (const identity of identities) {
+      if (!/^[0-9a-f-]{36}$/.test(identity.id) || !SHA256.test(identity.planSha256) || identity.creator !== 'creator-001'
+        || ids.has(identity.id)) return unavailable();
+      ids.add(identity.id);
+      if (identity.authorityRelativePlanPath !== null) {
+        if (!snapshotRef({ path: identity.authorityRelativePlanPath, sha256: identity.planSha256 }) || paths.has(identity.authorityRelativePlanPath)) return unavailable();
+        paths.add(identity.authorityRelativePlanPath);
+      }
+    }
+    const projection = readContentBriefs(repoRoot, evidence);
+    if (!evidence.complete || (projection.status !== 'recorded' && projection.status !== 'empty')) return unavailable();
+    let total = 0;
+    const result = identities.map<StudioAssignmentRecord>((identity) => {
+      if (identity.authorityRelativePlanPath === null) return { id: identity.id, planSha256: identity.planSha256,
+        state: { status: 'unavailable', reason: 'outside-content-authority-root' } };
+      const slots: RecordedSlot[] = [];
+      const seen = new Set<string>();
+      for (const row of evidence.rows) for (const source of row.assignment.directStills) {
+        if (source.sourcePlan.path !== identity.authorityRelativePlanPath) continue;
+        if (source.sourcePlan.sha256 !== identity.planSha256 || row.creatorId !== identity.creator) throw new Error('stale-plan-reference');
+        const key = `${row.briefId}:${row.briefSha256}:${source.slotIndex}`;
+        if (seen.has(key) || ++total > 64) throw new Error('ambiguous-or-unbounded-slots');
+        seen.add(key);
+        slots.push({ briefId: row.briefId, briefSha256: row.briefSha256, slotIndex: source.slotIndex,
+          role: source.role, kind: 'persona', taxonomyType: source.taxonomyType });
+      }
+      return { id: identity.id, planSha256: identity.planSha256,
+        state: { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots } };
+    });
+    return evidence.checks.every((check) => check()) ? result : unavailable();
+  } catch { return unavailable(); }
 }

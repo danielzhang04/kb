@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -11,6 +12,8 @@ import Fastify, { type FastifyInstance } from 'fastify';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { resolvePython } from '../runtime/python.ts';
 import { registerFigmentStudioGenPlan, type RunStudioGenPlan } from './studioGenPlan.ts';
+import { FigmentWorkspace } from '../../src/figment/FigmentWorkspace.tsx';
+import { registerFigmentRead } from './routes.ts';
 import { StudioGenPlans } from '../../src/figment/StudioGenPlans.tsx';
 
 /**
@@ -35,7 +38,7 @@ const PENDING_STORAGE_KEY = 'figment.studio.genPlan.pending.v1';
 
 const flush = () => act(async () => { await new Promise((resolve) => setTimeout(resolve, 0)); });
 
-function buildRunner(capturedArgv: string[][]): RunStudioGenPlan {
+function buildRunner(capturedArgv: string[][], fixturePersonas?: string): RunStudioGenPlan {
   return (async (command, args) => {
     expect(command).toBe(python.command);
     capturedArgv.push([...args]);
@@ -44,6 +47,7 @@ function buildRunner(capturedArgv: string[][]): RunStudioGenPlan {
       ...python.prefixArgs, FIXTURE_SCRIPT, 'plan',
       '--creator', at('--creator'), '--stage', at('--stage'),
       '--out', at('--out'), '--ledger-dir', at('--ledger-dir'),
+      ...(fixturePersonas === undefined ? [] : ['--fixture-personas', fixturePersonas]),
     ], { timeout: REVALIDATE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
   }) as RunStudioGenPlan;
 }
@@ -244,4 +248,69 @@ describe('Studio generation-plan: real planner + real HTTP control + real Studio
       }
     }
   }, TEST_TIMEOUT_MS);
+});
+
+
+describe('Real recorded assignment to exact Workspace revision navigation', () => {
+  it('opens two producer-bound revisions beside the unassigned base without fetching or preparing on navigation', async () => {
+    const repo = await realpath(await mkdtemp(join(tmpdir(), TMP_PREFIX)));
+    const figment = join(repo, 'orgs', 'figment'), ledger = join(repo, 'ledgers', 'cost');
+    const assignmentFixture = resolve(dirname(fileURLToPath(import.meta.url)), 'studio_assignment_fixture.py');
+    const sessionConfig = { secret: Buffer.from('figment-real-assignment-ui-fixture-secret'), ttlMs: REVALIDATE_TIMEOUT_MS * 4 + 60_000 };
+    const token = mintSession('operator', sessionConfig).token, intent = 'J'.repeat(32);
+    const captured: string[][] = [], calls: Call[] = [];
+    const app = Fastify({ logger: false });
+    try {
+      await mkdir(join(figment, 'pipeline'), { recursive: true }); await writeFile(join(figment, 'pipeline', 'figment_train.py'), '# fixture existence only');
+      await mkdir(ledger, { recursive: true });
+      await execFileP(python.command, [...python.prefixArgs, '-B', assignmentFixture, 'init', '--root', figment], { timeout: REVALIDATE_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 });
+      registerFigmentStudioGenPlan(app, { repoRoot: repo, ledgerDir: ledger, sessionConfig, platform: process.platform, runStudioGenPlan: buildRunner(captured, join(figment, 'personas')) });
+      registerFigmentRead(app, { repoRoot: repo }); await app.ready();
+      const preparedResponse = await app.inject({ method: 'POST', url: PLAN_URL, headers: { authorization: `Bearer ${token}`, 'idempotency-key': intent } });
+      expect(preparedResponse.statusCode).toBe(200); const prepared = preparedResponse.json();
+      const plan = join(figment, '_private/figment-studio/gen-plans', prepared.id, 'plan.json');
+      const legacyOut = join(repo, '_private/figment-studio/gen-plans/00000000-0000-4000-8000-000000000001');
+      const bound = await execFileP(python.command, [...python.prefixArgs, '-B', assignmentFixture, 'bind', '--root', figment, '--plan', plan, '--legacy-out', legacyOut, '--ledger-dir', ledger], { timeout: REVALIDATE_TIMEOUT_MS * 2, maxBuffer: 16 * 1024 * 1024 });
+      const result = JSON.parse(bound.stdout.trim());
+      expect(result).toMatchObject({ positive_exit: 0, second_positive_exit: 0, legacy_exit: 2, base_unchanged: true });
+      // The real negative fixture leaves an unpublished legacy plan; retain it
+      // under the original marker schema, as in the server integration.
+      const legacyId = basename(legacyOut), legacySha = createHash('sha256').update(await readFile(join(legacyOut, 'plan.json'))).digest('hex');
+      await writeFile(join(legacyOut, 'published.json'), JSON.stringify({ schema: 'figment/studio-gen-plan-marker@1', id: legacyId, plan_sha256: legacySha, intent_sha256: createHash('sha256').update(JSON.stringify(['operator', 'K'.repeat(32)])).digest('hex'), created_utc: '2026-09-10T00:00:00.000Z' }), { flag: 'wx' });
+      const bridge = bridgeFetch(app, calls);
+      render(<FigmentWorkspace token={token} fetchImpl={bridge} />);
+      fireEvent.click(await screen.findByRole('tab', { name: 'Frozen plans' }));
+      const targets: Array<{ id: string; sha: string; hypothesis: string; index: number; role: string }> = [];
+      for (const name of [result.brief, result.second_brief]) {
+        const raw = await readFile(join(figment, name)), value = JSON.parse(raw.toString('utf8'));
+        const slot = value.content.required_asset_slots[targets.length];
+        targets.push({ id: name.split('/')[2], sha: createHash('sha256').update(raw).digest('hex'), hypothesis: value.hypothesis, index: slot.index, role: slot.role });
+      }
+      for (const target of targets) {
+        const button = await screen.findByRole('button', { name: `View ${target.id} slot ${target.index}` });
+        const before = calls.length;
+        fireEvent.click(button);
+        await waitFor(() => expect(screen.getByRole('tab', { name: 'Research' }).getAttribute('aria-selected')).toBe('true'));
+        const selected = document.querySelectorAll('article[aria-current="true"]'); expect(selected).toHaveLength(1);
+        expect(selected[0].textContent).toContain(target.hypothesis);
+        expect(screen.getByLabelText(`Recorded assignment slot ${target.index}: ${target.role}`)).toBeTruthy();
+        expect(screen.getByText('No recorded assignment')).toBeTruthy();
+        expect(calls).toHaveLength(before); expect(calls.every((call) => call.method === 'GET')).toBe(true);
+        fireEvent.click(screen.getByRole('tab', { name: 'Frozen plans' }));
+      }
+      await screen.findByRole('button', { name: `View ${targets[0].id} slot ${targets[0].index}` });
+      expect(new Set(targets.map((target) => target.sha)).size).toBe(2);
+      expect(captured).toHaveLength(1);
+      const get = calls.find((call) => call.url === '/api/figment/studio/gen-plans');
+      expect(get?.status).toBe(200);
+      const dto = JSON.parse(get!.body!); expect(dto.schema).toBe('figment/studio-gen-plans@3');
+      expect(dto.assignmentRecords.find((row: { id: string }) => row.id === prepared.id).state.slots).toHaveLength(4);
+      expect(calls.filter((call) => call.url === '/api/figment')).toHaveLength(1);
+    } finally {
+      cleanup(); sessionStorage.clear(); await app.close();
+      const base = await realpath(tmpdir()), current = await realpath(repo);
+      if (dirname(current) !== base || !basename(current).startsWith(TMP_PREFIX)) throw new Error('unsafe real fixture cleanup');
+      await rm(current, { recursive: true, force: true });
+    }
+  }, REVALIDATE_TIMEOUT_MS * 4);
 });

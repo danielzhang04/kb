@@ -148,8 +148,9 @@ describe('Studio generation-plan: real planner + real HTTP control + real consum
     const listed = await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: { authorization: headers(key).authorization } });
     expect(listed.statusCode).toBe(200);
     expect(listed.json()).toEqual({
-      schema: 'figment/studio-gen-plans@2', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/),
+      schema: 'figment/studio-gen-plans@3', requestScope: expect.stringMatching(/^[a-f0-9]{64}$/),
       plans: [prepared], preparation: 'available',
+      assignmentRecords: [{ id: prepared.id, planSha256: prepared.planSha256, state: { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots: [] } }],
       executionRecords: [{ id: prepared.id, planSha256: prepared.planSha256, state: {
         status: 'recorded', planSha256: prepared.planSha256, creator: 'creator-001', stage: 'gen',
         execution: 'no-stage-record', liveness: 'unknown', quality: 'not-assessed',
@@ -256,9 +257,29 @@ describe('Studio allocation to real content-assignment authority', () => {
       const legacyMarker = await readFile(join(legacyOut, 'published.json'));
       const listed = await app.inject({ method: 'GET', url: '/api/figment/studio/gen-plans', headers: headers(key) });
       expect(listed.statusCode).toBe(200);
-      expect(Object.keys(listed.json()).sort()).toEqual(['executionRecords', 'plans', 'preparation', 'requestScope', 'schema']);
-      expect(listed.json()).toMatchObject({ schema: 'figment/studio-gen-plans@2', preparation: 'at-capacity',
+      expect(Object.keys(listed.json()).sort()).toEqual(['assignmentRecords', 'executionRecords', 'plans', 'preparation', 'requestScope', 'schema']);
+      expect(listed.json()).toMatchObject({ schema: 'figment/studio-gen-plans@3', preparation: 'at-capacity',
         plans: [{ id: legacyId, planSha256: legacySha }, prepared], executionRecords: [{ id: legacyId, planSha256: legacySha }, { id: prepared.id, planSha256: prepared.planSha256 }] });
+      expect(result.second_positive_exit).toBe(0);
+      const joinedSlots = [];
+      for (const [briefName, assignmentName] of [[result.brief, result.assignment], [result.second_brief, result.second_assignment]]) {
+        const raw = await readFile(join(figment, briefName));
+        const exactBrief = JSON.parse(raw.toString('utf8'));
+        const exactAssignment = JSON.parse(await readFile(join(figment, assignmentName), 'utf8'));
+        const digest = createHash('sha256').update(raw).digest('hex');
+        expect(exactAssignment.brief).toEqual({ path: briefName, sha256: digest });
+        for (const slot of exactBrief.content.required_asset_slots) joinedSlots.push({ briefId: briefName.split('/')[2], briefSha256: digest, slotIndex: slot.index, role: slot.role, kind: slot.kind, taxonomyType: slot.taxonomy_type });
+      }
+      const records = listed.json().assignmentRecords;
+      expect(records[0]).toEqual({ id: legacyId, planSha256: legacySha, state: { status: 'unavailable', reason: 'outside-content-authority-root' } });
+      expect(records[1]).toEqual({ id: prepared.id, planSha256: prepared.planSha256, state: { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots: expect.arrayContaining(joinedSlots) } });
+      expect(records[1].state.slots).toHaveLength(4);
+      expect(new Set(records[1].state.slots.map((slot: { briefSha256: string }) => slot.briefSha256)).size).toBe(2);
+      const { collectContentBriefs } = await import('./contentBriefs.ts');
+      const hubBriefs = collectContentBriefs(repo);
+      expect(hubBriefs).toMatchObject({ status: 'recorded', items: expect.arrayContaining([expect.objectContaining({ briefId: result.base_brief.split('/')[2], assignment: 'missing' })]) });
+      for (const slot of joinedSlots) expect(hubBriefs.items).toEqual(expect.arrayContaining([expect.objectContaining({ briefId: slot.briefId, briefSha256: slot.briefSha256 })]));
+      expect(listed.body).not.toMatch(/source_plan|plan\.json|operator-fixture|image_id|approval_lineage|_private/);
       const legacyReplay = await app.inject({ method: 'POST', url: '/api/figment/studio/gen-plan', headers: { ...headers(legacyKey), 'x-figment-intent-scope': listed.json().requestScope } });
       expect(legacyReplay.statusCode).toBe(200);
       expect(legacyReplay.json()).toEqual(listed.json().plans[0]);

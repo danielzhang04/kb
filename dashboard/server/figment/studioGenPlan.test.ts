@@ -34,6 +34,7 @@ function expectPrivateFree(body: string, repo: string): void {
 }
 
 
+const emptyAssignment = (plan: { id: string; planSha256: string }, legacy = false) => ({ id: plan.id, planSha256: plan.planSha256, state: legacy ? { status: 'unavailable', reason: 'outside-content-authority-root' } : { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots: [] } });
 const unavailableExecution = (plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } });
 const manifestName = 'train/runs/creator-001-gen.yaml';
 const outputName = 'train/runs/out/creator-001-gen';
@@ -253,7 +254,7 @@ describe('Studio generation-plan discovery', () => {
     const { app, repo, runner, audit } = await fixture();
     const response = await app.inject({ method: 'GET', url: GET, headers: read() });
     expect(response.statusCode).toBe(200);
-    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [], executionRecords: [], preparation: 'available' });
+    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(repo), plans: [], executionRecords: [], assignmentRecords: [], preparation: 'available' });
     expect(existsSync(join(repo, '_private'))).toBe(false); expect(existsSync(join(repo, 'orgs/figment/_private'))).toBe(false); expect(runner).not.toHaveBeenCalled(); expect(audit).not.toHaveBeenCalled();
     expectPrivateFree(response.body, repo);
     await app.close();
@@ -274,7 +275,7 @@ describe('Studio generation-plan discovery', () => {
     const { app, repo, ledger, runner } = await fixture();
     const prepared = (await app.inject({ method: 'POST', url: POST, headers: headers() })).json();
     const listed = await app.inject({ method: 'GET', url: GET, headers: read() });
-    expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [prepared], executionRecords: [unavailableExecution(prepared)], preparation: 'available' });
+    expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(repo), plans: [prepared], assignmentRecords: [emptyAssignment(prepared)], executionRecords: [unavailableExecution(prepared)], preparation: 'available' });
     expectPrivateFree(listed.body, repo);
     await app.close();
     const restartedRunner = vi.fn(async () => {}) as unknown as RunStudioGenPlan;
@@ -325,7 +326,7 @@ describe('Studio generation-plan discovery', () => {
     await corrupt(plansRootOf(repo), id);
     const before = (await readdir(plansRootOf(repo))).sort();
     const response = await app.inject({ method: 'GET', url: GET, headers: read() });
-    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(repo), plans: [], executionRecords: [], preparation: 'unavailable' });
+    expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(repo), plans: [], executionRecords: [], assignmentRecords: [], preparation: 'unavailable' });
     expectPrivateFree(response.body, repo);
     expect((await readdir(plansRootOf(repo))).sort()).toEqual(before);
     await app.close();
@@ -355,7 +356,7 @@ describe('Studio generation-plan discovery', () => {
       throw new StudioPlanProcessError('timeout', true);
     });
     await app.inject({ method: 'POST', url: POST, headers: headers() });
-    for (let i = 0; i < 2; i += 1) expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], preparation: 'maintenance-required' });
+    for (let i = 0; i < 2; i += 1) expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], assignmentRecords: [], preparation: 'maintenance-required' });
     expect((await app.inject({ method: 'POST', url: POST, headers: headers('B'.repeat(32)) })).statusCode).toBe(503);
     expect(runner).toHaveBeenCalledTimes(1);
     await app.close();
@@ -366,7 +367,7 @@ describe('Studio generation-plan discovery', () => {
     let entered: (() => void) | undefined; const runnerEntered = new Promise<void>((resolve) => { entered = resolve; });
     const { app } = await fixture(async (_command, args) => { entered?.(); await waiting; await writeFile(join(args[args.indexOf('--out') + 1], 'plan.json'), JSON.stringify(PLAN)); });
     const pending = app.inject({ method: 'POST', url: POST, headers: headers() }); await runnerEntered;
-    expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], preparation: 'busy' });
+    expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ plans: [], executionRecords: [], assignmentRecords: [], preparation: 'busy' });
     release?.(); expect((await pending).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: GET, headers: read() })).json().preparation).toBe('available');
     await app.close();
@@ -381,8 +382,8 @@ describe('Studio generation-plan recorded execution discovery', () => {
       const paths = ['plan.json', 'published.json', manifestName].map((name) => join(item.directory, name));
       const before = await Promise.all(paths.map((path) => readFile(path)));
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available',
-        plans: [item.prepared], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: item.expected }] });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'available',
+        plans: [item.prepared], assignmentRecords: [emptyAssignment(item.prepared)], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: item.expected }] });
       expectPrivateFree(response.body, item.repo);
       expect(await Promise.all(paths.map((path) => readFile(path)))).toEqual(before);
       expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).toHaveBeenCalledTimes(1);
@@ -410,8 +411,8 @@ describe('Studio generation-plan recorded execution discovery', () => {
       const large = join(item.directory, 'large-output.dat'); const handle = await open(large, 'wx');
       try { await handle.truncate(256 * 1024 * 1024 + 1); } finally { await handle.close(); }
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'maintenance-required',
-        plans: [item.prepared], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: expectedExecution }] });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'maintenance-required',
+        plans: [item.prepared], assignmentRecords: [emptyAssignment(item.prepared)], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: expectedExecution }] });
       for (const intent of [key, 'B'.repeat(32)]) expect((await item.app.inject({ method: 'POST', url: POST, headers: headers(intent) })).statusCode).toBe(503);
       expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).toHaveBeenCalledTimes(1); expect(existsSync(large)).toBe(true);
       expect(await Promise.all(metadata.map((path) => readFile(path)))).toEqual(before); expectPrivateFree(response.body, item.repo);
@@ -444,8 +445,8 @@ describe('Studio generation-plan recorded execution discovery', () => {
         await symlink(outside, join(item.directory, 'stage.json'), process.platform === 'win32' ? 'junction' : 'dir');
       }
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo),
-        preparation: failure === 'linked-stage' ? 'maintenance-required' : 'available', plans: [item.prepared], executionRecords: [unavailableExecution(item.prepared)] });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo),
+        preparation: failure === 'linked-stage' ? 'maintenance-required' : 'available', plans: [item.prepared], assignmentRecords: [emptyAssignment(item.prepared)], executionRecords: [unavailableExecution(item.prepared)] });
       expect(await readFile(join(item.directory, 'published.json'))).toEqual(before); expect(item.runner).toHaveBeenCalledTimes(1);
       expectPrivateFree(response.body, item.repo);
     } finally { await item.app.close(); }
@@ -459,7 +460,7 @@ describe('Studio generation-plan recorded execution discovery', () => {
       await mkdir(join(item.repo, 'orgs/figment/_private/figment-studio'), { recursive: true });
       await symlink(outside, join(item.repo, 'orgs/figment/_private/figment-studio/gen-plans'), process.platform === 'win32' ? 'junction' : 'dir');
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [], assignmentRecords: [] });
       expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
       expect(await readFile(join(outside, 'sentinel'), 'utf8')).toBe('untouched'); expectPrivateFree(response.body, item.repo);
     } finally { await item.app.close(); }
@@ -491,7 +492,7 @@ describe('Studio generation-plan recorded execution discovery', () => {
       }
       const before = (await readdir(root)).sort();
       const response = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [], assignmentRecords: [] });
       expectPrivateFree(response.body, item.repo); expect((await readdir(root)).sort()).toEqual(before); expect(item.runner).toHaveBeenCalledTimes(1);
     } finally { await item.app.close(); }
   });
@@ -521,7 +522,7 @@ describe('Studio two-root allocation and legacy replay', () => {
       if (legacy) await mkdir(legacyRootOf(item.repo), { recursive: true });
       if (current) await mkdir(allocationRootOf(item.repo), { recursive: true });
       const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available', plans: [], executionRecords: [] });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'available', plans: [], executionRecords: [], assignmentRecords: [] });
       expect(existsSync(legacyRootOf(item.repo))).toBe(legacy); expect(existsSync(allocationRootOf(item.repo))).toBe(current);
       expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
     } finally { await item.app.close(); }
@@ -532,7 +533,7 @@ describe('Studio two-root allocation and legacy replay', () => {
     try {
       const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
       const listed = (await item.app.inject({ method: 'GET', url: GET, headers: read() })).json();
-      expect(listed).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'available', plans: [old.prepared], executionRecords: [unavailableExecution(old.prepared)] });
+      expect(listed).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'available', plans: [old.prepared], assignmentRecords: [emptyAssignment(old.prepared, true)], executionRecords: [unavailableExecution(old.prepared)] });
       expect(existsSync(allocationRootOf(item.repo))).toBe(false);
       const replay = await item.app.inject({ method: 'POST', url: POST, headers: { ...headers(), 'x-figment-intent-scope': listed.requestScope } });
       expect(replay.statusCode).toBe(200); expect(replay.json()).toEqual(old.prepared);
@@ -548,8 +549,8 @@ describe('Studio two-root allocation and legacy replay', () => {
       const first = await seedPublished(legacyRootOf(item.repo), FIXED_B, key);
       const second = await seedPublished(placement === 'mixed' ? allocationRootOf(item.repo) : legacyRootOf(item.repo), FIXED_A, 'B'.repeat(32));
       const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'at-capacity',
-        plans: [second.prepared, first.prepared], executionRecords: [unavailableExecution(second.prepared), unavailableExecution(first.prepared)] });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'at-capacity',
+        plans: [second.prepared, first.prepared], assignmentRecords: [emptyAssignment(second.prepared, placement !== 'mixed'), emptyAssignment(first.prepared, true)], executionRecords: [unavailableExecution(second.prepared), unavailableExecution(first.prepared)] });
       for (const [intent, expected] of [[key, first.prepared], ['B'.repeat(32), second.prepared]] as const) {
         expect((await item.app.inject({ method: 'POST', url: POST, headers: headers(intent) })).json()).toEqual(expected);
       }
@@ -579,7 +580,7 @@ describe('Studio two-root allocation and legacy replay', () => {
       const old = await seedPublished(legacyRootOf(item.repo), FIXED_A, key);
       const newer = await seedPublished(allocationRootOf(item.repo), duplicate === 'uuid' ? FIXED_A : FIXED_B, duplicate === 'intent' ? key : 'B'.repeat(32));
       const listed = await item.app.inject({ method: 'GET', url: GET, headers: read() });
-      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@2', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect(listed.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [], assignmentRecords: [] });
       expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
       expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
       for (const record of [old, newer]) expect(await Promise.all(['plan.json', 'published.json'].map((name) => readFile(join(record.directory, name))))).toEqual(record.bytes);
@@ -591,7 +592,7 @@ describe('Studio two-root allocation and legacy replay', () => {
     try {
       const directory = join(legacyRootOf(item.repo), FIXED_A); await mkdir(directory, { recursive: true });
       await writeFile(join(directory, 'partial'), 'retained uncertain legacy work');
-      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'maintenance-required', plans: [], executionRecords: [] });
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'maintenance-required', plans: [], executionRecords: [], assignmentRecords: [] });
       expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
       expect(item.runner).not.toHaveBeenCalled(); expect(item.audit).not.toHaveBeenCalled();
       expect(await readFile(join(directory, 'partial'), 'utf8')).toBe('retained uncertain legacy work');
@@ -607,7 +608,7 @@ describe('Studio two-root allocation and legacy replay', () => {
       const target = where === 'legacy' ? legacyRootOf(item.repo) : allocationRootOf(item.repo);
       await mkdir(join(target, '..'), { recursive: true });
       await symlink(outside, target, process.platform === 'win32' ? 'junction' : 'dir');
-      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'unavailable', plans: [], executionRecords: [] });
+      expect((await item.app.inject({ method: 'GET', url: GET, headers: read() })).json()).toMatchObject({ preparation: 'unavailable', plans: [], executionRecords: [], assignmentRecords: [] });
       expect((await item.app.inject({ method: 'POST', url: POST, headers: headers() })).statusCode).toBe(503);
       expect(item.runner).not.toHaveBeenCalled(); expect(await readFile(join(outside, 'sentinel'), 'utf8')).toBe('unchanged');
     } finally { await item.app.close(); }
@@ -660,5 +661,59 @@ describe('Studio final publication rechecks both roots', () => {
       expect((await readdir(legacyRootOf(item.repo))).sort()).toEqual(retainedNames);
       expect(item.runner).toHaveBeenCalledTimes(1); expect(item.audit).not.toHaveBeenCalled();
     } finally { release(); await pending; await item.app.close(); }
+  });
+});
+
+
+describe('Studio assignment discovery enclosing boundaries', () => {
+  it.each(['plan', 'marker', 'root', 'plan-same-bytes', 'marker-same-bytes'] as const)('refuses a %s identity mutation during assignment collection', async (kind) => {
+    const item = await recordedFixture();
+    const actualFs = await vi.importActual<typeof import('node:fs')>('node:fs');
+    const actualCollector = await vi.importActual<typeof import('./contentBriefs.ts')>('./contentBriefs.ts');
+    let calls = 0;
+    vi.resetModules();
+    vi.doMock('./contentBriefs.ts', () => ({ ...actualCollector, collectStudioAssignmentRecords: () => {
+      calls += 1;
+      if (kind === 'plan') actualFs.appendFileSync(join(item.directory, 'plan.json'), ' ');
+      if (kind === 'marker') actualFs.appendFileSync(join(item.directory, 'published.json'), ' ');
+      if (kind.endsWith('same-bytes')) {
+        const target = join(item.directory, kind.startsWith('plan') ? 'plan.json' : 'published.json');
+        const original = actualFs.readFileSync(target), before = actualFs.statSync(target);
+        actualFs.writeFileSync(target, original); actualFs.utimesSync(target, before.atime, new Date(before.mtimeMs + 2000));
+        expect(actualFs.readFileSync(target)).toEqual(original); expect(actualFs.statSync(target).mtimeMs).not.toBe(before.mtimeMs);
+      }
+      if (kind === 'root') actualFs.mkdirSync(join(item.repo, '_private/figment-studio/gen-plans'), { recursive: true });
+      return [emptyAssignment(item.prepared)];
+    } }));
+    const app = Fastify({ logger: false });
+    try {
+      const { registerFigmentStudioGenPlan: register } = await import('./studioGenPlan.ts');
+      register(app, { repoRoot: item.repo, ledgerDir: item.ledger, sessionConfig, runStudioGenPlan: item.runner, platform: 'win32' });
+      const response = await app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(calls).toBe(1);
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'unavailable', plans: [], executionRecords: [], assignmentRecords: [] });
+      expectPrivateFree(response.body, item.repo); expect(item.runner).toHaveBeenCalledTimes(1);
+    } finally { await app.close(); await item.app.close(); vi.doUnmock('./contentBriefs.ts'); vi.resetModules(); }
+  });
+
+  it.each(['characters', 'utf8-bytes'] as const)('turns oversized %s joins unavailable without truncating or losing plan/execution summaries', async (kind) => {
+    const item = await recordedFixture();
+    const actualCollector = await vi.importActual<typeof import('./contentBriefs.ts')>('./contentBriefs.ts');
+    // Fault injection tests the route's independent serialized-envelope ceiling;
+    // the real collector's per-row/global limits are exercised separately.
+    const role = kind === 'characters' ? 'x'.repeat(66000) : '\u4e00'.repeat(24000);
+    const joined = { id: item.prepared.id, planSha256: item.prepared.planSha256, state: { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots: [{ briefId: 'bounded', briefSha256: 'a'.repeat(64), slotIndex: 1, role, kind: 'persona', taxonomyType: 'A' }] } };
+    expect(Buffer.byteLength(JSON.stringify(joined))).toBeGreaterThan(65536);
+    if (kind === 'utf8-bytes') expect(JSON.stringify(joined).length).toBeLessThan(65536);
+    vi.resetModules(); vi.doMock('./contentBriefs.ts', () => ({ ...actualCollector, collectStudioAssignmentRecords: () => [joined] }));
+    const app = Fastify({ logger: false });
+    try {
+      const { registerFigmentStudioGenPlan: register } = await import('./studioGenPlan.ts');
+      register(app, { repoRoot: item.repo, ledgerDir: item.ledger, sessionConfig, runStudioGenPlan: item.runner, platform: 'win32' });
+      const response = await app.inject({ method: 'GET', url: GET, headers: read() });
+      expect(response.json()).toEqual({ schema: 'figment/studio-gen-plans@3', requestScope: scopeOf(item.repo), preparation: 'available', plans: [item.prepared], executionRecords: [{ id: item.prepared.id, planSha256: item.prepared.planSha256, state: item.expected }], assignmentRecords: [unavailableExecution(item.prepared)] });
+      expect(Buffer.byteLength(response.body)).toBeLessThanOrEqual(65536); expect(response.body.length).toBeLessThanOrEqual(65536);
+      expect(item.runner).toHaveBeenCalledTimes(1);
+    } finally { await app.close(); await item.app.close(); vi.doUnmock('./contentBriefs.ts'); vi.resetModules(); }
   });
 });

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, startTransition, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { StudioGenPlans } from './StudioGenPlans';
@@ -32,8 +32,9 @@ const SUMMARY = /creator-001 · gen · one prepared run · declared \$2\.50 · p
 const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 const plansBody = (overrides: Record<string, unknown> = {}) => {
   const plans = Array.isArray(overrides.plans) ? overrides.plans : [];
-  return { schema: 'figment/studio-gen-plans@2', requestScope: SCOPE_A, plans, preparation: 'available',
-    executionRecords: plans.map((plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } })), ...overrides };
+  return { schema: 'figment/studio-gen-plans@3', requestScope: SCOPE_A, plans, preparation: 'available',
+    executionRecords: plans.map((plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } })),
+    assignmentRecords: plans.map((plan: { id: string; planSha256: string }) => ({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } })), ...overrides };
 };
 const preparedBody = (overrides: Record<string, unknown> = {}) => ({ schema: 'figment/studio-gen-plan@1', id: '00000000-0000-4000-8000-000000000000', status: 'prepared', creator: 'creator-001', stage: 'gen', runCount: 1, declaredCeilingUsd: 2.5, planSha256: 'c'.repeat(64), ...overrides });
 const record = (scope: string, key: string) => JSON.stringify({ schema: 'figment/studio-gen-plan-pending@1', requestScope: scope, key });
@@ -500,6 +501,187 @@ const recordedState = (execution = 'no-stage-record', overrides: Record<string, 
 const executionRow = (state: unknown, plan = preparedBody()) => ({ id: plan.id, planSha256: plan.planSha256, state });
 const statusBody = (state: unknown) => plansBody({ plans: [preparedBody()], executionRecords: [executionRow(state)] });
 const without = (value: Record<string, unknown>, key: string) => Object.fromEntries(Object.entries(value).filter(([name]) => name !== key));
+
+const slotRecord = (overrides: Record<string, unknown> = {}) => ({ briefId: 'revision-a', briefSha256: 'f'.repeat(64), slotIndex: 1, role: 'hook', kind: 'persona', taxonomyType: 'A', ...overrides });
+const assignmentState = (slots: unknown[] = [slotRecord()]) => ({ status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots });
+const assignmentBody = (state: unknown = assignmentState()) => plansBody({ plans: [preparedBody()], assignmentRecords: [executionRow(state)] });
+const secondPlan = preparedBody({ id: '00000000-0000-4000-8000-000000000001', planSha256: 'd'.repeat(64) });
+const twoAssignments = (first: unknown[], second: unknown[]) => plansBody({ plans: [preparedBody(), secondPlan],
+  assignmentRecords: [executionRow(assignmentState(first)), executionRow(assignmentState(second), secondPlan)] });
+
+describe('StudioGenPlans recorded assignment contract', () => {
+  it('reloads owner A after a rendered B transition suspends before commit and is discarded', async () => {
+    const original = deferred<Response>(), fresh = deferred<Response>(), suspended = deferred<never>();
+    const s = server(() => s.gets().length === 1 ? original.promise : fresh.promise);
+    let renderedB = 0, enterB!: () => void, returnA!: () => void;
+    function Tail({ owner }: { owner: string }) { if (owner === 'b') { renderedB += 1; throw suspended.promise; } return null; }
+    function Harness() {
+      const [mode, setMode] = useState({ owner: 'a', revision: 0 });
+      enterB = () => startTransition(() => setMode({ owner: 'b', revision: 1 }));
+      returnA = () => setMode({ owner: 'a', revision: 2 });
+      return <Suspense fallback={<p>Suspended owner fallback</p>}><StudioGenPlans token={mode.owner} fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} /><Tail owner={mode.owner} /></Suspense>;
+    }
+    render(<Harness />); await waitFor(() => expect(s.gets()).toHaveLength(1));
+    await act(async () => enterB());
+    expect(renderedB).toBeGreaterThan(0); expect(screen.queryByText('Suspended owner fallback')).toBeNull();
+    expect(s.gets()).toHaveLength(1); // B rendered, but its effect never committed.
+    act(() => returnA()); await waitFor(() => expect(s.gets()).toHaveLength(2));
+    await act(async () => original.resolve(json(assignmentBody())));
+    expect(screen.queryByRole('button', { name: 'View revision-a slot 1' })).toBeNull();
+    await act(async () => fresh.resolve(json(assignmentBody(assignmentState([])))));
+    await screen.findByText('No matching assignment records in this inventory.'); await enabled(PREPARE);
+    expect(s.gets().every(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer a')).toBe(true);
+    expect(s.posts()).toHaveLength(0);
+  });
+
+  it('renders bounded recorded slots and sends the exact six-field target only on explicit navigation', async () => {
+    const target = slotRecord(), onOpenRecordedSlot = vi.fn();
+    const s = server(() => json(assignmentBody()));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} onOpenRecordedSlot={onOpenRecordedSlot} />);
+    const open = await screen.findByRole('button', { name: 'View revision-a slot 1' });
+    expect(screen.getByText('Matching records in the bounded current inventory. Sources and image approval were not revalidated.')).toBeTruthy();
+    expect(screen.getByText(/revision ffffffffffff.*slot 1: hook/)).toBeTruthy();
+    expect(onOpenRecordedSlot).not.toHaveBeenCalled();
+    fireEvent.click(open);
+    expect(onOpenRecordedSlot.mock.calls).toEqual([[target]]);
+    expect(s.gets()).toHaveLength(1); expect(s.posts()).toHaveLength(0);
+    expect(document.body.textContent).not.toMatch(/never used|approved assignment|assignment history complete/i);
+  });
+
+  it('keeps slot text without a navigation button when no callback is supplied', async () => {
+    const s = server(() => json(assignmentBody()));
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} />);
+    await screen.findByText(/Recorded planning assignment: revision-a/);
+    expect(screen.queryByRole('button', { name: /View .* slot/ })).toBeNull();
+    expect(s.posts()).toHaveLength(0);
+  });
+
+  it.each([
+    ['empty matching inventory', assignmentState([]), 'No matching assignment records in this inventory.'],
+    ['unavailable evidence', { status: 'unavailable', reason: 'evidence-unavailable' }, 'Recorded assignment evidence is unavailable.'],
+    ['legacy root', { status: 'unavailable', reason: 'outside-content-authority-root' }, 'This legacy plan is outside the content-assignment root.'],
+  ])('preserves the limited meaning of %s', async (_name, state, copy) => {
+    const s = server(() => json(assignmentBody(state)));
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await screen.findByText(copy as string);
+    expect(screen.queryByRole('button', { name: /View .* slot/ })).toBeNull();
+    expect(s.posts()).toHaveLength(0);
+  });
+
+  it('explicitly accepts legacy GET @2 with local unavailable assignments and unchanged execution state', async () => {
+    const body = without(statusBody(recordedState('recorded-completed')), 'assignmentRecords');
+    const s = server(() => json({ ...body, schema: 'figment/studio-gen-plans@2' }));
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await screen.findByText(EXECUTION_COPY['recorded-completed']);
+    expect(screen.getByText('Recorded assignment evidence is unavailable.')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /View .* slot/ })).toBeNull();
+    expect(s.posts()).toHaveLength(0);
+  });
+
+  it.each([
+    ['missing @3 records', without(assignmentBody(), 'assignmentRecords')],
+    ['extra @2 records', { ...assignmentBody(), schema: 'figment/studio-gen-plans@2' }],
+    ['missing paired row', assignmentBodyWithRows([])],
+    ['extra paired row', plansBody({ assignmentRecords: [executionRow(assignmentState())] })],
+    ['foreign id', assignmentBodyWithRows([{ ...executionRow(assignmentState()), id: secondPlan.id }])],
+    ['foreign digest', assignmentBodyWithRows([{ ...executionRow(assignmentState()), planSha256: secondPlan.planSha256 }])],
+    ['extra envelope key', assignmentBodyWithRows([{ ...executionRow(assignmentState()), path: 'private-assignment' }])],
+    ['duplicate paired rows', plansBody({ plans: [preparedBody(), secondPlan], assignmentRecords: [executionRow(assignmentState()), executionRow(assignmentState())] })],
+    ['reversed paired rows', plansBody({ plans: [preparedBody(), secondPlan], assignmentRecords: [executionRow(assignmentState([]), secondPlan), executionRow(assignmentState([]))] })],
+  ])('rejects %s without falling back or clearing pending intent', async (_name, body) => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E));
+    const s = server(() => json(body)), open = vi.fn();
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={open} />);
+    await screen.findByText(GET_UNAVAILABLE);
+    expect(screen.queryByRole('button', { name: /View .* slot/ })).toBeNull();
+    expect(open).not.toHaveBeenCalled(); expect(s.posts()).toHaveLength(0);
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E));
+    expect(document.body.textContent).not.toContain('private-assignment');
+  });
+
+  it.each([
+    ['unknown status', { status: 'approved' }],
+    ['unknown reason', { status: 'unavailable', reason: 'never-used' }],
+    ['partial unavailable list', { status: 'unavailable', reason: 'evidence-unavailable', slots: [slotRecord()] }],
+    ['source approval claim', { ...assignmentState(), currentSourceRevalidated: true }],
+    ['wrong record kind', { ...assignmentState(), recordKind: 'approval' }],
+    ['missing state field', without(assignmentState(), 'currentSourceRevalidated')],
+    ['extra state field', { ...assignmentState(), sourcePath: 'private-assignment' }],
+    ['non-array slots', { ...assignmentState(), slots: {} }],
+    ['missing slot field', assignmentState([without(slotRecord(), 'taxonomyType')])],
+    ['extra slot field', assignmentState([slotRecord({ imageId: 'private-assignment' })])],
+    ['unsafe brief id', assignmentState([slotRecord({ briefId: '../private-assignment' })])],
+    ['oversized brief id', assignmentState([slotRecord({ briefId: 'a'.repeat(129) })])],
+    ['uppercase digest', assignmentState([slotRecord({ briefSha256: 'F'.repeat(64) })])],
+    ['short digest', assignmentState([slotRecord({ briefSha256: 'f'.repeat(63) })])],
+    ['zero slot', assignmentState([slotRecord({ slotIndex: 0 })])],
+    ['excess slot', assignmentState([slotRecord({ slotIndex: 17 })])],
+    ['fractional slot', assignmentState([slotRecord({ slotIndex: 1.5 })])],
+    ['empty role', assignmentState([slotRecord({ role: '' })])],
+    ['oversized role', assignmentState([slotRecord({ role: 'x'.repeat(81) })])],
+    ['control in role', assignmentState([slotRecord({ role: 'hook\nprivate-assignment' })])],
+    ['nonpersona slot', assignmentState([slotRecord({ kind: 'nonpersona' })])],
+    ['lowercase taxonomy', assignmentState([slotRecord({ taxonomyType: 'a' })])],
+    ['oversized taxonomy', assignmentState([slotRecord({ taxonomyType: 'A'.repeat(17) })])],
+    ['duplicate slot', assignmentState([slotRecord(), slotRecord()])],
+    ['duplicate identity with different role', assignmentState([slotRecord(), slotRecord({ role: 'payoff' })])],
+  ])('refuses %s before exposing any partial assignment', async (_name, state) => {
+    const s = server(() => json(assignmentBody(state)));
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await screen.findByText(GET_UNAVAILABLE);
+    expect(screen.queryByText(/Recorded planning assignment:/)).toBeNull();
+    expect(document.body.textContent).not.toContain('private-assignment'); expect(s.posts()).toHaveLength(0);
+  });
+
+  it('accepts exact slot/text bounds and 64 unique slots across two plans', async () => {
+    const slots = Array.from({ length: 64 }, (_, i) => slotRecord({ briefId: `revision-${Math.floor(i / 16)}`, slotIndex: i % 16 + 1 }));
+    slots[0] = slotRecord({ briefId: 'a'.repeat(128), role: 'x'.repeat(80), taxonomyType: 'A'.repeat(16) });
+    const s = server(() => json(twoAssignments(slots.slice(0, 32), slots.slice(32))));
+    render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: /View .* slot/ })).toHaveLength(64));
+    expect(screen.queryByText(GET_UNAVAILABLE)).toBeNull(); expect(s.posts()).toHaveLength(0);
+  });
+
+  it.each(['duplicate across plans', '65 total unique slots'] as const)('enforces the global boundary for %s', async (variant) => {
+    const slots = Array.from({ length: 65 }, (_, i) => slotRecord({ briefId: `revision-${Math.floor(i / 16)}`, slotIndex: i % 16 + 1 }));
+    const body = variant === 'duplicate across plans' ? twoAssignments([slotRecord()], [slotRecord()]) : twoAssignments(slots.slice(0, 32), slots.slice(32));
+    const s = server(() => json(body)); render(<StudioGenPlans fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await screen.findByText(GET_UNAVAILABLE); expect(screen.queryByText(/Recorded planning assignment:/)).toBeNull(); expect(s.posts()).toHaveLength(0);
+  });
+
+  it('recovers malformed assignment evidence only on explicit refresh and preserves the pending POST key', async () => {
+    sessionStorage.setItem(STORAGE_KEY, record(SCOPE_A, KEY_E)); let valid = false;
+    const s = server((url) => url === GET_URL ? json(valid ? assignmentBody() : without(assignmentBody(), 'assignmentRecords')) : json(preparedBody()));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} onOpenRecordedSlot={vi.fn()} />);
+    await screen.findByText(GET_UNAVAILABLE); expect(s.gets()).toHaveLength(1); expect(s.posts()).toHaveLength(0);
+    valid = true; fireEvent.click(await enabled(REFRESH)); await screen.findByRole('button', { name: 'View revision-a slot 1' });
+    expect(sessionStorage.getItem(STORAGE_KEY)).toBe(record(SCOPE_A, KEY_E)); expect(s.posts()).toHaveLength(0);
+    fireEvent.click(await enabled(RESUME)); await screen.findByText(SUMMARY); expect(s.postKeys()).toEqual([KEY_E]);
+  });
+
+  it.each(['token', 'fetch'] as const)('never restores old assignment links after %s A-B-A and a stale refresh response', async (kind) => {
+    const oldRefresh = deferred<Response>(), replacement = deferred<Response>(), newest = deferred<Response>();
+    let aGets = 0;
+    const first = server((_url, _init, headers) => {
+      if (kind === 'token' && headers.get('authorization') === 'Bearer b') return replacement.promise;
+      aGets += 1; return aGets === 1 ? json(assignmentBody()) : aGets === 2 ? oldRefresh.promise : newest.promise;
+    });
+    const second = server(() => replacement.promise), open = vi.fn();
+    const props = (owner: 'a' | 'b') => ({ token: kind === 'token' ? owner : 'a', fetchImpl: kind === 'fetch' && owner === 'b' ? second.fetchImpl : first.fetchImpl, onOpenRecordedSlot: open });
+    const view = render(<StudioGenPlans {...props('a')} />);
+    await screen.findByRole('button', { name: 'View revision-a slot 1' }); fireEvent.click(await enabled(REFRESH));
+    view.rerender(<StudioGenPlans {...props('b')} />); view.rerender(<StudioGenPlans {...props('a')} />);
+    expect(screen.queryByRole('button', { name: 'View revision-a slot 1' })).toBeNull();
+    await act(async () => oldRefresh.resolve(json(assignmentBody())));
+    await act(async () => replacement.resolve(json(assignmentBody())));
+    expect(screen.queryByRole('button', { name: 'View revision-a slot 1' })).toBeNull();
+    await act(async () => newest.resolve(json(assignmentBody(assignmentState([])))));
+    await screen.findByText('No matching assignment records in this inventory.');
+    expect(open).not.toHaveBeenCalled(); expect(first.posts()).toHaveLength(0); expect(second.posts()).toHaveLength(0);
+  });
+});
+
+function assignmentBodyWithRows(assignmentRecords: unknown[]) { return plansBody({ plans: [preparedBody()], assignmentRecords }); }
 
 describe('StudioGenPlans recorded execution wire contract', () => {
   it.each([

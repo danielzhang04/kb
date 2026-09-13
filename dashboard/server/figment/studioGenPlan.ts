@@ -1,17 +1,18 @@
 /** Durable, provider-free preparation of one current Figment generation plan. */
 import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, open, rm } from 'node:fs/promises';
-import { basename, join, resolve } from 'node:path';
+import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import type { SessionConfig } from '../auth/session.ts';
 import { resolvePython } from '../runtime/python.ts';
 import { runStudioPlanProcess, StudioPlanProcessError } from './studioPlanProcess.ts';
 import { collectPreparedGenStatus, type PreparedGenStatus } from './cloudExperiment.ts';
+import { collectStudioAssignmentRecords, type StudioAssignmentRecord, type StudioPlanIdentity } from './contentBriefs.ts';
 import {
   ID, MAX_PUBLISHED, assertInventoryRoots, assertPublishedStudioCapacity, entryExists,
   publishedPlan, readBounded, readPublishedStudioPlans, safePath, safeProspective, safeRoot,
-  studioPlanRoots, summary, type Marker, type SafeRoot, type StudioGenPlan,
+  studioPlanRoots, summary, type Marker, type PublishedObservations, type SafeRoot, type StudioGenPlan,
 } from './studioPublishedPlans.ts';
 
 const CREATOR = 'creator-001';
@@ -24,8 +25,9 @@ export type { StudioGenPlan } from './studioPublishedPlans.ts';
 export type StudioPreparation = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
 /** Discovery read: prepared plans are existing POST DTOs, never approval or launch authority. */
 export interface StudioGenPlans {
-  schema: 'figment/studio-gen-plans@2'; requestScope: string; plans: StudioGenPlan[]; preparation: StudioPreparation;
+  schema: 'figment/studio-gen-plans@3'; requestScope: string; plans: StudioGenPlan[]; preparation: StudioPreparation;
   executionRecords: Array<{ id: string; planSha256: string; state: PreparedGenStatus }>;
+  assignmentRecords: StudioAssignmentRecord[];
 }
 export interface RunStudioGenPlanOptions { cwd: string; timeout: number; maxBuffer: number; windowsHide: boolean; }
 export type RunStudioGenPlan = (command: string, args: readonly string[], options: RunStudioGenPlanOptions) => Promise<unknown>;
@@ -74,20 +76,26 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       || (length !== undefined && length !== '0')) return reply.code(400).send({ error: 'body-not-allowed' });
     const session = verifiedSession(request);
     if (session === undefined) return reply.code(401).send({ error: 'missing-session' });
-    const view = (preparation: StudioPreparation, plans: StudioGenPlan[] = [], executionRecords: StudioGenPlans['executionRecords'] = []): StudioGenPlans =>
-      ({ schema: 'figment/studio-gen-plans@2', requestScope: requestScope(session.claims.sub), plans, preparation, executionRecords });
+    const view = (preparation: StudioPreparation, plans: StudioGenPlan[] = [], executionRecords: StudioGenPlans['executionRecords'] = [], assignmentRecords: StudioAssignmentRecord[] = []): StudioGenPlans =>
+      ({ schema: 'figment/studio-gen-plans@3', requestScope: requestScope(session.claims.sub), plans, preparation, executionRecords, assignmentRecords });
     if (active) return view('busy');
     const generation = started;
     let result: StudioGenPlans;
     try {
       const root = await openRoot();
-      const inventory = await readPublishedStudioPlans(root);
+      const observations: PublishedObservations = [];
+      const inventory = await readPublishedStudioPlans(root, observations);
       const plans: StudioGenPlan[] = [];
+      const identities: StudioPlanIdentity[] = [];
       const executionRecords: StudioGenPlans['executionRecords'] = [];
       for (const entry of inventory.published) {
-        const prepared = await publishedPlan(root, entry);
+        const prepared = await publishedPlan(root, entry, observations);
         if (prepared === null) throw new Error('stale-plan');
         plans.push(prepared);
+        const authorityPath = relative(join(repoRoot, 'orgs', 'figment'), join(entry.directory, 'plan.json'));
+        identities.push({ id: prepared.id, planSha256: prepared.planSha256, creator: prepared.creator,
+          authorityRelativePlanPath: isAbsolute(authorityPath) || authorityPath === '..' || authorityPath.startsWith(`..${sep}`)
+            ? null : authorityPath.split(sep).join('/') });
         executionRecords.push({ id: prepared.id, planSha256: prepared.planSha256,
           state: collectPreparedGenStatus(entry.directory, entry.saved.plan_sha256) });
       }
@@ -95,8 +103,21 @@ export function registerFigmentStudioGenPlan(app: FastifyInstance, options: Stud
       try { await assertPublishedStudioCapacity(root, inventory); }
       catch { capacityAvailable = false; }
       await assertInventoryRoots(root, inventory);
+      let assignmentRecords = collectStudioAssignmentRecords(repoRoot, identities);
+      const after = await readPublishedStudioPlans(root);
+      const signature = (value: typeof inventory): string => JSON.stringify({ ...value,
+        directories: [...value.directories].sort(), roots: [...value.roots].sort() });
+      if (signature(after) !== signature(inventory)) throw new Error('changed-inventory');
+      for (const entry of after.published) if (await publishedPlan(root, entry) === null) throw new Error('stale-plan');
+      for (const unchanged of observations) if (!await unchanged()) throw new Error('changed-published-file');
       result = view(terminationUncertain || inventory.unmarked || !capacityAvailable ? 'maintenance-required'
-        : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans, executionRecords);
+        : plans.length >= MAX_PUBLISHED ? 'at-capacity' : 'available', plans, executionRecords, assignmentRecords);
+      const encoded = JSON.stringify(result);
+      if (encoded.length > 65536 || Buffer.byteLength(encoded, 'utf8') > 65536) {
+        assignmentRecords = assignmentRecords.map((record) => ({ id: record.id, planSha256: record.planSha256,
+          state: { status: 'unavailable', reason: record.state.status === 'unavailable' ? record.state.reason : 'evidence-unavailable' } }));
+        result = { ...result, assignmentRecords };
+      }
     } catch {
       request.log.warn('Figment generation-plan discovery unavailable');
       result = view('unavailable');

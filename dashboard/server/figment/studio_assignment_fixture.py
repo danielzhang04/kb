@@ -23,6 +23,7 @@ PIPELINE = ROOT / "orgs" / "figment" / "pipeline"
 CREATOR = "creator-001"
 BASE = "content/briefs/2026-09-11-studio-base"
 REVISION = "content/briefs/2026-09-12-studio-revision"
+REVISION_TWO = "content/briefs/2026-09-12-studio-revision-two"
 
 
 def load(name: str, path: Path):
@@ -117,16 +118,16 @@ def bind(root: Path, plan: Path, legacy_out: Path, ledger: Path) -> None:
     brief = root / REVISION / "brief.json"
     slots = proof["record"]["content"]["required_asset_slots"]
 
-    def rulings(source_plan: str, approved: list[dict], filename: str) -> Path:
+    def rulings(source_plan: str, approved: list[dict], filename: str, revision: str = REVISION) -> Path:
         rows = [{"slot_index": slot["index"], "role": slot["role"], "taxonomy_type": slot["taxonomy_type"], "kind": slot["kind"],
                  "decision": "fit", "decided_by": "operator-fixture", "decided_at": "2026-09-12T00:00:00Z",
                  "source": {"kind": "approved-gen-still", "plan": source_plan, "image_id": image["image_id"]}}
                 for slot, image in zip(slots, approved, strict=True)]
-        return write(root / filename, {"schema": binding.RULINGS_SCHEMA, "brief": {"path": f"{REVISION}/brief.json", "sha256": sha(brief)}, "creator": CREATOR, "rulings": rows})
+        return write(root / filename, {"schema": binding.RULINGS_SCHEMA, "brief": {"path": f"{revision}/brief.json", "sha256": sha(root / revision / "brief.json")}, "creator": CREATOR, "rulings": rows})
 
-    def binding_cli(fit: Path, output: str):
+    def binding_cli(fit: Path, output: str, revision: str = REVISION):
         return subprocess.run([sys.executable, "-B", str(PIPELINE / "content/content_asset_binding.py"),
-            "--root", str(root), "--brief", f"{REVISION}/brief.json", "--request", f"{REVISION}/request.json",
+            "--root", str(root), "--brief", f"{revision}/brief.json", "--request", f"{revision}/request.json",
             "--rulings", fit.relative_to(root).as_posix(), "--out", output], cwd=ROOT, capture_output=True, text=True, timeout=90)
 
     fit = rulings(plan.relative_to(root).as_posix(), images, "fixture-slot-rulings.json")
@@ -135,6 +136,18 @@ def bind(root: Path, plan: Path, legacy_out: Path, ledger: Path) -> None:
     assert "assigned slots: 2" in positive.stdout
     assignment = anchor.load_json(root / REVISION / "assignment.json")
     assert all(row["asset"]["source_plan"] == {"path": plan.relative_to(root).as_posix(), "sha256": sha(plan)} for row in assignment["assignments"])
+
+    # A second actual revision/binding exercises distinct digest navigation;
+    # the original base remains present and deliberately unassigned.
+    edits_two = write(root / "fixture-revision-two-edits.json", {"brief_date": "2026-09-12", "hypothesis": "A second independent revision for exact recorded-slot navigation.", "intended_metric": "shares"})
+    briefs.revise_content_brief(root, BASE, edits_two.relative_to(root).as_posix(), REVISION_TWO)
+    proof_two = briefs.revalidate_content_brief(root, f"{REVISION_TWO}/request.json", f"{REVISION_TWO}/brief.json")
+    assert proof_two["record"]["content"]["required_asset_slots"] == slots
+    fit_two = rulings(plan.relative_to(root).as_posix(), images, "fixture-slot-rulings-two.json", REVISION_TWO)
+    positive_two = binding_cli(fit_two, f"{REVISION_TWO}/assignment.json", REVISION_TWO)
+    assert positive_two.returncode == 0, positive_two.stdout + positive_two.stderr
+    assert sha(root / REVISION_TWO / "brief.json") != sha(brief)
+    assert not (root / BASE / "assignment.json").exists()
 
     # Compile a separate real legacy-layout plan in place, with the SAME real
     # canonical persona and selected checkpoint. Never copy or rewrite a plan.
@@ -154,7 +167,7 @@ def bind(root: Path, plan: Path, legacy_out: Path, ledger: Path) -> None:
     assert [(root / BASE / name).read_bytes() for name in ("request.json", "brief.json")] == base_before
     print(json.dumps({"schema": "figment/studio-assignment-fixture@1", "positive_exit": positive.returncode,
         "legacy_exit": negative.returncode, "legacy_error": negative.stderr.strip(), "assignment": f"{REVISION}/assignment.json",
-        "brief": f"{REVISION}/brief.json", "base_brief": f"{BASE}/brief.json", "plan_sha256": sha(plan),
+        "brief": f"{REVISION}/brief.json", "second_brief": f"{REVISION_TWO}/brief.json", "second_assignment": f"{REVISION_TWO}/assignment.json", "second_positive_exit": positive_two.returncode, "base_brief": f"{BASE}/brief.json", "plan_sha256": sha(plan),
         "legacy_plan_sha256": sha(legacy_plan), "canonical_reference": reference, "plan_and_marker_unchanged": True,
         "legacy_plan_unchanged": True, "base_unchanged": True}))
 

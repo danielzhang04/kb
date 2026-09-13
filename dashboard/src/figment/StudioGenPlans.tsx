@@ -8,11 +8,14 @@ type GenExecutionState = { status: 'unavailable'; reason: 'evidence-unavailable'
       execution: 'no-stage-record' | 'recorded-running' | 'recorded-failed' | 'recorded-completed';
       liveness: 'unknown' | null; quality: 'not-assessed'; declaredCeilingUsd: number; maxMinutes: number;
       receipt: GenExecutionReceipt | null };
-export interface StudioGenPlansResponse { schema: 'figment/studio-gen-plans@2'; requestScope: string; plans: StudioGenPlan[]; preparation: PreparationAvailability; executionRecords: Array<{ id: string; planSha256: string; state: GenExecutionState }>; }
+export interface RecordedSlot { briefId: string; briefSha256: string; slotIndex: number; role: string; kind: 'persona'; taxonomyType: string; }
+type AssignmentState = { status: 'recorded'; recordKind: 'planning-snapshot'; currentSourceRevalidated: false; slots: RecordedSlot[] }
+  | { status: 'unavailable'; reason: 'evidence-unavailable' | 'outside-content-authority-root' };
+export interface StudioGenPlansResponse { schema: 'figment/studio-gen-plans@2' | 'figment/studio-gen-plans@3'; requestScope: string; plans: StudioGenPlan[]; preparation: PreparationAvailability; executionRecords: Array<{ id: string; planSha256: string; state: GenExecutionState }>; assignmentRecords: Array<{ id: string; planSha256: string; state: AssignmentState }>; }
 interface PendingRecord { requestScope: string; key: string; }
 type PendingRead = { kind: 'missing' } | { kind: 'valid'; record: PendingRecord } | { kind: 'blocked' };
 type PendingState = { kind: 'unknown' } | { kind: 'none' } | { kind: 'same'; key: string } | { kind: 'blocked'; message: string };
-type Inventory = { status: 'loading' } | { status: 'failed' } | { status: 'ready'; data: StudioGenPlansResponse; token?: string; fetchImpl: typeof fetch };
+type Inventory = { status: 'loading' } | { status: 'failed' } | { status: 'ready'; data: StudioGenPlansResponse; token?: string; fetchImpl: typeof fetch; ownerGeneration: number };
 interface Ticket { epoch: number; }
 
 const PLANS_URL = '/api/figment/studio/gen-plans';
@@ -92,8 +95,31 @@ function validExecutionState(value: unknown, plan: StudioGenPlan): GenExecutionS
     maxMinutes: value.maxMinutes, receipt };
 }
 
+function validAssignmentState(value: unknown, seen: Set<string>): AssignmentState | null {
+  if (!object(value)) return null;
+  if (value.status === 'unavailable') return exactKeys(value, ['reason', 'status'])
+    && (value.reason === 'evidence-unavailable' || value.reason === 'outside-content-authority-root')
+    ? { status: 'unavailable', reason: value.reason } : null;
+  if (!exactKeys(value, ['currentSourceRevalidated', 'recordKind', 'slots', 'status']) || value.status !== 'recorded'
+    || value.recordKind !== 'planning-snapshot' || value.currentSourceRevalidated !== false || !Array.isArray(value.slots) || value.slots.length > 64) return null;
+  const slots: RecordedSlot[] = [];
+  for (const row of value.slots) {
+    if (!object(row) || !exactKeys(row, ['briefId', 'briefSha256', 'kind', 'role', 'slotIndex', 'taxonomyType'])
+      || typeof row.briefId !== 'string' || row.briefId.length > 128 || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.briefId)
+      || !isSha256(row.briefSha256) || typeof row.slotIndex !== 'number' || !Number.isInteger(row.slotIndex) || row.slotIndex < 1 || row.slotIndex > 16
+      || typeof row.role !== 'string' || row.role.length < 1 || row.role.length > 80 || /[\u0000-\u001f\u007f]/.test(row.role)
+      || row.kind !== 'persona' || typeof row.taxonomyType !== 'string' || !/^[A-Z][A-Z0-9-]{0,15}$/.test(row.taxonomyType)) return null;
+    const key = `${row.briefId}:${row.briefSha256}:${row.slotIndex}`;
+    if (seen.has(key) || seen.size >= 64) return null;
+    seen.add(key);
+    slots.push({ briefId: row.briefId, briefSha256: row.briefSha256, slotIndex: row.slotIndex, role: row.role, kind: 'persona', taxonomyType: row.taxonomyType });
+  }
+  return { status: 'recorded', recordKind: 'planning-snapshot', currentSourceRevalidated: false, slots };
+}
 function validPlansResponse(value: unknown): StudioGenPlansResponse | null {
-  if (!object(value) || !exactKeys(value, PLANS_KEYS) || value.schema !== 'figment/studio-gen-plans@2' || !isSha256(value.requestScope) || !isAvailability(value.preparation)) return null;
+  if (!object(value) || (value.schema !== 'figment/studio-gen-plans@2' && value.schema !== 'figment/studio-gen-plans@3')
+    || !exactKeys(value, value.schema === 'figment/studio-gen-plans@3' ? ['assignmentRecords', ...PLANS_KEYS] : PLANS_KEYS)
+    || !isSha256(value.requestScope) || !isAvailability(value.preparation)) return null;
   if (!Array.isArray(value.plans) || value.plans.length > 2) return null;
   const plans: StudioGenPlan[] = [];
   for (const item of value.plans) {
@@ -110,7 +136,21 @@ function validPlansResponse(value: unknown): StudioGenPlansResponse | null {
     if (state === null) return null;
     executionRecords.push({ id: plan.id, planSha256: plan.planSha256, state });
   }
-  return { schema: 'figment/studio-gen-plans@2', requestScope: value.requestScope as string, plans, preparation: value.preparation as PreparationAvailability, executionRecords };
+  const assignmentRecords: StudioGenPlansResponse['assignmentRecords'] = [];
+  if (value.schema === 'figment/studio-gen-plans@2') {
+    for (const plan of plans) assignmentRecords.push({ id: plan.id, planSha256: plan.planSha256, state: { status: 'unavailable', reason: 'evidence-unavailable' } });
+  } else {
+    if (!Array.isArray(value.assignmentRecords) || value.assignmentRecords.length !== plans.length) return null;
+    const seen = new Set<string>();
+    for (const [index, row] of value.assignmentRecords.entries()) {
+      const plan = plans[index];
+      if (!object(row) || !exactKeys(row, ['id', 'planSha256', 'state']) || row.id !== plan.id || row.planSha256 !== plan.planSha256) return null;
+      const state = validAssignmentState(row.state, seen);
+      if (state === null) return null;
+      assignmentRecords.push({ id: plan.id, planSha256: plan.planSha256, state });
+    }
+  }
+  return { schema: value.schema, requestScope: value.requestScope as string, plans, preparation: value.preparation as PreparationAvailability, executionRecords, assignmentRecords };
 }
 
 function executionCopy(state: GenExecutionState): string {
@@ -172,7 +212,7 @@ function newKey(): string {
   return Array.from(bytes, (value) => value.toString(16).padStart(2, '0')).join('');
 }
 
-export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl: typeof fetch }) {
+export function StudioGenPlans({ token, fetchImpl, onOpenRecordedSlot }: { token?: string; fetchImpl: typeof fetch; onOpenRecordedSlot?: (target: RecordedSlot) => void }) {
   const [inventory, setInventory] = useState<Inventory>({ status: 'loading' });
   const [pending, setPending] = useState<PendingState>({ kind: 'unknown' });
   const [preparePending, setPreparePending] = useState(false);
@@ -182,36 +222,47 @@ export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl
   const epoch = useRef(0);
   const getSeq = useRef(0);
   const inFlight = useRef<Ticket | null>(null);
+  const owner = useRef({ token, fetchImpl, generation: 0 });
+  if (owner.current.token !== token || owner.current.fetchImpl !== fetchImpl) {
+    owner.current = { token, fetchImpl, generation: owner.current.generation + 1 };
+    epoch.current += 1;
+    inFlight.current = null;
+  }
+  const renderOwner = owner.current;
+  const [displayOwner, setDisplayOwner] = useState(renderOwner);
 
   const loadInventory = (activeEpoch: number): void => {
+    if (owner.current !== renderOwner || epoch.current !== activeEpoch) return;
     const seq = ++getSeq.current;
     setInventory({ status: 'loading' });
-    const current = (): boolean => epoch.current === activeEpoch && getSeq.current === seq;
+    const current = (): boolean => owner.current === renderOwner && epoch.current === activeEpoch && getSeq.current === seq;
     void fetchImpl(PLANS_URL, { headers: authHeaders(token) }).then(async (response) => {
       const decoded = response.ok ? validPlansResponse(await boundedJson(response, GET_MAX_CHARS)) : null;
       if (!current()) return;
       if (decoded === null) { setInventory({ status: 'failed' }); return; }
-      setInventory({ status: 'ready', data: decoded, token, fetchImpl });
+      setInventory({ status: 'ready', data: decoded, token, fetchImpl, ownerGeneration: renderOwner.generation });
       setPending(pendingFor(decoded.requestScope));
     }).catch(() => { if (current()) setInventory({ status: 'failed' }); });
   };
 
   useEffect(() => {
+    setDisplayOwner(renderOwner);
     const activeEpoch = ++epoch.current;
     inFlight.current = null;
     setPreparePending(false); setPrepareError(null); setPrepared(null); setPending({ kind: 'unknown' });
     loadInventory(activeEpoch);
     return () => { epoch.current += 1; inFlight.current = null; };
-  }, [token, fetchImpl]); // loadInventory closes over exactly this render's token/fetchImpl.
+  }, [token, fetchImpl, renderOwner]); // A new owner generation must load even if credentials return to earlier values.
 
   const release = (ticket: Ticket): boolean => {
-    if (inFlight.current !== ticket) return false;
+    if (owner.current !== renderOwner || epoch.current !== ticket.epoch || inFlight.current !== ticket) return false;
     inFlight.current = null;
     setPreparePending(false);
     return true;
   };
 
   const submit = (ticket: Ticket, record: PendingRecord): void => {
+    if (owner.current !== renderOwner || epoch.current !== ticket.epoch || inFlight.current !== ticket) return;
     if (!matches(readPending(), record)) {
       const derived = pendingFor(record.requestScope);
       setPending(derived.kind === 'none' ? { kind: 'blocked', message: STORAGE_BLOCKED } : derived);
@@ -221,18 +272,19 @@ export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl
     setPreparePending(true);
     void fetchImpl(PLAN_URL, { method: 'POST', headers: { ...authHeaders(token), 'Idempotency-Key': record.key, 'X-Figment-Intent-Scope': record.requestScope } }).then(async (response) => {
       const plan = response.ok ? validStudioGenPlan(await boundedJson(response, POST_MAX_CHARS)) : null;
-      if (inFlight.current !== ticket) return;
+      if (owner.current !== renderOwner || epoch.current !== ticket.epoch || inFlight.current !== ticket) return;
       if (plan === null) { setPrepareError(PREPARE_UNAVAILABLE); return; }
       setPrepared(plan);
       if (clearPending(record) === 'failed') { setPending({ kind: 'same', key: record.key }); setPrepareError(CLEAR_FAILED); }
-    }).catch(() => { if (inFlight.current === ticket) setPrepareError(PREPARE_UNAVAILABLE); })
+    }).catch(() => { if (owner.current === renderOwner && epoch.current === ticket.epoch && inFlight.current === ticket) setPrepareError(PREPARE_UNAVAILABLE); })
       .finally(() => { if (release(ticket)) loadInventory(ticket.epoch); });
   };
 
   // Only an inventory fetched with this render's exact token/fetchImpl may gate a dispatch or the display; a token/fetchImpl
   // change invalidates it until a fresh GET completes, even if the passive epoch-bump effect has not run yet.
   const currentInventory = (): StudioGenPlansResponse | null =>
-    inventory.status === 'ready' && inventory.token === token && inventory.fetchImpl === fetchImpl ? inventory.data : null;
+    owner.current === renderOwner && inventory.status === 'ready' && inventory.token === token && inventory.fetchImpl === fetchImpl
+      && inventory.ownerGeneration === renderOwner.generation ? inventory.data : null;
 
   const prepareNew = (): void => {
     const data = currentInventory();
@@ -266,13 +318,23 @@ export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl
   };
 
   const refresh = (): void => {
-    if (inFlight.current !== null || inventory.status === 'loading') return;
+    if (owner.current !== renderOwner || inFlight.current !== null || inventory.status === 'loading') return;
     loadInventory(epoch.current);
   };
 
   const ready = currentInventory();
   const canPrepareNew = ready !== null && ready.preparation === 'available' && pending.kind === 'none' && !preparePending;
   const canResume = ready !== null && pending.kind === 'same' && RESUMABLE.has(ready.preparation) && !preparePending;
+
+  if (displayOwner !== renderOwner) return <section className="figment__preview"><h2>Prepare generation plan</h2><p role="status">Checking preparation status…</p></section>;
+
+  const assignments = (state: AssignmentState): React.JSX.Element => state.status === 'unavailable'
+    ? <p>{state.reason === 'outside-content-authority-root' ? 'This legacy plan is outside the content-assignment root.' : 'Recorded assignment evidence is unavailable.'}</p>
+    : <div><p>Matching records in the bounded current inventory. Sources and image approval were not revalidated.</p>
+      {state.slots.length === 0 ? <p>No matching assignment records in this inventory.</p> : <ul>{state.slots.map((slot) => <li key={`${slot.briefId}:${slot.briefSha256}:${slot.slotIndex}`}>
+        Recorded planning assignment: {slot.briefId} · revision {slot.briefSha256.slice(0, 12)} · slot {slot.slotIndex}: {slot.role}
+        {onOpenRecordedSlot ? <button type="button" className="mc-btn" aria-label={`View ${slot.briefId} slot ${slot.slotIndex}`} onClick={() => { if (currentInventory() !== null && owner.current === renderOwner) onOpenRecordedSlot(slot); }}>View brief slot</button> : null}
+      </li>)}</ul>}</div>;
 
   return <section className="figment__preview">
     <h2>Prepare generation plan</h2>
@@ -290,7 +352,7 @@ export function StudioGenPlans({ token, fetchImpl }: { token?: string; fetchImpl
     {prepared ? <p role="status">{prepared.creator} · {prepared.stage} · one prepared run · declared ${prepared.declaredCeilingUsd.toFixed(2)} · plan {prepared.planSha256.slice(0, 12)}</p> : null}
     {ready && ready.plans.length ? <div className="figment__plans">
       <p className="figment__notice">Stored plan summaries are recorded snapshots, not live validity checks.</p>
-      {ready.plans.map((plan, index) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p><p>{executionCopy(ready.executionRecords[index].state)}</p></article>)}
+      {ready.plans.map((plan, index) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p><p>{executionCopy(ready.executionRecords[index].state)}</p>{assignments(ready.assignmentRecords[index].state)}</article>)}
     </div> : null}
   </section>;
 }
