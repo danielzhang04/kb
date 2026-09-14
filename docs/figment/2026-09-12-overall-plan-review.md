@@ -17,7 +17,7 @@ outside this continuation.
 | --- | --- | --- |
 | Research and planning | Research brief editing/publication, book reader, generation-plan preparation/resume, allocation and exact recorded brief-slot navigation are locally accepted. | Keep the operator/book instructions current after accepted changes; no new research or planning framework is needed. |
 | Current source | Accepted and committed as `4228387d`, following foundation `c11a343a`. Route/shared 167, governed 14 and UI 196 passed; actual native HTTP join reports nine checkpoints and seven POSTs. Typechecks/build, seven original Chrome screenshots, source/fixture pins and cleanup accepted. Independent reviews READY. | Maintain the accepted Windows-local capability; no repeat testing without a changed input or unresolved concern. |
-| Operator execution/review | Existing CLI runner/ruling authorities and recorded status/read-only review-claim panels exist. | The current Studio explicitly cannot launch a run and reads existing review claims rather than collecting a new attributed ruling. A complete in-dashboard execution/review journey requires new bounded product work. |
+| Operator execution/review | Existing CLI/ruling authorities and recorded claim panels; bounded gen reader and two-function seam accepted in `bbf2aa97` after141 focused tests,46 regressions and independently reviewed real16-image keep/cull integration. | Read-only open adapter checkpoint passes83 focused tests and actual16-image/Node integration; direct adversarial adapter cases remain. Prepare/apply/inspect, attributed ruling HTTP/UI and authenticated execution remain. Studio still cannot launch a run or collect the new ruling. |
 | Delivery | Still/nonpersona production and review contracts, native video acceptance and immutable video-delivery preparation exist. | Video-delivery preparation does not supply a finished-video renderer or complete delivery acceptance/consumer integration. Actual correspondence, playback, audio and template fit remain unproved. |
 | Creator media | Training, checkpoint transport and diagnostic execution have worked. The latest four-image prompt-span experiment completed with verified teardown. | No accepted production checkpoint, held-out creator still set or production video. Latest framing result: 0/4, with no clear paired improvement. This branch is closed without a paid retry. |
 
@@ -68,12 +68,23 @@ remain recorded planning evidence after a successful check.
    Opus rereview completed with four narrow clarifications adopted by root:
    a dedicated mutation-aware reader; gen-only reads mode; explicit read-only
    preflight, writer and post-teardown inspection children; routed dependency
-   closure and pre-claim output reservations. The two-function seam now passes46
-   existing regressions with default-None behavior preserved; independent review
-   remains. Sonnet's dedicated reader draft requires native observation/baseline
-   repairs before focused tests and Opus review. The generic observer is unchanged.
-   A real16-image legacy baseline passed; actual routed quotas and byte-equivalence
-   remain required before adapter/HTTP/UI acceptance.
+   closure and pre-claim output reservations. The accepted two-function seam preserves
+   default-None behavior; the repaired reader passes141 focused tests and the seam46
+   regressions. Independent source review and real16-image same-path keep/cull join
+   are accepted; exact output bytes, original observations, actual stream counters
+   and owned cleanup were verified. This milestone is committed as bbf2aa97.
+   The read-only open adapter is42,052bytes after native corrections to one
+   verified but defective Sonnet draft, including independently found duplicate
+   graded paths. The separate test task passes83 cases under Python3.13 after two
+   preserved fixture failures. Actual Python3.12 staged16-image open and realNode
+   opaque-byte transport passed, with independent evidence review READY. This
+   closes a tested read-only backend checkpoint. Direct source replacement/final
+   drift, preplanted aliases/module tampering, reparse inputs, optional-sidecar
+   drift and17-image adapter tests remain before wider workflow acceptance.
+   Static PNG checks do not establish browser decode, human review, publisher
+   authority or writer reservation. The user requested this clean stopping point;
+   no prepare/apply/inspect, HTTP/UI or downstream implementation begins now.
+
 
 4. **Complete one delivery path, then stop expanding infrastructure.** Inventory
    the existing renderer/producer seams against one selected still or accepted
@@ -124,9 +135,9 @@ No push, merge, deployment, account action or publication is included.
 
 September14 audits: the current disabled Codex scheduled task is not a Figment
 host; the proposed Linux claim/report path has unwired serving/authentication and
-Windows-source locality prerequisites. A separate architecture review is testing
-whether a concrete local path can meet these constraints without a platform
-rewrite. No execution activation has occurred. The seven-row crop-consumption
+Windows-source locality prerequisites. The completed architecture review retained a separate Windows host candidate;
+its real authenticated boot, independent ownership and host-loss liability remain
+unresolved. No execution activation has occurred. The seven-row crop-consumption
 trace independently passed metadata checks, including aggregate square buckets,
 but named-row cache/optimizer exposure remains unavailable; it does not justify
 cache repair, retraining or another paid run.
