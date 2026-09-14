@@ -844,3 +844,25 @@
   read its frontmatter raw. Owned by figment-expand.
 - Ledgers: 2026-09-12 had ZERO dispatch/cost/activity rows — nightly may not have fired 09-12;
   flagged in handover. Budget: $0.00 of $30 today.
+
+## 2026-09-14 nightly (dispatcher-cloud, ran on claude-opus-4-8)
+- Clean run. preamble OK, pyyaml OK, sync_skills --check clean. Dispatched 1 card 6aa79134
+  (cadence:nightly-review, routed sonnet-5, self-executed on opus-4-8); ran preamble+sync_skills,
+  regenerated both dashboards, appended memory, committed coordination paths to ops.
+- daemon-dirs gate UNCHANGED from 09-13: sync_daemon_dirs.py absent from origin/ops, present on
+  origin/main. Literal step-2b command exits 2 (file not found) on the ops checkout; ran main's
+  copy via `git show origin/main:scripts/sync_daemon_dirs.py` in refs-fallback -> exit 1, same
+  lone ops-only orgs/kb-ops/workflows/acceptance-run.md. Filed
+  wake-daniel-2026-09-14-sync-daemon-dirs-drift (6th open on this issue: 08-15/08-30/09-10/09-11/
+  09-13/09-14). Dedup clause for step 2b STILL not added — Daniel-owed.
+- LESSON (avoid repeating): do NOT frame this as "script missing / flapping regression". The
+  root cause is stable — absent from ops, present on main. Bare `python scripts/sync_daemon_dirs.py
+  --check` fails on ops ONLY because ops lacks the file; the useful result comes from running
+  main's copy in refs-fallback (as prior nights did). First-pass I filed a "-missing" card and
+  wrote "regression" into both dashboards, then had to correct all three. Go straight to the
+  refs-fallback run before characterizing the gate.
+- Working cards: ages from git commit dates, NOT mtime (fresh clone, all mtimes ~06:15Z). Same two
+  as 09-13: d126c410 figment replicate stale >48h; 6a6bc3dd kb-ops iter-smoke-t2 state:halted
+  stranded in queue/working/. d126c410 still has malformed yaml (unquoted colon in action:).
+- Ledgers: 09-13 now shows dispatch+cost rows (the 09-12 zero-row gap flagged last run looks like
+  a one-off, not an ongoing outage). Budget: $0.00 of $30 today.
