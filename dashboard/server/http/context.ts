@@ -61,6 +61,7 @@ import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import type { ActivationReaderPort } from '../home/project.ts';
 import type { VideoRulingConfig } from '../figment/videoRulingRead.ts';
+import type { GenSourceReadConfig } from '../figment/genSourceRead.ts';
 import type { runStudioPlanProcessCapture } from '../figment/studioPlanProcess.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
@@ -81,6 +82,10 @@ export interface SurfaceContext {
   figmentVideoRulingRunProcess?: typeof runStudioPlanProcessCapture;
   /** Injectable bounded process seam for Figment content-brief revision publication and reading. */
   figmentContentBriefRunProcess?: typeof runStudioPlanProcessCapture;
+  /** Optional server-owned configuration for the bounded Figment gen-source-read reader. */
+  figmentGenSourceReadConfig?: GenSourceReadConfig | null;
+  /** Injectable bounded process seam for the Figment gen-source-read reader. */
+  figmentGenSourceReadRunProcess?: typeof runStudioPlanProcessCapture;
   /**
    * P4 W6.2 [P4-C33]: the ONE server-owned reconciliation publisher, composed once at the surface root
    * over the real store/ops ports. Present for step 2's callers (card/inbox transitions, schedule

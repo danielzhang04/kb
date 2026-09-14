@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { GenSourceRead } from './GenSourceRead.tsx';
 
 export interface StudioGenPlan { schema: 'figment/studio-gen-plan@1'; id: string; status: 'prepared'; creator: 'creator-001'; stage: 'gen'; runCount: 1; declaredCeilingUsd: number; planSha256: string; }
 export type PreparationAvailability = 'available' | 'busy' | 'at-capacity' | 'maintenance-required' | 'unavailable';
@@ -352,7 +353,7 @@ export function StudioGenPlans({ token, fetchImpl, onOpenRecordedSlot }: { token
     {prepared ? <p role="status">{prepared.creator} · {prepared.stage} · one prepared run · declared ${prepared.declaredCeilingUsd.toFixed(2)} · plan {prepared.planSha256.slice(0, 12)}</p> : null}
     {ready && ready.plans.length ? <div className="figment__plans">
       <p className="figment__notice">Stored plan summaries are recorded snapshots, not live validity checks.</p>
-      {ready.plans.map((plan, index) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p><p>{executionCopy(ready.executionRecords[index].state)}</p>{assignments(ready.assignmentRecords[index].state)}</article>)}
+      {ready.plans.map((plan, index) => <article className="figment__plan" key={plan.id}><h2>{plan.creator} · {plan.stage}</h2><p>{plan.status} · one prepared run · declared ${plan.declaredCeilingUsd.toFixed(2)} · plan {plan.planSha256.slice(0, 12)}</p><p>{executionCopy(ready.executionRecords[index].state)}</p>{assignments(ready.assignmentRecords[index].state)}<GenSourceRead key={`${plan.id}:${plan.planSha256}`} planId={plan.id} planSha256={plan.planSha256} requestScope={ready.requestScope} ownerGeneration={renderOwner.generation} token={token} fetchImpl={fetchImpl} /></article>)}
     </div> : null}
   </section>;
 }

@@ -1,6 +1,10 @@
 # Prompt framing diagnostic — preparation and review
 
-Status: preparation only, 2026-09-13. No new paid run is admitted or started.
+Status: completed diagnostic; hypothesis failed. The preparation/admission sections below are historical.
+
+On September13 the single admitted four-image run completed; root reviewed all four original PNGs and their exact embedded effective graphs. All were adult/clothed;0/4 met absolute tight-framing criteria and neither seed pair showed clear improvement. Pod wd3sk2zzur88vy is terminated with original-journal absence verified. Harness estimate $0.133170; paid arc $33.723380 plus $1.20 retained reserves = $34.923380/$50, not invoices. No automatic retry, prompt promotion or identity-quality acceptance follows. Exact terminal evidence: MAIN/_private/figment-phrase-ablation-20260913-v1/terminal-root-review.json; OPS card6aa70300-1247ef9e is done.
+
+Historical authoring errors and approval gates below were repaired/closed before that one run; they are not current blockers.
 
 ## Decision
 
@@ -44,7 +48,7 @@ Planning envelope: one placement, 95 minutes, harness `--max-usd 2.10`, separate
 
 Last accepted paid-arc estimate is $33.590210 against $50, with two older $0.40 reserves separately retained: $34.390210 including those reserves. A full new $2.50 reservation would bring the conservative envelope to $36.890210 before any other concurrent spend. Reconcile fresh state and create the precise work card before a live action. These figures are estimates/reservations, not invoices or provider observations from this preparation.
 
-## Current blocker and next step
+## Historical blocker and next step (resolved before execution)
 
 The unaccepted manifest author's JSON preserves every top-level baseline value except jobs, but its two substitutions use `node`; the actual harness expects `node_id`. Root supplied that incorrect key in the work order. No execution or offline-verifier pass is claimed.
 

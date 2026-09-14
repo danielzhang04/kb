@@ -102,11 +102,98 @@ Partial, malformed, or extra output, or a nonzero exit with anything else, must 
 treated as unavailable; there is no guarantee of diagnostics against a hostile or
 misbehaving runtime.
 
-## Not available yet
-No UI or HTTP integration ships with this reader; nothing here should be wired into
-an automatic run/retry loop. Current-source observation is strictly distinct from
-launch authority, human approval, quality sign-off, atomic-snapshot guarantees, or
-billing control.
+## Manual dashboard source check
+
+The generation-plan view now includes **Source check** for each stored plan. The
+HTTP workflow supports `creator-001`, one prepared gen run per plan, on local
+Windows CPython. It uses the reader described above; configuring the server does
+not launch a check. The synthetic local browser journey is verified; this guide does not
+claim deployment or media-quality acceptance.
+
+Set `DASHBOARD_FIGMENT_GEN_SOURCE_READS_JSON` in the dashboard server's environment
+before startup. Its value has exactly this shape. Every angle-bracket value below
+is a placeholder to replace with independently reviewed configuration; this is not
+a runnable configuration or a set of trusted production pins.
+
+```json
+{
+  "pythonExecutable": "<canonical-absolute-Windows-python.exe-path>",
+  "adapterSha256": "<reviewed-adapter-sha256>",
+  "dependencySha256": {
+    "observed_reads.py": "<reviewed-sha256>",
+    "figment_train.py": "<reviewed-sha256>",
+    "training_config.py": "<reviewed-sha256>",
+    "persona.py": "<reviewed-sha256>",
+    "lineage.py": "<reviewed-sha256>"
+  },
+  "entries": [
+    {
+      "id": "<published-plan-id>",
+      "planSha256": "<selected-gen-plan-sha256>",
+      "sourceRoot": "<canonical-absolute-source-root-inside-server-repoRoot>",
+      "sourcePlanSha256": "<source-train-or-tester-plan-sha256>"
+    }
+  ]
+}
+```
+
+- Use one or two entries with unique IDs. Copy the exact published plan ID and
+  its `planSha256` together. The ID uses the existing 36-character lowercase
+  hex/hyphen format; do not generate a replacement ID. All digests are lowercase
+  64-hex. `sourcePlanSha256` independently pins the source root's `plan.json`.
+- The selected plan must be published in
+  `<repoRoot>/orgs/figment/_private/figment-studio/gen-plans/<id>` with matching
+  publication evidence. Legacy-root plans and unmarked or ambiguous inventories
+  are refused. `sourceRoot` must also lie inside the server's configured
+  `repoRoot`; a sibling checkout or external source directory is unavailable.
+- Use canonical local drive-absolute Windows paths with backslashes, escaped as
+  `\\` in JSON. No relative paths, forward slashes, UNC/device paths, junctions,
+  short-name aliases, dot segments, or trailing separators. Path strings are
+  limited to 2,048 characters. The trusted Python executable may be outside
+  `repoRoot`; its runtime integrity remains the caller's responsibility.
+- The server fixes the adapter path to
+  `<repoRoot>/orgs/figment/pipeline/gen_source_read.py`. `adapterSha256` must come
+  from independent review of that adapter; the five sibling pins do not replace
+  it. Review intentional code or plan changes before updating configuration.
+  Hashing whatever happens to be on disk is not approval of those bytes.
+- An absent environment variable disables checking. Empty text, JSON `null`,
+  extra keys, malformed pins, or more than two entries fail startup with a fixed
+  configuration error. The JSON limit is 65,536 characters. Configuration is
+  copied and frozen at registration; a deliberate configuration change requires
+  restarting the server after review.
+
+Open a stored plan and choose **Check current source** explicitly. Discovery only
+reports configuration and availability; it does not inspect the source files.
+The browser supplies the plan's exact ID/digest and the current operator/workspace
+scope automatically. There are no prompt, filesystem-path, or token-entry fields
+in this flow; the existing dashboard session provides authentication.
+
+A successful result shows **Source checked at** and the source-plan digest prefix.
+This is a past observation: files may already have changed. It grants no launch,
+quality, approval, or atomic-snapshot authority and does not change recorded
+assignment evidence. There is no automatic check, retry, or source-result storage.
+Both the child's **Refresh status** and the parent plan-list **Refresh status**
+clear the displayed result. Changing the operator or plan identity also removes
+the old result and discards late responses.
+
+When another check is **busy**, wait and refresh explicitly. **Quarantined** means
+an earlier process ended with uncertain containment; an operator must investigate
+before checking can resume. Refresh does not clear that server quarantine. Other
+failures show fixed unavailable, authorization, or identity-mismatch messages;
+raw process diagnostics and paths are not displayed. A browser timeout does not
+prove the server stopped: the server may still be working, and no automatic retry
+occurs. The browser waits up to 30 seconds for discovery and 150 seconds for a
+check; the contained child has a separate 120-second execution timeout and must
+finish its cleanup before the server can reuse its slot.
+
+For maintainers, discovery is bodyless
+`GET /api/figment/studio/gen-source-reads`; the manual action is bodyless
+`POST /api/figment/studio/gen-plans/:id/source-check`, carrying
+`X-Figment-Plan-Sha256` and `X-Figment-Request-Scope`. Both use existing session,
+origin, and rate gates; POST also requires new-work admission and the fleet
+preamble. See the [route and configuration parser](../../dashboard/server/figment/genSourceRead.ts),
+[governed registration](../../dashboard/server/http/surface.ts), and
+[plan-list integration](../../dashboard/src/figment/StudioGenPlans.tsx).
 
 ## Creator identifier and hash shapes
 `creator` is lowercase alphanumeric segments separated by single hyphens, starting

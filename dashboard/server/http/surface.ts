@@ -37,6 +37,11 @@ import {
   parseVideoRulingConfigJson,
   registerFigmentVideoRulingRead,
 } from '../figment/videoRulingRead.ts';
+import {
+  parseGenSourceReadConfig,
+  parseGenSourceReadConfigJson,
+  registerFigmentGenSourceRead,
+} from '../figment/genSourceRead.ts';
 import { registerV1NodeRoutes, registerV1Routes } from '../api/v1/routes.ts';
 import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
 import { createActivationReader } from '../home/routes.ts';
@@ -170,6 +175,9 @@ export function makeSurfaceContext(
   const figmentVideoRulingConfig = overrides.figmentVideoRulingConfig === undefined
     ? parseVideoRulingConfigJson((activation.env ?? process.env).DASHBOARD_FIGMENT_VIDEO_RULINGS_JSON)
     : parseVideoRulingConfig(overrides.figmentVideoRulingConfig);
+  const figmentGenSourceReadConfig = overrides.figmentGenSourceReadConfig === undefined
+    ? parseGenSourceReadConfigJson((activation.env ?? process.env).DASHBOARD_FIGMENT_GEN_SOURCE_READS_JSON)
+    : parseGenSourceReadConfig(overrides.figmentGenSourceReadConfig);
   // The auth-mode seam, resolved ONCE here with the same env source the activation gate reads. In
   // `tailnet` mode the operator authenticator rides on `sessionConfig` — the one object every
   // `requireSession` call site already receives — so the mode reaches all of them without a route edit.
@@ -326,6 +334,8 @@ export function makeSurfaceContext(
     figmentVideoRulingConfig,
     figmentVideoRulingRunProcess: overrides.figmentVideoRulingRunProcess,
     figmentContentBriefRunProcess: overrides.figmentContentBriefRunProcess,
+    figmentGenSourceReadConfig,
+    figmentGenSourceReadRunProcess: overrides.figmentGenSourceReadRunProcess,
     reconciliationPublisher,
     coordinationPublication,
     outboxRoot,
@@ -621,6 +631,7 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
           if (req.method === 'GET' && (
             req.routeOptions.url === '/api/figment/studio/gen-plans'
             || req.routeOptions.url === '/api/figment/video-rulings'
+            || req.routeOptions.url === '/api/figment/studio/gen-source-reads'
           )) return;
           const admission = ctx.admission('new-work');
           if (!admission.ok) return reply.code(admission.status).send({ error: admission.reason });
@@ -662,6 +673,12 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
           sessionConfig: ctx.sessionConfig,
           config: ctx.figmentVideoRulingConfig ?? null,
           runProcess: ctx.figmentVideoRulingRunProcess,
+        });
+        registerFigmentGenSourceRead(studio, {
+          repoRoot: ctx.repoRoot,
+          sessionConfig: ctx.sessionConfig,
+          config: ctx.figmentGenSourceReadConfig ?? null,
+          runProcess: ctx.figmentGenSourceReadRunProcess,
         });
       });
       // P6 W6.1 [P6-C20]: v1 operator MUTATIONS join the operator authenticated scope — they SHOULD spend

@@ -1,12 +1,15 @@
 // @vitest-environment jsdom
 import { StrictMode, Suspense, startTransition, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { StudioGenPlans } from './StudioGenPlans';
+import { GEN_SOURCE_LIMITATIONS } from '../../shared/figmentGenSourceRead.ts';
 
 const STORAGE_KEY = 'figment.studio.genPlan.pending.v1';
 const GET_URL = '/api/figment/studio/gen-plans';
 const POST_URL = '/api/figment/studio/gen-plan';
+const SOURCE_GET_URL = '/api/figment/studio/gen-source-reads';
+const sourcePostUrl = (id: string) => `/api/figment/studio/gen-plans/${id}/source-check`;
 const SCOPE_A = 'a'.repeat(64);
 const SCOPE_B = 'b'.repeat(64);
 const KEY_E = 'e'.repeat(48);
@@ -47,14 +50,38 @@ function deferred<T>() {
 }
 
 type Handler = (url: string, init: RequestInit | undefined, headers: Headers) => Promise<Response> | Response;
-function server(handler: Handler) {
-  const mock = vi.fn(async (url: string, init?: RequestInit) => handler(url, init, new Headers(init?.headers)));
+function server(handler: Handler, sourceHandler?: Handler) {
+  const mock = vi.fn(async (url: string, init?: RequestInit) => {
+    const headers = new Headers(init?.headers);
+    if (url === SOURCE_GET_URL || url.endsWith('/source-check')) {
+      if (sourceHandler) return sourceHandler(url, init, headers);
+      if (url === SOURCE_GET_URL && init?.method === undefined) {
+        return json({ schema: 'figment/studio-gen-source-reads@1', configured: false, availability: 'not-configured', entries: [] });
+      }
+      throw new Error('Unexpected source mutation');
+    }
+    if (url !== GET_URL && url !== POST_URL) throw new Error('Unexpected test route');
+    return handler(url, init, headers);
+  });
   const posts = () => mock.mock.calls.filter(([url]) => url === POST_URL);
   const gets = () => mock.mock.calls.filter(([url]) => url === GET_URL);
   const postKeys = () => posts().map(([, init]) => new Headers(init?.headers).get('Idempotency-Key'));
-  return { fetchImpl: mock as unknown as typeof fetch, posts, gets, postKeys };
+  const sourceGets = () => mock.mock.calls.filter(([url]) => url === SOURCE_GET_URL);
+  const sourcePosts = () => mock.mock.calls.filter(([url, init]) => url.endsWith('/source-check') && init?.method === 'POST');
+  const allPosts = () => mock.mock.calls.filter(([, init]) => init?.method === 'POST');
+  return { fetchImpl: mock as unknown as typeof fetch, posts, gets, postKeys, sourceGets, sourcePosts, allPosts };
 }
-const button = (name: string) => screen.getByRole('button', { name }) as HTMLButtonElement;
+const button = (name: string) => {
+  // The real child has its own Refresh status. Parent lifecycle tests target only
+  // the direct section control and must not accidentally refresh a child.
+  if (name === REFRESH) {
+    const parent = screen.getByRole('heading', { name: PREPARE }).closest('section')!;
+    const matches = within(parent).getAllByRole('button', { name }).filter((node) => node.parentElement === parent);
+    expect(matches).toHaveLength(1);
+    return matches[0] as HTMLButtonElement;
+  }
+  return screen.getByRole('button', { name }) as HTMLButtonElement;
+};
 async function enabled(name: string): Promise<HTMLButtonElement> {
   await waitFor(() => expect(button(name).disabled).toBe(false));
   return button(name);
@@ -682,6 +709,110 @@ describe('StudioGenPlans recorded assignment contract', () => {
 });
 
 function assignmentBodyWithRows(assignmentRecords: unknown[]) { return plansBody({ plans: [preparedBody()], assignmentRecords }); }
+
+const sourceInventory = (plans = [preparedBody()]) => ({
+  schema: 'figment/studio-gen-source-reads@1', configured: true, availability: 'available',
+  entries: plans.map(({ id, planSha256 }) => ({ id, planSha256 })),
+});
+const sourceResult = (plan = preparedBody(), checkedAtUtc = '2026-09-13T18:00:00Z') => ({
+  schema: 'figment/studio-gen-source-read@1', id: plan.id, planSha256: plan.planSha256,
+  outcome: 'source-checked', checkedAtUtc,
+  digests: { personaSha256: '1'.repeat(64), approvalSha256: '2'.repeat(64), approvalLineageSha256: '3'.repeat(64),
+    sourcePlanSha256: '4'.repeat(64), checkpointSha256: '5'.repeat(64), genManifestSha256: ['6'.repeat(64)] },
+  claims: { launchReady: false, qualityApproved: false, atomicSnapshot: false }, limitations: [...GEN_SOURCE_LIMITATIONS],
+});
+const sourceSections = () => screen.getAllByRole('heading', { name: 'Source check' }).map((heading) => heading.closest('section')!);
+async function sourceCheck(index = 0) {
+  await waitFor(() => expect((within(sourceSections()[index]!).getByRole('button', { name: 'Check current source' }) as HTMLButtonElement).disabled).toBe(false));
+  return within(sourceSections()[index]!).getByRole('button', { name: 'Check current source' });
+}
+
+describe('StudioGenPlans real current-source child integration', () => {
+  it('binds each real child to its exact plan, digest and scope and only checks the explicitly selected plan', async () => {
+    const plans = [preparedBody(), secondPlan];
+    const body = twoAssignments([slotRecord()], [slotRecord({ briefId: 'revision-b' })]);
+    const s = server(() => json({ ...body, requestScope: SCOPE_B }), (url) => {
+      if (url === SOURCE_GET_URL) return json(sourceInventory(plans));
+      if (url === sourcePostUrl(secondPlan.id)) return json(sourceResult(secondPlan));
+      throw new Error('Unexpected source plan selected');
+    });
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    await sourceCheck(0); await sourceCheck(1);
+    expect(sourceSections()).toHaveLength(2);
+    expect(s.gets()).toHaveLength(1); expect(s.sourceGets()).toHaveLength(2);
+    expect(s.allPosts()).toHaveLength(0);
+    for (const [, init] of s.sourceGets()) {
+      expect(init?.method).toBeUndefined(); expect(init?.body).toBeUndefined();
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer session');
+    }
+    fireEvent.click(await sourceCheck(1));
+    await within(sourceSections()[1]!).findByText('Source checked at 2026-09-13T18:00:00Z');
+    expect(within(sourceSections()[0]!).queryByText(/Source checked at/)).toBeNull();
+    expect(s.allPosts()).toHaveLength(1); expect(s.posts()).toHaveLength(0);
+    const [url, init] = s.sourcePosts()[0]!;
+    expect(url).toBe(sourcePostUrl(secondPlan.id)); expect(init?.body).toBeUndefined();
+    expect(init?.credentials).toBe('same-origin');
+    const headers = new Headers(init?.headers);
+    expect(headers.get('X-Figment-Plan-Sha256')).toBe(secondPlan.planSha256);
+    expect(headers.get('X-Figment-Request-Scope')).toBe(SCOPE_B);
+    expect(headers.get('authorization')).toBe('Bearer session');
+    for (const row of body.assignmentRecords) expect(row.state).toMatchObject({ currentSourceRevalidated: false });
+    expect(screen.getAllByText('Matching records in the bounded current inventory. Sources and image approval were not revalidated.')).toHaveLength(2);
+  });
+
+  it('parent refresh immediately removes an old check, reloads its child, and preserves recorded assignment meaning without another POST', async () => {
+    const refreshBody = deferred<Response>();
+    const body = assignmentBody();
+    const s = server(() => s.gets().length === 1 ? json(body) : refreshBody.promise,
+      (url) => url === SOURCE_GET_URL ? json(sourceInventory()) : json(sourceResult()));
+    render(<StudioGenPlans token="session" fetchImpl={s.fetchImpl} />);
+    fireEvent.click(await sourceCheck());
+    await screen.findByText('Source checked at 2026-09-13T18:00:00Z');
+    fireEvent.click(await enabled(REFRESH));
+    expect(screen.queryByText(/Source checked at/)).toBeNull();
+    expect(screen.queryByRole('heading', { name: 'Source check' })).toBeNull();
+    expect(s.gets()).toHaveLength(2);
+    await act(async () => refreshBody.resolve(json(body)));
+    await sourceCheck();
+    expect(s.sourceGets()).toHaveLength(2); expect(s.allPosts()).toHaveLength(1);
+    expect(screen.queryByText(/Source checked at/)).toBeNull();
+    expect(body.assignmentRecords[0]!.state).toEqual(assignmentState());
+    expect(screen.getByText(/Recorded planning assignment: revision-a/)).toBeTruthy();
+    expect(screen.getByText('Matching records in the bounded current inventory. Sources and image approval were not revalidated.')).toBeTruthy();
+  });
+
+  it('token A-B-A hides the old result and rejects its independently deferred POST body after a fresh A check', async () => {
+    const oldBody = deferred<string>();
+    const readOldBody = vi.fn(() => oldBody.promise);
+    let sourcePosts = 0;
+    const s = server(() => json(assignmentBody()), (url) => {
+      if (url === SOURCE_GET_URL) return json(sourceInventory());
+      sourcePosts++;
+      if (sourcePosts === 1) return { ok: true, status: 200, text: readOldBody } as unknown as Response;
+      return json(sourceResult(preparedBody(), '2026-09-14T01:00:00Z'));
+    });
+    const view = render(<StudioGenPlans token="a" fetchImpl={s.fetchImpl} />);
+    fireEvent.click(await sourceCheck());
+    await waitFor(() => expect(readOldBody).toHaveBeenCalledTimes(1));
+    expect(s.sourcePosts()).toHaveLength(1);
+    view.rerender(<StudioGenPlans token="b" fetchImpl={s.fetchImpl} />);
+    expect(screen.queryByRole('heading', { name: 'Source check' })).toBeNull();
+    await sourceCheck();
+    view.rerender(<StudioGenPlans token="a" fetchImpl={s.fetchImpl} />);
+    expect(screen.queryByText(/Source checked at/)).toBeNull();
+    await sourceCheck();
+    expect(s.sourceGets()).toHaveLength(3); expect(s.allPosts()).toHaveLength(1);
+    fireEvent.click(await sourceCheck());
+    await screen.findByText('Source checked at 2026-09-14T01:00:00Z');
+    await act(async () => oldBody.resolve(JSON.stringify(sourceResult())));
+    expect(readOldBody).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('Source checked at 2026-09-13T18:00:00Z')).toBeNull();
+    expect(screen.getByText('Source checked at 2026-09-14T01:00:00Z')).toBeTruthy();
+    expect(s.allPosts()).toHaveLength(2); expect(s.posts()).toHaveLength(0);
+    expect(s.sourcePosts().every(([, init]) => new Headers(init?.headers).get('authorization') === 'Bearer a')).toBe(true);
+    expect(screen.getByText('Matching records in the bounded current inventory. Sources and image approval were not revalidated.')).toBeTruthy();
+  });
+});
 
 describe('StudioGenPlans recorded execution wire contract', () => {
   it.each([
