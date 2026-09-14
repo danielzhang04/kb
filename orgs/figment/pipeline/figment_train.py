@@ -2948,7 +2948,7 @@ def _load_current_approval(
 
 
 def validate_approved_gen_still(
-    creator_id: str, plan_path: Path, image_id: str,
+    creator_id: str, plan_path: Path, image_id: str, *, reads=None,
 ) -> dict[str, Any]:
     """Return one current, kept `gen` still without changing any Figment record.
 
@@ -2958,7 +2958,9 @@ def validate_approved_gen_still(
     """
     if not isinstance(image_id, str) or not image_id:
         raise FigmentTrainError("approved gen image id must be a non-empty string")
-    resolved_plan = Path(plan_path).resolve()
+    resolved_plan = (
+        reads.resolve(Path(plan_path)) if reads is not None else Path(plan_path).resolve()
+    )
     root = resolved_plan.parent
     grade_dir = root / "grade" / "gen"
     approval_path = grade_dir / "approval-lineage.json"
@@ -2973,21 +2975,30 @@ def validate_approved_gen_still(
         "grading": grading_path, "evaluation": evaluation_path, "gate": gate_path,
     }
     try:
-        initial_digests = {label: _sha256(path) for label, path in evidence_paths.items()}
+        initial_digests = {
+            label: (_sha256(path) if reads is None else _sha256(path, reads=reads)) for label, path in evidence_paths.items()
+        }
     except OSError as exc:
         raise FigmentTrainError("gen approval evidence is incomplete") from exc
-    plan, loaded_root = _load_plan(creator_id, resolved_plan)
+    plan, loaded_root = (_load_plan(creator_id, resolved_plan) if reads is None else _load_plan(creator_id, resolved_plan, reads=reads))
     if loaded_root != root:
         raise FigmentTrainError("approved gen plan root changed while loading")
-    approval = _load_current_approval(plan, root, "gen")
+    approval = (_load_current_approval(plan, root, "gen") if reads is None else _load_current_approval(plan, root, "gen", reads=reads))
     if (approval.get("creator") != creator_id or approval.get("stage") != "gen"
             or approval.get("decision") != "verified"):
         raise FigmentTrainError("gen approval lineage does not authorize this creator/stage")
-    if not all(path.is_file() for path in (approved_path, rulings_path, grading_path, evaluation_path, gate_path)):
+    if not (all(
+        (
+            reads.file(path, required=False) is not None
+            if reads is not None
+            else path.is_file()
+        )
+        for path in (approved_path, rulings_path, grading_path, evaluation_path, gate_path)
+    )):
         raise FigmentTrainError("gen approval evidence is incomplete")
-    if approval.get("rulings_sha256") != _sha256(rulings_path):
+    if approval.get("rulings_sha256") != (_sha256(rulings_path) if reads is None else _sha256(rulings_path, reads=reads)):
         raise FigmentTrainError("gen rulings changed after approval")
-    grading = _read_json(grading_path)
+    grading = (_read_json(grading_path) if reads is None else _read_json(grading_path, reads=reads))
     images = grading.get("images") if isinstance(grading, dict) else None
     if (not isinstance(grading, dict) or grading.get("creator") != creator_id
             or grading.get("stage") != "gen" or not isinstance(images, list) or not images):
@@ -2995,14 +3006,14 @@ def validate_approved_gen_still(
     image_ids = [row.get("image_id") if isinstance(row, dict) else None for row in images]
     if any(not isinstance(value, str) for value in image_ids) or len(set(image_ids)) != len(image_ids):
         raise FigmentTrainError("gen grading manifest has invalid or duplicate image ids")
-    evaluation = _read_json(evaluation_path)
+    evaluation = (_read_json(evaluation_path) if reads is None else _read_json(evaluation_path, reads=reads))
     if (not isinstance(evaluation, dict) or evaluation.get("schema") != _lineage_module().EVALUATION_SCHEMA
             or evaluation.get("subject_sha256") != approval.get("reviewed_subject_sha256")):
         raise FigmentTrainError("gen approval is not bound to its current evaluation")
     normalized = _normalize_rulings(
-        creator_id, "gen", _read_json(rulings_path), image_ids, evaluation["subject_sha256"],
+        creator_id, "gen", (_read_json(rulings_path) if reads is None else _read_json(rulings_path, reads=reads)), image_ids, evaluation["subject_sha256"],
     )
-    gate = _read_json(gate_path)
+    gate = (_read_json(gate_path) if reads is None else _read_json(gate_path, reads=reads))
     if gate.get("schema") != "figment/gate@1" or not isinstance(gate.get("rows"), list):
         raise FigmentTrainError("gen gate evidence is invalid")
     gate_by_id = {
@@ -3031,7 +3042,7 @@ def validate_approved_gen_still(
         if not isinstance(row.get("path"), str):
             raise FigmentTrainError("gen grading image path is invalid")
         expected.append({"image_id": row["image_id"], "path": row["path"]})
-    approved = _read_json(approved_path)
+    approved = (_read_json(approved_path) if reads is None else _read_json(approved_path, reads=reads))
     if (not isinstance(approved, dict) or approved.get("schema") != "figment/approved-images@1"
             or approved.get("creator") != creator_id or approved.get("stage") != "gen"
             or approved.get("images") != expected):
@@ -3041,30 +3052,44 @@ def validate_approved_gen_still(
         raise FigmentTrainError("requested gen image was not approved")
     image = Path(selected["path"])
     try:
-        resolved = image.resolve(strict=True)
-        resolved.relative_to(root.resolve())
+        resolved = reads.resolve(image) if reads is not None else image.resolve(strict=True)
+        resolved.relative_to(reads.resolve(root) if reads is not None else root.resolve())
     except (OSError, ValueError) as exc:
         raise FigmentTrainError("approved gen image escapes its reviewed plan root") from exc
-    if image.is_symlink() or not resolved.is_file() or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
-        raise FigmentTrainError("approved gen image is not a regular supported image")
+    if reads is not None:
+        observation = reads.file(resolved, required=True)
+        if observation is None or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
+            raise FigmentTrainError("approved gen image is not a regular supported image")
+    else:
+        if image.is_symlink() or not resolved.is_file() or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
+            raise FigmentTrainError("approved gen image is not a regular supported image")
     subject_images = approval.get("subject", {}).get("images") if isinstance(approval.get("subject"), dict) else None
     subject = next((row for row in subject_images or [] if isinstance(row, dict) and row.get("image_id") == image_id), None)
     if not isinstance(subject, dict):
         raise FigmentTrainError("approved gen image is absent from approval lineage")
-    bytes_seen = resolved.stat().st_size
-    digest = _sha256(resolved)
+    bytes_seen = observation.size if reads is not None else resolved.stat().st_size
+    digest = (_sha256(resolved) if reads is None else _sha256(resolved, reads=reads))
     if bytes_seen <= 0 or subject.get("bytes") != bytes_seen or subject.get("sha256") != digest:
         raise FigmentTrainError("approved gen image bytes changed after approval")
     try:
-        if any(_sha256(path) != initial_digests[label] for label, path in evidence_paths.items()):
+        if any(
+            (_sha256(path) if reads is None else _sha256(path, reads=reads)) != initial_digests[label]
+            for label, path in evidence_paths.items()
+        ):
             raise FigmentTrainError("gen approval evidence changed while validating")
     except OSError as exc:
         raise FigmentTrainError("gen approval evidence changed while validating") from exc
     return {
         "image_id": image_id, "path": str(resolved), "bytes": bytes_seen, "sha256": digest,
         "source_plan": {"path": str(resolved_plan), "sha256": initial_digests["source_plan"]},
-        "approval_lineage": {"path": str(approval_path.resolve()), "sha256": initial_digests["approval_lineage"]},
-        "approved_list": {"path": str(approved_path.resolve()), "sha256": initial_digests["approved_list"]},
+        "approval_lineage": {
+            "path": str(reads.resolve(approval_path)) if reads is not None else str(approval_path.resolve()),
+            "sha256": initial_digests["approval_lineage"],
+        },
+        "approved_list": {
+            "path": str(reads.resolve(approved_path)) if reads is not None else str(approved_path.resolve()),
+            "sha256": initial_digests["approved_list"],
+        },
     }
 
 
@@ -3437,15 +3462,19 @@ def _resolve_config_path(value: str, *, reads=None) -> Path:
 
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
-    checkpoint_step: int | None = None,
+    checkpoint_step: int | None = None, *, reads=None,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
     if stage not in GRADEABLE_STAGES:
         raise FigmentTrainError(f"apply-rulings stage must be one of {GRADEABLE_STAGES}")
-    plan, root = _load_plan(creator_id, plan_path)
+    if reads is not None and not (stage == "gen" and checkpoint_step is None):
+        raise FigmentTrainError(
+            "reads-mode apply-rulings is restricted to gen review without a checkpoint step"
+        )
+    plan, root = (_load_plan(creator_id, plan_path) if reads is None else _load_plan(creator_id, plan_path, reads=reads))
     grade_dir = root / "grade" / stage
     grading_path = grade_dir / "grading-manifest.json"
-    grading = _read_json(grading_path)
+    grading = (_read_json(grading_path) if reads is None else _read_json(grading_path, reads=reads))
     if grading.get("creator") != creator_id or grading.get("stage") != stage:
         raise FigmentTrainError("grading manifest creator/stage mismatch")
     images = grading.get("images")
@@ -3455,22 +3484,24 @@ def apply_rulings(
     if any(not isinstance(value, str) for value in image_ids) or len(set(image_ids)) != len(image_ids):
         raise FigmentTrainError("grading manifest has invalid or duplicate image ids")
     evaluation_path = grade_dir / "evaluation-inputs.json"
-    if not evaluation_path.is_file():
+    if not (reads.file(evaluation_path, required=False) is not None
+        if reads is not None
+        else evaluation_path.is_file()):
         raise FigmentTrainError(
             f"review freshness record is missing: {evaluation_path}; rebuild the grade"
         )
-    evaluation = _read_json(evaluation_path)
+    evaluation = (_read_json(evaluation_path) if reads is None else _read_json(evaluation_path, reads=reads))
     if evaluation.get("schema") != _lineage_module().EVALUATION_SCHEMA:
         raise FigmentTrainError("review freshness record has an unsupported schema")
     try:
         _lineage_module().assert_current(
-            evaluation, _current_review_subject(plan, root, stage, grading),
+            evaluation, (_current_review_subject(plan, root, stage, grading) if reads is None else _current_review_subject(plan, root, stage, grading, reads=reads)),
             label=f"{stage} numeric evaluation",
         )
     except ValueError as exc:
         raise FigmentTrainError(str(exc)) from exc
     normalized = _normalize_rulings(
-        creator_id, stage, _read_json(Path(rulings_path)), image_ids,
+        creator_id, stage, (_read_json(Path(rulings_path)) if reads is None else _read_json(Path(rulings_path), reads=reads)), image_ids,
         evaluation["subject_sha256"],
     )
     if stage == "anchor":
@@ -3490,11 +3521,13 @@ def apply_rulings(
     # truncated write, older schema) is treated exactly like an explicit
     # `"pass": false` row -- never defaulted to a silent PASS.
     gate_path = grade_dir / "gate.json"
-    if not gate_path.is_file():
+    if not (reads.file(gate_path, required=False) is not None
+        if reads is not None
+        else gate_path.is_file()):
         raise FigmentTrainError(
             f"no gate.json at {gate_path}; run `figment_train.py grade` before apply-rulings"
         )
-    gate_document = _read_json(gate_path)
+    gate_document = (_read_json(gate_path) if reads is None else _read_json(gate_path, reads=reads))
     if gate_document.get("schema") != "figment/gate@1":
         raise FigmentTrainError("gate.json must be the per-cell numeric figment/gate@1 document")
     gate_by_id: dict[str, dict[str, Any]] = {
@@ -3543,9 +3576,16 @@ def apply_rulings(
             raise FigmentTrainError("rulings approved no images")
         if any(r["decision"] != "cull" for r in normalized["rulings"]):
             raise FigmentTrainError("rulings approved no images")
-        if any(path.exists() or path.is_symlink() for path in (
-            rulings_out, review_out, approved_out, approval_out, rejection_out,
-            accepted_checkpoint_out,
+        if (any(
+            (
+                reads.file(path, required=False) is not None
+                if reads is not None
+                else (path.exists() or path.is_symlink())
+            )
+            for path in (
+                rulings_out, review_out, approved_out, approval_out, rejection_out,
+                accepted_checkpoint_out,
+            )
         )):
             raise FigmentTrainError("refusing to overwrite previously applied rulings")
         _write_json(rulings_out, normalized)
@@ -3556,7 +3596,7 @@ def apply_rulings(
                 _lineage_module().APPROVAL_SCHEMA, evaluation["subject"],
                 creator=creator_id, stage=stage, decision="rejected",
                 decided_by=normalized["decided_by"], decided_at=normalized["decided_at"],
-                rulings_sha256=_sha256(rulings_out),
+                rulings_sha256=(_sha256(rulings_out) if reads is None else _sha256(rulings_out, reads=reads)),
                 reviewed_subject=evaluation["subject"],
                 reviewed_subject_sha256=evaluation["subject_sha256"],
                 transition={"kind": "none", "requires_replan": False},
@@ -3582,8 +3622,15 @@ def apply_rulings(
                 f"checkpoint step {checkpoint_step} was not explicitly kept by the tester rulings"
             )
 
-    if any(path.exists() or path.is_symlink() for path in (
-        rulings_out, review_out, approved_out, approval_out, rejection_out,
+    if (any(
+        (
+            reads.file(path, required=False) is not None
+            if reads is not None
+            else (path.exists() or path.is_symlink())
+        )
+        for path in (
+            rulings_out, review_out, approved_out, approval_out, rejection_out,
+        )
     )):
         if not (stage == "tester" and checkpoint is not None
                 and not (accepted_checkpoint_out.exists() or accepted_checkpoint_out.is_symlink())
@@ -3708,13 +3755,13 @@ def apply_rulings(
     _write_json(rulings_out, normalized)
     _write_json(review_out, review)
     _write_json(approved_out, approved_document)
-    settled_subject = _current_review_subject(plan, root, stage, grading)
+    settled_subject = (_current_review_subject(plan, root, stage, grading) if reads is None else _current_review_subject(plan, root, stage, grading, reads=reads))
     approval_document = _lineage_module().wrap_subject(
         _lineage_module().APPROVAL_SCHEMA,
         settled_subject,
         creator=creator_id, stage=stage, decision="verified",
         decided_by=normalized["decided_by"], decided_at=normalized["decided_at"],
-        rulings_sha256=_sha256(rulings_out),
+        rulings_sha256=(_sha256(rulings_out) if reads is None else _sha256(rulings_out, reads=reads)),
         reviewed_subject=evaluation["subject"],
         reviewed_subject_sha256=evaluation["subject_sha256"],
         transition=(
