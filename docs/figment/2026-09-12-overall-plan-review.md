@@ -29,11 +29,11 @@ remain recorded planning evidence after a successful check.
 ## Ordered remaining work
 
 1. **Keep the accepted source-check milestone stable.** Source/tests/docs are
-   committed as `4228387d`; four book chapters followed as `2e53255d`. Correct
-   remaining historical operator-document pointers and keep the tasklist/handoff
+   committed as `4228387d`; four book chapters followed as `2e53255d` and five
+   operator-document corrections as `99821a34`. Keep the tasklist/handoff
    current. Do not reopen passed suites without a changed input or concern.
 
-2. **Expose one explicit prepared-plan execution path.** First specify the smallest
+2. **Expose one explicit prepared-plan execution path (currently deferred).** First specify the smallest
    useful Studio handoff or governed action around the existing `figment_train.py` runner: exact
    published plan ID/digest, fresh authoritative validation at dispatch, existing
    spend/admission controls, single owned attempt and truthful recorded completion.
@@ -44,6 +44,17 @@ remain recorded planning evidence after a successful check.
    First determine whether a reviewed local execution handoff supplies the useful
    next step; do not duplicate the existing supervisor without a demonstrated need.
    Independent review and one real local operator journey close this build slice.
+   The September14 Opus review identified a smaller separate Windows task host
+   using filesystem intent/claim receipts and the existing harness. Root accepts
+   that candidate only. Implementation/activation awaits actual local passkey
+   boot/admission, independently owned host/environment, a reviewed total-host-loss
+   spend bound and sole-launcher operation. No unbounded outage exposure or new
+   paid run is accepted. Do not build dormant execution state while these remain
+   unresolved; continue the independent still-review work. One finite synthetic
+   Windows probe now establishes orderly parent/host exit with the original child
+   still live, exact PID/creation-time cleanup and final outer-job emptiness.
+   It does not prove survival outside that containing job or provisioned-host,
+   authentication, abrupt owner-death or outage-spend behavior.
 
 3. **Connect review to its existing authority.** In parallel with execution design, build
    an exact-artifact review page that presents the relevant media and captures an
@@ -54,8 +65,15 @@ remain recorded planning evidence after a successful check.
    reason to add another generic validator. The revised September14 still-review
    design requires a narrow optional bounded-reader seam in the existing apply and
    kept-validator functions, preserving their default decision/write semantics.
-   Independent rereview precedes implementation; synthetic keep/cull probes do
-   not establish production input bounds.
+   Opus rereview completed with four narrow clarifications adopted by root:
+   a dedicated mutation-aware reader; gen-only reads mode; explicit read-only
+   preflight, writer and post-teardown inspection children; routed dependency
+   closure and pre-claim output reservations. The two-function seam now passes46
+   existing regressions with default-None behavior preserved; independent review
+   remains. Sonnet's dedicated reader draft requires native observation/baseline
+   repairs before focused tests and Opus review. The generic observer is unchanged.
+   A real16-image legacy baseline passed; actual routed quotas and byte-equivalence
+   remain required before adapter/HTTP/UI acceptance.
 
 4. **Complete one delivery path, then stop expanding infrastructure.** Inventory
    the existing renderer/producer seams against one selected still or accepted
