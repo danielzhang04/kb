@@ -4,7 +4,38 @@ This book is a decision record for a fictional adult creator system: a clothed a
 persona whose identity, realism, age presentation, and provenance can be reviewed
 independently. Instagram/accounts/posting/optimization remain deferred.
 
-## Current status — 2026-09-12
+## Current status — 2026-09-14
+
+The manual **Check current source** journey is accepted locally, including the
+actual isolated Windows reader, HTTP/session boundary, rendered Chrome states and
+client build. It observes one exact prepared plan and its configured source;
+`launchReady`, `qualityApproved` and `atomicSnapshot` remain false. It adds no
+launch control or ruling writer. See the
+[source-check guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md)
+and [acceptance review](../../../../docs/figment/2026-09-13-current-source-http-review.md).
+
+Preparation/resume, Research brief revision, recorded assignments and exact slot
+navigation, Records display and explicit review-claim reading remain accepted
+local capabilities. Their synthetic acceptance does not establish actual creator
+quality or deployed authentication. The next execution and review/delivery slices
+are being designed around existing authorities, not treated as implemented; see
+the [current overall plan](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+
+The latest four-image public-base prompt-span diagnostic completed with verified
+teardown: **0/4 framing passes and no clear paired improvement**. The earlier RTX
+square diagnostic was **0/2**. Both are closed without replay. They establish no
+accepted checkpoint, identity-consistent held-out stills or production video. More
+training alone is not justified by these failures. See the
+[terminal framing diagnostic](../../../../docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md).
+
+No pod remains active. Paid estimates are **$33.723380**, plus **$1.20** retained
+reserves, totaling **$34.923380/$50**. These are not reconciled invoices or a new
+run admission. Actual media quality remains the principal unclosed outcome.
+
+## Historical checkpoints — September 11–12
+
+The paragraphs below retain the state and scoped evidence recorded before the
+September 14 update. Their pending work and balances are not current instructions.
 
 - **Recorded assignments and exact navigation accepted (Stage B)** at `dcd78f3b`:
   GET @3 and hub @2 pair bounded planning records with exact brief revisions/slots.
@@ -171,7 +202,7 @@ independently. Instagram/accounts/posting/optimization remain deferred.
 
 All dated paragraphs elsewhere in this book, and every report linked under
 "Historical evidence" below, describe state at the time they were written and are
-superseded by this section wherever they conflict with it.
+superseded by the September 14 current-status section wherever they conflict with it.
 
 ## Evidence discipline
 

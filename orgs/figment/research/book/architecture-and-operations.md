@@ -1,6 +1,38 @@
 # Architecture and operations
 
-## Current status — 2026-09-12
+## Current status — 2026-09-14
+
+The accepted manual source-check journey connects the existing prepared-plan view
+to the isolated Windows CPython reader through authenticated HTTP and the contained
+runner. Root accepted the actual producer/HTTP journey, all seven Chrome states and
+the client build; independent source and final test/guide reviews are READY. This
+is local synthetic acceptance, not deployed authentication or actual media review.
+
+Configuration is server-owned and frozen at registration: one or two exact plan
+ID/digest pairs, source roots inside the configured repository, an independently
+trusted adapter hash, five dependency pins and a trusted absolute Python path.
+Discovery GET reports availability without observing source files. Only an explicit
+**Check current source** POST runs the reader, under the existing session, origin,
+rate, new-work admission and fleet preamble gates. No browser path/prompt entry,
+automatic POST, retry or persistent source-result storage is introduced.
+
+A successful response is a past observation. `launchReady`, `qualityApproved` and
+`atomicSnapshot` stay false; recorded assignments do not acquire new authority.
+Refresh and owner changes discard displayed results and stale responses. A browser
+timeout does not prove server completion; busy and uncertain-teardown quarantine
+remain server-owned states. Windows/cooperative-filesystem/trusted-runtime limits
+apply, and this acceptance does not cover arbitrary future concurrent UI embedding.
+See the [operator guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md)
+and [HTTP acceptance review](../../../../docs/figment/2026-09-13-current-source-http-review.md).
+
+Studio still has no live launch control or ruling writer. Execution and
+review/delivery designs are separate next work, not new accepted capabilities.
+The terminal four-image framing diagnostic produced no framing pass or clear
+paired improvement, and no pod remains active. Current accounting and the next
+bounded work are maintained in the [book index](README.md) and
+[overall plan](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+
+## Historical local infrastructure checkpoints — September 12
 
 The governed Studio review-claim path is accepted locally. Its configuration is parsed once
 from a server-owned source before side-effect setup; an explicit null disables it and invalid
@@ -77,8 +109,9 @@ The [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-
 check: claim Refresh repeats claim discovery without reclassifying generic rows;
 root viewed distinct current/unknown/stale/unreviewed badges and readable paths. See
 the [Records review](../../../../docs/figment/2026-09-12-populated-records-review.md). Current-source
-checking remains separate; the proposed thin adapter was withdrawn because its read
-bindings did not cover all direct data access. No new implementation is authorized.
+checking was then separate: the proposed thin adapter had been withdrawn because its
+read bindings did not cover all direct data access. The accepted observed-read
+implementation and manual journey above supersede that historical design state.
 
 One fresh current-schema nonpersona fixture also completed the real compiler, revalidation
 before and after execution, and the harness's explicit `--dry-run` path. The three fixed-seed
@@ -91,7 +124,7 @@ model execution, real image, visual review, identity result or wider dependency 
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
-The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent is pending. The public-base-only control completed with one image and verified teardown; current evidence and next work are maintained in the [book README](README.md). See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control completed with one image and verified teardown; current evidence and next work are maintained in the [book README](README.md). See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
 
 The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
 

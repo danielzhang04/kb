@@ -1,8 +1,27 @@
 # Image production
 
-## Current status — 2026-09-12
+## Current status — 2026-09-14
 
-The latest selective-crop/caption/seed training run and paired ten-image diagnostic completed with
+The public-base prompt-span diagnostic is terminal: all four images failed tight
+shoulders-up framing, with no clear paired improvement at either fixed seed. All
+four appeared adult and clothed, but that safety observation does not establish
+identity, realism or delivery quality. The earlier RTX square diagnostic also
+failed both framing cases. Its hardware change limits a height-only comparison;
+the later within-run span test used fresh baseline/treatment pairs. Removing the
+span also shortened the prompt and reduced repeated age wording, so even a positive
+result would not isolate body semantics alone. No retry or promoted setting follows.
+See the [terminal diagnostic](../../../../docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md).
+
+The accepted manual **Check current source** action can observe the configured
+source behind an exact prepared plan. It does not render, launch, select a
+checkpoint or write a ruling, and all three launch/quality/atomic-snapshot claims
+remain false. This local Windows capability closes a software journey while actual
+creator-media quality remains open; see the
+[source-check guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md).
+
+### September 11–12 identity and framing findings
+
+The September 11 selective-crop/caption/seed training run and paired ten-image diagnostic completed with
 verified technical bindings. All ten new images missed shoulders-up framing, and root found no
 material identity improvement over the historical checkpoint; blinded reviews were mixed and weak.
 No checkpoint or held-out creator still is accepted. Because the intervention changed crop, caption
@@ -15,7 +34,7 @@ identity, realism, apparent age, framing or production acceptance. See the
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
-The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent is pending. The public-base-only control's current state is recorded in the [book README](README.md); it exports no private weights or images. See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control's current state is recorded in the [book README](README.md); it exports no private weights or images. See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
 
 ### Production doctrine
 
@@ -32,13 +51,13 @@ ComfyUI workflows should be treated as versioned data. The [official ComfyUI Ope
 | Live proof | The paired final-LoRA/no-LoRA run produced ten original-resolution, clothed adult portraits. | The independent review saw candidate resemblance cues; the parent found resemblance and target-age evidence insufficient. No arm was promoted. |
 | Hypothesis | A localized repair or skin-texture intervention could improve realism. | This remains a historical hypothesis from r20/r25, not a current causal finding; test it on the same cells with a control. |
 
-Decisions: keep raw outputs immutable, preserve derivatives, and require full-resolution review. The paired LoRA/no-LoRA diagnostic is complete and remains non-promotable; it supplies a bounded condition comparison, not a consensus resemblance decision. The frozen full-persona-look prompt comparison changes node 5's prompt while holding the candidate checkpoint and five seeds fixed, but its LoRA export remains blocked. Separately, the local-Comfy V3 availability diagnostic and later simple-portrait diagnostic completed one image each and were rejected as same-person candidates; the intervening crop output is preserved with its failed-closed teardown state. See the [crop review](../../../../docs/figment/2026-09-08-local-crop-diagnostic-review.md) and [simple-portrait review](../../../../docs/figment/2026-09-08-local-simple-portrait-review.md). A repair or texture intervention is later work using matched prompts and seeds, with identity, realism, apparent age, and artifacts logged separately. Do not treat a polished single image as a promotion case.
+Decisions: keep raw outputs immutable, preserve derivatives, and require full-resolution review. The paired LoRA/no-LoRA diagnostic is complete and remains non-promotable; it supplies a bounded condition comparison, not a consensus resemblance decision. The historical full-persona-look proposal changed node 5's prompt while holding the candidate checkpoint and five seeds fixed; its recorded export blocker belongs to that earlier checkpoint, not the current work queue. Separately, the local-Comfy V3 availability diagnostic and later simple-portrait diagnostic completed one image each and were rejected as same-person candidates; the intervening crop output is preserved with its failed-closed teardown state. See the [crop review](../../../../docs/figment/2026-09-08-local-crop-diagnostic-review.md) and [simple-portrait review](../../../../docs/figment/2026-09-08-local-simple-portrait-review.md). A repair or texture intervention would need a separate matched comparison, with identity, realism, apparent age, and artifacts logged separately. Do not treat a polished single image as a promotion case.
 
 Historical status, 2026-09-08: the C3 prompt-profile calibration stopped after its two-image `profile-base` stage. Both reviews found framing, turn, identity, age, and garment misses; no profile-current-20 pair was rendered. See the [profile-base runtime audit](../../../../docs/figment/2026-09-08-local-profile-base-runtime-audit.md).
 
-## Reference-conditioned route and current readiness
+## Historical reference-conditioned route — September 8–9
 
-The next image route conditions generation on `g01` pixels instead of text alone. The fixed planner binds a local OmniGen2 research comparator to one experiment: two seeds, 481516234 and 90210, 768-square output, `g01` as the sole reference. OmniGen2's Qwen component has unclear commercial rights, so this is a research comparator; even a good result would not be a commercially license-ready path. The three public weights are downloaded and fully hash-verified, and the shared engine hooks, observer, admission validator and controller described in [architecture and operations](architecture-and-operations.md) are built and root-accepted, with the actual full evidence verification completed against the real models, reference, template and installed ComfyUI state.
+That proposed image route conditioned generation on `g01` pixels instead of text alone. Its fixed planner bound a local OmniGen2 research comparator to one experiment: two seeds, 481516234 and 90210, 768-square output, `g01` as the sole reference. OmniGen2's Qwen component had unclear commercial rights, so this was a research comparator; even a good result would not establish commercial clearance. The three public weights were downloaded and fully hash-verified, and the shared engine hooks, observer, admission validator and controller described in [architecture and operations](architecture-and-operations.md) were root-accepted against the named models, reference, template and installed ComfyUI state. This is historical route evidence, not the next queued experiment.
 
 Historical status, 2026-09-09: the local RAM waits ended with zero executions. OmniGen2 V1 failed in archive bootstrap; V2 reached model download and `g01` upload before HTTP 400. Its response body was lost, so pinned-source identification of node 17's missing `resolution_steps` is a separate diagnosis. V3 completed two files and was terminated; both original-resolution reviews recorded STOP before the six-row pilot. Its files are rejected research evidence, not training inputs. See the [independent review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md).
 
