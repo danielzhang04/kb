@@ -1,6 +1,6 @@
 # Figment active tasklist
 
-Updated September 14, 14:10 NY. Root orchestrates; Claude subscription workers perform substantive work, with authorized Codex fallback when unavailable or bounded authoring fails.
+Updated September 14, 15:30 NY. Root orchestrates; Claude subscription workers perform substantive work, with authorized Codex fallback when unavailable or bounded authoring fails.
 
 Goal: usable local Studio from fictional-adult reference through preparation, authorized execution, current evidence, attributed review and content assignment, plus accepted identity-consistent still/video quality.
 
@@ -16,8 +16,12 @@ Goal: usable local Studio from fictional-adult reference through preparation, au
 - [x] Revise still-review design around exact permitted output mutations and bounded reader seam; four synthetic keep/cull probes passed. No production implementation yet.
 - [x] Claude Opus completed still-design rereview; root adopted four concrete clarifications: dedicated bounded reader, gen-only seam, explicit P/W/I process sequence, corrected routed code closure and output reservation.
 - [x] Implement the optional gen-only reader seam in two existing functions; 46 existing synthetic regressions passed, both default-None ASTs and all bytes outside those functions preserved. Pending independent review and real routed proof.
-- [ ] **Running: dedicated bounded reader repair and focused tests.** The initial large Sonnet task reached its 20-minute deadline with no usable artifact. Split jobs returned code; the reader draft has substantive observation/baseline/phase defects now under authorized native repair. Root updated the design to the accepted single-reader/P-W-I policy.
-- [ ] Review reader/seam independently, prove actual 16-image routed quotas and byte equivalence, then implement the adapter and governed HTTP/UI journey.
+- [x] Repair the dedicated reader after Sonnet's malformed/core-defective draft; 67 focused tests passed, zero skips/stderr, verified cleanup. Root read complete source and verified artifacts. Independent review and real integration still required.
+- [x] Independent native review reproduced two P1 defects after the bounded Opus attempt produced no usable verdict: nested output discovery can exceed the stream cap before refusal, and caller-controlled temporary names bypass the global reserved-name policy. Root verified the actual probe and all 29 indexed artifacts. No repeated Opus attempt or cap increase.
+- [x] Complete native repair of both P1 defects plus one-time admission and binary reads: 141/141 focused tests, original67 unchanged, native0/empty owned job. Root verified8inputs/10artifacts/JUnit. Independent reader/seam rereview READY WITH COMMENTS; root accepted source for synthetic integration. The single Sonnet attempt ended native0/verifiedmodel but incomplete source/no tests; preserved, no retry.
+- [ ] **Next:** finish current-source harness pins and run one reviewed bounded fresh16-image same-path integration. Static audit requires occurrence-weighted image/reference bytes under the same32MiB cap and separate P/W/I accounting. This proves reader/legacy integration, not production preclaim reservation or published-plan HTTP acceptance.
+- [x] Root and independent reviewer approved the open-to-prepare subject-binding direction: exact original observations, common caps/config, live publication, immutable server association and opaque ASCII baseline transport. This is design acceptance only.
+- [ ] Build the first read-only open adapter against the accepted reader API and binding design; actual JavaScript byte-preserving round-trip and mismatch tests remain required. Acceptance waits for reader review and actual join. Then complete prepare/apply/inspect, governed HTTP and UI.
 - [x] Claude Opus evaluated a concrete local execution host; retain a separate Windows host candidate around the existing harness.
 - [ ] **Execution deferred:** real local authenticated boot, independent host ownership/environment, total-host-loss spend bound and sole-launcher operation must be established. No production execution code or paid activation from this candidate.
 - [x] Correct five historical operator/status documents; root accepted exact diff, five current pins and37 local links. Native fallback after Sonnet transfer rejection; no examples or external citations changed.
@@ -31,7 +35,7 @@ Goal: usable local Studio from fictional-adult reference through preparation, au
 
 Source evidence: boundary167, governed14, UI196; actual default Windows reader/producer/governed HTTP/React join has one test, nine checkpoints and seven POSTs. All native exits0. Typechecks and Vite build passed. Root inspected all seven original Chrome screenshots; owned Chrome/CDP/HTTP closed, source and fixture pins unchanged. Browser composition and governed boundary checks are separate retained runs, not deployed authentication acceptance. Intermediate failures remain in the acceptance review.
 
-Keep awake armed and owner28968/supervisor26588 alive at14:08 NY; heartbeat14:07:27. Lease `codex-figment-resume-20260913-afternoon`; direct AC standby/hibernate0 and unchanged DC settings last verified13:17. Standard16-hour supervisor cap approximately04:52 NY September15; refresh/check during work. No uninterrupted progress claimed across previously observed clock gaps.
+Keep awake armed and owner28968/supervisor26588 alive at15:11 NY; heartbeat15:11:14. Lease `codex-figment-resume-20260913-afternoon`; direct AC standby0 rechecked15:11, AC hibernate0 and unchanged DC settings verified14:34. Standard16-hour supervisor cap approximately04:52 NY September15; refresh/check during work. No uninterrupted progress claimed across previously observed clock gaps.
 
 Claude availability succeeded13:15 NY: actual responding model `claude-sonnet-5`, exact response, native0, owned tree empty. Initial classifier mistook informational `allowed` rate-limit event for rejection; corrected assessment uses the same stream, no second attempt. Prior401 remains historical. Never read credentials to repair availability.
 
