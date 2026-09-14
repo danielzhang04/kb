@@ -6,6 +6,19 @@ images, launch a pod, or establish current production readiness. Use the full
 Python 3.13 executable below. `run` is the only command here that can invoke
 the existing pod harness.
 
+## Manual source observation in Studio
+
+The accepted Windows-local Studio path adds an explicit **Check current source**
+action for an exact prepared plan ID and digest. Follow the
+[current-source reader guide](2026-09-13-current-source-reader-guide.md) for the
+server configuration and operator steps. The displayed result is a last-checked
+past observation; `launchReady`, `qualityApproved` and `atomicSnapshot` remain
+false. It starts no generation, writes no ruling and replaces none of the CLI
+commands below. There is no automatic check or retry, and parent refresh clears
+the displayed result. See the [current overall plan](2026-09-12-overall-plan-review.md)
+for current work and media-quality status; the dated dataset history below is
+retained as evidence.
+
 ## Preconditions
 
 The path begins only when `<REVIEWED_DATASET_DIR>` contains the real, current

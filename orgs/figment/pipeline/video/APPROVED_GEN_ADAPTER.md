@@ -117,7 +117,11 @@ accepted video, or quality conclusion. Historical diagnostics stay ineligible.
 Independent verification passed 74 video tests and the real approved-gen to
 candidate, local assembly/extraction and subprocess preparation join. See the
 [preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md).
-The attributed rulings writer and accepted-video validator are now implemented
-and locally tested, with independent security review still pending. See the
-[acceptance checkpoint](../../../../docs/figment/2026-09-10-video-acceptance-plan.md). Intended adult age presentation, all-frame observations and actual
-full-clip playback remain distinct requirements.
+The attributed rulings writer and accepted-video validator are implemented and
+locally tested; the bounded technical repair diff was independently accepted in
+the [September 11 repair review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md).
+See the [acceptance checkpoint](../../../../docs/figment/2026-09-10-video-acceptance-plan.md)
+and [current overall plan](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+This technical acceptance does not approve actual creator media. Intended adult
+age presentation, all-frame observations and actual full-clip playback remain
+distinct requirements.

@@ -1,8 +1,10 @@
 # Figment end-to-end delivery plan
 
-## Decision
+Current status, September 14: use the [current overall plan](2026-09-12-overall-plan-review.md) for remaining work and the [current-source reader guide](2026-09-13-current-source-reader-guide.md) for the accepted manual Windows-local HTTP/UI journey. The latest [four-image prompt-span diagnostic](2026-09-13-prompt-framing-diagnostic-plan.md) is terminal: 0/4 framing passes and no clear paired improvement. No production checkpoint, still or video quality is accepted. The dated snapshots below preserve earlier evidence, balances, consent states and proposed next steps; they are not the current task queue or authorization state.
 
-Current disposition, September 11, about 19:30 UTC (supersedes the earlier September 11 and September 10 paragraphs below wherever they conflict): the second final-checkpoint diagnostic completed at 19:27:40 UTC, pod `h4sqcy2ewe3g8p` removed, for an estimated cost of $0.224635; independently queried provider pods returned empty around 19:30 UTC. Today's three paid rows (training plus both diagnostics) total an estimated $2.859835, bringing the recorded arc to about $33.489565 of $50. These are measured READY-rate estimates, not final invoices.
+## Historical decision — September 11
+
+Disposition recorded September 11, about 19:30 UTC (superseded the earlier September 11 and September 10 paragraphs below wherever they conflicted): the second final-checkpoint diagnostic completed at 19:27:40 UTC, pod `h4sqcy2ewe3g8p` removed, for an estimated cost of $0.224635; independently queried provider pods returned empty around 19:30 UTC. That day's three paid rows (training plus both diagnostics) totaled an estimated $2.859835, bringing the then-recorded arc to about $33.489565 of $50. These are measured READY-rate estimates, not final invoices.
 
 Root viewed all ten new images plus the five historical LoRA images and the canonical reference. All ten new images fail the requested whole-head-plus-shoulders/upper-chest framing: each extends to torso/waist or elbows. All are adult and clothed, with no obvious gross garment or anatomy failure at displayed resolution. The five new-checkpoint LoRA faces differ modestly from the historical LoRA faces, with uncertain geometry and styling tradeoffs and no demonstrated material identity improvement. Neither checkpoint is production-approved. Because training combined the crop, caption, and seed intervention together, this diagnostic is reused evidence against the same protocol, not a fresh generalization test or isolated proof that cropping alone caused any change.
 
@@ -30,7 +32,7 @@ recognizably the accepted identity across variations, looks real at full resolut
 is clothed. A completed command, green unit test, provider receipt, or model score is not
 proof of that criterion.
 
-## Current implementation snapshot
+## Historical implementation snapshot — September 9–11
 
 | Capability | Built / locally verified | Live-proven | Quality accepted |
 | --- | --- | --- | --- |
@@ -237,7 +239,7 @@ code review for path boundaries, lineage, and stale-state handling; (5) repair a
 separate and requires the existing cost/card/harness checks. A human visual acceptance is
 separate again.
 
-The historical Omni and Qwen cloud runs are complete and terminated. The separate rejected Codex self-comparison transfer remains pending its exact answer; it has not run or been rerouted. The accepted bounded research dataset exists. Train-first v1 failed before upload or training and is terminal; v2 training and its five-image tester completed with verified receipts and teardown. The root/independent visual disagreement leaves every checkpoint unselected. No paid LoRA/base diagnostic, accepted still, or current video has run.
+Historical pre-diagnostic snapshot, September 10: the Omni and Qwen cloud runs were complete and terminated. The separate rejected Codex self-comparison transfer remained pending its exact answer; it had not run or been rerouted. The accepted bounded research dataset existed. Train-first v1 failed before upload or training and was terminal; v2 training and its five-image tester completed with verified receipts and teardown. The root/independent visual disagreement left every checkpoint unselected. At that checkpoint no paid LoRA/base diagnostic, accepted still, or current video had run. The later September 11 diagnostic results are recorded above; current quality status is in the overall plan.
 
 Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.
 
@@ -261,5 +263,7 @@ Keep-awake was independently checked again at 04:01:32 UTC: supervisor and root 
 
 
 ## Completed local checkpoint and next boundary ? September10
+
+This is the September 10 checkpoint record. The subsequent [September 11 repair review](2026-09-11-repair-checkpoint-review.md) accepted the bounded technical repair diff; its review is no longer pending. Later implementation and remaining work are tracked in the current overall plan linked above.
 
 `2ef9f36a` saves locally tested Studio preparation and video terminal authority. Studio137PASS/typecheck/build; video177PASS plus final5targetedPASS. Independent review of those new slices remains pending exact source-transfer consent. Source pins and failure evidence are preserved in the canonical handoff. A separate tools-disabled Sonnet/Opus generic design loop produced the [motion source/delivery contract](2026-09-10-motion-source-delivery-contract.md); the existing content producer/reader integration is the next code slice, not a new renderer. A separate two-image [seed audition](2026-09-10-seed-b-audition.md) was stopped for directed-pose failure and unestablished intended age; it does not replace g01 or start training.

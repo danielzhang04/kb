@@ -16,7 +16,7 @@ outside this continuation.
 | Track | Established | Still required |
 | --- | --- | --- |
 | Research and planning | Research brief editing/publication, book reader, generation-plan preparation/resume, allocation and exact recorded brief-slot navigation are locally accepted. | Keep the operator/book instructions current after accepted changes; no new research or planning framework is needed. |
-| Current source | Driver, isolated reader, producer join, strict contract, contained process and manual HTTP/UI are implemented. Route/shared 167 and governed 14 cases passed; final UI 196 cases and typecheck passed. Actual native HTTP join reports nine checkpoints and seven POSTs. Independent Opus source review is READY. | Root verified all retained native inputs/outputs and seven actual Chrome screenshots. Build passed with30 named inputs unchanged. Final independent test/guide review READY; scoped acceptance commit follows. |
+| Current source | Accepted and committed as `4228387d`, following foundation `c11a343a`. Route/shared 167, governed 14 and UI 196 passed; actual native HTTP join reports nine checkpoints and seven POSTs. Typechecks/build, seven original Chrome screenshots, source/fixture pins and cleanup accepted. Independent reviews READY. | Maintain the accepted Windows-local capability; no repeat testing without a changed input or unresolved concern. |
 | Operator execution/review | Existing CLI runner/ruling authorities and recorded status/read-only review-claim panels exist. | The current Studio explicitly cannot launch a run and reads existing review claims rather than collecting a new attributed ruling. A complete in-dashboard execution/review journey requires new bounded product work. |
 | Delivery | Still/nonpersona production and review contracts, native video acceptance and immutable video-delivery preparation exist. | Video-delivery preparation does not supply a finished-video renderer or complete delivery acceptance/consumer integration. Actual correspondence, playback, audio and template fit remain unproved. |
 | Creator media | Training, checkpoint transport and diagnostic execution have worked. The latest four-image prompt-span experiment completed with verified teardown. | No accepted production checkpoint, held-out creator still set or production video. Latest framing result: 0/4, with no clear paired improvement. This branch is closed without a paid retry. |
@@ -28,11 +28,10 @@ remain recorded planning evidence after a successful check.
 
 ## Ordered remaining work
 
-1. **Close the current source-check milestone.** Root reviews the retained native
-   HTTP results, actual browser states, restored fixtures, cleanup and final build;
-   fix only demonstrated defects. Commit the scoped source/tests/docs, then refresh
-   the tasklist and canonical handoff. Do not reopen passed foundation suites without
-   a changed input or unresolved concern.
+1. **Keep the accepted source-check milestone stable.** Source/tests/docs are
+   committed as `4228387d`; four book chapters followed as `2e53255d`. Correct
+   remaining historical operator-document pointers and keep the tasklist/handoff
+   current. Do not reopen passed suites without a changed input or concern.
 
 2. **Expose one explicit prepared-plan execution path.** First specify the smallest
    useful Studio handoff or governed action around the existing `figment_train.py` runner: exact
@@ -46,13 +45,17 @@ remain recorded planning evidence after a successful check.
    next step; do not duplicate the existing supervisor without a demonstrated need.
    Independent review and one real local operator journey close this build slice.
 
-3. **Connect review to its existing authority.** After the execution slice, design
+3. **Connect review to its existing authority.** In parallel with execution design, build
    an exact-artifact review page that presents the relevant media and captures an
    explicit, attributed operator decision through the existing ruling writer.
    Reuse current lineage validation and keep source observations, recorded claims
    and human decisions distinct. Synthetic tests establish wiring only; they must
    not generate human review evidence. This is a concrete missing interface, not a
-   reason to add another generic validator.
+   reason to add another generic validator. The revised September14 still-review
+   design requires a narrow optional bounded-reader seam in the existing apply and
+   kept-validator functions, preserving their default decision/write semantics.
+   Independent rereview precedes implementation; synthetic keep/cull probes do
+   not establish production input bounds.
 
 4. **Complete one delivery path, then stop expanding infrastructure.** Inventory
    the existing renderer/producer seams against one selected still or accepted
@@ -83,9 +86,11 @@ report that concrete gap instead of manufacturing a success through fixtures.
 ## Execution discipline and stop conditions
 
 Root orchestrates, reviews and accepts; delegated workers implement and test with
-separate file ownership. The latest Claude CLI attempt failed authentication with
-401, so the authorized Codex fallback continues local work. Do not read credential
-stores or represent a historical reset time as current Claude availability.
+separate file ownership. A generic subscription probe on September14 verified
+`claude-sonnet-5`, native0 and complete owned cleanup. Claude is preferred again;
+authorized native Codex fallback continues when transfer review or availability
+prevents a dispatch. A successful generic probe does not establish authorization
+for a private packet. Never read credential stores to repair availability.
 Keep-awake must be checked against the live owner and its actual lease expiration.
 
 No active pod remains. Paid estimates are **$33.723380**, plus **$1.20** retained
@@ -98,6 +103,15 @@ documentation can continue during asynchronous work. If all currently justified
 work is complete and only a real operator ruling or a new experiment decision
 remains, name that boundary plainly; do not keep adding validators to look busy.
 No push, merge, deployment, account action or publication is included.
+
+September14 audits: the current disabled Codex scheduled task is not a Figment
+host; the proposed Linux claim/report path has unwired serving/authentication and
+Windows-source locality prerequisites. A separate architecture review is testing
+whether a concrete local path can meet these constraints without a platform
+rewrite. No execution activation has occurred. The seven-row crop-consumption
+trace independently passed metadata checks, including aggregate square buckets,
+but named-row cache/optimizer exposure remains unavailable; it does not justify
+cache repair, retraining or another paid run.
 
 ## Load and evidence map
 

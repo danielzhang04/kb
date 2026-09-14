@@ -6,6 +6,14 @@ claim ("ruling assertion") to the *current* prepared vertical-video delivery
 evidence at read time. It does not author rulings, does not pick "latest"
 anything, does not render, publish, or write persistent artifacts of its own.
 
+Studio now has a separate read-only claim panel under **Runs & review**, with an
+explicit **Check recorded review** action. Its [September 12 visual acceptance](2026-09-12-studio-visual-review.md)
+covers two synthetic rendered states, not live backend authentication or media
+playback. It reads an existing claim; it does not collect a new ruling or
+authenticate its author. See the [current overall plan](2026-09-12-overall-plan-review.md)
+for the remaining operator journey. The Python-only acceptance below remains
+scoped to its named source and tests.
+
 ## What it actually does
 
 1. Re-validates the prepared delivery evidence at `root` / `evaluation` via the
@@ -82,9 +90,9 @@ unreviewed placeholder shape, not a fabricated pass:
   the actual projection; this reader never decodes or watches media.
 - `attribution_authenticated` is always `false` — the attribution string is
   unverified and self-declared.
-- The module does not prove full transform correspondence, does not
-  authenticate the operator, does not write rulings anywhere, and does not
-  integrate with Studio.
+- The Python module does not prove full transform correspondence, authenticate
+  the operator or write rulings anywhere. The separate Studio claim panel does
+  not expand those guarantees.
 
 ## Technical acceptance
 
@@ -122,8 +130,7 @@ unreviewed placeholder shape, not a fabricated pass:
   with SHA256
   `b78c35e2aa5ee597dbb8621b27ec568f1ad231bc9b3f9b5886e38aa82bc3dad0`.
 
-This acceptance covers only the source/tests/review described above. It does
-not accept actual creator media, does not prove human review occurred, does
-not authenticate anyone, does not integrate with Studio, does not authorize
-publication, and is not a claim that the broader Figment pipeline is
-complete.
+This historical Python-only acceptance covers the source/tests/review described
+above, not the separate Studio panel. It does not accept actual creator media,
+prove human review occurred, authenticate anyone or authorize publication, and
+is not a claim that the broader Figment pipeline is complete.

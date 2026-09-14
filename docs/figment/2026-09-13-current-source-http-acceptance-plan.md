@@ -1,6 +1,8 @@
 # Current-source HTTP/UI integration — acceptance plan
 
-Status: root architecture review and work-order preparation, September 13. No implementation or independent design acceptance is claimed. The exact Opus design-source packet is awaiting consent; this local plan does not transfer it or change its contents.
+Status, September 14: the manual Windows-local current-source HTTP/UI journey is implemented and locally accepted. See the [accepted review](2026-09-13-current-source-http-review.md), [operator guide](2026-09-13-current-source-reader-guide.md) and [current overall plan](2026-09-12-overall-plan-review.md). This document preserves the September 13 design and acceptance work order; its original seam inventory and proposed gates are historical, not outstanding implementation or consent requirements.
+
+The result is a manual past observation: `launchReady`, `qualityApproved` and `atomicSnapshot` remain false. The implemented discovery route is the third exact GET admission exemption; its explicit POST remains governed. Acceptance grants no launch, media-quality or deployment authority.
 
 ## Intended behavior
 
@@ -8,7 +10,7 @@ For an exact prepared generation-plan ID and digest, an authenticated operator c
 
 Preserve existing GET `studio-gen-plans@3`, POST preparation/idempotency, uncertainty handling and exact recorded-slot navigation. No reader process starts on GET, render, polling, inventory refresh, remount or selection change. The observation requires its own explicit POST action.
 
-## Existing seams verified locally
+## Original pre-implementation seam inventory — September 13
 
 | Seam | Consequence for the new work |
 | --- | --- |
