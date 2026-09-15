@@ -201,9 +201,14 @@ defects below for where these two sources disagree past 09-04.
   still open): `ledgers/cost/figment-2026-09-06.tsv` sums to $2.822, against STATE.md's stated
   "$0.61" for that day; `figment-2026-09-07.tsv` carries an unnarrated $5.85 row
   (`fn938tol6mgbtp`). Do not trust a single day's total from either source alone.
-- **`flux2-klein-4B` renamed on Hugging Face** (`expand/TENSOR-REPLICATION.md` open risk 5):
-  every `pins.dataset`/`pins.anchor_edit` pin now HEADs a 307; `verify_pins.py` fails closed on
-  it until `repo_id` is updated to the new name.
+- ~~**`flux2-klein-4B` renamed on Hugging Face**~~ — RESOLVED (`expand/TENSOR-REPLICATION.md`
+  open risk 5, F7): `pins.dataset`/`pins.anchor_edit` already repoint to the current repo id
+  `Comfy-Org/vae-text-encorder-for-flux-klein-4b` (`tensor-pins.yaml:117-119,135-137`, landed
+  commit `9ffec37a`). Re-verified live 2026-09-15: `verify_pins.py` (no `--stage` — every stage)
+  reports `verified 9 stage(s) clean: anchor, anchor_edit, dataset, detail, gen, skin_loras,
+  style_loras, tester, train`; the repo's own HF API record (`api/models/Comfy-Org/vae-text-
+  encorder-for-flux-klein-4b`) confirms `modelId` == `id` (no further redirect) and
+  `license: apache-2.0`.
 - **Three of gate.yaml's eight thresholds are unvalidated placeholders** (identity_gate's
   `age_delta_max_years`/`gloss_max`; judge's `skin_realism_min`/`gloss_max`/`artifacts_max`) —
   calibration ran and reported honestly that these do not separate any evidence set (`gate.yaml`
