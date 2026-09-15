@@ -51,12 +51,17 @@ py -3 orgs/figment/pipeline/figment_train.py pipeline --creator creator-001
 This is exactly `pipeline --creator creator-001 --out orgs/figment/runs/creator-001/<stamp>/`.
 The very first thing it does is a plan-time **budget preflight**: it sums every run the
 call is about to plan against the arc cap remaining and prints a table before writing
-`plan.json`:
+`plan.json`. `spent`/`remaining` are read live off the resolved ledger at plan time (M3:
+`configured_ledger_dir`'s precedence — explicit `--ledger-dir` → `KB_LEDGER_DIR` → the OPS
+worktree if present → this repo's own, normally-empty `ledgers/cost/` as a last resort) --
+never a fixed figure quoted here. The shape of the table (`REFUSED` when planned + spent
+would exceed the arc cap, `over_daily_limit` flagging any single run over
+`governance/budget.yaml`'s daily cap) looks like this:
 
 ```text
 BUDGET PREFLIGHT
-  arc:   spent=$33.7234 + planned=$36.20 vs cap=$50.00 (remaining=$16.28) -- REFUSED
-  daily: limit=$10.00 (today spent=$0.0000, not summed against the plan -- each run is checked against the limit alone)
+  arc:   spent=$<live> + planned=$<sum of this plan's ceilings> vs cap=$<ARC_CAP_USD> (remaining=$<live>) -- REFUSED or clears
+  daily: limit=$10.00 (today spent=$<live>, not summed against the plan -- each run is checked against the limit alone)
   stage      manifest                                                 ceiling_usd  over_daily_limit
   anchor     <manifest>                                                      4.90
   dataset    <manifest>                                                     10.47
@@ -191,7 +196,7 @@ Once `detail` is ruled, `pipeline` writes `<run-root>/deliverable/`:
 - `stills/<image_id>.ext` — every kept `gen` still.
 - `detail/<image_id>.ext` — every kept `detail` image.
 - `manifest.json` — the `gen`/`detail` plan paths and hashes, the chosen checkpoint step
-  and digest (and its `origin`: `"trained"` or `"imported"`), and per kept cell its gate row
+  and digest (and its `origin`: `"in-plan"` or `"imported"`), and per kept cell its gate row
   and ruling attribution (`decided_by`/`decided_at`/`why`/`gate_override`).
 
 Once `video` is ruled the deliverable also gains `video/<candidate id>.mp4` (the reel

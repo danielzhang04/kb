@@ -36,8 +36,12 @@ _Updated: 2026-09-15_
   write against the arc cap remaining before writing `plan.json`, and refuses unless
   `--accept-budget` is passed; the live per-run guards (`enforce_daily_budget`,
   `enforce_arc_cap`) are unchanged and still the actual authority at launch time.
-- **One ledger.** The repo's own `ledgers/cost/` is the single reconciled arc-cap ledger
-  (E3) — the runbook no longer points at a private worktree path.
+- **One ledger, resolved by precedence.** `configured_ledger_dir` (E3) is the single
+  resolver every plan/run goes through: an explicit `--ledger-dir` wins first; then
+  `KB_LEDGER_DIR`; then the managed OPS worktree if present on this machine
+  (`dashboard-ops/ledgers/cost`); the repo's own `ledgers/cost/` is the last-resort
+  fallback only. Per CLAUDE.md's branch rules, real cost rows are a coordination write and
+  live on branch `ops` — this repo checkout carries none of its own.
 - Pins repaired (F7): `flux2-klein-4B`'s HF rename is resolved in `tensor-pins.yaml`;
   `verify_pins.py` (no `--stage`) reports all 9 stages clean, video pins included (E5).
   Train profile at target (F5): `training.yaml` reads `steps: 3000` (DOP on, a deliberate
@@ -73,6 +77,9 @@ _Updated: 2026-09-15_
   2000-step run, train-first 1250-step run) was culled or superseded before this arc's
   3000-step/DOP profile landed; `grade/tester/accepted-checkpoint.json` does not exist for
   the current profile, so `gen`/`detail`/`video`/the deliverable have never run against it.
+  Live evidence: an imported-ladder tester ran 2026-09-15 (run root
+  `orgs/figment/runs/creator-001/live-20260915`), 5 candidates, gate 0/5 (none passed),
+  $0.3346 (`ledgers/cost/figment-2026-09-15.tsv` on the OPS worktree).
 - **Studio still cannot launch a run or record a ruling** (`docs/figment/
   AUDIT-2026-09-15.md` §G) — it prepares plans and reads evidence, nothing more. See "Next"
   item 1.
