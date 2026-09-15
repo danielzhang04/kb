@@ -3181,8 +3181,12 @@ def build_grade(
             "identity_gate_sha256": _sha256(IDENTITY_GATE_MODULE),
             "stage2": "unavailable: local research mode does not invoke an external image judge",
         }
-    gate_path = grade_dir / "gate.json"
-    _write_json(gate_path, gate_document)
+    # E4: `_identity_gate_module().write_gate_document` is the ONE writer of
+    # `figment/gate@1` -- shared with `identity_gate.py`'s own `run_gate` CLI, so a
+    # plan-driven grading stage and an ad hoc `run` write byte-identical gate.json.
+    gate_path = _identity_gate_module().write_gate_document(
+        grade_dir / "gate.json", gate_document,
+    )
 
     manifest_path = grade_dir / "grading-manifest.json"
     template_path = grade_dir / "rulings.template.json"

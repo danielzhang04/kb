@@ -454,18 +454,16 @@ def test_identical_reharvest_is_idempotent_and_changed_board_stales_gate(tmp_pat
     assert len(batch_after_second["pod_runs"]) == 1
     assert batch_after_second["cost_usd"] == pytest.approx(0.5)
 
-    # A gate bound to the harvested batch.json is current right after it's
+    # A hash bound to the harvested batch.json is current right after it's
     # written...
-    gate_path = tmp_path / "gate.json"
-    gate = gates_mod.write_gate(
-        gate_path, gate_id="gate-a-smoke", subject_path=batch_path,
-        decision="verified", decided_by="operator", decided_at="2026-09-03T07:20:00+00:00",
-    )
-    assert gates_mod.gate_is_current(gate, batch_path) is True
+    subject_sha256 = gates_mod.sha256_file(batch_path)
+    assert subject_sha256 == gates_mod.sha256_file(batch_path)
 
-    # ...but harvesting a second shard changes batch.json's bytes, which
-    # stales the gate automatically — a stale gate can never approve changed
-    # content (plan global constraints).
+    # ...but harvesting a second shard changes batch.json's bytes, which stales any
+    # decision bound to that hash automatically — a stale hash can never approve
+    # changed content (plan global constraints). (E4 deleted the dead
+    # write_gate/gate_is_current wrapper this test used to exercise; the hash equality
+    # it wrapped is the property that matters here.)
     write_fake_shard_run(run_root, persona_id, 2, groups[1], cost=0.3)
     bes.harvest_runs(PERSONA, allocation_path, run_root, batch_dir)
-    assert gates_mod.gate_is_current(gate, batch_path) is False
+    assert gates_mod.sha256_file(batch_path) != subject_sha256
