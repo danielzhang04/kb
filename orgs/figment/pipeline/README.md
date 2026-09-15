@@ -293,10 +293,23 @@ risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
   daily limit on its own**, even on a day with zero prior Figment spend — DOP's ~3.6x
   per-step rate (9.0s vs 2.5s, r21) times 3000 steps is the real cost of training-to-3000
   screened-by-tester rather than defaulting to a shorter run (F5 ruling, r25 causes #4/#6);
-  it is well inside the $50.00 arc cap (`ledgers/cost/` totals $33.7234 as of E3) but a live
-  `run --stage train` still needs its own calendar day with no other Figment spend, checked
-  at plan/run time by `enforce_daily_budget` (fails closed otherwise) — same "spend its own
+  train's OWN ceiling clears the $50.00 arc cap by itself (`ledgers/cost/` totalled
+  $33.7234 as of E3, leaving $16.2766 against train's $15.73) but a live `run --stage
+  train` still needs its own calendar day with no other Figment spend, checked at
+  plan/run time by `enforce_daily_budget` (fails closed otherwise) — same "spend its own
   day" constraint the arc cap and per-stage ceilings above already impose on `gen`.
+  **The FULL `--stage all` chain does NOT clear the arc with the same margin**: summed
+  ceilings at these numbers (anchor $4.90 + dataset $10.47 + smoke $2.28 + train $15.73 +
+  tester $2.82 = $36.20) exceed the $16.2766 remaining more than twofold — `enforce_arc_cap`
+  only ever compares ONE run's ceiling at RUN time, so a chain like this used to be
+  accepted for planning and only fail mid-chain, after anchor+dataset already spent (M2).
+  `build_plan`/`pipeline` now run a plan-time budget preflight before writing `plan.json`:
+  it sums every run the call is about to plan against the arc cap remaining (same ledger
+  reader the harness uses) and refuses unless `--accept-budget` is passed, which records
+  the acceptance and the numbers in `plan.json`'s `budget_preflight`. It also names, per
+  run, any single ceiling bigger than the daily limit (train always is, by the DOP
+  arithmetic above) — informational only, never a second blocker on top of
+  `enforce_daily_budget`.
 - Every manifest carries its own `max_minutes`/`max_placement_attempts: 1` (no automatic
   retry on a live run) and is `--dry-run` green before it ever spends.
 

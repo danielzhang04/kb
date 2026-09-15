@@ -50,8 +50,12 @@ figment_train = load_module("figment_train_tensor_track", PIPELINE / "figment_tr
 # file is specifically a replication check against the live config), and let `manifest()`
 # load those instead of a frozen file.
 _PLAN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-track-plan-"))
+# M2: this is a manifest-replication check, not a budget check -- creator-001's real
+# training.yaml sums well past the live shared ledger's remaining arc cap, so
+# accept_budget is required the same way an operator would pass --accept-budget.
 _PLAN = figment_train.build_plan(
     "creator-001", "all", _PLAN_DIR, personas_root=REAL_PERSONAS, skip_pin_verify=True,
+    accept_budget=True,
 )
 
 # "gen" is never part of a `--stage all` plan (it is only ever planned explicitly, after

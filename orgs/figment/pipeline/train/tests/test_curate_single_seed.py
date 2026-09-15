@@ -444,9 +444,12 @@ def test_explicit_existing_acceptance_stages_curation_evidence_with_dataset(tmp_
     )
     assert "curation" in approval["subject"]
     plan_root = tmp_path / "train-first"
+    # M2: dataset-staging check, not a budget check -- creator-001's real training.yaml
+    # sums well past the live shared ledger's remaining arc cap on this machine.
     driver.build_train_first_plan(
         "creator-001", out, plan_root,
         personas_root=PIPELINE.parent / "personas", skip_pin_verify=True,
+        accept_budget=True,
     )
     staged = plan_root / "train" / "runs" / "creator-001-tensor-dataset-train-first"
     assert (staged / "dataset_curation.json").is_file()

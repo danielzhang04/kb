@@ -489,7 +489,12 @@ def test_a_promoted_anchor_can_never_be_replanned(command, tmp_path):
     _promoted_persona(personas, creator_id="creator-002")
     with pytest.raises(command.FigmentTrainError, match="already has a promoted anchor"):
         command.build_plan("creator-002", "anchor", tmp_path / "a", personas_root=personas, skip_pin_verify=True)
-    plan = command.build_plan("creator-002", "all", tmp_path / "b", personas_root=personas, skip_pin_verify=True)
+    # M2: stage-membership check, not a budget check -- default ledger falls back to
+    # the live shared OPS ledger on this machine.
+    plan = command.build_plan(
+        "creator-002", "all", tmp_path / "b", personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
+    )
     assert "anchor" not in plan["stages"]
 
 
@@ -497,7 +502,11 @@ def test_run_stage_all_skips_completed_and_already_graded_stages(command, tmp_pa
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002")
     out = tmp_path / "b"
-    command.build_plan("creator-002", "all", out, personas_root=personas, skip_pin_verify=True)
+    # M2: staging/resume check, not a budget check -- see the note above.
+    command.build_plan(
+        "creator-002", "all", out, personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
+    )
     (out / "stage.json").write_text(json.dumps({
         "schema": "figment/train-stage@1", "creator": "creator-002",
         "plan_sha256": command._sha256(out / "plan.json"), "status": "complete:dataset",

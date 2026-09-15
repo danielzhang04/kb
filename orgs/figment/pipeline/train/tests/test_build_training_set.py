@@ -584,9 +584,13 @@ def test_train_manifest_uploads_glob_points_at_the_dataset_build_output_dir(tmp_
         "figment_train_build_training_set_figment_train", PIPELINE / "figment_train.py",
     )
     out = tmp_path / "train-plan"
+    # M2: manifest content check, not a budget check -- the live shared ledger's
+    # remaining arc margin can dip below train's own ceiling depending on other
+    # workers' spend on this machine, so accept_budget is required deterministically.
     plan = figment_train.build_plan(
         "creator-001", "train", out,
         personas_root=PIPELINE.parent / "personas", skip_pin_verify=True,
+        accept_budget=True,
     )
     run = plan["stages"]["train"]["runs"][0]
     manifest = json.loads((out / run["manifest"]).read_text(encoding="utf-8"))

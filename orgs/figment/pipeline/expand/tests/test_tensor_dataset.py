@@ -91,9 +91,12 @@ TEMPLATES = EXPAND / "templates" / "tensor-dataset-prompts.yaml"
 # `test_fullbody_jobs_route_through_the_face_repair_composite_node`, both already driven
 # through a live `build_plan` call.
 _DATASET_PLAN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-plan-"))
+# M2: manifest-replication check, not a budget check -- the live shared ledger's
+# remaining arc margin can dip below dataset's own ceiling depending on other workers'
+# spend on this machine, so accept_budget is required deterministically.
 _DATASET_PLAN = figment_train.build_plan(
     "creator-001", "dataset", _DATASET_PLAN_DIR, personas_root=REAL_PERSONAS,
-    skip_pin_verify=True,
+    skip_pin_verify=True, accept_budget=True,
 )
 SHARDS = tuple(
     _DATASET_PLAN_DIR / run["manifest"]

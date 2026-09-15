@@ -77,7 +77,10 @@ def test_creator001_every_planned_stage_dry_runs_clean_and_pins_verify(
 
     out = tmp_path / "creator001-plan"
     # skip_pin_verify defaults to False: this run genuinely exercises the preflight.
-    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS)
+    # M2: this is a manifest/pin content check, not a budget check -- creator-001's
+    # real training.yaml sums well past the live shared ledger's remaining arc cap, so
+    # accept_budget is required the same way an operator would pass --accept-budget.
+    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS, accept_budget=True)
 
     for stage, stage_data in plan["stages"].items():
         for index, run in enumerate(stage_data["runs"]):
@@ -176,7 +179,11 @@ def test_creator001_every_planned_stage_dry_runs_clean_and_pins_verify(
 
 def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_path):
     out = tmp_path / "pins-plan"
-    plan = command.build_plan("creator-001", "all", out, personas_root=PERSONAS, skip_pin_verify=True)
+    # M2: manifest/pin content check, not a budget check -- see the sibling test above.
+    plan = command.build_plan(
+        "creator-001", "all", out, personas_root=PERSONAS, skip_pin_verify=True,
+        accept_budget=True,
+    )
     pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
     for stage, profile in (("dataset", "dataset"), ("smoke", "train"),
                            ("train", "train"), ("tester", "tester")):
@@ -326,7 +333,13 @@ def test_creator003_two_anchor_persona_plans_clean_and_every_manifest_dry_runs(
         exemplars=["a02"],
     )
     out = tmp_path / "creator003-plan"
-    plan = command.build_plan("creator-003", "all", out, personas_root=personas_root, skip_pin_verify=True)
+    # M2: manifest content check, not a budget check -- see the accept_budget note on
+    # the sibling creator-001 tests above (default ledger falls back to the live shared
+    # OPS ledger on this machine).
+    plan = command.build_plan(
+        "creator-003", "all", out, personas_root=personas_root, skip_pin_verify=True,
+        accept_budget=True,
+    )
 
     assert plan["training"]["trigger"] == "creator003krea2"
     dataset_manifest = load_json(plan_path(out, plan["stages"]["dataset"]["runs"][0]))
@@ -359,7 +372,11 @@ def test_creator002_is_data_only_token_clean_and_every_manifest_dry_runs(command
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
     out = tmp_path / "creator002-plan"
-    plan = command.build_plan("creator-002", "all", out, personas_root=personas_root, skip_pin_verify=True)
+    # M2: manifest content check, not a budget check -- see the accept_budget note above.
+    plan = command.build_plan(
+        "creator-002", "all", out, personas_root=personas_root, skip_pin_verify=True,
+        accept_budget=True,
+    )
 
     assert plan["training"]["trigger"] == "creator002krea2"
     train_manifest = load_json(plan_path(out, plan["stages"]["train"]["runs"][0]))
@@ -852,7 +869,13 @@ def test_run_verifier_stops_on_each_recorded_defect(command, tmp_path, defect):
 
 def test_run_refuses_to_resume_a_stage_stuck_running(command, tmp_path, monkeypatch):
     out = tmp_path / "resume-plan"
-    plan = command.build_plan("creator-001", "dataset", out, personas_root=PERSONAS, skip_pin_verify=True)
+    # M2: manifest content check against the real dataset ceiling, not a budget check --
+    # the live shared ledger's remaining arc margin is thin enough to make this flaky
+    # without accept_budget (other workers on this machine also spend against it).
+    plan = command.build_plan(
+        "creator-001", "dataset", out, personas_root=PERSONAS, skip_pin_verify=True,
+        accept_budget=True,
+    )
     plan_file = out / "plan.json"
     key = plan["stages"]["dataset"]["runs"][0]["manifest"]
     state_path = out / "stage.json"
@@ -1688,13 +1711,14 @@ def test_build_train_first_plan_shares_the_normal_plan_schema_plus_documented_ex
     _synthetic_persona(personas_root)
     dataset_dir = _prebuilt_dataset_dir(tmp_path / "prebuilt-dataset", command=command)
 
+    # M2: schema comparison check, not a budget check -- see the accept_budget note above.
     normal_plan = command.build_plan(
         "creator-002", "all", tmp_path / "normal-plan",
-        personas_root=personas_root, skip_pin_verify=True,
+        personas_root=personas_root, skip_pin_verify=True, accept_budget=True,
     )
     train_first_plan = command.build_train_first_plan(
         "creator-002", dataset_dir, tmp_path / "train-first-plan",
-        personas_root=personas_root, skip_pin_verify=True,
+        personas_root=personas_root, skip_pin_verify=True, accept_budget=True,
     )
 
     assert train_first_plan["schema"] == normal_plan["schema"] == "figment/train-plan@1"
@@ -2018,14 +2042,17 @@ def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_
 
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
+    # M2: this fixture deliberately seeds `reconciled` down to $1.00 remaining to prove
+    # ledger *selection*, not budget refusal -- accept explicitly.
     normal = command.build_plan(
         "creator-002", "smoke", tmp_path / "normal", personas_root=personas_root,
-        skip_pin_verify=True, ledger_dir=reconciled,
+        skip_pin_verify=True, ledger_dir=reconciled, accept_budget=True,
     )
     dataset = _prebuilt_dataset_dir(tmp_path / "dataset", command=command)
+    # Same deliberately-thin `reconciled` ledger as `normal` above -- accept explicitly.
     train_first = command.build_train_first_plan(
         "creator-002", dataset, tmp_path / "train-first", personas_root=personas_root,
-        skip_pin_verify=True, ledger_dir=reconciled,
+        skip_pin_verify=True, ledger_dir=reconciled, accept_budget=True,
     )
 
     expected = str(reconciled.resolve())
@@ -2142,3 +2169,63 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     # Not a tautology: this is a real, narrow margin at steps=3000 -- prove it is not
     # trivially satisfied by an oversized cap or an emptied-out ledger.
     assert cap - (spent + ceiling) < 1.0
+
+
+def test_build_plan_refuses_when_planned_ceilings_exceed_remaining_arc_and_records_with_accept(
+    command, tmp_path,
+):
+    """M2 reproduction: `enforce_arc_cap` only ever compares ONE run's ceiling against
+    the arc cap, at RUN time -- a multi-stage plan (anchor+dataset+smoke+train+tester)
+    can therefore be accepted for planning even though its SUM cannot possibly clear the
+    arc, and the operator only discovers this mid-chain, after anchor+dataset already
+    spent. `build_plan` must refuse such a plan up front unless --accept-budget is
+    passed, and record the numbers on the plan when it is."""
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    # Seed the arc ledger so only $1.00 remains of the $50.00 cap -- any nonzero
+    # multi-stage synthetic plan's summed ceilings exceed that.
+    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+        "model\tstep\tusd\n" "l40s\tpod-create seed\t49.000000\n", encoding="utf-8",
+    )
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+
+    with pytest.raises(command.FigmentTrainError, match="budget preflight refused"):
+        command.build_plan(
+            "creator-002", "all", tmp_path / "refused", personas_root=personas_root,
+            skip_pin_verify=True, ledger_dir=ledger_dir,
+        )
+    assert not (tmp_path / "refused" / "plan.json").exists()
+
+    accepted = command.build_plan(
+        "creator-002", "all", tmp_path / "accepted", personas_root=personas_root,
+        skip_pin_verify=True, ledger_dir=ledger_dir, accept_budget=True,
+    )
+    preflight = accepted["budget_preflight"]
+    assert preflight["accepted"] is True
+    assert preflight["over_arc"] is True
+    assert preflight["arc_remaining_usd"] == "1.00"
+    assert float(preflight["total_planned_usd"]) > 1.00
+    written = load_json(tmp_path / "accepted" / "plan.json")
+    assert written["budget_preflight"] == preflight
+
+
+def test_build_plan_names_a_single_run_over_the_daily_limit_without_refusing(
+    command, tmp_path,
+):
+    """M2 (b): a run's own ceiling bigger than governance/budget.yaml's daily_usd_limit
+    is real and expected for `train` at DOP step counts (F5 ruling) -- it must be named
+    in the preflight table but never block planning by itself (the live run itself is
+    still gated on its own spend day by the unchanged `enforce_daily_budget`)."""
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()  # empty: arc_spent == 0, so a $50 cap is nowhere near exceeded.
+    plan = command.build_plan(
+        "creator-001", "train", tmp_path / "plan", skip_pin_verify=True,
+        ledger_dir=ledger_dir,
+    )
+    preflight = plan["budget_preflight"]
+    train_run = plan["stages"]["train"]["runs"][0]
+    assert float(train_run["ceiling_usd"]) > float(preflight["daily_usd_limit"])
+    assert preflight["over_arc"] is False
+    assert preflight["accepted"] is False
+    assert train_run["manifest"] in preflight["runs_over_daily_limit"]

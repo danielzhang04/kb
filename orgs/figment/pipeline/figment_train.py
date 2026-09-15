@@ -1739,6 +1739,80 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: P
     return result
 
 
+def _budget_preflight(
+    plan_stages: dict[str, Any], *, ledger_dir: Path, arc_cap_usd: str, accept_budget: bool,
+) -> dict[str, Any]:
+    """M2: a plan-time budget preflight so a multi-stage plan is never discovered to be
+    unaffordable mid-chain (train would otherwise be refused by `enforce_arc_cap` only
+    AFTER anchor+dataset already spent). Reads the SAME ledger the live harness reads
+    (`pod/runpod_run.py`'s `arc_budget_state`/`daily_budget_state`) -- never a second,
+    independently hand-rolled reader -- and computes:
+      (a) the sum of every run this `build_plan` call is about to write, against the
+          whole-arc cap remaining (arc_cap_usd - arc already spent). Over this refuses
+          the plan unless `accept_budget` is passed.
+      (b) each single run's own ceiling against `governance/budget.yaml`'s
+          `daily_usd_limit`. This is reported in the table (a run bigger than one day's
+          budget is real and, for `train` at DOP step counts, expected -- F5 ruling) but
+          never blocks by itself: `enforce_daily_budget` still gates the live run itself
+          on its own spend day, unchanged.
+    Never touches the harness's own run-time guards -- this only ever runs earlier, at
+    plan time, so an unaffordable chain is visible before a single pod boots.
+    """
+    pod_runner = _pod_runner_module()
+    rows: list[dict[str, Any]] = []
+    total = Decimal("0")
+    for stage_name, stage_plan in plan_stages.items():
+        for run in stage_plan["runs"]:
+            ceiling = Decimal(str(run["ceiling_usd"]))
+            total += ceiling
+            rows.append({
+                "stage": stage_name, "manifest": run["manifest"], "ceiling_usd": run["ceiling_usd"],
+            })
+    try:
+        arc_cap, arc_spent = pod_runner.arc_budget_state(
+            arc_cap_usd=float(arc_cap_usd), ledger_dir=ledger_dir,
+        )
+        daily_limit, daily_spent = pod_runner.daily_budget_state(ledger_dir=ledger_dir)
+    except pod_runner.HarnessError as exc:
+        raise FigmentTrainError(f"budget preflight could not read the ledger: {exc}") from exc
+    arc_cap_d, arc_spent_d = Decimal(str(arc_cap)), Decimal(str(arc_spent))
+    daily_limit_d = Decimal(str(daily_limit))
+    arc_remaining = arc_cap_d - arc_spent_d
+    over_arc = total > arc_remaining
+    over_daily_manifests = [row["manifest"] for row in rows if Decimal(str(row["ceiling_usd"])) > daily_limit_d]
+
+    header = f"{'stage':<10} {'manifest':<55} {'ceiling_usd':>12}  over_daily_limit"
+    lines = [
+        "BUDGET PREFLIGHT",
+        f"  arc:   spent=${arc_spent_d:.4f} + planned=${total:.2f} vs cap=${arc_cap_d:.2f} "
+        f"(remaining=${arc_remaining:.2f}) -- {'REFUSED' if over_arc else 'clears'}",
+        f"  daily: limit=${daily_limit_d:.2f} (today spent=${Decimal(str(daily_spent)):.4f}, "
+        "not summed against the plan -- each run is checked against the limit alone)",
+        f"  {header}",
+    ]
+    for row in rows:
+        flag = "YES" if row["manifest"] in over_daily_manifests else ""
+        lines.append(f"  {row['stage']:<10} {row['manifest']:<55} {row['ceiling_usd']:>12}  {flag}")
+    table = "\n".join(lines)
+
+    if over_arc and not accept_budget:
+        raise FigmentTrainError(
+            "budget preflight refused this plan (pass --accept-budget to override, or "
+            "shrink the plan):\n" + table
+        )
+    return {
+        "table": table,
+        "total_planned_usd": f"{total:.2f}",
+        "arc_cap_usd": f"{arc_cap_d:.2f}",
+        "arc_spent_usd": f"{arc_spent_d:.4f}",
+        "arc_remaining_usd": f"{arc_remaining:.2f}",
+        "over_arc": over_arc,
+        "daily_usd_limit": f"{daily_limit_d:.2f}",
+        "runs_over_daily_limit": over_daily_manifests,
+        "accepted": bool(accept_budget),
+    }
+
+
 def build_plan(
     creator_id: str,
     stage: str,
@@ -1749,6 +1823,7 @@ def build_plan(
     detail_images: str | None = None,
     approved_gen_plan: Path | None = None,
     ledger_dir: Path | None = None,
+    accept_budget: bool = False,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -1953,6 +2028,12 @@ def build_plan(
         ]
         plan_stages[current] = {"runs": runs}
 
+    budget_preflight = _budget_preflight(
+        plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        accept_budget=accept_budget,
+    )
+    print(budget_preflight["table"])
+
     plan = {
         "schema": "figment/train-plan@1",
         "creator": creator_id,
@@ -1968,6 +2049,7 @@ def build_plan(
         "ledger_dir": str(resolved_ledger_dir),
         "arc_cap_usd": ARC_CAP_USD,
         "arc_ledger_glob": ARC_LEDGER_GLOB,
+        "budget_preflight": budget_preflight,
         "stages": plan_stages,
     }
     if gen_authority is not None:
@@ -2096,6 +2178,7 @@ def build_train_first_plan(
     personas_root: Path = PERSONAS_ROOT,
     skip_pin_verify: bool = False,
     ledger_dir: Path | None = None,
+    accept_budget: bool = False,
 ) -> dict[str, Any]:
     """Path-A train-first (r24 method 4 + r21 DOP + r25 causes #4/#5): plan a train +
     tester run directly against an ALREADY-BUILT, ALREADY-CAPTIONED dataset directory
@@ -2209,6 +2292,15 @@ def build_train_first_plan(
     run_root = train_runs_dir / "out"
     train_run = _planned_run(out, train_path, run_root / train_path.stem, ledger_dir=resolved_ledger_dir)
     tester_run = _planned_run(out, tester_path, run_root / tester_path.stem, ledger_dir=resolved_ledger_dir)
+    stages = {"train": {"runs": [train_run]}, "tester": {"runs": [tester_run]}}
+
+    # M2: a real-spend planning path exactly like `build_plan`'s -- same preflight,
+    # same --accept-budget contract.
+    budget_preflight = _budget_preflight(
+        stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
+        accept_budget=accept_budget,
+    )
+    print(budget_preflight["table"])
 
     plan = {
         "schema": "figment/train-plan@1",
@@ -2222,10 +2314,8 @@ def build_train_first_plan(
         "ledger_dir": str(resolved_ledger_dir),
         "arc_cap_usd": ARC_CAP_USD,
         "arc_ledger_glob": ARC_LEDGER_GLOB,
-        "stages": {
-            "train": {"runs": [train_run]},
-            "tester": {"runs": [tester_run]},
-        },
+        "budget_preflight": budget_preflight,
+        "stages": stages,
         # The one thing that makes this plan.json different from a `build_plan` one --
         # `_install_stage_config`'s only fork point (see this function's own docstring).
         "variant": "train-first",
@@ -4294,6 +4384,7 @@ def command_pipeline(
     from_stage: str | None = None,
     max_usd: str | None = None,
     ledger_dir: Path | None = None,
+    accept_budget: bool = False,
 ) -> dict[str, Any]:
     """F1: one resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -4347,6 +4438,7 @@ def command_pipeline(
         primary_plan = build_plan(
             creator_id, "all", out, personas_root=personas_root,
             skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
+            accept_budget=accept_budget,
         )
         primary_root = Path(out).resolve()
         primary_plan_path = primary_root / "plan.json"
@@ -4400,6 +4492,7 @@ def command_pipeline(
                 active_plan = build_plan(
                     creator_id, "gen", gen_root, personas_root=personas_root,
                     skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
+                    accept_budget=accept_budget,
                 )
                 active_root = gen_root
             active_plan_path = gen_root / "plan.json"
@@ -4423,7 +4516,7 @@ def command_pipeline(
                 active_plan = build_plan(
                     creator_id, "detail", detail_root, personas_root=personas_root,
                     skip_pin_verify=skip_pin_verify, approved_gen_plan=gen_root,
-                    ledger_dir=ledger_dir,
+                    ledger_dir=ledger_dir, accept_budget=accept_budget,
                 )
                 active_root = detail_root
             active_plan_path = detail_root / "plan.json"
@@ -4512,6 +4605,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of an already-ruled gen plan (only meaningful with --stage "
              "detail); every image in its grade/gen/approved-list.json is re-detailed (F2)",
     )
+    plan.add_argument(
+        "--accept-budget", action="store_true",
+        help="M2: required to write a plan whose planned run ceilings exceed the arc "
+             "cap remaining (arc_cap_usd - arc already spent); the acceptance and its "
+             "numbers are recorded in plan.json's budget_preflight",
+    )
 
     pipeline = commands.add_parser(
         "pipeline",
@@ -4543,6 +4642,11 @@ def build_parser() -> argparse.ArgumentParser:
              "only, NEVER pass this on a real grading run",
     )
     pipeline.add_argument("--ledger-dir", type=Path)
+    pipeline.add_argument(
+        "--accept-budget", action="store_true",
+        help="M2: required whenever a stage `pipeline` plans on its own (--out, or a "
+             "downstream gen/detail plan) would exceed the arc cap remaining",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -4594,6 +4698,11 @@ def build_parser() -> argparse.ArgumentParser:
     train_first.add_argument(
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
+    )
+    train_first.add_argument(
+        "--accept-budget", action="store_true",
+        help="M2: required to write a plan whose planned run ceilings exceed the arc "
+             "cap remaining",
     )
     accept_dataset = commands.add_parser(
         "accept-dataset",
@@ -4648,7 +4757,7 @@ def main(argv: list[str] | None = None) -> int:
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
-                ledger_dir=args.ledger_dir,
+                ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
@@ -4657,7 +4766,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.creator, plan_path=args.plan, out=args.out,
                 skip_pin_verify=args.skip_pin_verify, skip_judge=args.skip_judge,
                 dry_run=args.dry_run, from_stage=args.from_stage, max_usd=args.max_usd,
-                ledger_dir=args.ledger_dir,
+                ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
@@ -4677,7 +4786,7 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "train-first":
             result = build_train_first_plan(
                 args.creator, args.dataset_dir, args.out, skip_pin_verify=args.skip_pin_verify,
-                ledger_dir=args.ledger_dir,
+                ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} "
                   f"({len(result['stages'])} stage(s))")

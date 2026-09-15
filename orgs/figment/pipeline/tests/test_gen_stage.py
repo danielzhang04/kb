@@ -85,8 +85,12 @@ def _prepare_accepted_checkpoint(
         chosen_checkpoint_approval=None, save_every=250, **training_fields,
     )
     source = out_root / "source-lineage"
+    # M2: this fixture's own ledger is whatever `build_plan` falls back to by default
+    # (often the live shared OPS ledger on this machine) -- this helper is about
+    # manifest/receipt plumbing, not budget behaviour, so it always accepts.
     plan = command.build_plan(
         "creator-002", "all", source, personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
     )
     train_run = plan["stages"]["train"]["runs"][0]
     train_manifest = load_json(source / train_run["manifest"])
@@ -521,8 +525,11 @@ def test_build_plan_excludes_gen_from_stage_all(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
     out = tmp_path / "all"
+    # M2: stage-membership check, not a budget check -- default ledger falls back to
+    # the live shared OPS ledger on this machine.
     plan = command.build_plan(
         "creator-002", "all", out, personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
     )
     assert "gen" not in plan["stages"]
 
@@ -562,8 +569,10 @@ def test_build_plan_excludes_detail_and_video_from_stage_all(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)
     out = tmp_path / "all"
+    # M2: stage-membership check, not a budget check -- see the note above.
     plan = command.build_plan(
         "creator-002", "all", out, personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
     )
     assert "detail" not in plan["stages"]
     assert "video" not in plan["stages"]
