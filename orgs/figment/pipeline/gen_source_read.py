@@ -604,6 +604,7 @@ def _observe(config: SourceConfig, state: dict) -> dict:
         M(sidecar, _JSON_BYTES, True, True), M(source_plan, _JSON_BYTES, True),
         M(accepted, _JSON_BYTES, True), M(grade / "approval-lineage.json", _JSON_BYTES, True),
         M(grading_path, _JSON_BYTES, True), M(grade / "gate.json", _JSON_BYTES),
+        M(grade / "evaluation-inputs.json", _JSON_BYTES, True, True),
         M(source / "stage.json", _JSON_BYTES, True, True), M(pipeline / "gate.yaml", _JSON_BYTES),
     ), (home,), _limits(obs, "A"))
 
