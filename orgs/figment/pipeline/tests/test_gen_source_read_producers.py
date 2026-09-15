@@ -447,6 +447,15 @@ def _build_fixture(tmp_path):
     source_ledger.mkdir(parents=True)
     gen_ledger.mkdir(parents=True)
 
+    # R2: build_plan's M2 budget preflight reads governance/budget.yaml relative to
+    # figment_train.py's own ROOT (pod/runpod_run.py's repo_root(), same resolution),
+    # which for this explicitly-copied pipeline slice is this synthetic root -- never
+    # the real kb repo's governance/. Supply the same minimal file the harness's own
+    # isolated tests write (pod/tests/test_runpod_run.py), not a copy of the real one.
+    governance_dir = root / "governance"
+    governance_dir.mkdir(parents=True)
+    (governance_dir / "budget.yaml").write_text("daily_usd_limit: 10.00\n", encoding="utf-8")
+
     pins_before = _copy_pipeline_slice(pipeline)
     personas.mkdir(parents=True)
     persona_path = _make_synthetic_persona(personas)

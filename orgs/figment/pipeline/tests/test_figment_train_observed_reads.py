@@ -992,7 +992,8 @@ def build_authority_chain(fixture, ft):
         }],
     )
     subject_sha256 = lineage.canonical_sha256(subject)
-    write_json(grade_dir / "evaluation-inputs.json", lineage.wrap_subject(
+    evaluation_path = grade_dir / "evaluation-inputs.json"
+    write_json(evaluation_path, lineage.wrap_subject(
         lineage.EVALUATION_SCHEMA, subject, creator=CREATOR, stage="tester",
     ))
     rulings_path = grade_dir / "rulings.json"
@@ -1077,6 +1078,7 @@ def build_authority_chain(fixture, ft):
         tester_receipt_path=tester_receipt_path, train_receipt_path=train_receipt_path,
         checkpoint_path=selected_path, image_paths=image_paths, anchor_paths=anchor_paths,
         threshold_path=threshold_path, grading_path=grading_path, gate_path=gate_path,
+        evaluation_path=evaluation_path,
         approval_lineage_path=approval_lineage_path, accepted_path=accepted_path,
         gen_root=gen_root, gen_plan_path=gen_plan_path, gen_manifest_path=gen_manifest_path,
         staged_path=staged_path, staged_upload=staged_upload,
@@ -1103,6 +1105,7 @@ def chain_reader(fixture, chain, *, extra_members=()):
     members = (
         *(observed.ReadMember(path, JSON_LIMIT, allow_json=True) for path in json_paths),
         observed.ReadMember(fixture.sidecar, JSON_LIMIT, allow_json=True, optional=True),
+        observed.ReadMember(chain.evaluation_path, JSON_LIMIT, allow_json=True, optional=True),
         *(observed.ReadMember(path, JSON_LIMIT) for path in byte_paths),
         *extra_members,
     )
