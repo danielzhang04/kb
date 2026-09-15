@@ -27,7 +27,11 @@ PURPOSE = "local fictional adult research comparator"
 STUDIO = Path(__file__).resolve().parents[4]
 MAIN_PRIVATE = STUDIO.parents[1]
 STUDIO_PRIVATE = STUDIO / "_private"
-EXPECTED_STUDIO = Path("C:/Users/danie/kb/_private/codex-worktrees/figment-studio-20260908")
+# Derived from the repo root rather than pinned to one codex worktree's literal
+# absolute path, so this module (and its _check_layout guard below) works from
+# any checkout. _check_layout still fails closed if STUDIO is ever monkeypatched
+# out of step with EXPECTED_STUDIO by a caller.
+EXPECTED_STUDIO = STUDIO
 RUN_ROOT = MAIN_PRIVATE / "figment-local-omnigen2-reference-20260908-v1"
 ADMISSION_PATH = STUDIO_PRIVATE / "figment-local-omnigen2-reference-admission-20260908-v1" / "admission.json"
 MODELS_ROOT = MAIN_PRIVATE / "figment-local-omnigen2-models-20260908-v1"

@@ -149,9 +149,13 @@ def test_import_performs_no_file_reads_or_processes(monkeypatch):
 
 
 def test_fixed_layout_constants():
+    # Worktree-independent: STUDIO is derived from the repo root (matching this
+    # test file's own independent parents[5] computation), not pinned to any one
+    # checkout's literal directory name.
+    assert adm.STUDIO == REAL_STUDIO
+    assert adm.EXPECTED_STUDIO == adm.STUDIO
     assert adm.MAIN_PRIVATE == adm.STUDIO.parents[1]
-    assert adm.STUDIO.name == "figment-studio-20260908" and adm.STUDIO.parent.name == "codex-worktrees"
-    assert adm.MAIN_PRIVATE.name == "_private"
+    assert adm.STUDIO_PRIVATE == adm.STUDIO / "_private"
     assert adm.ADMISSION_PATH == adm.STUDIO / "_private" / "figment-local-omnigen2-reference-admission-20260908-v1" / "admission.json"
     assert adm.REFERENCE_PATH == adm.STUDIO / "orgs/figment/personas/creator-001/anchors/g01.jpg"
 
