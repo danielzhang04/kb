@@ -2105,3 +2105,40 @@ def test_repo_ledger_is_the_default_single_arc_cap_ledger_e3(
     text = day_ledger.read_text(encoding="utf-8")
     assert "pod-orphan-estimate" not in text
     assert text.count("pod-orphan-reconciled") == 2
+
+
+def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
+    command, tmp_path, monkeypatch,
+):
+    """F5: `personas/creator-001/training.yaml` now reads `steps: 3000` (DOP stays on,
+    see TENSOR-TRAINING.md "Step count: 3000, screened by the tester" and r25 causes
+    #4/#6). `_apply_train_budget` derives a ceiling from that (~$15.73) which exceeds the
+    $10.00 daily cap on its own (a separate, deliberate consequence -- see
+    train/tests/test_tensor_track.py's
+    test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it) but must still
+    clear the much larger $50.00 whole-arc cap against the real, reconciled repo ledger
+    (E3) -- this is the actual gate `run --stage train` checks before ever creating a pod.
+    """
+    pod_module = command._pod_runner_module()
+    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
+    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
+
+    plan = command.build_plan("creator-001", "train", tmp_path / "plan", skip_pin_verify=True)
+    train_run = plan["stages"]["train"]["runs"][0]
+    budget = train_run["budget"]
+
+    assert budget["steps"] == 3000
+    checkpoints = command._checkpoint_steps(3000, 250)
+    assert len(checkpoints) == 11, "11 intermediates (250..2750) plus the final = 12 total"
+
+    ceiling = float(budget["ceiling_usd"])
+    cap, spent = pod_module.arc_budget_state(
+        arc_cap_usd=50.0, ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert spent + ceiling <= cap, (
+        f"train's own ceiling ${ceiling:.2f} plus ${spent:.2f} already spent must still "
+        f"clear the ${cap:.2f} arc cap"
+    )
+    # Not a tautology: this is a real, narrow margin at steps=3000 -- prove it is not
+    # trivially satisfied by an oversized cap or an emptied-out ledger.
+    assert cap - (spent + ceiling) < 1.0

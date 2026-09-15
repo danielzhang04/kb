@@ -2,7 +2,7 @@
   "training": {
     "trigger": null,
     "base_arch": "krea2",
-    "steps": 1250,
+    "steps": 3000,
     "save_every": 250,
     "caption_mode": "provided",
     "pod_class": "l40s",
