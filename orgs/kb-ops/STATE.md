@@ -1,4 +1,9 @@
 # kb-ops — STATE
+
+## 2026-09-14 — kb v1 launch handoff published
+
+Resume from `handoffs/2026-09-14-kb-v1-launch.md` on ops (shared checkout `C:/Users/danie/kb-worktrees/dashboard-ops`). Build worktree: `C:/Users/danie/kb/_private/codex-worktrees/kb-v1-launch-20260914` on `codex/kb-v1-launch-20260914`. Next: preamble, then desktop lease/attempt seam and VM baseline in parallel. Larger overhaul parked: `handoffs/2026-09-11-kb-vm-overhaul-phase4-recovery.md`. No fresh live VM test or deployment is claimed.
+
 _Updated: 2026-09-12 01:30_
 
 ## Now
