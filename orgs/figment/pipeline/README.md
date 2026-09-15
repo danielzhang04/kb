@@ -1,6 +1,6 @@
 # figment pipeline — operator entry point
 
-One persona (`persona.yaml`) plus a fixed set of reference anchors runs through six stages
+One persona (`persona.yaml`) plus a fixed set of reference anchors runs through eight stages
 under a fail-closed identity/quality gate, driven by one script:
 `orgs/figment/pipeline/figment_train.py`. This file is the pipeline's current, real state —
 not a design aspiration. For the project's mandate/guardrails/state, start at
@@ -13,20 +13,59 @@ persona.yaml (+ training.yaml sidecar) + anchors/*.jpg
         |
    figment_train.py plan --creator <id> --stage <stage|all>
         |
-  anchor -> dataset -> smoke -> train -> tester -> gen
-        |                                      |
+  anchor -> dataset -> smoke -> train -> tester -> gen -> detail -> video
+        |                                      |       |       |
         `---- grade / gate / apply-rulings (per gradeable stage) ----'
         |
-        `---- --stage all plans/runs only through tester; gen is NEVER
-              included in "all" (build_plan) -- always run it by name ----'
+        `---- --stage all plans/runs only through tester; gen/detail/video are
+              NEVER included in "all" (build_plan) -- always planned by name,
+              each against its own already-ruled upstream stage ----'
 ```
 
-`anchor`, `dataset`, `tester`, `gen` are gradeable — an operator eye-gate board plus written
-rulings; `smoke` and `train` are not (no per-cell ruling makes sense for either — see
-`figment_train.py`'s `GRADEABLE_STAGES`). Only `run` ever spends money or touches a pod;
-`plan`, `grade`, `gate`, and `apply-rulings` are local and free.
+`anchor`, `dataset`, `tester`, `gen`, `detail` are gradeable — an operator eye-gate board
+plus written rulings; `smoke` and `train` are not (no per-cell ruling makes sense for
+either — see `figment_train.py`'s `GRADEABLE_STAGES`). `video` is a valid `--stage`/grade
+target (STAGES/GRADEABLE_STAGES both carry it) but `figment_train.py`'s own `build_plan`
+does not yet know how to plan one — see "Video" below. Only `run` ever spends money or
+touches a pod; `plan`, `grade`, `gate`, and `apply-rulings` are local and free.
 
-## The one command
+## `pipeline` — one resumable driver (F1)
+
+`figment_train.py pipeline` walks anchor → dataset → smoke → train → tester → gen → detail
+in one call, dispatching to the same `run`/`grade`/`apply-rulings`-equivalent functions the
+manual chain below uses. It stores no cursor/state file of its own — every invocation
+derives "what's next" from `stage.json`/`run.json` receipts and `grade/<stage>/{gate,
+approval-lineage,rejection-lineage}.json` already on disk, so killing and re-invoking it is
+always safe and never re-plans, re-runs, or re-grades a stage that already has current
+evidence.
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py pipeline --creator creator-001 --out C:/tmp/creator-001-plan
+# GATE dataset: awaiting ruling -- fill grade/dataset/rulings.template.json, apply-rulings, then:
+py -3 orgs/figment/pipeline/figment_train.py pipeline --creator creator-001 --plan C:/tmp/creator-001-plan/plan.json
+# ... repeats through tester (pass --checkpoint-step on that one apply-rulings), gen, detail ...
+```
+
+`gen` and `detail` are each planned automatically into a deterministic
+`<plan_root>/downstream/<gen|detail>/` directory the moment their upstream ruling exists —
+`detail` always against `gen`'s own kept outputs (F2; see "Stage: detail" below), never an
+operator-supplied glob. `pipeline` halts and prints the board path, the rulings template
+path, and the exact `apply-rulings` command at every gradeable stage lacking a ruling (a
+`GATE <stage>: awaiting ruling` line — exit 0, not an error). It recognizes anchor's own
+promotion (persona references change) and instructs a fresh `--out` rather than trying to
+continue a plan that cannot honestly continue. Once `detail` is ruled it writes
+`<plan_root>/deliverable/manifest.json` (see "The deliverable" below) and reports
+`video` as not yet automated (F6 is a manifest builder and a template-fitting derivative,
+not a `pipeline`-driven stage — see "Video" below); `--dry-run` previews the next action
+without calling the harness or any local build/grade function.
+
+`--from-stage` resumes the walk from a specific stage instead of the beginning (useful once
+you already know earlier stages are settled); `--max-usd` is accepted for interface
+symmetry with `plan`/`run` but, like `--dry-run` on those two, is not consumed by any
+dispatched command today — every manifest's own ceiling is still derived at plan time
+(`manifest_ceiling`/`_apply_train_budget`), never overridden at run time.
+
+## The manual chain
 
 For the current train-first operator path, its real output-relative locations,
 fresh external-source `gen` plan, and approved-still video handoff, see the
@@ -88,13 +127,22 @@ never passes silently):
    API spend) scoring same_person / age_delta / skin_realism / gloss / artifacts.
 
 `grade` writes two different records. `grade/<stage>/gate.json` is the cached per-cell
-numeric `figment/gate@1` score table. `apply-rulings` writes the human
-`figment/approval-lineage@1` record after requiring `decided_by`, `decided_at`, keep/cull,
-and all seven axes. The human record binds the ordered image bytes, anchors,
+numeric `figment/gate@1` score table — written by ONE function,
+`identity_gate.write_gate_document`, shared by `figment_train.py build_grade` (a
+plan-driven grading stage) and `identity_gate.py`'s own plan-independent `run` CLI, so
+every `gate.json` on disk is byte-identical regardless of caller. `apply-rulings` writes
+the human `figment/approval-lineage@1` record after requiring `decided_by`, `decided_at`,
+keep/cull, and all seven axes. The human record binds the ordered image bytes, anchors,
 persona/training inputs, stage manifests, plan, numeric score document, and `gate.yaml`.
 Changing any of them makes the review stale. `gate` only displays the cached score table
 after checking those inputs and says that no recalculation occurred. Run `grade` to
 recalculate scores.
+
+(`gates.py` is unrelated to the above — a small `sha256_file` helper `persona.py` and
+`expand/build_expansion_set.py` load by path. It used to also define a second,
+incompatible `write_gate`/`gate_is_current` pair with its own SHA-bound human-decision
+schema; that pair had zero non-test callers and was deleted rather than kept alongside
+the real writer above.)
 
 Tester rulings may be applied as ordinary QA without selecting a model. To promote one
 operator-chosen candidate, pass its produced step explicitly:
@@ -144,6 +192,78 @@ across 6 evidence sets — full distributions in
 
 Combined `judge_gate` at these thresholds (`gate.yaml`): anchors 3/3, track1-dataset 22/31,
 lora-tester 0/8, qwen-anchor-edits 4/6, passport-candidates 0/12, expansion-03 23/35.
+
+## Stage: detail (F2)
+
+`detail` is a `STAGES`/`GRADEABLE_STAGES` entry that always re-detailts a specific `gen`
+plan's own KEPT stills at the package's own denoise band (r25 cause #2) — never an
+operator-chosen glob. Plan it explicitly against an already-ruled `gen` plan:
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-001 --stage detail --out <detail-plan-dir> --approved-gen-plan <gen-plan-dir>
+```
+
+Every image in `<gen-plan-dir>/grade/gen/approved-list.json` is re-validated through the
+existing `validate_approved_gen_still` (never trusted from the approved list's bytes
+alone), staged, and re-detailed with the same accepted checkpoint `gen` uses (two
+denoise-variant jobs — 0.15 and 0.27 — per kept image, an A/B pair). `detail` is re-checked
+at every launch boundary exactly like `gen`'s own checkpoint freshness check
+(`_validate_detail_source_inputs`): a gen image rejected or changed after detail planning
+refuses rather than silently re-detailing stale pixels. `--detail-images` (a local glob,
+meaningful only with `--stage gen`) is the older, still-available side mode for re-detailing
+an arbitrary operator-chosen set of existing cells — unrelated to this stage, kept for that
+ad hoc use.
+
+## Video
+
+`video/video_manifest.py`, `video/frame_extract.py`, `video/frame_assemble.py`, and
+`video/video_review.py` already form a working Wan 2.2 I2V pipeline from an approved gen
+still through a graded review candidate — run today as four independent CLIs, documented in
+the [operator runbook](../../../docs/figment/2026-09-09-operator-runbook.md). `video` is a
+valid `STAGES`/`GRADEABLE_STAGES` value (a `--stage video` grade/gate/apply-rulings target),
+but `figment_train.py build_plan`/`pipeline` do not yet know how to plan or drive one —
+`video_manifest.build_manifest`'s own `CANDIDATE_MODE` binds a review candidate's authority
+to the REAL, in-repo `persona.yaml` under its own `--root`, which means a `video` plan built
+by `build_plan` would need its own output directory and the `gen` plan it points at to both
+live under this repo's root, a constraint `gen`/`detail` plans do not share today (their
+`--out` is commonly a scratch directory outside the repo, e.g. the runbook's own
+`C:/tmp/creator-001-plan`). Wiring that cleanly is unstarted follow-on work, not silently
+narrowed here.
+
+`frame_assemble.py` does have the one delivery-fitting transformation F6 asks for:
+`frame_assemble.py reel --root <root> --assembly-receipt <frame-assembly.json> --out <dir>`
+(or `build_reel_derivative(...)` in-process) takes an already-assembled native diagnostic or
+candidate movie (`assemble_frames`' own 81-frame, native-resolution MP4) and renders the
+`content/reel-templates.yaml` delivery spec (1080×1920 @30fps, `scale,pad,fps` filter graph)
+as `reel.mp4`, writing `reel-derivative.json` beside it with the native↔derivative
+correspondence: both movies' own sha256, the exact filter graph, and the native and
+derivative durations (preserved; frame count differs by design — 81 @16fps ≈ 152 @30fps
+for the same ~5.06s).
+
+A real, reproducible drift was investigated and diagnosed, not fixed here:
+`content/tests/test_motion_asset_binding.py::test_real_video_producer_to_content_cli_then_stale_movie_refuses`
+fails on this machine, but not because of a caller/CLI argv mismatch (`video_review.py`'s
+argv already matches its own `main()`). The actual cause is a Windows MAX_PATH (260-char)
+failure inside `video_review.py`'s content-addressed review-store writes/re-reads
+(`_exclusive_file`, `_read_json`) and, deeper, inside `frame_extract.py`'s shared
+`_within` path-containment walk (`Path.exists()`/`os.lstat()` per path component are not
+long-path-safe on Windows) — triggered once a review-store path (a 64-hex-char plan-sha
+directory plus an `attempt-<id>.json`/terminal filename) crosses 260 characters under a
+sufficiently deep repo/worktree/`--basetemp` root. `_within` is a shared, adversarially
+reviewed containment primitive across the whole `video/` subsystem; making it long-path-safe
+without weakening the symlink/reparse-point checks it exists to enforce needs its own
+independent review, per this project's own standing rule for security-relevant code — not a
+unilateral patch bundled into F6.
+
+## The deliverable
+
+Once `detail` is ruled, `pipeline` writes `<plan_root>/deliverable/`: `stills/<image_id>.ext`
+(every kept `gen` still), `detail/<image_id>.ext` (every kept `detail` image), and
+`manifest.json` — lineage the receipts already carry, not a new schema: the `gen`/`detail`
+plan paths and hashes, the chosen checkpoint step and digest, and per kept cell its gate row
+and ruling attribution (`decided_by`/`decided_at`/`why`/`gate_override`). Idempotent: a
+deliverable already bound to the current `detail` approval-lineage is left alone rather than
+rebuilt on every `pipeline` call.
 
 ## Pins
 
@@ -215,6 +335,15 @@ defects below for where these two sources disagree past 09-04.
   `dop_enabled: true` (uncommitted, in-flight edit for the `train-first` build) — not yet
   reflected in `train/TENSOR-TRAINING.md`'s "2000, not 3000" ruling, which was written for the
   earlier module-11 port. Whichever value ships live is the number that matters.
+- **`video_review.py` review-store writes can exceed Windows MAX_PATH** under a deep enough
+  repo/worktree/`--basetemp` root — see "Video" above for the diagnosis
+  (`content/tests/test_motion_asset_binding.py::test_real_video_producer_to_content_cli_then_stale_movie_refuses`).
+  Needs an independent review of `frame_extract.py`'s shared `_within` containment walk before
+  a fix, not a unilateral patch.
+- **`build_plan`/`pipeline` do not yet plan a `video` stage** (F6) — see "Video" above for why
+  (the review-candidate authority binding needs the `gen` and `video` plans to share a root
+  that also contains this repo's own `persona.yaml`, a constraint no other stage's `--out`
+  shares today).
 
 ## How to iterate
 
@@ -226,6 +355,9 @@ defects below for where these two sources disagree past 09-04.
   The `gate` command only displays the cached table after verifying its inputs. No code change.
 - **Add a stage.** Widen `STAGES`/`GRADEABLE_STAGES` in `figment_train.py` and wire a manifest
   builder for it — a code change; `GRADEABLE_STAGES`'s own comment names the three functions
-  (`build_grade`, `apply_rulings`, `command_gate`) that must all agree.
+  (`build_grade`, `apply_rulings`, `command_gate`) that must all agree. `detail` (F2) is the
+  worked example: `STAGE_PIN_PROFILES["detail"]`, a `build_plan` branch sourcing an upstream
+  stage's approved images, an `_install_stage_config`/`run_planned_stage` freshness re-check,
+  and a `pipeline` (F1) entry that plans it automatically once its upstream ruling exists.
 - **Swap a model pin.** Edit `train/tensor-pins.yaml`; `verify_pins.py --stage <name>` checks it
   live before you spend a plan run on a stale digest.
