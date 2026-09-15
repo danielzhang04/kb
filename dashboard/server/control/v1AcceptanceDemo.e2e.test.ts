@@ -23,7 +23,7 @@ import { afterAll, afterEach, describe, expect, it, vi } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import { sha256HexBytes } from '../shared/hashing.ts';
-import { serverOwnedOutputRoots } from './artifactFilesRoute.ts';
+import { outputRootsForEntity } from './artifactFilesRoute.ts';
 import { createOutputDigestReader } from './artifactFiles.ts';
 import { projectOutputRef } from '../entities/outputs.ts';
 import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
@@ -60,6 +60,10 @@ vi.mock('../auth/webauthn.ts', async (importOriginal) => {
 });
 
 const DEF_PATH = 'orgs/kb-ops/workflows/v1-acceptance-demo.md';
+/** R5: the entity whose projection mints the declared-artifact download link — the id is the front-matter
+ *  `id:` this fixture writes (see `writeFileSync(... 'v1-acceptance-demo.md')` below), matched by
+ *  `findScannedDef` the same way `workflows/routes.ts` stamps `outputEntity`. */
+const WORKFLOW_ENTITY = { type: 'workflow', id: 'v1-acceptance-demo' } as const;
 const SOURCE = loadOrgDef(DEF_PATH);
 const KB_ROOT = SOURCE.origin.slice(0, SOURCE.origin.length - DEF_PATH.split('/').join(sep).length);
 const ENVIRONMENT = loadWorkflowCompileEnvironment(KB_ROOT);
@@ -183,13 +187,19 @@ interface HarnessOptions {
 
 /**
  * Builds the fixture repo the run writes into: a real `orgs/kb-ops/workflows/*.md`, which is the only
- * thing that puts `orgs/kb-ops` into the server-owned output roots the download route derives.
+ * thing that puts `orgs/kb-ops` into the output roots the download route derives.
+ *
+ * R5: `outputRootsForEntity('workflow', id)` resolves through `findScannedDef`, which matches on
+ * `entry.ref` — and `entry.ref` is `parsed.value.id` ONLY for a definition that actually parses (an
+ * invalid one gets a synthesized `${project}~${basename}` ref instead, same as production). So the fixture
+ * writes the REAL `v1-acceptance-demo.md` source (`SOURCE.text`, loaded above via `loadOrgDef`) rather
+ * than a bare-minimum frontmatter stub, keeping `entry.ref === WORKFLOW_ENTITY.id` exactly as it would
+ * for the live definition `workflows/routes.ts` stamps `outputEntity` from.
  */
 function makeFixtureRepo(): string {
   const repoRoot = tempDir('v1-demo-repo-');
   mkdirSync(join(repoRoot, 'orgs', 'kb-ops', 'workflows'), { recursive: true });
-  writeFileSync(join(repoRoot, 'orgs', 'kb-ops', 'workflows', 'v1-acceptance-demo.md'),
-    '---\nid: v1-acceptance-demo\nproject: kb-ops\n---\n');
+  writeFileSync(join(repoRoot, 'orgs', 'kb-ops', 'workflows', 'v1-acceptance-demo.md'), SOURCE.text);
   writeFileSync(join(repoRoot, 'orgs', 'kb-ops', 'STATE.md'), '# kb-ops STATE\nThe v1 launch lane is open.\n');
   return repoRoot;
 }
@@ -549,10 +559,11 @@ function gateBinding(demo: DemoHarness) {
 
 /** The digest the SHIPPED outputs projection binds for a declared artifact, read off the real repo. */
 function projectedArtifactDigest(repoRoot: string, path: string): string | undefined {
-  const roots = serverOwnedOutputRoots(repoRoot);
+  const roots = outputRootsForEntity(repoRoot, WORKFLOW_ENTITY);
+  if (!roots) throw new Error('workflow entity did not resolve to roots');
   const projected = projectOutputRef(
     { kind: 'artifact', label: 'brief.json', rootId: 'kb-ops', path },
-    roots, createOutputDigestReader(repoRoot, roots),
+    roots, createOutputDigestReader(repoRoot, roots), WORKFLOW_ENTITY,
   );
   return projected.kind === 'external-pr' ? undefined : projected.digest;
 }
@@ -664,7 +675,8 @@ describe('v1 acceptance demo — the declared artifact downloads by digest', () 
     const { app, token } = surface(demo.store, demo.repoRoot);
     openApps.push(app);
     await app.ready();
-    const url = (sha: string) => `/api/control/files?path=${encodeURIComponent(path)}&sha256=${encodeURIComponent(sha)}`;
+    const url = (sha: string) => `/api/control/files?path=${encodeURIComponent(path)}&sha256=${encodeURIComponent(sha)}` +
+      `&entityType=${encodeURIComponent(WORKFLOW_ENTITY.type)}&entityId=${encodeURIComponent(WORKFLOW_ENTITY.id)}`;
 
     const ok = await app.inject({ method: 'GET', url: url(digest!), headers: headers(token) });
     expect(ok.statusCode, ok.body).toBe(200);
@@ -672,9 +684,11 @@ describe('v1 acceptance demo — the declared artifact downloads by digest', () 
     expect(ok.headers['content-disposition']).toBe('attachment; filename="brief.json"');
     expect(ok.headers['x-content-type-options']).toBe('nosniff');
 
+    // R6: past authorization every refusal collapses to ONE flat 404 — digest mismatch is
+    // indistinguishable from out-of-scope or missing, so it no longer gets its own 409.
     const tampered = await app.inject({ method: 'GET', url: url('a'.repeat(64)), headers: headers(token) });
-    expect(tampered.statusCode).toBe(409);
-    expect(tampered.body).toBe('');
+    expect(tampered.statusCode).toBe(404);
+    expect(tampered.json()).toEqual({ error: 'not found' });
   });
 });
 
@@ -704,7 +718,8 @@ describe('v1 acceptance demo — two topics run independently', () => {
       await app.ready();
       const res = await app.inject({
         method: 'GET', headers: headers(token),
-        url: `/api/control/files?path=${encodeURIComponent(path)}&sha256=${digest}`,
+        url: `/api/control/files?path=${encodeURIComponent(path)}&sha256=${digest}` +
+          `&entityType=${encodeURIComponent(WORKFLOW_ENTITY.type)}&entityId=${encodeURIComponent(WORKFLOW_ENTITY.id)}`,
       });
       expect(res.statusCode, res.body).toBe(200);
       expect(JSON.parse(res.body)).toMatchObject({ topic: index === 0 ? 'topic-one' : 'topic-two' });

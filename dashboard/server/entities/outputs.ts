@@ -1,6 +1,6 @@
 import type { OutputEntityRef, OutputRef } from '../control/p2Contracts.ts';
 import type { OperationalEvent } from '../control/types.ts';
-import { isDigestSha256 } from '../shared/hashing.ts';
+import { isDigestSha256 } from '../shared/digestShape.ts';
 
 /**
  * F4: binds the download digest at PROJECTION time. These projectors are pure (no repo root, no fs), so
