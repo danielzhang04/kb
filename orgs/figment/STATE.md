@@ -27,17 +27,25 @@ _Updated: 2026-09-15_
   plan-independent `run` — every `gate.json` on disk is byte-identical regardless of caller.
   The old SHA-bound `gates.py` `write_gate`/`gate_is_current` pair (a second, incompatible
   schema, zero non-test callers) was deleted; `gates.py` today is only `sha256_file`.
-- **One prompt composer.** `_compose_triggered_prompt` is the single place the trigger +
-  class clause is prepended, for every prompt that reaches a pod across every stage
-  (anchor, dataset, tester, gen, detail, caption trigger clause) — the trigger-word defect
-  of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with one) was
-  exactly the failure mode multiple independent composers produce.
+- **One prompt composer per era.** `_compose_triggered_prompt` is the single place the
+  persona's trigger is prepended, for every prompt that reaches a pod once a LoRA exists
+  to invoke (`tester`, `gen`, `detail`, the caption trigger clause) — the trigger-word
+  defect of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with
+  one) was exactly the failure mode multiple independent composers produce. `anchor` and
+  `dataset` generate the training material itself, before any LoRA exists, so they
+  deliberately do NOT route through it — they compose from `persona.identity.look` via
+  `_compose_look_clause` instead, a categorically different clause, not a fourth
+  independent trigger composer (see `_compose_triggered_prompt`'s own docstring).
 - **A plan-time budget preflight** (M2) sums every run a `plan`/`pipeline` call is about to
   write against the arc cap remaining before writing `plan.json`, and refuses unless
   `--accept-budget` is passed; the live per-run guards (`enforce_daily_budget`,
   `enforce_arc_cap`) are unchanged and still the actual authority at launch time.
-- **One ledger.** The repo's own `ledgers/cost/` is the single reconciled arc-cap ledger
-  (E3) — the runbook no longer points at a private worktree path.
+- **One ledger, resolved by precedence.** `configured_ledger_dir` (E3) is the single
+  resolver every plan/run goes through: an explicit `--ledger-dir` wins first; then
+  `KB_LEDGER_DIR`; then the managed OPS worktree if present on this machine
+  (`dashboard-ops/ledgers/cost`); the repo's own `ledgers/cost/` is the last-resort
+  fallback only. Per CLAUDE.md's branch rules, real cost rows are a coordination write and
+  live on branch `ops` — this repo checkout carries none of its own.
 - Pins repaired (F7): `flux2-klein-4B`'s HF rename is resolved in `tensor-pins.yaml`;
   `verify_pins.py` (no `--stage`) reports all 9 stages clean, video pins included (E5).
   Train profile at target (F5): `training.yaml` reads `steps: 3000` (DOP on, a deliberate
@@ -73,6 +81,9 @@ _Updated: 2026-09-15_
   2000-step run, train-first 1250-step run) was culled or superseded before this arc's
   3000-step/DOP profile landed; `grade/tester/accepted-checkpoint.json` does not exist for
   the current profile, so `gen`/`detail`/`video`/the deliverable have never run against it.
+  Live evidence: an imported-ladder tester ran 2026-09-15 (run root
+  `orgs/figment/runs/creator-001/live-20260915`), 5 candidates, gate 0/5 (none passed),
+  $0.3346 (`ledgers/cost/figment-2026-09-15.tsv` on the OPS worktree).
 - **Studio still cannot launch a run or record a ruling** (`docs/figment/
   AUDIT-2026-09-15.md` §G) — it prepares plans and reads evidence, nothing more. See "Next"
   item 1.

@@ -47,7 +47,14 @@ EXPECTED = {
 ROLE_ENUM = {"scout", "manage", "work", "inspect", "consolidate"}
 RUNTIME_ENUM = {"claude", "codex"}
 
-DESIGN_PHASES = ("S2", "S3", "S4", "S5", "S6", "S7", "S8", "S9")
+# The real figment_train.py CLI's own STAGES tuple (figment_train.py:85) -- the
+# workflow's node ids are named after these directly except `smoke-and-train`, which
+# is one node covering both (its workOrder literally runs `--stage smoke` then
+# `--stage train`; neither is gradeable, so splitting it would add a checker node with
+# nothing to check). Superseded the old design-phase ("S2".."S9") vocabulary once the
+# consistency pass (p4h) put every node's id/phase on the CLI's own stage names.
+CLI_STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
+STAGE_NODE_COVERAGE = {"smoke-and-train": ("smoke", "train")}
 
 
 # --------------------------------------------------------------------------- #
@@ -169,10 +176,29 @@ def topological_sort(stages: list[dict]) -> list[str]:
     return order
 
 
-def covers_design_phases(stages: list[dict], start: str, end: str) -> bool:
-    phases = {stage["phase"] for stage in stages}
-    required = DESIGN_PHASES[DESIGN_PHASES.index(start):DESIGN_PHASES.index(end) + 1]
-    return set(required) <= phases
+def is_run_stage(stage: dict) -> bool:
+    return stage.get("action") == "pipeline:run-stage"
+
+
+def covered_cli_stages(stages: list[dict]) -> set[str]:
+    """Every CLI_STAGES entry a `pipeline:run-stage` node actually covers, keyed by
+    node id (`STAGE_NODE_COVERAGE` for the one node -- `smoke-and-train` -- covering
+    two), not by prose: `detail` and `video` are always run automatically through
+    `pipeline` (README: "gen is NEVER included in `--stage all`", extended to detail
+    and video too) and so never say `run --stage detail`/`run --stage video` in their
+    own workOrder text the way anchor/dataset/smoke/train/tester/gen do."""
+    covered: set[str] = set()
+    for stage in stages:
+        if is_run_stage(stage):
+            covered.update(STAGE_NODE_COVERAGE.get(stage["id"], (stage["id"],)))
+    return covered
+
+
+def named_run_stages(stage: dict) -> set[str]:
+    """Every stage name this node's own workOrder names as `run --stage <name>` --
+    the literal, spending subcommand (`grade --stage <name>` is free and never
+    counted)."""
+    return set(re.findall(r"run --stage (\w+)", stage.get("workOrder") or ""))
 
 
 def is_checker_stage(stage: dict) -> bool:
@@ -210,11 +236,21 @@ def test_workflow_required_top_level_keys() -> None:
     assert workflow["manager"]["agentId"] == "figment-runner"
 
 
-def test_workflow_stage_ids_unique_and_cover_s2_through_s9() -> None:
+def test_workflow_stage_ids_unique_and_cover_the_eight_cli_stages() -> None:
     workflow = load_workflow(WORKFLOW)
     ids = [s["id"] for s in workflow["stages"]]
     assert len(ids) == len(set(ids)), "duplicate stage id"
-    assert covers_design_phases(workflow["stages"], "S2", "S9")
+    assert covered_cli_stages(workflow["stages"]) == set(CLI_STAGES)
+    # Every node whose OWN workOrder names a real `run --stage <name>` really is a
+    # spending (pipeline:run-stage) node -- never disguised as a grade-only or
+    # downstream business-logic step (content-plan, analyst-insights).
+    for stage in workflow["stages"]:
+        named = named_run_stages(stage)
+        if named:
+            assert is_run_stage(stage), (
+                f"{stage['id']!r} names run --stage {sorted(named)} in its workOrder "
+                f"but is action {stage.get('action')!r}, not pipeline:run-stage"
+            )
 
 
 def test_workflow_stages_are_declared_in_topological_order() -> None:

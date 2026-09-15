@@ -604,6 +604,130 @@ def test_video_plan_refuses_an_in_repo_non_run_root_output_directory(command):
         )
 
 
+def test_video_launch_refuses_when_the_approved_gen_still_changed_after_video_planning(
+    command, in_repo_run_root, monkeypatch,
+):
+    """M2: video's first frame is one specific approved gen still, captured once at
+    plan time as `plan["video_source"]` (`_plan_video_manifest`). `_install_stage_config`'s
+    `video` branch (`_validate_video_source_inputs`) must re-verify it through
+    `validate_approved_gen_still` at the launch boundary -- the same "changed after
+    planning" refusal class gen's own checkpoint upload and detail's gen-source images
+    already get -- and refuse before the harness ever launches."""
+    gen_stage_test = load_module(
+        "figment_pipeline_test_gen_stage_for_video_source", PIPELINE / "tests" / "test_gen_stage.py",
+    )
+    personas = in_repo_run_root / "ps"
+    ledger_dir = in_repo_run_root / "lg"
+    gen_stage_test._promoted_persona(personas, creator_id="creator-002", steps=3000)
+    # `_prepare_accepted_checkpoint` always accepts its own budget (see its own
+    # docstring/comment) regardless of which ledger `build_plan` falls back to.
+    gen_stage_test._prepare_accepted_checkpoint(command, personas, in_repo_run_root / "src")
+
+    gen_out = in_repo_run_root / "g"
+    gen_plan = command.build_plan(
+        "creator-002", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+        ledger_dir=ledger_dir,
+    )
+    _fake_stage_outputs(gen_out, gen_plan, "gen")
+    gen_stage_test._approve_all_gen_images(command, "creator-002", gen_out)
+
+    video_root = in_repo_run_root / "v"
+    command.build_plan(
+        "creator-002", "video", video_root, personas_root=personas, skip_pin_verify=True,
+        approved_gen_plan=gen_out, ledger_dir=ledger_dir,
+    )
+    video_plan_path = video_root / "plan.json"
+    source = load_json(video_plan_path)["video_source"]
+    still_path = Path(command.validate_approved_gen_still(
+        "creator-002", gen_out / "plan.json", source["image_id"],
+    )["path"])
+
+    # Mutating the real still's bytes on disk also trips a different, pre-existing
+    # refusal first (`validate_approved_gen_still`'s own "gen operator approval is
+    # stale" check, since the approval's subject hash covers the whole kept-image
+    # batch) -- real defense-in-depth, but it does not isolate THIS check.
+    # `_validate_video_source_inputs`'s own comparison is the narrower guarantee that
+    # the plan's OWN recorded digest for this exact frame still matches what
+    # `validate_approved_gen_still` re-verifies as current, even when that re-
+    # verification otherwise succeeds -- so mutate the plan's recorded digest instead,
+    # leaving the real approved still and its approval chain untouched and current.
+    original_plan_bytes = video_plan_path.read_bytes()
+    try:
+        plan_document = json.loads(original_plan_bytes)
+        plan_document["video_source"]["sha256"] = "0" * 64
+        video_plan_path.write_text(json.dumps(plan_document), encoding="utf-8")
+        launched: list = []
+        monkeypatch.setattr(
+            command.subprocess, "run",
+            lambda argv, cwd=None: launched.append(argv),
+        )
+        with pytest.raises(
+            command.FigmentTrainError,
+            match="video source frame .* changed after video planning",
+        ):
+            command.run_planned_stage("creator-002", "video", video_plan_path)
+        assert launched == []
+    finally:
+        video_plan_path.write_bytes(original_plan_bytes)
+
+
+def test_pipeline_reaching_video_with_accept_budget_records_acceptance_in_the_video_plan(
+    command, in_repo_run_root, monkeypatch,
+):
+    """M1: `command_pipeline`'s own video `build_plan` call used to drop the caller's
+    `accept_budget` on the floor (every OTHER downstream stage -- gen, detail --
+    forwarded it). Prove it reaches the video plan by seeding a near-cap synthetic
+    ledger that would refuse video's own ceiling without `--accept-budget`, then
+    driving `pipeline` through to `GATE video` WITH it, and reading the acceptance
+    back off the written video `plan.json`."""
+    personas = in_repo_run_root / "ps"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = in_repo_run_root / "lg"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    primary_root = in_repo_run_root / "p"
+    kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", primary_root, kwargs)
+    # A second, disposable primary/video root to independently confirm this same
+    # near-cap ledger really would refuse a single-stage video plan without
+    # --accept-budget: a refused build_plan call stages partial files into `out`
+    # before it raises, so this probe must not share a directory with the real
+    # accept_budget=True call below. Driven through detail now, BEFORE the ledger
+    # is seeded near-cap, so its own dataset/tester/gen/detail planning (none of
+    # which pass --accept-budget) is unaffected by it.
+    probe_root = in_repo_run_root / "probe"
+    _drive_through_detail(command, "creator-002", probe_root, kwargs)
+
+    # Seed the arc ledger so only a sliver remains -- video's own ceiling alone must
+    # exceed it, so reaching GATE video at all proves --accept-budget was honoured.
+    arc_cap = float(command.ARC_CAP_USD)
+    already_spent = sum(
+        float(row.split("\t")[2])
+        for path in ledger_dir.glob("figment-*.tsv")
+        for row in path.read_text(encoding="utf-8").splitlines()[1:] if row
+    )
+    (ledger_dir / "figment-2026-01-01-seed.tsv").write_text(
+        f"model\tstep\tusd\nl40s\tpod-create seed\t{arc_cap - already_spent - 0.01:.6f}\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="budget preflight refused"):
+        command.command_pipeline(
+            "creator-002", plan_path=probe_root / "plan.json", **kwargs,
+        )
+
+    primary_plan_path = primary_root / "plan.json"
+    result = command.command_pipeline(
+        "creator-002", plan_path=primary_plan_path, accept_budget=True, **kwargs,
+    )
+    assert result["status"] == "GATE video"
+    video_root = primary_root / "downstream" / "video"
+    video_preflight = load_json(video_root / "plan.json")["budget_preflight"]
+    assert video_preflight["accepted"] is True
+    assert video_preflight["over_arc"] is True
+
+
 def test_pipeline_halts_and_resumes_at_anchor_then_requires_a_fresh_plan(
     command, tmp_path, monkeypatch,
 ):
@@ -800,3 +924,31 @@ def test_pipeline_dry_run_never_calls_the_harness_or_writes_grade_state(
     )
     assert result["status"] == "dry-run:plan"
     assert not primary_root.exists()
+
+    # A detail-ruled plan (minors): `_build_deliverable` copies bytes and writes
+    # manifest.json the first time it is reachable (gen + detail both ruled) --
+    # `deliverable_path()` used to call it unconditionally, so a dry-run pipeline call
+    # against an already-detail-ruled plan would silently write the deliverable to disk
+    # even though nothing else about dry_run ever touches disk. Drive a real (fake-
+    # harness) plan through detail first, THEN forbid the harness and dry-run it.
+    ruled_root = tmp_path / "ruled"
+    ledger_dir = tmp_path / "ledger"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    ruled_kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", ruled_root, ruled_kwargs)
+    deliverable_manifest = ruled_root / "deliverable" / "manifest.json"
+    assert not deliverable_manifest.exists()
+
+    monkeypatch.setattr(command.subprocess, "run", _forbidden)
+    ruled_plan_path = ruled_root / "plan.json"
+    dry_result = command.command_pipeline(
+        "creator-002", plan_path=ruled_plan_path, dry_run=True, **ruled_kwargs,
+    )
+    # `ruled_root` is outside the repository (tmp_path), so video is genuinely
+    # out-of-tree -- this is a real halt, not a "dry-run:*" preview status, and it is
+    # reached regardless of dry_run. What must hold either way is that reaching it
+    # never wrote the deliverable.
+    assert dry_result["status"] == "stopped:video-out-of-tree"
+    assert not deliverable_manifest.exists()

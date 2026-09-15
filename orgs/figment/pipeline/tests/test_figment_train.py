@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import base64
-import csv
 import hashlib
 import importlib.util
 import json
@@ -2163,61 +2162,67 @@ def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_
     assert env_plan["ledger_dir"] == str(stale.resolve())
 
 
-def _repo_figment_ledger_total(pod_module) -> float:
-    """Independent (non-`arc_budget_state`) sum of every real `figment-*.tsv` row in
-    the repo's own `ledgers/cost/`, for cross-checking E3's merged ledger."""
-    total = 0.0
-    for path in sorted(pod_module.repo_ledger_dir().glob("figment-*.tsv")):
-        with path.open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
-            if not reader.fieldnames or "usd" not in reader.fieldnames:
-                continue
-            for row in reader:
-                total += float(row["usd"])
-    return total
-
-
-def test_repo_ledger_is_the_default_single_arc_cap_ledger_e3(
+def test_ledger_dir_resolution_follows_documented_precedence_e3(
     command, tmp_path, monkeypatch,
 ):
-    """E3: after reconciling every historical `figment-*.tsv` row into this repo's own
-    `ledgers/cost/` (union merge, no duplicate/superseded rows -- the two 2026-09-07
-    `pod-orphan-estimate` placeholders are superseded by their `pod-orphan-reconciled`
-    corrections, never double-counted), the repo directory alone must be a truthful,
-    self-sufficient arc-cap ledger: a plan built with no `--ledger-dir` and no managed
-    OPS worktree present resolves straight to it, and the harness's own arc-cap function
-    sums it to the same total an independent read gets.
+    """E3 (M3 ruling): ledger rows are never real, checked-in content in this repo --
+    per CLAUDE.md's branch rules they are a coordination write and live on branch `ops`
+    (`dashboard-ops/ledgers/cost`). What this repo must get right instead is the
+    RESOLUTION ORDER `configured_ledger_dir` promises: an explicit `--ledger-dir` always
+    wins; absent that, `KB_LEDGER_DIR`; absent that, the managed OPS worktree if it is
+    actually present on disk; only then this repo's own (empty, by design) `ledgers/
+    cost/` as the last-resort fallback.
     """
     pod_module = command._pod_runner_module()
-    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
-    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
-
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)
+
+    explicit_dir = tmp_path / "explicit"
+    explicit_dir.mkdir()
+    env_dir = tmp_path / "env"
+    env_dir.mkdir()
+    ops_dir = tmp_path / "ops-worktree"
+    ops_dir.mkdir()
+    monkeypatch.setenv("KB_LEDGER_DIR", str(env_dir))
+    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", ops_dir)
+
+    # 1. An explicit --ledger-dir wins over everything, even a populated env var and a
+    # present OPS worktree.
     plan = command.build_plan(
-        "creator-002", "smoke", tmp_path / "default-ledger", personas_root=personas_root,
+        "creator-002", "smoke", tmp_path / "explicit-plan", personas_root=personas_root,
+        skip_pin_verify=True, ledger_dir=explicit_dir,
+    )
+    assert plan["ledger_dir"] == str(explicit_dir.resolve())
+
+    # 2. No explicit dir: KB_LEDGER_DIR wins over a present OPS worktree.
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "env-plan", personas_root=personas_root,
         skip_pin_verify=True,
     )
+    assert plan["ledger_dir"] == str(env_dir.resolve())
 
-    assert plan["ledger_dir"] == str(pod_module.repo_ledger_dir().resolve())
-
-    expected_total = _repo_figment_ledger_total(pod_module)
-    # The brief's own recorded figure for the reconciled repo total (rounds to $33.72);
-    # a hard floor here catches an accidental partial merge without pinning every cent.
-    assert expected_total == pytest.approx(33.7234, abs=0.01)
-
-    cap, spent = pod_module.arc_budget_state(
-        arc_cap_usd=50.0, ledger_dir=Path(plan["ledger_dir"]),
+    # 3. No explicit dir, no env var: the managed OPS worktree wins over the repo.
+    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "ops-plan", personas_root=personas_root,
+        skip_pin_verify=True,
     )
-    assert cap == 50.0
-    assert spent == pytest.approx(expected_total)
+    assert plan["ledger_dir"] == str(ops_dir.resolve())
 
-    # The 2026-09-07 supersession specifically: no leftover "pod-orphan-estimate" row
-    # survives the merge once its "pod-orphan-reconciled" correction is present.
-    day_ledger = pod_module.repo_ledger_dir() / "figment-2026-09-07.tsv"
-    text = day_ledger.read_text(encoding="utf-8")
-    assert "pod-orphan-estimate" not in text
-    assert text.count("pod-orphan-reconciled") == 2
+    # 4. No explicit dir, no env var, no OPS worktree present: this repo's own
+    # ledgers/cost/ is the last-resort fallback -- and, per M3, carries no real spend
+    # rows on this branch; that real history lives on ops, never here.
+    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "repo-plan", personas_root=personas_root,
+        skip_pin_verify=True,
+    )
+    assert plan["ledger_dir"] == str(pod_module.repo_ledger_dir().resolve())
+    cap, spent = pod_module.arc_budget_state(
+        arc_cap_usd=float(command.ARC_CAP_USD), ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert cap == float(command.ARC_CAP_USD)
+    assert spent == 0.0, "this repo checkout carries no real ledger rows (M3): they live on ops"
 
 
 def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
@@ -2229,12 +2234,14 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     $10.00 daily cap on its own (a separate, deliberate consequence -- see
     train/tests/test_tensor_track.py's
     test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it) but must still
-    clear the much larger $50.00 whole-arc cap against the real, reconciled repo ledger
-    (E3) -- this is the actual gate `run --stage train` checks before ever creating a pod.
+    clear the much larger whole-arc cap (`ARC_CAP_USD`) -- this is the actual gate
+    `run --stage train` checks before ever creating a pod.
+
+    M3: this repo carries no real ledger rows of its own (that history lives on ops), so
+    this test seeds its OWN synthetic near-cap ledger with a deliberately narrow margin,
+    rather than depending on any real, external ledger's content.
     """
     pod_module = command._pod_runner_module()
-    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
-    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
 
     plan = command.build_plan("creator-001", "train", tmp_path / "plan", skip_pin_verify=True)
     train_run = plan["stages"]["train"]["runs"][0]
@@ -2245,15 +2252,26 @@ def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
     assert len(checkpoints) == 11, "11 intermediates (250..2750) plus the final = 12 total"
 
     ceiling = float(budget["ceiling_usd"])
-    cap, spent = pod_module.arc_budget_state(
-        arc_cap_usd=50.0, ledger_dir=Path(plan["ledger_dir"]),
+    arc_cap_usd = float(command.ARC_CAP_USD)
+    # A realistic near-cap scenario: seed a synthetic ledger with a deliberately narrow
+    # $0.50 margin so this still proves train's own ceiling can clear the arc cap by a
+    # real, narrow amount -- not trivially against an oversized cap or an emptied ledger.
+    margin = 0.50
+    spent_seed = arc_cap_usd - ceiling - margin
+    assert spent_seed > 0, "train's ceiling plus the intended margin must fit under the cap"
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    (ledger_dir / "figment-2026-01-01.tsv").write_text(
+        f"model\tstep\tusd\nl40s\tpod-create seed\t{spent_seed:.6f}\n", encoding="utf-8",
     )
+
+    cap, spent = pod_module.arc_budget_state(arc_cap_usd=arc_cap_usd, ledger_dir=ledger_dir)
     assert spent + ceiling <= cap, (
         f"train's own ceiling ${ceiling:.2f} plus ${spent:.2f} already spent must still "
         f"clear the ${cap:.2f} arc cap"
     )
-    # Not a tautology: this is a real, narrow margin at steps=3000 -- prove it is not
-    # trivially satisfied by an oversized cap or an emptied-out ledger.
+    # Not a tautology: this is a real, narrow margin -- prove it is not trivially
+    # satisfied by an oversized cap or an emptied-out ledger.
     assert cap - (spent + ceiling) < 1.0
 
 
@@ -2268,10 +2286,11 @@ def test_build_plan_refuses_when_planned_ceilings_exceed_remaining_arc_and_recor
     passed, and record the numbers on the plan when it is."""
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    # Seed the arc ledger so only $1.00 remains of the $50.00 cap -- any nonzero
-    # multi-stage synthetic plan's summed ceilings exceed that.
+    # Seed the arc ledger so only $1.00 remains of ARC_CAP_USD -- any nonzero multi-stage
+    # synthetic plan's summed ceilings exceed that.
+    seed_spent = float(command.ARC_CAP_USD) - 1.0
     (ledger_dir / "figment-2026-01-01.tsv").write_text(
-        "model\tstep\tusd\n" "l40s\tpod-create seed\t49.000000\n", encoding="utf-8",
+        f"model\tstep\tusd\nl40s\tpod-create seed\t{seed_spent:.6f}\n", encoding="utf-8",
     )
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)

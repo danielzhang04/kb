@@ -91,6 +91,21 @@ stages:
       - id: train-checkpoints
         path: orgs/figment/runs/<persona_id>/<run_root>/train/runs/out
         description: The checkpoint ladder (11 intermediates + final at the current 3000-step/DOP profile) for GATE tester to screen.
+  - id: tester
+    phase: tester
+    title: Tester stage (checkpoint ladder screening run)
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
+    riskTier: T2
+    governedBy: figment-train
+    agentId: figment-train
+    profileId: worker:claude:claude-sonnet-5
+    dependsOn: [smoke-and-train]
+    workOrder: "`run --stage tester` (or plan tester directly against `--import-checkpoints <dir>` for an operator-trained ladder, MANDATE.md's tier constraint)."
+    artifacts:
+      - id: tester-run
+        path: orgs/figment/runs/<persona_id>/<run_root>/train/runs/out
+        description: The tester harness's per-checkpoint candidate images for GATE tester to screen.
   - id: checker-gate-tester
     phase: tester
     title: Tester gate-prep review (checkpoint ranking)
@@ -100,8 +115,8 @@ stages:
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [smoke-and-train]
-    workOrder: "`run --stage tester` (or plan tester directly against `--import-checkpoints <dir>` for an operator-trained ladder, MANDATE.md's tier constraint), then `grade --stage tester` to build the board and rulings template ranking every checkpoint. figment-checker never picks the checkpoint — the operator does, via `apply-rulings --checkpoint-step <N>`, and never defaults it to the final step."
+    dependsOn: [tester]
+    workOrder: "`grade --stage tester` to build the board and rulings template ranking every checkpoint. figment-checker never picks the checkpoint — the operator does, via `apply-rulings --checkpoint-step <N>`, and never defaults it to the final step."
     artifacts:
       - id: tester-gate
         path: orgs/figment/runs/<persona_id>/<run_root>/grade/tester/gate.json

@@ -149,11 +149,12 @@ Separate stores, prompts, and accounts per tier.
 
 ## Budget (operator ruling 2026-09-03)
 
-The overnight build terminal has a HARD CAP of **$50 total** for the creator-001 arc
-(expected far lower). Enforcement: every pod through the harness with `--max-usd`; the
+The overnight build terminal has a HARD CAP of **$60 total** (raised from $50, operator
+ruling 2026-09-15: +$20 for the passport-set rebuild + 3000-step train) for the creator-001
+arc (expected far lower). Enforcement: every pod through the harness with `--max-usd`; the
 harness daily guard reads `governance/budget.yaml` (operator raises `daily_usd_limit` for the
 run); the harness arc cap sums every `ledgers/cost/figment-*.tsv` row and refuses a create
-that would exceed $50; every row published to `ops`. Zero spend on any platform (see
+that would exceed $60; every row published to `ops`. Zero spend on any platform (see
 GUARDRAILS research-browsing ruling).
 
 ## What exists today (2026-09-03)

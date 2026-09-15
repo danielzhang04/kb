@@ -275,7 +275,8 @@ target. `_apply_train_budget`'s `TRAIN_STEP_RATE_DOP_S = 9.0` (`figment_train.py
 measured-with-margin DOP rate; at `steps=3000` it derives `job_timeout_seconds`/`max_minutes`
 dynamically per persona (never a fixed, unrecomputed pod-class pin — see `_apply_train_budget`
 and `pipeline/README.md` "Spend guards"), landing at `ceiling_usd=$15.73` — comfortably inside
-the $50.00 arc cap (`ledgers/cost/` totals $33.7234 as of E3) but **above** the $10.00/day
+the $60.00 arc cap (raised from $50.00, operator ruling 2026-09-15; read live off the
+resolved ledger at plan time, M3) but **above** the $10.00/day
 governance limit on its own, so a live `train` run needs its own calendar day with no other
 Figment spend, exactly like `gen` already does. `save_every` stays module 11's `250`, so the
 checkpoint ladder is 11 intermediates (`250..2750`) plus the bare final at `3000` — 12

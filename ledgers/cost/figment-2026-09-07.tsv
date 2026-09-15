@@ -1,8 +1,0 @@
-model	step	usd
-runpod:l40s	pod-create dry-run-pod	0.000000
-runpod:l40s	pod-create fn938tol6mgbtp	2.570377
-runpod:l40s	pod-create idb1hskq79h4l3	0.288181
-runpod:l40s	pod-create pmi9y2gsoaxkea	0.400403
-runpod:l40s	pod-create hvtovmusbx6a1t	0.113185
-runpod:l40s	pod-orphan-reconciled pmi9y2gsoaxkea exact-pod provider remainder after preserved pod-create, upward-rounded 6dp	0.005263
-runpod:l40s	pod-orphan-reconciled hvtovmusbx6a1t exact-pod provider remainder after preserved pod-create, upward-rounded 6dp	3.114023
