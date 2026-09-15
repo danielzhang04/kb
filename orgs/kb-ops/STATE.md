@@ -1,11 +1,7 @@
 # kb-ops — STATE
-
-## 2026-09-14 — kb v1 launch handoff published
-
-Resume from `handoffs/2026-09-14-kb-v1-launch.md` on ops (shared checkout `C:/Users/danie/kb-worktrees/dashboard-ops`). Build worktree: `C:/Users/danie/kb/_private/codex-worktrees/kb-v1-launch-20260914` on `codex/kb-v1-launch-20260914`. Next: preamble, then desktop lease/attempt seam and VM baseline in parallel. Larger overhaul parked: `handoffs/2026-09-11-kb-vm-overhaul-phase4-recovery.md`. No fresh live VM test or deployment is claimed.
-
-_Updated: 2026-09-12 01:30_
-
+## 2026-09-15 — kb v1 launch: PR #185 ready, rehearsal proven, prod deploy owed
+Resume from `handoffs/2026-09-15-kb-v1-launch-ready.md` (morning ceremony inside). PR #173 (hydrate fix, rebased) + PR #185 (`claude/kb-v1-launch` @ 23e6871e: prompt context, dependency summaries, T3 ceremony on iteration gates, run-scoped digest-verified artifact download, boot resilience, premerge CI, v1-acceptance-demo) await Daniel's merge; CI acceptance green; two opus review rounds folded. Draft PR #186 = desktop lane units 1-2 (schema-safe). Demo path proven live on a rehearsal host through the real broker (stub claude) incl. the T3 passkey approval and the artifact download. Prod VM still down since 09-06 — recovers via the rehearsed `kb-deploy.ps1` daemon-down path after the merges. Not proven: scheduled run with browser closed; real subscription-CLI workers (prod only).
+_Updated: 2026-09-15 09:00_
 ## Now
 VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 2026-09-06 19:04:55Z
 — every boot on release 39197cf5 died at hydrate (`invalid control-plane creator attempt
