@@ -8,7 +8,7 @@ import type { ReadScope } from './store.ts';
 import type { PersistenceDeps } from './persistence.ts';
 import { loadAndMigrate, type MigrationContext } from './migrations.ts';
 import type { ControlPlaneCollection } from './generated/controlPlaneSchema.ts';
-import type { HostKind, RunnableRef, Schedule } from './p2Contracts.ts';
+import type { HostKind, RunnableRef, RunOutcome, Schedule } from './p2Contracts.ts';
 import type { HostAdvertisement, PlacementLease, StoredHostAdvertisement } from '../placement/contracts.ts';
 import type { V1IdempotencyRecord } from '../api/v1/idempotency.ts';
 import type {
@@ -709,6 +709,18 @@ export type HostAdvertisementUpsertResult =
   | { readonly ok: true; readonly version: number }
   | { readonly ok: false; readonly current: number };
 
+/** v1 desktop seam: the subject-free run facts `placement/storeAdapters.ts` resolves a report against. */
+export interface PlacementRunContext {
+  /** The run's OWN subject — never the caller's; a node peer has no subject of its own. */
+  readonly subject: string;
+  readonly runRef: string;
+  readonly version: number;
+  readonly state: RunLifecycleKind;
+  readonly executionHost: HostKind;
+  readonly terminalOutcome: RunOutcome | null;
+  readonly completedAt: string | null;
+}
+
 export interface ControlPlaneStore
   extends BrokerStoreBackend, AtomicScheduleStorePort, ScheduleSocketStorePort, ScheduleMirrorStorePort {
   getControlDocumentMetadata(): Pick<StoreDocument, 'version' | 'documentRevision' | 'scheduleCollectionRevision'>;
@@ -786,6 +798,54 @@ export interface ControlPlaneStore
    * called from a route handler.
    */
   seedHostAdvertisementForTest(advertisement: StoredHostAdvertisement): void;
+
+  // -----------------------------------------------------------------------------------------------
+  // v1 desktop-execution seam, unit 1: the production operations of the `placementLeases` collection.
+  // These are the store half of `placement/leaseService.ts`'s `LeaseStorePort` and
+  // `placement/reportService.ts`'s `ReportStorePort`; the adapters binding the two live in
+  // `placement/storeAdapters.ts` and are the ONLY callers. No schema change: every row written here is
+  // the same frozen six-field `PlacementLease`, and the CAS bodies are `control/placementState.ts`'s
+  // existing `claimLease`/`renewLease`/`reclaimExpiredLeases` — this interface adds no second copy.
+  //
+  // Lease writes use `save`, NOT `commit`, for the same reason `upsertHostAdvertisement` does: a lease
+  // heartbeat is host liveness on the lease's OWN `revision` line, and bumping `documentRevision` every
+  // 60 s per leased run would abort in-flight reconciliation intents and invalidate every cached
+  // projection. Anything a report changes that IS coordinated state (the run's terminal transition, a
+  // human request, an event) goes through the existing committed methods, never through these.
+  // -----------------------------------------------------------------------------------------------
+
+  /** Reclaim every lease at or past `expiresAt`, returning the freed `runRef`s [P6-C36]. Idempotent. */
+  releaseExpiredPlacementLeases(nowMs: number): string[];
+  /**
+   * The oldest run this host may be handed next, or `undefined`. Eligible means: placed on `hostId`
+   * (`executionHost`), not terminal, not already leased, and — per baseline §6 — carrying NO
+   * unreconciled `interrupted` attempt, so a run whose physical child state is unknown is never handed
+   * back out while that uncertainty stands. Capability freshness/matching is the ADAPTER's half (it
+   * owns the advertisement read); this method answers run eligibility only.
+   */
+  selectPlacementCandidateRunRef(hostId: HostKind, nowMs: number): string | undefined;
+  /** CAS-create the one lease row for `runRef`; `undefined` when a live lease already exists. */
+  createPlacementLease(
+    runRef: string,
+    hostId: HostKind,
+    capabilityHash: string,
+    nowMs: number,
+  ): PlacementLease | undefined;
+  getPlacementLease(runRef: string): PlacementLease | undefined;
+  /**
+   * CAS renew on `expectedRevision`; `undefined` on any refusal (missing, expired, revision mismatch).
+   * Host authorization is the SERVICE's check — `placement/leaseService.ts` refuses `403 wrong-host`
+   * before it ever reaches this method — so the row's own `hostId` is what the CAS re-asserts here.
+   */
+  renewPlacementLease(runRef: string, expectedRevision: number, nowMs: number): PlacementLease | undefined;
+  /** Advance `lastReportSequence` on a live lease; a no-op when the lease is gone. */
+  bumpPlacementLeaseSequence(runRef: string, sequence: number): void;
+  /**
+   * The subject-free run facts a node report needs. A node has no operator subject: its authority is
+   * its lease, so this read resolves the run's OWN subject for the committed store methods the report
+   * adapter then calls under it.
+   */
+  getPlacementRunContext(runRef: string): PlacementRunContext | undefined;
 
   /** `scope` defaults to `'own-subject'` everywhere it appears; only a verified operator session widens
    *  it (see {@link ReadScope}). Reads first; the operator-driven mutations below take it too. */

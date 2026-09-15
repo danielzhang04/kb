@@ -43,7 +43,13 @@ import type {
 import { decodeHostAdvertisement } from '../placement/contracts.ts';
 // P6 W1b [P6-C48]: the store-open document invariant must decode every placement collection row through
 // its W0 exact-key decoder, not just confirm the collections are bounded arrays.
-import { assertPlacementCollections } from './placementState.ts';
+import {
+  assertPlacementCollections,
+  claimLease as claimPlacementLeaseRow,
+  reclaimExpiredLeases,
+  renewLease as renewPlacementLeaseRow,
+  type PlacementCollections,
+} from './placementState.ts';
 import type {
   CompleteScheduleOccurrenceInput,
   DeleteScheduleInput,
@@ -1914,6 +1920,27 @@ function makeStore(
     save(document, durability);
   };
 
+  /**
+   * Run one `control/placementState.ts` primitive against the live document. Those primitives REPLACE
+   * their collection arrays (that is how `reclaimExpiredLeases` filters), so the result has to be
+   * written back onto the document — a plain read-only view would silently drop every reclaim. Callers
+   * are the v1 desktop seam methods only; each decides `save` vs no-write from the returned value.
+   */
+  const withPlacementCollections = <T>(document: StoreDocument, run: (collections: PlacementCollections) => T): T => {
+    const collections: PlacementCollections = {
+      hostAdvertisements: document.hostAdvertisements,
+      placementLeases: document.placementLeases,
+      v1Idempotency: document.v1Idempotency,
+      cursorSecret: document.cursorSecret,
+    };
+    const result = run(collections);
+    document.hostAdvertisements = collections.hostAdvertisements;
+    document.placementLeases = collections.placementLeases;
+    document.v1Idempotency = collections.v1Idempotency;
+    if (collections.cursorSecret !== undefined) document.cursorSecret = collections.cursorSecret;
+    return result;
+  };
+
   interface IterationTransitionTarget {
     subject: string;
     iterationLoopRef?: string;
@@ -3125,6 +3152,105 @@ function makeStore(
         advertisement,
       ];
       commit(document);
+    },
+
+    // ---------------------------------------------------------------------------------------------
+    // v1 desktop-execution seam, unit 1 [baseline §8]. Every body below delegates to the existing
+    // `control/placementState.ts` CAS primitives — this block manages the document and nothing else,
+    // so there is exactly ONE implementation of claim/renew/reclaim in the daemon. Writes go through
+    // `save` rather than `commit`: see the interface comment on `releaseExpiredPlacementLeases`.
+    // ---------------------------------------------------------------------------------------------
+
+    releaseExpiredPlacementLeases(nowMs) {
+      const document = load();
+      const released = withPlacementCollections(document, (collections) =>
+        reclaimExpiredLeases(collections, nowMs));
+      if (released.length > 0) save(document);
+      return released;
+    },
+
+    selectPlacementCandidateRunRef(hostId, nowMs) {
+      const document = load();
+      const leased = new Set(
+        document.placementLeases
+          .filter((lease) => Date.parse(lease.expiresAt) > nowMs)
+          .map((lease) => lease.runRef),
+      );
+      // Baseline §6: a run holding an UNRECONCILED `interrupted` attempt is never handed back out.
+      // The desktop child may still be alive, and re-placing it would be a duplicate external effect.
+      const heldByInterruptedAttempt = new Set(
+        document.attempts.filter((attempt) => attempt.state === 'interrupted').map((attempt) => attempt.runRef),
+      );
+      const candidate = document.runs
+        .filter((run) => run.executionHost === hostId)
+        .filter((run) => !isTerminalRun(run.lifecycle) && run.terminalOutcome === null)
+        .filter((run) => !leased.has(run.runRef))
+        .filter((run) => !heldByInterruptedAttempt.has(run.runRef))
+        .sort((a, b) => (a.createdAt === b.createdAt ? a.runRef.localeCompare(b.runRef) : a.createdAt.localeCompare(b.createdAt)))[0];
+      return candidate?.runRef;
+    },
+
+    createPlacementLease(runRef, hostId, capabilityHash, nowMs) {
+      const document = load();
+      const before = document.placementLeases.length;
+      // `claimLease` runs lazy expiry inside the SAME pass [P6-C36], so a run whose lease just expired
+      // is claimable by the very claim that reclaimed it — the claim path's half of the one primitive.
+      const result = withPlacementCollections(document, (collections) =>
+        claimPlacementLeaseRow(collections, { runRef, hostId, capabilityHash }, nowMs));
+      if (!result.ok) {
+        // A refusal can still be work: the lazy-expiry pass inside `claimLease` may have reclaimed OTHER
+        // rows. Persist only when it actually did, so a lost claim race is a pure read. The refusal
+        // itself returns `undefined` per the port contract (another claimant holds the run).
+        if (document.placementLeases.length !== before) save(document);
+        return undefined;
+      }
+      // `lastReportSequence` starts at 0 for a fresh lease, which is exactly what the claim contract
+      // mints (`placementState.claimLease`); a report sequence is per-lease, not per-run.
+      save(document);
+      return result.lease;
+    },
+
+    getPlacementLease(runRef) {
+      return load().placementLeases.find((lease) => lease.runRef === runRef);
+    },
+
+    renewPlacementLease(runRef, expectedRevision, nowMs) {
+      const document = load();
+      const current = document.placementLeases.find((lease) => lease.runRef === runRef);
+      if (!current) return undefined;
+      const result = withPlacementCollections(document, (collections) =>
+        renewPlacementLeaseRow(collections, { runRef, hostId: current.hostId, expectedRevision }, nowMs));
+      if (!result.ok) return undefined;
+      save(document);
+      return result.lease;
+    },
+
+    bumpPlacementLeaseSequence(runRef, sequence) {
+      const document = load();
+      const index = document.placementLeases.findIndex((lease) => lease.runRef === runRef);
+      if (index === -1) return;
+      const current = document.placementLeases[index]!;
+      if (sequence <= current.lastReportSequence) return;
+      document.placementLeases = [
+        ...document.placementLeases.slice(0, index),
+        { ...current, lastReportSequence: sequence },
+        ...document.placementLeases.slice(index + 1),
+      ];
+      save(document);
+    },
+
+    getPlacementRunContext(runRef) {
+      const run = load().runs.find((candidate) => candidate.runRef === runRef);
+      if (!run) return undefined;
+      return {
+        subject: run.subject,
+        runRef: run.runRef,
+        version: run.version,
+        state: runLifecycleKind(run.lifecycle),
+        executionHost: run.executionHost,
+        terminalOutcome: run.terminalOutcome,
+        completedAt: run.completedAt,
+      };
     },
 
     listRuns(subject, scope = 'own-subject') {
