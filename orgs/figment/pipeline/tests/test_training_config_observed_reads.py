@@ -329,8 +329,19 @@ def test_actual_isolated_loader_and_lineage_composition(tmp_path, fault):
     elif fault == "cache":
         cache = fixture.root / "pipeline" / "__pycache__"
         cache.mkdir()
-        # Selected production py-3 runtime is CPython3.12. This is a rejected planted file, not executed bytecode.
-        (cache / "persona.cpython-312.pyc").write_bytes(b"untrusted cache")
+        # The planted filename must match whatever CPython the `py -3`
+        # launcher actually resolves to on this machine (COLD_SCRIPT below
+        # computes its own guard path the same way, via
+        # sys.implementation.cache_tag) -- not a hardcoded version. A
+        # mismatch here makes the planted file invisible to the loader's own
+        # check, so the fault silently stops testing anything. This is a
+        # rejected planted file, not executed bytecode.
+        tag = subprocess.run(
+            [launcher, "-3", "-I", "-c", "import sys; print(sys.implementation.cache_tag)"],
+            capture_output=True, timeout=10, creationflags=subprocess.CREATE_NO_WINDOW,
+        ).stdout.decode("ascii").strip()
+        assert tag, "could not determine the py -3 launcher's cache tag"
+        (cache / f"persona.{tag}.pyc").write_bytes(b"untrusted cache")
     elif fault == "yaml": fixture.path.write_bytes(b"id: creator-001\n")
     inventory = {"sources": source_hashes, "members": [
         {"path": str(path), "max_bytes": 256 * 1024, "json": path in (fixture.path, fixture.sidecar), "optional": path == fixture.sidecar}
