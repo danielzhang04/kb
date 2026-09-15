@@ -186,9 +186,13 @@ function safeExternalPr(output: OutputRef): string | null {
 /**
  * F4: a file output is downloadable only once its bytes have been hashed at projection time. Without a
  * digest the scoped route refuses the request, so no link is offered rather than one that 400s.
+ *
+ * R5: it must also carry the entity whose projection minted it — the route derives the download's whole
+ * scope from that entity and 404s a request that names none. `EntityBrief.tsx#safeOutputHref` is the
+ * same guard on the other surface.
  */
 function safeDownload(output: OutputRef): string | null {
-  return output.kind === 'external-pr' || !output.digest ? null : outputHref(output);
+  return output.kind === 'external-pr' || !output.digest || !output.entity ? null : outputHref(output);
 }
 
 function defaultCopy(value: string): Promise<void> {

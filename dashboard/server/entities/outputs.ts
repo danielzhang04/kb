@@ -1,4 +1,4 @@
-import type { OutputRef } from '../control/p2Contracts.ts';
+import type { OutputEntityRef, OutputRef } from '../control/p2Contracts.ts';
 import type { OperationalEvent } from '../control/types.ts';
 import { isDigestSha256 } from '../shared/hashing.ts';
 
@@ -28,7 +28,14 @@ function safeName(value: string): boolean {
   return /^[A-Za-z0-9][A-Za-z0-9_.-]*$/.test(value);
 }
 
-export function projectOutputRef(candidate: OutputCandidate, roots: Record<string, string>, readDigest?: OutputDigestReader): OutputRef {
+/**
+ * R5: the projecting entity is stamped onto every file output here, at the only place that knows BOTH the
+ * roots map a link was granted under and the entity those roots came from. `outputHref` puts it in the
+ * URL and the download route re-derives the roots from it, so a link can never reach outside the projects
+ * of the entity whose page rendered it. An entity-less file output still projects (the label stays
+ * visible) but carries no download link.
+ */
+export function projectOutputRef(candidate: OutputCandidate, roots: Record<string, string>, readDigest?: OutputDigestReader, entity?: OutputEntityRef): OutputRef {
   if (candidate.kind === 'external-pr') {
     if (!safeName(candidate.owner) || !safeName(candidate.repository) || !Number.isSafeInteger(candidate.number) || candidate.number < 1) throw new Error('unsafe-pr');
     return { kind: 'external-pr', label: candidate.label, owner: candidate.owner, repository: candidate.repository, number: candidate.number };
@@ -36,19 +43,19 @@ export function projectOutputRef(candidate: OutputCandidate, roots: Record<strin
   const root = roots[candidate.rootId];
   if (root === undefined || !safeRelativePath(candidate.path, root)) throw new Error('unsafe-output-path');
   const digest = readDigest?.(candidate.path);
-  return isDigestSha256(digest)
-    ? { kind: candidate.kind, label: candidate.label, path: candidate.path, digest }
-    : { kind: candidate.kind, label: candidate.label, path: candidate.path };
+  const base = { kind: candidate.kind, label: candidate.label, path: candidate.path } as const;
+  const withDigest = isDigestSha256(digest) ? { ...base, digest } : base;
+  return entity ? { ...withDigest, entity: { type: entity.type, id: entity.id } } : withDigest;
 }
 
 /** Project only safe file-bearing public events; command/tool text never becomes a link. */
-export function projectEventOutputRefs(events: readonly OperationalEvent[], roots: Record<string, string>, readDigest?: OutputDigestReader): OutputRef[] {
+export function projectEventOutputRefs(events: readonly OperationalEvent[], roots: Record<string, string>, readDigest?: OutputDigestReader, entity?: OutputEntityRef): OutputRef[] {
   const projected = new Map<string, OutputRef>();
   for (const event of [...events].sort((left, right) => right.cursor - left.cursor)) {
     if ((event.kind !== 'file' && event.kind !== 'diff') || !event.path) continue;
     for (const rootId of Object.keys(roots).sort()) {
       try {
-        const output = projectOutputRef({ kind: 'repository-file', label: event.summary?.trim() || event.path.split('/').at(-1) || event.path, rootId, path: event.path }, roots, readDigest);
+        const output = projectOutputRef({ kind: 'repository-file', label: event.summary?.trim() || event.path.split('/').at(-1) || event.path, rootId, path: event.path }, roots, readDigest, entity);
         if (output.kind === 'external-pr') continue;
         if (!projected.has(output.path)) projected.set(output.path, output);
         break;
@@ -67,11 +74,19 @@ export function projectEventOutputRefs(events: readonly OperationalEvent[], root
  * `sha256` the caller sends back is the digest bound HERE, over the bytes on disk at projection time —
  * the route re-hashes what it is about to send and refuses (409) if the two disagree, so a file that
  * changed between the page render and the click can never be served as the artifact that was shown.
- * A digest-less output (file absent, not regular, or over the cap) still links; the route answers 400
- * `digest-required` rather than serving unverified bytes.
+ * R5: the href also names the PROJECTING ENTITY. The route resolves that entity, repeats the check its
+ * own read route performs, and builds the roots map from that entity's declared projects alone — so a
+ * link is only ever redeemable for files the page that rendered it could itself have projected. The
+ * project is deliberately NOT carried in the URL: the route derives it from the entity, so no part of the
+ * scope decision is caller-supplied.
+ *
+ * A file output missing either half (no digest, or no projecting entity) yields a link the route refuses;
+ * both UI call sites therefore render no link at all rather than a dead one.
  */
 export function outputHref(output: OutputRef): string {
   if (output.kind === 'external-pr') return `https://github.com/${encodeURIComponent(output.owner)}/${encodeURIComponent(output.repository)}/pull/${output.number}`;
-  const base = `/api/control/files?path=${encodeURIComponent(output.path)}`;
-  return output.digest ? `${base}&sha256=${encodeURIComponent(output.digest)}` : base;
+  const parts = [`path=${encodeURIComponent(output.path)}`];
+  if (output.digest) parts.push(`sha256=${encodeURIComponent(output.digest)}`);
+  if (output.entity) parts.push(`entityType=${encodeURIComponent(output.entity.type)}`, `entityId=${encodeURIComponent(output.entity.id)}`);
+  return `/api/control/files?${parts.join('&')}`;
 }

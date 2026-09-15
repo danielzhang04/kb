@@ -39,14 +39,38 @@ import { runtimeCapabilities } from '../runtime/capabilities.ts';
  * it is the only call stubbed here; every other export passes through untouched. Mint, purpose binding,
  * the single-use `consumeChallenge`, expiry and origin all run REAL against the shipped modules, which is
  * where this fix's security actually lives.
+ *
+ * R9 — the stub is OFF by default and every other call in this file reaches the REAL `verifyAssertion`.
+ * A `vi.mock` factory is hoisted above the imports, so it cannot be moved inside a `describe`; the
+ * equivalent narrowing is this `vi.hoisted` latch, which `signIterationGate` raises for the one test that
+ * is actually performing a ceremony and the file-wide `afterEach` below drops again. Without it a
+ * suite-wide "every signature verifies" would have made this file's pre-existing bad-signature and
+ * unprovisioned-daemon cases pass vacuously.
  */
+const ceremonyStub = vi.hoisted(() => ({ signaturesAccepted: false }));
 vi.mock('../auth/webauthn.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../auth/webauthn.ts')>();
-  return { ...actual, verifyAssertion: async () => ({ verified: true }) };
+  return {
+    ...actual,
+    verifyAssertion: async (...args: Parameters<typeof actual.verifyAssertion>) =>
+      (ceremonyStub.signaturesAccepted ? { verified: true } : actual.verifyAssertion(...args)),
+  };
 });
 
-/** One provisioned passkey, so the iteration-gate ceremony is REACHABLE in this suite. */
+/** One provisioned passkey, so the iteration-gate ceremony is REACHABLE in the cases that opt in. */
 const ITERATION_CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
+
+/**
+ * R9 — the provisioned-credential fixture, likewise opt-in. The surface reads it through a closure on
+ * every request, so a case can raise it after its app is built; it starts EMPTY, which is what makes the
+ * "an unprovisioned daemon cannot resolve a T3 gate" path real for every case that does not opt in.
+ */
+let ceremonyCredentials: (typeof ITERATION_CRED)[] = [];
+
+afterEach(() => {
+  ceremonyStub.signaturesAccepted = false;
+  ceremonyCredentials = [];
+});
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -274,7 +298,8 @@ describe('control proposal routes', () => {
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
       webAuthnConfig: () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN }),
-      credentials: () => [ITERATION_CRED],
+      // R9: empty unless the running case opted in via `signIterationGate`.
+      credentials: () => ceremonyCredentials,
       composerStore,
       controlStore,
       appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
@@ -766,7 +791,19 @@ describe('control proposal routes', () => {
    * F3 — mint the iteration-gate T3 challenge and return the wire fields a resolve must carry. The
    * server derives the whole signed tuple from the store record; the caller chooses only the decision.
    */
+  /**
+   * R9 — opt THIS case into the PROVISIONED-DAEMON half of the fixture and nothing else. A case that
+   * exercises a ceremony REFUSAL (unsigned resolve, wrong decision vocabulary) needs the port attached
+   * but must still face the real `verifyAssertion`. Reverts in the file-wide `afterEach`.
+   */
+  function provisionCeremonyCredential(): void {
+    ceremonyCredentials = [ITERATION_CRED];
+  }
+
   async function signIterationGate(requestRef: string, decision: string) {
+    // R9: opt into BOTH halves — provision the passkey and accept the signature — for this case only.
+    provisionCeremonyCredential();
+    ceremonyStub.signaturesAccepted = true;
     const minted = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${requestRef}/challenge`,
       headers: headers(token), payload: { decision },
@@ -1038,6 +1075,7 @@ describe('control proposal routes', () => {
     const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
 
     it('refuses an unsigned resolve, mutates nothing, and writes NO T3 audit row', async () => {
+      provisionCeremonyCredential();
       const { request, loop, resolve } = mockIterationGate('no-progress');
       const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
       expect(response.statusCode, response.body).toBe(403);
@@ -1088,6 +1126,31 @@ describe('control proposal routes', () => {
       expect(authorizeRows()).toEqual([]);
     });
 
+    /**
+     * R9 — the lever. The challenge is REAL (minted, purpose-bound, single-use) and the daemon IS
+     * provisioned, but the signature stub stays down, so `verifyAssertion` runs for real against a
+     * fabricated assertion and refuses. Restore the suite-wide "every signature verifies" mock and this
+     * case goes green on a 200 — which is exactly how a bad signature would have passed vacuously.
+     */
+    it('R9: a fabricated assertion is refused by the REAL verifier, not waved through by the fixture', async () => {
+      provisionCeremonyCredential();
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const minted = await app.inject({
+        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
+        headers: headers(token), payload: { decision: 'approved' },
+      });
+      expect(minted.statusCode, minted.body).toBe(200);
+      const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'fabricated-park'),
+        ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt,
+      });
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
     it('resolves on a signed decision and records the T3 row over the signed tuple', async () => {
       const { request, loop, resolve } = mockIterationGate('no-progress');
       const response = await resolveGate(request.requestRef, {
@@ -1108,6 +1171,7 @@ describe('control proposal routes', () => {
     });
 
     it('mints only for the decision vocabulary the gate kind admits', async () => {
+      provisionCeremonyCredential();
       const { request } = mockIterationGate('no-progress');
       const minted = await app.inject({
         method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,

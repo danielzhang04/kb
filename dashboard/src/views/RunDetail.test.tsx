@@ -134,8 +134,10 @@ function iterationLoop(overrides: Partial<IterationLoopDto> = {}): IterationLoop
 
 const events = [event(1, 'research complete', 'stage-research'), event(2, 'drafting now', 'stage-write')];
 const outputs: OutputRef[] = [
-  { kind: 'repository-file', label: 'Report', path: 'reports/release.md', digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
-  { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
+  { kind: 'repository-file', label: 'Report', path: 'reports/release.md', digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', entity: { type: 'agent', id: 'researcher' } },
+  // R5: digest but NO projecting entity — the route could not scope it, so no link is offered.
+  { kind: 'repository-file', label: 'Unscoped report', path: 'reports/unscoped.md', digest: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' },
+  { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123', entity: { type: 'agent', id: 'researcher' } },
   { kind: 'external-pr', label: 'Pull request', owner: 'openai', repository: 'kb', number: 42 },
 ];
 
@@ -405,7 +407,8 @@ describe('Dashboard v3 Run view', () => {
     render(unlocked(<RunDetail runRef="run-1" detail={detail()} events={events} outputs={outputs} />));
     // The repository file carries a projection-time digest, so its link is a real scoped download.
     expect(screen.getByRole('link', { name: 'Download Report' }).getAttribute('href'))
-      .toBe('/api/control/files?path=reports%2Frelease.md&sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+      .toBe('/api/control/files?path=reports%2Frelease.md&sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&entityType=agent&entityId=researcher');
+    expect(screen.queryByRole('link', { name: 'Download Unscoped report' })).toBeNull();
     // The artifact fixture has no digest and the PR is not a file: neither may offer a download.
     expect(screen.queryByRole('link', { name: 'Download Fixture value' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Download Pull request' })).toBeNull();

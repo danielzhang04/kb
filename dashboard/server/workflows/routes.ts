@@ -407,7 +407,7 @@ export function scanWorkflowDefs(repoRoot: string, options: ScanWorkflowOptions 
   return scanned;
 }
 
-function findScannedDef(repoRoot: string, ref: string): ScannedDef | undefined {
+export function findScannedDef(repoRoot: string, ref: string): ScannedDef | undefined {
   return scanWorkflowDefs(repoRoot).find((candidate) => candidate.entry.ref === ref);
 }
 
@@ -1081,11 +1081,13 @@ function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: Workfl
     events: selectedEvents?.ok ? selectedEvents.value.map((event) => ({ cursor: event.cursor, stageRef: event.stageRef, kind: event.kind, summary: event.summary, createdAt: event.createdAt })) : [],
   } : null;
   const outputs = new Map<string, OutputRef>();
+  // R5: stamp the projecting entity so the download route can rebuild THIS workflow's one root and no other.
+  const outputEntity = { type: 'workflow', id: scanned.entry.ref } as const;
   for (const artifact of scanned.def.stages.flatMap((stage) => stage.artifacts ?? [])) {
-    const output = projectOutputRef({ kind: 'artifact', label: artifact.description, rootId: scanned.entry.project, path: artifact.path }, roots, readDigest);
+    const output = projectOutputRef({ kind: 'artifact', label: artifact.description, rootId: scanned.entry.project, path: artifact.path }, roots, readDigest, outputEntity);
     if (output.kind !== 'external-pr') outputs.set(output.path, output);
   }
-  for (const output of projectEventOutputRefs(events, roots, readDigest)) if (output.kind !== 'external-pr') outputs.set(output.path, output);
+  for (const output of projectEventOutputRefs(events, roots, readDigest, outputEntity)) if (output.kind !== 'external-pr') outputs.set(output.path, output);
   return {
     revision: workflowRevision(ctx, [scanned]), summary,
     brief: projectEntityBrief({

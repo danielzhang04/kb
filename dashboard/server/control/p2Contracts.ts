@@ -102,9 +102,18 @@ export interface ScheduleOccurrence {
 }
 
 /** Safe, server-projected output target. */
+/**
+ * R5: the entity whose projection minted a file output's link. The download route derives its roots map
+ * from THIS entity's declared projects alone (never the global union of every project on the box), after
+ * repeating the existence/authorization check that entity's own read route performs. A file output that
+ * carries no entity therefore has no downloadable link at all — the UI refuses to render one and the
+ * route refuses a request that names none.
+ */
+export type OutputEntityRef = { type: 'agent' | 'workflow'; id: string };
+
 export type OutputRef =
-  | { kind: 'repository-file'; label: string; path: string; digest?: string }
-  | { kind: 'artifact'; label: string; path: string; digest?: string }
+  | { kind: 'repository-file'; label: string; path: string; digest?: string; entity?: OutputEntityRef }
+  | { kind: 'artifact'; label: string; path: string; digest?: string; entity?: OutputEntityRef }
   | { kind: 'external-pr'; label: string; owner: string; repository: string; number: number };
 
 /** Ordered, redacted control-stream page for replay and SSE parity. */

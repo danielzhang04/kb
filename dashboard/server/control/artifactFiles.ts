@@ -18,18 +18,28 @@
  *  2. OPACITY. Every scope refusal — absolute path, `..`, backslash, unknown root, missing file,
  *     symlink, directory, device — answers a single flat 404. The roots map is not enumerable through
  *     this route, so a caller cannot map the repository by probing it.
- *  3. NO SYMLINK TRAVERSAL. The final component is `lstat`ed (never `stat`ed) and refused if it is a
- *     link, and the file is opened with `O_NOFOLLOW` where the platform defines it. Because this server
- *     also runs on Windows, where `pty/fdPinnedPaths.ts`'s `/proc/self/fd` openat walk cannot run, an
- *     ANCESTOR symlink is caught instead by requiring the real path to equal the real root joined with
- *     the requested relative path — any symlinked directory component changes that equality.
+ *  3. NO SYMLINK TRAVERSAL — R7: OPEN FIRST, then verify the descriptor. Every check that decides
+ *     whether these bytes may be served is made against the OPEN fd, never against a path that a second
+ *     `openSync` would re-resolve:
+ *       - `O_NOFOLLOW` where the platform defines it, so the open itself refuses a final-component
+ *         symlink (POSIX).
+ *       - `fstatSync(fd)` for regular-file-ness and the byte cap.
+ *       - path identity against `realpathSync('/proc/self/fd/<fd>')` where procfs exists (Linux): the
+ *         descriptor's OWN path, which no post-open swap of any component can change.
+ *     RESIDUAL, WINDOWS: there is no fd -> path call, and `O_NOFOLLOW` is 0. The fallback re-checks
+ *     `lstat`/`realpath` by path AFTER the open, which closes the swap-before-open window but not a swap
+ *     landing between the open and that check. The backstop for that residual is the digest: the bytes
+ *     are read from THIS descriptor and hashed, and the caller must present the digest the projection
+ *     bound, so a substituted file cannot be served under the original link's authority. It can only
+ *     cause a refusal.
  *  4. BOUNDED. A fixed 16 MiB cap, checked against the OPEN descriptor's own `fstat` (not a pre-open
- *     `stat`), so the size that is admitted is the size of the file being read. Over the cap is 413,
- *     deliberately distinguished from 404: the path IS in scope and the operator needs to know the
- *     artifact is too large for this route, not be told it does not exist.
+ *     `stat`), so the size that is admitted is the size of the file being read.
  *  5. VERIFIED. The bytes are hashed and compared to the `sha256` the caller echoes back from the
- *     projection. A mismatch is 409 with NO body — the file changed under the link, and serving the new
- *     bytes under the old link's authority is exactly the substitution this parameter exists to stop.
+ *     projection. A mismatch means the file changed under the link, and serving the new bytes under the
+ *     old link's authority is exactly the substitution this parameter exists to stop.
+ *
+ * R6: the ROUTE renders `too-large` and a digest mismatch as the same flat 404 an out-of-scope path
+ * gets, so the distinctions this module returns never reach a caller as an oracle; they are logged.
  */
 import { closeSync, constants as fsConstants, fstatSync, lstatSync, openSync, readSync, realpathSync } from 'node:fs';
 import { join, resolve, sep } from 'node:path';
@@ -55,27 +65,42 @@ function inAnyRoot(path: string, roots: Record<string, string>): boolean {
  * Read one in-scope artifact. Every rejection except the byte cap collapses to `out-of-scope` so the
  * caller cannot distinguish "wrong root" from "absent" from "symlink".
  */
+/**
+ * R7 — identity of the thing the descriptor is actually attached to.
+ *
+ * On a platform with `/proc/self/fd` this is decided from the fd alone, so it is immune to any rename or
+ * symlink swap that lands after the open. Elsewhere (Windows, macOS) there is no fd -> path call and the
+ * check falls back to the path: an `lstat` refusal of a final-component symlink plus the realpath
+ * equality that catches an ancestor symlink. Both fallback reads happen AFTER the open, so the only
+ * uncovered window is a swap landing inside it — and those bytes still come from this descriptor and are
+ * still hashed, so the digest the caller must present refuses them.
+ */
+function descriptorIsExpectedFile(fd: number, absolute: string, repoRoot: string, path: string): boolean {
+  const expected = join(realpathSync(resolve(repoRoot)), path.split('/').join(sep));
+  try {
+    // Linux: the descriptor's own path. No path component is re-resolved to reach it.
+    return realpathSync(`/proc/self/fd/${fd}`) === expected;
+  } catch {
+    // No procfs. Fall through to the documented path-based residual.
+  }
+  if (lstatSync(absolute).isSymbolicLink()) return false;
+  return realpathSync(absolute) === expected;
+}
+
 export function readArtifactBytes(repoRoot: string, path: string, roots: Record<string, string>): ArtifactReadResult {
   if (!inAnyRoot(path, roots)) return { ok: false, reason: 'out-of-scope' };
   // `path` is now proven relative, separator-clean and free of `.`/`..` segments, so this join cannot
-  // escape repoRoot by string construction; the realpath equality below covers escape by symlink.
+  // escape repoRoot by string construction; the descriptor identity check below covers escape by symlink.
   const absolute = join(repoRoot, path);
-  try {
-    if (lstatSync(absolute).isSymbolicLink()) return { ok: false, reason: 'out-of-scope' };
-    const realRoot = realpathSync(resolve(repoRoot));
-    const realTarget = realpathSync(absolute);
-    if (realTarget !== join(realRoot, path.split('/').join(sep))) return { ok: false, reason: 'out-of-scope' };
-  } catch {
-    return { ok: false, reason: 'out-of-scope' };
-  }
 
-  // O_NOFOLLOW is undefined on Windows; the lstat above is the portable half of the same refusal.
+  // O_NOFOLLOW is undefined on Windows; `descriptorIsExpectedFile` carries the portable half.
   const flags = fsConstants.O_RDONLY | (fsConstants.O_NOFOLLOW ?? 0);
   let fd: number | null = null;
   try {
     fd = openSync(absolute, flags);
     const stat = fstatSync(fd);
     if (!stat.isFile()) return { ok: false, reason: 'out-of-scope' };
+    if (!descriptorIsExpectedFile(fd, absolute, repoRoot, path)) return { ok: false, reason: 'out-of-scope' };
     if (stat.size > ARTIFACT_DOWNLOAD_MAX_BYTES) return { ok: false, reason: 'too-large' };
     const bytes = Buffer.allocUnsafe(stat.size);
     let read = 0;

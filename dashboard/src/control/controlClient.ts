@@ -1105,7 +1105,12 @@ const outputRefDto: WireValidator = (value) => {
   const output = wireRecord(value);
   if (!output) return false;
   if (output.kind === 'repository-file' || output.kind === 'artifact') {
-    return exactDto(output, { kind: wireString, label: wireString, path: wireString });
+    // F4/R5: the two download parameters are optional on the wire — an output whose bytes were absent at
+    // projection time has neither, and its link is simply not rendered.
+    return exactDto(output, { kind: wireString, label: wireString, path: wireString }, {
+      digest: wireString,
+      entity: (entry) => exactDto(entry, { type: wireString, id: wireString }),
+    });
   }
   return output.kind === 'external-pr' && exactDto(output, {
     kind: wireString, label: wireString, owner: wireString, repository: wireString, number: wireNumber,

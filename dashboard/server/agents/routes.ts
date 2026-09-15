@@ -173,7 +173,8 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
       purpose: purposeOf(declaration),
       doingNow: summary.activeRuns[0]?.title ?? 'Idle.',
       recentRuns,
-      outputs: projectEventOutputRefs(events, roots, readDigest),
+      // R5: stamp the projecting entity so the download route can rebuild THESE roots and no others.
+      outputs: projectEventOutputRefs(events, roots, readDigest, { type: 'agent', id: declaration.id }),
       pendingGates: summary.gatedRunCount,
       schedule: summary.nextSchedule,
       autonomyTier: declaration.autonomyTier ?? 'Not declared',

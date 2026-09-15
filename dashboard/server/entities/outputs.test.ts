@@ -17,14 +17,45 @@ describe('output projectors', () => {
     expect(() => projectOutputRef({ kind: 'external-pr', label: 'Bad', owner: 'openai/kb', repository: 'kb', number: 0 }, {})).toThrow('unsafe-pr');
   });
 
-  it('binds the projection-time digest into a scoped, hash-verified download href', () => {
+  it('binds the projection-time digest AND the projecting entity into a scoped, hash-verified download href', () => {
     const digested = projectOutputRef(
       { kind: 'repository-file', label: 'Brief', rootId: 'kb', path: 'orgs/kb-ops/output/brief.md' },
       { kb: 'orgs/kb-ops' },
       (path) => (path === 'orgs/kb-ops/output/brief.md' ? 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' : null),
+      { type: 'workflow', id: 'research-brief' },
     );
-    expect(digested).toEqual({ kind: 'repository-file', label: 'Brief', path: 'orgs/kb-ops/output/brief.md', digest: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' });
-    expect(outputHref(digested)).toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fbrief.md&sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+    expect(digested).toEqual({
+      kind: 'repository-file', label: 'Brief', path: 'orgs/kb-ops/output/brief.md',
+      digest: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+      entity: { type: 'workflow', id: 'research-brief' },
+    });
+    expect(outputHref(digested)).toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fbrief.md&sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb&entityType=workflow&entityId=research-brief');
+  });
+
+  it('R5: an output projected WITHOUT an entity yields an href the download route cannot scope', () => {
+    // The href is still well-formed, but it names no entity, so `outputRootsForEntity` has nothing to
+    // resolve and the route 404s. Both UI surfaces refuse to render a link for such an output at all.
+    const orphan = projectOutputRef(
+      { kind: 'repository-file', label: 'Brief', rootId: 'kb', path: 'orgs/kb-ops/output/brief.md' },
+      { kb: 'orgs/kb-ops' },
+      () => 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+    );
+    expect(orphan).not.toHaveProperty('entity');
+    expect(outputHref(orphan)).not.toContain('entityType');
+  });
+
+  it('R5: every event-projected output carries the entity whose projection minted it', () => {
+    const projected = projectEventOutputRefs(
+      [{
+        cursor: 1, runRef: 'run-1', kind: 'file', source: 'worker', stageRef: null, attemptRef: null, sessionRef: null,
+        status: 'success', summary: null, command: null, toolName: null, path: 'orgs/kb-ops/output/brief.md',
+        diff: null, checkpoint: null, createdAt: '2026-08-21T00:00:00.000Z',
+      }],
+      { kb: 'orgs/kb-ops' },
+      undefined,
+      { type: 'agent', id: 'researcher' },
+    );
+    expect(projected).toEqual([{ kind: 'repository-file', label: 'brief.md', path: 'orgs/kb-ops/output/brief.md', entity: { type: 'agent', id: 'researcher' } }]);
   });
 
   it('drops a malformed digest and links without one rather than shipping an unverifiable sha256', () => {

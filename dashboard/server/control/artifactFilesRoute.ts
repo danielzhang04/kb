@@ -4,24 +4,39 @@
  */
 import type { FastifyInstance, FastifyReply, FastifyRequest, preHandlerHookHandler } from 'fastify';
 import { readDeclaredAgentDetails } from '../agents/roster.ts';
-import { scanWorkflowDefs } from '../workflows/routes.ts';
+import { findScannedDef } from '../workflows/routes.ts';
 import { isDigestSha256 } from '../shared/hashing.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { verifiedSession } from '../http/middleware.ts';
 import { readArtifactBytes } from './artifactFiles.ts';
 
 /**
- * The server-owned roots map, rebuilt exactly as the two producers build theirs: `agents/routes.ts`
- * maps each declared `projects` entry to `orgs/<project>`, `workflows/routes.ts` maps its one entry
- * project the same way. Their union is therefore the complete set of roots any projection could have
- * used — no wider (the route never grants a root no projection would have granted) and no narrower
- * (every link the UI can render resolves).
+ * R5 — the roots map is derived from ONE entity, the one whose projection minted the link, never from the
+ * union of every project on the box.
+ *
+ * Each branch rebuilds exactly the map its producer built: `agents/routes.ts` maps each declared
+ * `projects` entry to `orgs/<project>`; `workflows/routes.ts` maps its single `entry.project` the same
+ * way. The entity id is the same id its own read route takes (`GET /api/agents/:id` resolves through
+ * `readDeclaredAgentDetails`, `GET /api/workflows/:id` through `findScannedDef` on `entry.ref`), and this
+ * function performs the SAME resolution — so a subject who could not read the entity cannot resolve one
+ * here either, and `null` becomes the route's flat 404.
+ *
+ * Both entity read routes are registered inside `index.ts`'s authenticated read scope and admit any
+ * verified session that names an existing entity; they carry no per-subject narrowing today. If either
+ * ever gains one, it must be repeated HERE — this function is the download's whole authorization step.
  */
-export function serverOwnedOutputRoots(repoRoot: string): Record<string, string> {
-  const projects = new Set<string>();
-  for (const detail of readDeclaredAgentDetails(repoRoot).values()) for (const project of detail.projects) projects.add(project);
-  for (const scanned of scanWorkflowDefs(repoRoot)) if (scanned.entry.project) projects.add(scanned.entry.project);
-  return Object.fromEntries([...projects].sort().map((project) => [project, `orgs/${project}`]));
+export function outputRootsForEntity(repoRoot: string, entity: { type: string; id: string }): Record<string, string> | null {
+  if (!entity.id) return null;
+  if (entity.type === 'agent') {
+    const declaration = readDeclaredAgentDetails(repoRoot).get(entity.id);
+    if (!declaration) return null;
+    return Object.fromEntries(declaration.projects.map((project) => [project, `orgs/${project}`]));
+  }
+  if (entity.type === 'workflow') {
+    const project = findScannedDef(repoRoot, entity.id)?.entry.project;
+    return project ? { [project]: `orgs/${project}` } : null;
+  }
+  return null;
 }
 
 /**
@@ -53,16 +68,31 @@ export function registerArtifactFileRoute(scope: FastifyInstance, ctx: SurfaceCo
     const query = (req.query ?? {}) as Record<string, unknown>;
     const path = typeof query.path === 'string' ? query.path : '';
     const expected = typeof query.sha256 === 'string' ? query.sha256.toLowerCase() : '';
+    const entity = {
+      type: typeof query.entityType === 'string' ? query.entityType : '',
+      id: typeof query.entityId === 'string' ? query.entityId : '',
+    };
     if (!path) return reply.code(404).send({ error: 'not found' });
     // A link built before the bytes existed carries no digest. Serving it unverified would defeat the
-    // parameter entirely, so it is refused loudly rather than degraded quietly.
+    // parameter entirely, so it is refused loudly rather than degraded quietly. This is pure request
+    // shape — it reveals nothing about the repository — so it stays a distinguishable 400.
     if (!isDigestSha256(expected)) return reply.code(400).send({ error: 'digest-required' });
 
-    const read = readArtifactBytes(ctx.repoRoot, path, serverOwnedOutputRoots(ctx.repoRoot));
-    if (!read.ok) return read.reason === 'too-large'
-      ? reply.code(413).send({ error: 'artifact-too-large' })
-      : reply.code(404).send({ error: 'not found' });
-    if (read.digest !== expected) return reply.code(409).send();
+    // R5: AUTHORIZATION. The roots come from the named entity alone, and an entity this subject cannot
+    // resolve is indistinguishable from one that does not exist.
+    const roots = outputRootsForEntity(ctx.repoRoot, entity);
+    if (!roots) return reply.code(404).send({ error: 'not found' });
+
+    // R6: past the authorization step every remaining refusal is ONE flat 404. Distinguishing
+    // `too-large` (in scope, exists, over the cap) from `digest mismatch` (in scope, exists, changed)
+    // from `out-of-scope` handed an authorized-for-project-A caller an existence and size oracle over
+    // every other path in that project. The real reason is logged server-side instead.
+    const read = readArtifactBytes(ctx.repoRoot, path, roots);
+    if (!read.ok || read.digest !== expected) {
+      const reason = read.ok ? 'digest-mismatch' : read.reason;
+      req.log?.warn({ route: 'control-artifact-download', reason, entityType: entity.type, entityId: entity.id, path }, 'artifact download refused');
+      return reply.code(404).send({ error: 'not found' });
+    }
 
     try {
       await auditFn(ctx)(ctx.repoRoot, {
