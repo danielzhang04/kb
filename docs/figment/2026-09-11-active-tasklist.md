@@ -49,6 +49,6 @@ Paid estimates33.723380 plus1.20 retained reserves =34.923380/50USD, not invoice
 
 ## Evidence and resumption
 
-Use the [overall plan](2026-09-12-overall-plan-review.md), [source-check guide](2026-09-13-current-source-reader-guide.md), [HTTP review](2026-09-13-current-source-http-review.md), and [still-review design](2026-09-14-still-review-workbench-design.md). Canonical handoff: `OPS/handoffs/2026-09-14-figment-still-review-checkpoint.md`.
+Use the [overall plan](2026-09-12-overall-plan-review.md), [source-check guide](archive/2026-09-13-current-source-reader-guide.md), [HTTP review](archive/2026-09-13-current-source-http-review.md), and [still-review design](archive/2026-09-14-still-review-workbench-design.md). Canonical handoff: `OPS/handoffs/2026-09-14-figment-still-review-checkpoint.md`.
 
 Private evidence: `MAIN/_private/figment-claude-overnight-20260913/`. Acceptance: `source-journey-root-review-20260914.json`; crop trace: `figment-crop-consumption-trace-20260914.md` and independent `figment-crop-trace-independent-20260914.md`; Claude: `claude-availability-20260914-v1/assessment.json`. Native worker model IDs are unexposed and never asserted as verified Claude.

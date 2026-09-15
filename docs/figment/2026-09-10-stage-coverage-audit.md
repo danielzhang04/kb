@@ -42,10 +42,10 @@ selection, tester approval and source-checkpoint authority at every launch.
 The repair is independently READY: four focused tests cover mutations and the
 real train-first/fresh-gen join. Both changed selection and missing source
 evidence between runs persist a stopped state. See the
-[freshness review](2026-09-10-gen-authority-freshness-review.md). The Studio
+[freshness review](archive/2026-09-10-gen-authority-freshness-review.md). The Studio
 control implementation and its independent review remain separate. Moving a compiled plan directory also breaks its absolute
 argv binding; the future control must preserve the directory selected before
-compilation. See [Studio control plan](2026-09-10-studio-control-plan.md) and
+compilation. See [Studio control plan](archive/2026-09-10-studio-control-plan.md) and
 `REVIEW/_private/figment-studio-control-plan-probe-20260910-v1/result.json`.
 
 **Missing video acceptance authority.** The runbook explicitly states that no

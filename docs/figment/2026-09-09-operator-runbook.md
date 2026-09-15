@@ -10,7 +10,7 @@ the existing pod harness.
 
 The accepted Windows-local Studio path adds an explicit **Check current source**
 action for an exact prepared plan ID and digest. Follow the
-[current-source reader guide](2026-09-13-current-source-reader-guide.md) for the
+[current-source reader guide](archive/2026-09-13-current-source-reader-guide.md) for the
 server configuration and operator steps. The displayed result is a last-checked
 past observation; `launchReady`, `qualityApproved` and `atomicSnapshot` remain
 false. It starts no generation, writes no ruling and replaces none of the CLI
@@ -25,7 +25,7 @@ The path begins only when `<REVIEWED_DATASET_DIR>` contains the real, current
 dataset files expected by `train-first`: image/caption pairs, `_dataset.ready`,
 `dataset_manifest.json`, and the actual operator decision in
 `dataset-approval.json`. `accept-dataset` validates and records a real decision;
-it cannot infer one. The concrete built-in `dataset-v1` has a bounded research decision. Its replacement v2 train and five-image tester completed with verified teardown; all five tester candidates were subsequently culled, so no checkpoint or `gen` still is selected. It is not a production identity dataset. The user separately approved the exact train payload. That first attempt ended before container creation with provider image-pull `unexpected EOF`; teardown was verified, and the final receipt has no uploads, jobs, or artifacts. Preserve the failed plan and see the [bootstrap failure record](2026-09-09-builtin-training-bootstrap-failure.md). The commands below are fixture-tested contracts; actual v2 train/tester completion and rejection are recorded separately in the [quality decision](2026-09-09-checkpoint-quality-decision.md). No accepted `gen` or current video result exists.
+it cannot infer one. The concrete built-in `dataset-v1` has a bounded research decision. Its replacement v2 train and five-image tester completed with verified teardown; all five tester candidates were subsequently culled, so no checkpoint or `gen` still is selected. It is not a production identity dataset. The user separately approved the exact train payload. That first attempt ended before container creation with provider image-pull `unexpected EOF`; teardown was verified, and the final receipt has no uploads, jobs, or artifacts. Preserve the failed plan and see the [bootstrap failure record](archive/2026-09-09-builtin-training-bootstrap-failure.md). The commands below are fixture-tested contracts; actual v2 train/tester completion and rejection are recorded separately in the [quality decision](archive/2026-09-09-checkpoint-quality-decision.md). No accepted `gen` or current video result exists.
 
 Use a fresh empty `<PLAN_ROOT>` for the train-first plan. The planner copies the
 approved dataset into its own `train/runs/creator-001-tensor-dataset-train-first`
@@ -236,7 +236,7 @@ After current approved `gen` stills exist, the offline content adapter joins the
   --out '<FRESH_ASSIGNMENT_JSON>'
 ```
 
-The [slot-fit schema](2026-09-10-content-asset-binding-plan.md) requires one attributed `fit` ruling for every exact slot and a distinct approved image ID. Image approval alone does not establish that the image fits a hook or payoff. This version supports persona stills only; non-persona and motion/video slots have no supported authority. It writes a non-promotable planning assignment, not an image approval, generated batch or publication record.
+The [slot-fit schema](archive/2026-09-10-content-asset-binding-plan.md) requires one attributed `fit` ruling for every exact slot and a distinct approved image ID. Image approval alone does not establish that the image fits a hook or payoff. This version supports persona stills only; non-persona and motion/video slots have no supported authority. It writes a non-promotable planning assignment, not an image approval, generated batch or publication record.
 
 For hub visibility, write `assignment.json` beside its `brief.json` under `orgs/figment/content/briefs/<brief-folder>/`. The Research tab shows missing, recorded planning snapshot, or unavailable assignment evidence for each brief. It checks the brief binding and assignment shape; current image approval still requires the existing authority.
 

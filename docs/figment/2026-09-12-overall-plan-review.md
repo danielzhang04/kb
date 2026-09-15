@@ -146,11 +146,11 @@ cache repair, retraining or another paid run.
 
 Use the live
 [tasklist](2026-09-11-active-tasklist.md),
-[source-check guide](2026-09-13-current-source-reader-guide.md),
-[source HTTP review](2026-09-13-current-source-http-review.md),
-[input/auth operator guide](2026-09-12-input-auth-repairs.md),
-[recorded-assignment review](2026-09-12-recorded-assignment-review.md),
-[Records review](2026-09-12-populated-records-review.md), and
-[video-delivery preparation review](2026-09-11-video-delivery-preparation-review.md).
+[source-check guide](archive/2026-09-13-current-source-reader-guide.md),
+[source HTTP review](archive/2026-09-13-current-source-http-review.md),
+[input/auth operator guide](archive/2026-09-12-input-auth-repairs.md),
+[recorded-assignment review](archive/2026-09-12-recorded-assignment-review.md),
+[Records review](archive/2026-09-12-populated-records-review.md), and
+[video-delivery preparation review](archive/2026-09-11-video-delivery-preparation-review.md).
 Their older closing status paragraphs may be historical; the current milestone
 disposition above and the canonical OPS handoff govern resumption.
