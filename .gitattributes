@@ -57,6 +57,16 @@
 /orgs/figment/pipeline/video/wan22_ti2v_5b_native_api.json text eol=lf
 /orgs/figment/pipeline/video/wan22_ti2v_5b.model-pins.json text eol=lf
 
+# local_lora_matched_runtime.py, local_lora_profile_inference.py,
+# local_quality_cpu_preflight.py and local_quality_plan.py each pin a sibling
+# source file's raw SHA-256 at runtime (a reviewed-code integrity gate, not a
+# test fixture). Keep the pinned files at LF so the pin is identical on
+# Windows and the Linux cloud VM; otherwise autocrlf smudging makes every
+# Windows checkout fail the pin with a false "changed" refusal.
+/orgs/figment/pipeline/train/local_lora_matched_inference.py text eol=lf
+/orgs/figment/pipeline/train/local_lora_pair_engine.py text eol=lf
+/orgs/figment/pipeline/train/local_single_observation_cpu_preflight.py text eol=lf
+
 # The cloud-pair gallery binds these review documents by raw SHA-256.
 # Preserve their reviewed bytes across Windows and Linux checkouts.
 /docs/figment/2026-09-09-omnigen2-cloud-result.md text eol=lf
