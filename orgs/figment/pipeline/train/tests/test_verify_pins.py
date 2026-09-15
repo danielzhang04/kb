@@ -275,15 +275,21 @@ def test_cli_stage_video_reports_problems_with_the_video_prefix(vp, monkeypatch,
     assert "STOP [video]" in err and "did not resolve (HTTP 404" in err
 
 
-def test_cli_default_sweep_includes_video_alongside_every_yaml_stage(
+def test_cli_default_sweep_includes_video_only_for_the_real_default_pins(
     vp, monkeypatch, tmp_path, capsys,
 ):
+    """The convenience default ("no --stage" checks video too) applies only when
+    --pins is the real tensor-pins.yaml -- monkeypatching the module's own
+    DEFAULT_PINS_PATH/DEFAULT_VIDEO_PINS_PATH (rather than passing --pins/--video-pins
+    explicitly) is what proves that "real default" path, not an explicit override."""
     model = _model()
     pins_path = tmp_path / "tensor-pins.yaml"
     pins_path.write_text(json.dumps(_pins([model])), encoding="utf-8")
     video_model = _model(repo_id="Comfy-Org/Wan_2.2_ComfyUI_Repackaged")
     video_path = tmp_path / "video-pins.json"
     video_path.write_text(json.dumps(_video_pins([video_model])), encoding="utf-8")
+    monkeypatch.setattr(vp, "DEFAULT_PINS_PATH", pins_path)
+    monkeypatch.setattr(vp, "DEFAULT_VIDEO_PINS_PATH", video_path)
 
     def fake_head(url, **kw):
         for candidate in (model, video_model):
@@ -293,10 +299,53 @@ def test_cli_default_sweep_includes_video_alongside_every_yaml_stage(
         raise AssertionError(f"unexpected url {url}")
 
     monkeypatch.setattr(vp, "head_etag", fake_head)
-    rc = vp.main(["--pins", str(pins_path), "--video-pins", str(video_path)])
+    rc = vp.main([])
     assert rc == 0
     out = capsys.readouterr().out
     assert "verified 2 stage(s) clean: anchor, video" in out
+
+
+def test_cli_explicit_custom_pins_default_sweep_does_not_pick_up_video(
+    vp, monkeypatch, tmp_path, capsys,
+):
+    """A caller pointing --pins at an unrelated document (e.g. a bakeoff's own tiny
+    pins.yaml, `expand/tests/test_bakeoff.py::test_verify_pins_cli_accepts_our_pins_path`)
+    must keep the old "every stage in THAT document" meaning for "no --stage given" --
+    never silently reach into this repo's real video pins file too."""
+    model = _model()
+    pins_path = tmp_path / "some-other-pins.yaml"
+    pins_path.write_text(json.dumps(_pins([model])), encoding="utf-8")
+    monkeypatch.setattr(
+        vp, "head_etag",
+        lambda url, **kw: (302, {"x-linked-etag": f'"{model["sha256"]}"',
+                                  "x-repo-commit": model["revision"]}),
+    )
+    rc = vp.main(["--pins", str(pins_path)])
+    assert rc == 0
+    assert "verified 1 stage(s) clean: anchor" in capsys.readouterr().out
+
+
+def test_cli_explicit_stage_video_works_against_any_pins_document(
+    vp, monkeypatch, tmp_path, capsys,
+):
+    """--stage video is always available, even against a non-default --pins document,
+    since video is checked from --video-pins entirely, never from --pins itself."""
+    model = _model()
+    pins_path = tmp_path / "some-other-pins.yaml"
+    pins_path.write_text(json.dumps(_pins([model])), encoding="utf-8")
+    video_model = _model(repo_id="Comfy-Org/Wan_2.2_ComfyUI_Repackaged")
+    video_path = tmp_path / "video-pins.json"
+    video_path.write_text(json.dumps(_video_pins([video_model])), encoding="utf-8")
+    monkeypatch.setattr(
+        vp, "head_etag",
+        lambda url, **kw: (302, {"x-linked-etag": f'"{video_model["sha256"]}"',
+                                  "x-repo-commit": video_model["revision"]}),
+    )
+    rc = vp.main([
+        "--pins", str(pins_path), "--video-pins", str(video_path), "--stage", "video",
+    ])
+    assert rc == 0
+    assert "verified 1 stage(s) clean: video" in capsys.readouterr().out
 
 
 def test_cli_unknown_stage_message_lists_video_as_known(vp, tmp_path, capsys):

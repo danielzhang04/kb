@@ -229,8 +229,15 @@ def main(argv: list[str] | None = None) -> int:
             )
             return 1
         checked = list(args.stage)
-    else:
+    elif args.pins == DEFAULT_PINS_PATH:
+        # "Every stage" folds in `video` only for the real default tensor-pins.yaml --
+        # an unrelated custom `--pins` document (e.g. a bakeoff's own tiny pins.yaml)
+        # must keep its old "every stage IN THAT DOCUMENT" meaning, never silently pick
+        # up this repo's real video pins file too. `--stage video` (or `--stage <name>
+        # --stage video`) still works against any --pins for an explicit request.
         checked = known_stages
+    else:
+        checked = sorted(all_pins)
 
     yaml_stages = [stage for stage in checked if stage != VIDEO_STAGE_NAME]
     results: dict[str, list[str]] = {}
