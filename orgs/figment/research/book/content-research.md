@@ -27,7 +27,7 @@ full transform and six fresh criteria, and is always `not_promotable`. It has no
 assessed real media or transform quality, approved publication, or created a real nonpersona delivery.
 Records derived from the old content-brief pin are stale; retain the historical receipts and require fresh
 current preparation before retained/NVR/delivery reuse. See the
-[delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
+[delivery-ruling acceptance checkpoint](../../../../docs/figment/archive/2026-09-11-nonpersona-delivery-ruling-review.md).
 
 The accepted bounded brief-revision interface is a separate planning producer. It accepts one
 existing `creator-001` brief directory, a closed three-field edits object, and a fresh output
@@ -47,10 +47,10 @@ a planning revision; a separate explicit refresh updates recorded inventory. An 
 does not prove rollback and must not trigger an automatic repeat submission. Root accepted four
 synthetic desktop states after 41/41 composition tests, typecheck and build; the separate real
 brief process join passed 2/2. These bounded checks do not establish actual media or audience results. See the
-[September 12 operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
+[September 12 operator guide](../../../../docs/figment/archive/2026-09-12-input-auth-repairs.md) for the exact
 API/CLI shape and the separate 58-test acceptance evidence.
 
-The [Stage A allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md)
+The [Stage A allocation review](../../../../docs/figment/archive/2026-09-12-studio-allocation-review.md)
 now also verifies an actual revised-brief/content-binding producer against a new
 Studio preparation, with exact plan digest and two slot identities; a separately
 produced legacy outside-root plan is refused. The media and judgments are synthetic.
@@ -60,8 +60,8 @@ requires explicit **Refresh brief records**. Ordinary unassigned drafts leave ot
 valid matches available. The real synthetic producer/HTTP/session/browser journey
 passed with four root-viewed screenshots; 430 distinct runtime cases and
 typecheck/build passed. These are matching planning records, not usage history,
-current source approval or actual content quality. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
-The separate [Records view](../../../../docs/figment/2026-09-12-populated-records-review.md)
+current source approval or actual content quality. See the [assignment review](../../../../docs/figment/archive/2026-09-12-recorded-assignment-review.md).
+The separate [Records view](../../../../docs/figment/archive/2026-09-12-populated-records-review.md)
 now has populated-render acceptance; its claim refresh does not update the generic
 record snapshot or approve a planning/content outcome.
 
@@ -81,4 +81,4 @@ An initial offline hypothesis matrix can guide asset briefs without taking any a
 | Niche-specific photographic sequence | Consistent persona and coherent scene; each still reviewed | Saves per reached viewer |
 | Simple motion from a reviewed first frame | Temporal identity, garment coverage and background continuity | Completion and repeat-view rates where available |
 
-These are planning hypotheses derived from the package's format discussion, not claims of virality. The paired still diagnostic and the separate single-input black-tee observations are generation-diagnostic evidence only; neither measures audience response or authorizes a content asset. V1 of the native video diagnostic failed parent visual quality review because of later-frame artifacts. The later [V2](../../../../docs/figment/2026-09-08-video-native-resolution-review.md) and [V3](../../../../docs/figment/2026-09-08-video-head-turn-review.md) diagnostics were visually stable in their inspected clips, but V3 did not unambiguously deliver the requested turn-and-return motion; neither establishes broad quality, identity retention, or a content-ready asset. No audience completion/retention outcomes exist. The offline [content-brief compiler](../../pipeline/content/content_brief.py) now links dated source records, canonical persona/reference hashes, existing templates, required asset slots and intended metric. Its [first two-frame planning brief](../../content/briefs/2026-09-08-creator-001-two-frame/brief.json) uses recorded September3 research and leaves observed metrics null. Neither required image has been generated for that brief. A fresh attempt to read the official Instagram ranking article on September8 returned HTTP429; fresh evidence from that page is unavailable and was not substituted for the dated source. Keep Instagram integration deferred; content research and brief preparation can proceed independently.
+These are planning hypotheses derived from the package's format discussion, not claims of virality. The paired still diagnostic and the separate single-input black-tee observations are generation-diagnostic evidence only; neither measures audience response or authorizes a content asset. V1 of the native video diagnostic failed parent visual quality review because of later-frame artifacts. The later [V2](../../../../docs/figment/archive/2026-09-08-video-native-resolution-review.md) and [V3](../../../../docs/figment/archive/2026-09-08-video-head-turn-review.md) diagnostics were visually stable in their inspected clips, but V3 did not unambiguously deliver the requested turn-and-return motion; neither establishes broad quality, identity retention, or a content-ready asset. No audience completion/retention outcomes exist. The offline [content-brief compiler](../../pipeline/content/content_brief.py) now links dated source records, canonical persona/reference hashes, existing templates, required asset slots and intended metric. Its [first two-frame planning brief](../../content/briefs/2026-09-08-creator-001-two-frame/brief.json) uses recorded September3 research and leaves observed metrics null. Neither required image has been generated for that brief. A fresh attempt to read the official Instagram ranking article on September8 returned HTTP429; fresh evidence from that page is unavailable and was not substituted for the dated source. Keep Instagram integration deferred; content research and brief preparation can proceed independently.

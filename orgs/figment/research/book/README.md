@@ -11,8 +11,8 @@ actual isolated Windows reader, HTTP/session boundary, rendered Chrome states an
 client build. It observes one exact prepared plan and its configured source;
 `launchReady`, `qualityApproved` and `atomicSnapshot` remain false. It adds no
 launch control or ruling writer. See the
-[source-check guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md)
-and [acceptance review](../../../../docs/figment/2026-09-13-current-source-http-review.md).
+[source-check guide](../../../../docs/figment/archive/2026-09-13-current-source-reader-guide.md)
+and [acceptance review](../../../../docs/figment/archive/2026-09-13-current-source-http-review.md).
 
 Preparation/resume, Research brief revision, recorded assignments and exact slot
 navigation, Records display and explicit review-claim reading remain accepted
@@ -26,7 +26,7 @@ teardown: **0/4 framing passes and no clear paired improvement**. The earlier RT
 square diagnostic was **0/2**. Both are closed without replay. They establish no
 accepted checkpoint, identity-consistent held-out stills or production video. More
 training alone is not justified by these failures. See the
-[terminal framing diagnostic](../../../../docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md).
+[terminal framing diagnostic](../../../../docs/figment/archive/2026-09-13-prompt-framing-diagnostic-plan.md).
 
 No pod remains active. Paid estimates are **$33.723380**, plus **$1.20** retained
 reserves, totaling **$34.923380/$50**. These are not reconciled invoices or a new
@@ -43,20 +43,20 @@ September 14 update. Their pending work and balances are not current instruction
   typecheck/build. The corrected browser run passed the actual synthetic
   producer/loopback HTTP/session journey; root viewed four screenshots, with 126
   stable inputs, original-byte restoration and cleanup. The first Chrome startup
-  failure is preserved. Current source/creator quality remain open. See the [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md).
+  failure is preserved. Current source/creator quality remain open. See the [assignment review](../../../../docs/figment/archive/2026-09-12-recorded-assignment-review.md).
 
 - **Populated Records rendering accepted** through the real collector, loopback
   HTTP/session and current Workspace. Machine-current/approval-unknown, stale and
   unreviewed states remain distinct; claim Refresh leaves generic rows unchanged.
   Root viewed the populated desktop screenshot. See the
-  [Records review](../../../../docs/figment/2026-09-12-populated-records-review.md).
+  [Records review](../../../../docs/figment/archive/2026-09-12-populated-records-review.md).
 
 - **Preparation allocation accepted (Stage A)** at `b591d05e`: new plans fit the existing Figment
   content-authority root; legacy discovery/replay and exact watcher privacy are
   preserved. V1 retained 180/181 passes; the repaired integration passed 3/3 with
   typecheck/build, establishing 181 distinct passes across runs. The actual synthetic
   producer join passed; subsequent Stage B display/navigation is accepted above.
-  See the [allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md).
+  See the [allocation review](../../../../docs/figment/archive/2026-09-12-studio-allocation-review.md).
 
 - **Prepared-plan recorded status accepted**: GET @2 now pairs stored plans with recorded
   execution metadata while preserving preparation POST @1 and pending-intent recovery.
@@ -65,7 +65,7 @@ September 14 update. Their pending work and balances are not current instruction
   browser states with 26 unchanged inputs and cleanup. Missing history/running liveness
   remain unknown, and completion does not assess media quality. Live execution and the
   current-evidence/assignment journey remain open. See the
-  [status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
+  [status wiring review](../../../../docs/figment/archive/2026-09-12-gen-status-wiring-review.md).
 
 - **Square framing diagnostic, 23:00 UTC update**: the retained controls fail framing.
   Both separately admitted SECURE and COMMUNITY two-image square attempts ended in
@@ -86,7 +86,7 @@ September 14 update. Their pending work and balances are not current instruction
   a 1/1 isolated cross-language Vitest join. A final independent code/security evidence delta is
   READY for the committed source with no open concrete finding (report SHA
   `ce6d14295effa7d048cfd08ee4f32a09b3f5a4964f5e54035e000928697fa8cc`). See the
-  [native-source binding review](../../../../docs/figment/2026-09-11-nonpersona-binding-review.md).
+  [native-source binding review](../../../../docs/figment/archive/2026-09-11-nonpersona-binding-review.md).
   Root then accepted the direct-NVR still-delivery producer and test at `a0074da8` after independent
   review and repaired-node execution. V1 recorded 36 passes and one fixture-collision skip; V2 was a
   zero-test selector error; V3 passed the repaired node, for 37 distinct passing nodes across v1+v3,
@@ -99,7 +99,7 @@ September 14 update. Their pending work and balances are not current instruction
   slot/full transform and six fresh criteria, but always returns `not_promotable`. It does not
   authenticate a human, approve real media quality, or create a delivery. The old helper pin makes
   derived native records stale; fresh preparation is required before retained/NVR/delivery reuse.
-  See the [delivery-ruling acceptance checkpoint](../../../../docs/figment/2026-09-11-nonpersona-delivery-ruling-review.md).
+  See the [delivery-ruling acceptance checkpoint](../../../../docs/figment/archive/2026-09-11-nonpersona-delivery-ruling-review.md).
 - **Studio review-claim read path**: the standalone contract, route and panel are accepted
   at `4fa11242`; governed server/UI composition is accepted at `e4ac72c6`; and the real
   Python-reader/owned-runner fixture join is accepted at `a1fef9be`. The joins use
@@ -117,7 +117,7 @@ September 14 update. Their pending work and balances are not current instruction
   **Check recorded review** action. Root accepted both screenshots for readable current
   styles and controls; the strict mocked loopback backend does not verify a live backend,
   authentication, real media, creator quality or a full production journey. See the
-  [Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md).
+  [Studio visual review](../../../../docs/figment/archive/2026-09-12-studio-visual-review.md).
   Full execution/current-evidence/assignment recovery and deployment remain incomplete. The separate
   governed brief-write route and Research form are now accepted locally as described below.
 - **Local input and authentication repairs**: bounded content-brief revision and the
@@ -127,19 +127,19 @@ September 14 update. Their pending work and balances are not current instruction
   proof must revalidate it. Prepare and dry-run executor modes create no default authenticated
   session; an explicitly admitted default live call owns and closes its ambient-auth session
   while preserving the primary operational failure over cleanup failures. See the
-  [operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) for the exact
+  [operator guide](../../../../docs/figment/archive/2026-09-12-input-auth-repairs.md) for the exact
   interfaces, test counts and limits. The binary reader repair passed 14/14 and the real brief
   process join passed 2/2. Governed wiring (`a3ab95ef`) passed 83/83; the isolated form/decoder
   (`8218350f`) passed 47 and 16 cases separately; Research composition passed 41/41 plus
   typecheck/build. Root viewed four synthetic desktop states covering initial form, success,
   explicit refresh and ambiguity without repeat submission. See the
-  [Research composition review](../../../../docs/figment/2026-09-12-brief-workspace-review.md).
+  [Research composition review](../../../../docs/figment/archive/2026-09-12-brief-workspace-review.md).
   No live browser/backend session, provider call or paid action follows from this acceptance.
 - **Identity/coverage diagnostic (V4, ten clothed images, original checkpoint)**: completed
   with independently verified pod teardown; estimated cost $0.247567. Root and an
   independent Opus review agree the LoRA condition shows stronger resemblance cues to
   `g01` than the no-LoRA control, but every output still misses shoulders-up framing and
-  facial proportions still differ from the reference. See the [held-out diagnostic review](../../../../docs/figment/2026-09-11-heldout-diagnostic-review.md)
+  facial proportions still differ from the reference. See the [held-out diagnostic review](../../../../docs/figment/archive/2026-09-11-heldout-diagnostic-review.md)
   for the full visual assessment and for two rejected reviewer batches (image/label
   misbinding, not counted as votes). Do not infer a precise age from this evidence.
 - **Face-coverage/drift audit**: run and reviewed (33/33 records; two independent
@@ -150,14 +150,14 @@ September 14 update. Their pending work and balances are not current instruction
   was flagged for further full-image inspection; at that audit stage this was not yet a
   training selection or retrain decision. The subsequent five-row selective crop/caption
   intervention described next drew on this shortlist, and `g01` itself remained uncropped.
-  See the [face-coverage review](../../../../docs/figment/2026-09-11-face-coverage-review.md).
+  See the [face-coverage review](../../../../docs/figment/archive/2026-09-11-face-coverage-review.md).
 - **Selective crop/caption/seed dataset change and new checkpoint**: five of the twenty
   accepted training rows received matching 512-square selective crops and revised
   captions, motivated by the face-coverage audit; the other fifteen rows and both
   eval-only rows (`pilot-03`/`pilot-06`) are unchanged. The crop/caption source plus an
   optional pinned `process.training_seed` field landed locally at `dca886ec` (94 tests
   passing in 55.66s), with independent Opus review READY WITH COMMENTS and no blockers.
-  See the [selective crop source review](../../../../docs/figment/2026-09-11-selective-crop-source-review.md).
+  See the [selective crop source review](../../../../docs/figment/archive/2026-09-11-selective-crop-source-review.md).
   A predeclared 1250-step training run using that dataset change completed at 09:31:54 UTC;
   all five resulting checkpoints were downloaded and hash-verified, and an independent
   provider query returned no active pods at 19:11 UTC, for an estimated cost of $2.387633.
@@ -182,7 +182,7 @@ September 14 update. Their pending work and balances are not current instruction
   compute. No checkpoint, still, or video is selected or accepted.
 - **Nonpersona content preparation**: an image-free nonpersona preparation slice landed
   locally at `e1ceac49` with reviewed acceptance; see the
-  [nonpersona preparation review](../../../../docs/figment/2026-09-11-nonpersona-preparation-review.md).
+  [nonpersona preparation review](../../../../docs/figment/archive/2026-09-11-nonpersona-preparation-review.md).
   Current accepted local mechanics now cover preparation, a three-cell base-model native
   compiler, native-source binding, direct-NVR materialization and a bound delivery ruling.
   They remain non-promotable planning and technical evidence. No real nonpersona scene image
@@ -191,10 +191,10 @@ September 14 update. Their pending work and balances are not current instruction
   all three fixed-seed jobs produced only 36-byte synthetic placeholders. The verifier and
   child exited successfully without timeout, provider authentication or network activity.
   This is offline infrastructure proof, not a paid pilot, actual render or identity evidence.
-  See the [current native offline join review](../../../../docs/figment/2026-09-12-native-offline-join-review.md).
+  See the [current native offline join review](../../../../docs/figment/archive/2026-09-12-native-offline-join-review.md).
 - **Brief text contract**: repaired and independently reviewed at `a3d87a8c`, with 29 Python
   tests, 11 collector tests and a real compiler-to-collector boundary check passing.
-  See the [content input contract review](../../../../docs/figment/2026-09-11-content-input-contract-review.md).
+  See the [content input contract review](../../../../docs/figment/archive/2026-09-11-content-input-contract-review.md).
   The separate bounded revision producer, governed route and explicit-submit Research editor
   are now accepted as described above. Their results remain local planning evidence.
 - The public sampler/wording comparison and the two-image alternate seed-B control are
@@ -241,10 +241,10 @@ quality or licensing for every asset.
 Chronological detail and superseded test counts live in the dated reports below, not in
 this README. Each entry is a pointer, not a retelling.
 
-- **Identity/dataset**: [builtin dataset curation](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md) (accepted 20-train/2-eval research rows); [canonical-seed adequacy](../../../../docs/figment/2026-09-08-canonical-seed-adequacy.md) (`g01` remains provisional).
-- **Training/checkpoints**: [live tester report](../2026-09-08-live-tester.md) and [foundation plan](../2026-09-08-foundation-plan.md) (first checkpoint ladder, none selected); [paired diagnostic review](../../../../docs/figment/2026-09-08-paired-diagnostic-review.md) (LoRA vs no-LoRA split, left unresolved); [local research review](../../../../docs/figment/2026-09-09-local-research-review.md) and [v2 independent plan review](../../../../docs/figment/2026-09-09-builtin-train-plan-v2-independent-review.md) (V2 training, five checkpoints, root-attributed all-cull).
-- **Reference-conditioned generation**: [OmniGen2 independent review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md) (stopped before the six-row pilot); [Qwen reference cloud result](../../../../docs/figment/2026-09-09-qwen-reference-cloud-result.md) and [independent review](../../../../docs/figment/2026-09-09-qwen-reference-pair-independent-review.md) (stopped before expansion); [component licence evidence](../../../../docs/figment/2026-09-09-qwen-component-license-evidence.md) (metadata only, not clearance).
-- **Local ComfyUI runtime**: [local capability record](../../../../docs/figment/2026-09-08-local-comfy-capability.md), [runtime audit](../../../../docs/figment/2026-09-08-local-comfy-runtime-audit.md), [crop review](../../../../docs/figment/2026-09-08-local-crop-diagnostic-review.md), [simple-portrait review](../../../../docs/figment/2026-09-08-local-simple-portrait-review.md) (local executor proven; all visual candidates rejected).
-- **Studio/video infrastructure (pre-repair)**: [end-to-end delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md), [content-asset binding plan](../../../../docs/figment/2026-09-10-content-asset-binding-plan.md), [stage coverage audit](../../../../docs/figment/2026-09-10-stage-coverage-audit.md), [video candidate producer review](../../../../docs/figment/2026-09-10-video-candidate-producer-review.md), [video review preparation review](../../../../docs/figment/2026-09-10-video-review-preparation-review.md) — superseded operationally by the 2026-09-11 repair checkpoint above.
-- **Studio repair/resume history**: [repair checkpoint review](../../../../docs/figment/2026-09-11-repair-checkpoint-review.md), [inventory server review](../../../../docs/figment/2026-09-11-studio-inventory-server-review.md), and [resume UI review](../../../../docs/figment/2026-09-11-studio-resume-ui-review.md) — retained as dated evidence beneath the September 12 status.
-- **Sampling/official audit**: [official sampling audit](../../../../docs/figment/2026-09-10-official-sampling-audit.md) — public-only sampler comparison, closed after both visual reviews stopped it.
+- **Identity/dataset**: [builtin dataset curation](../../../../docs/figment/archive/2026-09-09-builtin-dataset-curation-result.md) (accepted 20-train/2-eval research rows); [canonical-seed adequacy](../../../../docs/figment/archive/2026-09-08-canonical-seed-adequacy.md) (`g01` remains provisional).
+- **Training/checkpoints**: [live tester report](../2026-09-08-live-tester.md) and [foundation plan](../2026-09-08-foundation-plan.md) (first checkpoint ladder, none selected); [paired diagnostic review](../../../../docs/figment/archive/2026-09-08-paired-diagnostic-review.md) (LoRA vs no-LoRA split, left unresolved); [local research review](../../../../docs/figment/archive/2026-09-09-local-research-review.md) and [v2 independent plan review](../../../../docs/figment/archive/2026-09-09-builtin-train-plan-v2-independent-review.md) (V2 training, five checkpoints, root-attributed all-cull).
+- **Reference-conditioned generation**: [OmniGen2 independent review](../../../../docs/figment/archive/2026-09-09-omnigen2-pair-independent-review.md) (stopped before the six-row pilot); [Qwen reference cloud result](../../../../docs/figment/archive/2026-09-09-qwen-reference-cloud-result.md) and [independent review](../../../../docs/figment/archive/2026-09-09-qwen-reference-pair-independent-review.md) (stopped before expansion); [component licence evidence](../../../../docs/figment/archive/2026-09-09-qwen-component-license-evidence.md) (metadata only, not clearance).
+- **Local ComfyUI runtime**: [local capability record](../../../../docs/figment/archive/2026-09-08-local-comfy-capability.md), [runtime audit](../../../../docs/figment/archive/2026-09-08-local-comfy-runtime-audit.md), [crop review](../../../../docs/figment/archive/2026-09-08-local-crop-diagnostic-review.md), [simple-portrait review](../../../../docs/figment/archive/2026-09-08-local-simple-portrait-review.md) (local executor proven; all visual candidates rejected).
+- **Studio/video infrastructure (pre-repair)**: [end-to-end delivery plan](../../../../docs/figment/archive/2026-09-09-end-to-end-delivery-plan.md), [content-asset binding plan](../../../../docs/figment/archive/2026-09-10-content-asset-binding-plan.md), [stage coverage audit](../../../../docs/figment/2026-09-10-stage-coverage-audit.md), [video candidate producer review](../../../../docs/figment/archive/2026-09-10-video-candidate-producer-review.md), [video review preparation review](../../../../docs/figment/archive/2026-09-10-video-review-preparation-review.md) — superseded operationally by the 2026-09-11 repair checkpoint above.
+- **Studio repair/resume history**: [repair checkpoint review](../../../../docs/figment/archive/2026-09-11-repair-checkpoint-review.md), [inventory server review](../../../../docs/figment/archive/2026-09-11-studio-inventory-server-review.md), and [resume UI review](../../../../docs/figment/archive/2026-09-11-studio-resume-ui-review.md) — retained as dated evidence beneath the September 12 status.
+- **Sampling/official audit**: [official sampling audit](../../../../docs/figment/archive/2026-09-10-official-sampling-audit.md) — public-only sampler comparison, closed after both visual reviews stopped it.
