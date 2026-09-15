@@ -18,6 +18,19 @@ from pathlib import Path, PurePosixPath
 
 COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
 INSTRUCTION = re.compile(r"^(?:queue|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
+# The VM reconciler's allowlist (deploy/apply_ops_reconciliation.py RECONCILED), mirrored here so this
+# script can fail fast, on the desktop, before any push -- instead of pushing + receipting a chain the
+# VM will refuse only later, after receipts already make the spool look all-clear ("nothing to
+# promote" on the next run: a silent wedge). Built by the SAME string-append-to-COORDINATION
+# construction as the VM side so the superset relation holds by construction, and pinned equal to it
+# by test_reconciled_allowlist_matches_the_vm_side_verbatim.
+RECONCILED = re.compile(
+    COORDINATION.pattern
+    + r"|^agents/.+$"
+    + r"|^orgs/[^/]+/workflows/.+$"
+    + r"|^orgs/atlas/output/transcripts/[^/]+\.jsonl$"
+    + r"|^governance/model-routing\.yaml$"
+)
 SAFE_HOST = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
@@ -200,6 +213,50 @@ def parse_raw_diff(raw: str | bytes) -> tuple[list[tuple[str, str]], list[str]]:
         modes.append((match.group(1).decode("ascii"), match.group(2).decode("ascii")))
         paths.append(path)
     return modes, sorted(paths)
+
+
+def _nul_paths(raw: str | bytes) -> list[str]:
+    data = _bytes(raw)
+    if not data:
+        return []
+    fields = data.split(b"\0")
+    if fields[-1] != b"":
+        raise RuntimeError("NUL-delimited Git paths are malformed")
+    paths = [_validate_repo_path(item) for item in fields[:-1]]
+    if len(paths) != len(set(paths)):
+        raise RuntimeError("Git path list contains a duplicate")
+    return sorted(paths)
+
+
+def require_reconcilable_range(
+    repo: Path,
+    trusted_ops_head: str,
+    remote_head: str,
+    pending: list[dict],
+    run=run_git,
+) -> None:
+    """Fail fast, before any push or receipt, on any path the VM reconciler's RECONCILED
+    allowlist would refuse once this range reaches origin/ops (apply_ops_reconciliation.py,
+    the `RECONCILED.fullmatch` check just before its `reset --hard`).
+
+    Every pending bundle's own paths already pass COORDINATION (validate_quarantine_chain
+    checks that per bundle), and RECONCILED is a strict superset, so the real gap this closes
+    is content ALREADY on origin/ops ahead of the trusted head that the outgoing chain would
+    otherwise ride along with -- a desktop write outside the daemon-read mirror, or a chain
+    stuck mid-promotion from an earlier interrupted run. Checked from a fresh clone so it sees
+    exactly the origin/ops this run is about to push onto.
+    """
+    existing = _nul_paths(
+        run(repo, ["diff", "--name-only", "--no-renames", "-z", trusted_ops_head, remote_head]).stdout
+    )
+    pending_paths = {path for manifest in pending for path in manifest["paths"]}
+    offending = sorted(
+        path for path in {*existing, *pending_paths} if RECONCILED.fullmatch(path) is None
+    )
+    if offending:
+        raise RuntimeError(
+            "outbox range contains paths the VM reconciler would refuse: " + ", ".join(offending)
+        )
 
 
 def fetch_vm_outbox(vm_host: str, snapshot_root: Path, run=subprocess.run) -> Path:
@@ -722,6 +779,7 @@ def promote_pending(
             ).strip()
             if COMMIT_RE.fullmatch(remote_head) is None:
                 raise RuntimeError("origin/ops head is invalid")
+            require_reconcilable_range(repo, trusted_ops_head, remote_head, initial_pending, run_git)
             quarantine_prefix = f"refs/kb-quarantine/{secrets.token_hex(6)}"
             try:
                 validated = validate_quarantine_chain(

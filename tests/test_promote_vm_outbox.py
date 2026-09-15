@@ -905,6 +905,72 @@ def test_pull_only_flag_fails_closed_on_diverged_local_ops(tmp_path, monkeypatch
     assert upstream_state(origin) == before
 
 
+def test_reconciled_allowlist_matches_the_vm_side_verbatim():
+    """B2 (PR #188 review): promote_vm_outbox now carries its own RECONCILED superset --
+    built by the same string-append-to-COORDINATION construction as the VM side
+    (deploy/apply_ops_reconciliation.py RECONCILED) -- so require_reconcilable_range can
+    fail fast on the desktop, before any push, on exactly the range the VM's reconciler
+    (apply_ops_reconciliation.py's RECONCILED.fullmatch check) would refuse only after
+    receipts are already written."""
+    assert promote_module.RECONCILED.pattern == reconcile_module.RECONCILED.pattern
+    for relpath in (
+        "governance/model-routing.yaml",
+        "agents/grader.md",
+        "orgs/faceless-youtube/workflows/segments/segment-a.workflow.js",
+        "orgs/atlas/output/transcripts/2026-08-21-abc.jsonl",
+        "queue/inbox/card.md",
+        "orgs/kb-ops/GOAL.md",
+    ):
+        assert promote_module.RECONCILED.fullmatch(relpath) is not None, relpath
+    assert promote_module.RECONCILED.fullmatch("orgs/x/notes.md") is None
+
+
+def test_reconcilable_range_check_fails_fast_before_any_push_or_receipt(tmp_path):
+    """B2: a prior desktop-originated write already sitting on origin/ops ahead of the
+    trusted head (e.g. an ops write outside the daemon-read mirror) is exactly the shape
+    of content the VM's RECONCILED check refuses -- but only AFTER promote_vm_outbox has
+    already pushed the pending chain and written its receipts (validate_quarantine_chain
+    only checks each bundle's OWN diff against the narrower COORDINATION, never the
+    pre-existing trusted_ops_head..origin/ops range). Without this guard the run would push,
+    receipt, then the VM's reconciler would refuse and the NEXT promote_vm_outbox run would
+    see an all-receipted spool and exit 0 with "nothing to promote" -- the silent wedge B2
+    describes. This must instead fail before any push."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    advance_origin_ops(
+        tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n",
+    )
+    before = upstream_state(origin)
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_pending(spool, operator, tmp_path / "work", trusted, max_attempts=1)
+
+    assert upstream_state(origin) == before
+    assert not (spool / "receipts" / f"{manifests[0]['id']}.json").exists()
+
+
+def test_reconcilable_range_check_allows_goal_md_only_desktop_range(tmp_path):
+    """The counterpart to the failing case above: a desktop write that IS inside RECONCILED
+    (orgs/*/GOAL.md, itself inside the narrower COORDINATION) must not trip the new guard,
+    and promotion proceeds exactly as it did before this check existed."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "orgs/kb-ops/GOAL.md", "goal only\n",
+    )
+
+    assert promote_pending(spool, operator, tmp_path / "work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    promoted = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    assert git(origin, "rev-parse", f"{promoted}^").stdout.strip() == advanced
+    assert f"KB-Outbox-ID: {manifests[0]['id']}" in git(
+        origin, "show", "-s", "--format=%B", promoted,
+    ).stdout
+
+
 def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
     """W61: the desktop's VM-source allowlist and the VM's must stay the SAME regex.
 
