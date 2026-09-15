@@ -31,6 +31,11 @@ interface SeedRun {
   createdAt?: string;
   /** Defaults to `planned`: a `running` row is crash-normalized to `interrupted` at store open. */
   state?: 'planned' | 'running';
+  /**
+   * A whole lifecycle object, for the one kind `state` cannot express: `paused-for-deploy` carries
+   * deploy-pause data, has no inbound `transitionRun` edge, and (crash: preserve) survives store open.
+   */
+  lifecycle?: Record<string, unknown>;
   terminalOutcome?: 'ok' | null;
   /** An attempt in this state is seeded against the run (baseline §6's unreconciled hold). */
   attemptState?: 'running' | 'interrupted';
@@ -56,7 +61,7 @@ function seed(name: string, runs: readonly SeedRun[]): ControlPlaneStore {
       proposalRevision: 1,
       proposalHash: 'a'.repeat(64),
       publicationState: 'published',
-      lifecycle: { kind: run.state ?? 'planned', deployPause: null },
+      lifecycle: run.lifecycle ?? { kind: run.state ?? 'planned', deployPause: null },
       version: 1,
       managerSessionRef: `session-${run.runRef}`,
       managerGeneration: 1,
@@ -268,6 +273,57 @@ describe('placement store adapters — the production LeaseStorePort binding', (
   });
 });
 
+describe('placement store adapters — only a claimable run state reaches a node', () => {
+  const SUBJECT = 'dashboard-engine';
+
+  it.each(['recovering', 'running'] as const)(
+    'hands out a %s run — the report path can still walk it to a terminal state',
+    (state) => {
+      const store = seed(`claimable-${state}`, [{ runRef: 'run-1' }]);
+      expect(store.transitionRun(SUBJECT, 'run-1', 1, state)).toMatchObject({ ok: true });
+
+      expect(store.selectPlacementCandidateRunRef(HOST, T0)).toBe('run-1');
+    },
+  );
+
+  // Each of these was handed to a node under the old "not terminal" filter. `waiting-human` is blocked
+  // on an operator, `interrupted` is quarantined pending reconciliation, and `stopping` cannot reach
+  // `running` OR `succeeded` at all — so a claim on it guarantees the completion report throws, which
+  // leaves the sequence advanced and the run stuck forever.
+  it.each(['waiting-human', 'stopping', 'interrupted'] as const)(
+    'never hands out a %s run, and a claim against one times out rather than leasing it',
+    async (state) => {
+      const store = seed(`unclaimable-${state}`, [{ runRef: 'run-1' }]);
+      expect(store.transitionRun(SUBJECT, 'run-1', 1, state)).toMatchObject({ ok: true });
+
+      expect(store.selectPlacementCandidateRunRef(HOST, T0)).toBeUndefined();
+      const port = createLeaseStoreAdapter(store, { now: () => T0 });
+      expect(await claimLease(port, { hostId: HOST, waitMs: 0 }, clockAt(T0))).toEqual({ ok: false, status: 204 });
+      expect(store.getPlacementLease('run-1')).toBeUndefined();
+    },
+  );
+
+  it('never hands out a paused-for-deploy run — a node claim is not a way around the pause', async () => {
+    const store = seed('unclaimable-paused', [{
+      runRef: 'run-1',
+      lifecycle: {
+        kind: 'paused-for-deploy',
+        deployPause: {
+          deploymentRef: 'deployment-1', pausedAt: iso(T0), priorKind: 'planned',
+          resumeStreak: 0, lastResumeAttemptCursor: null, resumeClaim: null,
+        },
+      },
+    }]);
+    // The pause survived store open (crash: preserve), so this really is the excluded state.
+    const run = store.getRun(SUBJECT, 'run-1');
+    expect(run.ok && run.value.run.lifecycle.kind).toBe('paused-for-deploy');
+
+    expect(store.selectPlacementCandidateRunRef(HOST, T0)).toBeUndefined();
+    const port = createLeaseStoreAdapter(store, { now: () => T0 });
+    expect(await claimLease(port, { hostId: HOST, waitMs: 0 }, clockAt(T0))).toEqual({ ok: false, status: 204 });
+  });
+});
+
 describe('placement store adapters — the production ReportStorePort binding', () => {
   async function leased(name: string) {
     const store = seed(name, [{ runRef: 'run-1' }]);
@@ -368,6 +424,32 @@ describe('placement store adapters — the production ReportStorePort binding', 
     expect(request.value).toMatchObject({ kind: 'approval', title: 'Approve the desktop write', state: 'open' });
     // §3.6: the port a report reaches carries no resolver — closing a gate is the operator's alone.
     expect(Object.keys(reportPort)).not.toContain('respondHumanRequest');
+  });
+
+  it('refuses a gate-opened report with no prompt BEFORE any write, leaving the sequence claimable', async () => {
+    const { store, reportPort } = await leased('report-gate-no-prompt');
+    const gate = (payload: Record<string, unknown>) => submitReport(reportPort, {
+      runRef: 'run-1', hostId: HOST, nowIso: iso(T0 + 1_000),
+      body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload },
+    });
+
+    // The store refuses an empty prompt, and `openHumanRequest` is the LAST of this branch's three
+    // writes: unrefused, this report appended an event, consumed sequence 1, opened no gate, and threw
+    // a 500 — after which every retry at sequence 1 answered `report-out-of-order` forever.
+    const refused = await gate({ title: 'Approve the desktop write' });
+    expect(refused).toEqual({ ok: false, status: 400, code: 'unknown-key', field: 'payload.prompt' });
+    expect(store.getPlacementLease('run-1')?.lastReportSequence).toBe(0);
+    const events = store.listEvents('dashboard-engine', 'run-1');
+    expect(events.ok && events.value).toEqual([]);
+
+    // A whitespace-only prompt is the same refusal — the store's acceptance test is `trim()`-based.
+    expect(await gate({ prompt: '   ' })).toEqual({ ok: false, status: 400, code: 'unknown-key', field: 'payload.prompt' });
+
+    // And because nothing was persisted, the host's retry at the SAME sequence is still accepted.
+    const accepted = await gate({ title: 'Approve the desktop write', prompt: 'ok?' });
+    expect(accepted).toMatchObject({ ok: true });
+    expect(store.getPlacementLease('run-1')?.lastReportSequence).toBe(1);
+    expect((store.listEvents('dashboard-engine', 'run-1') as { ok: true; value: unknown[] }).value).toHaveLength(1);
   });
 
   it('marks the run terminal through the ordinary lifecycle transition, then refuses every later report', async () => {

@@ -7,6 +7,7 @@ import { makeNodeRateGuard, makeNodeReadRateGuard } from '../../http/context.ts'
 import type { SurfaceContext } from '../../http/context.ts';
 import type { HostNodeMapLoad } from '../../auth/hostNodeMap.ts';
 import type { PlacementControlStore } from '../../placement/storeAdapters.ts';
+import { NODE_PROXY_UID, nodeApp, nodeCtx, nodeHeaders, okMap } from './_nodeHarness.ts';
 import { NODE_PROXY_UID_ENV, resolveNodeExecutionWiring } from './nodeWiring.ts';
 import { registerV1NodeRoutes } from './routes.ts';
 
@@ -111,6 +112,34 @@ describe('node execution wiring — misconfiguration refuses to boot', () => {
   });
 });
 
+/**
+ * The claim path's whole store surface, as the real adapters call it: a host that is beating NOW (the
+ * ARMED branch supplies the REAL clock, so freshness is measured against wall time), one unplaced run,
+ * and a CAS that records what it was asked to write.
+ */
+function claimableStore(): { store: PlacementControlStore; created: string[] } {
+  const created: string[] = [];
+  const fake = {
+    listHostAdvertisements: () => [{
+      // A second in the PAST: `isAdvertisementFresh` refuses a negative age, and the real clock this
+      // branch wires can advance past a beat stamped in the same call.
+      hostId: 'vm', daemonVersion: '1.0.0', reportedAt: new Date(Date.now() - 1_000).toISOString(),
+      connectors: [], skills: [], filesystemRoots: [], pty: true, gpu: false,
+      clis: { claude: 'ready', codex: 'ready' }, version: 1,
+    }],
+    releaseExpiredPlacementLeases: () => [],
+    selectPlacementCandidateRunRef: () => 'run-desktop-1',
+    createPlacementLease: (runRef: string, hostId: string, hash: string, nowMs: number) => {
+      created.push(runRef);
+      return {
+        runRef, hostId, capabilityHash: hash, revision: 1, lastReportSequence: 0,
+        expiresAt: new Date(nowMs + 120_000).toISOString(),
+      };
+    },
+  };
+  return { store: fake as unknown as PlacementControlStore, created };
+}
+
 describe('node execution wiring — the ARMED branch', () => {
   it('registers the node scope with the attested uid, a live loader, and real v1 ports', async () => {
     const resolved = wiring();
@@ -136,6 +165,37 @@ describe('node execution wiring — the ARMED branch', () => {
     resolved.loadHostNodeMap?.();
 
     expect(reads).toBe(3); // a revoked node stops being attributable without a restart
+  });
+
+  // Registering the URL is not the same as being able to answer on it. `routes.ts` refuses the claim
+  // route `503 node-attribution-unavailable` whenever `ctx.v1.claimClock` is absent, so an ARMED branch
+  // that built `V1SurfaceDeps` without a clock would mount a claim endpoint that 503s every request
+  // — map valid, uid valid, store bound, and not one lease ever handed out.
+  it('answers a REAL claim on the registered route, reaching the bound store', async () => {
+    const { store: claimStore, created } = claimableStore();
+    const resolved = resolveNodeExecutionWiring({
+      store: claimStore,
+      env: { [NODE_PROXY_UID_ENV]: String(NODE_PROXY_UID) },
+      mapPath: MAP_PATH,
+      mapExists: () => true,
+      load: () => okMap(),
+    });
+    expect(resolved.armed).toBe(true);
+    expect(resolved.nodeProxyUid).toBe(NODE_PROXY_UID); // the harness peer proof runs on the WIRED uid
+
+    // The harness stamps the loopback 4-tuple and the synthetic /proc table, so the peer-uid proof and
+    // the map lookup both run for real; only the ports come from the wiring under test.
+    const app = nodeApp(nodeCtx({ v1: resolved.v1 ?? {}, loadHostNodeMap: resolved.loadHostNodeMap }));
+    const res = await app.inject({
+      method: 'POST', url: '/api/v1/hosts/vm/leases/claim',
+      headers: nodeHeaders('nodeVM01'), payload: { waitMs: 0 },
+    });
+
+    expect(res.statusCode).toBe(200); // 503 here means the ARMED branch is mounted but inert
+    const body = JSON.parse(res.body) as { kind: string; data: { runRef: string } };
+    expect(body.kind).toBe('lease');
+    expect(body.data.runRef).toBe('run-desktop-1');
+    expect(created).toEqual(['run-desktop-1']); // it reached the STORE, not merely the router
   });
 
   it('leaves the node scope unregistered when the rate guards are missing, uid or not', async () => {

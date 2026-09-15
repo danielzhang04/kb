@@ -31,6 +31,7 @@ import {
   createReportStoreAdapter,
   type PlacementControlStore,
 } from '../../placement/storeAdapters.ts';
+import type { ClaimClock } from '../../placement/leaseService.ts';
 import type { V1SurfaceDeps } from './routes.ts';
 
 /** The unprivileged uid `deploy/systemd/kb-node-proxy.service` runs `kb_node_proxy.py` as. */
@@ -76,6 +77,20 @@ function resolveNodeProxyUid(raw: string | undefined): number | undefined {
   }
   return uid;
 }
+
+/**
+ * The production claim clock: real wall time, and a real timer for the long poll.
+ *
+ * It is NOT optional wiring. `routes.ts` refuses the claim route `503 node-attribution-unavailable`
+ * whenever `ctx.v1.claimClock` is absent, so an ARMED branch that omits it registers a claim endpoint
+ * that can never hand out a single lease — the node scope would be armed and inert. `sleep` must be a
+ * real timer for the same reason: `claimLease` polls between passes, and a no-op sleep would turn a
+ * 25-s long poll into a busy loop over the store.
+ */
+const PRODUCTION_CLAIM_CLOCK: ClaimClock = {
+  now: () => Date.now(),
+  sleep: (ms: number) => new Promise<void>((resolve) => { setTimeout(resolve, ms); }),
+};
 
 const OFF = (bootLine: string): NodeExecutionWiring => ({
   nodeProxyUid: undefined,
@@ -130,6 +145,8 @@ export function resolveNodeExecutionWiring(deps: NodeExecutionWiringDeps): NodeE
       leaseStore: createLeaseStoreAdapter(deps.store),
       reportStore: createReportStoreAdapter(deps.store),
       advertiseStore: createAdvertiseStoreAdapter(deps.store),
+      // Without this the claim route 503s on every request, map and uid valid or not.
+      claimClock: PRODUCTION_CLAIM_CLOCK,
       ...(deps.daemonVersion === undefined ? {} : { daemonVersion: deps.daemonVersion }),
     },
     armed: true,

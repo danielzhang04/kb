@@ -183,6 +183,25 @@ const AGENT_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/;
 const PROFILE_ID_RE = /^[a-z0-9][a-z0-9:._-]{0,127}$/;
 const MODEL_ID_RE = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const PROPOSAL_DECISIONS = new Set<ProposalDecision>(['approved', 'rejected', 'changes-requested']);
+// Baseline §6: the run states from which a NODE CLAIM is legal, as an explicit allowlist rather
+// than "not terminal". Read off `RUN_LIFECYCLE_SEMANTICS` (`control/runLifecycle.ts`): a claimed run
+// is executed and then driven to `succeeded`/`failed` by the report path, which can only walk
+// `-> running -> terminal`, so a state that cannot reach `running` under the CLAIMANT's own authority
+// must never be handed out. The negative filter handed out four states that can not:
+//   `paused-for-deploy` - `transitions` is EMPTY. A deploy pause is a stop-the-world; a node claiming
+//                         through it is the pause being worked around, and completion then throws.
+//   `stopping`          - reaches neither `running` nor `succeeded`; an operator is already tearing
+//                         the run down, and `markTerminal` would throw at completion.
+//   `waiting-human`     - has a `running` edge, but it is the OPERATOR's: the human response is what
+//                         moves it to `planned`/`recovering`/`running` (`respondHumanRequest` below).
+//                         Executing a run that is blocked on a human is the gate being bypassed.
+//   `interrupted`       - a quarantine state. Reconciliation decides whether it resumes, not a claim;
+//                         the child that interrupted it may still be alive (the §6 attempt hold).
+// Anything terminal is excluded by construction, so `isTerminalRun` is no longer needed here.
+const NODE_CLAIMABLE_RUN_KINDS: ReadonlySet<RunLifecycleKind> = new Set<RunLifecycleKind>([
+  'planned', 'recovering', 'running',
+]);
+
 const HUMAN_REQUEST_KINDS = new Set<HumanRequestKind>(['input', 'approval', 'review', 'intervention', 'governance-refusal']);
 const HUMAN_DECISIONS = new Set<HumanRequestDecision>(['responded', 'approved', 'rejected', 'changes-requested']);
 const EVENT_KINDS = new Set(['message', 'command', 'tool', 'file', 'diff', 'checkpoint', 'lifecycle', 'session-link', 'governance']);
@@ -3183,7 +3202,7 @@ function makeStore(
       );
       const candidate = document.runs
         .filter((run) => run.executionHost === hostId)
-        .filter((run) => !isTerminalRun(run.lifecycle) && run.terminalOutcome === null)
+        .filter((run) => NODE_CLAIMABLE_RUN_KINDS.has(runLifecycleKind(run.lifecycle)) && run.terminalOutcome === null)
         .filter((run) => !leased.has(run.runRef))
         .filter((run) => !heldByInterruptedAttempt.has(run.runRef))
         .sort((a, b) => (a.createdAt === b.createdAt ? a.runRef.localeCompare(b.runRef) : a.createdAt.localeCompare(b.createdAt)))[0];

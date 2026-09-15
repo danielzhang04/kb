@@ -90,7 +90,7 @@ export async function runScenario(id: P6ScenarioId, call: CallFn): Promise<Scena
     case 'gate-open-and-resolve': {
       await seedDesktopRun(call, 'run-gate-1');
       await claimDesktop(call);
-      const gateReport = await call('vm', { method: 'POST', path: '/api/v1/runs/run-gate-1/reports', auth: 'node', nodeId: 'nodeDESK9', body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload: { title: 'approve me' } } });
+      const gateReport = await call('vm', { method: 'POST', path: '/api/v1/runs/run-gate-1/reports', auth: 'node', nodeId: 'nodeDESK9', body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload: { title: 'approve me', prompt: 'approve the desktop write?' } } });
       const gates = await call('vm', { method: 'GET', path: '/api/v1/runs/run-gate-1/gates', auth: 'operator' });
       const gateCount = (dataOf(gates.body).gates as unknown[] | undefined)?.length ?? 0;
       return gateReport.status === 200 && gateCount === 1
