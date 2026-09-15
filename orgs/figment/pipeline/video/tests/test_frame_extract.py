@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import os
 import shutil
@@ -206,3 +207,104 @@ def test_rejects_windows_junctions_in_root_input_and_output_paths(tmp_path: Path
                     shutil.rmtree(path)
                 except OSError:
                     pass
+
+
+# ---------------------------------------------------------------------------
+# F6b: Windows MAX_PATH (260) -- the shared containment primitives below are used
+# by frame_assemble.py, video_manifest.py, video_review.py and
+# video_delivery_review.py, whose canonical stores nest a 64-hex digest under an
+# already-deep plan output directory and routinely cross 260 characters. Before
+# F6b every OS call here took the plain Win32 spelling and failed with a bare
+# FileNotFoundError that read as "evidence is missing" rather than "path too long"
+# (root cause of
+# content/tests/test_motion_asset_binding.py::test_real_video_producer_to_content_cli_then_stale_movie_refuses).
+# ---------------------------------------------------------------------------
+
+
+def _beyond_max_path(root: Path, *, leaf: str = "evidence.json") -> Path:
+    """A root-relative path whose ABSOLUTE spelling is longer than 260 characters."""
+    relative = Path(".")
+    segment = "segment-with-a-deliberately-long-name"
+    while len(str(root / relative / leaf)) <= 300:
+        relative = relative / segment
+    return (relative / leaf).relative_to(".")
+
+
+def test_os_path_is_a_spelling_not_a_containment_decision(tmp_path: Path) -> None:
+    plain = tmp_path / "a" / "b.json"
+    spelled = frames._os_path(plain)
+    # Round-trips back to exactly the same absolute path: the prefix carries no
+    # meaning of its own, so no containment comparison can be widened by it.
+    assert Path(frames._plain_path(spelled)) == plain.absolute()
+    if os.name == "nt":
+        assert spelled.startswith(frames.EXTENDED_PREFIX)
+        # `..` is normalised away BEFORE the prefix is attached (a \?\ path is never
+        # normalised by the kernel); `_within` refuses `..` before it ever gets here.
+        assert frames._os_path(tmp_path / "a" / ".." / "b.json") == frames._os_path(tmp_path / "b.json")
+    else:
+        assert spelled == str(plain.absolute())
+
+
+def test_within_and_hash_file_handle_paths_beyond_max_path(tmp_path: Path) -> None:
+    relative = _beyond_max_path(tmp_path)
+    target = tmp_path / relative
+    os.makedirs(frames._os_path(target.parent))
+    payload = b'{"evidence": "long path"}'
+    with frames._open(target, "wb") as handle:
+        handle.write(payload)
+
+    assert len(str(target)) > 260
+    assert not target.exists()  # the plain pathlib probe still cannot see it
+    assert frames._within(tmp_path, relative, "long evidence") == target
+    record = frames._hash_file(tmp_path, relative, "long evidence", frames.MAX_FRAME_BYTES)
+    assert record == {
+        "path": relative.as_posix(),
+        "bytes": len(payload),
+        "sha256": hashlib.sha256(payload).hexdigest(),
+    }
+    assert frames._real_below(tmp_path, target)
+
+
+def test_junction_inside_a_long_path_is_still_refused(tmp_path: Path) -> None:
+    external = tmp_path.parent / f"{tmp_path.name}-long-junction-target"
+    external.mkdir()
+    try:
+        with frames._open(external / "evidence.json", "wb") as handle:
+            handle.write(b"{}")
+        relative = _beyond_max_path(tmp_path, leaf="link")
+        link = tmp_path / relative
+        os.makedirs(frames._os_path(link.parent))
+        assert len(str(link)) > 260
+        _junction(Path(frames._os_path(link)), external)
+        # The junction is genuinely visible to the long-path-aware probes ...
+        assert frames._is_reparse_point(link) and frames._unsafe_link(link)
+        # ... and traversing it is still refused, exactly as at a short path.
+        with pytest.raises(frames.FrameExtractError, match="reparse point"):
+            frames._within(tmp_path, relative / "evidence.json", "long linked evidence")
+        with pytest.raises(frames.FrameExtractError, match="reparse point"):
+            frames._within(tmp_path, relative, "long link")
+    finally:
+        link = tmp_path / _beyond_max_path(tmp_path, leaf="link")
+        if frames._is_reparse_point(link):
+            try:
+                os.rmdir(frames._os_path(link))
+            except OSError:
+                pass
+        shutil.rmtree(external, ignore_errors=True)
+
+
+def test_symlink_inside_a_long_path_is_still_refused(tmp_path: Path) -> None:
+    relative = _beyond_max_path(tmp_path, leaf="link.json")
+    link = tmp_path / relative
+    os.makedirs(frames._os_path(link.parent))
+    real = link.with_name("real.json")
+    with frames._open(real, "wb") as handle:
+        handle.write(b"{}")
+    try:
+        os.symlink(frames._os_path(real), frames._os_path(link))
+    except (OSError, NotImplementedError):
+        pytest.skip("this environment cannot create symlinks")
+    assert len(str(link)) > 260
+    assert frames._unsafe_link(link)
+    with pytest.raises(frames.FrameExtractError, match="symlink or reparse point"):
+        frames._within(tmp_path, relative, "long symlinked evidence")

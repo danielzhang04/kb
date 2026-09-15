@@ -72,9 +72,10 @@ def _depth_ok(source: str) -> bool:
 def _json(root: Path, relative: Path, label: str) -> tuple[dict[str, Any], Path, str]:
     try:
         path = frames._within(root, relative, label)
-        if not path.is_file() or path.stat().st_size > MAX_RECEIPT_BYTES:
+        if not frames._is_file(path) or frames._stat(path).st_size > MAX_RECEIPT_BYTES:
             raise FrameAssembleError(f"{label} must be a regular JSON file no larger than {MAX_RECEIPT_BYTES} bytes")
-        raw = path.read_bytes(); source = raw.decode("utf-8"); value = json.loads(source)
+        with frames._open(path, "rb") as handle: raw = handle.read()
+        source = raw.decode("utf-8"); value = json.loads(source)
     except frames.FrameExtractError as exc: raise _fail_from_frames(exc) from exc
     except (OSError, UnicodeError, json.JSONDecodeError) as exc: raise FrameAssembleError(f"cannot read {label} JSON") from exc
     if not _depth_ok(source) or not isinstance(value, dict): raise FrameAssembleError(f"{label} JSON must be a shallow object")
@@ -166,7 +167,7 @@ def _probe_fps(root: Path, relative: Path, label: str) -> Decimal:
     try:
         source = frames._within(root, relative, label)
         probe = frames._tool(frames.FFPROBE_PATH, "ffprobe")
-        rate = frames._probe_json([probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "json", str(source)], "ffprobe frame-rate probe")
+        rate = frames._probe_json([probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "json", frames._media_argument(source)], "ffprobe frame-rate probe")
         value = rate["streams"][0]["avg_frame_rate"]
         numerator, denominator = (int(part) for part in value.split("/", 1))
     except (frames.FrameExtractError, KeyError, IndexError, TypeError, ValueError) as exc:
@@ -218,21 +219,21 @@ def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, 
         run_dir = run_path.parent.relative_to(root)
         destination = frames._within(root, output_dir, "output directory", must_exist=False)
     except (frames.FrameExtractError, ValueError) as exc: raise _fail_from_frames(exc) from exc
-    if destination.exists(): raise FrameAssembleError("output directory must be fresh")
+    if frames._exists(destination): raise FrameAssembleError("output directory must be fresh")
     records = _frame_records(root, run_dir, files, budget)
     try:
-        destination.mkdir()
+        os.mkdir(frames._os_path(destination))
         if frames._unsafe_link(destination) or not frames._real_below(root, destination): raise FrameAssembleError("output directory could not be created safely")
         partial_name = f".video-{uuid.uuid4().hex}.partial.mp4"; partial = output_dir / partial_name
         final = output_dir / ("candidate.mp4" if candidate else "diagnostic.mp4")
         pattern = root / run_dir / f"{job['output_name']}_%02d.png"
-        frames._run([frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-framerate", str(FPS), "-start_number", "1", "-i", str(pattern), "-frames:v", str(FRAME_COUNT), "-c:v", "libx264", "-pix_fmt", "yuv420p", str(root / partial)], "ffmpeg frame assembly")
+        frames._run([frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-framerate", str(FPS), "-start_number", "1", "-i", frames._media_argument(pattern), "-frames:v", str(FRAME_COUNT), "-c:v", "libx264", "-pix_fmt", "yuv420p", frames._media_argument(root / partial)], "ffmpeg frame assembly")
         after_records = _frame_records(root, run_dir, files, budget)
         if any(before["bytes"] != after["bytes"] or before["sha256"] != after["sha256"] for before, after in zip(records, after_records, strict=True)):
             raise FrameAssembleError("downloaded frames changed during assembly")
         metadata = _probe_movie(root, partial)
         before = frames._hash_file(root, partial, "assembled MP4", frames.MAX_VIDEO_BYTES)
-        os.replace(root / partial, root / final)
+        os.replace(frames._os_path(root / partial), frames._os_path(root / final))
         after = frames._hash_file(root, final, "assembled MP4", frames.MAX_VIDEO_BYTES)
         if before["bytes"] != after["bytes"] or before["sha256"] != after["sha256"]: raise FrameAssembleError("assembled MP4 changed while being finalized")
         receipt = {"schema": SCHEMA, "not_promotable": True, "provenance": "local review-candidate assembly evidence; no approval or temporal-quality claim" if candidate else "local diagnostic assembly; no identity, approval, temporal-quality, or production claim", "manifest": {"path": manifest_path.as_posix(), "sha256": manifest_hash}, "run_receipt": {"path": run_receipt_path.as_posix(), "sha256": run_hash, "binding": "output_name and seed only; PNG prompt metadata requires separate review" if candidate else "output_name and seed only; harness run.json has no executed-workflow hash"}, "frames": records, "movie": after, "metadata": metadata}
@@ -283,9 +284,9 @@ def build_reel_derivative(*, root: Path, assembly_receipt_path: Path, output_dir
         destination = frames._within(root, output_dir, "output directory", must_exist=False)
     except frames.FrameExtractError as exc:
         raise _fail_from_frames(exc) from exc
-    if destination.exists():
+    if frames._exists(destination):
         raise FrameAssembleError("output directory must be fresh")
-    destination.mkdir()
+    os.mkdir(frames._os_path(destination))
     try:
         if frames._unsafe_link(destination) or not frames._real_below(root, destination):
             raise FrameAssembleError("output directory could not be created safely")
@@ -297,15 +298,15 @@ def build_reel_derivative(*, root: Path, assembly_receipt_path: Path, output_dir
         )
         source = root / native_relative
         frames._run([
-            frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-i", str(source),
-            "-vf", filter_graph, "-c:v", "libx264", "-pix_fmt", "yuv420p", str(root / partial),
+            frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-i", frames._media_argument(source),
+            "-vf", filter_graph, "-c:v", "libx264", "-pix_fmt", "yuv420p", frames._media_argument(root / partial),
         ], "ffmpeg reel derivative")
         after_native = frames._hash_file(root, native_relative, "native assembled MP4", frames.MAX_VIDEO_BYTES)
         if after_native["bytes"] != native["bytes"] or after_native["sha256"] != native["sha256"]:
             raise FrameAssembleError("native assembled MP4 changed during derivative rendering")
         derivative_metadata = _probe_reel_derivative(root, partial, expected_duration)
         before = frames._hash_file(root, partial, "reel derivative MP4", frames.MAX_VIDEO_BYTES)
-        os.replace(root / partial, root / final)
+        os.replace(frames._os_path(root / partial), frames._os_path(root / final))
         after = frames._hash_file(root, final, "reel derivative MP4", frames.MAX_VIDEO_BYTES)
         if before["bytes"] != after["bytes"] or before["sha256"] != after["sha256"]:
             raise FrameAssembleError("reel derivative MP4 changed while being finalized")

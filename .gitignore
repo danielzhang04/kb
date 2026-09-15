@@ -65,3 +65,10 @@ orgs/figment/personas/*/batches/*/board.html
 orgs/figment/pipeline/*/runs/_uploads/
 orgs/figment/pipeline/*/runs/out/
 /orgs/figment/content/.studio-revision-active/
+
+# figment pipeline run roots (F6a): `pipeline --out` defaults to
+# orgs/figment/runs/<creator>/<timestamp>/ so the `video` stage's manifest compiler has
+# one in-repo authority root holding the plan, persona.yaml, the approved still and the
+# outputs. The run bulk never belongs in git; the layout note does.
+orgs/figment/runs/*
+!orgs/figment/runs/README.md

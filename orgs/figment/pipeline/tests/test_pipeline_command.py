@@ -12,7 +12,9 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import shutil
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -20,6 +22,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[4]
 PIPELINE = ROOT / "orgs" / "figment" / "pipeline"
+RUNS_ROOT = ROOT / "orgs" / "figment" / "runs"
 
 
 def load_module(name: str, path: Path):
@@ -61,8 +64,16 @@ def _install_fake_harness(command, monkeypatch, ledger_dir: Path):
     if not ledger.is_file():
         ledger.write_text("model\tstep\tusd\n", encoding="utf-8")
     calls: list[str] = []
+    real_run = command.subprocess.run
 
-    def fake_harness(argv, cwd=None):
+    def fake_harness(argv, cwd=None, **kwargs):
+        # `monkeypatch.setattr(command.subprocess, "run", ...)` patches the one global
+        # `subprocess` module, so every other caller in the tree lands here too --
+        # notably frame_extract.py's ffmpeg/ffprobe invocations during the video stage's
+        # own local assembly. Only the pod harness is faked; everything else runs for
+        # real (all of it local and free).
+        if len(argv) < 2 or Path(str(argv[1])).name != command.POD_RUNNER.name:
+            return real_run(argv, cwd=cwd, **kwargs) if cwd is not None else real_run(argv, **kwargs)
         manifest_path = Path(argv[argv.index("--manifest") + 1])
         run_out = Path(argv[argv.index("--out") + 1])
         manifest = load_json(manifest_path)
@@ -70,6 +81,9 @@ def _install_fake_harness(command, monkeypatch, ledger_dir: Path):
         run_out.mkdir(parents=True, exist_ok=True)
         pod_id = f"pod-{len(calls)}"
         receipt = {
+            # `schema` is what the real harness writes and what frame_assemble.py's own
+            # `_run_job` insists on before it will assemble a video from a receipt.
+            "schema": "figment/runpod-run@1",
             "error": None, "dry_run": False, "pod_id": pod_id, "ledger_day": LEDGER_DAY,
             "termination_verified": True, "estimated_actual_usd": 0.01,
             "placement_attempts": [{
@@ -90,19 +104,26 @@ def _install_fake_harness(command, monkeypatch, ledger_dir: Path):
                 })
             receipt["artifacts"] = artifacts
         else:
-            for job in manifest["jobs"]:
+            # A video manifest declares the exact frame geometry frame_assemble.py
+            # re-probes per downloaded PNG; every other stage's cells are only ever
+            # read as opaque image bytes, so the cheap 8x8 fixture still applies.
+            budget = manifest.get("frame_budget") or {}
+            size = (budget.get("width", 8), budget.get("height", 8))
+            receipt["jobs"] = []
+            for number, job in enumerate(manifest["jobs"], start=1):
                 expected = job.get("expected_images", 1)
-                if expected == 1:
-                    Image.new("RGB", (8, 8)).save(run_out / f"{job['output_name']}.png")
-                else:
-                    for index in range(1, expected + 1):
-                        Image.new("RGB", (8, 8)).save(
-                            run_out / f"{job['output_name']}_{index:02d}.png",
-                        )
-            receipt["jobs"] = [{
-                "output_name": job["output_name"],
-                "files": [{"bytes": 10} for _ in range(job.get("expected_images", 1))],
-            } for job in manifest["jobs"]]
+                files = []
+                for index in range(1, expected + 1):
+                    name = (
+                        f"{job['output_name']}.png" if expected == 1
+                        else f"{job['output_name']}_{index:02d}.png"
+                    )
+                    Image.new("RGB", size, (index % 251, 80, 120)).save(run_out / name)
+                    files.append({"path": name, "bytes": (run_out / name).stat().st_size})
+                receipt["jobs"].append({
+                    "job": number, "output_name": job["output_name"],
+                    "seed": job.get("seed"), "files": files,
+                })
         (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
         model = command._pod_runner_module().gpu_model_label(manifest["gpu"]["type"])
         with ledger.open("a", encoding="utf-8") as handle:
@@ -220,10 +241,13 @@ def test_pipeline_drives_dataset_through_detail_and_halts_at_each_gate(
 
     _rule_current_grade(command, "creator-002", "detail", detail_root / "plan.json")
 
-    # ---- resume: detail ruled -> pipeline honestly stops before the unbuilt video stage,
-    # but DOES write the deliverable for everything ruled through detail ----
+    # ---- resume: detail ruled -> this run root is OUTSIDE the repository, so the video
+    # stage refuses by name (F6a) while still writing everything ruled through detail ----
     result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
-    assert result["status"] == "stopped:video-not-automated"
+    assert result["status"] == "stopped:video-out-of-tree"
+    assert "inside the repository authority root" in result["message"]
+    assert "orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/" in result["message"]
+    assert not (primary_root / "downstream" / "video").exists()
     assert result["deliverable"] == str(primary_root / "deliverable" / "manifest.json")
     deliverable = load_json(Path(result["deliverable"]))
     assert deliverable["schema"] == "figment/deliverable@1"
@@ -250,6 +274,169 @@ def test_pipeline_drives_dataset_through_detail_and_halts_at_each_gate(
     assert calls.count("creator-002-tensor-dataset-shard-01.yaml") == 1
     assert calls.count("creator-002-tensor-tester.yaml") == 1
     assert calls.count("creator-002-tensor-detail.yaml") == 1
+
+
+@pytest.fixture
+def in_repo_run_root():
+    """The `video` stage requires ONE containment root holding the plan, the REAL
+    persona.yaml, the approved still and every output -- `video_manifest`'s
+    review-candidate mode binds the plan's own in-repo persona digest -- and the boss
+    ruling fixes that root as the repository. So this fixture builds its run under the
+    same gitignored `orgs/figment/runs/` tree `pipeline --out` now defaults to, rather
+    than pytest's `tmp_path`, and removes it afterwards. The name is deliberately short:
+    the candidate output name alone is ~102 characters and Windows caps ordinary paths
+    at 260."""
+    RUNS_ROOT.mkdir(parents=True, exist_ok=True)
+    root = RUNS_ROOT / f"t{uuid.uuid4().hex[:6]}"
+    root.mkdir()
+    try:
+        yield root
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+
+
+def _drive_through_detail(command, creator_id: str, primary_root: Path, kwargs: dict) -> int:
+    """dataset -> tester (promoting the first intermediate checkpoint) -> gen -> detail,
+    applying the same "everything passes, gate_override for the fixture's fake faces"
+    ruling at each gate. Returns the promoted checkpoint step."""
+    plan_path = primary_root / "plan.json"
+    assert command.command_pipeline(creator_id, out=primary_root, **kwargs)["status"] == "GATE dataset"
+    _rule_current_grade(command, creator_id, "dataset", plan_path)
+    assert command.command_pipeline(creator_id, plan_path=plan_path, **kwargs)["status"] == "GATE tester"
+
+    plan = load_json(plan_path)
+    tester_manifest = load_json(primary_root / plan["stages"]["tester"]["runs"][0]["manifest"])
+    chosen_step = plan["training"]["save_every"]
+    filename = f"{plan['training']['trigger']}_{chosen_step:09d}.safetensors"
+    candidate = next(
+        job for job in tester_manifest["jobs"]
+        if any(item.get("field") == "lora_name" and item.get("value") == filename
+               for item in job.get("substitutions", []))
+    )
+    grade_dir = primary_root / "grade" / "tester"
+    template = load_json(grade_dir / "rulings.template.json")
+    for row in template["rulings"]:
+        row.update(_axes(), decision="keep" if row["image_id"] == candidate["output_name"] else "cull")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:05:00Z"})
+    filled = grade_dir / "filled.json"
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    command.apply_rulings(creator_id, "tester", plan_path, filled, checkpoint_step=chosen_step)
+
+    assert command.command_pipeline(creator_id, plan_path=plan_path, **kwargs)["status"] == "GATE gen"
+    _rule_current_grade(command, creator_id, "gen", primary_root / "downstream" / "gen" / "plan.json")
+    assert command.command_pipeline(creator_id, plan_path=plan_path, **kwargs)["status"] == "GATE detail"
+    _rule_current_grade(command, creator_id, "detail", primary_root / "downstream" / "detail" / "plan.json")
+    return chosen_step
+
+
+def test_pipeline_drives_an_in_repo_run_root_through_video_to_the_deliverable(
+    command, in_repo_run_root, monkeypatch,
+):
+    """F6a end to end, entirely offline: from a run whose detail stage is already ruled,
+    `pipeline` plans the video stage from gen's own kept still through the EXISTING
+    video_manifest compiler, runs it on the fake harness, assembles the native movie,
+    renders the reel derivative and the sampled frames, halts at `GATE video`, and -- once
+    ruled -- puts the reel and its correspondence hashes in the deliverable."""
+    personas = in_repo_run_root / "ps"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = in_repo_run_root / "lg"
+    calls = _install_fake_harness(command, monkeypatch, ledger_dir)
+    primary_root = in_repo_run_root / "p"
+    primary_plan_path = primary_root / "plan.json"
+    kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", primary_root, kwargs)
+
+    # ---- resume: video planned from gen's kept still, run, assembled, then GATEs ----
+    result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert result["status"] == "GATE video"
+    video_root = primary_root / "downstream" / "video"
+    source = load_json(video_root / "plan.json")["video_source"]
+
+    gen_kept = load_json(
+        primary_root / "downstream" / "gen" / "grade" / "gen" / "approved-list.json",
+    )["images"]
+    assert source["image_id"] == sorted(row["image_id"] for row in gen_kept)[0]
+    still = next(row for row in gen_kept if row["image_id"] == source["image_id"])
+    manifest_path = Path(source["manifest"])
+    # APPROVED_GEN_ADAPTER.md: the manifest is written beside the selected frame, which
+    # is in the GEN plan's output tree, not the video plan's.
+    assert manifest_path.parent == Path(still["path"]).parent
+    manifest = load_json(manifest_path)
+    assert manifest["mode"] == "review-candidate-v1"
+    assert manifest["candidate_id"] == source["candidate_id"]
+    assert manifest["jobs"][0]["expected_images"] == 81
+    assert manifest["frame_budget"] == {
+        "width": 1280, "height": 704, "frames": 81, "fps": 16, "batch_size": 1,
+    }
+    assert manifest["provenance"]["first_frame"]["approved_gen"]["image_id"] == source["image_id"]
+
+    # ---- the local evidence chain: native movie -> reel derivative -> sampled frames ----
+    assembly = load_json(video_root / "video" / "assembled" / "frame-assembly.json")
+    reel = load_json(video_root / "video" / "reel" / "reel-derivative.json")
+    extraction = load_json(video_root / "video" / "samples" / "frame-extraction.json")
+    assert len(assembly["frames"]) == 81 and assembly["candidate"]["id"] == source["candidate_id"]
+    assert reel["delivery_profile"] == {
+        "width": 1080, "height": 1920, "fps": 30,
+        "source": "content/reel-templates.yaml delivery",
+    }
+    assert reel["correspondence"]["native"]["sha256"] == assembly["movie"]["sha256"]
+    assert [row["label"] for row in extraction["frames"]] == ["first", "middle", "last"]
+
+    # ---- identity under motion: one gate row per sampled native frame ----
+    output_name = manifest["jobs"][0]["output_name"]
+    expected_ids = [f"{output_name}_{index:02d}" for index in range(1, 82, 8)]
+    graded = load_json(video_root / "grade" / "video" / "grading-manifest.json")
+    assert [row["image_id"] for row in graded["images"]] == expected_ids
+    gate = load_json(video_root / "grade" / "video" / "gate.json")
+    assert gate["schema"] == "figment/gate@1"
+    assert {row["image_id"] for row in gate["rows"]} == set(expected_ids)
+    frames_by_id = {Path(row["path"]).stem: row for row in assembly["frames"]}
+    assert set(expected_ids) <= set(frames_by_id)
+
+    # A repeat call halts at the same gate and never re-runs or re-assembles.
+    native_before = (video_root / "video" / "assembled" / "candidate.mp4").read_bytes()
+    again = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert again["status"] == "GATE video"
+    assert calls.count(manifest_path.name) == 1
+    assert (video_root / "video" / "assembled" / "candidate.mp4").read_bytes() == native_before
+
+    _rule_current_grade(command, "creator-002", "video", video_root / "plan.json")
+
+    # ---- ruled: the deliverable gains the reel plus its correspondence hashes ----
+    result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert result["status"] == "complete:video"
+    deliverable = load_json(Path(result["deliverable"]))
+    delivered = deliverable["video"]
+    reel_path = primary_root / delivered["reel"]["path"]
+    assert reel_path.is_file() and reel_path.name == f"{source['candidate_id']}.mp4"
+    assert reel_path.parent == primary_root / "deliverable" / "video"
+    # The delivered mp4 IS the recorded derivative, that derivative IS this run's own
+    # native movie, and that movie IS the 81 hash-pinned native frames.
+    assert command._sha256(reel_path) == reel["correspondence"]["derivative"]["sha256"]
+    assert delivered["reel"]["sha256"] == reel["correspondence"]["derivative"]["sha256"]
+    assert delivered["correspondence"]["native"]["sha256"] == assembly["movie"]["sha256"]
+    assert command._sha256(ROOT / assembly["movie"]["path"]) == assembly["movie"]["sha256"]
+    assert delivered["native_movie"] == assembly["movie"]
+    assert len(delivered["identity_under_motion"]) == len(expected_ids)
+    for row in delivered["identity_under_motion"]:
+        native = frames_by_id[row["image_id"]]
+        assert row["native_frame"]["sha256"] == native["sha256"]
+        assert command._sha256(ROOT / native["path"]) == native["sha256"]
+        assert row["gate"]["pass"] is True or row["ruling"]["gate_override"]
+        assert row["ruling"]["decided_by"] == "operator-fixture"
+
+    # Idempotent once video is ruled, exactly as it was through detail.
+    before = Path(result["deliverable"]).read_bytes()
+    final = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert final["status"] == "complete:video"
+    assert Path(result["deliverable"]).read_bytes() == before
+
+
+def test_video_plan_refuses_an_out_of_tree_output_directory(command, tmp_path):
+    with pytest.raises(command.FigmentTrainError, match="inside the repository authority root"):
+        command.build_plan("creator-002", "video", tmp_path / "out", skip_pin_verify=True)
 
 
 def test_pipeline_halts_and_resumes_at_anchor_then_requires_a_fresh_plan(
@@ -342,8 +529,9 @@ def test_deliverable_refuses_a_crafted_approved_list_row(command, tmp_path):
     approved_path.write_text(json.dumps(approved), encoding="utf-8")
 
     primary_root = tmp_path
+    video_root = command._pipeline_downstream_root(primary_root, "video")
     with pytest.raises(command.FigmentTrainError, match="approved gen list is not the current kept review set"):
-        command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+        command._build_deliverable("creator-002", primary_root, gen_out, detail_out, video_root)
 
     assert not (primary_root / "deliverable").exists()
 
@@ -351,8 +539,9 @@ def test_deliverable_refuses_a_crafted_approved_list_row(command, tmp_path):
 def test_deliverable_happy_path_binds_manifest_to_validated_bytes(command, tmp_path):
     gen_out, detail_out = _build_approved_gen_and_detail(command, tmp_path)
     primary_root = tmp_path
+    video_root = command._pipeline_downstream_root(primary_root, "video")
 
-    manifest = command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+    manifest = command._build_deliverable("creator-002", primary_root, gen_out, detail_out, video_root)
     assert manifest["schema"] == "figment/deliverable@1"
     gen_kept = load_json(gen_out / "grade" / "gen" / "approved-list.json")["images"]
     detail_kept = load_json(detail_out / "grade" / "detail" / "approved-list.json")["images"]
@@ -368,21 +557,39 @@ def test_deliverable_happy_path_binds_manifest_to_validated_bytes(command, tmp_p
     (primary_root / "deliverable" / "manifest.json").unlink()
     stale_still = primary_root / manifest["stills"][0]["path"]
     stale_still.write_bytes(b"stale bytes that do not match the validated source")
-    rebuilt = command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+    rebuilt = command._build_deliverable("creator-002", primary_root, gen_out, detail_out, video_root)
     assert command._sha256(stale_still) == rebuilt["stills"][0]["sha256"]
     assert stale_still.read_bytes() != b"stale bytes that do not match the validated source"
 
 
-def test_pipeline_from_stage_video_is_refused_m5(command, tmp_path):
-    """m5: `--from-stage` may only name a stage `pipeline` actually runs itself
-    (anchor..detail) -- "video" is a STAGES entry purely so the driver's own loop
-    recognizes it as the honest not-yet-automated stop, never a real resume point."""
-    with pytest.raises(command.FigmentTrainError, match=r"--from-stage must be one of"):
-        command.command_pipeline(
-            "creator-002", plan_path=tmp_path / "plan.json", from_stage="video",
-        )
-    assert "video" not in command.PIPELINE_FROM_STAGES
-    assert set(command.PIPELINE_FROM_STAGES) == set(command.STAGES) - {"video"}
+def test_pipeline_from_stage_video_resumes_without_jumping_to_the_deliverable_f6a(
+    command, in_repo_run_root, monkeypatch,
+):
+    """F6a supersedes m5: now that `video` is a real, implemented stage, `--from-stage
+    video` is a normal resume point like every other stage -- m5's exclusion applied
+    only while no such stage existed. It still never jumps straight to a video
+    deliverable entry: that stays absent until video's own GATE is ruled (B1/F6a), the
+    same rule `_build_deliverable` already enforces for `detail`."""
+    personas = in_repo_run_root / "ps"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = in_repo_run_root / "lg"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    primary_root = in_repo_run_root / "p"
+    primary_plan_path = primary_root / "plan.json"
+    kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", primary_root, kwargs)
+
+    assert "video" in command.PIPELINE_FROM_STAGES
+    assert set(command.PIPELINE_FROM_STAGES) == set(command.STAGES)
+
+    result = command.command_pipeline(
+        "creator-002", plan_path=primary_plan_path, from_stage="video", **kwargs,
+    )
+    assert result["status"] == "GATE video"
+    deliverable = load_json(Path(result["deliverable"]))
+    assert "video" not in deliverable
 
 
 def test_pipeline_cli_parser_has_no_max_usd_flag_m7(command):

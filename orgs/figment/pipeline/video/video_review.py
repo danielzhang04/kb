@@ -122,14 +122,14 @@ def _canonical(value: Any, label: str) -> str:
 def _read_json(root: Path, relative: Path, label: str) -> tuple[dict[str, Any], Path, dict[str, Any]]:
     try:
         path = frames._within(root, relative, label)
-        before = path.stat()
+        before = frames._stat(path)
         if not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > MAX_JSON_BYTES:
             raise VideoReviewError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
-        with path.open("rb") as handle:
+        with frames._open(path, "rb") as handle:
             opened = os.fstat(handle.fileno())
             raw = handle.read(MAX_JSON_BYTES + 1)
             finished = os.fstat(handle.fileno())
-        after = path.stat()
+        after = frames._stat(path)
         identity = lambda item: (item.st_dev, item.st_ino, item.st_size, item.st_mtime_ns)
         if len(raw) > MAX_JSON_BYTES:
             raise VideoReviewError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
@@ -173,14 +173,14 @@ def _frame_snapshot(root: Path, record: dict[str, Any]) -> tuple[dict[str, Any],
     relative = Path(record["path"])
     try:
         path = frames._within(root, relative, label)
-        before = os.lstat(path)
+        before = frames._lstat(path)
         if frames._unsafe_link(path) or not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > frames.MAX_FRAME_BYTES:
             raise VideoReviewError(f"{label} must be a regular file no larger than {frames.MAX_FRAME_BYTES} bytes")
-        with path.open("rb") as handle:
+        with frames._open(path, "rb") as handle:
             opened = os.fstat(handle.fileno())
             raw = handle.read(frames.MAX_FRAME_BYTES + 1)
             finished = os.fstat(handle.fileno())
-        after = os.lstat(path)
+        after = frames._lstat(path)
         unsafe_after = frames._unsafe_link(path)
     except VideoReviewError:
         raise
@@ -236,7 +236,7 @@ def _prompt_source(raw: bytes) -> str:
 
 def _prompt_text(path: Path) -> str:
     try:
-        with path.open("rb") as handle:
+        with frames._open(path, "rb") as handle:
             raw = handle.read(frames.MAX_FRAME_BYTES + 1)
     except OSError as exc:
         raise VideoReviewError("cannot read candidate PNG prompt metadata") from exc
@@ -279,7 +279,7 @@ def _rebuild_candidate(root: Path, manifest_path: Path, manifest: dict[str, Any]
     except (KeyError, IndexError, TypeError) as exc:
         raise VideoReviewError("candidate manifest lacks current producer inputs") from exc
     replay = frame_path.parent / f".{manifest['candidate_id']}.review-replay.json"
-    if (root / replay).exists():
+    if frames._exists(root / replay):
         raise VideoReviewError("candidate replay path must remain unused")
     try:
         rebuilt = video.build_manifest(
@@ -445,13 +445,13 @@ def prepare_review(
     try:
         parent_relative = destination.parent.relative_to(root)
         parent = frames._within(root, parent_relative, "review parent", must_exist=False)
-        if not parent.exists():
-            parent.mkdir()
+        if not frames._exists(parent):
+            os.mkdir(frames._os_path(parent))
         parent = frames._within(root, parent_relative, "review parent")
-        if destination.exists() or destination.is_symlink():
+        if frames._exists(destination) or frames._unsafe_link(destination):
             raise VideoReviewError("video candidate review directory must be fresh")
-        destination.mkdir()
-        created = _identity(os.lstat(destination))
+        os.mkdir(frames._os_path(destination))
+        created = _identity(frames._lstat(destination))
         destination = frames._within(root, destination_relative, "review directory")
         final, final_destination = _subject(*arguments)
         if final_destination != destination or _canonical(before, "video review subject") != _canonical(final, "video review subject"):
@@ -485,7 +485,7 @@ def _evaluation_record(subject: dict[str, Any], review_directory: str) -> dict[s
 def _cleanup_created(root: Path, destination: Path, identity: tuple[int, int]) -> None:
     """Remove only the exact directory this invocation created, never one that replaced it."""
     try:
-        current = os.lstat(destination)
+        current = frames._lstat(destination)
     except OSError:
         return
     if stat.S_ISDIR(current.st_mode) and _identity(current) == identity:
@@ -745,7 +745,7 @@ def _contained_store(root: Path, store: Path) -> Path:
         checked = frames._within(root, store.relative_to(root), "canonical video review directory")
     except (ValueError, frames.FrameExtractError) as exc:
         raise VideoReviewError("canonical video review directory is not contained below root") from exc
-    if checked != store or not checked.is_dir() or frames._unsafe_link(checked):
+    if checked != store or not frames._is_dir(checked) or frames._unsafe_link(checked):
         raise VideoReviewError("canonical video review directory is not a real contained directory")
     return checked
 
@@ -757,7 +757,7 @@ def _identity(value: os.stat_result) -> tuple[int, int]:
 def _sync_directory(directory: Path) -> None:
     if os.name == "nt":
         return  # Windows cannot open directories for fsync; the file itself was fsynced.
-    descriptor = os.open(directory, os.O_RDONLY)
+    descriptor = os.open(frames._os_path(directory), os.O_RDONLY)
     try:
         os.fsync(descriptor)
     finally:
@@ -768,9 +768,9 @@ def _remove_owned(root: Path, path: Path, identity: tuple[int, int]) -> None:
     """Unlink only the exact file this invocation created, after re-proving containment."""
     try:
         _contained_store(root, path.parent)
-        current = os.lstat(path)
+        current = frames._lstat(path)
         if stat.S_ISREG(current.st_mode) and not frames._unsafe_link(path) and _identity(current) == identity:
-            os.unlink(path)
+            os.unlink(frames._os_path(path))
     except (OSError, VideoReviewError):
         pass
 
@@ -782,16 +782,16 @@ def _exclusive_file(root: Path, path: Path, value: dict[str, Any], label: str) -
     temporary: Path | None = None
     owned: tuple[int, int] | None = None
     try:
-        descriptor, name = tempfile.mkstemp(prefix=TEMP_PREFIX, suffix=".json", dir=store)
-        temporary = Path(name)
+        descriptor, name = tempfile.mkstemp(prefix=TEMP_PREFIX, suffix=".json", dir=frames._os_path(store))
+        temporary = Path(frames._plain_path(name))
         with os.fdopen(descriptor, "wb") as handle:
             owned = _identity(os.fstat(handle.fileno()))
             handle.write(raw); handle.flush(); os.fsync(handle.fileno())
         if temporary.parent != store or not TEMP_NAME_RE.fullmatch(temporary.name):
             raise VideoReviewError(f"cannot publish {label} from an owned temporary file")
         _contained_store(root, store)
-        os.link(temporary, path)
-        if _identity(os.lstat(path)) != owned:
+        os.link(frames._os_path(temporary), frames._os_path(path))
+        if _identity(frames._lstat(path)) != owned:
             raise VideoReviewError(f"{label} publication was replaced during linking")
         _sync_directory(store)
         return owned
@@ -811,14 +811,14 @@ def _store_inventory(root: Path, store: Path) -> dict[str, Any]:
     attempts: list[str] = []
     names: set[str] = set()
     try:
-        with os.scandir(store) as entries:
+        with os.scandir(frames._os_path(store)) as entries:
             for count, entry in enumerate(entries, start=1):
                 if count > MAX_STORE_ENTRIES:
                     raise VideoReviewError("video review store exceeds its bounded entry limit")
                 name = entry.name
                 path = store / name
                 try:
-                    mode = os.lstat(path).st_mode
+                    mode = frames._lstat(path).st_mode
                 except FileNotFoundError:
                     if TEMP_NAME_RE.fullmatch(name):
                         continue  # a concurrent publisher already retracted its owned temporary
@@ -845,7 +845,7 @@ def _store_inventory(root: Path, store: Path) -> dict[str, Any]:
 def _claim_terminal(root: Path, path: Path, raw: bytes) -> None:
     _contained_store(root, path.parent)
     try:
-        with path.open("xb") as handle:
+        with frames._open(path, "xb") as handle:
             handle.write(raw); handle.flush(); os.fsync(handle.fileno())
         _sync_directory(path.parent)
     except FileExistsError as exc:
@@ -920,7 +920,7 @@ def apply_rulings(
     inventory = _store_inventory(root, destination)
     if inventory["claimed"] or inventory["accepted"] or inventory["rejected"]:
         raise VideoReviewError("video candidate already has a terminal decision or claim")
-    if normalized["attempt_id"] in inventory["attempts"] or attempt_path.exists() or attempt_path.is_symlink():
+    if normalized["attempt_id"] in inventory["attempts"] or frames._exists(attempt_path) or frames._unsafe_link(attempt_path):
         raise VideoReviewError("video review attempt already exists")
     if len(inventory["attempts"]) >= MAX_ATTEMPTS:
         raise VideoReviewError("video review store has no remaining attempt capacity")
