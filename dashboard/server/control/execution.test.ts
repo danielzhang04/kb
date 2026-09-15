@@ -3433,3 +3433,41 @@ describe('AutomaticExecutionEngine two-phase attempt start', () => {
     }
   });
 });
+
+/**
+ * F1: the engine must invoke the optional `curatedContext` resolver with the ALREADY-VALIDATED skill
+ * ids (`skills.skills`, post curated-set admission — never the raw requested set) and the approved
+ * proposal's project, and must never swallow a warning the resolver reports: it is logged against the
+ * exact run/stage/attempt, not dropped. `curatedContext` is optional, so every other suite in this file
+ * (which never sets it) is unaffected.
+ */
+describe('curated context resolver (F1)', () => {
+  it('invokes the resolver with the validated skill ids and surfaces its warning on the log, never swallowed', async () => {
+    const store = createStore();
+    const plan = proposal([stage('a')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const resolveCalls: Array<{ operationKey: string; skillIds: readonly string[]; agentId: string | null; project: string }> = [];
+    const options = engineOptions(store, fake);
+    options.curatedContext = {
+      resolve(input) {
+        resolveCalls.push(input);
+        return { blocks: [], warnings: ["project 'kb-ops' GOAL.md is unavailable"] };
+      },
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+        subject: 'operator', runRef: run.runRef, proposal: plan,
+      });
+      expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['a'] });
+      // Assert while the spy is still live: `mockRestore()` clears recorded call history.
+      expect(resolveCalls).toHaveLength(1);
+      expect(resolveCalls[0].skillIds).toEqual(['tests']);
+      expect(resolveCalls[0].project).toBe('kb-ops');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("project 'kb-ops' GOAL.md is unavailable"));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+});

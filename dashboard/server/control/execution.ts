@@ -112,6 +112,28 @@ export interface SkillResolver {
   }): Promise<{ ok: true; skills: readonly string[] } | { ok: false; reason: string }>;
 }
 
+/** One bounded, pre-labeled block of curated prompt context. Rendered only as inert boundary data. */
+export interface CuratedContextBlock {
+  /** Short human label the block is rendered under, e.g. "SKILL: code-review". */
+  label: string;
+  text: string;
+}
+
+export interface CuratedContextResolver {
+  /**
+   * Best-effort, bounded curated context for one attempt: the already-validated skill ids' SKILL.md
+   * bodies, the assigned agent's declared knowledge source, and the project's GOAL.md/STATE.md frame.
+   * Never throws — a missing skill catalog entry, agent, or frame file is omitted and recorded as a
+   * warning string instead, so a resolution problem degrades the prompt rather than the run.
+   */
+  resolve(input: {
+    operationKey: string;
+    skillIds: readonly string[];
+    agentId: string | null;
+    project: string;
+  }): { blocks: readonly CuratedContextBlock[]; warnings: readonly string[] };
+}
+
 export interface WorkerArtifactResult {
   path: string;
   digest: string;
@@ -176,6 +198,8 @@ export interface WorkerAdapter {
      */
     proposalStage?: ProposalStage;
     project?: string;
+    /** Bounded curated-context blocks (skill bodies, knowledge source, project frame) — inert data only. */
+    curatedContext?: readonly CuratedContextBlock[];
   }): AttemptLaunch;
 }
 
@@ -276,6 +300,8 @@ export interface AutomaticExecutionOptions {
   resolvePolicy?: (project: string) => PolicyEnvironment;
   /** Required only for assigned compiler snapshots; legacy unassigned runs never invoke it. */
   assignedAgents?: AssignedAgentResolver;
+  /** Optional server-owned resolver for bounded curated-skill/knowledge/project-frame prompt context. */
+  curatedContext?: CuratedContextResolver;
   worktreeRoot: string;
   /** Server-owned ceiling shared by every active run. */
   maxConcurrency: number;
@@ -2223,6 +2249,17 @@ export class AutomaticExecutionEngine {
       this.transitionSession(input, session.sessionRef, 'waiting');
       return { state: 'waiting-human', stageId: stage.stageId };
     }
+    // Best-effort: a resolution problem (missing skill catalog entry, missing frame file) degrades the
+    // prompt, never the run. Warnings are logged against this exact attempt so they are never swallowed.
+    const curated = this.options.curatedContext?.resolve({
+      operationKey: `curated-context:${attempt.attemptRef}`,
+      skillIds: skills.skills,
+      agentId: assignedAgent?.assignment.agentId ?? null,
+      project: input.proposal.project,
+    });
+    for (const warning of curated?.warnings ?? []) {
+      console.warn(`curated context [run ${input.runRef} stage ${stage.stageId} attempt ${attempt.attemptRef}]: ${warning}`);
+    }
     const reservation = await this.options.accounting.reserve({
       operationKey: `reserve:${attempt.attemptRef}`,
       subject: input.subject,
@@ -2288,6 +2325,7 @@ export class AutomaticExecutionEngine {
         checkpoints: proposalStage.checkpoints.map((checkpoint) => checkpoint.id),
         proposalStage,
         project: input.proposal.project,
+        curatedContext: curated?.blocks,
         ...(iterationContract ? { iterationContract, expectsIterationOutcome: true } : {}),
         ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });

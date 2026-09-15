@@ -362,6 +362,7 @@ function prepareAttempt(
     workOrder: input.workOrder,
     readScope: input.readScope,
     writeScope: input.writeScope,
+    curatedContext: input.curatedContext,
     ...(input.profile.runtime === 'codex' && !resumeRef && input.instructionMarkdown !== undefined
       ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
     ...(input.iterationContract

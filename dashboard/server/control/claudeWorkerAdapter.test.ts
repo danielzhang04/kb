@@ -20,6 +20,8 @@ import {
   createClaudeWorkerAdapter,
   DEFAULT_MAX_OUTPUT_BYTES,
   DEFAULT_TIMEOUT_MS,
+  END_INERT_CONTEXT,
+  INERT_CONTEXT_BOUNDARY,
   relativeWorktreeCwd,
 } from './claudeWorkerAdapter.ts';
 
@@ -111,7 +113,7 @@ function workerInput(input: ApprovedAttemptDeclaration): Parameters<WorkerAdapte
     checkpoints: input.checkpoints,
     ...(input.assignment ? { assignment: input.assignment, instructionMarkdown: input.instructionMarkdown } : {}),
     ...(input.iterationContract ? { iterationContract: input.iterationContract, expectsIterationOutcome: true } : {}),
-    proposalStage: input.proposalStage, project: input.project,
+    proposalStage: input.proposalStage, project: input.project, curatedContext: input.curatedContext,
   };
 }
 
@@ -505,5 +507,49 @@ describe('buildWorkerPrompt iteration contract emptiness rule', () => {
     expect(lines[shapeIndex + 1]).toBe(
       'positions and recordedDissent MUST be [] unless the verdict is exactly "consensus" or "continue".',
     );
+  });
+});
+
+/**
+ * F1: curated skill bodies, the declared knowledge source, and the project frame (GOAL.md/STATE.md)
+ * are resolved server-side (adapters.ts `createCuratedContextResolver`) into bounded, labeled blocks
+ * and must render exactly like every other inert-boundary datum — inside INERT_CONTEXT_BOUNDARY, before
+ * END_INERT_CONTEXT, never as authority.
+ */
+describe('buildWorkerPrompt curated context', () => {
+  it('renders a skill body and a project frame block inside the inert boundary', () => {
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Review the change.', readScope: ['dashboard'], writeScope: [],
+      curatedContext: [
+        { label: 'SKILL: code-review', text: 'Review evidence, not appearances.' },
+        { label: 'PROJECT FRAME: STATE.md', text: 'Now: nothing yet.' },
+      ],
+    });
+    const boundaryIndex = prompt.indexOf(INERT_CONTEXT_BOUNDARY);
+    const endIndex = prompt.indexOf(END_INERT_CONTEXT);
+    const skillIndex = prompt.indexOf('Review evidence, not appearances.');
+    const frameIndex = prompt.indexOf('Now: nothing yet.');
+    expect(boundaryIndex).toBeGreaterThanOrEqual(0);
+    expect(endIndex).toBeGreaterThan(boundaryIndex);
+    expect(skillIndex).toBeGreaterThan(boundaryIndex);
+    expect(skillIndex).toBeLessThan(endIndex);
+    expect(frameIndex).toBeGreaterThan(boundaryIndex);
+    expect(frameIndex).toBeLessThan(endIndex);
+  });
+
+  it('omits the inert boundary entirely when no curated context or other inert data is present', () => {
+    const prompt = buildWorkerPrompt({ workOrder: 'Review the change.', readScope: [], writeScope: [] });
+    expect(prompt).not.toContain(INERT_CONTEXT_BOUNDARY);
+  });
+
+  it('truncates curated context beyond its byte cap with a visible marker', () => {
+    const huge = 'x'.repeat(70 * 1024);
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Review the change.', readScope: [], writeScope: [],
+      curatedContext: [{ label: 'SKILL: huge', text: huge }],
+    });
+    expect(prompt).toContain('[TRUNCATED: curated context exceeded its byte cap]');
+    // The cap is enforced on the joined block text, so the huge input must not survive intact.
+    expect(prompt.includes(huge)).toBe(false);
   });
 });
