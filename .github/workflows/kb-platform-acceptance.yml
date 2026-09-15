@@ -35,5 +35,5 @@ jobs:
       # before the vitest gate would remove typescript/vitest, which the suite and the broker build need.
       - run: npm run build:pty-broker
         working-directory: dashboard
-      - run: npm test -- server/control server/placement server/api/v1 server/pty
+      - run: npm test -- server/control server/placement server/api/v1 server/pty server/schema server/entities server/workflows server/index.test.ts src
         working-directory: dashboard

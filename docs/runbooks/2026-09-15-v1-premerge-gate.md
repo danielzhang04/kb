@@ -24,7 +24,7 @@ Run from repo root unless noted; `dashboard/` steps need `npm ci` in `dashboard/
 3. `npm run build` (in `dashboard/`)
 4. `npm run build:pty-broker` (in `dashboard/` — must run on Linux; the archive packer refuses a
    broker built on a non-Linux host)
-5. `npm test -- server/control server/placement server/api/v1 server/pty` (in `dashboard/`)
+5. `npm test -- server/control server/placement server/api/v1 server/pty server/schema server/entities server/workflows server/index.test.ts src` (in `dashboard/`)
 
 No `npm prune` anywhere in the gate: pruning devDependencies before step 5 would remove
 `typescript`/`vitest`, which the build and test steps still need.
@@ -40,7 +40,7 @@ npm run typecheck
 npm run build
 npm run build:pty-broker
 npm test                                                          # full suite
-npm test -- server/control server/placement server/api/v1 server/pty   # the CI-gated slice
+npm test -- server/control server/placement server/api/v1 server/pty server/schema server/entities server/workflows server/index.test.ts src   # the CI-gated slice
 ```
 
 The full `npm test` is the broader local check; the focused `server/control server/placement
