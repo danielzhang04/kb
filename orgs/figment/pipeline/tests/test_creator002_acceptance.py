@@ -251,15 +251,21 @@ def test_creator002_persona_fixture_loads_and_validates(command):
 
 def test_creator002_plan_all_dry_runs_clean_and_carries_only_her_own_identity(tmp_path):
     out = tmp_path / "plan-all"
+    # R3/M2: this fixture's arc ledger is already near its cap from other tests' spend
+    # (see test_known_defect_arc_cap_refuses_a_plan_that_would_overspend et al.), so the
+    # M2 budget preflight refuses this plan by default -- a manifest/identity check, not
+    # a budget check, so accept it explicitly the same way test_figment_train.py's
+    # sibling fixtures do for build_plan(accept_budget=True).
     result = run_cli([
         "plan", "--creator", CREATOR, "--stage", "all", "--out", str(out),
-        "--skip-pin-verify",
+        "--skip-pin-verify", "--accept-budget",
     ])
     assert result.returncode == 0, result.stdout + result.stderr
 
     plan = load_json(out / "plan.json")
     assert plan["creator"] == CREATOR
     assert plan["training"]["trigger"] == TRIGGER
+    assert plan["budget_preflight"]["accepted"] is True
     # "gen" is never planned by --stage all; "anchor" is included (this fixture has no
     # promoted anchor yet -- identity.history is absent).
     assert set(plan["stages"]) == {"anchor", "dataset", "smoke", "train", "tester"}
