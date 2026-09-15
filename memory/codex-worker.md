@@ -441,3 +441,7 @@ Have a human review and merge PR #76 only if the production-logic diff is accept
 ## Test-strengthening note (2026-08-14)
 
 - A “no generated cards” test must assert the launch response's canonical card collection, not the absence of an unrelated temp directory; a temporary injected turn-card proved the exact-set assertion fails as intended.
+
+## 2026-09-14 - shared handoff delivery
+
+Publish shared handoffs through current ops, not only a private worktree commit. Verify the file is discoverable from the shared checkout (`kb-worktrees/dashboard-ops/handoffs/`) and that STATE points to it; private checkouts are archival, never the load target.
