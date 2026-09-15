@@ -9,14 +9,21 @@
 import Fastify from 'fastify';
 import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import type { FastifyInstance } from 'fastify';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
-import { createInMemoryControlPlaneStore } from './store.ts';
+import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
+import {
+  canonicalIntegrationStatePath,
+  clearIntegrationJournalCache,
+  runIntegrationDir,
+} from './integrationLayout.ts';
 import { ARTIFACT_DOWNLOAD_MAX_BYTES } from './artifactFiles.ts';
 import { sha256HexBytes } from '../shared/hashing.ts';
+import { outputHref } from '../entities/outputs.ts';
+import type { OutputRef } from './p2Contracts.ts';
 
 const SESSION: SessionConfig = { secret: Buffer.from('files-route-test-secret-32-bytes!!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
@@ -56,6 +63,7 @@ describe('scoped artifact download', () => {
   let app: FastifyInstance;
   let token: string;
   let auditRows: Record<string, unknown>[];
+  let controlStore: ControlPlaneStore;
 
   beforeEach(() => {
     repoRoot = mkdtempSync(join(tmpdir(), 'files-route-repo-'));
@@ -77,6 +85,8 @@ describe('scoped artifact download', () => {
     writeFileSync(join(repoRoot, 'secret.txt'), 'do not serve me');
 
     auditRows = [];
+    controlStore = createInMemoryControlPlaneStore();
+    clearIntegrationJournalCache();
     token = mintSession('operator', SESSION).token;
     app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
@@ -84,7 +94,7 @@ describe('scoped artifact download', () => {
       stateRoot,
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
-      controlStore: createInMemoryControlPlaneStore(),
+      controlStore,
       appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       appendAuditLocal: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
     }));
@@ -257,5 +267,219 @@ describe('scoped artifact download', () => {
       expect(res.body).not.toContain('planted bytes');
     }
     rmSync(outside, { recursive: true, force: true });
+  });
+  // -------------------------------------------------------------------------------------------
+  // The RUN entity. A canonical run's artifacts never land in the checkout: the integrator
+  // materializes them in that run's OWN integration worktree under the state root
+  // (`integrationLayout.ts`). Every case below writes them exactly where the integrator does, and
+  // the roots the route admits are derived from the approved plan + the integration journal.
+  // -------------------------------------------------------------------------------------------
+
+  const RUN_BRIEF = 'orgs/demo/output/run-brief.json';
+  const RUN_SCRATCH = 'orgs/demo/output/scratch.txt';
+
+  /** One approved single-stage plan + its run. `declared` is what the plan claims as artifacts. */
+  function seedRun(suffix: string, declared: string[]): string {
+    const proposal = controlStore.createProposalRevision('operator', {
+      sourceComposerRef: `composer-${suffix}`,
+      sourceTurnId: `turn-${suffix}`,
+      title: `Run ${suffix}`,
+      snapshot: {
+        schema: 'kb.plan-proposal/v1',
+        title: `Run ${suffix}`,
+        manager: {},
+        stages: [{
+          id: 'writer', title: 'Writer', dependsOn: [],
+          artifacts: declared.map((path, index) => ({ id: `artifact-${index}`, path })),
+        }],
+      },
+    });
+    if (!proposal.ok) throw new Error(proposal.detail);
+    const approved = controlStore.decideProposal('operator', proposal.value.proposalRef, proposal.value.revision, {
+      expectedHash: proposal.value.hash,
+      expectedApprovalRevision: 0,
+      decision: 'approved',
+      idempotencyKey: `approve-${suffix}`,
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const run = controlStore.createRun('operator', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: `Run ${suffix}`,
+      proposalRef: approved.value.proposalRef,
+      proposalRevision: approved.value.revision,
+      expectedProposalHash: approved.value.hash,
+      managerRuntime: 'claude',
+      managerModel: 'claude-sonnet-5',
+      idempotencyKey: `launch-${suffix}`,
+      stages: [{ stageId: 'writer', title: 'Writer', dependsOn: [] }],
+    });
+    if (!run.ok) throw new Error(run.detail);
+    return run.value.run.runRef;
+  }
+
+  type JournalRecord = {
+    runRef: string; stageId: string; state: string;
+    result: { changed: { path: string; digest: string }[] };
+  };
+
+  /** The integrator's own journal, at the integrator's own path. */
+  function writeJournal(records: JournalRecord[]): void {
+    const path = canonicalIntegrationStatePath(stateRoot);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, JSON.stringify({ schema: 'kb.canonical-integration/v1', records }), 'utf8');
+    clearIntegrationJournalCache();
+  }
+
+  /** The integrated bytes, in the run's own integration worktree. */
+  function writeIntegrated(runRef: string, path: string, body: string): void {
+    const destination = join(runIntegrationDir(stateRoot, runRef), ...path.split('/'));
+    mkdirSync(dirname(destination), { recursive: true });
+    writeFileSync(destination, body, 'utf8');
+  }
+
+  function journalRecord(runRef: string, state: string, paths: string[]): JournalRecord {
+    return {
+      runRef, stageId: 'writer', state,
+      result: { changed: paths.map((path) => ({ path, digest: 'b'.repeat(64) })) },
+    };
+  }
+
+  function runUrl(runRef: string, path: string, sha: string): string {
+    return `/api/control/files?path=${encodeURIComponent(path)}&sha256=${encodeURIComponent(sha)}`
+      + `&entityType=run&entityId=${encodeURIComponent(runRef)}`;
+  }
+
+  /**
+   * RED ON REVERT. Point the run branch at `ctx.repoRoot` (the pre-fix behaviour, and the whole reason
+   * acceptance item 6 failed on the VM) and this 200 becomes a 404: the checkout holds DIFFERENT bytes at
+   * this very path, so it cannot even be rescued by the digest.
+   */
+  it('serves a run-entity link from the run OWN integration worktree, not the checkout', async () => {
+    const runRef = seedRun('own', [RUN_BRIEF]);
+    const integrated = '{"brief":"integrated bytes"}\n';
+    writeIntegrated(runRef, RUN_BRIEF, integrated);
+    // The same path in the CHECKOUT, with different bytes, is what a repo-rooted route would find.
+    mkdirSync(join(repoRoot, 'orgs', 'demo', 'output'), { recursive: true });
+    writeFileSync(join(repoRoot, 'orgs', 'demo', 'output', 'run-brief.json'), '{"brief":"checkout bytes"}\n');
+    writeJournal([journalRecord(runRef, 'canonical-committed', [RUN_BRIEF])]);
+
+    const digest = sha256HexBytes(Buffer.from(integrated, 'utf8'));
+    const res = await app.inject({ method: 'GET', url: runUrl(runRef, RUN_BRIEF, digest), headers: headers(token) });
+    expect([res.statusCode, res.body]).toEqual([200, integrated]);
+    expect(res.headers['content-disposition']).toBe('attachment; filename="run-brief.json"');
+    const row = auditRows.find((entry) => entry.action === 'control-artifact-download');
+    expect(row).toMatchObject({ owner: 'operator', riskTier: 'T2', target: RUN_BRIEF });
+  });
+
+  it('refuses a path inside the integration worktree that the run never declared, and one outside it', async () => {
+    const runRef = seedRun('scoped', [RUN_BRIEF]);
+    const integrated = 'declared\n';
+    const scratch = 'undeclared\n';
+    writeIntegrated(runRef, RUN_BRIEF, integrated);
+    writeIntegrated(runRef, RUN_SCRATCH, scratch);
+    // The journal saw BOTH change; only the declared one is an output.
+    writeJournal([journalRecord(runRef, 'canonical-committed', [RUN_BRIEF, RUN_SCRATCH])]);
+
+    const undeclared = await app.inject({
+      method: 'GET',
+      url: runUrl(runRef, RUN_SCRATCH, sha256HexBytes(Buffer.from(scratch, 'utf8'))),
+      headers: headers(token),
+    });
+    expect([undeclared.statusCode, undeclared.json()]).toEqual([404, { error: 'not found' }]);
+    expect(undeclared.body).not.toContain('undeclared');
+
+    for (const path of ['../secret.txt', 'orgs/demo/output/../../../secret.txt', 'orgs/demo/workflows/demo.md', BRIEF]) {
+      const res = await app.inject({
+        method: 'GET',
+        url: runUrl(runRef, path, sha256HexBytes(Buffer.from(BODY, 'utf8'))),
+        headers: headers(token),
+      });
+      expect([path, res.statusCode, res.json()]).toEqual([path, 404, { error: 'not found' }]);
+    }
+    expect(auditRows.filter((entry) => entry.action === 'control-artifact-download')).toEqual([]);
+  });
+
+  /**
+   * RED ON REVERT for the per-run base. Both runs declare the SAME repo-relative path and both
+   * integrated it, with different bytes. A route that resolved a run link anywhere but that run's own
+   * integration directory would serve one run's brief under the other run's link.
+   */
+  it('cannot redeem one run link for another run artifact', async () => {
+    const first = seedRun('first', [RUN_BRIEF]);
+    const second = seedRun('second', [RUN_BRIEF]);
+    writeIntegrated(first, RUN_BRIEF, 'first brief\n');
+    writeIntegrated(second, RUN_BRIEF, 'second brief\n');
+    writeJournal([
+      journalRecord(first, 'canonical-committed', [RUN_BRIEF]),
+      journalRecord(second, 'canonical-committed', [RUN_BRIEF]),
+    ]);
+    const firstDigest = sha256HexBytes(Buffer.from('first brief\n', 'utf8'));
+    const secondDigest = sha256HexBytes(Buffer.from('second brief\n', 'utf8'));
+
+    const own = await app.inject({ method: 'GET', url: runUrl(second, RUN_BRIEF, secondDigest), headers: headers(token) });
+    expect([own.statusCode, own.body]).toEqual([200, 'second brief\n']);
+
+    const crossed = await app.inject({ method: 'GET', url: runUrl(second, RUN_BRIEF, firstDigest), headers: headers(token) });
+    expect([crossed.statusCode, crossed.json()]).toEqual([404, { error: 'not found' }]);
+    expect(crossed.body).not.toContain('first brief');
+    expect(auditRows.filter((entry) => entry.action === 'control-artifact-download')).toHaveLength(1);
+  });
+
+  it('refuses a bad digest, an unknown run, and a run whose integration never reached canonical', async () => {
+    const runRef = seedRun('mismatch', [RUN_BRIEF]);
+    const integrated = 'integrated\n';
+    writeIntegrated(runRef, RUN_BRIEF, integrated);
+    const stranded = seedRun('stranded', [RUN_BRIEF]);
+    writeIntegrated(stranded, RUN_BRIEF, integrated);
+    // `stranded` has BYTES on disk but its record never reached canonical-committed: not an output.
+    writeJournal([
+      journalRecord(runRef, 'canonical-committed', [RUN_BRIEF]),
+      journalRecord(stranded, 'lineage-committed', [RUN_BRIEF]),
+    ]);
+    const digest = sha256HexBytes(Buffer.from(integrated, 'utf8'));
+
+    const tampered = await app.inject({ method: 'GET', url: runUrl(runRef, RUN_BRIEF, 'a'.repeat(64)), headers: headers(token) });
+    expect([tampered.statusCode, tampered.json()]).toEqual([404, { error: 'not found' }]);
+
+    const unknown = await app.inject({ method: 'GET', url: runUrl('run-absent', RUN_BRIEF, digest), headers: headers(token) });
+    expect([unknown.statusCode, unknown.json()]).toEqual([404, { error: 'not found' }]);
+
+    const belowCanonical = await app.inject({ method: 'GET', url: runUrl(stranded, RUN_BRIEF, digest), headers: headers(token) });
+    expect([belowCanonical.statusCode, belowCanonical.json()]).toEqual([404, { error: 'not found' }]);
+    expect(belowCanonical.body).not.toContain('integrated');
+  });
+
+  /** The run DTO is the only producer of run links, and it projects integrated declared artifacts only. */
+  it('projects the run DTO outputs from integrated declared artifacts, and serves the link it minted', async () => {
+    const runRef = seedRun('dto', [RUN_BRIEF]);
+    const integrated = '{"brief":"dto bytes"}\n';
+    writeIntegrated(runRef, RUN_BRIEF, integrated);
+    writeIntegrated(runRef, RUN_SCRATCH, 'undeclared\n');
+    writeJournal([journalRecord(runRef, 'canonical-committed', [RUN_BRIEF, RUN_SCRATCH])]);
+
+    const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
+    expect(detail.statusCode, detail.body).toBe(200);
+    const outputs = (detail.json() as { value: { outputs: OutputRef[] } }).value.outputs;
+    expect(outputs).toEqual([{
+      kind: 'artifact',
+      label: 'run-brief.json',
+      path: RUN_BRIEF,
+      digest: sha256HexBytes(Buffer.from(integrated, 'utf8')),
+      entity: { type: 'run', id: runRef },
+    }]);
+
+    // The DTO's own href, followed verbatim - no test-built URL in this leg.
+    const served = await app.inject({ method: 'GET', url: outputHref(outputs[0]!), headers: headers(token) });
+    expect([served.statusCode, served.body]).toEqual([200, integrated]);
+  });
+
+  it('projects no run outputs while the integration is below canonical-committed', async () => {
+    const runRef = seedRun('below', [RUN_BRIEF]);
+    writeIntegrated(runRef, RUN_BRIEF, 'integrated\n');
+    writeJournal([journalRecord(runRef, 'lineage-committed', [RUN_BRIEF])]);
+    const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
+    expect(detail.statusCode, detail.body).toBe(200);
+    expect((detail.json() as { value: { outputs: OutputRef[] } }).value.outputs).toEqual([]);
   });
 });

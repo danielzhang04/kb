@@ -30,6 +30,7 @@ import {
 } from './execution.ts';
 import { createLocalGitCommandRunner, type GitCommandRunner } from './adapters.ts';
 import { isSafeRepoRelativePath, type ProposalIterationGroup, type ProposalReview } from './proposal.ts';
+import { canonicalIntegrationStatePath, integrationDirFor } from './integrationLayout.ts';
 import {
   parseIterationOutcome,
   type IterationOutcome,
@@ -649,7 +650,8 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
   const git = options.gitRunner ?? createLocalGitCommandRunner();
   const rawOpsGit = options.coordinationGit ?? defaultGitRunner;
   const runPy = options.runPy ?? defaultPyRunner;
-  const statePath = join(stateRoot, 'control', 'canonical-integration.json');
+  // The layout the READ side re-derives (`integrationLayout.ts`); one definition, never two.
+  const statePath = canonicalIntegrationStatePath(stateRoot);
   // [C-S4] No eager mkdir under the worktree root. On the VM that root is `/var/lib/kb-shell/worktrees`,
   // broker-owned (02770, installer-created) and not writable by the dashboard uid at composition time, so
   // creating it here made activation unconstructible on Linux (EACCES). Nothing is lost: `core.hooksPath`
@@ -717,7 +719,7 @@ export function createCanonicalGitResultIntegrator(options: CanonicalGitResultIn
     if (result.exitCode !== 0) throw new CanonicalResultIntegrationError(`${label} failed: ${result.stderr.slice(0, 512)}`);
     return result.stdout.toString('utf8').trim();
   };
-  const integrationPath = (runRef: string): string => join(integrationRoot, createHash('sha256').update(runRef).digest('hex').slice(0, 24));
+  const integrationPath = (runRef: string): string => integrationDirFor(integrationRoot, runRef);
   const verifyRepoWorktree = async (path: string, label: string): Promise<void> => {
     const top = await gitRun(['rev-parse', '--show-toplevel'], path, `${label} root verification`);
     if (canonicalExistingPath(top) !== canonicalExistingPath(path)) {

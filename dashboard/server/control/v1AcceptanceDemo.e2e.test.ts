@@ -25,7 +25,13 @@ import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import { sha256HexBytes } from '../shared/hashing.ts';
 import { outputRootsForEntity } from './artifactFilesRoute.ts';
 import { createOutputDigestReader } from './artifactFiles.ts';
-import { projectOutputRef } from '../entities/outputs.ts';
+import { projectOutputRef, outputHref } from '../entities/outputs.ts';
+import {
+  canonicalIntegrationStatePath,
+  clearIntegrationJournalCache,
+  runIntegrationDir,
+} from './integrationLayout.ts';
+import type { OutputRef } from './p2Contracts.ts';
 import { createInMemoryControlPlaneStore, type ControlPlaneStore } from './store.ts';
 import { ARTIFACT_PRODUCING_REQUEST_KINDS, proposalContentHash, validateServerCompiledPlanProposal } from './proposal.ts';
 import type { PlanProposal } from './proposal.ts';
@@ -171,6 +177,8 @@ interface DemoHarness {
   starts: BeginInput[];
   integrations: Parameters<ResultIntegrator['integrate']>[0][];
   prompts: Map<string, string[]>;
+  /** The dashboard state root the fake integrator materializes canonical integrations into. */
+  stateRoot: string;
 }
 
 interface HarnessOptions {
@@ -181,6 +189,7 @@ interface HarnessOptions {
   dieOnce?: readonly string[];
   store?: ControlPlaneStore;
   repoRoot?: string;
+  stateRoot?: string;
   maxConcurrency?: number;
   curatedContext?: CuratedContextResolver;
 }
@@ -210,6 +219,10 @@ function harness(options: HarnessOptions): DemoHarness {
   const { runRef } = launchRun(store, plan);
   const repoRoot = options.repoRoot ?? makeFixtureRepo();
   const worktreeRoot = tempDir('v1-demo-worktrees-');
+  // The SAME state root the surface below is composed over, created here because the integrator runs
+  // long before any route does. Canonical integrations land under it exactly as production lands them.
+  const stateRoot = options.stateRoot ?? tempDir('v1-demo-state-');
+  const journal: Record<string, unknown>[] = [];
 
   const starts: BeginInput[] = [];
   const integrations: Parameters<ResultIntegrator['integrate']>[0][] = [];
@@ -367,14 +380,35 @@ function harness(options: HarnessOptions): DemoHarness {
       // Every canonical integration advances the head, including a turn that changed no declared file:
       // the dependent's lineage resolution must still find a commit to base on.
       canonicalHead = integrationCommit;
-      // The canonical effect on the real repo: the declared artifact lands where the download route
-      // will look for it.
+      // The canonical effect, in BOTH places production puts it.
+      //
+      // (a) The repository checkout, for the workflow-entity download the older scenario asserts.
+      // (b) The run's OWN integration worktree plus the integration journal — the layout
+      //     `canonicalResultIntegrator.ts` actually writes (`integrationLayout.ts` owns both paths, and
+      //     the read side derives them from the SAME functions). Until this existed the run detail DTO
+      //     had no outputs at all and a completed run's artifact was undownloadable, which is precisely
+      //     what run-dacc2a6d showed on the rehearsal VM.
+      const integrationDir = runIntegrationDir(stateRoot, input.runRef);
       for (const changed of input.changed) {
         const source = join(input.worktreePath, changed.path);
-        const destination = join(repoRoot, changed.path);
-        mkdirSync(dirname(destination), { recursive: true });
-        try { writeFileSync(destination, readFileSync(source)); } catch { /* nothing produced */ }
+        let bytes: Buffer | null = null;
+        try { bytes = readFileSync(source); } catch { bytes = null; /* nothing produced */ }
+        if (!bytes) continue;
+        for (const destination of [join(repoRoot, changed.path), join(integrationDir, changed.path)]) {
+          mkdirSync(dirname(destination), { recursive: true });
+          writeFileSync(destination, bytes);
+        }
       }
+      journal.push({
+        runRef: input.runRef,
+        stageId: input.stageId,
+        state: 'canonical-committed',
+        result: { artifacts: [...input.artifacts], changed: [...input.changed] },
+      });
+      const journalPath = canonicalIntegrationStatePath(stateRoot);
+      mkdirSync(dirname(journalPath), { recursive: true });
+      writeFileSync(journalPath, JSON.stringify({ schema: 'kb.canonical-integration/v1', records: journal }), 'utf8');
+      clearIntegrationJournalCache();
       results.set(input.operationKey, {
         summary: input.summary, artifacts: [...input.artifacts], changed: [...input.changed],
         checkpoints: [...input.checkpoints],
@@ -399,7 +433,7 @@ function harness(options: HarnessOptions): DemoHarness {
     curatedContext: options.curatedContext ?? createCuratedContextResolver(repoRoot),
   };
   return {
-    store, plan, runRef, repoRoot, starts, integrations, prompts,
+    store, plan, runRef, repoRoot, stateRoot, starts, integrations, prompts,
     engine: new AutomaticExecutionEngine(engineOptions),
   };
 }
@@ -427,9 +461,11 @@ function detailOf(demo: DemoHarness) {
 // The control surface — real routes over the SAME store the engine just drove.
 // ---------------------------------------------------------------------------------------------
 
-function surface(store: ControlPlaneStore, repoRoot: string) {
+function surface(store: ControlPlaneStore, repoRoot: string, sharedStateRoot?: string) {
   const auditRows: Record<string, unknown>[] = [];
-  const stateRoot = tempDir('v1-demo-state-');
+  // The harness's OWN state root when one is given, so the routes read the very integrations the
+  // engine just wrote. A scenario that touches no run output can still take a fresh one.
+  const stateRoot = sharedStateRoot ?? tempDir('v1-demo-state-');
   const app = Fastify();
   registerWriteSurface(app, makeSurfaceContext({
     repoRoot, stateRoot, sessionConfig: SESSION, allowedOrigins: [ORIGIN],
@@ -672,7 +708,7 @@ describe('v1 acceptance demo — the declared artifact downloads by digest', () 
     const digest = projectedArtifactDigest(demo.repoRoot, path);
     expect(digest).toBe(sha256HexBytes(onDisk));
 
-    const { app, token } = surface(demo.store, demo.repoRoot);
+    const { app, token } = surface(demo.store, demo.repoRoot, demo.stateRoot);
     openApps.push(app);
     await app.ready();
     const url = (sha: string) => `/api/control/files?path=${encodeURIComponent(path)}&sha256=${encodeURIComponent(sha)}` +
@@ -689,6 +725,44 @@ describe('v1 acceptance demo — the declared artifact downloads by digest', () 
     const tampered = await app.inject({ method: 'GET', url: url('a'.repeat(64)), headers: headers(token) });
     expect(tampered.statusCode).toBe(404);
     expect(tampered.json()).toEqual({ error: 'not found' });
+  });
+
+  /**
+   * ACCEPTANCE ITEM 6, end to end: retrieve the run's verified artifact the way the UI does — read the
+   * run, take the link the SERVER projected, follow it, compare bytes. No URL is built by this test.
+   *
+   * The whole path is exercised: the integrator's own layout (the artifact in the run's integration
+   * worktree plus its `canonical-committed` journal record), the run DTO's `outputs` projection over it,
+   * `outputHref` (what `RunDetail.tsx` renders), and the download route's run branch.
+   *
+   * RED ON REVERT twice over: with no `outputs` on the DTO there is no href to follow, and with the run
+   * branch removed from the download route the projected href 404s.
+   */
+  it('retrieves the run artifact through the link the run DTO itself projected', async () => {
+    const { demo } = await driveToGate('dto-artifact-topic', {
+      'researcher-a': 'MARKER-DTO-A', 'researcher-b': 'MARKER-DTO-B',
+    });
+    const path = declaredArtifactPath(demo);
+    const integrated = readFileSync(join(runIntegrationDir(demo.stateRoot, demo.runRef), ...path.split('/')));
+    expect(integrated.length).toBeGreaterThan(0);
+
+    const { app, token } = surface(demo.store, demo.repoRoot, demo.stateRoot);
+    openApps.push(app);
+    await app.ready();
+
+    const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${demo.runRef}`, headers: headers(token) });
+    expect(detail.statusCode, detail.body).toBe(200);
+    const outputs = (detail.json() as { value: { outputs: OutputRef[] } }).value.outputs;
+    const brief = outputs.find((output) => output.kind !== 'external-pr' && output.path === path);
+    if (!brief || brief.kind === 'external-pr') throw new Error('the run DTO projected no declared artifact');
+    expect(brief.entity).toEqual({ type: 'run', id: demo.runRef });
+    expect(brief.digest).toBe(sha256HexBytes(integrated));
+
+    const served = await app.inject({ method: 'GET', url: outputHref(brief), headers: headers(token) });
+    expect(served.statusCode, served.body).toBe(200);
+    expect(served.rawPayload.equals(integrated)).toBe(true);
+    expect(served.headers['content-disposition']).toBe('attachment; filename="brief.json"');
+    expect(JSON.parse(served.rawPayload.toString('utf8'))).toMatchObject({ sourcesListed: true, revision: 2 });
   });
 });
 

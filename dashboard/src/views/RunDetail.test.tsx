@@ -139,6 +139,12 @@ const outputs: OutputRef[] = [
   { kind: 'repository-file', label: 'Unscoped report', path: 'reports/unscoped.md', digest: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' },
   { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123', entity: { type: 'agent', id: 'researcher' } },
   { kind: 'external-pr', label: 'Pull request', owner: 'openai', repository: 'kb', number: 42 },
+  // F4: the run's OWN integrated artifact. Its scope is the run's integration worktree, so the link
+  // names the RUN as the projecting entity - the third entity kind the download route resolves.
+  {
+    kind: 'artifact', label: 'brief.json', path: 'orgs/kb-ops/output/demo/brief.json',
+    digest: 'd'.repeat(64), entity: { type: 'run', id: 'run-1' },
+  },
 ];
 
 describe('Dashboard v3 Run view', () => {
@@ -412,6 +418,18 @@ describe('Dashboard v3 Run view', () => {
     // The artifact fixture has no digest and the PR is not a file: neither may offer a download.
     expect(screen.queryByRole('link', { name: 'Download Fixture value' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Download Pull request' })).toBeNull();
+  });
+
+  /**
+   * RED ON REVERT: drop `run` from `OutputEntityRef` (or stop projecting run outputs server-side) and
+   * this link disappears - which is exactly what the VM showed for run-dacc2a6d, a completed run whose
+   * brief.json existed on disk with no download anywhere in the UI.
+   */
+  it('offers a run-scoped download for the run own integrated artifact', () => {
+    render(unlocked(<RunDetail runRef="run-1" detail={detail({ outputs })} events={events} />));
+    expect(screen.getByRole('link', { name: 'Download brief.json' }).getAttribute('href'))
+      .toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fdemo%2Fbrief.json'
+        + `&sha256=${'d'.repeat(64)}&entityType=run&entityId=run-1`);
   });
 
   it('falls back to detail outputs without copying a secret-looking output', async () => {

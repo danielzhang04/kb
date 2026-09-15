@@ -109,7 +109,12 @@ export interface ScheduleOccurrence {
  * carries no entity therefore has no downloadable link at all — the UI refuses to render one and the
  * route refuses a request that names none.
  */
-export type OutputEntityRef = { type: 'agent' | 'workflow'; id: string };
+/**
+ * The entity whose projection minted a file link. `run` joins `agent`/`workflow` for artifacts a run
+ * integrated into its own integration worktree — see `control/runOutputs.ts`; the download route derives
+ * a different BASE for each kind, so the kind is load-bearing, not decoration.
+ */
+export type OutputEntityRef = { type: 'agent' | 'workflow' | 'run'; id: string };
 
 export type OutputRef =
   | { kind: 'repository-file'; label: string; path: string; digest?: string; entity?: OutputEntityRef }

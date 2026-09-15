@@ -3,6 +3,8 @@ import { sha256Hex } from '../shared/hashing.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { registerArtifactFileRoute } from './artifactFilesRoute.ts';
+import { readScopeForSubject } from './readScope.ts';
+import { projectRunOutputs } from './runOutputs.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { boundSummary } from './claudeWorkerAdapter.ts';
@@ -31,7 +33,6 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   MAX_EVENTS_PER_RUN,
   MAX_EVENT_PAGE,
-  OPERATOR_SUBJECT,
   exactAuthorized20260801ProposalRevision,
   type ReadScope,
   type RunActivationInput,
@@ -162,9 +163,7 @@ export function subject(req: FastifyRequest): string | null {
  * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
  * operator). See {@link ReadScope}.
  */
-export function readScopeForSubject(sub: string | null | undefined): ReadScope {
-  return sub === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
-}
+export { readScopeForSubject } from './readScope.ts';
 
 function readScope(req: FastifyRequest): ReadScope {
   return readScopeForSubject(subject(req));
@@ -262,6 +261,11 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
     ?? (ptySession ? ptySession.sessionRef : null);
   return {
     ...detail,
+    // F4/R5: the run's OWN downloadable outputs. Projected from the canonical integration journal —
+    // declared artifacts of stage results that reached `canonical-committed`, digests hashed off the
+    // integrated bytes — never from a worker's self-report and never from the checkout. See
+    // `runOutputs.ts`.
+    outputs: projectRunOutputs({ stateRoot: ctx.stateRoot, store: ctx.controlStore, subject: sub, scope, run: detail.run }),
     streamKind: ptySession || attemptSessions.length > 0 ? 'pty' : 'transcript',
     sessionId: selectedSessionId,
     attemptSessions,

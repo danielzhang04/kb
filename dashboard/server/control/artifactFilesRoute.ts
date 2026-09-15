@@ -9,6 +9,8 @@ import { isDigestSha256 } from '../shared/hashing.ts';
 import { auditFn, type SurfaceContext } from '../http/context.ts';
 import { verifiedSession } from '../http/middleware.ts';
 import { readArtifactBytes } from './artifactFiles.ts';
+import { runOutputFileScope, type OutputFileScope } from './runOutputs.ts';
+import { readScopeForSubject } from './readScope.ts';
 
 /**
  * R5 — the roots map is derived from ONE entity, the one whose projection minted the link, never from the
@@ -37,6 +39,39 @@ export function outputRootsForEntity(repoRoot: string, entity: { type: string; i
     return project ? { [project]: `orgs/${project}` } : null;
   }
   return null;
+}
+
+/**
+ * The same decision as `outputRootsForEntity`, widened to the BASE the roots are relative to.
+ *
+ * `agent` and `workflow` links are rooted at the repository checkout and are unchanged. A `run` link is
+ * not: a canonical run's artifacts never land in the checkout at all — they live in that run's own
+ * integration worktree under the state root (`integrationLayout.ts`), which is why the download was dead
+ * for every run-produced artifact until this branch existed.
+ *
+ * The run branch keeps R5 exactly: the scope is derived from the run's integration layout and its
+ * integration journal, never from caller input, and it is reached only AFTER the same ownership check the
+ * run READ route performs — `controlStore.getRun(sub, runRef, readScopeForSubject(sub))`, the identical
+ * call behind `GET /api/control/runs/:runRef`. A subject who cannot read the run cannot resolve a scope
+ * here, and gets the same flat 404 as a run that does not exist. If that read route ever narrows further,
+ * it must narrow HERE too; this is the download's whole authorization step.
+ */
+export function outputFileScopeForEntity(
+  ctx: SurfaceContext,
+  sub: string,
+  entity: { type: string; id: string },
+): OutputFileScope | null {
+  if (!entity.id) return null;
+  if (entity.type === 'run') {
+    const scope = readScopeForSubject(sub);
+    const run = ctx.controlStore.getRun(sub, entity.id, scope);
+    if (!run.ok) return null;
+    return runOutputFileScope({
+      stateRoot: ctx.stateRoot, store: ctx.controlStore, subject: sub, scope, run: run.value.run,
+    });
+  }
+  const roots = outputRootsForEntity(ctx.repoRoot, entity);
+  return roots ? { base: ctx.repoRoot, roots, paths: Object.keys(roots) } : null;
 }
 
 /**
@@ -78,16 +113,17 @@ export function registerArtifactFileRoute(scope: FastifyInstance, ctx: SurfaceCo
     // shape — it reveals nothing about the repository — so it stays a distinguishable 400.
     if (!isDigestSha256(expected)) return reply.code(400).send({ error: 'digest-required' });
 
-    // R5: AUTHORIZATION. The roots come from the named entity alone, and an entity this subject cannot
-    // resolve is indistinguishable from one that does not exist.
-    const roots = outputRootsForEntity(ctx.repoRoot, entity);
-    if (!roots) return reply.code(404).send({ error: 'not found' });
+    // R5: AUTHORIZATION. The roots — and, for a run, the base directory they sit under — come from the
+    // named entity alone, and an entity this subject cannot resolve is indistinguishable from one that
+    // does not exist.
+    const outputScope = outputFileScopeForEntity(ctx, sub, entity);
+    if (!outputScope) return reply.code(404).send({ error: 'not found' });
 
     // R6: past the authorization step every remaining refusal is ONE flat 404. Distinguishing
     // `too-large` (in scope, exists, over the cap) from `digest mismatch` (in scope, exists, changed)
     // from `out-of-scope` handed an authorized-for-project-A caller an existence and size oracle over
     // every other path in that project. The real reason is logged server-side instead.
-    const read = readArtifactBytes(ctx.repoRoot, path, roots);
+    const read = readArtifactBytes(outputScope.base, path, outputScope.roots);
     if (!read.ok || read.digest !== expected) {
       const reason = read.ok ? 'digest-mismatch' : read.reason;
       req.log?.warn({ route: 'control-artifact-download', reason, entityType: entity.type, entityId: entity.id, path }, 'artifact download refused');
