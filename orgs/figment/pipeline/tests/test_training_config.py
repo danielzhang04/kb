@@ -66,3 +66,25 @@ def test_dop_class_must_be_a_non_empty_string(bad):
 def test_unknown_training_keys_are_still_rejected():
     with pytest.raises(tc.TrainingConfigError, match="unknown key"):
         tc.validate_training({"dop_enable": True}, "creator-002")  # typo'd key name
+
+
+# P2 (MANDATE.md stage 2): a second dataset-stage source, klein 3-reference
+# generation, alongside today's qwen-edit two-stage replica. Default preserves
+# today's behaviour so every existing dataset test (built against "qwen-edit")
+# stays green without naming the new key.
+
+
+def test_dataset_source_defaults_to_qwen_edit():
+    config = tc.validate_training(None, "creator-002")
+    assert config["dataset_source"] == "qwen-edit"
+
+
+def test_dataset_source_accepts_klein_multiref():
+    config = tc.validate_training({"dataset_source": "klein-multiref"}, "creator-002")
+    assert config["dataset_source"] == "klein-multiref"
+
+
+@pytest.mark.parametrize("bad", ["", "   ", "klein_multiref", "qwen-edit ", 5, None, True])
+def test_dataset_source_rejects_anything_outside_the_allowed_set(bad):
+    with pytest.raises(tc.TrainingConfigError, match="dataset_source"):
+        tc.validate_training({"dataset_source": bad}, "creator-002")

@@ -20,7 +20,7 @@ TRAINING_KEYS = {
     "pod_class", "price_ceiling_usd_per_hour", "skin_lora",
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
-    "dop_enabled", "dop_multiplier", "dop_class",
+    "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
 }
 DEFAULT_TRAINING = {
     "trigger": None,
@@ -64,8 +64,17 @@ DEFAULT_TRAINING = {
     "dop_enabled": False,
     "dop_multiplier": 1.0,
     "dop_class": "person",
+    # P2 (MANDATE.md stage 2): the dataset stage's own fan-out source. "qwen-edit" is
+    # today's module-10 replica (qwen-image-edit-2511 lightning + klein-4b-edit refine,
+    # `_dataset_manifests`) -- kept as the default so every existing dataset test and
+    # persona stays exactly as it was before this key existed. "klein-multiref" is the
+    # bake-off m1 winner (facenet 0.87-0.93): FLUX.2 klein 4B Base, ReferenceLatent x3
+    # off the persona's own identity references, no edit/denoise pass
+    # (`_dataset_manifests_klein_multiref`).
+    "dataset_source": "qwen-edit",
 }
 ALLOWED_ARCHES = {"krea2"}
+ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
 # M4: "qwen3vl" is an operator-facing declaration only -- apply_rulings' dataset-stage
 # assembly (figment_train.py) routes it through the live pinned qwen3vl captioning pod
 # job and writes real .txt sidecars locally, exactly like "provided" does, BEFORE any
@@ -155,6 +164,10 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     if config["caption_mode"] not in ALLOWED_CAPTION_MODES:
         raise TrainingConfigError(
             f"persona.training.caption_mode must be one of {sorted(ALLOWED_CAPTION_MODES)}"
+        )
+    if config["dataset_source"] not in ALLOWED_DATASET_SOURCES:
+        raise TrainingConfigError(
+            f"persona.training.dataset_source must be one of {sorted(ALLOWED_DATASET_SOURCES)}"
         )
     if not isinstance(config["pod_class"], str) or not config["pod_class"].strip():
         raise TrainingConfigError("persona.training.pod_class must be a non-empty string")

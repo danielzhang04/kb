@@ -361,3 +361,15 @@ def test_train_first_rechecks_rendered_training_config_before_launch(
     )
     with pytest.raises(command.FigmentTrainError, match="training.json changed"):
         command.run_planned_stage("creator-002", "train", out / "plan.json")
+
+
+def test_dataset_source_is_a_train_time_key(command):
+    """P2: `dataset_source` picks the model family/conditioning that produced every
+    training image -- at least as identity-determining as `skin_lora`, which is
+    already in TRAIN_TIME_KEYS despite also being a dataset-stage-only input (see
+    TENSOR-TRAINING.md's P2 section for the full argument). `caption_mode` stays OUT
+    on purpose: it only changes caption text, never pixels."""
+    lineage = command._lineage_module()
+    assert "dataset_source" in lineage.TRAIN_TIME_KEYS
+    assert "skin_lora" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
+    assert "caption_mode" not in lineage.TRAIN_TIME_KEYS  # deliberately excluded

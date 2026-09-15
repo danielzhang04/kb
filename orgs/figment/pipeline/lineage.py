@@ -66,7 +66,21 @@ GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
 # price_ceiling_usd_per_hour) is a live gen-time choice and stays validated against the
 # persona's CURRENT training.yaml, exactly like the in-plan (non-imported) path. This
 # frozenset is the single place that split is named.
-TRAIN_TIME_KEYS = frozenset({"steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class"})
+#
+# P2 (MANDATE.md stage 2): `dataset_source` joins this set on the same footing as
+# `skin_lora` -- both are DATASET-stage inputs (which model/conditioning produced the
+# training images), not literal ai-toolkit trainer fields, yet both are at least as
+# identity-determining as anything else here: they pick what pixels the LoRA actually
+# trained on. `caption_mode` stays OUT deliberately -- it only changes caption text,
+# never pixels, and (for the far more common non-imported path) ANY training-dict
+# drift already invalidates promotion regardless of this frozenset
+# (`_validated_accepted_checkpoint`'s `current_projection != source_projection`
+# check) -- TRAIN_TIME_KEYS only matters for an `origin: "imported"` ladder, whose
+# dataset was never produced by this pipeline's own `dataset` stage to begin with.
+TRAIN_TIME_KEYS = frozenset({
+    "steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class",
+    "dataset_source",
+})
 
 
 class LineageError(ValueError):
