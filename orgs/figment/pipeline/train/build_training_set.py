@@ -39,11 +39,14 @@ Caption modes:
              real run. `job_runner` and `trigger` (F4) are REQUIRED for this
              mode; there is no default live dispatcher here. Requires
              `--source-dir` or `--images-from`, like `class`. Every written
-             caption is `"<trigger> <caption-word>, <model body>"` — the same
-             `"<trigger> <class>, "` opening `figment_train.py`'s
-             `_persona_trigger_clause` composes for tester/gen prompts, so a
-             descriptive caption is self-contained (identity-associated
-             whether or not DOP's own trigger_word injection is on). Each
+             caption is `"<trigger> <caption-word>, <model body>"`, composed
+             through `../training_config.py`'s `persona_trigger_clause` — the
+             one shared home for the `"<trigger> <class>"` pairing
+             `figment_train.py`'s own `_persona_trigger_clause` also calls for
+             tester/gen prompts, so a descriptive caption is self-contained
+             (identity-associated whether or not DOP's own trigger_word
+             injection is on) and can never silently drift from the prompt
+             side's spelling of the same pairing. Each
              manifest file entry additionally carries `caption_sha256`
              (sha256 of the written caption text, trailing newline included)
              so a captioning run is auditable per row.
@@ -91,6 +94,7 @@ TRAINING_JSON_NAME = "training.json"
 
 HERE = Path(__file__).resolve().parent
 RENDER_MODULE_PATH = HERE / "render_aitoolkit_config.py"
+TRAINING_CONFIG_MODULE_PATH = HERE.parent / "training_config.py"
 
 # F4: module 11's captioner, ported as a pod job (TENSOR-TRAINING.md "Captioning").
 QWEN3VL_CAPTION_MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
@@ -118,6 +122,23 @@ def _load_render_module():
     )
     if spec is None or spec.loader is None:
         raise DatasetBuildError(f"cannot load render module: {RENDER_MODULE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_training_config_module():
+    """E1: `training_config.persona_trigger_clause` is the one shared home for the
+    `"<trigger> <noun>"` pairing every triggered prompt/caption in this pipeline uses --
+    this tool composes qwen3vl captions through it instead of formatting its own copy of
+    that f-string (the third independent implementation this module used to carry)."""
+    name = "figment_build_training_set_training_config"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, TRAINING_CONFIG_MODULE_PATH)
+    if spec is None or spec.loader is None:
+        raise DatasetBuildError(f"cannot load training_config module: {TRAINING_CONFIG_MODULE_PATH}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
@@ -314,11 +335,12 @@ def _collect_cells_qwen3vl(
                 f"job_runner returned an invalid caption body for {image} (over 500 "
                 "chars or contains a newline/control character)"
             )
-        # Same "<trigger> <class>, " opening figment_train.py's own
-        # _persona_trigger_clause composes for tester/gen prompts -- a descriptive
-        # caption stays identity-associated whether or not DOP's trigger_word
-        # injection is on (see the qwen3vl docstring above).
-        captions.append(f"{trigger} {caption_word}, {stripped}")
+        # E1: the same shared `training_config.persona_trigger_clause` pairing
+        # figment_train.py's own `_persona_trigger_clause` composes tester/gen prompts
+        # from -- a descriptive caption stays identity-associated whether or not DOP's
+        # trigger_word injection is on (see the qwen3vl docstring above).
+        training_config = _load_training_config_module()
+        captions.append(f"{training_config.persona_trigger_clause(trigger, caption_word)}, {stripped}")
     return list(zip(images, captions))
 
 

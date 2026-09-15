@@ -467,6 +467,85 @@ def test_creator001_real_persona_tester_gen_and_detail_prompts_are_trigger_prefi
     assert not detail_text.startswith("Photograph of an adult woman,")
 
 
+def test_creator001_every_triggered_output_shares_the_one_trigger_composer(command):
+    """E1: `training_config.persona_trigger_clause` is the ONE place the `"<trigger>
+    <class>"` pairing is formatted. Every stage that reaches a pod AFTER the LoRA exists
+    (tester, gen, detail prompts; the qwen3vl and train-first caption composers) must
+    literally derive from that one function's own output for creator-001's real trigger
+    -- not merely happen to produce matching text via an independent f-string, which is
+    exactly the shape of the 2026-09-07 tester defect (one caller's copy omitted the
+    trigger entirely). `anchor`/`dataset` prompts do NOT carry the trigger, by design --
+    those stages generate training material before any LoRA exists to invoke, and are
+    composed from `persona.identity.look` instead (`_compose_look_clause`); this test
+    asserts that split explicitly rather than leaving it implicit."""
+    persona, training, pins = command._load_inputs("creator-001", PERSONAS)
+    persona = dict(persona)
+    persona["_persona_path"] = str(PERSONAS / "creator-001" / "persona.yaml")
+    training_config = command._training_config_module()
+    trigger_clause = training_config.persona_trigger_clause(training["trigger"], "woman")
+    assert trigger_clause == "creator001krea2 woman"
+
+    # tester / gen / detail prompts: each opens with trigger_clause + ", ".
+    gen_training = {**training, "chosen_checkpoint_step": training["steps"]}
+    tester_text = command._tester_prompt(persona, training)
+    gen_manifest = command._gen_manifest(persona, gen_training, pins)
+    gen_text = gen_manifest["jobs"][0]["substitutions"][0]["value"]
+    detail_manifest = command._detail_manifest(persona, gen_training, pins, ["a01.jpg"])
+    detail_text = detail_manifest["workflow"]["5"]["inputs"]["text"]
+    for text in (tester_text, gen_text, detail_text):
+        assert text.startswith(trigger_clause + ", ")
+
+    # caption composers (build_training_set.py qwen3vl mode; select_training_cells.py's
+    # train-first bridge) derive from the SAME function, not their own copy of the
+    # format. `build_training_set()` itself needs real staged image files on disk to
+    # produce a full dataset; exercise the caption-composing helper directly instead,
+    # same as test_build_training_set.py's own qwen3vl tests do.
+    build_training_set = load_module(
+        "figment_train_test_build_training_set", PIPELINE / "train" / "build_training_set.py",
+    )
+    fake_body = "a photo of the subject"
+    qwen_captions = build_training_set._collect_cells_qwen3vl(
+        None, [PERSONAS / "creator-001" / "anchors"], None,
+        trigger=training["trigger"], caption_word="woman",
+        job_runner=lambda job: [fake_body for _ in job["images"]],
+    )
+    assert qwen_captions, "creator-001's anchors dir must supply at least one image"
+    for _image, caption in qwen_captions:
+        assert caption == f"{trigger_clause}, {fake_body}"
+
+    select_training_cells = load_module(
+        "figment_train_test_select_training_cells", PIPELINE / "train" / "select_training_cells.py",
+    )
+    approved = select_training_cells.to_approved_cells(
+        {"anchors": [{"path": "a01.jpg"}], "cells": []},
+        trigger=training["trigger"], caption_word="woman",
+    )
+    assert approved[0]["caption"] == trigger_clause
+
+
+def test_only_training_config_formats_the_trigger_and_class_pairing():
+    """E1 guard: `re.compile(r"\\{trigger\\}\\s*\\{")`-shaped f-string composition of the
+    `"<trigger> <class>"` pairing may exist in exactly one file, `training_config.py`'s
+    `persona_trigger_clause`. Every other pipeline module that needs the pairing must
+    call that function, never re-implement it -- this is the mechanical half of the
+    proof above; the behavioral half proves every real caller's OUTPUT matches, this
+    proves no other function even CONTAINS the pattern that could drift."""
+    import re
+
+    pattern = re.compile(r"\{trigger\}[^\"']*\{[a-z_]*(?:noun|class|caption_word)\}")
+    offenders: list[str] = []
+    for path in PIPELINE.rglob("*.py"):
+        relative = path.relative_to(PIPELINE).as_posix()
+        if "/tests/" in f"/{relative}" or relative.startswith("tests/"):
+            continue
+        if relative == "training_config.py":
+            continue
+        text = path.read_text(encoding="utf-8")
+        if pattern.search(text):
+            offenders.append(relative)
+    assert offenders == []
+
+
 def test_tester_prompt_derives_age_from_persona_and_keeps_adult_clothed_constraints(
     command, tmp_path,
 ):

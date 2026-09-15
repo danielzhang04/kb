@@ -110,6 +110,24 @@ def derived_trigger(creator_id: str, base_arch: str) -> str:
     return creator_short_code(creator_id) + arch
 
 
+def persona_trigger_clause(trigger: str, noun: str) -> str:
+    """The `"<trigger> <noun>"` pairing every triggered prompt or caption in this
+    pipeline opens with (figment_train.py's `_persona_trigger_clause`/
+    `_compose_triggered_prompt` for tester/gen/detail prompts;
+    `train/build_training_set.py` and `train/select_training_cells.py` for DOP-required
+    dataset captions -- see this module's own DOP docstring above). This module is the
+    one shared, dependency-free home for the pairing itself so it can never silently
+    drift or go missing between independently written callers: the 2026-09-07 tester
+    defect was exactly that -- one caller's prompt carried no trigger word at all, so
+    every rendered checkpoint read as the base model's generic woman (facenet 0.17-0.23
+    vs the anchors, i.e. a stranger) even though the LoRA was trained correctly. Callers
+    compose their own surrounding punctuation and any following body text; this
+    function only owns the pairing, never validates `trigger` itself (callers already
+    hold a `training` dict `validate_training` checked, or an operator-supplied string
+    checked separately against `SAFE_TRIGGER`)."""
+    return f"{trigger} {noun}"
+
+
 def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     if raw is None:
         raw = {}
