@@ -1,32 +1,12 @@
 # System Handover
-_Generated: 2026-09-14 06:18 UTC_
+_Generated: 2026-09-15 06:15 UTC_
 
-**What happened overnight.** The cloud nightly dispatcher ran cleanly: preamble OK, pyyaml
-present, `sync_skills` in sync. The daemon-dir drift gate was the same as the last several
-nights: its script (`scripts/sync_daemon_dirs.py`) is absent from the `ops` branch but present
-on `main`, so I ran `main`'s copy in refs-fallback mode — it reports one ops-only file
-(`orgs/kb-ops/workflows/acceptance-run.md`) that isn't on `main`. That gate only reports and
-never blocks, so the run continued and filed a wake-me card. The dispatcher emitted one cadence
-card (`nightly-review`), which this run executed to regenerate these dashboards. Yesterday's
-ledgers now show rows, so the nightly is firing on schedule. Spend today: $0.00 of the $30
-daily budget.
+**What happened overnight.** The nightly cloud dispatcher ran cleanly: preamble passed, the skills mirror is in sync, and both dashboards were regenerated. One nightly-review card was dispatched and executed. No money was spent (all steps on subscription billing; ~$30 of today's $30 budget remains).
 
 **What is waiting on you.**
-1. **figment T3 approval** — GATE A eye-gate card `65d8f246-8a461521`: your seven-axis blind
-   board on creator-001 (now batch expansion-03) so curation to 40 can proceed.
-2. **Daemon-dir fix (desktop)** — from the dashboard-ops worktree, restore
-   `sync_daemon_dirs.py` to the `ops` branch (so the literal step-2b check runs without the
-   refs-fallback workaround), then decide the one ops-only file: reconcile
-   `orgs/kb-ops/workflows/acceptance-run.md` onto `main`, or `--sync --prune` to drop it from
-   `ops`. Six wake-me cards on this one issue are stacking in the inbox; nightly keeps re-filing
-   them because the routine has no dedup clause yet.
-3. **atlas** — the omni-interface remediation diff (> 400 lines) is ready but needs your review
-   before commit per the project contract.
-4. **kb-ops** — the VM dashboard service has been down since 2026-09-06; fix PR **#173** is
-   reviewed-mergeable but still open. Recovery hasn't been run.
+1. **figment GATE A eye-gate (T3)** — a blind seven-axis board for creator-001 expansion-02 is parked in approvals; curation to 40 can't proceed until you rule on it.
+2. **atlas remediation** — the omni-interface foundation plus its re-reviewed adversarial remediation are built and green locally, but the diff is over 400 lines, so the contract needs your review before anything is committed or pushed (branch `codex/atlas-enhancements-20260820`).
+3. **kb-ops dashboard is still down** — the VM service has been stopped since 2026-09-06 on a hydrate crash. The fix, PR #173 (`claude/provenance-fix`), is reviewed and mergeable but still open; merging and running recovery is a human step.
+4. **Daemon-dir drift** — a small, known drift persists (one ops-only workflow file, plus the checker script missing from the `ops` branch). It never blocks dispatch; a desktop `sync_daemon_dirs --sync` from the dashboard-ops worktree clears it. Repeat wake cards are filed.
 
-**What the system will do unattended.** The nightly cloud dispatcher will run again next
-schedule: preamble + drift checks, emit and execute cadence cards, regenerate dashboards, and
-push coordination writes to `ops`. It will NOT merge PRs, restore or `--sync` the daemon-dir
-script, or clear the approvals card — all human actions. Two working cards are stale (figment
-replicate ~1 week; a halted kb-ops card stranded in `working/`) and will not self-clear.
+**What the system will do next, unattended.** It keeps running the nightly cadence: preamble and drift checks, dashboard regeneration, and dispatching any due cards. It will not merge PRs, spend real money, commit the large atlas diff, or resolve the figment gate — those are yours. Two stale working cards (a figment replicate run and a halted kb-ops smoke card) should be swept when you're back.

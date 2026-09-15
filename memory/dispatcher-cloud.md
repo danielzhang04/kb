@@ -866,3 +866,27 @@
   stranded in queue/working/. d126c410 still has malformed yaml (unquoted colon in action:).
 - Ledgers: 09-13 now shows dispatch+cost rows (the 09-12 zero-row gap flagged last run looks like
   a one-off, not an ongoing outage). Budget: $0.00 of $30 today.
+
+## 2026-09-15 nightly (dispatcher-cloud, ran on claude-opus-4-8)
+- Clean run. preamble OK, pyyaml OK, sync_skills --check clean (exit 0). Dispatched 1 card
+  6aa8e214 (cadence:nightly-review, routed sonnet-5, self-executed on opus-4-8); ran
+  preamble+sync_skills, regenerated both dashboards, appended memory, committed coordination
+  paths to ops.
+- daemon-dirs gate UNCHANGED: sync_daemon_dirs.py absent from origin/ops, present on origin/main.
+  Ran main's copy via `git show origin/main:scripts/sync_daemon_dirs.py` in refs-fallback ->
+  exit 1, same lone ops-only orgs/kb-ops/workflows/acceptance-run.md. Filed
+  wake-daniel-2026-09-15-sync-daemon-dirs-drift. Cards actually present in inbox this run:
+  08-15-missing, 08-30-drift, 09-10-drift (the 09-11/09-13/09-14 ones prior memory lists were
+  NOT in this fresh clone's inbox — referenced only the three extant). Went straight to
+  refs-fallback per last night's lesson; did NOT re-frame as "missing/regression".
+- LESSON (new, cost me a cleanup): cards.transition(card, state, queue_root) — queue_root is the
+  QUEUE ROOT, i.e. 'queue', NOT '.'. I passed '.' and it wrote ./working/<id>.md (stray top-level
+  dir) AND unlinked the real queue/inbox/<id>.md (card.path was set, so old_path resolved to the
+  real file and got removed). Recovered by `mv working/<id>.md queue/working/` + rmdir working.
+  Always call cards.transition(c, 'working'|'done', 'queue'). Verify with `find queue -name '<id>*'`
+  after every transition.
+- Working cards: ages from git commit dates, NOT mtime (fresh clone, all mtimes ~06:1x Z). Same two
+  as prior nights: d126c410 figment replicate stale since 2026-09-07 (>48h, malformed unquoted-colon
+  yaml in action:); 6a6bc3dd kb-ops iter-smoke-t2 state:halted stranded in queue/working/. Both
+  flagged as anomalies + a handover sweep note.
+- Ledgers: 09-15 dispatch row present; cost $0.00 of $30. Logged this run's step to cost ledger.
