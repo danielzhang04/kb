@@ -16,19 +16,35 @@ function queueCardFiles(repoRoot: string): string[] {
   });
 }
 
+/** Result of a boot-time repository scan: how many queue cards were skipped rather than fatal. */
+export interface RepositoryDataSummary {
+  skippedCards: number;
+}
+
 export function assertSupportedRepositoryData(
   repoRoot: string,
   platformRoot: string = defaultPlatformRoot(),
-): void {
+): RepositoryDataSummary {
   try {
     assertSchemaInfrastructure(platformRoot);
   } catch (error) {
     throw new Error(`schema infrastructure error at ${platformRoot}: ${error instanceof Error ? error.message : String(error)}`);
   }
+  let skippedCards = 0;
   for (const path of queueCardFiles(repoRoot)) {
     let unknownKeys: string[];
-    try { ({ unknownKeys } = parseValidatedCardTolerant(readFileSync(path, 'utf8'), platformRoot)); }
-    catch (error) { throw new Error(`${path}: ${error instanceof Error ? error.message : String(error)}`); }
+    try {
+      ({ unknownKeys } = parseValidatedCardTolerant(readFileSync(path, 'utf8'), platformRoot));
+    } catch (error) {
+      // A card that fails to parse (unsupported frontmatter shape, unsupported schema-version, or a
+      // schema-validation error) must NOT abort boot — the shared ops branch is written by many tools
+      // and one foreign/malformed card must not crash the whole platform's start. Skipped and warned
+      // once per card; never fatal. Runtime claim/execute stays strict on parseValidatedCard
+      // (write/routes.ts, write/cardRouting.ts, control/publication.ts, planeA/indexer.ts).
+      console.warn(`startup: card ${path} skipped at boot (unparseable frontmatter): ${error instanceof Error ? error.message : String(error)}`);
+      skippedCards += 1;
+      continue;
+    }
     // Unknown top-level keys (a not-yet-merged arc's extra metadata on the shared ops branch) are
     // tolerated at boot — the platform reads only the fields it knows. Logged, never fatal: one
     // foreign card must not crash the whole platform's start. Runtime claim/execute stays strict.
@@ -37,15 +53,20 @@ export function assertSupportedRepositoryData(
     }
   }
   const orgs = join(repoRoot, 'orgs');
-  if (!existsSync(orgs)) return;
-  for (const org of readdirSync(orgs, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
-    const workflows = join(orgs, org.name, 'workflows');
-    if (!existsSync(workflows)) continue;
-    for (const entry of readdirSync(workflows, { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
-      const path = join(workflows, entry.name);
-      const parsed = parseWorkflowDef(readFileSync(path, 'utf8'), { knownProfiles: workflowProfileIds() });
-      if (!parsed.ok) throw new Error(`${path}: ${parsed.detail}`);
+  if (existsSync(orgs)) {
+    for (const org of readdirSync(orgs, { withFileTypes: true }).filter((entry) => entry.isDirectory())) {
+      const workflows = join(orgs, org.name, 'workflows');
+      if (!existsSync(workflows)) continue;
+      for (const entry of readdirSync(workflows, { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.md')) continue;
+        const path = join(workflows, entry.name);
+        const parsed = parseWorkflowDef(readFileSync(path, 'utf8'), { knownProfiles: workflowProfileIds() });
+        if (!parsed.ok) throw new Error(`${path}: ${parsed.detail}`);
+      }
     }
   }
+  if (skippedCards > 0) {
+    console.warn(`startup: ${skippedCards} card(s) skipped at boot`);
+  }
+  return { skippedCards };
 }
