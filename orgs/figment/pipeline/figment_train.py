@@ -3338,6 +3338,28 @@ def _validate_imported_checkpoint_ladder(plan: dict[str, Any], root: Path, *, re
             )
 
 
+def _validate_video_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
+    """M2: video's first frame is one specific approved gen still, recorded once at
+    plan time as `plan["video_source"]` (`_plan_video_manifest`). Re-checked at the
+    launch boundary the same way `_validate_detail_source_inputs` re-checks detail's
+    gen source: never trust the plan's own frozen copy alone -- re-run
+    `validate_approved_gen_still` against the SAME approved-gen authority the frame
+    was drawn from, and refuse if its bytes moved since this video plan was built."""
+    source = plan.get("video_source")
+    if (not isinstance(source, dict) or not isinstance(source.get("approved_gen_plan"), str)
+            or not isinstance(source.get("image_id"), str)):
+        raise FigmentTrainError("video plan has no captured gen source provenance; replan")
+    approved_gen_plan_path = Path(source["approved_gen_plan"])
+    current = validate_approved_gen_still(
+        plan["creator"], approved_gen_plan_path / "plan.json", source["image_id"], reads=reads,
+    )
+    if current.get("sha256") != source.get("sha256") or current.get("bytes") != source.get("bytes"):
+        raise FigmentTrainError(
+            f"video source frame {source['image_id']!r} changed after video planning; "
+            "create a fresh video plan"
+        )
+
+
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     if stage == "gen":
         _validate_gen_source_inputs(plan, root)
@@ -3347,6 +3369,9 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
         return
     if stage == "tester":
         _validate_imported_checkpoint_ladder(plan, root)
+        return
+    if stage == "video":
+        _validate_video_source_inputs(plan, root)
         return
     if stage not in ("smoke", "train"):
         return
@@ -5841,7 +5866,7 @@ def command_pipeline(
                 active_plan = build_plan(
                     creator_id, "video", video_root, personas_root=personas_root,
                     skip_pin_verify=skip_pin_verify, approved_gen_plan=gen_root,
-                    ledger_dir=ledger_dir,
+                    ledger_dir=ledger_dir, accept_budget=accept_budget,
                 )
                 active_root = video_root
             active_plan_path = video_root / "plan.json"
@@ -6014,17 +6039,17 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline.add_argument("--ledger-dir", type=Path)
     pipeline.add_argument(
         "--accept-budget", action="store_true",
-        help="M2: required whenever a stage `pipeline` plans on its own (--out, or a "
-             "downstream gen/detail plan) would exceed the arc cap remaining",
+        help="required whenever a stage `pipeline` plans on its own (--out, or a "
+             "downstream gen/detail/video plan) would exceed the arc cap remaining",
     )
     pipeline.add_argument(
         "--style-lora", default=None,
-        help="M3: applied only when pipeline plans its own downstream gen stage -- "
+        help="applied only when pipeline plans its own downstream gen stage -- "
              "see `plan --style-lora`",
     )
     pipeline.add_argument(
         "--style-lora-strength", default=None, type=float,
-        help="M3: see `plan --style-lora-strength`",
+        help="see `plan --style-lora-strength`",
     )
     pipeline.add_argument(
         "--import-checkpoints", default=None, type=Path,
