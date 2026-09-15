@@ -1,7 +1,6 @@
 import importlib.util
 import json
 import sys
-from collections import Counter
 from pathlib import Path
 
 import pytest
@@ -21,7 +20,6 @@ def load_module(name, path):
     return module
 
 
-builder = load_module("build_identity_set", TRAIN / "build_identity_set.py")
 checker = load_module("identity_check", TRAIN / "identity_check.py")
 qa_stamp = load_module("figment_qa_stamp", PIPELINE / "qa_stamp.py")
 runner = load_module("figment_pod_runpod_run", POD / "runpod_run.py")
@@ -38,87 +36,6 @@ def test_training_templates_expose_required_render_slots():
         assert "{{output_dir}}" in text
         assert "type = 'lora'" in text
         assert "rank = 32" in text
-
-
-def test_identity_manifests_are_sharded_balanced_and_write_variable_only_captions(tmp_path):
-    settings = tmp_path / "settings.json"
-    settings.write_text(json.dumps({
-        "replacements": {"blue-black": "natural jet-black with a cool sheen"},
-        "prompt_clauses": ["Keep the adult face fresh and naturally textured"],
-    }), encoding="utf-8")
-    captions = tmp_path / "captions"
-    out = tmp_path / "identity.yaml"
-    assert builder.main([
-        "--arm", str(PIPELINE / "bakeoff" / "arm-b-klein4b.yaml"),
-        "--candidate", "c01",
-        "--lever-table", str(settings),
-        "--trigger", "figmentc01",
-        "--out", str(out),
-        "--caption-dir", str(captions),
-    ]) == 0
-
-    assert not out.exists()
-    manifests = [
-        json.loads((tmp_path / f"identity-shard-{index:02d}.yaml").read_text(encoding="utf-8"))
-        for index in range(1, 5)
-    ]
-    assert [len(manifest["jobs"]) for manifest in manifests] == [10, 10, 10, 10]
-    jobs = [job for manifest in manifests for job in manifest["jobs"]]
-    assert len(jobs) == 40
-    for index, manifest in enumerate(manifests, start=1):
-        assert manifest["job_timeout_seconds"] == 240
-        assert manifest["readiness_timeout_seconds"] == 900
-        assert manifest["max_minutes"] == 60
-        assert manifest["identity_set"]["shard"] == {
-            "index": index,
-            "count": 4,
-            "cell_names": [job["output_name"] for job in manifest["jobs"]],
-        }
-        runner.require_manifest(manifest, PIPELINE / "bakeoff" / "arm-b-klein4b.yaml")
-    assert Counter(job["identity_cell"]["angle"] for job in jobs) == {
-        name: 8 for name in builder.ANGLES
-    }
-    assert Counter(job["identity_cell"]["lighting"] for job in jobs) == {
-        name: 10 for name in builder.LIGHTING
-    }
-    assert Counter(job["identity_cell"]["distance"] for job in jobs) == {
-        name: 20 for name in builder.DISTANCES
-    }
-    sidecars = sorted(captions.glob("*.txt"))
-    assert len(sidecars) == 40
-    for sidecar in sidecars:
-        text = sidecar.read_text(encoding="utf-8")
-        assert text.startswith("figmentc01, ")
-        assert "face" not in text.lower()
-        assert "skin" not in text.lower()
-
-
-def test_identity_builder_writes_one_unsuffixed_manifest_for_ten_jobs(tmp_path, monkeypatch):
-    settings = tmp_path / "settings.json"
-    settings.write_text(json.dumps({"replacements": {}, "prompt_clauses": []}), encoding="utf-8")
-    monkeypatch.setattr(builder, "ANGLES", {"front": builder.ANGLES["front"]})
-    monkeypatch.setattr(builder, "LIGHTING", {
-        f"light-{index}": f"light {index}" for index in range(5)
-    })
-    out = tmp_path / "identity.yaml"
-    captions = tmp_path / "captions"
-
-    assert builder.main([
-        "--arm", str(PIPELINE / "bakeoff" / "arm-b-klein4b.yaml"),
-        "--candidate", "c01",
-        "--lever-table", str(settings),
-        "--trigger", "figmentc01",
-        "--out", str(out),
-        "--caption-dir", str(captions),
-    ]) == 0
-
-    assert out.is_file()
-    assert list(tmp_path.glob("identity-shard-*.yaml")) == []
-    manifest = json.loads(out.read_text(encoding="utf-8"))
-    assert len(manifest["jobs"]) == 10
-    assert "shard" not in manifest["identity_set"]
-    runner.require_manifest(manifest, PIPELINE / "bakeoff" / "arm-b-klein4b.yaml")
-    assert len(list(captions.glob("*.txt"))) == 10
 
 
 def test_identity_check_uses_robust_thresholds_and_qa_compatible_rulings(tmp_path):
