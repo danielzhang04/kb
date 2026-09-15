@@ -22,8 +22,8 @@ Refresh and owner changes discard displayed results and stale responses. A brows
 timeout does not prove server completion; busy and uncertain-teardown quarantine
 remain server-owned states. Windows/cooperative-filesystem/trusted-runtime limits
 apply, and this acceptance does not cover arbitrary future concurrent UI embedding.
-See the [operator guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md)
-and [HTTP acceptance review](../../../../docs/figment/2026-09-13-current-source-http-review.md).
+See the [operator guide](../../../../docs/figment/archive/2026-09-13-current-source-reader-guide.md)
+and [HTTP acceptance review](../../../../docs/figment/archive/2026-09-13-current-source-http-review.md).
 
 Studio still has no live launch control or ruling writer. Execution and
 review/delivery designs are separate next work, not new accepted capabilities.
@@ -54,7 +54,7 @@ reported-pass state followed an explicit **Check recorded review** action. Root 
 screenshots for readable current styles and controls. The strict mocked loopback backend does not
 verify live authentication or backend behavior, real media, creator quality, deployment or a full
 journey; see the
-[Studio visual review](../../../../docs/figment/2026-09-12-studio-visual-review.md). Exact scoped counts and their limits are in the
+[Studio visual review](../../../../docs/figment/archive/2026-09-12-studio-visual-review.md). Exact scoped counts and their limits are in the
 [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
 
 Two other local lifecycle repairs are accepted. Content-brief revision preserves the base pair and
@@ -63,7 +63,7 @@ revalidate. The experimental executor creates no default authenticated session i
 mode. An explicitly admitted default live call uses the existing ambient-auth factory, installs
 terminal redaction before fallible setup, owns and closes the session, and keeps the operational
 failure primary when receipt or cleanup work also fails. The
-[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) records the interfaces,
+[operator guide](../../../../docs/figment/archive/2026-09-12-input-auth-repairs.md) records the interfaces,
 separate 58-test and 35-test evidence, and limits. This acceptance includes no provider call,
 credential handling, paid-run authority or creator-quality result.
 
@@ -75,7 +75,7 @@ and preserves uncertainty after an untrustworthy response. Retained allocation s
 inspected and current final-path proof established before reuse; neither abort nor inventory
 refresh proves rollback or current source validity. These checks do not complete the separate
 prepared-plan execution and content-assignment journey. See the
-[Research composition review](../../../../docs/figment/2026-09-12-brief-workspace-review.md).
+[Research composition review](../../../../docs/figment/archive/2026-09-12-brief-workspace-review.md).
 
 Prepared-plan cards now show accepted recorded execution status through GET @2,
 one ID/digest-bound record per stored plan. Missing history and running liveness
@@ -86,7 +86,7 @@ including both real Windows planner integration files, with typecheck/build;
 root verified 68 unchanged named inputs. Root also viewed four synthetic status
 screenshots and checked 26 unchanged inputs plus exact cleanup. This accepts the
 local status display, with no launch control or live-provider claim; see the
-[status wiring review](../../../../docs/figment/2026-09-12-gen-status-wiring-review.md).
+[status wiring review](../../../../docs/figment/archive/2026-09-12-gen-status-wiring-review.md).
 
 Stage A now prepares new plans inside the Figment content-authority root while
 retaining legacy inventory/replay and global capacity limits. Its exact private-tree
@@ -94,7 +94,7 @@ exclusion prevents watcher traversal and event/bus path disclosure without hidin
 neighboring coordination changes. The actual synthetic content producer accepted
 the new allocation and rejected the legacy root. This retains a cooperative,
 single-service writer model and adds no execution or assignment UI. See the
-[allocation review](../../../../docs/figment/2026-09-12-studio-allocation-review.md) for
+[allocation review](../../../../docs/figment/archive/2026-09-12-studio-allocation-review.md) for
 181 distinct passing cases across the retained v1 and focused v2 runs, and their limits.
 
 Stage B (`dcd78f3b`) extends discovery to exact GET @3 assignment records and hub @2
@@ -105,10 +105,10 @@ from restoring data. Local navigation requires a unique full revision/slot match
 real synthetic HTTP/session/browser journey passed after a preserved Chrome startup
 failure; root viewed four screenshots and verified 126 stable inputs/restoration/cleanup.
 This uses real handlers and session middleware, not full buildApp/deployed auth.
-The [assignment review](../../../../docs/figment/2026-09-12-recorded-assignment-review.md) bounds those claims. Populated Records now also has an accepted real collector/HTTP/session/browser
+The [assignment review](../../../../docs/figment/archive/2026-09-12-recorded-assignment-review.md) bounds those claims. Populated Records now also has an accepted real collector/HTTP/session/browser
 check: claim Refresh repeats claim discovery without reclassifying generic rows;
 root viewed distinct current/unknown/stale/unreviewed badges and readable paths. See
-the [Records review](../../../../docs/figment/2026-09-12-populated-records-review.md). Current-source
+the [Records review](../../../../docs/figment/archive/2026-09-12-populated-records-review.md). Current-source
 checking was then separate: the proposed thin adapter had been withdrawn because its
 read bindings did not cover all direct data access. The accepted observed-read
 implementation and manual journey above supersede that historical design state.
@@ -124,9 +124,9 @@ model execution, real image, visual review, identity result or wider dependency 
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
-The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control completed with one image and verified teardown; current evidence and next work are maintained in the [book README](README.md). See the [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control completed with one image and verified teardown; current evidence and next work are maintained in the [book README](README.md). See the [quality decision](../../../../docs/figment/archive/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/archive/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/archive/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
 
-The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
+The hub exposes persona metadata, declared references and diagnostic images, frozen plans, run/review records, cloud experiment lifecycle, and the research book. Its authenticated projections are read-only. The cloud slice passed a 147-test five-file batch, then 29 focused tests after two medium review repairs; the real V1/V2/V3 roots project sanitized lifecycle state without paths or pod IDs. This is local verification, not a deployment. See the [cloud hub review](../../../../docs/figment/archive/2026-09-09-cloud-hub-review.md).
 
 The generated-input gallery is now complete at `adcf4591` and independently READY. Its 124 affected tests, typecheck, and actual original-route probe passed; the dashboard production build also passed. No screenshot or deployment was performed, and the display does not establish accepted identity or output quality.
 
@@ -136,7 +136,7 @@ Every run has an immutable manifest, an intent, an acquired resource ID, a recei
 
 Budgeting has two layers: the configured daily limit and the experiment's arc cap. Numeric ledger rows are summed; missing native telemetry is represented by a metadata shard without a `usd` column so the harness skips it, while the unknown amount remains explicitly unknown. Blank numeric fields are invalid. Estimates are labeled as estimates and reconciled separately from invoices.
 
-The planner now resolves and freezes the canonical ledger path in each plan and its harness argv through the shared harness resolver. The [ledger-plan binding review](../../../../docs/figment/2026-09-09-ledger-plan-binding-review.md) recorded 73 passing tests in 167.86 seconds; it covers explicit canonical selection and prevents a new plan from silently using the stale worktree ledger. Existing plans remain immutable and are not hand-edited or migrated.
+The planner now resolves and freezes the canonical ledger path in each plan and its harness argv through the shared harness resolver. The [ledger-plan binding review](../../../../docs/figment/archive/2026-09-09-ledger-plan-binding-review.md) recorded 73 passing tests in 167.86 seconds; it covers explicit canonical selection and prevents a new plan from silently using the stale worktree ledger. Existing plans remain immutable and are not hand-edited or migrated.
 
 | Evidence/status | What it establishes | Limitation |
 |---|---|---|
@@ -149,7 +149,7 @@ Decisions: keep lifecycle states explicit (`planned`, `running`, `ready`, `uploa
 
 The hub's asset projections use fixed server-owned roots, bounded traversal and JSON reads, link/junction checks, and hash-bound opaque asset URLs for declared persona references and diagnostic PNGs. The offline plan-preview POST is a separate fixed local action. The accepted single-seed compiler is an offline local producer outside the hub: it has no API route, cloud call, approval writer, or gate change. Its atomic publication verifies retained lineage first; the historical four-candidate private probe refused without an output directory, plan, or approval. The separate accepted executor consumes only a frozen compiler plan from configured private roots. Its default is preparation or harness dry-run; its explicit live path remains diagnostic, non-promotable, admission-bound, and requires a parent-created admission plus current revalidation.
 
-The 20-row experimental executor still requires eligible data. A separate fresh V2 admission supported the distinct ten-step local availability fit. It bound the one-observation plan, current staged hashes, CPU/tokenizer receipts, and UTF-8 launcher; it wrote one non-promotable checkpoint with no samples, quality review, acceptance, or promotion. The [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md) records the receipt and lifecycle evidence. It does not make the existing gallery eligible or add a hub training action.
+The 20-row experimental executor still requires eligible data. A separate fresh V2 admission supported the distinct ten-step local availability fit. It bound the one-observation plan, current staged hashes, CPU/tokenizer receipts, and UTF-8 launcher; it wrote one non-promotable checkpoint with no samples, quality review, acceptance, or promotion. The [local LoRA fit runtime audit](../../../../docs/figment/archive/2026-09-08-local-lora-fit-runtime-audit.md) records the receipt and lifecycle evidence. It does not make the existing gallery eligible or add a hub training action.
 
 The distinct quality recipe completed current and concise CPU preflights, then
 a separately admitted current-caption 100-step fit. Its eleven checkpoints are
@@ -159,7 +159,7 @@ independent diagnostic review recorded `stop`. That disagreement does not
 establish successful output quality, human QA, acceptance, export, or promotion. The
 higher current ladder is stopped pending next-protocol analysis; no higher
 current stage or concise admission has been issued. The [training results hub
-review](../../../../docs/figment/2026-09-08-training-results-hub-review.md)
+review](../../../../docs/figment/archive/2026-09-08-training-results-hub-review.md)
 records the historical hub display separately from the runtime evidence.
 
 ## Local runtime contracts for reference-conditioned inference
@@ -168,12 +168,12 @@ The local OmniGen2 branch reuses the pair engine rather than adding a second exe
 
 Above the engine sits a fixed, read-only admission validator and a thin controller. The validator reconstructs the admission canonically, loads the planner and preparer only from hash-checked bytes, and streams every weight in 1 MiB chunks. The first implementation retained whole-model bytes, which would have allocated gigabytes before monitoring began; the streaming repair was confirmed by real verification of all three public weights (15,779,025,788 bytes) in 34.5 seconds with an 8.3 MB peak traced Python allocation, a figure that measures Python allocation only, not process memory. The CLI default is a non-executing static summary; `--apply` requires a root-created admission plus current revalidation of controller, observer, engine and validator hashes. Root accepted the controller after independent Opus review, removing an unreachable reader fallback and separating the planner's declared manifest hash from the whole-record hash.
 
-Admission preparation enforces 12 GiB available physical RAM, 32 GiB commit headroom, 7,500 MiB free VRAM, and 20 GiB disk. The local readiness watches are historical: they ended below the RAM floor with zero executions. The cloud continuation produced two terminated failures, then V3 completed with two files and verified termination at 08:16:25 UTC. Both visual reviews stopped before the six-row pilot, leaving no training-eligible image. Dashboard evidence is limited to the 147-test slice, the latest 29-test repair batch, and a passing typecheck; no full-suite or deployment claim follows. See the [cloud hub review](../../../../docs/figment/2026-09-09-cloud-hub-review.md).
+Admission preparation enforces 12 GiB available physical RAM, 32 GiB commit headroom, 7,500 MiB free VRAM, and 20 GiB disk. The local readiness watches are historical: they ended below the RAM floor with zero executions. The cloud continuation produced two terminated failures, then V3 completed with two files and verified termination at 08:16:25 UTC. Both visual reviews stopped before the six-row pilot, leaving no training-eligible image. Dashboard evidence is limited to the 147-test slice, the latest 29-test repair batch, and a passing typecheck; no full-suite or deployment claim follows. See the [cloud hub review](../../../../docs/figment/archive/2026-09-09-cloud-hub-review.md).
 
-The accepted generated-input gallery specified in [the hub plan](../../../../docs/figment/2026-09-08-generated-input-hub-plan.md) displays declared provenance and recorded visual-review observations next to the provisional `g01` source, while omitting operator-approval data and all actions. Its bounded provenance projection was accepted in `7f158b08`; its readability update was accepted in `c264d74f`. It shows immutable record snapshots, which may predate later independent review, and does not make a gallery diagnostic eligible. The separate direct-`g01` curation has accepted a bounded 20-train/2-eval research set; its single-anchor lineage and 21 raw unthresholded identity observations do not establish a diverse source set or independent-reference identity evaluation. V1's image-pull failure is terminated evidence. The v2 train-first run completed at 22:37:53 UTC with five verified checkpoint hashes and teardown; its tester completed at 23:03:12 UTC with five PNGs and verified teardown, then the root-attributed all-cull left no selected checkpoint. See the [book README](README.md) for the current public-base-only control state, the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md), and the reviewed [train-first hub lifecycle](../../../../docs/figment/2026-09-09-train-first-hub-lifecycle-review.md). The local hub projection is reviewed local mechanics, not a deployed control plane or a quality claim.
+The accepted generated-input gallery specified in [the hub plan](../../../../docs/figment/archive/2026-09-08-generated-input-hub-plan.md) displays declared provenance and recorded visual-review observations next to the provisional `g01` source, while omitting operator-approval data and all actions. Its bounded provenance projection was accepted in `7f158b08`; its readability update was accepted in `c264d74f`. It shows immutable record snapshots, which may predate later independent review, and does not make a gallery diagnostic eligible. The separate direct-`g01` curation has accepted a bounded 20-train/2-eval research set; its single-anchor lineage and 21 raw unthresholded identity observations do not establish a diverse source set or independent-reference identity evaluation. V1's image-pull failure is terminated evidence. The v2 train-first run completed at 22:37:53 UTC with five verified checkpoint hashes and teardown; its tester completed at 23:03:12 UTC with five PNGs and verified teardown, then the root-attributed all-cull left no selected checkpoint. See the [book README](README.md) for the current public-base-only control state, the [curation result](../../../../docs/figment/archive/2026-09-09-builtin-dataset-curation-result.md), and the reviewed [train-first hub lifecycle](../../../../docs/figment/archive/2026-09-09-train-first-hub-lifecycle-review.md). The local hub projection is reviewed local mechanics, not a deployed control plane or a quality claim.
 
-The explicit Codex grading selector is now implemented for diagnostics while the default remains Claude. Codex diagnostic results always leave the gate `unavailable: judge`, including when scores parse successfully, until a future reviewed calibration change. The private-`g01` one-shot transport smoke remains blocked by its specific transfer approval, so it has not run or been rerouted. Separately, reviewed local research mode records normal stage-1 diagnostics but makes every automatic row false and `unavailable: judge`; it invokes no external image judge and still requires attributed research rulings with explicit overrides. Its mechanics do not create a production PASS. See the [local research review](../../../../docs/figment/2026-09-09-local-research-review.md).
+The explicit Codex grading selector is now implemented for diagnostics while the default remains Claude. Codex diagnostic results always leave the gate `unavailable: judge`, including when scores parse successfully, until a future reviewed calibration change. The private-`g01` one-shot transport smoke remains blocked by its specific transfer approval, so it has not run or been rerouted. Separately, reviewed local research mode records normal stage-1 diagnostics but makes every automatic row false and `unavailable: judge`; it invokes no external image judge and still requires attributed research rulings with explicit overrides. Its mechanics do not create a production PASS. See the [local research review](../../../../docs/figment/archive/2026-09-09-local-research-review.md).
 
-The separate [prompt-profile gallery](../../../../docs/figment/2026-09-08-profile-gallery-review.md) now displays the terminal C3 study with its two original images, both STOP reviews and the recorded gaze disagreement. It shares the authenticated read scope. Its JSON projection omits internal record fields, while original PNGs retain the generation metadata needed for provenance. Reviewed evidence display remains separate from live controls and quality acceptance.
+The separate [prompt-profile gallery](../../../../docs/figment/archive/2026-09-08-profile-gallery-review.md) now displays the terminal C3 study with its two original images, both STOP reviews and the recorded gaze disagreement. It shares the authenticated read scope. Its JSON projection omits internal record fields, while original PNGs retain the generation metadata needed for provenance. Reviewed evidence display remains separate from live controls and quality acceptance.
 
 Final verification at Studio `b7100774`: the two real producer/consumer joins (train-first to fresh generation, and approved generation to video upload) also passed after the ledger fix: **2 tests in 34.20 seconds**. These are local fixture-based integration checks, not accepted image-quality evidence.

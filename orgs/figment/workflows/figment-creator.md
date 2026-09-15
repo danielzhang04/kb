@@ -1,485 +1,323 @@
 ---
 id: figment-creator
 project: figment
-title: Run one creator persona through the S2-S9 pipeline
+title: Run one creator persona through the eight-stage pipeline
 profile: creator
 governedBy: figment-runner
 manager:
   agentId: figment-runner
   profileId: manager:claude:claude-opus-5
-parameters: [persona_id, batch_id]
+parameters: [persona_id, run_root]
 stages:
-  - id: expand-s2
-    phase: S2
-    title: Expansion-02 identity generation and raw scoring
-    action: build:identity-expansion
-    target: orgs/figment/personas
+  - id: anchor
+    phase: anchor
+    title: Anchor stage (identity source of record)
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-expand
     agentId: figment-expand
     profileId: worker:claude:claude-sonnet-5
-    workOrder: "Build the 60-cell allocation from persona.grammar and run the 6 ephemeral-pod manifests for expansion-02 (S2), under an approved GATE S spend card. Score every cell raw-only — no automated pass/fail. Never proceed past the manifest preflight if the job budget cannot fit the run's own max_minutes."
+    workOrder: "`figment_train.py plan --stage anchor` then `run --stage anchor` for <persona_id>, under the plan's own per-manifest --max-usd/--max-minutes. On creator-001 the operator-supplied g01/g02/g07 references are already the anchor of record — this stage runs only when a fresh anchor candidate is actually being generated, never to re-derive an existing one."
     artifacts:
-      - id: expansion-batch
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>/batch.json
-        description: The append-only batch state machine — cells, pod-run rows, and raw scores for expansion-02.
-  - id: checker-gate-a-review
-    phase: S2
-    title: Identity-gate review feeding GATE A
-    action: review:identity-gate
-    target: orgs/figment/personas
+      - id: anchor-plan
+        path: orgs/figment/runs/<persona_id>/<run_root>/plan.json
+        description: The anchor stage's manifest and harness argv inside the primary plan.
+  - id: checker-gate-anchor
+    phase: anchor
+    title: Anchor gate-prep review
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [expand-s2]
-    workOrder: "Build the blinded contact-sheet board over expansion-02's 60 cells and stage it for the operator's seven-axis rulings. figment-checker never rules the board itself; it prepares the review surface and, once rulings land, writes the qa_stamp.py record fail-closed on any missing or malformed safety axis."
+    dependsOn: [anchor]
+    workOrder: "Run `grade --stage anchor` to build the full-resolution board and rulings template. figment-checker never rules the board itself — it prepares the review surface; `identity_gate`/`vlm_judge` supply the automated score rows, the operator supplies the seven-axis ruling via `apply-rulings`."
     artifacts:
-      - id: qa-stamp
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>/gate.json
-        description: The SHA-bound gate record the operator reads at GATE A.
-  - id: train-lora-v1
-    phase: S3
-    title: Train persona LoRA v1 (S2 only, provisional clothed proof)
-    action: build:lora-train
-    target: orgs/figment/pipeline/train
-    riskTier: T2
-    governedBy: figment-train
-    agentId: figment-train
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-gate-a-review]
-    humanGates:
-      - id: gate-a
-        kind: approval
-        prompt: "GATE A — identity grid. Read the blind board and the operator's seven-axis rulings for expansion-02, then approve to release LoRA v1 training on S2 only. Nothing proceeds to S3 without verified on >=40 cells and every one of the 40 strata represented."
-    workOrder: "Train persona LoRA v1 on the >=40 curated approved S2 cells only, then run the dataset-tester grid (12 parallel branches, one fixed prompt and seed) so figment-checker can rank checkpoints for GATE B."
-    artifacts:
-      - id: lora-v1-candidates
-        path: orgs/figment/pipeline/train/runs/<batch_id>/checkpoints
-        description: The ranked LoRA v1 checkpoint candidates for the operator's GATE B pick.
-  - id: checker-checkpoint-b-review
-    phase: S3
-    title: Checkpoint-rank review feeding GATE B
-    action: review:checkpoint-rank
-    target: orgs/figment/pipeline/train
-    riskTier: T2
-    governedBy: figment-checker
-    agentId: figment-checker
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [train-lora-v1]
-    workOrder: "Review the LoRA v1 dataset-tester grid against the held-out acceptance protocol and write a ranked-checkpoint note for the operator's GATE B pick. figment-checker never picks the checkpoint itself."
-    artifacts:
-      - id: checkpoint-review
-        path: orgs/figment/pipeline/train/runs/<batch_id>/checkpoint-review.json
-        description: The ranked checkpoint review the operator reads at GATE B.
-  - id: expand-s2b-swimwear
-    phase: S2b
-    title: Swimwear/lingerie tier extension batch
-    action: build:swimwear-expansion
-    target: orgs/figment/personas
+      - id: anchor-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/grade/anchor/gate.json
+        description: The numeric figment/gate@1 score table the operator's GATE anchor ruling reads alongside the board.
+  - id: dataset
+    phase: dataset
+    title: Dataset stage
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-expand
     agentId: figment-expand
     profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-checkpoint-b-review]
+    dependsOn: [checker-gate-anchor]
     humanGates:
-      - id: gate-b
+      - id: gate-anchor
         kind: approval
-        prompt: "GATE B — checkpoint pick. Read figment-checker's ranked checkpoint review, then approve the LoRA v1 checkpoint used as this batch's and S2c's reference generator."
-    workOrder: "Generate 12-16 swimwear/lingerie cells as its own batch, own gate, excluded from LoRA v1, using the GATE-B-picked LoRA v1 checkpoint as reference. The garment classifier flag is a triage route to the board, never an automatic quarantine."
+        prompt: "GATE anchor. Read the anchor board and gate table, then apply-rulings. Dataset plans only against a current anchor ruling."
+    workOrder: "`plan --stage dataset` then `run --stage dataset`. The train-first path (Path-A, r24 method 4 + r21 DOP) skips this stage entirely and screens an already-captioned dataset directory instead (`train-first --dataset-dir`) — run this stage only when the module-10-style dataset builder is the chosen path for this persona, not on the live train-first path."
     artifacts:
-      - id: swimwear-batch
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>-s2b/batch.json
-        description: The S2b batch state — cells, raw scores, and pod-run rows.
-  - id: checker-gate-a2-review
-    phase: S2b
-    title: Swimwear identity-gate review feeding GATE A2
-    action: review:identity-gate
-    target: orgs/figment/personas
+      - id: dataset-plan
+        path: orgs/figment/runs/<persona_id>/<run_root>/plan.json
+        description: The dataset stage's manifest and harness argv inside the primary plan.
+  - id: checker-gate-dataset
+    phase: dataset
+    title: Dataset gate-prep review
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [expand-s2b-swimwear]
-    workOrder: "Build the blinded board over the S2b batch and, once the operator's seven-axis rulings land, write the qa_stamp.py record fail-closed on any missing or malformed safety axis."
+    dependsOn: [dataset]
+    workOrder: "Run `grade --stage dataset` and prepare the board/rulings template for the operator's GATE dataset ruling."
     artifacts:
-      - id: qa-stamp-a2
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>-s2b/gate.json
-        description: The SHA-bound gate record the operator reads at GATE A2.
-  - id: expand-s2c-fullbody
-    phase: S2c
-    title: Full-body second pass from the GATE-B checkpoint
-    action: build:fullbody-expansion
-    target: orgs/figment/personas
-    riskTier: T2
-    governedBy: figment-expand
-    agentId: figment-expand
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-checkpoint-b-review]
-    humanGates:
-      - id: gate-b-fullbody
-        kind: approval
-        prompt: "GATE B — checkpoint pick (same decision as expand-s2b-swimwear). Approving releases the full-body second pass, generated from the picked LoRA v1 checkpoint, never as a single full-frame identity swap."
-    workOrder: "Generate 16-20 full-body cells at the same 5 angles x 4 lights, clothed wardrobe families only, from an approved LoRA-v1 (or S2-curated) reference. The face-pixel floor hard-routes only once min_face_px is locked at GATE A with a matching calibration_set_sha; otherwise it routes to review, not automatic quarantine."
-    artifacts:
-      - id: fullbody-batch
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>-s2c/batch.json
-        description: The S2c batch state — cells, raw scores, and pod-run rows.
-  - id: checker-gate-a3-review
-    phase: S2c
-    title: Full-body identity-gate review feeding GATE A3
-    action: review:identity-gate
-    target: orgs/figment/personas
-    riskTier: T2
-    governedBy: figment-checker
-    agentId: figment-checker
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [expand-s2c-fullbody]
-    workOrder: "Build the blinded board over the S2c batch and, once the operator's seven-axis rulings land, write the qa_stamp.py record fail-closed on any missing or malformed safety axis."
-    artifacts:
-      - id: qa-stamp-a3
-        path: orgs/figment/personas/<persona_id>/batches/<batch_id>-s2c/gate.json
-        description: The SHA-bound gate record the operator reads at GATE A3.
-  - id: train-lora-v2
-    phase: S3
-    title: Train production persona LoRA v2 on S2 union S2b union S2c
-    action: build:lora-train
-    target: orgs/figment/pipeline/train
+      - id: dataset-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/grade/dataset/gate.json
+        description: The dataset stage's gate table.
+  - id: smoke-and-train
+    phase: train
+    title: Training smoke and full train (not gradeable)
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-train
     agentId: figment-train
     profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-gate-a2-review, checker-gate-a3-review]
+    dependsOn: [checker-gate-dataset]
     humanGates:
-      - id: gate-a2
+      - id: gate-dataset
         kind: approval
-        prompt: "GATE A2 — swimwear identity grid. Read the blind board and rulings for the S2b batch, then approve. LoRA v2 folds S2b in only after this and GATE A3 both clear."
-      - id: gate-a3
-        kind: approval
-        prompt: "GATE A3 — full-body identity grid. Read the blind board and rulings for the S2c batch, then approve. LoRA v2 trains on S2 union S2b union S2c only once this and GATE A2 both clear."
-    workOrder: "Train the production LoRA v2 on the union of the S2, S2b, and S2c curated approved cells, then run the dataset-tester grid so figment-checker can rank checkpoints for GATE B2."
+        prompt: "GATE dataset. Read the dataset board and gate table, then apply-rulings. `smoke` and `train` run only against a current dataset ruling (or, on train-first, a recorded `dataset-approval.json`)."
+    workOrder: "`run --stage smoke` then `run --stage train`. Neither is gradeable — no per-cell ruling makes sense for a training smoke or a full training run; the checkpoint ladder it produces is screened at GATE tester, not here. Train's ceiling is derived from steps x the per-step rate (`_apply_train_budget`), read off the plan, never assumed."
     artifacts:
-      - id: lora-v2-candidates
-        path: orgs/figment/pipeline/train/runs/<batch_id>-v2/checkpoints
-        description: The ranked LoRA v2 checkpoint candidates for the operator's GATE B2 pick.
-  - id: checker-checkpoint-b2-review
-    phase: S3
-    title: Checkpoint-rank review feeding GATE B2
-    action: review:checkpoint-rank
-    target: orgs/figment/pipeline/train
+      - id: train-checkpoints
+        path: orgs/figment/runs/<persona_id>/<run_root>/train/runs/out
+        description: The checkpoint ladder (11 intermediates + final at the current 3000-step/DOP profile) for GATE tester to screen.
+  - id: checker-gate-tester
+    phase: tester
+    title: Tester gate-prep review (checkpoint ranking)
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [train-lora-v2]
-    workOrder: "Review the LoRA v2 dataset-tester grid against the held-out acceptance protocol and write a ranked-checkpoint note for the operator's GATE B2 pick."
+    dependsOn: [smoke-and-train]
+    workOrder: "`run --stage tester` (or plan tester directly against `--import-checkpoints <dir>` for an operator-trained ladder, MANDATE.md's tier constraint), then `grade --stage tester` to build the board and rulings template ranking every checkpoint. figment-checker never picks the checkpoint — the operator does, via `apply-rulings --checkpoint-step <N>`, and never defaults it to the final step."
     artifacts:
-      - id: checkpoint-review-v2
-        path: orgs/figment/pipeline/train/runs/<batch_id>-v2/checkpoint-review.json
-        description: The ranked checkpoint review the operator reads at GATE B2.
-  - id: register-lock-s4
-    phase: S4
-    title: Register lock and register grids
-    action: build:register-lock
-    target: orgs/figment/pipeline/train
-    riskTier: T2
-    governedBy: figment-train
-    agentId: figment-train
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-checkpoint-b2-review]
-    humanGates:
-      - id: gate-b2
-        kind: approval
-        prompt: "GATE B2 — checkpoint pick. Read figment-checker's ranked LoRA v2 checkpoint review, then approve the production checkpoint. Register grids run only against the picked checkpoint."
-    workOrder: "Lock the persona's register against the picked LoRA v2 checkpoint and produce the register grids figment-checker reviews for GATE C's identity-floor and adherence proof."
-    artifacts:
-      - id: register-grids
-        path: orgs/figment/pipeline/register/<persona_id>/grids
-        description: The register grids the operator's GATE C proof reads.
-  - id: checker-gate-c-review
-    phase: S4
-    title: Register-proof review feeding GATE C
-    action: review:register-proof
-    target: orgs/figment/pipeline/register
-    riskTier: T2
-    governedBy: figment-checker
-    agentId: figment-checker
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [register-lock-s4]
-    workOrder: "Review the register grids against the identity floor and register-adherence protocol and write the register-proof note for the operator's GATE C decision."
-    artifacts:
-      - id: register-proof
-        path: orgs/figment/pipeline/register/<persona_id>/register-proof.json
-        description: The register-proof review the operator reads at GATE C.
-  - id: render-pass-ab
-    phase: S5
-    title: Pass A/B promotion candidates (12 cells)
-    action: build:pass-ab
-    target: orgs/figment/pipeline/passes
+      - id: tester-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/grade/tester/gate.json
+        description: The per-checkpoint gate table the operator's GATE tester pick reads.
+  - id: gen
+    phase: gen
+    title: Base generation against the accepted checkpoint
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-render
     agentId: figment-render
     profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-gate-c-review]
+    dependsOn: [checker-gate-tester]
     humanGates:
-      - id: gate-c
+      - id: gate-tester
         kind: approval
-        prompt: "GATE C — register proof. Read figment-checker's register-proof note, then approve to release the 12-cell pass A/B promotion candidates."
-    workOrder: "Generate the 12-cell pass A/B candidate set (passes 0-4, persona-LoRA strength 0.65-0.80, refine at denoise 0.35) for figment-checker's blinded eye-gate review at GATE D."
+        prompt: "GATE tester — checkpoint pick. Read the tester board and gate table, then apply-rulings --checkpoint-step <N> (or omit it to record an all-cull rejection). `gen` plans only once `grade/tester/accepted-checkpoint.json` exists."
+    workOrder: "`plan --stage gen` (optionally `--style-lora <key> --style-lora-strength <x>` for a prospective skin-texture A/B) then `run --stage gen`, against the accepted checkpoint only — the planner revalidates persona, checkpoint, and upstream approval bytes before launch."
     artifacts:
-      - id: pass-ab-candidates
-        path: orgs/figment/pipeline/passes/<persona_id>/pass-ab
-        description: The 12 pass A/B candidate cells for the blinded GATE D review.
-  - id: checker-gate-d-review
-    phase: S5
-    title: Pass A/B blinded review feeding GATE D
-    action: review:pass-ab
-    target: orgs/figment/pipeline/passes
+      - id: gen-plan
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/gen/plan.json
+        description: The gen stage's plan, planned automatically by `pipeline` once tester is ruled.
+  - id: checker-gate-gen
+    phase: gen
+    title: Gen gate-prep review
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [render-pass-ab]
-    workOrder: "Build the blinded board over the pass A/B candidates for the operator's GATE D promotion decision."
+    dependsOn: [gen]
+    workOrder: "`grade --stage gen` and prepare the board/rulings template for the operator's GATE gen ruling."
     artifacts:
-      - id: pass-ab-board
-        path: orgs/figment/pipeline/passes/<persona_id>/pass-ab-board.html
-        description: The blinded pass A/B board the operator reads at GATE D.
-  - id: render-video-proofs
-    phase: S6
-    title: Video V1/V2 proofs
-    action: build:video-proofs
-    target: orgs/figment/pipeline/video
+      - id: gen-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/gen/grade/gen/gate.json
+        description: The gen stage's gate table.
+  - id: detail
+    phase: detail
+    title: Detail pass over gen's kept stills
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-render
     agentId: figment-render
     profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-gate-d-review]
+    dependsOn: [checker-gate-gen]
     humanGates:
-      - id: gate-d
+      - id: gate-gen
         kind: approval
-        prompt: "GATE D — pass promotion, blinded eye-gate. Read the blinded pass A/B board, then approve the promoted pass. Approving releases the S6 video V1/V2 proof generation."
-    workOrder: "Generate the V1 and V2 video proofs against the promoted pass, at the reconciled Wan-2.2 TI2V-5B motion settings, for figment-checker's frame-QA and manifest-schema review at GATE D2."
+        prompt: "GATE gen. Read the gen board and gate table, then apply-rulings. `detail` plans automatically once gen is ruled, always against gen's own kept stills — never an operator-supplied glob."
+    workOrder: "`pipeline` plans and runs `detail` automatically once GATE gen clears (F2): MediaPipe face-detailer at the package's own denoise band (0.15/0.27 A/B pair per kept image), same accepted checkpoint `gen` uses."
     artifacts:
-      - id: video-proofs
-        path: orgs/figment/pipeline/video/<persona_id>/proofs
-        description: The V1/V2 video proofs for the GATE D2 eye-gate.
-  - id: checker-gate-d2-review
-    phase: S6
-    title: Video eye-gate review feeding GATE D2
-    action: review:video-gate
-    target: orgs/figment/pipeline/video
+      - id: detail-plan
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/detail/plan.json
+        description: The detail stage's plan.
+  - id: checker-gate-detail
+    phase: detail
+    title: Detail gate-prep review
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
     riskTier: T2
     governedBy: figment-checker
     agentId: figment-checker
     profileId: worker:claude:claude-opus-5
-    dependsOn: [render-video-proofs]
-    workOrder: "Run frame-QA and manifest-schema checks over the V1/V2 proofs and write the video-gate note for the operator's GATE D2 decision."
+    dependsOn: [detail]
+    workOrder: "`grade --stage detail` and prepare the board/rulings template for the operator's GATE detail ruling. Once ruled, `pipeline` writes `deliverable/manifest.json` (stills + detail images + lineage)."
     artifacts:
-      - id: video-gate-review
-        path: orgs/figment/pipeline/video/<persona_id>/video-gate-review.json
-        description: The frame-QA and manifest-schema review the operator reads at GATE D2.
-  - id: content-week-plan
-    phase: S7
-    title: Author the week's content plan
-    action: build:week-plan
+      - id: detail-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/detail/grade/detail/gate.json
+        description: The detail stage's gate table.
+  - id: video
+    phase: video
+    title: Video stage (I2V candidate, assembly, frame QA)
+    action: pipeline:run-stage
+    target: orgs/figment/pipeline/figment_train.py
+    riskTier: T2
+    governedBy: figment-render
+    agentId: figment-render
+    profileId: worker:claude:claude-sonnet-5
+    dependsOn: [checker-gate-detail]
+    humanGates:
+      - id: gate-detail
+        kind: approval
+        prompt: "GATE detail. Read the detail board and gate table, then apply-rulings."
+    workOrder: "`pipeline` plans video automatically once gen is ruled (F6a; the run root must be inside the repository — `_video_authority_root`): a Wan 2.2 review-candidate manifest against one of gen's own kept stills, the bounded pod harness renders it, then local evidence (assembly, reel derivative, frame extraction) is built for grading."
+    artifacts:
+      - id: video-evidence
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/video/video
+        description: The assembled candidate, reel derivative, and extracted sample frames.
+  - id: checker-gate-video
+    phase: video
+    title: Video gate-prep review (identity under motion)
+    action: pipeline:grade-stage
+    target: orgs/figment/pipeline/figment_train.py
+    riskTier: T2
+    governedBy: figment-checker
+    agentId: figment-checker
+    profileId: worker:claude:claude-opus-5
+    dependsOn: [video]
+    workOrder: "`grade --stage video` scores every 8th of the 81 native frames (11 cells) through the existing identity/judge gate — `identity` on each sampled frame IS 'the face holds here under motion'. Prepare the board/rulings template for the operator's GATE video ruling."
+    artifacts:
+      - id: video-gate
+        path: orgs/figment/runs/<persona_id>/<run_root>/downstream/video/grade/video/gate.json
+        description: The per-frame gate table the operator's GATE video ruling reads.
+  - id: content-plan
+    phase: content
+    title: Author the content plan (stage 7)
+    action: build:content-brief
     target: orgs/figment/pipeline/content
     riskTier: T2
     governedBy: figment-content
     agentId: figment-content
     profileId: worker:claude:claude-sonnet-5
-    dependsOn: [checker-gate-d2-review]
+    dependsOn: [checker-gate-video]
     humanGates:
-      - id: gate-d2
+      - id: gate-video
         kind: approval
-        prompt: "GATE D2 — video eye-gate. Read figment-checker's frame-QA and manifest-schema note, then approve. Approving releases the week's content-strategy plan."
-    workOrder: "Run content/plan_week.py against taxonomy.yaml, carousel-templates.yaml, and reel-templates.yaml to enumerate the week's 14 stills + 3 videos across the declared A-G mix. Author only — no pixels or spend here."
+        prompt: "GATE video. Read the video board and per-frame gate table, then apply-rulings. Approving completes the deliverable's video block."
+    workOrder: "Author a content brief (`content_brief.py`) against `content/taxonomy.yaml` and the deliverable's kept stills/detail/video. Author only — no pixels or spend here; joining approved media to slots is `content_asset_binding.py`, a separate offline step."
     artifacts:
-      - id: week-plan
-        path: orgs/figment/pipeline/content/<persona_id>/week-plan.json
-        description: The week plan the operator approves at GATE E — the generation-spend authorization.
-  - id: render-batch-generate
-    phase: S5
-    title: Generate the week's batch content
-    action: build:batch-generate
-    target: orgs/figment/pipeline/passes
-    riskTier: T2
-    governedBy: figment-render
-    agentId: figment-render
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [content-week-plan]
-    humanGates:
-      - id: gate-e
-        kind: approval
-        prompt: "GATE E — week-plan approval, the generation spend authorization. Read figment-content's week plan, then approve to release this run's generation spend for the week's stills and videos."
-        spendAuthorization: true
-    workOrder: "Generate the week's stills and videos against the approved week plan, one cell per planned slot, at the declared aspect ratios (3:4 1080x1440 stills, 9:16 1080x1920 reels). Bounded by GATE E's spend authorization only."
-    artifacts:
-      - id: week-batch
-        path: orgs/figment/pipeline/passes/<persona_id>/week-batch
-        description: The generated week batch for figment-checker's QA-board review feeding GATE F.
-  - id: checker-qa-board-review
-    phase: S8
-    title: QA-board review feeding GATE F
-    action: review:qa-board
-    target: orgs/figment/pipeline/passes
-    riskTier: T2
-    governedBy: figment-checker
-    agentId: figment-checker
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [render-batch-generate]
-    workOrder: "Build the QA board over the week batch (all seven rulings axes, three-state badge, parked reasons) for the operator's GATE F batch-approval decision."
-    artifacts:
-      - id: qa-board
-        path: orgs/figment/pipeline/passes/<persona_id>/qa-board.html
-        description: The QA board the operator reads at GATE F.
-  - id: poster-schedule
-    phase: S8
-    title: Schedule the approved batch
-    action: build:schedule
-    target: orgs/figment/pipeline/publish
-    riskTier: T2
-    governedBy: figment-poster
-    agentId: figment-poster
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [checker-qa-board-review]
-    humanGates:
-      - id: gate-f
-        kind: approval
-        prompt: "GATE F — batch approval. Read the QA board, then approve to release scheduling for the approved cells only."
-    workOrder: "Write the calendar schedule for the approved batch cells against each target account's readiness record. Refuses to schedule any account whose disclosure preflight or readiness record is not verified. Never touches a credential as an object."
-    artifacts:
-      - id: schedule
-        path: orgs/figment/pipeline/publish/<persona_id>/schedule.json
-        description: The per-account schedule for figment-checker's publish-audit review.
-  - id: checker-publish-audit
-    phase: S8
-    title: Publish-audit review — mandatory adversarial review of the posting unit
-    action: review:publish-audit
-    target: orgs/figment/pipeline/publish
-    riskTier: T2
-    governedBy: figment-checker
-    agentId: figment-checker
-    profileId: worker:claude:claude-opus-5
-    dependsOn: [poster-schedule]
-    workOrder: "Independently re-verify the schedule's disclosure preflight, quota, and idempotency-key uniqueness before any container is created. This is the posting unit's mandatory adversarial review — figment-poster authored the schedule, figment-checker never authors what it audits."
-    artifacts:
-      - id: publish-audit
-        path: orgs/figment/pipeline/publish/<persona_id>/publish-audit.json
-        description: The publish-audit review the operator reads at GATE G.
-  - id: poster-publish
-    phase: S8
-    title: Publish and measure
-    action: publish:post
-    target: orgs/figment/pipeline/publish
+      - id: content-brief
+        path: orgs/figment/content/briefs/<persona_id>-<slug>/brief.json
+        description: The content brief the operator reviews before any account posts from it.
+  - id: analyst-insights
+    phase: post-and-optimise
+    title: Post, measure, optimise (stages 8-9)
+    action: build:insights-pull
+    target: orgs/figment/pipeline
     riskTier: T3
     governedBy: figment-poster
     agentId: figment-poster
     profileId: worker:claude:claude-opus-5
-    dependsOn: [checker-publish-audit]
-    humanGates:
-      - id: gate-g
-        kind: approval
-        prompt: "GATE G — publish approval. Read figment-checker's publish-audit review, then approve with the operator's T3 publish token (dashboard/WebAuthn channel only) to authorize container creation and posting."
-        publicationAuthorization: true
-    workOrder: "Create the container with is_ai_generated at creation time, publish idempotently per idempotency_key, and record the post. Only after GATE G's T3 token is present; refuses closed on any missing disclosure or quota exhaustion."
+    dependsOn: [content-plan]
+    mutating: false
+    workOrder: "BLOCKED on operator provisioning (Instagram professional test account, Meta app + OAuth grant, Fanvue written confirmation — see STATE.md). No Graph API client, no publish path, and no insights reader exist under orgs/figment or dashboard/server today; this stage is a placeholder for that future work, not a runnable step."
     artifacts:
       - id: post-record
         path: orgs/figment/pipeline/publish/posts/<persona_id>
-        description: The durable post record — media_id, container_id, idempotency_key, published_at.
-  - id: analyst-measure
-    phase: S9
-    title: Nightly insights pull
-    action: build:insights-pull
-    target: orgs/figment/pipeline/insights
-    riskTier: T2
-    governedBy: figment-analyst
-    agentId: figment-analyst
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [poster-publish]
-    mutating: false
-    workOrder: "Pull nightly insights at +24h/+48h/+7d into the local warehouse, one file per account per day. Never grade a post younger than 48 hours."
-    artifacts:
-      - id: warehouse-row
-        path: orgs/figment/pipeline/insights/warehouse/<persona_id>
-        description: The per-account, per-day warehouse rows the optimiser reads.
-  - id: analyst-optimise
-    phase: S9
-    title: Optimiser proposal
-    action: build:optimiser-proposal
-    target: orgs/figment/pipeline/insights
-    riskTier: T2
-    governedBy: figment-analyst
-    agentId: figment-analyst
-    profileId: worker:claude:claude-sonnet-5
-    dependsOn: [analyst-measure]
-    humanGates:
-      - id: gate-h
-        kind: approval
-        prompt: "GATE H — mix change. Read the optimiser's proposed diff to the weekly mix and template ranking, then approve or reject. The optimiser never edits the live mix unattended."
-    workOrder: "Compute the eight KPIs from the local warehouse and propose one diff to content/taxonomy.yaml and the template ranking, or a no-change report. Never applies the diff itself."
-    artifacts:
-      - id: optimiser-proposal
-        path: orgs/figment/pipeline/insights/<persona_id>/optimiser-proposal.json
-        description: The proposed mix/template diff the operator approves or rejects at GATE H.
+        description: Not yet implemented — recorded here as the eventual target path.
 ---
 
-# figment-creator — run one creator persona through S2-S9
+# figment-creator — run one creator persona through the pipeline
 
-Runs creator-001's stage graph from expansion-02 identity generation through publish and
-optimise. The persona and the active batch are supplied at launch; wherever a work order
-says `<persona_id>`/`<batch_id>`, substitute the launch-supplied values.
+Runs one creator persona through `figment_train.py`'s eight CLI stages — `anchor`,
+`dataset`, `smoke`, `train`, `tester`, `gen`, `detail`, `video` — plus the content/post/
+optimise stages beyond the CLI (7-9). The persona and run root are supplied at launch;
+wherever a work order says `<persona_id>`/`<run_root>`, substitute the launch-supplied
+values.
 
-Tonight this file is **declarative only**: no card is dispatched, and no account,
-scheduler, or publisher is activated by its existence. Approving a human gate is a
-recorded decision the operator makes, never inferred from a successful worker exit —
-a stage reporting DONE proves the stage ran, not that any downstream gate cleared.
+This file is **declarative only**: no card is dispatched, and no account, scheduler, or
+publisher is activated by its existence. Approving a human gate is a recorded decision the
+operator makes via `apply-rulings`, never inferred from a successful worker exit — a stage
+reporting DONE proves the stage ran, not that any downstream gate cleared. This supersedes
+the earlier `S2...S9` / `expand-s2` / `train-lora-v1` stage graph, which described a
+pipeline that never existed in code (`docs/figment/AUDIT-2026-09-15.md` "Docs contradicting
+the code": the CLI's real stages have always been the eight named above, driven by one
+`pipeline` command since P4a, not a nine-phase agent DAG with its own LoRA-v1/v2 split).
 
 ## The roster
 
-Nine declarations under `agents/figment-*.md`: `figment-runner` (conductor —
-launches, sequences, gates, never crafts or grades), `figment-checker` (cross-cutting
-fresh-context gate service — every Instagram-tier verdict, never touches
-explicit-tier), `figment-expand` (S2/S2b/S2c), `figment-train` (S3/S4),
-`figment-render` (S5/S6/SV), `figment-content` (S7), `figment-poster` (S8, no model
-downgrade), and `figment-analyst` (S9 + insights/token-health cadences). The four
-research cadences (`figment-researcher`) run outside this DAG, per
-`orgs/figment/HEARTBEAT.md`.
+Agent declarations under `agents/figment-*.md`: `figment-runner` (conductor — launches,
+sequences, gates, never crafts or grades), `figment-checker` (cross-cutting fresh-context
+gate-prep service for every gradeable stage — `anchor`, `dataset`, `tester`, `gen`,
+`detail`, `video` — running `grade` and staging the board/rulings template; it never
+touches explicit-tier content and never stamps the ruling itself, since a ruling is a
+human act per `contract.md`), `figment-expand` (`anchor`, `dataset`), `figment-train`
+(`smoke`, `train`), `figment-render` (`gen`, `detail`, `video`), `figment-content` (stage
+7), `figment-poster` (stage 8, not yet runnable — blocked on operator provisioning), and
+`figment-analyst` (stage 9 + insights/token-health cadences). The four research cadences
+(`figment-researcher`) run outside this DAG, per `orgs/figment/HEARTBEAT.md` — those seven
+cadences (weekly cohort scan, weekly platform trends, fortnightly tooling watch, monthly
+Fanvue economics, daily insights pull, daily token-health, weekly optimiser) are unchanged
+by this rewrite and still `armed: false`.
 
-## Gate spine (read-only restatement — the source of record is the design doc)
+## Gate spine (read-only restatement — the source of record is `pipeline/README.md`'s
+"The gate" and `RUNBOOK.md`'s "The gates, in order")
 
 ```
-anchor (closed) -> GATE S spend card approved (operator, T2, BEFORE the first create)
-  -> expansion-02 -> GATE A identity grid (operator)
-  -> LoRA v1 train (S2 only) -> dataset-tester rank -> GATE B checkpoint pick (operator)
-  -> S2b swimwear -> GATE A2 . S2c full-body (from the GATE-B checkpoint) -> GATE A3
-  -> LoRA v2 train (S2 union S2b union S2c) -> dataset-tester rank -> GATE B2 checkpoint pick (operator)
-  -> register grids -> GATE C register proof (operator)
-  -> pass A/B -> GATE D pass promotion (blinded eye-gate)
-  -> video V1/V2 proofs -> GATE D2 video eye-gate (operator)
-  -> week plan -> GATE E week-plan approval (operator; the generation spend authorization)
-  -> batch generate -> QA board -> GATE F batch approval (operator)
-  -> schedule -> GATE G publish approval (operator, T3 token) -> post -> measure -> optimiser proposal
-  -> GATE H mix change (operator)
+anchor -> GATE anchor (operator, seven axes)
+  -> dataset -> GATE dataset (operator; skipped entirely on the live train-first path,
+     which screens an already-captioned dataset dir + dataset-approval.json instead)
+  -> smoke -> train (neither gradeable -- the checkpoint ladder is screened at GATE tester)
+  -> tester -> GATE tester (operator picks --checkpoint-step by the tester's own ranking,
+     never defaults to the final step; or records an all-cull rejection)
+  -> gen (planned automatically once tester is ruled) -> GATE gen (operator)
+  -> detail (planned automatically once gen is ruled, always against gen's own kept
+     stills) -> GATE detail (operator) -> deliverable/manifest.json written
+  -> video (planned automatically once gen is ruled, in-repo run roots only)
+     -> GATE video (operator; identity-under-motion on 11 sampled frames)
+     -> deliverable gains video/<candidate id>.mp4
+  -> content brief (stage 7, author-only)
+  -> post/measure/optimise (stages 8-9, BLOCKED on operator provisioning)
 ```
 
-Every gate writes a `gate.json` record bound to its subject's sha256. A downstream gate
-reopens automatically when its subject changes — a re-run expansion invalidates GATE A,
-a re-picked checkpoint invalidates GATE C, and so on.
+Every gate's `gate.json` (the single writer, `identity_gate.write_gate_document`) is bound
+to its subject's sha256 via the `figment/approval-lineage@1` record `apply-rulings` writes.
+A downstream gate has nothing to reopen automatically the way the old S2-S9 graph's
+per-batch gates did — each of these eight stages plans and grades against its own
+upstream stage's approval-lineage every time, so a changed upstream ruling is caught at the
+next plan/run boundary, not by a separate reopening mechanism.
 
 ## Author-never-grades
 
-`figment-checker` reviews every stage's output in fresh context and never authors what
-it grades. Craft agents (`figment-expand`, `figment-train`, `figment-render`,
-`figment-content`, `figment-poster`, `figment-analyst`) never stamp a gate that
-unblocks their own work — every review boundary above is a distinct stage owned by
-`figment-checker`, sitting between the craft stage and the human gate it feeds.
+`figment-checker` runs `grade` and stages the review surface for every gradeable stage but
+never authors the craft stage it reviews, and never rules a stage itself — the operator's
+`apply-rulings` is the only path to a kept/culled decision. Craft agents (`figment-expand`,
+`figment-train`, `figment-render`, `figment-content`, `figment-poster`, `figment-analyst`)
+never stamp a gate that unblocks their own work.
 
 ## Boundaries
 
-- Explicit-tier generation (SX/SX-T) is entirely outside this DAG — operator hardware,
-  operator hand, never an agent invocation.
+- Explicit-tier generation is entirely outside this DAG — operator hardware, operator
+  hand, never an agent invocation (MANDATE.md's tier constraint).
 - Handle no credential as an object; the RunPod and Meta credentials are ambient-only.
-- Incur paid-API or pod cost only on a stage whose declared human gate names a spend
-  authorization (`gate-e`) or under an approved GATE S spend card, and never beyond
-  that run's declared ceiling.
+- Incur paid-API or pod cost only through a plan's own recorded `--max-usd`/`--max-minutes`
+  ceiling, and only after the plan-time budget preflight clears (or `--accept-budget` is
+  explicitly passed) — never beyond that run's declared ceiling.

@@ -1154,17 +1154,26 @@ def _persona_trigger_clause(training: dict) -> str:
     loaded). `training["dop_class"]` is the class-DOP regularization target
     (training_config.py DEFAULT_TRAINING) -- it is NOT required to echo the caption's own
     descriptive noun and happens to read "woman" on every real persona today, so "woman"
-    is the explicit fallback. Applies to every persona, DOP-enabled or not."""
+    is the explicit fallback. Applies to every persona, DOP-enabled or not.
+
+    E1: the `"<trigger> <noun>"` pairing itself is `training_config.persona_trigger_clause`
+    -- the one shared, dependency-free home also used by `build_training_set.py` and
+    `select_training_cells.py`'s DOP-required captions -- so this function only adds the
+    trailing punctuation a *prompt* (as opposed to a bare caption) needs."""
     trigger = training["trigger"]
     noun = training.get("dop_class") or "woman"
-    return f"{trigger} {noun}, "
+    return _training_config_module().persona_trigger_clause(trigger, noun) + ", "
 
 
 def _compose_triggered_prompt(training: dict, body: str) -> str:
     """Prefix `body` (an already-composed scene/look/description clause) with the
     persona's own trigger so the LoRA is always explicitly invoked -- the single helper
     `_tester_manifest` (`_tester_workflow`), `_gen_manifest` (`_generalized_gen_prompts`),
-    and `_detail_manifest` all route through."""
+    and `_detail_manifest` all route through. `anchor`/`dataset` prompts do NOT route
+    through this: those stages generate the training material itself, before any LoRA
+    exists to invoke, so they compose from `persona.identity.look` via
+    `_compose_look_clause` instead (`_generalized_anchor_prompts`, `_generalized_prompts`)
+    -- a categorically different clause, not a fourth independent trigger composer."""
     return _persona_trigger_clause(training) + body
 
 

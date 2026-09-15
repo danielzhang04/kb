@@ -5,10 +5,11 @@ import { basename, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { promisify } from 'node:util';
 import type { FastifyInstance } from 'fastify';
 import { resolvePython } from '../runtime/python.ts';
+import type { FigmentStage } from './figmentStages.ts';
 
 const execFile = promisify(execFileCallback);
 const CREATOR = 'creator-001';
-const STAGE = 'tester';
+const STAGE = 'tester' satisfies FigmentStage;
 const TIMEOUT_MS = 10_000;
 const MAX_OUTPUT_BYTES = 16 * 1024;
 const MAX_PLAN_BYTES = 64 * 1024;

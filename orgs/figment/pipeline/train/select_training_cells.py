@@ -62,6 +62,7 @@ NEVER_SETS = frozenset({"passport-candidates"})
 
 HERE = Path(__file__).resolve().parent
 BUILD_SET_MODULE_PATH = HERE / "build_training_set.py"
+TRAINING_CONFIG_MODULE_PATH = HERE.parent / "training_config.py"
 
 
 class SelectionError(ValueError):
@@ -75,6 +76,21 @@ def _load_build_set_module():
     spec = importlib.util.spec_from_file_location(name, BUILD_SET_MODULE_PATH)
     if spec is None or spec.loader is None:  # pragma: no cover
         raise ImportError(f"cannot load {BUILD_SET_MODULE_PATH}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_training_config_module():
+    """E1: the shared home for the `"<trigger> <noun>"` pairing -- see this module's
+    own `to_approved_cells` docstring below."""
+    name = "_figment_select_training_cells_training_config"
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, TRAINING_CONFIG_MODULE_PATH)
+    if spec is None or spec.loader is None:  # pragma: no cover
+        raise ImportError(f"cannot load {TRAINING_CONFIG_MODULE_PATH}")
     module = importlib.util.module_from_spec(spec)
     sys.modules[name] = module
     spec.loader.exec_module(module)
@@ -311,8 +327,12 @@ def to_approved_cells(
 ) -> list[dict[str, str]]:
     """`build_training_set.py --mode provided`'s exact input shape: anchors first, then
     the selected cells, every caption "<trigger> <caption-word>" so the trigger token is
-    present for DOP's class substitution (r21 Q1) whether or not this run turns DOP on."""
-    caption = f"{trigger} {caption_word}"
+    present for DOP's class substitution (r21 Q1) whether or not this run turns DOP on.
+    E1: the pairing itself is `training_config.persona_trigger_clause` -- the one shared
+    home also used by `build_training_set.py`'s qwen3vl captions and
+    `figment_train.py`'s tester/gen/detail prompts, so this script's captions can never
+    silently drift from theirs."""
+    caption = _load_training_config_module().persona_trigger_clause(trigger, caption_word)
     rows = selection["anchors"] + selection["cells"]
     return [{"image": row["path"], "caption": caption} for row in rows]
 

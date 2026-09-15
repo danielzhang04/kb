@@ -8,14 +8,14 @@ square diagnostic passed **0/2**, and the four-image prompt-span diagnostic pass
 **0/4**, with no clear improvement within its two seed pairs. Neither probe trained
 or tested a new LoRA. They therefore do not isolate a training defect or justify
 more training; both are closed without automatic replay. See the
-[terminal framing diagnostic](../../../../docs/figment/2026-09-13-prompt-framing-diagnostic-plan.md).
+[terminal framing diagnostic](../../../../docs/figment/archive/2026-09-13-prompt-framing-diagnostic-plan.md).
 
 The manual current-source reader and local HTTP/UI journey are now accepted. Their
 plan/checkpoint/lineage observations establish bounded technical consistency, not
 checkpoint selection, quality approval or an atomic snapshot. The next quality
 decision still needs a discriminating hypothesis and actual held-out evidence;
 software test success does not supply either. See the
-[source-check guide](../../../../docs/figment/2026-09-13-current-source-reader-guide.md).
+[source-check guide](../../../../docs/figment/archive/2026-09-13-current-source-reader-guide.md).
 
 ### September 11–12 training and executor findings
 
@@ -34,14 +34,14 @@ dry-run modes construct no default session. Only an explicitly admitted live cal
 ambient-auth factory; it installs terminal redaction before fallible setup, passes one API/logger/
 redactor set to the harness, closes its owned session, and preserves the operational primary failure
 over receipt or cleanup failures. The separate 35-test evidence in the
-[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md) proves this scoped
+[operator guide](../../../../docs/figment/archive/2026-09-12-input-auth-repairs.md) proves this scoped
 lifecycle contract, not a provider call, paid authority, output quality or full dependency closure.
 
 ### Historical September 9 launch checkpoint
 
 V2 training and the five-image tester completed with verified receipts and teardown. Root found the final two checkpoints promising; independent review culled all five. The root-attributed all-cull disposition is now recorded, all automatic gates remain false, and no checkpoint, generation source or current video is accepted. Age-classifier estimates do not settle apparent age.
 
-The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control completed at 00:43:41 UTC on September 10 with one image, no private uploads, verified teardown, and a $0.236303 READY-rate estimate; current evidence and next work are maintained in the book README. See the [book README](README.md), [quality decision](../../../../docs/figment/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
+The ten-cell LoRA/base compiler is independently READY and its final V3 native dry run passed. Automatic approval review then blocked the private checkpoint upload before any process or pod started; exact transfer consent was pending at that checkpoint. This is a historical blocker, not the current source-check or media work queue. The public-base-only control completed at 00:43:41 UTC on September 10 with one image, no private uploads, verified teardown, and a $0.236303 READY-rate estimate; current evidence and next work are maintained in the book README. See the [book README](README.md), [quality decision](../../../../docs/figment/archive/2026-09-09-checkpoint-quality-decision.md), [code review](../../../../docs/figment/archive/2026-09-09-control-rejection-review.md), and [transfer status](../../../../docs/figment/archive/2026-09-09-runpod-checkpoint-transfer-status.md). Earlier experiment descriptions below are historical evidence, not results of this unlaunched V3 diagnostic.
 
 Train only after the data contract is frozen. The package's useful governing idea is a checkpoint ladder: train, render a fixed tester set at multiple steps, and select from evidence. The recovered module-11 graph uses 12 checkpoint branches, fixed seed `1595`, 1448x2176 output, 4 steps, CFG 1, `res_2s`/`beta`, and denoise 1. These are KREA2 turbo tester settings, not universal defaults. [Hugging Face's current Diffusers LoRA guide](https://huggingface.co/docs/diffusers/en/training/lora) describes LoRA as adding small trainable matrices while keeping base weights frozen; its examples also show that rank, learning rate, steps, and scheduler remain experiment variables.
 
@@ -58,7 +58,7 @@ Evaluation needs three slates: training views, a held-out identity slate, and a 
 
 Decisions: preserve every checkpoint receipt and record a rejection or unresolved review as useful evidence. The final-LoRA/base comparison is complete; `g01` was a visual comparator only, so this text-to-image test did not condition generation on its pixels. One seed repeats the prior ladder and four are new to that record; references may overlap prior training. The historical full-look prompt proposal held the same candidate checkpoint and five seeds fixed while changing only the prompt clause; it is not a current launch instruction. No new model should be adopted solely because a citation mentions it; licensing, reproducibility, and measured benefit must all be established. Implementation entry points include [`load_manifest`](../../pipeline/pod/runpod_run.py#L1112), [`expand_manifest_uploads`](../../pipeline/pod/runpod_run.py#L1217), and [`manifest_job_timeout_seconds`](../../pipeline/pod/runpod_run.py#L1694); these dated line anchors may move as the implementation changes.
 
-The legacy raw-only identity command has `torch`, `torchvision`, `facenet_pytorch`, and Pillow available in the local Python 3.13 runtime, but it is not an offline scorer: it initializes FaceNet's auto-downloaded VGGFace2 `.pt` weights and DINOv2 through `torch.hub`. Neither has a reviewed local immutable pin in this workflow, and raw-only results would remain observations rather than an approval. Do not run that legacy path against new evidence. The separately accepted [pinned observer](../../../../docs/figment/2026-09-08-raw-reference-observations.md) remains raw, unthresholded evidence rather than approval.
+The legacy raw-only identity command has `torch`, `torchvision`, `facenet_pytorch`, and Pillow available in the local Python 3.13 runtime, but it is not an offline scorer: it initializes FaceNet's auto-downloaded VGGFace2 `.pt` weights and DINOv2 through `torch.hub`. Neither has a reviewed local immutable pin in this workflow, and raw-only results would remain observations rather than an approval. Do not run that legacy path against new evidence. The separately accepted [pinned observer](../../../../docs/figment/archive/2026-09-08-raw-reference-observations.md) remains raw, unthresholded evidence rather than approval.
 
 The accepted curation path provides a train-first-compatible boundary. It materialized the retained 20-train/2-eval direct-`g01` set only after the existing explicit bounded-research dataset decision. Staging carries the curation record and exact snapshot inventory beside numbered images and captions, so a changed retained source, provenance, caption, or mapping makes the acceptance stale. The 21 raw identity observations (six pilot and 15 expansion) remain unthresholded diagnostics, not image-quality proof or independent-reference identity generalization. Final acceptance verification reported 37 curation/freshness tests and nine train-first tests after the boundary repairs.
 
@@ -67,12 +67,12 @@ readiness receipts. The CPU parser resolved the frozen one-image staged dataset,
 caption, and 896x512 effective bucket under a no-device CUDA mask; the separate
 local-only tokenizer load resolved both SDXL CLIP tokenizers to 19 tokens for
 the fixed availability-probe `CAPTION_PROBE`, not the 330-byte training-caption
-content. The [local training preflight audit](../../../../docs/figment/2026-09-08-local-training-preflight-audit.md)
+content. The [local training preflight audit](../../../../docs/figment/archive/2026-09-08-local-training-preflight-audit.md)
 records the readiness inputs. A separately admitted V2 availability probe then
 completed the bounded ten-step GPU fit and saved one checkpoint; V1 remains
 preserved as the prior CP1252 startup failure. The V2 record has no sample,
 quality evaluation, acceptance, or export, and cannot select a checkpoint. See
-the [local LoRA fit runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md).
+the [local LoRA fit runtime audit](../../../../docs/figment/archive/2026-09-08-local-lora-fit-runtime-audit.md).
 
 The separate quality recipe completed branch-specific CPU preflights and the
 current-caption 100-step fit. The first matched current step-20 pair also
@@ -83,13 +83,13 @@ matched base face toward `g01`. These conflicting diagnostic observations are
 preserved, and neither is human QA, quality acceptance, promotion, or an
 eligibility decision. The higher current ladder is stopped pending protocol
 analysis; no current-50/current-final or concise admission has been issued.
-See the [training results hub review](../../../../docs/figment/2026-09-08-training-results-hub-review.md).
+See the [training results hub review](../../../../docs/figment/archive/2026-09-08-training-results-hub-review.md).
 
-Historical status, 2026-09-09: OmniGen2 V3 and Qwen each completed a two-image reference-conditioned pair, and both received STOP dispositions before expansion. OmniGen2's 3B Qwen-derived encoder remains research-only. Qwen's pinned 7B components have Apache-2.0 metadata, while production clearance remains separate. The Qwen pair is rejected research evidence, not a training input or identity result. The current bounded 20-train/2-eval dataset instead comes from direct-`g01` first-generation derivatives. V1 failed closed during provider image pull and terminated with zero outputs. V2 plan `920125ce…` completed training at 22:37:53 UTC with five verified checkpoints and teardown; its tester completed at 23:03:12 UTC with five PNGs and verified teardown. The root-attributed all-cull was applied at 23:50 UTC, leaving no selected checkpoint. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/2026-09-09-local-research-review.md), [Qwen result](../../../../docs/figment/2026-09-09-qwen-reference-cloud-result.md), and [independent Omni review](../../../../docs/figment/2026-09-09-omnigen2-pair-independent-review.md).
+Historical status, 2026-09-09: OmniGen2 V3 and Qwen each completed a two-image reference-conditioned pair, and both received STOP dispositions before expansion. OmniGen2's 3B Qwen-derived encoder remains research-only. Qwen's pinned 7B components have Apache-2.0 metadata, while production clearance remains separate. The Qwen pair is rejected research evidence, not a training input or identity result. The current bounded 20-train/2-eval dataset instead comes from direct-`g01` first-generation derivatives. V1 failed closed during provider image pull and terminated with zero outputs. V2 plan `920125ce…` completed training at 22:37:53 UTC with five verified checkpoints and teardown; its tester completed at 23:03:12 UTC with five PNGs and verified teardown. The root-attributed all-cull was applied at 23:50 UTC, leaving no selected checkpoint. See the [curation result](../../../../docs/figment/archive/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/archive/2026-09-09-local-research-review.md), [Qwen result](../../../../docs/figment/archive/2026-09-09-qwen-reference-cloud-result.md), and [independent Omni review](../../../../docs/figment/archive/2026-09-09-omnigen2-pair-independent-review.md).
 
 ## What the current state means for training
 
-The completed 100-step current-caption fit, later 1250-step selective-crop/caption/seed fit, and their finite checkpoints demonstrate bounded runtime only. The offline CLI's dataset acceptance, train-first, tester selection, and `gen` joins are locally verified. The current bounded research dataset has 20 train rows and two eval-only rows, but its shared single-anchor ancestry does not establish a diverse identity set, independent-reference identity evidence, a production LoRA, or a consistent still set. V2's five tester outputs were culled, and the later ten-image diagnostic produced no framing pass or material identity improvement. No checkpoint or still has quality acceptance. The reviewed local-research board keeps automatic rows false/`unavailable: judge` and makes no external judge invocation. V3 remains rejected research evidence rather than a training row. See the [curation result](../../../../docs/figment/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/2026-09-09-local-research-review.md), [delivery plan](../../../../docs/figment/2026-09-09-end-to-end-delivery-plan.md), and [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
+The completed 100-step current-caption fit, later 1250-step selective-crop/caption/seed fit, and their finite checkpoints demonstrate bounded runtime only. The offline CLI's dataset acceptance, train-first, tester selection, and `gen` joins are locally verified. The current bounded research dataset has 20 train rows and two eval-only rows, but its shared single-anchor ancestry does not establish a diverse identity set, independent-reference identity evidence, a production LoRA, or a consistent still set. V2's five tester outputs were culled, and the later ten-image diagnostic produced no framing pass or material identity improvement. No checkpoint or still has quality acceptance. The reviewed local-research board keeps automatic rows false/`unavailable: judge` and makes no external judge invocation. V3 remains rejected research evidence rather than a training row. See the [curation result](../../../../docs/figment/archive/2026-09-09-builtin-dataset-curation-result.md), [local research review](../../../../docs/figment/archive/2026-09-09-local-research-review.md), [delivery plan](../../../../docs/figment/archive/2026-09-09-end-to-end-delivery-plan.md), and [September 12 plan review](../../../../docs/figment/2026-09-12-overall-plan-review.md).
 
 Future dataset curation therefore has to state diversity and source overlap explicitly, per image, before any dataset acceptance. The stop protocol stays the same for the new route as for the ladders: one fixed probe, matched seeds, independent review at original resolution, persisted outcome, and no automatic retry, training or promotion from a single result.
 
@@ -104,7 +104,7 @@ synthetic 20-row evidence. The current 20-train/2-eval set satisfies the bounded
 The accepted September 12 default-auth repair completes only the executor's owned-session
 composition for that explicit live branch. It does not weaken admission, accounting, dispatch or
 revalidation requirements, and it does not change any dataset, checkpoint or visual gate. See the
-[operator guide](../../../../docs/figment/2026-09-12-input-auth-repairs.md).
+[operator guide](../../../../docs/figment/archive/2026-09-12-input-auth-repairs.md).
 
 ### Future option: one-observation diagnostic
 
@@ -127,7 +127,7 @@ experimental condition, not additional identity evidence. The one-observation
 planner and its CPU/tokenizer checks are implemented, and one separately
 admitted ten-step GPU availability fit has completed. This does not relax the
 accepted 20-row compiler or executor, and it supplies no visual or
-checkpoint-quality decision. The [runtime audit](../../../../docs/figment/2026-09-08-local-lora-fit-runtime-audit.md)
+checkpoint-quality decision. The [runtime audit](../../../../docs/figment/archive/2026-09-08-local-lora-fit-runtime-audit.md)
 preserves the bounded evidence and its limits. The separate current-caption
 quality fit completed its 100-step runtime schedule after current and concise
 CPU preflights. Its first matched step-20 image pair is diagnostic-only and

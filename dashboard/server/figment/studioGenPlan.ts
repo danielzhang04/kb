@@ -14,9 +14,10 @@ import {
   publishedPlan, readBounded, readPublishedStudioPlans, safePath, safeProspective, safeRoot,
   studioPlanRoots, summary, type Marker, type PublishedObservations, type SafeRoot, type StudioGenPlan,
 } from './studioPublishedPlans.ts';
+import type { FigmentStage } from './figmentStages.ts';
 
 const CREATOR = 'creator-001';
-const STAGE = 'gen';
+const STAGE = 'gen' satisfies FigmentStage;
 const TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_BYTES = 16 * 1024;
 const INTENT = /^[A-Za-z0-9_-]{32,64}$/;
