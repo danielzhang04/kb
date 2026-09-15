@@ -259,6 +259,26 @@ def require_reconcilable_range(
         )
 
 
+def _verify_reconcilable_range(
+    repo: Path,
+    trusted_ops_head: str,
+    remote_head: str,
+    pending: list[dict],
+    run=run_git,
+) -> None:
+    """LOW-6: wrap require_reconcilable_range so a CalledProcessError from its own git calls
+    (e.g. the trusted head is unreachable in this clone) surfaces as a clear RuntimeError instead
+    of being silently swallowed by promote_pending's bare `except subprocess.CalledProcessError`
+    clone-retry loop -- mirroring the wrapper validate_quarantine_chain's caller already uses."""
+    try:
+        require_reconcilable_range(repo, trusted_ops_head, remote_head, pending, run)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "reconcilable-range check failed on untrusted outbox contents "
+            f"(not a transport fault): {error}"
+        ) from error
+
+
 def fetch_vm_outbox(vm_host: str, snapshot_root: Path, run=subprocess.run) -> Path:
     if not SAFE_HOST.fullmatch(vm_host) or vm_host.startswith("-"):
         raise ValueError("vm host must be an SSH hostname with optional user")
@@ -779,7 +799,7 @@ def promote_pending(
             ).strip()
             if COMMIT_RE.fullmatch(remote_head) is None:
                 raise RuntimeError("origin/ops head is invalid")
-            require_reconcilable_range(repo, trusted_ops_head, remote_head, initial_pending, run_git)
+            _verify_reconcilable_range(repo, trusted_ops_head, remote_head, initial_pending, run_git)
             quarantine_prefix = f"refs/kb-quarantine/{secrets.token_hex(6)}"
             try:
                 validated = validate_quarantine_chain(
@@ -1008,6 +1028,10 @@ def main() -> int:
         ).strip()
         if COMMIT_RE.fullmatch(target) is None:
             raise RuntimeError("return-bundle target is invalid")
+        # HIGH-1/HIGH-2: check the identical trusted_ops_head..target range the VM is about to
+        # check, using the SAME tip create_return_bundle just re-fetched -- not the promote
+        # clone's now-stale read of origin/ops.
+        _verify_reconcilable_range(return_repo, args.trusted_ops_head, target, [], run_git)
         upload_and_apply_reconciliation(args.vm_host, bundle, snapshot / "receipts", source_head, target)
         print(json.dumps({"promoted": 0, "pending": 0, "failed": 0}, sort_keys=True))
         return 0
@@ -1043,6 +1067,10 @@ def main() -> int:
     ).strip()
     if COMMIT_RE.fullmatch(target) is None:
         raise RuntimeError("return-bundle target is invalid")
+    # HIGH-1/HIGH-2: same identical-range re-check as the reconcile-only leg above, against the
+    # tip create_return_bundle just re-fetched -- origin/ops can have advanced with an offending
+    # path in the gap between promote_pending's clone and this return-bundle fetch.
+    _verify_reconcilable_range(return_repo, args.trusted_ops_head, target, [], run_git)
     upload_and_apply_reconciliation(
         args.vm_host, bundle, snapshot / "receipts", source_head, target,
     )

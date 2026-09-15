@@ -846,6 +846,12 @@ def test_receipted_spool_auto_detects_and_resumes_reconciliation(
         return tmp_path / "return.bundle", tmp_path / "return-repo"
 
     def fake_run_git(_repo, args, check=True):
+        # Widened for HIGH-1/HIGH-2: main() now also calls require_reconcilable_range against
+        # `return_repo` before upload, which issues its own diff --name-only/--raw calls.
+        if args[:2] == ["diff", "--name-only"]:
+            return completed(args, b"")
+        if args[:2] == ["diff", "--raw"]:
+            return completed(args, b"")
         assert args == ["rev-parse", "refs/kb-reconciled/ops^{commit}"]
         return completed(args, target + "\n")
 
@@ -1068,6 +1074,120 @@ def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
     ):
         assert promote_module.COORDINATION.fullmatch(relpath) is None, relpath
         assert reconcile_module.RECONCILED.fullmatch(relpath) is not None, relpath
+
+
+def test_reconcilable_range_check_wraps_called_process_error_as_runtime_error():
+    """LOW-6: a CalledProcessError from the range check's own git calls (e.g. the trusted head
+    is unreachable in this clone) must surface as a clear RuntimeError instead of being
+    swallowed by promote_pending's bare `except subprocess.CalledProcessError` clone-retry
+    loop, mirroring the wrapper validate_quarantine_chain's caller already uses."""
+    def failing_run(_repo, args, check=True):
+        raise subprocess.CalledProcessError(128, ["git", *args])
+
+    with pytest.raises(RuntimeError, match="not a transport fault"):
+        promote_module._verify_reconcilable_range(
+            Path("unused"), BASE, COMMIT, [], run=failing_run,
+        )
+
+
+def test_reconcile_only_path_refuses_when_ops_advanced_with_an_offending_path(tmp_path, monkeypatch):
+    """HIGH-1/HIGH-2: the reconcile-only / auto-detect resume leg must run the identical
+    trusted_ops_head..origin/ops range check the VM enforces (apply_ops_reconciliation.py's
+    RECONCILED.fullmatch), using the tip create_return_bundle actually re-fetches, BEFORE
+    re-uploading. A path outside RECONCILED landing on origin/ops between promotion and this
+    resume must refuse before any ssh/upload is attempted."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "hotfix2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "hotfix2-test@example.invalid")
+    assert promote_pending(spool, operator, tmp_path / "work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    calls = []
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(
+        promote_module, "upload_and_apply_reconciliation",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+            "--reconcile-only",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+    assert calls == []
+
+
+def test_normal_path_refuses_when_ops_advances_between_promote_clone_and_return_bundle_fetch(
+    tmp_path, monkeypatch,
+):
+    """HIGH-1/HIGH-2: promote_pending's clone reads origin/ops once, early; create_return_bundle
+    clones and re-fetches origin/ops again, later. An offending path landing on origin/ops in
+    that gap must be caught by the post-return-bundle re-check before upload -- the earlier,
+    now-stale promote-time read must not be treated as authoritative."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "hotfix2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "hotfix2-test@example.invalid")
+
+    real_create_return_bundle = promote_module.create_return_bundle
+
+    def create_return_bundle_after_ops_advances(operator_repo, work_root, expected_target):
+        advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+        return real_create_return_bundle(operator_repo, work_root, expected_target)
+
+    monkeypatch.setattr(promote_module, "create_return_bundle", create_return_bundle_after_ops_advances)
+    calls = []
+    monkeypatch.setattr(
+        promote_module, "upload_and_apply_reconciliation",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+    assert calls == []
 
 
 def test_instruction_and_coordination_allowlists_accept_org_goal_md():
