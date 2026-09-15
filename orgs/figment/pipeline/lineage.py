@@ -43,6 +43,17 @@ SELECTION_KEYS = frozenset({
     "chosen_checkpoint_sha256",
     "chosen_checkpoint_approval",
 })
+# M3: a style LoRA is applied at GEN time (stacked on top of an already-trained
+# checkpoint, `figment_train._gen_workflow` node 40) -- it was never a training input
+# the accepted checkpoint's `training_inputs` snapshot can meaningfully pin, and since
+# `build_plan`'s `--style-lora` flag is deliberately transient (never written back to
+# the persona), a gen plan legitimately carries a different style_lora than the tester
+# plan the checkpoint was promoted from. Excluded from the projection so
+# `_validated_accepted_checkpoint`'s training-inputs comparison (figment_train.py)
+# never refuses a checkpoint over a field the checkpoint itself never trained with.
+# The plan.json file hash (`review_subject`'s own "plan" file_entry) still changes
+# with it, so gen-stage review freshness is unaffected.
+GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
 
 
 class LineageError(ValueError):
@@ -67,11 +78,12 @@ def canonical_sha256(value: Any) -> str:
 
 
 def training_input_projection(training: dict[str, Any]) -> dict[str, Any]:
-    """Training inputs, excluding only fields produced by checkpoint promotion."""
+    """Training inputs, excluding fields produced by checkpoint promotion and the
+    gen-time-only style-LoRA override (GEN_TIME_ONLY_KEYS, M3)."""
     return {
         key: deepcopy(value)
         for key, value in training.items()
-        if key not in SELECTION_KEYS and key != "dataset_dir"
+        if key not in SELECTION_KEYS and key not in GEN_TIME_ONLY_KEYS and key != "dataset_dir"
     }
 
 

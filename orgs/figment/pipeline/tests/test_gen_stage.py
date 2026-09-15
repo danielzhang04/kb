@@ -877,27 +877,36 @@ def test_gen_manifest_bakes_style_lora_filename_and_pins_its_model(command, tmp_
     assert style_subs and style_subs[0]["value"] == "krea2_realism_lora.safetensors"
 
 
-def test_creator001_skin_branch_persona_wires_node_40_creator001_does_not_f3(command):
-    """F3: `personas/creator-001-skin` is a real, checked-in branch persona -- a copy of
-    creator-001's own persona.yaml/training.yaml with `style_lora: "inline-skin"`,
-    `style_lora_strength: 0.8` -- so a gen run can compare skin-on vs skin-off with
-    fixed inputs. creator-001 itself is untouched: its own real persona still plans
-    with no style LoRA at all."""
+def test_creator001_plus_style_lora_flag_wires_node_40_creator001_alone_does_not_f3(command):
+    """F3/M3: `personas/creator-001-skin` (a persona fork differing ONLY by
+    `style_lora`/`style_lora_strength`) is deleted -- a style LoRA is a gen-PLAN
+    argument (`_resolve_gen_style_lora`, the `plan --stage gen --style-lora
+    --style-lora-strength` flags), never a persona fork that forces a second,
+    un-comparable ~$36 train just to A/B one field. creator-001's own real persona is
+    untouched and still plans with no style LoRA at all when the flag is absent."""
     pins = json.loads(PINS_PATH.read_text("utf-8"))
 
-    skin_persona, skin_training, skin_pins = command._load_inputs(
-        "creator-001-skin", REAL_PERSONAS,
+    base_persona, base_training, base_pins = command._load_inputs(
+        "creator-001", REAL_PERSONAS,
     )
-    assert skin_persona["id"] == "creator-001-skin"
-    assert skin_training["style_lora"] == "inline-skin"
-    assert skin_training["style_lora_strength"] == 0.8
+    assert base_training.get("style_lora") is None
 
-    skin_workflow = command._gen_workflow(skin_training, skin_pins)
+    # creator-001 + the flag: `_resolve_gen_style_lora` is the exact function
+    # `build_plan` calls before any manifest is built.
+    overridden = command._resolve_gen_style_lora(
+        base_training, base_pins, style_lora="inline-skin", style_lora_strength=0.8,
+    )
+    assert overridden["style_lora"] == "inline-skin"
+    assert overridden["style_lora_strength"] == 0.8
+    # The override never mutates the persona's own loaded training dict.
+    assert base_training.get("style_lora") is None
+
+    skin_workflow = command._gen_workflow(overridden, base_pins)
     assert "40" in skin_workflow
     assert skin_workflow["40"]["inputs"]["strength_model"] == 0.8
 
-    gen_training = {**skin_training, "chosen_checkpoint_step": skin_training["steps"]}
-    gen_manifest = command._gen_manifest(skin_persona, gen_training, skin_pins)
+    gen_training = {**overridden, "chosen_checkpoint_step": overridden["steps"]}
+    gen_manifest = command._gen_manifest(base_persona, gen_training, base_pins)
     style_pin = pins["pins"]["style_loras"]["inline-skin"]["model"]
     assert style_pin in gen_manifest["models"]
     style_subs = [
@@ -905,13 +914,113 @@ def test_creator001_skin_branch_persona_wires_node_40_creator001_does_not_f3(com
     ]
     assert style_subs and style_subs[0]["value"] == style_pin["filename"]
 
-    base_persona, base_training, base_pins = command._load_inputs(
-        "creator-001", REAL_PERSONAS,
+    # creator-001 ALONE, no flag: `_resolve_gen_style_lora` is a no-op, node 40 absent.
+    unchanged = command._resolve_gen_style_lora(
+        base_training, base_pins, style_lora=None, style_lora_strength=None,
     )
-    assert base_training.get("style_lora") is None
-    base_workflow = command._gen_workflow(base_training, base_pins)
+    assert unchanged is base_training
+    base_workflow = command._gen_workflow(unchanged, base_pins)
     assert "40" not in base_workflow
     assert base_workflow["8"]["inputs"]["model"] == ["4", 0]
+
+
+def test_resolve_gen_style_lora_validates_key_and_strength(command):
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+    training = {"style_lora": None, "style_lora_strength": 0.8}
+
+    with pytest.raises(command.FigmentTrainError, match="requires --style-lora"):
+        command._resolve_gen_style_lora(
+            training, pins, style_lora=None, style_lora_strength=0.5,
+        )
+    with pytest.raises(command.FigmentTrainError, match="unknown --style-lora key"):
+        command._resolve_gen_style_lora(
+            training, pins, style_lora="not-a-real-key", style_lora_strength=None,
+        )
+    with pytest.raises(command.FigmentTrainError, match="--style-lora-strength must be"):
+        command._resolve_gen_style_lora(
+            training, pins, style_lora="inline-skin", style_lora_strength=1.51,
+        )
+    with pytest.raises(command.FigmentTrainError, match="--style-lora-strength must be"):
+        command._resolve_gen_style_lora(
+            training, pins, style_lora="inline-skin", style_lora_strength=0,
+        )
+    # Omitted strength falls back to the persona's own style_lora_strength default.
+    resolved = command._resolve_gen_style_lora(
+        training, pins, style_lora="gokay-realism", style_lora_strength=None,
+    )
+    assert resolved["style_lora_strength"] == 0.8
+
+
+def test_build_plan_style_lora_flag_refused_off_stage_gen(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="only meaningful for --stage gen"):
+        command.build_plan(
+            "creator-002", "dataset", tmp_path / "d", personas_root=personas,
+            skip_pin_verify=True, style_lora="inline-skin",
+        )
+
+
+def test_build_plan_gen_with_style_lora_flag_records_and_wires_it(command, tmp_path):
+    """M3 end-to-end: the plan-time flag (not a persona field) wires node 40 and is
+    recorded on the gen stage's own plan.json entry, distinguishable from a persona
+    default."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    out = tmp_path / "flagged-gen"
+    plan = command.build_plan(
+        "creator-002", "gen", out, personas_root=personas, skip_pin_verify=True,
+        style_lora="gokay-realism", style_lora_strength=0.42,
+    )
+    assert plan["training"]["style_lora"] == "gokay-realism"
+    assert plan["training"]["style_lora_strength"] == 0.42
+    assert plan["stages"]["gen"]["style_lora"] == {
+        "key": "gokay-realism", "strength": 0.42, "source": "flag",
+    }
+    run = plan["stages"]["gen"]["runs"][0]
+    manifest = load_json(out / run["manifest"])
+    style_subs = [
+        sub for sub in manifest["jobs"][0]["substitutions"] if sub["node_id"] == "40"
+    ]
+    assert style_subs and style_subs[0]["value"] == "krea2_realism_lora.safetensors"
+
+    # The persona's own persona.yaml training block is never mutated by the flag.
+    persona_training = load_json(personas / "creator-002" / "persona.yaml")["training"]
+    assert persona_training.get("style_lora") is None
+
+
+def test_verify_pins_preflight_includes_style_loras_for_gen_and_detail_when_set(
+    command, monkeypatch,
+):
+    """m8: STAGE_PIN_PROFILES itself never lists "style_loras" (it is opt-in per
+    persona/plan, unlike every other fixed stage profile) -- `_verify_pins_preflight`
+    adds it for `gen`/`detail` only when `training["style_lora"]` names one."""
+    calls = []
+
+    class FakeVerifyPins:
+        class VerifyPinsError(Exception):
+            pass
+
+        @staticmethod
+        def verify_pins(pins, *, stages):
+            calls.append(list(stages))
+            return {}
+
+    monkeypatch.setattr(command, "_verify_pins_module", lambda: FakeVerifyPins)
+    pins = {}
+
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": None})
+    assert "style_loras" not in calls[-1]
+
+    command._verify_pins_preflight(pins, ["gen"], {"style_lora": "inline-skin"})
+    assert "style_loras" in calls[-1]
+
+    command._verify_pins_preflight(pins, ["detail"], {"style_lora": "gokay-realism"})
+    assert "style_loras" in calls[-1]
+
+    command._verify_pins_preflight(pins, ["dataset"], {"style_lora": "inline-skin"})
+    assert "style_loras" not in calls[-1], "style_loras is only meaningful for gen/detail"
 
 
 # ---------------------------------------------------------------------------

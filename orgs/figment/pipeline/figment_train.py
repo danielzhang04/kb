@@ -170,16 +170,27 @@ def _verify_pins_module():
     return _load_module("_figment_train_verify_pins", VERIFY_PINS_MODULE)
 
 
-def _verify_pins_preflight(pins: dict[str, Any], selected_stages: list[str]) -> None:
+def _verify_pins_preflight(
+    pins: dict[str, Any], selected_stages: list[str], training: dict[str, Any] | None = None,
+) -> None:
     """Run `verify_pins.verify_pins` for every pin profile `selected_stages` will actually
     consume, before a single model is ever bootstrapped on a pod (review HIGH-1: all four
     `pins.anchor` sha256 digests were wrong and only failed at pod readiness, burning the
-    full cost ceiling for zero images). Raises `FigmentTrainError` on any mismatch."""
+    full cost ceiling for zero images). Raises `FigmentTrainError` on any mismatch.
+
+    M3/m8: `gen`/`detail` additionally pull in the `style_loras` keyed-variant pin
+    profile (`verify_pins._stage_models` already recognizes that shape, precedent
+    `skin_loras`) whenever `training["style_lora"]` names one -- caller resolves that
+    key (the plan-time `--style-lora` override, or a persona default, or -- for
+    `detail` -- the upstream gen plan's own choice) into `training` before calling."""
     profiles: list[str] = []
     for stage in selected_stages:
         for profile in STAGE_PIN_PROFILES.get(stage, ()):
             if profile not in profiles:
                 profiles.append(profile)
+        if (stage in ("gen", "detail") and training and training.get("style_lora")
+                and "style_loras" not in profiles):
+            profiles.append("style_loras")
     if not profiles:
         return
     module = _verify_pins_module()
@@ -193,6 +204,50 @@ def _verify_pins_preflight(pins: dict[str, Any], selected_stages: list[str]) -> 
             for stage, problems in results.items() for problem in problems
         ]
         raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
+
+
+STYLE_LORA_MAX_STRENGTH = 1.5
+
+
+def _resolve_gen_style_lora(
+    training: dict[str, Any], pins: dict[str, Any], *,
+    style_lora: str | None, style_lora_strength: float | None,
+) -> dict[str, Any]:
+    """M3: a `plan --stage gen --style-lora <key> --style-lora-strength <0..1.5>`
+    override for this one plan -- never a persona fork
+    (`personas/creator-001-skin` deleted; a style LoRA no longer forces a second,
+    un-comparable ~$36 train run just to change one field). Absent the flag,
+    `training["style_lora"]`/`["style_lora_strength"]` -- the persona's own
+    `training.yaml` default (null unless the persona opts in, `training_config.py`
+    `DEFAULT_TRAINING`) -- passes through unchanged, so `_gen_workflow`/`_gen_manifest`
+    behave exactly as before this change for every existing persona.
+
+    `style_lora_strength` without `style_lora` is refused (nothing to apply it to).
+    The key is validated against `pins.pins.style_loras` (`_gen_workflow` already
+    raises on an unknown key -- this raises earlier, at plan time, before any other
+    plan-building work). The strength floor mirrors `training_config.py`'s own "must
+    be a positive number" rule for `training.style_lora_strength`, plus an explicit
+    <=1.5 ceiling for a flag override (no persona has ever validated a number this high
+    -- a plan-time typo like `15` must not reach a live gen render)."""
+    if style_lora_strength is not None and style_lora is None:
+        raise FigmentTrainError("--style-lora-strength requires --style-lora")
+    if style_lora is None:
+        return training
+    if not isinstance(style_lora, str) or not style_lora.strip():
+        raise FigmentTrainError("--style-lora must be a non-empty string key")
+    known = pins.get("pins", {}).get("style_loras", {})
+    if not isinstance(known, dict) or style_lora not in known:
+        raise FigmentTrainError(
+            f"unknown --style-lora key {style_lora!r}; known: {sorted(known) if isinstance(known, dict) else []}"
+        )
+    strength = training.get("style_lora_strength") if style_lora_strength is None else style_lora_strength
+    if (isinstance(strength, bool) or not isinstance(strength, (int, float))
+            or not (0 < strength <= STYLE_LORA_MAX_STRENGTH)):
+        raise FigmentTrainError(
+            "--style-lora-strength must be a positive number, at most "
+            f"{STYLE_LORA_MAX_STRENGTH} (got {strength!r})"
+        )
+    return {**training, "style_lora": style_lora, "style_lora_strength": float(strength)}
 
 
 def _read_json(path: Path, *, reads=None) -> Any:
@@ -1824,6 +1879,8 @@ def build_plan(
     approved_gen_plan: Path | None = None,
     ledger_dir: Path | None = None,
     accept_budget: bool = False,
+    style_lora: str | None = None,
+    style_lora_strength: float | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
 
@@ -1840,6 +1897,12 @@ def build_plan(
     re-validated through `validate_approved_gen_still` (never trusted from the approved
     list's bytes alone) and re-detailed at the package's own denoise band
     (`_detail_manifest`), always "gen`'s own kept outputs", never an arbitrary glob.
+
+    `style_lora`/`style_lora_strength` (M3) are a `"gen"`-only override of
+    `training.style_lora`/`["style_lora_strength"]` for this one plan -- see
+    `_resolve_gen_style_lora`. A style LoRA is a gen-plan choice, never a persona fork:
+    `training.style_lora` in the persona's own `training.yaml` stays the default when
+    neither flag is given.
     """
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
@@ -1847,6 +1910,10 @@ def build_plan(
         raise FigmentTrainError("--detail-images is only meaningful for --stage gen")
     if approved_gen_plan is not None and stage != "detail":
         raise FigmentTrainError("--approved-gen-plan is only meaningful for --stage detail")
+    if (style_lora is not None or style_lora_strength is not None) and stage != "gen":
+        raise FigmentTrainError(
+            "--style-lora/--style-lora-strength is only meaningful for --stage gen"
+        )
     out = Path(out).resolve()
     if (out / "plan.json").exists():
         raise FigmentTrainError(f"refusing to overwrite an existing plan: {out / 'plan.json'}")
@@ -1858,6 +1925,25 @@ def build_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+    # M3: apply the plan-time style-LoRA override (a no-op when neither flag is given)
+    # before anything downstream reads `training` -- manifests, configs, pin preflight.
+    training = _resolve_gen_style_lora(
+        training, pins, style_lora=style_lora, style_lora_strength=style_lora_strength,
+    )
+    # m8: `detail` doesn't consume a style LoRA itself (it re-details gen's already-
+    # rendered pixels -- the style LoRA's effect is already baked into them), but its
+    # own pin preflight still verifies the upstream gen plan's choice, and its
+    # `detail_source` records it for gate/board metadata (an A/B stays visible).
+    detail_upstream_style_lora: dict[str, Any] | None = None
+    if stage == "detail" and approved_gen_plan is not None:
+        upstream_plan_path = Path(approved_gen_plan).resolve() / "plan.json"
+        if upstream_plan_path.is_file():
+            upstream_training = _read_json(upstream_plan_path).get("training")
+            if isinstance(upstream_training, dict) and upstream_training.get("style_lora"):
+                detail_upstream_style_lora = {
+                    "key": upstream_training["style_lora"],
+                    "strength": upstream_training.get("style_lora_strength"),
+                }
 
     selected = list(STAGES if stage == "all" else (stage,))
     if persona["identity"].get("history") and "anchor" in selected:
@@ -1877,7 +1963,10 @@ def build_plan(
             selected.remove(_later_stage)
 
     if not skip_pin_verify:
-        _verify_pins_preflight(pins, selected)
+        preflight_training = training
+        if detail_upstream_style_lora is not None:
+            preflight_training = {**training, "style_lora": detail_upstream_style_lora["key"]}
+        _verify_pins_preflight(pins, selected, preflight_training)
         if detail_images and "gen" in selected:
             # `detail` is not a top-level STAGES entry (it rides along with a "gen"
             # plan when --detail-images is given), so STAGE_PIN_PROFILES's per-stage
@@ -2009,6 +2098,11 @@ def build_plan(
                     for row in validated
                 ],
             }
+            if detail_upstream_style_lora is not None:
+                # M3/m8: detail doesn't consume the style LoRA itself, but this is the
+                # only record of the upstream gen plan's choice a detail plan carries --
+                # gate/board metadata reads it here for A/B visibility.
+                detail_source["style_lora"] = detail_upstream_style_lora
             detail_manifest = _detail_manifest(
                 persona, training, pins, names, checkpoint_upload=checkpoint_upload,
             )
@@ -2027,6 +2121,14 @@ def build_plan(
             for path in paths
         ]
         plan_stages[current] = {"runs": runs}
+        if current == "gen" and style_lora is not None:
+            # M3: distinguish a plan-time flag override from a persona default in the
+            # gen stage's own record -- gate/board metadata reads this for A/B
+            # visibility (same precedent as detail_source["style_lora"] above).
+            plan_stages[current]["style_lora"] = {
+                "key": training["style_lora"], "strength": training["style_lora_strength"],
+                "source": "flag",
+            }
 
     budget_preflight = _budget_preflight(
         plan_stages, ledger_dir=resolved_ledger_dir, arc_cap_usd=ARC_CAP_USD,
@@ -4385,6 +4487,8 @@ def command_pipeline(
     max_usd: str | None = None,
     ledger_dir: Path | None = None,
     accept_budget: bool = False,
+    style_lora: str | None = None,
+    style_lora_strength: float | None = None,
 ) -> dict[str, Any]:
     """F1: one resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -4492,7 +4596,8 @@ def command_pipeline(
                 active_plan = build_plan(
                     creator_id, "gen", gen_root, personas_root=personas_root,
                     skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
-                    accept_budget=accept_budget,
+                    accept_budget=accept_budget, style_lora=style_lora,
+                    style_lora_strength=style_lora_strength,
                 )
                 active_root = gen_root
             active_plan_path = gen_root / "plan.json"
@@ -4611,6 +4716,17 @@ def build_parser() -> argparse.ArgumentParser:
              "cap remaining (arc_cap_usd - arc already spent); the acceptance and its "
              "numbers are recorded in plan.json's budget_preflight",
     )
+    plan.add_argument(
+        "--style-lora", default=None,
+        help="M3: gen-only style LoRA key (pins.pins.style_loras in tensor-pins.yaml), "
+             "e.g. inline-skin; overrides persona.training.style_lora for this one plan "
+             "-- never a persona fork",
+    )
+    plan.add_argument(
+        "--style-lora-strength", default=None, type=float,
+        help="M3: LoraLoaderModelOnly strength for --style-lora (0 < x <= 1.5); "
+             "defaults to persona.training.style_lora_strength (0.8) when omitted",
+    )
 
     pipeline = commands.add_parser(
         "pipeline",
@@ -4646,6 +4762,15 @@ def build_parser() -> argparse.ArgumentParser:
         "--accept-budget", action="store_true",
         help="M2: required whenever a stage `pipeline` plans on its own (--out, or a "
              "downstream gen/detail plan) would exceed the arc cap remaining",
+    )
+    pipeline.add_argument(
+        "--style-lora", default=None,
+        help="M3: applied only when pipeline plans its own downstream gen stage -- "
+             "see `plan --style-lora`",
+    )
+    pipeline.add_argument(
+        "--style-lora-strength", default=None, type=float,
+        help="M3: see `plan --style-lora-strength`",
     )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
@@ -4758,6 +4883,7 @@ def main(argv: list[str] | None = None) -> int:
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
+                style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
@@ -4767,6 +4893,7 @@ def main(argv: list[str] | None = None) -> int:
                 skip_pin_verify=args.skip_pin_verify, skip_judge=args.skip_judge,
                 dry_run=args.dry_run, from_stage=args.from_stage, max_usd=args.max_usd,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
+                style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
