@@ -265,6 +265,41 @@ def test_within_and_hash_file_handle_paths_beyond_max_path(tmp_path: Path) -> No
     assert frames._real_below(tmp_path, target)
 
 
+def test_normalize_leaf_matches_what_os_path_actually_addresses(tmp_path: Path) -> None:
+    """MINOR 5 (REVIEW): the docstring on `_os_path` used to claim the extended-length
+    prefix PRESERVES a trailing dot/space on the final component -- false, since
+    `os.path.abspath` (called before the prefix is ever attached) already strips it.
+    `_normalize_leaf` reproduces that exact stripping so a receipt's recorded name
+    never claims a spelling that differs from where the bytes actually live."""
+    assert frames._normalize_leaf("evidence") == "evidence"
+    assert frames._normalize_leaf("evidence ") == "evidence"
+    assert frames._normalize_leaf("evidence.") == "evidence"
+    assert frames._normalize_leaf("evidence. . ") == "evidence"
+    assert frames._normalize_leaf("na.me ") == "na.me"
+    assert frames._normalize_leaf("...") == "..."  # never stripped down to nothing
+
+    for leaf in ("evidence ", "evidence."):
+        assert (
+            frames._os_path(tmp_path / leaf)
+            == frames._os_path(tmp_path / frames._normalize_leaf(leaf))
+        )
+
+
+def test_hash_file_records_the_normalized_leaf_not_the_dirty_spelling(tmp_path: Path) -> None:
+    """A caller who names a leaf with a trailing dot/space still gets a receipt whose
+    `path` names the same spelling `_os_path` actually addressed -- not the raw,
+    un-normalised name it was handed."""
+    relative = Path("evidence ")
+    target = tmp_path / "evidence"  # what the OS call actually creates/addresses
+    payload = b"leaf normalisation fixture"
+    with frames._open(tmp_path / relative, "wb") as handle:
+        handle.write(payload)
+    assert target.is_file()  # confirms the dirty spelling aliased to the clean one
+
+    record = frames._hash_file(tmp_path, relative, "dirty leaf", frames.MAX_FRAME_BYTES)
+    assert record["path"] == "evidence"
+
+
 def test_junction_inside_a_long_path_is_still_refused(tmp_path: Path) -> None:
     external = tmp_path.parent / f"{tmp_path.name}-long-junction-target"
     external.mkdir()

@@ -456,7 +456,10 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
             ):
                 raise VideoManifestError("review candidate persona must be the current approved gen plan persona")
     out_path = _within(root, out, "output", allow_missing=True)
-    if _path_helpers()._exists(out_path): raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
+    # MINOR 6 (REVIEW): no early existence refusal here -- `write_manifest` below is the
+    # one place that decides overwrite-vs-idempotent-accept, comparing actual bytes
+    # rather than refusing the moment a path merely exists (which made a video plan
+    # non-replannable even when nothing had changed).
     frame_path = Path(first_frame["frame"]["path"])
     if out_path.parent != (root / frame_path).parent:
         raise VideoManifestError("output manifest must be written beside the first frame so the existing harness can upload it safely")
@@ -509,15 +512,32 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
 
 
 def write_manifest(*, root: Path, out: Path, **kwargs: Any) -> dict[str, Any]:
+    """MINOR 6 (REVIEW): idempotent -- a replan that reproduces byte-identical manifest
+    content is accepted (no-op, the existing file is left alone) rather than refused,
+    so a video plan can be re-planned. Only a GENUINE change against an existing path
+    refuses, with the same message as before."""
     root = _root(root); value = build_manifest(root=root, out=out, **kwargs)
     if value.get("mode") == CANDIDATE_MODE:
         repeated = build_manifest(root=root, out=out, **kwargs)
         if repeated != value:
             raise VideoManifestError("review candidate inputs changed before write")
     path = _within(root, out, "output", allow_missing=True)
+    encoded = json.dumps(value, indent=2, sort_keys=True) + "\n"
+    helpers = _path_helpers()
+    if helpers._exists(path):
+        if not helpers._is_file(path):
+            raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
+        try:
+            with helpers._open(path, "r", encoding="utf-8") as handle:
+                existing = handle.read()
+        except OSError as exc:
+            raise VideoManifestError(f"cannot read existing manifest: {out.as_posix()}") from exc
+        if existing != encoded:
+            raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
+        return value
     try:
-        with _path_helpers()._open(path, "x", encoding="utf-8") as handle:
-            json.dump(value, handle, indent=2, sort_keys=True); handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
+        with helpers._open(path, "x", encoding="utf-8") as handle:
+            handle.write(encoded); handle.flush(); os.fsync(handle.fileno())
     except FileExistsError as exc:
         raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}") from exc
     return value

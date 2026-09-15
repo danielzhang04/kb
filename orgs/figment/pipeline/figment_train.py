@@ -216,18 +216,25 @@ def _video_authority_root(path: Path, label: str) -> Path:
     `orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/`.
 
     `gen` and `detail` plans are unaffected: they may still be built anywhere (the
-    runbook's own `C:/tmp/creator-001-plan` keeps working). Only `video` refuses."""
+    runbook's own `C:/tmp/creator-001-plan` keeps working). Only `video` refuses.
+
+    MINOR 3 (REVIEW): contained to `RUNS_ROOT` (`orgs/figment/runs/`), not merely `ROOT`
+    -- an otherwise-in-repo path like `orgs/figment/personas/<id>` is not a run root
+    (nothing gitignores it, `pipeline` never writes there, and the whole point of this
+    function is to bind every video-plan-related path to the one gitignored run tree
+    `pipeline --out` defaults to), so it must refuse here too."""
     resolved = Path(path).resolve()
     try:
-        resolved.relative_to(ROOT.resolve())
+        resolved.relative_to(RUNS_ROOT.resolve())
     except ValueError as exc:
         raise FigmentTrainError(
-            f"the video stage requires {label} inside the repository authority root "
-            f"({ROOT}); `pipeline --out` defaults to "
+            f"the video stage requires {label} inside the run-root authority root "
+            f"({RUNS_ROOT}); `pipeline --out` defaults to "
             "orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/ for exactly this reason "
             "(video_manifest's review-candidate mode binds the plan's own in-repo "
-            "persona.yaml digest under one common --root). gen and detail may still be "
-            f"planned outside the repo; video may not. Got: {resolved}"
+            "persona.yaml digest under one common --root, and only orgs/figment/runs/ "
+            "is that shared run-root tree). gen and detail may still be planned "
+            f"anywhere, including elsewhere in the repo; video may not. Got: {resolved}"
         ) from exc
     return resolved
 

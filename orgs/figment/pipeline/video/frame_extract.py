@@ -59,9 +59,21 @@ def _os_path(path: Path | str) -> str:
       ``_within`` already refuses any relative path containing ``..`` before it builds a
       candidate, while ``_root`` resolves the root strictly. No component that reaches
       here can carry one.
-    * ``\\\\?\\`` also disables Win32's legacy trailing-dot/trailing-space stripping, so
-      a component spelled ``"evidence "`` addresses that literal name instead of quietly
-      aliasing to ``"evidence"`` -- strictly fewer aliases, never more.
+    * MINOR 5 (REVIEW) -- the claim this docstring used to make here, that ``\\\\?\\``
+      preserves a trailing dot/space on the FINAL component, is FALSE: ``os.path.abspath``
+      (called below, BEFORE the prefix is ever added) already strips a trailing run of
+      ``"."``/``" "`` off the last component -- confirmed empirically,
+      ``abspath("evidence ")`` and ``abspath("evidence.")`` both normalise to
+      ``...\\evidence``, identical to ``abspath("evidence")``. The real property is
+      narrower but still sufficient: every trailing-dot/space spelling of a leaf name
+      collapses onto the exact same extended-length string as its stripped form, so
+      every probe this module makes aliases IDENTICALLY regardless of which spelling a
+      caller supplied -- containment can never be widened by the difference, only ever
+      resolve to one place. It also means a receipt that records a caller-supplied leaf
+      verbatim can name a spelling that differs from where the bytes actually live
+      (``"evidence "`` recorded, ``"evidence"`` on disk); callers that persist a leaf
+      name in a receipt normalise it explicitly first -- see ``_normalize_leaf`` and its
+      use in ``_hash_file``.
     """
     text = os.path.abspath(os.fspath(path))
     if os.name != "nt" or text.startswith(EXTENDED_PREFIX):
@@ -69,6 +81,18 @@ def _os_path(path: Path | str) -> str:
     if text.startswith("\\\\"):
         return f"{EXTENDED_PREFIX}UNC{text[1:]}"
     return f"{EXTENDED_PREFIX}{text}"
+
+
+def _normalize_leaf(name: str) -> str:
+    """The exact transformation ``os.path.abspath`` (and therefore ``_os_path``) applies
+    to a path's FINAL component on Windows: a trailing run of dots/spaces is stripped
+    before the extended-length prefix is ever added. A receipt that records a leaf name
+    verbatim, un-normalised, can therefore claim a spelling that differs from where the
+    hashed bytes actually live (MINOR 5). Never strips a name down to nothing -- a
+    leaf that is ALL dots/spaces is left as-is for `_within`'s own ``".."``/empty-part
+    checks to refuse by their existing rules."""
+    stripped = name.rstrip(" .")
+    return stripped or name
 
 
 def _plain_path(text: str) -> str:
@@ -192,7 +216,11 @@ def _hash_file(root: Path, relative: Path, label: str, maximum: int) -> dict[str
         raise FrameExtractError(f"cannot read {label}") from exc
     if actual_size != expected_size:
         raise FrameExtractError(f"{label} changed while it was being read")
-    return {"path": relative.as_posix(), "bytes": actual_size, "sha256": digest.hexdigest()}
+    # MINOR 5: the recorded leaf is normalised the same way `_os_path` (via
+    # `os.path.abspath`) normalises it before any OS call ever touches this path, so
+    # the receipt never claims a spelling that differs from where these bytes live.
+    normalized = relative.with_name(_normalize_leaf(relative.name))
+    return {"path": normalized.as_posix(), "bytes": actual_size, "sha256": digest.hexdigest()}
 
 
 def _tool(path: Path, label: str) -> str:
