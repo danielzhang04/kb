@@ -4133,6 +4133,232 @@ def _format_gate_table(document: dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+def _pipeline_downstream_root(primary_root: Path, stage: str) -> Path:
+    """F1: gen/detail (and, once F6 wires it, video) are never part of a `--stage
+    all` plan -- each is always planned by name against an already-ruled upstream
+    stage. `pipeline` needs a single, deterministic (not a separate cursor file)
+    place to look for -- or create -- each one's own plan on every invocation."""
+    return primary_root / "downstream" / stage
+
+
+def _pipeline_gate_instruction(
+    creator_id: str, stage: str, plan_path: Path, grade: dict[str, str],
+) -> str:
+    apply_command = (
+        f"py -3 orgs/figment/pipeline/figment_train.py apply-rulings --creator {creator_id} "
+        f"--stage {stage} --plan {plan_path} --rulings <path to your filled rulings>"
+    )
+    return (
+        f"GATE {stage}: operator review required.\n"
+        f"  Board:            {grade['page']}\n"
+        f"  Rulings template: {grade['rulings_template']}\n"
+        f"  Fill every cell's seven axes plus decided_by/decided_at, then run:\n"
+        f"    {apply_command}\n"
+        f"  Re-invoke `pipeline --creator {creator_id} --plan {plan_path}` afterward "
+        "to resume without replanning or rerunning this stage."
+    )
+
+
+def command_pipeline(
+    creator_id: str,
+    *,
+    plan_path: Path | None = None,
+    out: Path | None = None,
+    personas_root: Path = PERSONAS_ROOT,
+    skip_pin_verify: bool = False,
+    skip_judge: bool = False,
+    dry_run: bool = False,
+    from_stage: str | None = None,
+    max_usd: str | None = None,
+    ledger_dir: Path | None = None,
+) -> dict[str, Any]:
+    """F1: one resumable driver across anchor -> dataset -> smoke -> train -> tester
+    -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
+    `command_gate`-equivalent freshness reads, and `apply_rulings` is left to the
+    operator (a ruling is a human act, per contract.md) -- this function never writes
+    one. It stores no cursor/state file of its own: "next action" is derived every
+    call from receipts (`stage.json`/`run.json`) and grade/rulings files already on
+    disk, so killing and re-invoking `pipeline` is always safe.
+
+    Exactly one of `plan_path` (resume an existing plan) or `out` (build a fresh
+    `--stage all` plan there first) must be given. `gen` and `detail` are never part
+    of that primary plan (README: "gen is NEVER included in `--stage all`" -- F2
+    extends the same rule to detail); `pipeline` plans each of them itself, by name,
+    the moment its upstream ruling exists, into a deterministic
+    `<primary_root>/downstream/<stage>` directory (`_pipeline_downstream_root`) so a
+    later invocation finds the same plan rather than creating a second one.
+
+    Halts with a printed operator instruction (board path, rulings template path, the
+    exact `apply-rulings` command) and a `GATE <stage>: awaiting ruling` line at every
+    gradeable stage whose ruling is not yet recorded, then returns with `status`
+    `"GATE <stage>"` (exit 0 at the CLI layer -- this is normal operation, not an
+    error). `dry_run` previews the next action (which stage would plan or run) without
+    calling `run_planned_stage`/`build_plan`/`build_grade` at all -- it never invokes
+    the pod harness, matching every other local-and-free command in this file; only
+    `run_planned_stage` itself ever spends. `max_usd` is accepted for interface
+    symmetry with the other stage commands but, like `--dry-run` on `run`/`plan`, is
+    not consumed by any of them today -- ceilings are derived per-manifest at plan
+    time (`manifest_ceiling`), not overridden at run time; see the README's Spend
+    guards section.
+
+    `video` is not yet buildable by this driver (F6 tracks it separately: a manifest
+    builder, a temporal-QA acceptance path, and a template-fitting derivative did not
+    exist before this file and needed dedicated design). `pipeline` reports completion
+    through `detail` and names the manual path rather than crashing on an unknown
+    stage.
+    """
+    if (plan_path is None) == (out is None):
+        raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
+    if from_stage is not None and from_stage not in STAGES:
+        raise FigmentTrainError(f"pipeline --from-stage must be one of {STAGES}")
+
+    if plan_path is not None:
+        primary_plan, primary_root = _load_plan(creator_id, plan_path)
+        primary_plan_path = Path(plan_path).resolve()
+    else:
+        if dry_run:
+            return {
+                "status": "dry-run:plan",
+                "message": f"would build a fresh --stage all plan at {Path(out).resolve()}",
+            }
+        primary_plan = build_plan(
+            creator_id, "all", out, personas_root=personas_root,
+            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
+        )
+        primary_root = Path(out).resolve()
+        primary_plan_path = primary_root / "plan.json"
+
+    order = list(STAGES)
+    if from_stage is not None:
+        order = order[order.index(from_stage):]
+
+    gen_root = _pipeline_downstream_root(primary_root, "gen")
+    detail_root = _pipeline_downstream_root(primary_root, "detail")
+
+    for stage in order:
+        if stage == "video":
+            return {
+                "status": "stopped:video-not-automated",
+                "message": (
+                    "detail stage complete; `video` is not yet driven by `pipeline` "
+                    "(F6 follow-up) -- see orgs/figment/pipeline/video/*.py and "
+                    "docs/figment/2026-09-09-operator-runbook.md for the current "
+                    "manual path"
+                ),
+            }
+        if stage in ("anchor", "dataset", "smoke", "train", "tester"):
+            if stage not in primary_plan.get("stages", {}):
+                continue
+            active_plan, active_root, active_plan_path = (
+                primary_plan, primary_root, primary_plan_path,
+            )
+        elif stage == "gen":
+            if (gen_root / "plan.json").is_file():
+                active_plan, active_root = _load_plan(creator_id, gen_root / "plan.json")
+            else:
+                if not (primary_root / "grade" / "tester" / "accepted-checkpoint.json").is_file():
+                    return {
+                        "status": "stopped:gen-not-planned",
+                        "message": (
+                            "tester has not been promoted with --checkpoint-step yet; "
+                            "apply tester rulings before gen can be planned"
+                        ),
+                    }
+                if dry_run:
+                    return {
+                        "status": "dry-run:gen",
+                        "message": f"would build a fresh gen plan at {gen_root}",
+                    }
+                active_plan = build_plan(
+                    creator_id, "gen", gen_root, personas_root=personas_root,
+                    skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
+                )
+                active_root = gen_root
+            active_plan_path = gen_root / "plan.json"
+        elif stage == "detail":
+            if (detail_root / "plan.json").is_file():
+                active_plan, active_root = _load_plan(creator_id, detail_root / "plan.json")
+            else:
+                if not (gen_root / "grade" / "gen" / "approved-list.json").is_file():
+                    return {
+                        "status": "stopped:detail-not-planned",
+                        "message": (
+                            "gen has not been ruled yet; apply gen rulings before "
+                            "detail can be planned"
+                        ),
+                    }
+                if dry_run:
+                    return {
+                        "status": "dry-run:detail",
+                        "message": f"would build a fresh detail plan at {detail_root}",
+                    }
+                active_plan = build_plan(
+                    creator_id, "detail", detail_root, personas_root=personas_root,
+                    skip_pin_verify=skip_pin_verify, approved_gen_plan=gen_root,
+                    ledger_dir=ledger_dir,
+                )
+                active_root = detail_root
+            active_plan_path = detail_root / "plan.json"
+        else:
+            raise FigmentTrainError(f"pipeline does not know stage {stage!r}")
+
+        state = _stage_state(active_root / "stage.json", creator_id, active_plan_path)
+        if stage not in state.get("completed_stages", []):
+            if dry_run:
+                return {
+                    "status": f"dry-run:{stage}",
+                    "message": f"would run stage {stage!r} for plan {active_plan_path}",
+                }
+            run_planned_stage(creator_id, stage, active_plan_path)
+
+        if stage in GRADEABLE_STAGES:
+            grade_dir = active_root / "grade" / stage
+            gate_path = grade_dir / "gate.json"
+            approval_path = grade_dir / "approval-lineage.json"
+            rejection_path = grade_dir / "rejection-lineage.json"
+            if not gate_path.is_file():
+                if dry_run:
+                    return {
+                        "status": f"dry-run:grade-{stage}",
+                        "message": f"would grade stage {stage!r} for plan {active_plan_path}",
+                    }
+                grade = build_grade(
+                    creator_id, stage, active_plan_path, skip_judge=skip_judge,
+                )
+            else:
+                grade = {
+                    "page": str(grade_dir / "board.html"),
+                    "rulings_template": str(grade_dir / "rulings.template.json"),
+                    "grading_manifest": str(grade_dir / "grading-manifest.json"),
+                    "gate": str(gate_path),
+                }
+            if not approval_path.is_file() and not rejection_path.is_file():
+                instruction = _pipeline_gate_instruction(
+                    creator_id, stage, active_plan_path, grade,
+                )
+                print(instruction)
+                print(f"GATE {stage}: awaiting ruling")
+                return {"status": f"GATE {stage}", "message": instruction}
+            if rejection_path.is_file() and not approval_path.is_file():
+                return {
+                    "status": f"stopped:{stage}-rejected",
+                    "message": f"{stage} rulings kept no images; nothing to promote",
+                }
+            if stage == "anchor":
+                approval = _read_json(approval_path)
+                if approval.get("transition", {}).get("requires_replan"):
+                    return {
+                        "status": "stopped:anchor-promoted",
+                        "message": (
+                            "anchor promoted the persona references; this plan cannot "
+                            f"continue -- invoke `pipeline --creator {creator_id} "
+                            "--out <new-dir>` for a fresh --stage all plan"
+                        ),
+                    }
+
+    return {"status": "complete:detail", "message": "pipeline complete through detail"}
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
@@ -4158,6 +4384,37 @@ def build_parser() -> argparse.ArgumentParser:
         help="directory of an already-ruled gen plan (only meaningful with --stage "
              "detail); every image in its grade/gen/approved-list.json is re-detailed (F2)",
     )
+
+    pipeline = commands.add_parser(
+        "pipeline",
+        help="F1: resumable driver across anchor..detail; halts at every gate, "
+             "never plans/runs/grades twice for the same stage",
+    )
+    pipeline.add_argument("--creator", required=True)
+    pipeline_target = pipeline.add_mutually_exclusive_group(required=True)
+    pipeline_target.add_argument(
+        "--plan", type=Path, help="resume an existing --stage all plan.json",
+    )
+    pipeline_target.add_argument(
+        "--out", type=Path, help="build a fresh --stage all plan here first",
+    )
+    pipeline.add_argument("--from-stage", choices=STAGES, default=None)
+    pipeline.add_argument("--dry-run", action="store_true")
+    pipeline.add_argument(
+        "--max-usd", default=None,
+        help="accepted for interface symmetry; not yet consumed by any dispatched "
+             "stage command (see command_pipeline's own docstring)",
+    )
+    pipeline.add_argument(
+        "--skip-pin-verify", action="store_true",
+        help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
+    )
+    pipeline.add_argument(
+        "--skip-judge", action="store_true",
+        help="omit stage 2 (the vlm_judge.py Claude vision judge) -- offline/test use "
+             "only, NEVER pass this on a real grading run",
+    )
+    pipeline.add_argument("--ledger-dir", type=Path)
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -4267,6 +4524,14 @@ def main(argv: list[str] | None = None) -> int:
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
+        elif args.command == "pipeline":
+            result = command_pipeline(
+                args.creator, plan_path=args.plan, out=args.out,
+                skip_pin_verify=args.skip_pin_verify, skip_judge=args.skip_judge,
+                dry_run=args.dry_run, from_stage=args.from_stage, max_usd=args.max_usd,
+                ledger_dir=args.ledger_dir,
+            )
+            print(f"pipeline: {result['status']}")
         elif args.command == "run":
             result = run_planned_stage(args.creator, args.stage, args.plan)
             print(f"stage state: {result['status']}")
