@@ -9,6 +9,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # tests/test_cleanup_no_dangling_refs.py derives the deleted set from git history; a shallow checkout falls back and fails
       - uses: actions/setup-node@v4
         with: {node-version: 24.18.0, cache: npm, cache-dependency-path: dashboard/package-lock.json}
       - uses: actions/setup-python@v5
