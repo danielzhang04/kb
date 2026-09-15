@@ -315,6 +315,14 @@ closed on any mismatch or redirect (never follows a 302) — wired as a `plan`/`
 preflight unless `--skip-pin-verify` is passed. Full substitution log, licences, and open pin
 risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
 
+`.gitattributes` also pins four sibling *source* files consumed by
+`train/local_lora_matched_runtime.py`'s own self-hash gate (`C1_SHA256`, `OWNERSHIP_SHA256`,
+`PAIR_ENGINE_SHA256`) to `eol=lf`, so the pin is byte-identical on Windows and the Linux
+cloud VM regardless of `core.autocrlf`. Git does not retroactively re-smudge a file already
+on disk when an attribute is added — a checkout taken before the attribute landed stays
+CRLF until it is re-synced: run `git checkout HEAD -- <path>` for each pinned path after
+pulling (one command per path, quoted) to pick up the new attribute.
+
 n13: `verify_pins.py`'s HEAD/sha256 check covers `models` only. `detail`'s
 `custom_nodes` (RES4LYF, ComfyUI-Impact-Pack) clone at a *recorded* commit
 (`installer_pin`) that is never re-verified the way a model's sha256 is — the pin

@@ -66,6 +66,10 @@
 /orgs/figment/pipeline/train/local_lora_matched_inference.py text eol=lf
 /orgs/figment/pipeline/train/local_lora_pair_engine.py text eol=lf
 /orgs/figment/pipeline/train/local_single_observation_cpu_preflight.py text eol=lf
+# MAJOR 2 (REVIEW): local_lora_matched_runtime.py's OWNERSHIP_SHA256 pins this
+# one too, by the same rule as the three above -- missed when this block was
+# first written, so its pin had never matched either EOL spelling.
+/orgs/figment/pipeline/expand/local_comfy_input.py text eol=lf
 
 # The cloud-pair gallery binds these review documents by raw SHA-256.
 # Preserve their reviewed bytes across Windows and Linux checkouts.

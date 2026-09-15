@@ -435,3 +435,25 @@ def test_safe_existing_checks_ancestors_root_shape_and_exact_resolution(tmp_path
         runtime._safe_existing(lexical, root, "test evidence")
     with pytest.raises(runtime.MatchedRuntimeError, match="fixed root"):
         runtime._safe_existing(target, target, "test evidence")
+
+
+@pytest.mark.parametrize("path_attr, sha_attr", [
+    ("C1_PATH", "C1_SHA256"),
+    ("OWNERSHIP_PATH", "OWNERSHIP_SHA256"),
+    ("PAIR_ENGINE_PATH", "PAIR_ENGINE_SHA256"),
+])
+def test_checked_in_source_pins_match_their_real_lf_bytes(path_attr, sha_attr):
+    """MAJOR 1/2 (REVIEW): each of these three self-hash pins gates a live code path
+    (`_load_bound_modules`/`_pair_engine`) with the SAME checked-in constant this test
+    reads -- a CRLF-smudged working-tree copy (`.gitattributes` `eol=lf` fixes the
+    checkout, but only for a checkout taken *after* the attribute was added) or a
+    silently stale constant (MAJOR 2: `OWNERSHIP_SHA256` pinned a value that matched
+    neither EOL spelling of `local_comfy_input.py`, nor its last 8 revisions) both fail
+    this the same way a live run would, so a future drift is caught here rather than at
+    spend time. Bytes are explicitly CRLF->LF normalized before hashing so this proves
+    the *pin*, not just today's working-tree line endings (`.gitattributes` already
+    pins these three paths to `eol=lf`, but this assertion does not depend on that)."""
+    path = getattr(runtime, path_attr)
+    raw = path.read_bytes()
+    normalized = raw.replace(b"\r\n", b"\n")
+    assert getattr(runtime, sha_attr) == hashlib.sha256(normalized).hexdigest()
