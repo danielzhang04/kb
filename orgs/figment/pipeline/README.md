@@ -392,8 +392,8 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
 
 - Daily: `governance/budget.yaml` `daily_usd_limit: 10.00` (subscription-billed steps, e.g.
   `vlm_judge`, log $0.00 against this).
-- Arc: `ARC_CAP_USD = "50.00"` in `figment_train.py`, checked against every `figment-*.tsv`
-  ledger row before a live `run`.
+- Arc: `ARC_CAP_USD = "60.00"` in `figment_train.py` (raised from `"50.00"` by operator
+  ruling 2026-09-15), checked against every `figment-*.tsv` ledger row before a live `run`.
 - Per-stage ceilings (`--max-usd`; `train/TENSOR-TRAINING.md`'s cost table): train-smoke
   $2.28, tester $2.82 (F5: `max_minutes` raised 115 -> 130 to cover the 12-job ladder a
   3000-step/save_every-250 checkpoint schedule now tests), gen $3.58; dataset shard

@@ -80,7 +80,9 @@ VIDEO_FRAME_SAMPLE_EVERY = 8
 # Compatibility export for older callers. New plans resolve through the pod harness's
 # configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
-ARC_CAP_USD = "50.00"
+# Operator approval 2026-09-15 (Daniel): +$20 for the passport-set rebuild + 3000-step
+# train; arc cap 50 -> 60.
+ARC_CAP_USD = "60.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
 STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
 # Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a

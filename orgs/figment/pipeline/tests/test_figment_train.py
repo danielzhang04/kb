@@ -2268,10 +2268,11 @@ def test_build_plan_refuses_when_planned_ceilings_exceed_remaining_arc_and_recor
     passed, and record the numbers on the plan when it is."""
     ledger_dir = tmp_path / "ledger"
     ledger_dir.mkdir()
-    # Seed the arc ledger so only $1.00 remains of the $50.00 cap -- any nonzero
-    # multi-stage synthetic plan's summed ceilings exceed that.
+    # Seed the arc ledger so only $1.00 remains of ARC_CAP_USD -- any nonzero multi-stage
+    # synthetic plan's summed ceilings exceed that.
+    seed_spent = float(command.ARC_CAP_USD) - 1.0
     (ledger_dir / "figment-2026-01-01.tsv").write_text(
-        "model\tstep\tusd\n" "l40s\tpod-create seed\t49.000000\n", encoding="utf-8",
+        f"model\tstep\tusd\nl40s\tpod-create seed\t{seed_spent:.6f}\n", encoding="utf-8",
     )
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root)

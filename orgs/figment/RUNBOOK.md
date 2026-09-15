@@ -204,8 +204,9 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
 
 ## Budget rules
 
-- **Arc cap: $50.00** for the creator-001 arc (`ARC_CAP_USD` in `figment_train.py`), checked
-  against every `ledgers/cost/figment-*.tsv` row before a live `run`.
+- **Arc cap: $60.00** for the creator-001 arc (`ARC_CAP_USD` in `figment_train.py`, raised
+  from $50.00 by operator ruling 2026-09-15), checked against every `ledgers/cost/
+  figment-*.tsv` row before a live `run`.
 - **Daily cap: $10.00** in this branch's governance (`governance/budget.yaml`
   `daily_usd_limit`) — raise it, or split stages across days, when a single stage's ceiling
   (train, at the current 3000-step/DOP profile: $15.73) exceeds it on its own.
