@@ -68,6 +68,14 @@ STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "vid
 # gap H3 first closed for "anchor". "gen"/"detail"/"video" are gradeable; "smoke"/"train"
 # never are (no per-cell operator ruling makes sense for either).
 GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "video")
+# m5: `pipeline --from-stage` may only name a stage the driver actually RUNS itself
+# (anchor..detail) -- "video" is a STAGES entry purely so `command_pipeline`'s own
+# loop recognizes it as the honest "not yet automated" stop (F6 tracks the real
+# video-stage build separately; no `video-stage` commit exists in this tree yet --
+# `git log --oneline --all | grep video-stage` finds none). Naming it explicitly on
+# `--from-stage` would only ever skip straight to that stop message, never resume
+# real work, so it is excluded here.
+PIPELINE_FROM_STAGES = tuple(stage for stage in STAGES if stage != "video")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 KEY_MISMATCH_RE = re.compile(
     r"missing_keys|unexpected_keys|missing key\(s\)|unexpected key\(s\)", re.I,
@@ -3027,12 +3035,22 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                     f"planned run {key} already failed; create a reviewed new plan to retry"
                 )
             if prior and prior.get("status") == "running":
+                # n12: this is the recovery message a SECOND concurrent `pipeline`/`run`
+                # invocation on the SAME plan actually hits (stage.json's own "running"
+                # mark is the lock) -- most of the time that other process is simply
+                # still working the exact same run, not a crash, so the fix is patience
+                # and a re-run, never a fresh plan (which would abandon a run that may
+                # already be paying for a pod).
                 raise FigmentTrainError(
-                    f"planned run {key} is still marked running; a prior invocation may have "
-                    "been interrupted before recording completion or failure. Confirm the true "
-                    "pod state with `runpod_run.py status`/`probe` (and terminate it if still "
-                    "live) before touching this plan again — never launch a second pod for the "
-                    "same manifest"
+                    f"planned run {key} is still marked running. If another `pipeline`/"
+                    "`run` invocation on this same plan is still active, this is expected "
+                    "-- wait for it to exit, then re-run `pipeline` (or `run`) on this plan "
+                    "again; the run may already have succeeded there and this call will "
+                    "pick that up. If no other invocation is active, a prior one was likely "
+                    "interrupted before recording completion or failure: confirm the true "
+                    "pod state with `runpod_run.py status`/`probe` (and terminate it if "
+                    "still live) before retrying. Never launch a second pod for the same "
+                    "manifest, and never start a fresh plan over this one for that alone."
                 )
             # A gen plan may carry a base run and optional legacy --detail-images run;
             # a detail STAGES plan (F2) has its own external checkpoint + gen-source
@@ -3418,6 +3436,34 @@ def _load_current_approval(
     approval = _read_json(approval_path, reads=reads)
     if approval.get("schema") != _lineage_module().APPROVAL_SCHEMA:
         raise FigmentTrainError(f"unsupported approval lineage at {approval_path}")
+    # m9: a direct, explicit check against evaluation-inputs.json's recorded
+    # gate_sha256, BEFORE the broader subject-hash check below -- both would
+    # eventually catch a swapped gate.json (review_subject's own "numeric_gate"
+    # field already covers it transitively), but this one fails first with a
+    # precise "gate.json changed" message rather than a generic "stale, rebuild",
+    # worth the one extra read for how load-bearing a fail-closed gate swap is.
+    evaluation_path = grade_dir / "evaluation-inputs.json"
+    evaluation_exists = (
+        reads.file(evaluation_path, required=False) if reads is not None
+        else evaluation_path.is_file()
+    )
+    if evaluation_exists:
+        evaluation = _read_json(evaluation_path, reads=reads)
+        recorded_gate_sha256 = evaluation.get("gate_sha256")
+        if recorded_gate_sha256 is not None:
+            gate_path = grade_dir / "gate.json"
+            gate_exists = (
+                reads.file(gate_path, required=False) if reads is not None
+                else gate_path.is_file()
+            )
+            current_gate_sha256 = (
+                _sha256(gate_path, reads=reads) if gate_exists else None
+            )
+            if recorded_gate_sha256 != current_gate_sha256:
+                raise FigmentTrainError(
+                    f"{stage} gate.json changed after evaluation; rebuild the grade "
+                    "and obtain fresh operator rulings"
+                )
     try:
         _lineage_module().assert_current(
             approval, _current_review_subject(plan, root, stage, grading, reads=reads),
@@ -3697,6 +3743,11 @@ def build_grade(
         _lineage_module().wrap_subject(
             _lineage_module().EVALUATION_SCHEMA, subject,
             creator=creator_id, stage=stage,
+            # m9: bind the evaluation record to the exact gate.json it was graded
+            # against -- _load_current_approval re-checks this the same way it
+            # already re-checks rulings_sha256, so a gate.json swapped after grading
+            # (but before the ruling is applied) is caught, not silently trusted.
+            gate_sha256=_sha256(gate_path),
             **({
                 "review_mode": "local-research",
                 "research_provenance": gate_document["research_provenance"],
@@ -3721,7 +3772,11 @@ def build_grade(
             "garment_integrity": None,
             "real_person_resemblance": None,
             "why": "",
-            **({"gate_override": ""} if local_research else {}),
+            # m9: always present (never conditional on local_research) -- an
+            # attributed override is the same axis whatever review mode produced
+            # the gate, and a template that sometimes omits the field invites a
+            # rulings document that never carries it at all.
+            "gate_override": "",
         } for row in images],
     })
     page_path.write_text(
@@ -4682,7 +4737,6 @@ def command_pipeline(
     skip_judge: bool = False,
     dry_run: bool = False,
     from_stage: str | None = None,
-    max_usd: str | None = None,
     ledger_dir: Path | None = None,
     accept_budget: bool = False,
     style_lora: str | None = None,
@@ -4711,11 +4765,10 @@ def command_pipeline(
     error). `dry_run` previews the next action (which stage would plan or run) without
     calling `run_planned_stage`/`build_plan`/`build_grade` at all -- it never invokes
     the pod harness, matching every other local-and-free command in this file; only
-    `run_planned_stage` itself ever spends. `max_usd` is accepted for interface
-    symmetry with the other stage commands but, like `--dry-run` on `run`/`plan`, is
-    not consumed by any of them today -- ceilings are derived per-manifest at plan
-    time (`manifest_ceiling`), not overridden at run time; see the README's Spend
-    guards section.
+    `run_planned_stage` itself ever spends. m7: there is deliberately no `max_usd`
+    parameter here (or on `pipeline`'s CLI) -- ceilings are derived per-manifest at
+    plan time (`manifest_ceiling`), never overridden at run time; see the README's
+    Spend guards section.
 
     `video` is not yet buildable by this driver (F6 tracks it separately: a manifest
     builder, a temporal-QA acceptance path, and a template-fitting derivative did not
@@ -4725,8 +4778,8 @@ def command_pipeline(
     """
     if (plan_path is None) == (out is None):
         raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
-    if from_stage is not None and from_stage not in STAGES:
-        raise FigmentTrainError(f"pipeline --from-stage must be one of {STAGES}")
+    if from_stage is not None and from_stage not in PIPELINE_FROM_STAGES:
+        raise FigmentTrainError(f"pipeline --from-stage must be one of {PIPELINE_FROM_STAGES}")
 
     if plan_path is not None:
         primary_plan, primary_root = _load_plan(creator_id, plan_path)
@@ -4880,7 +4933,11 @@ def command_pipeline(
                         ),
                     }
 
-    return {"status": "complete:detail", "message": "pipeline complete through detail"}
+    # n11: `order` always ends with "video" (STAGES' last entry, preserved by the
+    # `--from-stage` slice above), and that branch always returns -- there is no
+    # code path where this loop completes without one of its branches returning
+    # first. A trailing `return {"status": "complete:detail", ...}` here was dead
+    # code; nothing replaces it.
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -4939,13 +4996,8 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline_target.add_argument(
         "--out", type=Path, help="build a fresh --stage all plan here first",
     )
-    pipeline.add_argument("--from-stage", choices=STAGES, default=None)
+    pipeline.add_argument("--from-stage", choices=PIPELINE_FROM_STAGES, default=None)
     pipeline.add_argument("--dry-run", action="store_true")
-    pipeline.add_argument(
-        "--max-usd", default=None,
-        help="accepted for interface symmetry; not yet consumed by any dispatched "
-             "stage command (see command_pipeline's own docstring)",
-    )
     pipeline.add_argument(
         "--skip-pin-verify", action="store_true",
         help="skip the live Hugging Face pin-verification preflight (offline/test use only)",
@@ -5089,7 +5141,7 @@ def main(argv: list[str] | None = None) -> int:
             result = command_pipeline(
                 args.creator, plan_path=args.plan, out=args.out,
                 skip_pin_verify=args.skip_pin_verify, skip_judge=args.skip_judge,
-                dry_run=args.dry_run, from_stage=args.from_stage, max_usd=args.max_usd,
+                dry_run=args.dry_run, from_stage=args.from_stage,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
             )

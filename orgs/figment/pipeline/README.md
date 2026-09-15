@@ -273,6 +273,17 @@ closed on any mismatch or redirect (never follows a 302) — wired as a `plan`/`
 preflight unless `--skip-pin-verify` is passed. Full substitution log, licences, and open pin
 risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
 
+n13: `verify_pins.py`'s HEAD/sha256 check covers `models` only. `detail`'s
+`custom_nodes` (RES4LYF, ComfyUI-Impact-Pack) clone at a *recorded* commit
+(`installer_pin`) that is never re-verified the way a model's sha256 is — the pin
+records what commit was reviewed, it does not enforce that the pod actually gets
+that commit, and cloning still runs `pip install -r requirements.txt` on the pod with
+no pickle-format check at all (GUARDRAILS #7's own carve-out: the pickle ban covers
+`manifest["models"]` only, never `custom_nodes`). `pipeline` now reaches `detail` as
+part of its own default anchor→detail path (F1/F2) rather than an operator-invoked
+side mode, so this open surface is exercised by default, not opt-in — read GUARDRAILS
+#7 before promoting `detail` (or any other custom-node-bearing stage) further.
+
 ## Spend guards
 
 - Daily: `governance/budget.yaml` `daily_usd_limit: 10.00` (subscription-billed steps, e.g.

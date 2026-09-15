@@ -897,6 +897,13 @@ def test_run_refuses_to_resume_a_stage_stuck_running(command, tmp_path, monkeypa
     message = str(excinfo.value)
     assert "runpod_run.py" in message
     assert "status" in message and "probe" in message
+    # n12: the recovery message this SECOND concurrent invocation actually hits must
+    # name the likely-benign case (another invocation is still active) and its fix
+    # (wait, then re-run pipeline/run on this same plan) -- not just the crash-
+    # recovery case, and never suggest a fresh plan for this alone.
+    assert "re-run" in message
+    assert "may already have succeeded" in message
+    assert "create a reviewed new plan to retry" not in message
 
 
 def test_ledger_model_dispatches_through_the_pod_harness_function_not_a_copy(
@@ -2450,3 +2457,50 @@ def test_lineage_dataset_subject_refuses_a_qwen3vl_row_with_a_mismatched_caption
     (dataset_dir / "dataset_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     subject = lineage.dataset_subject(dataset_dir)
     assert subject["caption_mode"] == "qwen3vl"
+
+
+def test_rulings_template_always_carries_gate_override_m9(command, tmp_path):
+    """m9: gate_override is the same axis whatever review mode produced the gate --
+    the template must never omit it (it used to be conditional on local_research)."""
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="m9-template-plan")
+    template = load_json(Path(grade["rulings_template"]))
+    assert template["rulings"], "fixture must produce at least one row"
+    for row in template["rulings"]:
+        assert row["gate_override"] == ""
+
+
+def test_evaluation_inputs_records_gate_sha256_m9(command, tmp_path):
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="m9-eval-plan")
+    grade_dir = Path(grade["gate"]).parent
+    evaluation = load_json(grade_dir / "evaluation-inputs.json")
+    assert evaluation["gate_sha256"] == command._sha256(Path(grade["gate"]))
+
+
+def test_load_current_approval_refuses_a_gate_json_swapped_after_evaluation_m9(
+    command, tmp_path,
+):
+    """m9: _load_current_approval fails closed with a precise "gate.json changed"
+    message when the recorded gate_sha256 no longer matches the file on disk -- not
+    just the broader (also-correct) generic "stale, rebuild" subject-hash path."""
+    plan_file, grade = _build_fake_dataset_grade(command, tmp_path, out_name="m9-swap-plan")
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+            "gate_override": "operator manually confirmed identity from the full-res original",
+        })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:00:00Z"})
+    filled = Path(grade["rulings_template"]).with_name("m9-filled.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+    gate_path = Path(grade["gate"])
+    tampered = load_json(gate_path)
+    tampered["summary"]["passed"] = 999  # any byte-level change
+    gate_path.write_text(json.dumps(tampered), encoding="utf-8")
+
+    plan, root = command._load_plan("creator-002", plan_file)
+    with pytest.raises(command.FigmentTrainError, match="gate.json changed"):
+        command._load_current_approval(plan, root, "dataset")

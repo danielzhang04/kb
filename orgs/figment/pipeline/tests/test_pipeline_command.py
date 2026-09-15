@@ -373,6 +373,35 @@ def test_deliverable_happy_path_binds_manifest_to_validated_bytes(command, tmp_p
     assert stale_still.read_bytes() != b"stale bytes that do not match the validated source"
 
 
+def test_pipeline_from_stage_video_is_refused_m5(command, tmp_path):
+    """m5: `--from-stage` may only name a stage `pipeline` actually runs itself
+    (anchor..detail) -- "video" is a STAGES entry purely so the driver's own loop
+    recognizes it as the honest not-yet-automated stop, never a real resume point."""
+    with pytest.raises(command.FigmentTrainError, match=r"--from-stage must be one of"):
+        command.command_pipeline(
+            "creator-002", plan_path=tmp_path / "plan.json", from_stage="video",
+        )
+    assert "video" not in command.PIPELINE_FROM_STAGES
+    assert set(command.PIPELINE_FROM_STAGES) == set(command.STAGES) - {"video"}
+
+
+def test_pipeline_cli_parser_has_no_max_usd_flag_m7(command):
+    """m7: the unused `pipeline --max-usd` flag is deleted -- it was never consumed by
+    any dispatched stage command; ceilings are derived per-manifest at plan time."""
+    parser = command.build_parser()
+    pipeline_parser = next(
+        action.choices["pipeline"]
+        for action in parser._subparsers._group_actions
+        if "pipeline" in getattr(action, "choices", {})
+    )
+    option_strings = {
+        option for action in pipeline_parser._actions for option in action.option_strings
+    }
+    assert "--max-usd" not in option_strings
+    with pytest.raises(TypeError, match="max_usd"):
+        command.command_pipeline("creator-002", plan_path="plan.json", max_usd="1.00")
+
+
 def test_pipeline_requires_exactly_one_of_plan_or_out(command, tmp_path):
     with pytest.raises(command.FigmentTrainError, match="exactly one of --plan or --out"):
         command.command_pipeline("creator-002")
