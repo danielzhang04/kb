@@ -164,6 +164,44 @@ checkpoint into the new generation plan. Provider receipts carry byte counts rat
 signed digest, so this proves continuity from the local source hashed at upload time; it does
 not cryptographically attest the bytes consumed inside the provider pod.
 
+### Importing a checkpoint ladder
+
+The tester stage above only screens checkpoints its own in-plan `train` stage produced.
+MANDATE.md's tier constraint puts the explicit-tier LoRA on operator-controlled hardware,
+outside any pod-planned `train` run, so it must enter tester as loose files instead:
+
+```powershell
+py -3 orgs/figment/pipeline/figment_train.py plan --creator creator-001 --stage tester `
+  --out <plan-dir> --import-checkpoints <dir-of-*.safetensors> `
+  [--import-training-config <training.yaml>]
+# or, driven end to end (plans tester as the primary plan's only stage -- anchor,
+# dataset, smoke, and train are never planned or run):
+py -3 orgs/figment/pipeline/figment_train.py pipeline --creator creator-001 --out <run-root> `
+  --import-checkpoints <dir-of-*.safetensors>
+```
+
+`--import-checkpoints <dir>` discovers every `<trigger>[_<9-digit step>].safetensors` file
+in `<dir>` matching the persona's own derived checkpoint stem (the un-suffixed file is the
+final step, i.e. `training.steps` of the RECORDED training config); refuses any other
+extension, any symlink/reparse point, any file under 1 MiB, a duplicate step, or an empty
+ladder. Each file is staged into the plan's own upload tree (`train/runs/_uploads/<persona>/`,
+`_copy_detail_images`'s own convention) and sha-bound in
+`plan["stages"]["tester"]["imported_checkpoints"]`, re-validated the same way at every
+launch boundary — a file swapped after planning is refused with the same "staged checkpoint
+changed after planning" class of error gen/detail's own checkpoint upload gives. `tester`
+builds the exact same ladder-job manifest shape it builds for an in-plan train, just against
+the discovered steps.
+
+Training provenance for an imported ladder has no in-plan `train` receipt to derive it from:
+`--import-training-config <training.yaml>` names the config the ladder was actually trained
+with (default: the persona's own current `training.yaml`), and its sha256 is recorded as
+`plan["imported_training_config"]`. `apply-rulings --stage tester --checkpoint-step <N>`
+promotes an imported candidate exactly like an in-plan one — same evidence class, same
+"kept by the rulings" requirement — but the resulting `accepted-checkpoint.json` carries
+`"origin": "imported"`, which gen, detail, video, and the deliverable manifest's own
+`checkpoint` block all carry forward so a reader can always tell an operator-trained
+checkpoint from one this pipeline trained itself.
+
 Fresh gen plans also capture a `gen_authority` snapshot. Before each base or
 detail launch, the driver revalidates the current persona, selected checkpoint,
 upstream approval and source bytes, then rechecks the staged copy. If those

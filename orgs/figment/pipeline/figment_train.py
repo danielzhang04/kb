@@ -17,6 +17,7 @@ import math
 import os
 import re
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -55,6 +56,7 @@ QA_MODULE = HERE / "qa_stamp.py"
 SCORE_CELLS_MODULE = HERE / "score_cells.py"
 IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
 LINEAGE_MODULE = HERE / "lineage.py"
+PERSONA_MODULE = HERE / "persona.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 VIDEO_DIR = HERE / "video"
 VIDEO_MANIFEST_MODULE = VIDEO_DIR / "video_manifest.py"
@@ -184,6 +186,10 @@ def _identity_gate_module():
 
 def _lineage_module():
     return _load_module("_figment_train_lineage", LINEAGE_MODULE)
+
+
+def _persona_module():
+    return _load_module("_figment_train_persona", PERSONA_MODULE)
 
 
 def _pod_runner_module():
@@ -394,6 +400,134 @@ def _checkpoint_steps(steps: int, save_every: int) -> list[int]:
 
 def _checkpoint_name(trigger: str, step: int | None) -> str:
     return f"{trigger}.safetensors" if step is None else f"{trigger}_{step:09d}.safetensors"
+
+
+IMPORTED_CHECKPOINT_MIN_BYTES = 1024 * 1024
+IMPORTED_CHECKPOINT_REPARSE_ATTR = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0x400)
+
+
+def _is_reparse_point(path: Path) -> bool:
+    """True for a symlink, an NTFS junction, or any other reparse point -- `is_symlink()`
+    alone misses a Windows junction. Mirrors `lineage.py`'s own `_single_seed_is_reparse`
+    (same check, kept local here so the import-ladder discovery below has no dependency
+    on the single-seed curation machinery it is unrelated to)."""
+    try:
+        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
+    except OSError:
+        return False
+    isjunction = getattr(os.path, "isjunction", lambda _p: False)
+    return path.is_symlink() or isjunction(path) or bool(attributes & IMPORTED_CHECKPOINT_REPARSE_ATTR)
+
+
+def _import_checkpoint_stem_match(trigger: str, filename: str, final_step: int) -> int | None:
+    """Return the checkpoint step `filename` names under this persona's derived stem, or
+    None if it does not match at all. Round-trips through `_checkpoint_name` itself
+    (never a hand-rolled digit count) so a file is accepted only when its own name is
+    byte-identical to what this trigger/step would produce."""
+    if filename == _checkpoint_name(trigger, None):
+        return final_step
+    match = re.fullmatch(rf"{re.escape(trigger)}_(\d+)\.safetensors", filename)
+    if match is None:
+        return None
+    candidate_step = int(match.group(1))
+    return candidate_step if filename == _checkpoint_name(trigger, candidate_step) else None
+
+
+def _discover_imported_checkpoints(
+    directory: Path, trigger: str, final_step: int,
+) -> list[dict[str, Any]]:
+    """MANDATE.md's tier constraint: the explicit-tier LoRA is trained on operator
+    hardware and enters the pipeline from OUTSIDE it, as loose checkpoint files rather
+    than an in-plan `train` receipt. Discover and validate that ladder fail-closed:
+    only `<trigger>[_<9-digit step>].safetensors` files, no symlink/reparse point, no
+    file under 1 MiB, no duplicate step, no other extension, no empty ladder."""
+    directory = Path(directory)
+    if not directory.is_dir():
+        raise FigmentTrainError(f"--import-checkpoints directory does not exist: {directory}")
+    by_step: dict[int, Path] = {}
+    for entry in sorted(directory.iterdir()):
+        if entry.is_dir():
+            continue
+        if _is_reparse_point(entry):
+            raise FigmentTrainError(
+                f"imported checkpoint ladder entry is a symlink or reparse point: {entry}"
+            )
+        if entry.suffix.lower() != ".safetensors":
+            raise FigmentTrainError(
+                f"imported checkpoint ladder contains a non-safetensors file: {entry.name}"
+            )
+        step = _import_checkpoint_stem_match(trigger, entry.name, final_step)
+        if step is None:
+            raise FigmentTrainError(
+                f"imported checkpoint ladder file does not match the persona checkpoint "
+                f"stem {trigger!r}: {entry.name}"
+            )
+        size = entry.stat().st_size
+        if size < IMPORTED_CHECKPOINT_MIN_BYTES:
+            raise FigmentTrainError(
+                f"imported checkpoint {entry.name!r} is below the 1 MiB minimum ({size} bytes)"
+            )
+        if step in by_step:
+            raise FigmentTrainError(f"imported checkpoint ladder has a duplicate step {step}")
+        by_step[step] = entry
+    if not by_step:
+        raise FigmentTrainError(
+            f"--import-checkpoints directory has no matching checkpoints: {directory}"
+        )
+    return [
+        {
+            "step": step,
+            "filename": by_step[step].name,
+            "source_path": str(by_step[step].resolve()),
+            "bytes": by_step[step].stat().st_size,
+            "sha256": _sha256(by_step[step]),
+        }
+        for step in sorted(by_step)
+    ]
+
+
+def _stage_imported_checkpoints(
+    out: Path, persona: dict[str, Any], ladder: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Copy the discovered ladder into the plan's own upload tree, the same
+    `train/runs/_uploads/<persona>/` convention `_copy_detail_images` uses, so
+    `pod/runpod_run.py`'s upload expansion never reaches outside the manifest's own
+    directory for a file that started life anywhere else on disk. Re-hashes the staged
+    copy immediately so a mid-copy change is never staged silently."""
+    upload_dir = out / "train" / "runs" / "_uploads" / persona["id"]
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    staged: list[dict[str, Any]] = []
+    for row in ladder:
+        source = Path(row["source_path"])
+        destination = upload_dir / row["filename"]
+        shutil.copy2(source, destination)
+        if destination.stat().st_size != row["bytes"] or _sha256(destination) != row["sha256"]:
+            raise FigmentTrainError(
+                f"staged imported checkpoint changed while copying: {row['filename']}"
+            )
+        staged.append({**row, "staged_path": f"_uploads/{persona['id']}/{row['filename']}"})
+    return staged
+
+
+def _load_imported_training_config(creator_id: str, path: Path) -> dict[str, Any]:
+    """`--import-training-config <training.yaml>`: an operator-supplied training sidecar
+    (same one-key `{"training": {...}}` shape `training_config.load_persona_with_training`
+    reads from a persona's own sidecar) describing the RECORDED config the imported
+    ladder was actually trained with -- never the current persona's, unless it happens
+    to be the same file."""
+    path = Path(path).resolve()
+    if not path.is_file():
+        raise FigmentTrainError(f"--import-training-config file not found: {path}")
+    document = _persona_module().load_document(path)
+    if not isinstance(document, dict) or set(document) != {"training"}:
+        raise FigmentTrainError(
+            f"{path} must contain exactly one top-level 'training' object"
+        )
+    training_config = _training_config_module()
+    try:
+        return training_config.validate_training(document["training"], creator_id)
+    except training_config.TrainingConfigError as exc:
+        raise FigmentTrainError(str(exc)) from exc
 
 
 def manifest_ceiling(manifest: dict[str, Any]) -> str:
@@ -1096,6 +1230,8 @@ def _tester_workflow(persona: dict[str, Any], training: dict[str, Any]) -> dict[
 
 def _tester_manifest(
     persona: dict, training: dict, pins: dict, *, train_out_dirname: str | None = None,
+    checkpoint_steps: list[int] | None = None, include_final: bool = True,
+    upload_glob: str | None = None,
 ) -> dict[str, Any]:
     creator_id = persona["id"]
     trigger = training["trigger"]
@@ -1104,10 +1240,19 @@ def _tester_manifest(
     # local output into (`_planned_run`'s `run_root / path.stem`), never the module-10
     # dataset lineage's `<id>-tensor-train` unconditionally.
     train_out_dirname = train_out_dirname or f"{creator_id}-tensor-train"
-    intermediates = _checkpoint_steps(training["steps"], training["save_every"])
+    # An imported checkpoint ladder (operator-trained LoRA path, MANDATE.md's tier
+    # constraint) has no in-plan train stage to derive intermediates from -- the caller
+    # passes the exact discovered steps instead, and this stays the ONE function that
+    # builds tester's ladder jobs either way (never forked).
+    intermediates = (
+        checkpoint_steps if checkpoint_steps is not None
+        else _checkpoint_steps(training["steps"], training["save_every"])
+    )
     checkpoints: list[tuple[int | None, str]] = [
         (step, f"{step:09d}") for step in intermediates
-    ] + [(None, "final")]
+    ]
+    if include_final:
+        checkpoints.append((None, "final"))
     return {
         **_pod_base(pins, training["pod_class"], "tester"),
         "models": deepcopy(pins["pins"]["tester"]["models"]),
@@ -1115,7 +1260,7 @@ def _tester_manifest(
         "workflow": _tester_workflow(persona, training),
         "seed_fields": ["seed", "noise_seed"],
         "uploads": [{
-            "files": [f"out/{train_out_dirname}/*.safetensors"],
+            "files": [upload_glob or f"out/{train_out_dirname}/*.safetensors"],
             "subfolder": trigger,
             "type": "input",
             "overwrite": True,
@@ -2224,8 +2369,21 @@ def build_plan(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    import_checkpoints: Path | None = None,
+    import_training_config: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
+
+    `import_checkpoints` (operator-trained LoRA path, MANDATE.md's tier constraint) is a
+    local directory of loose `*.safetensors` checkpoint ladder files -- meaningful only
+    with `--stage tester` -- discovered and validated by `_discover_imported_checkpoints`,
+    staged into the plan's own upload tree, and recorded at
+    `plan["stages"]["tester"]["imported_checkpoints"]`. `_tester_manifest` builds the
+    SAME ladder-job shape it builds for an in-plan train, just against the discovered
+    steps instead of `training["steps"]`/`["save_every"]`. `import_training_config`
+    (optional, only meaningful together with `import_checkpoints`) names the training.yaml
+    the ladder was actually trained with; absent it, the persona's own current training
+    config is used and recorded the same way (`plan["imported_training_config"]`).
 
     `detail_images` (Track-2 Task D2, r25 cause #2) is a local glob pattern, meaningful
     only when `"gen"` is being planned: each match is staged into the plan's own upload
@@ -2261,6 +2419,12 @@ def build_plan(
         raise FigmentTrainError(f"unknown stage {stage!r}")
     if detail_images is not None and stage not in ("gen", "all"):
         raise FigmentTrainError("--detail-images is only meaningful for --stage gen")
+    if import_checkpoints is not None and stage != "tester":
+        raise FigmentTrainError("--import-checkpoints is only meaningful for --stage tester")
+    if import_training_config is not None and import_checkpoints is None:
+        raise FigmentTrainError(
+            "--import-training-config is only meaningful together with --import-checkpoints"
+        )
     if approved_gen_plan is not None and stage not in ("detail", "video"):
         raise FigmentTrainError(
             "--approved-gen-plan is only meaningful for --stage detail or --stage video"
@@ -2286,6 +2450,25 @@ def build_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+
+    imported_training_config: dict[str, str] | None = None
+    if import_checkpoints is not None:
+        if import_training_config is not None:
+            imported_training_config_path = Path(import_training_config).resolve()
+            training = _load_imported_training_config(creator_id, imported_training_config_path)
+        else:
+            # Default to the persona's own current training.yaml (or persona.yaml's
+            # inline training block when there is no sidecar) -- `training` above is
+            # already that document, parsed; this just records ITS provenance.
+            sidecar_path = Path(persona["_persona_path"]).with_name("training.yaml")
+            imported_training_config_path = (
+                sidecar_path if sidecar_path.is_file() else Path(persona["_persona_path"])
+            )
+        imported_training_config = {
+            "path": _config_path_value(imported_training_config_path),
+            "sha256": _sha256(imported_training_config_path),
+        }
+
     # M3: apply the plan-time style-LoRA override (a no-op when neither flag is given)
     # before anything downstream reads `training` -- manifests, configs, pin preflight.
     training = _resolve_gen_style_lora(
@@ -2368,6 +2551,7 @@ def build_plan(
     gen_authority: dict[str, str] | None = None
     detail_source: dict[str, Any] | None = None
     video_source: dict[str, Any] | None = None
+    imported_checkpoints: list[dict[str, Any]] | None = None
     for current in selected:
         if current == "anchor":
             manifests = _anchor_manifests(
@@ -2390,7 +2574,23 @@ def build_plan(
             manifests = [_train_manifest(persona, training, pins, smoke=False)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train.yaml"]
         elif current == "tester":
-            manifests = [_tester_manifest(persona, training, pins)]
+            if import_checkpoints is not None:
+                ladder = _discover_imported_checkpoints(
+                    Path(import_checkpoints), training["trigger"], training["steps"],
+                )
+                staged = _stage_imported_checkpoints(out, persona, ladder)
+                intermediate_steps = [
+                    row["step"] for row in staged if row["step"] != training["steps"]
+                ]
+                include_final = any(row["step"] == training["steps"] for row in staged)
+                manifests = [_tester_manifest(
+                    persona, training, pins,
+                    checkpoint_steps=intermediate_steps, include_final=include_final,
+                    upload_glob=f"_uploads/{creator_id}/*.safetensors",
+                )]
+                imported_checkpoints = staged
+            else:
+                manifests = [_tester_manifest(persona, training, pins)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-tester.yaml"]
         elif current == "gen":
             accepted_checkpoint = _validated_accepted_checkpoint(persona, training)
@@ -2499,6 +2699,8 @@ def build_plan(
             for path in paths
         ]
         plan_stages[current] = {"runs": runs}
+        if current == "tester" and imported_checkpoints is not None:
+            plan_stages[current]["imported_checkpoints"] = imported_checkpoints
         if current == "gen" and style_lora is not None:
             # M3: distinguish a plan-time flag override from a persona default in the
             # gen stage's own record -- gate/board metadata reads this for A/B
@@ -2538,6 +2740,8 @@ def build_plan(
         plan["detail_source"] = detail_source
     if video_source is not None:
         plan["video_source"] = video_source
+    if imported_training_config is not None:
+        plan["imported_training_config"] = imported_training_config
     _write_json(out / "plan.json", plan)
     return plan
 
@@ -3044,12 +3248,41 @@ def _validate_detail_source_inputs(plan: dict[str, Any], root: Path, *, reads=No
             )
 
 
+def _validate_imported_checkpoint_ladder(plan: dict[str, Any], root: Path, *, reads=None) -> None:
+    """Re-check every imported checkpoint's staged bytes against what `build_plan`
+    recorded, at the tester launch boundary -- the same "staged checkpoint changed
+    after planning" refusal class `_validate_staged_checkpoint_upload` gives gen/
+    detail's single explicit checkpoint upload, extended here to an imported ladder's
+    several files. A no-op for an ordinary in-plan train-first tester plan (no
+    `imported_checkpoints` recorded)."""
+    ladder = plan.get("stages", {}).get("tester", {}).get("imported_checkpoints")
+    if not ladder:
+        return
+    for row in ladder:
+        staged_operand = root / "train" / "runs" / "_uploads" / plan["creator"] / row["filename"]
+        if reads is not None:
+            staged = reads.resolve(staged_operand)
+            observed = reads.file(staged, required=False)
+            changed = observed is None or _sha256(staged, reads=reads) != row["sha256"]
+        else:
+            staged = staged_operand.resolve()
+            changed = not staged.is_file() or _sha256(staged) != row["sha256"]
+        if changed:
+            raise FigmentTrainError(
+                f"staged imported tester checkpoint changed after planning: "
+                f"{row['filename']!r}; create a fresh tester plan with --import-checkpoints"
+            )
+
+
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     if stage == "gen":
         _validate_gen_source_inputs(plan, root)
         return
     if stage == "detail":
         _validate_detail_source_inputs(plan, root)
+        return
+    if stage == "tester":
+        _validate_imported_checkpoint_ladder(plan, root)
         return
     if stage not in ("smoke", "train"):
         return
@@ -4302,6 +4535,112 @@ def _checkpoint_candidate(
     }
 
 
+def _imported_checkpoint_candidate(
+    plan: dict[str, Any], root: Path, step: int, *, reads=None,
+) -> dict[str, Any]:
+    """`_checkpoint_candidate`'s counterpart for an imported checkpoint ladder
+    (operator-trained LoRA path, MANDATE.md's tier constraint): there is no in-plan
+    `train` receipt to match a candidate against, so provenance is bound to the plan's
+    own plan-time-recorded `imported_checkpoints` inventory (sha-bound when staged)
+    plus the completed tester run's own re-hash of the same files -- the same shape of
+    evidence `_checkpoint_candidate` demands, sourced from the ladder import instead of
+    a train manifest artifact."""
+    ladder = plan.get("stages", {}).get("tester", {}).get("imported_checkpoints")
+    if not isinstance(ladder, list) or not ladder:
+        raise FigmentTrainError("plan has no imported checkpoint ladder recorded")
+    entry = next((row for row in ladder if row.get("step") == step), None)
+    if entry is None:
+        allowed = sorted(row["step"] for row in ladder if isinstance(row.get("step"), int))
+        raise FigmentTrainError(
+            f"checkpoint step {step} was not imported by this plan; choose one of {allowed}"
+        )
+    filename = entry["filename"]
+    tester_matches: list[tuple[dict[str, Any], dict[str, Any], str]] = []
+    for run in plan["stages"]["tester"]["runs"]:
+        manifest_path = root / run["manifest"]
+        if _sha256(manifest_path, reads=reads) != run["sha256"]:
+            raise FigmentTrainError("tester manifest changed after the reviewed plan was written")
+        manifest = _read_json(manifest_path, reads=reads)
+        for job in manifest.get("jobs") or []:
+            values = [
+                item.get("value") for item in job.get("substitutions") or []
+                if item.get("field") == "lora_name"
+            ]
+            if filename in values:
+                tester_matches.append((run, manifest, job["output_name"]))
+    if len(tester_matches) != 1:
+        raise FigmentTrainError(
+            f"tester manifest does not map imported checkpoint {filename!r} to exactly "
+            "one candidate"
+        )
+    tester_run, tester_manifest, tester_image_id = tester_matches[0]
+
+    state_path = root / "stage.json"
+    state_exists = (
+        reads.file(state_path, required=False) if reads is not None else state_path.is_file()
+    )
+    if not state_exists:
+        raise FigmentTrainError("checkpoint promotion requires this plan's completed tester stage")
+    state = _stage_state(state_path, plan["creator"], root / "plan.json", reads=reads)
+    if "tester" not in state.get("completed_stages", []):
+        raise FigmentTrainError("checkpoint promotion requires this plan's completed tester stage")
+    tester_state = state.get("runs", {}).get(tester_run["manifest"], {})
+    if tester_state.get("status") != "complete":
+        raise FigmentTrainError("checkpoint promotion requires its tester run to be complete")
+    tester_inputs = tester_state.get("checkpoint_inputs")
+    if not isinstance(tester_inputs, list) or not tester_inputs:
+        raise FigmentTrainError(
+            "completed tester run has no checkpoint digest inventory; rerun tester under "
+            "the current driver before promoting a candidate"
+        )
+    _verify_tester_receipt_evidence(tester_manifest, root / tester_run["out"], reads=reads)
+
+    # The staged upload copy inside the plan root is the durable source of truth here
+    # (there is no in-plan train artifact to match against) -- re-validate it against
+    # the plan-time recorded sha, same "swapped file after planning" refusal class
+    # `_validate_staged_checkpoint_upload` gives gen/detail's checkpoint upload.
+    staged_operand = root / "train" / "runs" / "_uploads" / plan["creator"] / filename
+    if reads is not None:
+        staged = reads.resolve(staged_operand)
+        observed = reads.file(staged, required=False)
+        staged_missing = observed is None
+    else:
+        staged = staged_operand.resolve()
+        staged_missing = not staged.is_file()
+    if staged_missing or _sha256(staged, reads=reads) != entry.get("sha256"):
+        raise FigmentTrainError(
+            f"staged imported checkpoint {filename!r} changed after planning; create a "
+            "fresh tester plan with --import-checkpoints"
+        )
+    current_bytes = (
+        reads.file(staged, required=True).size if reads is not None else staged.stat().st_size
+    )
+    current_sha256 = _sha256(staged, reads=reads)
+    recorded_inputs = [
+        item for item in tester_inputs
+        if isinstance(item, dict) and item.get("filename") == filename
+    ]
+    current_input = {
+        "filename": filename, "path": _relative(staged, root, reads=reads),
+        "bytes": current_bytes, "sha256": current_sha256,
+    }
+    if len(recorded_inputs) != 1 or recorded_inputs[0] != current_input:
+        raise FigmentTrainError(
+            f"imported checkpoint {filename!r} no longer matches the bytes recorded for "
+            "the completed tester run; rerun tester before promotion"
+        )
+    return {
+        "step": step,
+        "filename": filename,
+        "tester_image_id": tester_image_id,
+        "path": str(staged),
+        "bytes": current_bytes,
+        "sha256": current_sha256,
+        "train_manifest": None,
+        "train_manifest_sha256": None,
+    }
+
+
 def _config_path_value(path: Path) -> str:
     path = Path(path).resolve()
     try:
@@ -4487,10 +4826,14 @@ def apply_rulings(
         )
 
     checkpoint = None
+    imported_ladder = bool(plan.get("stages", {}).get("tester", {}).get("imported_checkpoints"))
     if checkpoint_step is not None:
         if stage != "tester":
             raise FigmentTrainError("--checkpoint-step is only valid for tester rulings")
-        checkpoint = _checkpoint_candidate(plan, root, checkpoint_step)
+        checkpoint = (
+            _imported_checkpoint_candidate(plan, root, checkpoint_step)
+            if imported_ladder else _checkpoint_candidate(plan, root, checkpoint_step)
+        )
         if checkpoint["tester_image_id"] not in {row["image_id"] for row in approved_rows}:
             raise FigmentTrainError(
                 f"checkpoint step {checkpoint_step} was not explicitly kept by the tester rulings"
@@ -4530,6 +4873,8 @@ def apply_rulings(
             "training_inputs": _lineage_module().training_input_projection(plan["training"]),
             "checkpoint": checkpoint,
         }
+        if imported_ladder:
+            accepted_document["origin"] = "imported"
         _write_json(accepted_checkpoint_out, accepted_document)
         _persist_checkpoint_selection(
             plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
@@ -4691,6 +5036,8 @@ def apply_rulings(
             "training_inputs": _lineage_module().training_input_projection(plan["training"]),
             "checkpoint": checkpoint,
         }
+        if imported_ladder:
+            accepted_document["origin"] = "imported"
         _write_json(accepted_checkpoint_out, accepted_document)
         _persist_checkpoint_selection(
             plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
@@ -4757,7 +5104,11 @@ def _validated_accepted_checkpoint(
             or accepted.get("training_inputs")
             != _lineage_module().training_input_projection(source_plan["training"])):
         raise FigmentTrainError("training inputs changed after checkpoint promotion")
-    candidate = _checkpoint_candidate(source_plan, source_root, step, reads=reads)
+    candidate = (
+        _imported_checkpoint_candidate(source_plan, source_root, step, reads=reads)
+        if accepted.get("origin") == "imported"
+        else _checkpoint_candidate(source_plan, source_root, step, reads=reads)
+    )
     recorded = accepted.get("checkpoint")
     if not isinstance(recorded, dict):
         raise FigmentTrainError("chosen checkpoint approval has no checkpoint record")
@@ -5110,6 +5461,15 @@ def _build_deliverable(
         detail_images.append(entry)
 
     gen_training = _read_json(gen_plan_path).get("training", {})
+    # Read origin off the accepted-checkpoint record itself so the deliverable is
+    # explicit about where the promoted LoRA came from (operator-trained ladder
+    # imported via --import-checkpoints, vs. this pipeline's own in-plan train).
+    checkpoint_origin = "in-plan"
+    chosen_checkpoint_approval = gen_training.get("chosen_checkpoint_approval")
+    if isinstance(chosen_checkpoint_approval, str):
+        approval_full_path = _resolve_config_path(chosen_checkpoint_approval)
+        if approval_full_path.is_file():
+            checkpoint_origin = _read_json(approval_full_path).get("origin", "in-plan")
     manifest = {
         "schema": "figment/deliverable@1",
         "creator": creator_id,
@@ -5117,6 +5477,7 @@ def _build_deliverable(
         "checkpoint": {
             "step": gen_training.get("chosen_checkpoint_step"),
             "sha256": gen_training.get("chosen_checkpoint_sha256"),
+            "origin": checkpoint_origin,
         },
         "gen_plan": {"path": str(gen_plan_path), "sha256": _sha256(gen_plan_path)},
         "detail_plan": {"path": str(detail_plan_path), "sha256": _sha256(detail_plan_path)},
@@ -5145,6 +5506,8 @@ def command_pipeline(
     accept_budget: bool = False,
     style_lora: str | None = None,
     style_lora_strength: float | None = None,
+    import_checkpoints: Path | None = None,
+    import_training_config: Path | None = None,
 ) -> dict[str, Any]:
     """F1: one resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -5181,11 +5544,19 @@ def command_pipeline(
     repo stops with `stopped:video-out-of-tree` after writing everything it honestly can
     (the stills/detail deliverable); `gen` and `detail` themselves are unaffected. That
     is why `pipeline --out` defaults to `orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/`.
+
+    `import_checkpoints` (operator-trained LoRA path, MANDATE.md's tier constraint),
+    meaningful only together with `--out` (a fresh primary plan), plans `tester` as the
+    primary plan's only stage instead of the usual `--stage all` -- anchor/dataset/
+    smoke/train are skipped outright, never planned or run, because the loop below
+    already only walks stages present in `primary_plan["stages"]`.
     """
     if (plan_path is None) == (out is None):
         raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
     if from_stage is not None and from_stage not in PIPELINE_FROM_STAGES:
         raise FigmentTrainError(f"pipeline --from-stage must be one of {PIPELINE_FROM_STAGES}")
+    if import_checkpoints is not None and plan_path is not None:
+        raise FigmentTrainError("--import-checkpoints is only meaningful with --out (a fresh plan)")
 
     if plan_path is not None:
         primary_plan, primary_root = _load_plan(creator_id, plan_path)
@@ -5197,9 +5568,11 @@ def command_pipeline(
                 "message": f"would build a fresh --stage all plan at {Path(out).resolve()}",
             }
         primary_plan = build_plan(
-            creator_id, "all", out, personas_root=personas_root,
-            skip_pin_verify=skip_pin_verify, ledger_dir=ledger_dir,
-            accept_budget=accept_budget,
+            creator_id, "tester" if import_checkpoints is not None else "all", out,
+            personas_root=personas_root, skip_pin_verify=skip_pin_verify,
+            ledger_dir=ledger_dir, accept_budget=accept_budget,
+            import_checkpoints=import_checkpoints,
+            import_training_config=import_training_config,
         )
         primary_root = Path(out).resolve()
         primary_plan_path = primary_root / "plan.json"
@@ -5439,6 +5812,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="M3: LoraLoaderModelOnly strength for --style-lora (0 < x <= 1.5); "
              "defaults to persona.training.style_lora_strength (0.8) when omitted",
     )
+    plan.add_argument(
+        "--import-checkpoints", default=None, type=Path,
+        help="only meaningful with --stage tester: a directory of loose, operator-"
+             "trained *.safetensors checkpoint ladder files (MANDATE.md's tier "
+             "constraint) to screen instead of an in-plan train stage's own artifacts",
+    )
+    plan.add_argument(
+        "--import-training-config", default=None, type=Path,
+        help="only meaningful with --import-checkpoints: the training.yaml the "
+             "imported ladder was actually trained with (default: the persona's "
+             "own current training.yaml)",
+    )
 
     pipeline = commands.add_parser(
         "pipeline",
@@ -5481,6 +5866,17 @@ def build_parser() -> argparse.ArgumentParser:
     pipeline.add_argument(
         "--style-lora-strength", default=None, type=float,
         help="M3: see `plan --style-lora-strength`",
+    )
+    pipeline.add_argument(
+        "--import-checkpoints", default=None, type=Path,
+        help="only meaningful with --out (a fresh primary plan): plan tester as the "
+             "primary plan's only stage against this operator-trained checkpoint "
+             "ladder directory, skipping anchor/dataset/smoke/train -- see "
+             "`plan --import-checkpoints`",
+    )
+    pipeline.add_argument(
+        "--import-training-config", default=None, type=Path,
+        help="only meaningful with --import-checkpoints; see `plan --import-training-config`",
     )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
@@ -5596,6 +5992,8 @@ def main(argv: list[str] | None = None) -> int:
                 video_action=args.video_action, ledger_dir=args.ledger_dir,
                 accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                import_checkpoints=args.import_checkpoints,
+                import_training_config=args.import_training_config,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
@@ -5613,6 +6011,8 @@ def main(argv: list[str] | None = None) -> int:
                 dry_run=args.dry_run, from_stage=args.from_stage,
                 ledger_dir=args.ledger_dir, accept_budget=args.accept_budget,
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
+                import_checkpoints=args.import_checkpoints,
+                import_training_config=args.import_training_config,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
