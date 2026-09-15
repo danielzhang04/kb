@@ -33,23 +33,111 @@ class FrameExtractError(ValueError):
     """Raised for unsafe, malformed, or non-diagnostic media inputs."""
 
 
+EXTENDED_PREFIX = "\\\\?\\"
+
+
+def _os_path(path: Path | str) -> str:
+    """The Windows extended-length (``\\\\?\\``) spelling of one absolute path.
+
+    F6b: every OS call below (``os.lstat``, ``os.path.exists``/``isfile``/``isdir``/
+    ``islink``, ``open``, ``os.mkdir``, ``os.replace``, and -- through
+    ``video_review.py``, which shares these helpers -- ``tempfile.mkstemp``,
+    ``os.link``, ``os.scandir``) is MAX_PATH-limited (260 characters) when handed an
+    ordinary Win32 path, and fails with a bare ``FileNotFoundError``/``OSError`` that
+    reads as "missing" rather than "too long". The ``\\\\?\\`` form lifts that limit.
+
+    It is used ONLY as the argument of such a call. Every containment DECISION in this
+    module -- and in ``frame_assemble.py``, ``video_manifest.py``, ``video_review.py``
+    and ``video_delivery_review.py``, which all route through ``_within`` /
+    ``_unsafe_link`` / ``_real_below`` -- is still made on the un-prefixed ``Path``, so
+    the prefix can never widen what counts as "below root".
+
+    Two properties this relies on, both of which make it no weaker than the plain form:
+
+    * ``os.path.abspath`` normalises ``.`` / ``..`` / separators BEFORE the prefix is
+      added (the kernel takes a ``\\\\?\\`` path verbatim, with no normalisation), and
+      ``_within`` already refuses any relative path containing ``..`` before it builds a
+      candidate, while ``_root`` resolves the root strictly. No component that reaches
+      here can carry one.
+    * ``\\\\?\\`` also disables Win32's legacy trailing-dot/trailing-space stripping, so
+      a component spelled ``"evidence "`` addresses that literal name instead of quietly
+      aliasing to ``"evidence"`` -- strictly fewer aliases, never more.
+    """
+    text = os.path.abspath(os.fspath(path))
+    if os.name != "nt" or text.startswith(EXTENDED_PREFIX):
+        return text
+    if text.startswith("\\\\"):
+        return f"{EXTENDED_PREFIX}UNC{text[1:]}"
+    return f"{EXTENDED_PREFIX}{text}"
+
+
+def _plain_path(text: str) -> str:
+    """Strip an extended-length prefix so the result can be compared and joined as usual.
+
+    OS calls that RETURN a path (``os.path.realpath``, ``tempfile.mkstemp``) echo back
+    the extended spelling they were given; no containment comparison may ever see it.
+    """
+    if text.startswith(f"{EXTENDED_PREFIX}UNC\\"):
+        return "\\\\" + text[len(EXTENDED_PREFIX) + 4:]
+    if text.startswith(EXTENDED_PREFIX):
+        return text[len(EXTENDED_PREFIX):]
+    return text
+
+
+def _exists(path: Path) -> bool:
+    return os.path.exists(_os_path(path))
+
+
+def _is_file(path: Path) -> bool:
+    return os.path.isfile(_os_path(path))
+
+
+def _is_dir(path: Path) -> bool:
+    return os.path.isdir(_os_path(path))
+
+
+def _lstat(path: Path) -> os.stat_result:
+    return os.lstat(_os_path(path))
+
+
+def _stat(path: Path) -> os.stat_result:
+    return os.stat(_os_path(path))
+
+
+def _open(path: Path, mode: str, **kwargs: Any):
+    return open(_os_path(path), mode, **kwargs)
+
+
+def _resolved(path: Path) -> Path:
+    """``Path.resolve(strict=True)`` for a path that may exceed MAX_PATH, returned in the
+    ordinary (un-prefixed) spelling so ``relative_to`` containment still works."""
+    return Path(_plain_path(os.path.realpath(_os_path(path), strict=True)))
+
+
 def _is_reparse_point(path: Path) -> bool:
     """Windows junctions are not necessarily reported as ``Path.is_symlink()``."""
     try:
-        attributes = os.lstat(path).st_file_attributes
-    except (AttributeError, OSError):
+        attributes = _lstat(path).st_file_attributes
+    except (AttributeError, OSError, ValueError):
         return False
     return bool(attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0))
 
 
 def _unsafe_link(path: Path) -> bool:
-    return path.is_symlink() or _is_reparse_point(path)
+    # `os.path.islink` is what `Path.is_symlink` itself calls, minus the MAX_PATH cap.
+    # Both answer False for an unreadable path, so the reparse-attribute check beside it
+    # is what actually closes the Windows junction case -- unchanged by F6b.
+    try:
+        symlink = os.path.islink(_os_path(path))
+    except (OSError, ValueError):
+        symlink = False
+    return symlink or _is_reparse_point(path)
 
 
 def _real_below(root: Path, path: Path) -> bool:
     """Check resolved containment after every existing component was link-free."""
     try:
-        path.resolve(strict=True).relative_to(root)
+        _resolved(path).relative_to(root)
         return True
     except (OSError, ValueError):
         return False
@@ -58,9 +146,9 @@ def _real_below(root: Path, path: Path) -> bool:
 def _root(path: Path) -> Path:
     try:
         lexical = path.absolute()
-        if not lexical.is_dir() or any(_unsafe_link(part) for part in (lexical, *lexical.parents)):
+        if not _is_dir(lexical) or any(_unsafe_link(part) for part in (lexical, *lexical.parents)):
             raise FrameExtractError("root must be a real directory, never a symlink or reparse point")
-        resolved = lexical.resolve(strict=True)
+        resolved = _resolved(lexical)
         if not _real_below(resolved, resolved):
             raise FrameExtractError("root directory is unavailable")
         return resolved
@@ -74,27 +162,27 @@ def _within(root: Path, relative: Path, label: str, *, must_exist: bool = True) 
     path = root
     for index, part in enumerate(relative.parts):
         path /= part
-        if path.exists() or _unsafe_link(path):
+        if _exists(path) or _unsafe_link(path):
             if _unsafe_link(path):
                 raise FrameExtractError(f"{label} may not traverse a symlink or reparse point")
         elif must_exist or index != len(relative.parts) - 1:
             raise FrameExtractError(f"{label} is missing: {relative.as_posix()}")
-    if path.exists() and not _real_below(root, path):
+    if _exists(path) and not _real_below(root, path):
         raise FrameExtractError(f"{label} escaped the root")
     return path
 
 
 def _hash_file(root: Path, relative: Path, label: str, maximum: int) -> dict[str, Any]:
     path = _within(root, relative, label)
-    if not path.is_file():
+    if not _is_file(path):
         raise FrameExtractError(f"{label} must be a regular file")
-    expected_size = path.stat().st_size
+    expected_size = _stat(path).st_size
     if expected_size <= 0 or expected_size > maximum:
         raise FrameExtractError(f"{label} exceeds its {maximum}-byte diagnostic limit")
     digest = hashlib.sha256()
     actual_size = 0
     try:
-        with path.open("rb") as handle:
+        with _open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 actual_size += len(chunk)
                 if actual_size > maximum:
@@ -108,9 +196,16 @@ def _hash_file(root: Path, relative: Path, label: str, maximum: int) -> dict[str
 
 
 def _tool(path: Path, label: str) -> str:
-    if not path.is_file():
+    if not _is_file(path):
         raise FrameExtractError(f"trusted {label} binary is unavailable")
     return str(path)
+
+
+def _media_argument(path: Path) -> str:
+    """The spelling FFmpeg/FFprobe are handed for a local media path. Extended-length
+    (F6b) because both accept it and both otherwise stop at MAX_PATH; the containment
+    checks that produced `path` are unchanged and already done by the caller."""
+    return _os_path(path)
 
 
 def _run_bounded_stdout(arguments: list[str], label: str, limit: int) -> subprocess.CompletedProcess[bytes]:
@@ -224,7 +319,7 @@ def _probe_video(root: Path, video: Path) -> dict[str, Any]:
     metadata = _probe_json(
         [
             probe, "-v", "error", "-select_streams", "v:0", "-show_entries",
-            "stream=codec_type,width,height:format=duration", "-of", "json", str(source),
+            "stream=codec_type,width,height:format=duration", "-of", "json", _media_argument(source),
         ],
         "ffprobe metadata probe",
     )
@@ -241,7 +336,7 @@ def _probe_video(root: Path, video: Path) -> dict[str, Any]:
     counted = _probe_json(
         [
             probe, "-v", "error", "-select_streams", "v:0", "-count_frames", "-show_entries",
-            "stream=nb_read_frames", "-of", "json", str(source),
+            "stream=nb_read_frames", "-of", "json", _media_argument(source),
         ],
         "ffprobe frame-count probe",
     )
@@ -259,7 +354,7 @@ def _probe_frame(root: Path, relative: Path, expected_width: int, expected_heigh
     path = _within(root, relative, "extracted frame")
     probe = _tool(FFPROBE_PATH, "ffprobe")
     metadata = _probe_json(
-        [probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type,width,height", "-of", "json", str(path)],
+        [probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_type,width,height", "-of", "json", _media_argument(path)],
         "ffprobe extracted-frame probe",
     )
     streams = metadata.get("streams")
@@ -273,14 +368,14 @@ def _probe_frame(root: Path, relative: Path, expected_width: int, expected_heigh
 def _extract_one(root: Path, video: Path, output: Path, index: int) -> None:
     source = _within(root, video, "video")
     target = _within(root, output, "frame output", must_exist=False)
-    if target.exists() or target.is_symlink():
+    if _exists(target) or _unsafe_link(target):
         raise FrameExtractError("frame output already exists")
     ffmpeg = _tool(FFMPEG_PATH, "ffmpeg")
     _run(
-        [ffmpeg, "-v", "error", "-i", str(source), "-vf", f"select=eq(n\\,{index})", "-frames:v", "1", str(target)],
+        [ffmpeg, "-v", "error", "-i", _media_argument(source), "-vf", f"select=eq(n\\,{index})", "-frames:v", "1", _media_argument(target)],
         f"ffmpeg extraction for frame {index}",
     )
-    if not target.is_file():
+    if not _is_file(target):
         raise FrameExtractError("ffmpeg did not produce an extracted frame")
 
 
@@ -294,10 +389,10 @@ def _cleanup_owned_directory(root: Path, destination: Path) -> None:
         checked = _within(root, relative, "owned output directory")
     except FrameExtractError:
         return
-    if checked != destination or not destination.is_dir() or _unsafe_link(destination) or not _real_below(root, destination):
+    if checked != destination or not _is_dir(destination) or _unsafe_link(destination) or not _real_below(root, destination):
         return
     try:
-        shutil.rmtree(destination)
+        shutil.rmtree(_os_path(destination))
     except OSError:
         pass
 
@@ -305,7 +400,7 @@ def _cleanup_owned_directory(root: Path, destination: Path) -> None:
 def _write_receipt(root: Path, relative: Path, value: dict[str, Any]) -> None:
     target = _within(root, relative, "receipt output", must_exist=False)
     try:
-        with target.open("x", encoding="utf-8") as handle:
+        with _open(target, "x", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, sort_keys=True)
             handle.write("\n")
             handle.flush()
@@ -321,15 +416,15 @@ def extract_frames(*, root: Path, video_path: Path, output_dir: Path) -> dict[st
     root = _root(root)
     _within(root, output_dir, "output directory", must_exist=False)
     destination = root / output_dir
-    if destination.exists() or destination.is_symlink():
+    if _exists(destination) or _unsafe_link(destination):
         raise FrameExtractError("output directory must be fresh")
     source_before = _hash_file(root, video_path, "video", MAX_VIDEO_BYTES)
     metadata = _probe_video(root, video_path)
     try:
-        destination.mkdir()
+        os.mkdir(_os_path(destination))
     except (FileExistsError, OSError) as exc:
         raise FrameExtractError("output directory could not be created fresh") from exc
-    if _unsafe_link(destination) or not destination.is_dir() or not _real_below(root, destination):
+    if _unsafe_link(destination) or not _is_dir(destination) or not _real_below(root, destination):
         raise FrameExtractError("output directory could not be created safely")
     try:
         indices = (0, metadata["frame_count"] // 2, metadata["frame_count"] - 1)
@@ -342,9 +437,9 @@ def extract_frames(*, root: Path, video_path: Path, output_dir: Path) -> dict[st
             record = _hash_file(root, temporary, "extracted frame", MAX_FRAME_BYTES)
             temporary_path = _within(root, temporary, "extracted frame")
             final_path = _within(root, relative, "frame output", must_exist=False)
-            if final_path.exists() or final_path.is_symlink() or _unsafe_link(final_path):
+            if _exists(final_path) or _unsafe_link(final_path):
                 raise FrameExtractError("frame output already exists")
-            os.replace(temporary_path, final_path)
+            os.replace(_os_path(temporary_path), _os_path(final_path))
             record["path"] = relative.as_posix()
             record.update({"label": name, "index": index})
             frames.append(record)

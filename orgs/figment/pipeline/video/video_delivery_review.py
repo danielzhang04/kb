@@ -269,14 +269,14 @@ def _absolute_snapshot(path: Path, label: str, maximum: int) -> tuple[bytes, dic
     try:
         lexical = path.absolute()
         for component in (lexical, *lexical.parents):
-            if component.exists() and frames._unsafe_link(component):
+            if frames._exists(component) and frames._unsafe_link(component):
                 raise _fail(f"{label} may not be a symlink, junction, or reparse point")
-        before = os.stat(lexical)
+        before = frames._stat(lexical)
         if not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > maximum:
             raise _fail(f"{label} must be a bounded regular file")
         digest = hashlib.sha256()
         raw = bytearray()
-        with lexical.open("rb") as handle:
+        with frames._open(lexical, "rb") as handle:
             opened = os.fstat(handle.fileno())
             while chunk := handle.read(1024 * 1024):
                 raw.extend(chunk)
@@ -284,7 +284,7 @@ def _absolute_snapshot(path: Path, label: str, maximum: int) -> tuple[bytes, dic
                     raise _fail(f"{label} must be a bounded regular file")
                 digest.update(chunk)
             finished = os.fstat(handle.fileno())
-        after = os.stat(lexical)
+        after = frames._stat(lexical)
         if frames._unsafe_link(lexical) or not (
             _cross_api_identity(before) == _cross_api_identity(opened)
             == _cross_api_identity(finished) == _cross_api_identity(after)
@@ -292,7 +292,7 @@ def _absolute_snapshot(path: Path, label: str, maximum: int) -> tuple[bytes, dic
             and _stable_identity(opened) == _stable_identity(finished)
         ) or len(raw) != before.st_size:
             raise _fail(f"{label} changed while being read")
-        resolved = lexical.resolve(strict=True)
+        resolved = frames._resolved(lexical)
     except VideoDeliveryReviewError:
         raise
     except OSError as exc:
@@ -775,7 +775,7 @@ def _json_bytes(value: dict[str, Any], label: str) -> bytes:
 def _sync_directory(path: Path) -> None:
     if os.name == "nt":
         return
-    descriptor = os.open(path, os.O_RDONLY)
+    descriptor = os.open(frames._os_path(path), os.O_RDONLY)
     try:
         os.fsync(descriptor)
     finally:
@@ -784,7 +784,7 @@ def _sync_directory(path: Path) -> None:
 
 def _capture_directory(path: Path, label: str) -> tuple[int, int]:
     try:
-        current = os.lstat(path)
+        current = frames._lstat(path)
     except OSError as exc:
         raise _fail(f"cannot capture {label} ownership") from exc
     if not stat.S_ISDIR(current.st_mode) or frames._unsafe_link(path):
@@ -794,7 +794,7 @@ def _capture_directory(path: Path, label: str) -> tuple[int, int]:
 
 def _capture_file(path: Path, label: str) -> tuple[int, int]:
     try:
-        current = os.lstat(path)
+        current = frames._lstat(path)
     except OSError as exc:
         raise _fail(f"cannot capture {label} ownership") from exc
     if not stat.S_ISREG(current.st_mode) or frames._unsafe_link(path):
@@ -816,12 +816,12 @@ def _capture_samples(path: Path) -> tuple[tuple[int, int], dict[str, tuple[int, 
 
 def _capture_partial_samples(path: Path) -> tuple[tuple[int, int] | None, dict[str, tuple[int, int]]]:
     """Capture only a trusted extractor's closed partial inventory after cooperative failure."""
-    if not path.exists() and not path.is_symlink():
+    if not frames._exists(path) and not frames._unsafe_link(path):
         return None, {}
     directory_identity = _capture_directory(path, "partial extracted samples directory")
     final_names = {"first.png", "middle.png", "last.png", "frame-extraction.json"}
     try:
-        with os.scandir(path) as entries:
+        with os.scandir(frames._os_path(path)) as entries:
             names = {entry.name for entry in entries}
     except OSError as exc:
         raise _fail("cannot inspect partial extracted samples ownership") from exc
@@ -831,7 +831,7 @@ def _capture_partial_samples(path: Path) -> tuple[tuple[int, int] | None, dict[s
     if not _matches(path, directory_identity, directory=True):
         raise _fail("partial extracted samples directory changed during ownership capture")
     try:
-        with os.scandir(path) as entries:
+        with os.scandir(frames._os_path(path)) as entries:
             final_names_seen = {entry.name for entry in entries}
     except OSError as exc:
         raise _fail("cannot recheck partial extracted samples ownership") from exc
@@ -842,7 +842,7 @@ def _capture_partial_samples(path: Path) -> tuple[tuple[int, int] | None, dict[s
 
 def _matches(path: Path, identity: tuple[int, int], *, directory: bool) -> bool:
     try:
-        current = os.lstat(path)
+        current = frames._lstat(path)
     except OSError:
         return False
     expected_type = stat.S_ISDIR if directory else stat.S_ISREG
@@ -892,20 +892,20 @@ def _remove_owned_tree(root: Path, directory: Path, directory_identity: tuple[in
                 identity = file_identities[f"samples/{name}"]
                 if not _matches(path, identity, directory=False):
                     return False
-                os.unlink(path)
+                os.unlink(frames._os_path(path))
             if not _matches(samples, sample_identity, directory=True):
                 return False
-            os.rmdir(samples)
+            os.rmdir(frames._os_path(samples))
         for name in sorted(top_names):
             path = directory / name
             identity = file_identities[name]
             if not _matches(path, identity, directory=False):
                 return False
-            os.unlink(path)
+            os.unlink(frames._os_path(path))
         if not _matches(directory, directory_identity, directory=True):
             return False
-        os.rmdir(directory)
-        return not directory.exists() and not directory.is_symlink()
+        os.rmdir(frames._os_path(directory))
+        return not frames._exists(directory) and not frames._unsafe_link(directory)
     except (OSError, frames.FrameExtractError, ValueError):
         return False
 
@@ -917,13 +917,13 @@ def _remove_owned_parent(root: Path, parent: Path, identity: tuple[int, int] | N
         checked = frames._within(root, parent.relative_to(root), "owned review parent")
         if checked != parent or not _matches(parent, identity, directory=True):
             return False
-        with os.scandir(parent) as entries:
+        with os.scandir(frames._os_path(parent)) as entries:
             if any(entries):
                 return False
         if not _matches(parent, identity, directory=True):
             return False
-        os.rmdir(parent)
-        return not parent.exists() and not parent.is_symlink()
+        os.rmdir(frames._os_path(parent))
+        return not frames._exists(parent) and not frames._unsafe_link(parent)
     except (OSError, frames.FrameExtractError, ValueError):
         return False
 
@@ -932,21 +932,21 @@ def _create_parent_and_store(root: Path, derivative_relative: Path, digest: str)
     parent_relative = _lexical_relative(derivative_relative.parent / REVIEW_PARENT, "delivery review parent")
     _, parent = _within(root, parent_relative, "delivery review parent", must_exist=False)
     parent_identity: tuple[int, int] | None = None
-    if parent.exists() or parent.is_symlink():
-        if frames._unsafe_link(parent) or not parent.is_dir() or not frames._real_below(root, parent):
+    if frames._exists(parent) or frames._unsafe_link(parent):
+        if frames._unsafe_link(parent) or not frames._is_dir(parent) or not frames._real_below(root, parent):
             raise _fail("delivery review parent must be a real link-free directory")
     else:
         try:
-            parent.mkdir()
+            os.mkdir(frames._os_path(parent))
         except (FileExistsError, OSError) as exc:
             raise _fail("delivery review parent could not be created fresh") from exc
         parent_identity = _capture_directory(parent, "delivery review parent")
     try:
         canonical_relative = _lexical_relative(parent_relative / digest, "canonical delivery review directory")
         destination = root / canonical_relative
-        if destination.exists() or destination.is_symlink() or frames._unsafe_link(destination):
+        if frames._exists(destination) or frames._unsafe_link(destination):
             raise _fail("canonical delivery review directory already exists")
-        destination.mkdir()
+        os.mkdir(frames._os_path(destination))
         destination_identity = _capture_directory(destination, "canonical delivery review directory")
         return destination, destination_identity, parent, parent_identity
     except BaseException as exc:
@@ -960,7 +960,7 @@ def _create_parent_and_store(root: Path, derivative_relative: Path, digest: str)
 def _write_exclusive(path: Path, raw: bytes) -> tuple[int, int]:
     identity: tuple[int, int] | None = None
     try:
-        with path.open("xb") as handle:
+        with frames._open(path, "xb") as handle:
             identity = _identity(os.fstat(handle.fileno()))
             handle.write(raw)
             handle.flush()
@@ -973,23 +973,23 @@ def _write_exclusive(path: Path, raw: bytes) -> tuple[int, int]:
     except BaseException:
         if identity is not None and _matches(path, identity, directory=False):
             try:
-                os.unlink(path)
+                os.unlink(frames._os_path(path))
             except OSError as cleanup_exc:
                 raise _fail("partial evaluation cleanup could not be verified") from cleanup_exc
         raise
 
 
 def _assert_store_inventory(destination: Path) -> None:
-    if frames._unsafe_link(destination) or not destination.is_dir():
+    if frames._unsafe_link(destination) or not frames._is_dir(destination):
         raise _fail("canonical delivery review directory is unavailable")
     try:
-        names = {entry.name for entry in os.scandir(destination)}
+        names = {entry.name for entry in os.scandir(frames._os_path(destination))}
         if names != {EVALUATION_NAME, "samples"}:
             raise _fail("canonical delivery review directory has an unexpected inventory")
         samples = destination / "samples"
-        if frames._unsafe_link(samples) or not samples.is_dir():
+        if frames._unsafe_link(samples) or not frames._is_dir(samples):
             raise _fail("canonical samples directory is unavailable")
-        if {entry.name for entry in os.scandir(samples)} != {"first.png", "middle.png", "last.png", "frame-extraction.json"}:
+        if {entry.name for entry in os.scandir(frames._os_path(samples))} != {"first.png", "middle.png", "last.png", "frame-extraction.json"}:
             raise _fail("canonical samples directory has an unexpected inventory")
     except OSError as exc:
         raise _fail("cannot inspect canonical delivery review directory") from exc
@@ -1224,7 +1224,7 @@ def validate_prepared_delivery(root: Path, evaluation_path: Path) -> dict[str, A
         temporary_relative = canonical_relative / f"{VALIDATE_PREFIX}{uuid.uuid4().hex}"
         temporary = root / temporary_relative
         try:
-            temporary.mkdir()
+            os.mkdir(frames._os_path(temporary))
         except (FileExistsError, OSError) as exc:
             raise _fail("temporary validation directory could not be created fresh") from exc
         temporary_identity = _capture_directory(temporary, "temporary validation directory")

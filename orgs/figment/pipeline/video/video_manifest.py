@@ -58,33 +58,71 @@ class VideoManifestError(ValueError):
     """Raised when a bounded video manifest cannot be compiled safely."""
 
 
+def _path_helpers() -> Any:
+    """F6b: the long-path-safe OS-call spellings (`_os_path`, `_exists`, `_lstat`,
+    `_is_file`, `_open`, `_resolved`) live once, in `frame_extract.py` -- the module
+    whose containment primitives every other file in `video/` already shares. This
+    compiler keeps its OWN `_within`/`_reparse_point` (its rules differ: an
+    `allow_missing` final component, no `_real_below` recheck) and borrows only the
+    spelling an OS call is handed, never a containment decision."""
+    name = "figment_video_path_helpers"
+    if name in sys.modules:
+        return sys.modules[name]
+    path = Path(__file__).with_name("frame_extract.py")
+    spec = importlib.util.spec_from_file_location(name, path)
+    if spec is None or spec.loader is None:
+        raise VideoManifestError("path helpers are unavailable")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    try:
+        spec.loader.exec_module(module)
+    except Exception as exc:
+        sys.modules.pop(name, None)
+        raise VideoManifestError("path helpers are unavailable") from exc
+    return module
+
+
+def _os_path(path: Path) -> str:
+    return _path_helpers()._os_path(path)
+
+
 def _reparse_point(path: Path) -> bool:
     """Reject symlinks and Windows junction/reparse points before containment checks."""
+    helpers = _path_helpers()
+    target = helpers._os_path(path)
     try:
-        attributes = getattr(os.lstat(path), "st_file_attributes", 0)
-    except OSError:
+        attributes = getattr(os.lstat(target), "st_file_attributes", 0)
+    except (OSError, ValueError):
         return False
     is_junction = getattr(os.path, "isjunction", lambda _: False)
-    return path.is_symlink() or is_junction(path) or bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+    return os.path.islink(target) or is_junction(target) or bool(attributes & stat.FILE_ATTRIBUTE_REPARSE_POINT)
+
+
+def _digest_bytes(path: Path) -> str:
+    """sha256 of one whole file, read through the long-path-safe opener (F6b)."""
+    with _path_helpers()._open(path, "rb") as handle:
+        return hashlib.sha256(handle.read()).hexdigest()
 
 
 def _root(path: Path) -> Path:
+    helpers = _path_helpers()
     try:
         lexical = path.absolute()
-        if not lexical.is_dir() or any(_reparse_point(part) for part in (lexical, *lexical.parents)):
+        if not helpers._is_dir(lexical) or any(_reparse_point(part) for part in (lexical, *lexical.parents)):
             raise VideoManifestError("root must be a real directory, never a symlink or reparse point")
-        return lexical.resolve(strict=True)
+        return helpers._resolved(lexical)
     except OSError as exc:
         raise VideoManifestError("root directory is unavailable") from exc
 
 
 def _within(root: Path, relative: Path, label: str, *, allow_missing: bool = False) -> Path:
+    helpers = _path_helpers()
     if relative.is_absolute() or not relative.parts or ".." in relative.parts:
         raise VideoManifestError(f"{label} must be a relative path below --root")
     path = root
     for index, part in enumerate(relative.parts):
         path /= part
-        if path.exists() or _reparse_point(path):
+        if helpers._exists(path) or _reparse_point(path):
             if _reparse_point(path):
                 raise VideoManifestError(f"{label} may not traverse a symlink or reparse point")
         elif not allow_missing or index != len(relative.parts) - 1:
@@ -110,9 +148,10 @@ def _depth_ok(source: str) -> bool:
 
 def _read_json(path: Path, label: str) -> dict[str, Any]:
     try:
-        if not path.is_file() or path.stat().st_size > MAX_JSON_BYTES:
+        helpers = _path_helpers()
+        if not helpers._is_file(path) or helpers._stat(path).st_size > MAX_JSON_BYTES:
             raise VideoManifestError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
-        source = path.read_text(encoding="utf-8")
+        with helpers._open(path, "r", encoding="utf-8") as handle: source = handle.read()
         value = json.loads(source)
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise VideoManifestError(f"cannot read {label} JSON") from exc
@@ -123,14 +162,15 @@ def _read_json(path: Path, label: str) -> dict[str, Any]:
 
 def _read_json_snapshot(path: Path, label: str) -> tuple[dict[str, Any], str]:
     try:
-        before = path.stat()
+        helpers = _path_helpers()
+        before = helpers._stat(path)
         if not stat.S_ISREG(before.st_mode) or before.st_size <= 0 or before.st_size > MAX_JSON_BYTES:
             raise VideoManifestError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
-        with path.open("rb") as handle:
+        with helpers._open(path, "rb") as handle:
             opened = os.fstat(handle.fileno())
             raw = handle.read(MAX_JSON_BYTES + 1)
             finished = os.fstat(handle.fileno())
-        after = path.stat()
+        after = helpers._stat(path)
         identity = lambda value: (value.st_dev, value.st_ino, value.st_size, value.st_mtime_ns)
         if len(raw) > MAX_JSON_BYTES:
             raise VideoManifestError(f"{label} must be a regular JSON file no larger than {MAX_JSON_BYTES} bytes")
@@ -149,14 +189,15 @@ def _read_json_snapshot(path: Path, label: str) -> tuple[dict[str, Any], str]:
 
 def _hash_file(root: Path, relative: Path, label: str, maximum: int) -> dict[str, Any]:
     path = _within(root, relative, label)
-    if not path.is_file() or path.suffix.lower() not in IMAGE_EXTENSIONS:
+    helpers = _path_helpers()
+    if not helpers._is_file(path) or path.suffix.lower() not in IMAGE_EXTENSIONS:
         raise VideoManifestError(f"{label} must be a supported regular image file")
-    expected = path.stat().st_size
+    expected = helpers._stat(path).st_size
     if expected <= 0 or expected > maximum:
         raise VideoManifestError(f"{label} exceeds its {maximum}-byte diagnostic limit")
     digest = hashlib.sha256(); seen = 0
     try:
-        with path.open("rb") as handle:
+        with helpers._open(path, "rb") as handle:
             for chunk in iter(lambda: handle.read(1024 * 1024), b""):
                 seen += len(chunk)
                 if seen > maximum: raise VideoManifestError(f"{label} exceeds its {maximum}-byte diagnostic limit")
@@ -191,7 +232,7 @@ def _load_first_frame(root: Path, receipt_relative: Path, creator: str) -> dict[
     actual = _hash_file(root, Path(recorded["path"]), "first frame", MAX_FRAME_BYTES)
     if actual["bytes"] != recorded["bytes"] or actual["sha256"] != recorded["sha256"]:
         raise VideoManifestError("first-frame bytes no longer match the diagnostic input")
-    return {"receipt": {"path": receipt_relative.as_posix(), "sha256": hashlib.sha256(receipt_path.read_bytes()).hexdigest()}, "frame": actual}
+    return {"receipt": {"path": receipt_relative.as_posix(), "sha256": _digest_bytes(receipt_path)}, "frame": actual}
 
 
 def _train_module() -> Any:
@@ -215,7 +256,7 @@ def _relative_path_record(root: Path, record: dict[str, Any], label: str, *, str
             relative = raw.relative_to(root)
             path = _within(root, relative, f"approved gen {label}")
         else:
-            path = raw.resolve(strict=True); relative = path.relative_to(root.resolve())
+            path = _path_helpers()._resolved(raw); relative = path.relative_to(_path_helpers()._resolved(root))
         if not isinstance(record.get("sha256"), str) or not SHA256.fullmatch(record["sha256"]): raise ValueError("digest")
     except (KeyError, TypeError, OSError, ValueError) as exc: raise VideoManifestError(f"approved gen {label} escapes --root") from exc
     return {"path": relative.as_posix(), "sha256": record["sha256"]}
@@ -229,7 +270,7 @@ def _relative_record(root: Path, record: dict[str, Any], label: str, *, strict: 
             _, actual_sha256 = _read_json_snapshot(path, f"approved gen {label}")
         else:
             _read_json(path, f"approved gen {label}")
-            actual_sha256 = hashlib.sha256(path.read_bytes()).hexdigest()
+            actual_sha256 = _digest_bytes(path)
         if actual_sha256 != result["sha256"]: raise ValueError("changed")
     except (OSError, ValueError, VideoManifestError) as exc: raise VideoManifestError(f"approved gen {label} changed") from exc
     return result
@@ -252,7 +293,7 @@ def _candidate_persona(root: Path, train: Any, plan_record: dict[str, Any]) -> d
     persona = current / "persona.yaml"
     if _reparse_point(persona):
         raise VideoManifestError("approved gen persona path traverses a link")
-    try: persona_relative = persona.resolve(strict=True).relative_to(root)
+    try: persona_relative = _path_helpers()._resolved(persona).relative_to(root)
     except (OSError, ValueError) as exc:
         raise VideoManifestError("approved gen persona escapes candidate --root") from exc
     bounded = _within(root, persona_relative, "approved gen persona")
@@ -419,7 +460,7 @@ def build_manifest(*, root: Path, persona_path: Path, action: str, out: Path, se
             ):
                 raise VideoManifestError("review candidate persona must be the current approved gen plan persona")
     out_path = _within(root, out, "output", allow_missing=True)
-    if out_path.exists(): raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
+    if _path_helpers()._exists(out_path): raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}")
     frame_path = Path(first_frame["frame"]["path"])
     if out_path.parent != (root / frame_path).parent:
         raise VideoManifestError("output manifest must be written beside the first frame so the existing harness can upload it safely")
@@ -479,7 +520,7 @@ def write_manifest(*, root: Path, out: Path, **kwargs: Any) -> dict[str, Any]:
             raise VideoManifestError("review candidate inputs changed before write")
     path = _within(root, out, "output", allow_missing=True)
     try:
-        with path.open("x", encoding="utf-8") as handle:
+        with _path_helpers()._open(path, "x", encoding="utf-8") as handle:
             json.dump(value, handle, indent=2, sort_keys=True); handle.write("\n"); handle.flush(); os.fsync(handle.fileno())
     except FileExistsError as exc:
         raise VideoManifestError(f"refusing to overwrite existing manifest: {out.as_posix()}") from exc

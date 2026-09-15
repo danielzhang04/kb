@@ -385,3 +385,32 @@ def test_prompt_graph_is_parsed_only_from_the_hashed_frame_bytes(
         prepare(tmp_path, paths)
     assert parsed == []
     assert not (Path(paths["candidate"]).parent / review.REVIEW_DIRECTORY).exists()
+
+
+def test_exclusive_publication_survives_a_store_past_max_path(tmp_path: Path) -> None:
+    """F6b: the canonical review store is `<candidate dir>/video-review/<64 hex>/`, and
+    a real gen plan's candidate directory already nests ~150 characters below the repo
+    root -- so this store, its `.pending-*` temporary and its published attempt cross
+    Windows' 260-character MAX_PATH. Before F6b `tempfile.mkstemp`/`os.link` here failed
+    with a bare OSError that surfaced as "cannot publish video review attempt"
+    (test_motion_asset_binding.py::test_real_video_producer_to_content_cli_then_stale_movie_refuses)."""
+    store = tmp_path
+    while len(str(store / "attempt-fixture-accept.json")) <= 300:
+        store = store / "candidate-directory-segment"
+    os.makedirs(review.frames._os_path(store))
+    target = store / "attempt-fixture-accept.json"
+    assert len(str(target)) > 260 and not target.exists()
+
+    owned = review._exclusive_file(tmp_path, target, {"schema": "fixture", "value": 1}, "video review attempt")
+
+    assert owned == (review.frames._lstat(target).st_dev, review.frames._lstat(target).st_ino)
+    with review.frames._open(target, "rb") as handle:
+        assert json.loads(handle.read().decode("utf-8")) == {"schema": "fixture", "value": 1}
+    # No owned temporary was left behind, and the store scan still sees exactly one file.
+    assert review._store_inventory(tmp_path, store)["attempts"] == frozenset({"fixture-accept"})
+    # Never overwritten, even at this length.
+    with pytest.raises(review.VideoReviewError, match="already exists"):
+        review._exclusive_file(tmp_path, target, {"schema": "fixture", "value": 2}, "video review attempt")
+    # And the long store is still readable through the one bounded JSON reader.
+    value, _, entry = review._read_json(tmp_path, target.relative_to(tmp_path), "video review attempt")
+    assert value == {"schema": "fixture", "value": 1} and entry["bytes"] > 0

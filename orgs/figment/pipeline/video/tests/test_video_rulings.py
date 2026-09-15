@@ -4,6 +4,7 @@ import copy
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -441,13 +442,29 @@ def test_real_approved_gen_candidate_cli_applies_fixture_rulings_and_validates(
     )
     assert projection["creator_id"] == "creator-002"
     assert projection["movie"]["sha256"] == _digest(tmp_path / projection["movie"]["path"])
-    path_lengths = {
-        "attempt": len(str(store / "attempt-fixture-accept.json")),
-        "claim": len(str(store / "terminal-claim.json")),
-        "accepted": len(str(store / "accepted-video.json")),
-        "temporary_worst_case": len(str(store / ".pending-12345678.json")),
+    # F6b: this canonical store's own paths reach and cross Windows' 260-character
+    # MAX_PATH as soon as its candidate directory sits under a deep worktree or
+    # --basetemp root -- the `attempt-<id>.json` name alone carries a ~100-character
+    # candidate id under a 64-hex digest directory. This used to assert they stayed
+    # BELOW 260, which was a canary for the real defect (`_exclusive_file`'s mkstemp/
+    # os.link and `_read_json` took the plain Win32 spelling and failed with a bare
+    # OSError that surfaced as "cannot publish video review attempt"). Now that every
+    # OS call here uses the extended-length spelling, length is not the invariant --
+    # the invariant is that each published record really exists and really reads back,
+    # whatever its length.
+    published = {
+        "attempt": store / "attempt-fixture-accept.json",
+        "claim": store / "terminal-claim.json",
+        "accepted": store / "accepted-video.json",
     }
-    assert max(path_lengths.values()) < 260, path_lengths
+    for label, path in published.items():
+        assert review.frames._is_file(path), label
+        with review.frames._open(path, "rb") as handle:
+            assert isinstance(json.loads(handle.read().decode("utf-8")), dict), label
+    # No owned temporary was left behind (scanned long-path-safely, since `Path.glob`
+    # itself cannot see into a store past MAX_PATH).
+    names = {entry.name for entry in os.scandir(review.frames._os_path(store))}
+    assert names == {*(path.name for path in published.values()), "evaluation-inputs.json"}
 
 
 # --- adversarial regressions on one accepted store, restored after every case ---
