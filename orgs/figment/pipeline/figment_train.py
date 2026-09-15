@@ -4159,6 +4159,100 @@ def _pipeline_gate_instruction(
     )
 
 
+def _deliverable_entry(row: dict[str, Any], dest_dir: Path, root: Path) -> dict[str, Any]:
+    source = Path(row["path"])
+    destination = dest_dir / f"{row['image_id']}{source.suffix.lower()}"
+    if not destination.exists():
+        dest_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source, destination)
+    return {
+        "image_id": row["image_id"],
+        "path": _relative(destination, root),
+        "sha256": _sha256(destination),
+    }
+
+
+def _build_deliverable(
+    creator_id: str, primary_root: Path, gen_root: Path, detail_root: Path,
+) -> dict[str, Any] | None:
+    """The deliverable (F1's own spec, minimal -- no new schema beyond what the
+    receipts already carry): the kept gen stills, the kept detail images, and a
+    manifest.json binding the gen/detail plan sha, the chosen checkpoint, every kept
+    cell's gate row, and its ruling attribution. Built once detail is ruled (None
+    before then). Idempotent: a deliverable already bound to the current detail
+    approval-lineage is returned as-is rather than rebuilt on every `pipeline` call."""
+    detail_approval_path = detail_root / "grade" / "detail" / "approval-lineage.json"
+    if not detail_approval_path.is_file():
+        return None
+    deliverable_dir = primary_root / "deliverable"
+    manifest_path = deliverable_dir / "manifest.json"
+    detail_approval_sha256 = _sha256(detail_approval_path)
+    if manifest_path.is_file():
+        existing = _read_json(manifest_path)
+        if existing.get("detail_approval_sha256") == detail_approval_sha256:
+            return existing
+
+    gen_approved = _read_json(gen_root / "grade" / "gen" / "approved-list.json")
+    gen_gate_by_id = {
+        row["image_id"]: row
+        for row in _read_json(gen_root / "grade" / "gen" / "gate.json").get("rows", [])
+    }
+    gen_rulings_doc = _read_json(gen_root / "grade" / "gen" / "rulings.json")
+    gen_ruling_by_id = {row["image_id"]: row for row in gen_rulings_doc.get("rulings", [])}
+
+    detail_approved = _read_json(detail_root / "grade" / "detail" / "approved-list.json")
+    detail_gate_by_id = {
+        row["image_id"]: row
+        for row in _read_json(detail_root / "grade" / "detail" / "gate.json").get("rows", [])
+    }
+    detail_rulings_doc = _read_json(detail_root / "grade" / "detail" / "rulings.json")
+    detail_ruling_by_id = {row["image_id"]: row for row in detail_rulings_doc.get("rulings", [])}
+
+    stills = []
+    for row in gen_approved.get("images", []):
+        entry = _deliverable_entry(row, deliverable_dir / "stills", primary_root)
+        ruling = gen_ruling_by_id.get(row["image_id"], {})
+        entry["gate"] = gen_gate_by_id.get(row["image_id"])
+        entry["ruling"] = {
+            "decided_by": gen_rulings_doc.get("decided_by"),
+            "decided_at": gen_rulings_doc.get("decided_at"),
+            "why": ruling.get("why"), "gate_override": ruling.get("gate_override"),
+        }
+        stills.append(entry)
+
+    detail_images = []
+    for row in detail_approved.get("images", []):
+        entry = _deliverable_entry(row, deliverable_dir / "detail", primary_root)
+        ruling = detail_ruling_by_id.get(row["image_id"], {})
+        entry["gate"] = detail_gate_by_id.get(row["image_id"])
+        entry["ruling"] = {
+            "decided_by": detail_rulings_doc.get("decided_by"),
+            "decided_at": detail_rulings_doc.get("decided_at"),
+            "why": ruling.get("why"), "gate_override": ruling.get("gate_override"),
+        }
+        detail_images.append(entry)
+
+    gen_plan_path = gen_root / "plan.json"
+    detail_plan_path = detail_root / "plan.json"
+    gen_training = _read_json(gen_plan_path).get("training", {})
+    manifest = {
+        "schema": "figment/deliverable@1",
+        "creator": creator_id,
+        "generated_utc": datetime.now(timezone.utc).isoformat(),
+        "checkpoint": {
+            "step": gen_training.get("chosen_checkpoint_step"),
+            "sha256": gen_training.get("chosen_checkpoint_sha256"),
+        },
+        "gen_plan": {"path": str(gen_plan_path), "sha256": _sha256(gen_plan_path)},
+        "detail_plan": {"path": str(detail_plan_path), "sha256": _sha256(detail_plan_path)},
+        "detail_approval_sha256": detail_approval_sha256,
+        "stills": stills,
+        "detail": detail_images,
+    }
+    _write_json(manifest_path, manifest)
+    return manifest
+
+
 def command_pipeline(
     creator_id: str,
     *,
@@ -4237,6 +4331,7 @@ def command_pipeline(
 
     for stage in order:
         if stage == "video":
+            deliverable = _build_deliverable(creator_id, primary_root, gen_root, detail_root)
             return {
                 "status": "stopped:video-not-automated",
                 "message": (
@@ -4244,6 +4339,10 @@ def command_pipeline(
                     "(F6 follow-up) -- see orgs/figment/pipeline/video/*.py and "
                     "docs/figment/2026-09-09-operator-runbook.md for the current "
                     "manual path"
+                ),
+                "deliverable": (
+                    str(primary_root / "deliverable" / "manifest.json")
+                    if deliverable is not None else None
                 ),
             }
         if stage in ("anchor", "dataset", "smoke", "train", "tester"):

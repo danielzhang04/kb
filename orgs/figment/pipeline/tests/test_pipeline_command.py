@@ -220,9 +220,31 @@ def test_pipeline_drives_dataset_through_detail_and_halts_at_each_gate(
 
     _rule_current_grade(command, "creator-002", "detail", detail_root / "plan.json")
 
-    # ---- resume: detail ruled -> pipeline honestly stops before the unbuilt video stage ----
+    # ---- resume: detail ruled -> pipeline honestly stops before the unbuilt video stage,
+    # but DOES write the deliverable for everything ruled through detail ----
     result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
     assert result["status"] == "stopped:video-not-automated"
+    assert result["deliverable"] == str(primary_root / "deliverable" / "manifest.json")
+    deliverable = load_json(Path(result["deliverable"]))
+    assert deliverable["schema"] == "figment/deliverable@1"
+    assert deliverable["checkpoint"]["step"] == chosen_step
+    gen_kept = load_json(gen_root / "grade" / "gen" / "approved-list.json")["images"]
+    detail_kept = load_json(detail_root / "grade" / "detail" / "approved-list.json")["images"]
+    assert len(deliverable["stills"]) == len(gen_kept)
+    assert len(deliverable["detail"]) == len(detail_kept)
+    for row in deliverable["stills"]:
+        assert (primary_root / row["path"]).is_file()
+        assert row["gate"]["pass"] is True or row["ruling"]["gate_override"]
+        assert row["ruling"]["decided_by"] == "operator-fixture"
+    for row in deliverable["detail"]:
+        assert (primary_root / row["path"]).is_file()
+
+    # A second call does not rebuild the deliverable (same manifest, byte-identical).
+    before = manifest_path = Path(result["deliverable"])
+    before_bytes = before.read_bytes()
+    again = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert again["deliverable"] == result["deliverable"]
+    assert manifest_path.read_bytes() == before_bytes
 
     # Every plan/run/grade step above ran exactly once across the whole resumed chain.
     assert calls.count("creator-002-tensor-dataset-shard-01.yaml") == 1
