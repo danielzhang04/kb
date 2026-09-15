@@ -4497,9 +4497,7 @@ def _ruling_attribution(document: dict[str, Any], row: dict[str, Any]) -> dict[s
     }
 
 
-def _deliverable_video(
-    creator_id: str, primary_root: Path, video_root: Path,
-) -> dict[str, Any]:
+def _deliverable_video(primary_root: Path, video_root: Path) -> dict[str, Any]:
     """On GATE video's ruling the deliverable gains the reel derivative itself --
     `content/reel-templates.yaml`'s 1080x1920@30fps delivery file -- plus the exact
     native<->derivative correspondence `frame_assemble.build_reel_derivative` recorded
@@ -4653,7 +4651,7 @@ def _build_deliverable(
         "detail": detail_images,
     }
     if video_approval_sha256 is not None:
-        manifest["video"] = _deliverable_video(creator_id, primary_root, video_root)
+        manifest["video"] = _deliverable_video(primary_root, video_root)
     _write_json(manifest_path, manifest)
     return manifest
 

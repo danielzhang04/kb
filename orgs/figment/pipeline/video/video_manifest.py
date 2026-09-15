@@ -82,10 +82,6 @@ def _path_helpers() -> Any:
     return module
 
 
-def _os_path(path: Path) -> str:
-    return _path_helpers()._os_path(path)
-
-
 def _reparse_point(path: Path) -> bool:
     """Reject symlinks and Windows junction/reparse points before containment checks."""
     helpers = _path_helpers()
