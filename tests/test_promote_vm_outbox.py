@@ -797,12 +797,18 @@ def test_empty_spool_main_exits_zero_with_nothing_to_promote(tmp_path, monkeypat
     assert capsys.readouterr().out.strip() == "nothing to promote"
 
 
-def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
+def test_receipted_spool_auto_detects_and_resumes_reconciliation(
     tmp_path, monkeypatch, capsys,
 ):
+    """B2: previously a spool where every outbox bundle already had a promotion receipt
+    printed "nothing to promote" and exited 0 without ever reconciling -- a silent wedge,
+    because receipts are written mid promote_pending and the RECONCILED-superset check only
+    runs later, on the VM, in apply_ops_reconciliation.py. main() must now auto-detect this
+    state (every chain item receipted, ready/ non-empty) and resume straight into
+    create_return_bundle + upload_and_apply_reconciliation instead of re-promoting."""
     operator = tmp_path / "operator"
     operator.mkdir()
-    bundle = b"bundle"
+    bundle_bytes = b"bundle"
     manifest = {
         "schema": "kb.ops-outbox/v1",
         "id": COMMIT,
@@ -810,7 +816,7 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
         "commit": COMMIT,
         "paths": ["ledgers/already.jsonl"],
         "createdAt": "2026-08-11T12:00:00.000Z",
-        "bundleSha256": hashlib.sha256(bundle).hexdigest(),
+        "bundleSha256": hashlib.sha256(bundle_bytes).hexdigest(),
     }
     receipt = {
         "schema": "kb.ops-promotion/v1",
@@ -823,19 +829,34 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
     def fetch_receipted(_vm_host: str, snapshot: Path) -> Path:
         (snapshot / "ready").mkdir(parents=True)
         (snapshot / "receipts").mkdir()
-        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle)
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle_bytes)
         (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
         (snapshot / "receipts" / f"{COMMIT}.json").write_bytes(canonical(receipt))
         (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
         return snapshot
 
     def must_not_run(*_args, **_kwargs):
-        raise AssertionError("receipted spool continued into promotion or reconciliation")
+        raise AssertionError("auto-resume re-promoted an already-receipted spool")
+
+    calls: dict = {}
+    target = "d" * 40
+
+    def fake_return_bundle(operator_repo, work_root, expected_target):
+        calls["return_bundle"] = expected_target
+        return tmp_path / "return.bundle", tmp_path / "return-repo"
+
+    def fake_run_git(_repo, args, check=True):
+        assert args == ["rev-parse", "refs/kb-reconciled/ops^{commit}"]
+        return completed(args, target + "\n")
+
+    def fake_upload(vm_host, bundle, receipts, source_head, target_head):
+        calls["upload"] = (vm_host, source_head, target_head)
 
     monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_receipted)
     monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
-    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
-    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", fake_return_bundle)
+    monkeypatch.setattr(promote_module, "run_git", fake_run_git)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", fake_upload)
     monkeypatch.setattr(
         promote_module.sys,
         "argv",
@@ -850,7 +871,63 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
     )
 
     assert promote_module.main() == 0
-    assert capsys.readouterr().out.strip() == "nothing to promote"
+    out = capsys.readouterr().out
+    assert "resuming reconciliation" in out
+    assert calls["return_bundle"] == "c" * 40
+    assert calls["upload"] == ("vm.example.test", COMMIT, target)
+
+
+def test_reconcile_only_flag_refuses_when_spool_is_not_fully_receipted(
+    tmp_path, monkeypatch,
+):
+    """The --reconcile-only flag exists to resume a receipted-but-unreconciled spool. Asking
+    for it on a spool that still has unreceipted bundles is a distinct user error from the
+    silent-wedge auto-detect above and must fail closed with a clear message, never silently
+    skip real pending promotion work."""
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    bundle_bytes = b"bundle"
+    manifest = {
+        "schema": "kb.ops-outbox/v1",
+        "id": COMMIT,
+        "parent": BASE,
+        "commit": COMMIT,
+        "paths": ["ledgers/pending.jsonl"],
+        "createdAt": "2026-08-11T12:00:00.000Z",
+        "bundleSha256": hashlib.sha256(bundle_bytes).hexdigest(),
+    }
+
+    def fetch_unreceipted(_vm_host: str, snapshot: Path) -> Path:
+        (snapshot / "ready").mkdir(parents=True)
+        (snapshot / "receipts").mkdir()
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle_bytes)
+        (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
+        (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("--reconcile-only guard let an unreceipted spool through")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_unreceipted)
+    monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", BASE,
+            "--reconcile-only",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="already be receipted"):
+        promote_module.main()
 
 
 def test_pull_only_flag_fast_forwards_local_ops_without_writing_upstream(

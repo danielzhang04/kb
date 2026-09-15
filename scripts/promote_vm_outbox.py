@@ -944,6 +944,13 @@ def main() -> int:
         "--pull-only", action="store_true",
         help="fetch and fast-forward the local ops checkout without promoting or pushing",
     )
+    parser.add_argument(
+        "--reconcile-only", action="store_true",
+        help=(
+            "skip promotion and resume reconciliation for a spool that is already fully "
+            "receipted (also auto-detected without this flag)"
+        ),
+    )
     parser.add_argument("--approval", type=Path)
     parser.add_argument("--approval-signature", type=Path)
     parser.add_argument("--approval-allowed-signers", type=Path)
@@ -978,8 +985,31 @@ def main() -> int:
         raise RuntimeError("VM source head does not equal the closed outbox chain")
 
     all_receipted = all(read_matching_receipt(snapshot, item) is not None for item in chain)
-    if all_receipted:
-        print("nothing to promote")
+    if args.reconcile_only or all_receipted:
+        # B2: every chain item already carries a promotion receipt (or the operator asked to
+        # resume explicitly) -- the earlier "nothing to promote" here was the silent wedge:
+        # receipts get written mid promote_pending, but the VM only checks RECONCILED (a
+        # superset of COORDINATION) later, in apply_ops_reconciliation.py, so a range that
+        # fails that check leaves the spool looking fully promoted with reconciliation never
+        # having run. Resume straight into the return-bundle + VM-apply leg instead of
+        # re-promoting (there is nothing left to promote) or silently exiting.
+        if not all_receipted:
+            raise RuntimeError(
+                "--reconcile-only requires every outbox bundle in the spool to already be receipted"
+            )
+        print(
+            f"reconcile-only: {len(chain)} bundle(s) already receipted; "
+            "resuming reconciliation without re-promoting"
+        )
+        promotion_target = _last_promoted_target(snapshot, chain)
+        bundle, return_repo = create_return_bundle(args.repo, args.work_root, promotion_target)
+        target = _text(
+            run_git(return_repo, ["rev-parse", "refs/kb-reconciled/ops^{commit}"]).stdout
+        ).strip()
+        if COMMIT_RE.fullmatch(target) is None:
+            raise RuntimeError("return-bundle target is invalid")
+        upload_and_apply_reconciliation(args.vm_host, bundle, snapshot / "receipts", source_head, target)
+        print(json.dumps({"promoted": 0, "pending": 0, "failed": 0}, sort_keys=True))
         return 0
     if (
         any(any(INSTRUCTION.fullmatch(path) for path in item["paths"]) for item in chain)
