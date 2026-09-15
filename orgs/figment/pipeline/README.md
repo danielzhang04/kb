@@ -71,7 +71,7 @@ dispatched command today — every manifest's own ceiling is still derived at pl
 
 For the current train-first operator path, its real output-relative locations,
 fresh external-source `gen` plan, and approved-still video handoff, see the
-[operator runbook](../../../docs/figment/2026-09-09-operator-runbook.md).
+[operator runbook](../RUNBOOK.md).
 
 Full chain for creator-001 (matches `figment_train.py`'s own `build_parser`, and
 `train/FIGMENT-TRAIN.md`):
@@ -261,7 +261,7 @@ rather than reimplementing any of them: `video/video_manifest.py` compiles the
 review-candidate manifest, the ordinary pod harness renders it, and
 `video/frame_assemble.py` (assemble, then `reel`) plus `video/frame_extract.py` turn the
 result into local evidence. The manual four-CLI chain is still documented in the
-[operator runbook](../../../docs/figment/2026-09-09-operator-runbook.md); `pipeline` now
+[operator runbook](../RUNBOOK.md); `pipeline` now
 drives the same chain end to end.
 
 ```powershell
