@@ -40,7 +40,7 @@ import type {
   AttemptExecutionPort,
   SessionHost,
 } from '../pty/contracts.ts';
-import { createGitWorktreeAdapter, createCuratedSkillResolver, createFileAccountingAdapter } from './adapters.ts';
+import { createGitWorktreeAdapter, createCuratedSkillResolver, createCuratedContextResolver, createFileAccountingAdapter } from './adapters.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { createAttemptToolPolicyIdResolver } from './claudeLaunchPolicy.ts';
@@ -282,6 +282,9 @@ export interface ActivationDeps {
   createAttemptPort: typeof createAttemptSessionAdapter;
   createWorktrees: typeof createGitWorktreeAdapter;
   createSkills: typeof createCuratedSkillResolver;
+  /** F1 wiring: the server-owned resolver for bounded curated-skill/knowledge/project-frame prompt
+   *  context. Constructed once at boot from `repoRoot`, next to `createSkills` above. */
+  createCuratedContext: typeof createCuratedContextResolver;
   createAccounting: typeof createFileAccountingAdapter;
   createResults: typeof createCanonicalGitResultIntegrator;
   createToolPolicyResolver: typeof createWorkflowToolPolicyResolver;
@@ -396,6 +399,7 @@ function defaultDeps(): ActivationDeps {
     createAttemptPort: createAttemptSessionAdapter,
     createWorktrees: createGitWorktreeAdapter,
     createSkills: createCuratedSkillResolver,
+    createCuratedContext: createCuratedContextResolver,
     createAccounting: createFileAccountingAdapter,
     createResults: createCanonicalGitResultIntegrator,
     createToolPolicyResolver: createWorkflowToolPolicyResolver,
@@ -490,6 +494,9 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     resolveSparsePaths: (ensureInput) => runSparsePaths.get(ensureInput.runRef)?.paths,
   });
   const skills = deps.createSkills(policy.curatedSkills);
+  // F1 (2026-09-11): resolved but never constructed at boot before this — the field was plumbed all
+  // the way through execution.ts/attemptSessionAdapter.ts/claudeWorkerAdapter.ts and dead without it.
+  const curatedContext = deps.createCuratedContext(repoRoot);
   const accounting = deps.createAccounting({
     stateRoot,
     // A RESOLVER, not a captured string. The daemon is long-lived: computing the UTC date once at
@@ -607,6 +614,7 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     managers,
     workers,
     skills,
+    curatedContext,
     accounting,
     results,
     cancellation,

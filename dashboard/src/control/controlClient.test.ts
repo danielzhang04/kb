@@ -28,6 +28,7 @@ import {
   resolveIterationGate,
   respondToHumanRequest,
   respondToHumanRequestWithCeremony,
+  resolveIterationGateWithCeremony,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
   unlockExecution,
@@ -441,6 +442,39 @@ describe('control client run and retention writes', () => {
     expect(finalBody).toMatchObject({
       expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
       ceremonyId: 'ceremony-1', challengeExpiresAt: '2026-08-21T12:05:00.000Z', assertion,
+    });
+  });
+
+  it('binds an iteration-gate decision through challenge, assertion, and the resolve write', async () => {
+    const options = { challenge: 'challenge', rpId: 'localhost', allowCredentials: [], userVerification: 'required' as const };
+    const assertion = { id: 'credential-1', rawId: 'credential-1', type: 'public-key' as const,
+      response: { authenticatorData: 'auth', clientDataJSON: 'client', signature: 'sig', userHandle: null },
+      clientExtensionResults: {}, authenticatorAttachment: 'platform' as const };
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).endsWith('/challenge')) return response({
+        ceremonyId: 'ceremony-9', options, challengeExpiresAt: '2026-09-15T12:05:00.000Z',
+      });
+      return response({ ok: true, value: { gate: { requestRef: 'park-1' }, loop: {}, receipt: null, receiptVersion: null, interventionRequest: null } });
+    }) as unknown as FetchLike;
+    const perform = vi.fn(async () => assertion);
+
+    await resolveIterationGateWithCeremony('park-1', {
+      expectedGateRef: 'park-1', expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: 1, expectedLoopVersion: 8, expectedGenerationRefs: ['generation-1'],
+      decision: 'approved', idempotencyKey: 'park-1:approve', response: null,
+    }, 'bearer', fetchImpl, perform as never);
+
+    expect(perform).toHaveBeenCalledWith(options);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    expect(String(calls[0][0])).toBe('/api/control/iteration-gates/park-1/challenge');
+    // The mint carries the decision ONLY: every other bound field is derived server-side from the store.
+    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ decision: 'approved' });
+    expect(String(calls[1][0])).toBe('/api/control/iteration-gates/park-1/resolve');
+    expect(JSON.parse(String(calls[1][1]?.body))).toMatchObject({
+      expectedGateRef: 'park-1', expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedLoopVersion: 8, expectedGenerationRefs: ['generation-1'], decision: 'approved',
+      ceremonyId: 'ceremony-9', challengeExpiresAt: '2026-09-15T12:05:00.000Z', assertion,
     });
   });
 

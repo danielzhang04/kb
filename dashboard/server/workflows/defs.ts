@@ -1350,6 +1350,14 @@ export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, s
   ];
   for (const key of expected) if (!sourceFields.some((value) => value.includes(`<${key}>`))) return { ok: false, detail: `parameter '${key}' is declared but not used by the workflow` };
   const replace = (value: string) => expected.reduce((next, key) => next.replaceAll(`<${key}>`, input[key]), value);
+  // Work orders use `{{TOPIC}}`-style placeholders (see orgs/kb-ops/workflows/v1-acceptance-demo.md) as
+  // agent-facing prose the worker itself is instructed to read and substitute from its own context - they
+  // are deliberately left literal here, exactly like `replace` above leaves an unrelated `<shot-id>`.
+  // A completion gate's prompt (and goal, if ever surfaced) is different: it is shown VERBATIM to a
+  // human in the dashboard, who gets no such instruction and no substituted path to infer the value
+  // from, so the same `{{PARAM}}` syntax has to be substituted mechanically here, at instantiation,
+  // exactly where `<param>` already is for stage fields - not invented as a new convention.
+  const replaceCurly = (value: string) => expected.reduce((next, key) => next.replaceAll(`{{${key.toUpperCase()}}}`, input[key]), value);
   return {
     ok: true,
     value: {
@@ -1363,6 +1371,13 @@ export function instantiateWorkflowDef(def: WorkflowDef, input: Record<string, s
         target: replace(stage.target),
         ...(stage.artifacts ? { artifacts: stage.artifacts.map((artifact) => ({ ...artifact, path: replace(artifact.path) })) } : {}),
       })),
+      ...(def.iterationGroups ? {
+        iterationGroups: def.iterationGroups.map((group) => ({
+          ...group,
+          ...(group.goal !== undefined ? { goal: replaceCurly(group.goal) } : {}),
+          ...(group.completionGate ? { completionGate: { ...group.completionGate, prompt: replaceCurly(group.completionGate.prompt) } } : {}),
+        })),
+      } : {}),
       // Emitted only when the def actually declares parameters, so a parameterless definition compiles to
       // the byte-identical proposal it did before this field existed.
       ...(expected.length === 0 ? {} : { launchParameters: Object.fromEntries(expected.map((key) => [key, input[key]])) }),

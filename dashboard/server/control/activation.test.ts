@@ -53,6 +53,7 @@ function spyDeps(): ActivationDeps {
     createAttemptPort: vi.fn().mockReturnValue(attemptPort),
     createWorktrees: vi.fn().mockReturnValue({}) as never,
     createSkills: vi.fn().mockReturnValue({}) as never,
+    createCuratedContext: vi.fn().mockReturnValue({ resolve: vi.fn() }) as never,
     createAccounting: vi.fn().mockReturnValue({}) as never,
     createResults: vi.fn().mockReturnValue({ lookup: vi.fn().mockResolvedValue(null) }) as never,
     createToolPolicyResolver: vi.fn().mockReturnValue(() => ({ allowedTools: ['Read'], permissionMode: 'default' })) as never,
@@ -203,6 +204,25 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(on.createAssignedAgentResolver).toHaveBeenCalledWith('/repo');
     const engineOptions = (on.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(engineOptions.assignedAgents).toBe((on.createAssignedAgentResolver as ReturnType<typeof vi.fn>).mock.results[0].value);
+  });
+
+  /**
+   * F1 wiring (this fix): `AutomaticExecutionOptions.curatedContext` has been plumbed end to end since
+   * F1 (execution.ts/attemptSessionAdapter.ts/claudeWorkerAdapter.ts) but was never CONSTRUCTED at
+   * boot — `createCuratedContextResolver` existed in adapters.ts with no caller. Red on revert: without
+   * the `createCuratedContext` wiring below, `engineOptions.curatedContext` is `undefined` and every
+   * live run's skill bodies/knowledge source/project frame are silently dropped from the prompt.
+   */
+  it('constructs the curated-context resolver only behind the activation gate and passes it to the engine', () => {
+    const off = spyDeps();
+    buildActivatedExecution(baseOptions(off, {}));
+    expect(off.createCuratedContext).not.toHaveBeenCalled();
+
+    const on = spyDeps();
+    buildActivatedExecution(baseOptions(on, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    expect(on.createCuratedContext).toHaveBeenCalledWith('/repo');
+    const engineOptions = (on.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.curatedContext).toBe((on.createCuratedContext as ReturnType<typeof vi.fn>).mock.results[0].value);
   });
 
   it('passes a per-attempt budget that fits strictly inside the window ceiling', () => {

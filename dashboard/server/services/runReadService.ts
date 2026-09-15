@@ -6,14 +6,10 @@
 // cursor wall, the events ETag/304, and the respond body wall. W6.2 makes the routes thin; W2 only BUILDS
 // the service + its characterization test. No route file edited.
 
-import { OPERATOR_SUBJECT } from '../auth/mode.ts';
+import { readScopeForSubject } from '../control/readScope.ts';
 import type { ServiceReply } from './scheduleService.ts';
 
-/** The ONE place cross-subject reach is decided (`control/routes.ts#readScopeForSubject`), reproduced so
- *  the service does not import the whole route module: only a verified operator reads all subjects. */
-function readScopeForSubject(sub: string | null | undefined): ReadScope {
-  return sub === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
-}
+
 
 /** A `ControlResult`-shaped read: ok carries a value; not-ok carries a reason/detail and a mapped status. */
 export type ControlReadResult<T> =

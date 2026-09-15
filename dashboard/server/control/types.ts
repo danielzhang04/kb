@@ -15,7 +15,7 @@ import type {
 import type { IterationOutcome } from './iterationOutcome.ts';
 import type { DeploymentState } from './deploymentState.ts';
 import type { RunLifecycleKind } from './runLifecycle.ts';
-import type { AttemptSessionPublicRow, RunIdentityFields } from './p2Contracts.ts';
+import type { AttemptSessionPublicRow, OutputRef, RunIdentityFields } from './p2Contracts.ts';
 
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
@@ -669,6 +669,11 @@ export interface RunDetailDto extends Omit<RunDetail, 'run' | 'iterationLoops'> 
   streamKind: 'pty' | 'transcript';
   sessionId: string | null;
   attemptSessions: AttemptSessionPublicRow[];
+  /**
+   * F4: the run's integrated declared artifacts, each downloadable through `/api/control/files` under
+   * this run's own entity scope. Empty for a run that integrated nothing.
+   */
+  outputs: OutputRef[];
 }
 
 export interface StorageInventoryItem {

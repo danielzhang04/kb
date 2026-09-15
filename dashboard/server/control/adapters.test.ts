@@ -8,6 +8,7 @@ import type { ExecutionProfile } from './policy.ts';
 import { canonicalStageResultHash, iterationResultOperationKey } from './execution.ts';
 import {
   ExecutionAdapterError,
+  createCuratedContextResolver,
   createCuratedSkillResolver,
   createFileAccountingAdapter,
   createFileResultIntegrator,
@@ -1003,6 +1004,32 @@ describe('curated skill and closed adapter factories', () => {
       .toEqual({ ok: false, reason: 'skill is not curated: unknown' });
     expect(await resolver.resolve({ operationKey: 'skills:3', profile: workerProfile, requested: ['tests', 'tests'] }))
       .toEqual({ ok: false, reason: 'requested skills contain duplicates' });
+  });
+
+  /**
+   * R11: `bySkillId` used to be keyed by BOTH `entry.slug` and `entry.name`, so a skill whose `name`
+   * equals another skill's `slug` silently overwrote that slug's entry — a validated skill id could
+   * resolve to a different skill's body. `other`'s name aliases to `shared`'s slug; requesting the id
+   * `shared` must always resolve `shared`'s OWN body (never `other`'s), and the collision must warn.
+   */
+  it('keys curated context resolution on slug only, warning and skipping a colliding name alias', () => {
+    const root = temporaryRoot();
+    const write = (slug: string, name: string, body: string) => {
+      const dir = join(root, 'skills', 'curated', slug);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, 'SKILL.md'), `---\nname: ${name}\ndescription: d\n---\n${body}\n`, 'utf8');
+    };
+    write('shared', 'shared-own-name', 'SHARED BODY');
+    write('other', 'shared', 'OTHER BODY');
+    const resolver = createCuratedContextResolver(root);
+    const result = resolver.resolve({
+      operationKey: 'curated-context:1', skillIds: ['shared', 'other-alias'], agentId: null, project: 'nonexistent-project',
+    });
+    const sharedBlock = result.blocks.find((block) => block.label === 'SKILL: shared');
+    expect(sharedBlock?.text).toContain('SHARED BODY');
+    expect(result.blocks.some((block) => block.text.includes('OTHER BODY'))).toBe(false);
+    expect(result.warnings).toContainEqual(expect.stringContaining("skill name 'shared' collides with another skill's id"));
+    expect(result.warnings).toContainEqual(expect.stringContaining("skill 'other-alias' has no curated catalog entry"));
   });
 
   it('builds no process-spawning Manager or Worker adapter', () => {

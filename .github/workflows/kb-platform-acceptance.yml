@@ -1,0 +1,39 @@
+name: kb-platform-acceptance
+on:
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: kb-platform-acceptance-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  acceptance:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0   # tests/test_agent_evals.py diffs against origin/main; a shallow PR checkout has no such ref
+      - uses: actions/setup-node@v4
+        with: {node-version: 24.18.0, cache: npm, cache-dependency-path: dashboard/package-lock.json}
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+      # Fixture repos commit during tests; the bare runner has no git identity.
+      - run: git config --global user.name kb-ci && git config --global user.email kb-ci@users.noreply.github.com
+      - run: npm ci
+        working-directory: dashboard
+      # atlas ignored wholesale: its voice-stack deps (livekit, comtypes) don't install on ubuntu.
+      - run: python -m pytest -q --ignore=atlas
+      - run: npm run typecheck
+        working-directory: dashboard
+      - run: npm run build
+        working-directory: dashboard
+      # Must run on this Linux runner specifically: scripts/build_platform_release.py refuses a broker
+      # archive packed on a non-Linux host. No `npm prune` anywhere in this file — pruning devDependencies
+      # before the vitest gate would remove typescript/vitest, which the suite and the broker build need.
+      - run: npm run build:pty-broker
+        working-directory: dashboard
+      - run: npm test -- server/control server/placement server/api/v1 server/pty server/schema server/entities server/workflows server/index.test.ts src
+        working-directory: dashboard

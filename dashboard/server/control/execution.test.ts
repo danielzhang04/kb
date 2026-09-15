@@ -2050,6 +2050,53 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.ok && detail.value.sessions.every((item) => ['completed', 'failed', 'stopped', 'interrupted'].includes(item.state))).toBe(true);
   });
 
+  /**
+   * F2 (item 3b) — red on revert: before this fix, `dependencyResultOperationKeys` was computed only to
+   * resolve the dependent's git base commit; nothing ever read the predecessor's CANONICAL summary text
+   * into the dependent's `workers.begin` call, so a dependent got its predecessor's files but was never
+   * told what they concluded. `verify` depends on `compile`; once `compile`'s canonical result is
+   * integrated, `verify`'s worker.begin input must carry it as `dependencyResults`, which
+   * `claudeWorkerAdapter.ts` renders under `DEPENDENCY RESULTS:` inside the inert boundary.
+   */
+  it('populates dependencyResults for a dependent stage from its predecessor canonical summary', async () => {
+    const store = createStore();
+    const plan = proposal([stage('compile'), stage('verify', ['compile'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seenDependencyResults: unknown[] = [];
+    fake.workers = {
+      async execute(input) {
+        const id = input.action.split(':')[1];
+        if (id === 'verify') seenDependencyResults.push(input.dependencyResults);
+        fake.executionOrder.push(id);
+        return {
+          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 2, outputTokens: 1, costUsdMicros: 3 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    const resultsByKey = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+    fake.results = {
+      async lookup(value) { return resultsByKey.get(value.operationKey) ?? null; },
+      async resolveBase() { return 'd'.repeat(40); },
+      async integrate(value) {
+        fake.integrationOrder.push(value.stageId);
+        resultsByKey.set(value.operationKey, {
+          summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed],
+          checkpoints: [...value.checkpoints], resultHash: value.resultHash,
+          durability: 'inactive' as const, attemptBaseCommit: null, integrationCommit: null,
+        });
+        return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'inactive' as const };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['compile', 'verify'] });
+    expect(seenDependencyResults).toEqual([[{ from: 'compile', summary: 'compile passed' }]]);
+  });
+
   // ---------------------------------------------------------------------------------------------
   // The fail-closed workflow-profile token. `execution.ts` forwards `stage.workflowProfile ?? input.proposal.profile ?? null`
   // to the worker adapter, and that `?? null` is the WHOLE engine-side guarantee: the adapter refuses
@@ -3430,6 +3477,78 @@ describe('AutomaticExecutionEngine two-phase attempt start', () => {
       expect(unhandled).toEqual([]);
     } finally {
       process.off('unhandledRejection', onUnhandled);
+    }
+  });
+});
+
+/**
+ * F1: the engine must invoke the optional `curatedContext` resolver with the ALREADY-VALIDATED skill
+ * ids (`skills.skills`, post curated-set admission — never the raw requested set) and the approved
+ * proposal's project, and must never swallow a warning the resolver reports: it is logged against the
+ * exact run/stage/attempt, not dropped. `curatedContext` is optional, so every other suite in this file
+ * (which never sets it) is unaffected.
+ */
+describe('curated context resolver (F1)', () => {
+  it('invokes the resolver with the validated skill ids and surfaces its warning on the log, never swallowed', async () => {
+    const store = createStore();
+    const plan = proposal([stage('a')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const resolveCalls: Array<{ operationKey: string; skillIds: readonly string[]; agentId: string | null; project: string }> = [];
+    const options = engineOptions(store, fake);
+    options.curatedContext = {
+      resolve(input) {
+        resolveCalls.push(input);
+        return { blocks: [], warnings: ["project 'kb-ops' GOAL.md is unavailable"] };
+      },
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+        subject: 'operator', runRef: run.runRef, proposal: plan,
+      });
+      expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['a'] });
+      // Assert while the spy is still live: `mockRestore()` clears recorded call history.
+      expect(resolveCalls).toHaveLength(1);
+      expect(resolveCalls[0].skillIds).toEqual(['tests']);
+      expect(resolveCalls[0].project).toBe('kb-ops');
+      expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining("project 'kb-ops' GOAL.md is unavailable"));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
+
+  /**
+   * R13: a curated-context resolution warning went only to `console.warn` — invisible in the UI, unlike
+   * every other engine signal. It must also land as one attempt-scoped operational event so a silently
+   * frame-less prompt is visible on the run's timeline.
+   */
+  it('appends an attempt-scoped governance event when curated-context resolution produces warnings', async () => {
+    const store = createStore();
+    const plan = proposal([stage('a')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.curatedContext = {
+      resolve() {
+        return { blocks: [], warnings: ["project 'kb-ops' GOAL.md is unavailable"] };
+      },
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+        subject: 'operator', runRef: run.runRef, proposal: plan,
+      });
+      expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['a'] });
+      const events = store.listEvents('operator', run.runRef);
+      if (!events.ok) throw new Error(events.detail);
+      const governanceEvent = events.value.find((event) => event.kind === 'governance'
+        && (event.summary ?? '').includes("project 'kb-ops' GOAL.md is unavailable"));
+      expect(governanceEvent).toBeDefined();
+      expect(governanceEvent?.stageRef).toBeTruthy();
+      expect(governanceEvent?.attemptRef).toBeTruthy();
+    } finally {
+      warnSpy.mockRestore();
     }
   });
 });

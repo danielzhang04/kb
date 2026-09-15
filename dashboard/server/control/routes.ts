@@ -2,6 +2,9 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sha256Hex } from '../shared/hashing.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
+import { registerArtifactFileRoute } from './artifactFilesRoute.ts';
+import { readScopeForSubject } from './readScope.ts';
+import { projectRunOutputs } from './runOutputs.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { boundSummary } from './claudeWorkerAdapter.ts';
@@ -30,7 +33,6 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_REF,
   MAX_EVENTS_PER_RUN,
   MAX_EVENT_PAGE,
-  OPERATOR_SUBJECT,
   exactAuthorized20260801ProposalRevision,
   type ReadScope,
   type RunActivationInput,
@@ -61,11 +63,14 @@ import { createRunEventService, type RunEventSource } from './runEventService.ts
 import { createRunEventStream } from './runEventStream.ts';
 import {
   createHumanResponseService,
+  createIterationGateCeremonyService,
   deployChallenge,
   humanResponseChallenge,
   humanResponseDigest,
+  iterationGateChallenge,
   type CeremonyVerificationInput,
   type HumanResponseInput,
+  type IterationGateT3Preimage,
 } from './humanResponse.ts';
 import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
 import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
@@ -158,9 +163,7 @@ export function subject(req: FastifyRequest): string | null {
  * subject) and never launders the actor (`respondedBy` and the audit row's `owner` both name the
  * operator). See {@link ReadScope}.
  */
-export function readScopeForSubject(sub: string | null | undefined): ReadScope {
-  return sub === OPERATOR_SUBJECT ? 'all-subjects' : 'own-subject';
-}
+export { readScopeForSubject } from './readScope.ts';
 
 function readScope(req: FastifyRequest): ReadScope {
   return readScopeForSubject(subject(req));
@@ -258,6 +261,11 @@ function runDetailDto(ctx: SurfaceContext, sub: string, detail: RunDetail, scope
     ?? (ptySession ? ptySession.sessionRef : null);
   return {
     ...detail,
+    // F4/R5: the run's OWN downloadable outputs. Projected from the canonical integration journal —
+    // declared artifacts of stage results that reached `canonical-committed`, digests hashed off the
+    // integrated bytes — never from a worker's self-report and never from the checkout. See
+    // `runOutputs.ts`.
+    outputs: projectRunOutputs({ stateRoot: ctx.stateRoot, store: ctx.controlStore, subject: sub, scope, run: detail.run }),
     streamKind: ptySession || attemptSessions.length > 0 ? 'pty' : 'transcript',
     sessionId: selectedSessionId,
     attemptSessions,
@@ -1436,6 +1444,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   registerRunPtyRoutes(scope, ctx, preHandler);
+  registerArtifactFileRoute(scope, ctx, preHandler);
 
   scope.post('/api/control/runs/:runRef/manager/messages', { preHandler }, async (req, reply) => {
     const sub = subject(req);
@@ -1983,23 +1992,23 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return reply.code(result.status).send(result.body);
   });
 
-  const resolveIterationGateRoute = async (
-    req: FastifyRequest,
-    reply: FastifyReply,
-  ) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    const body = record(req.body);
-    const requestRef = (req.params as { requestRef: string }).requestRef;
+  /**
+   * F3 [baseline-A §3] — the STORE-DERIVED half of an iteration-gate decision, shared verbatim by the T3
+   * challenge mint and the resolve route so the assertion is signed over exactly the tuple the resolve
+   * route CASes. Every refusal below is the one the resolve route already emitted, in the same order; it
+   * sends on `reply` and returns `null` so both callers stay thin. Nothing here reads the request body.
+   */
+  const iterationGateBinding = (sub: string, requestRef: string, req: FastifyRequest, reply: FastifyReply) => {
     const runScope = readScope(req);
     const request = ctx.controlStore.getHumanRequest(sub, requestRef, runScope);
-    if (!request.ok) return sendResult(reply, request);
+    if (!request.ok) { sendResult(reply, request); return null; }
     const run = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
-    if (!run.ok) return sendResult(reply, run);
+    if (!run.ok) { sendResult(reply, run); return null; }
     const loops = run.value.iterationLoops.filter((loop) =>
       loop.completionGateRef === requestRef || loop.interventionRef === requestRef);
     if (loops.length !== 1) {
-      return reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
+      reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
+      return null;
     }
     const loop = loops[0];
     const gateKind = request.value.gateKind ?? null;
@@ -2009,25 +2018,139 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       : loop.lastReceiptRef === undefined ? null
         : run.value.iterationReceipts.find((candidate) => candidate.receiptRef === loop.lastReceiptRef) ?? null;
     if (parkGate && !['exhausted', 'no-progress', 'parked'].includes(loop.parkReason ?? '')) {
-      return reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
+      reply.code(409).send({ error: 'iteration-gate-reason-mismatch' });
+      return null;
     }
     if ((!parkGate && (request.value.kind !== 'approval' || receipt === null))
       || (parkGate && loop.state === 'awaiting-park-gate' && loop.parkReason === 'no-progress'
         && receipt === null && !loop.unresolvedResidue?.attemptedRequestRef)) {
-      return reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
-    }
-    const decision = string(body.decision) as 'approved' | 'declined' | 'rejected' | 'changes-requested';
-    if (parkGate && !['approved', 'declined'].includes(decision)) {
-      return reply.code(400).send({ error: 'invalid-iteration-park-decision', detail: 'Approve or decline; more work requires a separate relaunch.' });
-    }
-    if (!parkGate && !['approved', 'rejected', 'changes-requested'].includes(decision)) {
-      return reply.code(400).send({ error: 'invalid-iteration-completion-decision' });
+      reply.code(409).send({ error: 'iteration-gate-linkage-ambiguous' });
+      return null;
     }
     const replay = request.value.state === 'resolved' && request.value.response !== null;
     const expectedLoopVersion = replay ? loop.version - 1 : loop.version;
     const exposedReceiptVersion = receipt?.version ?? null;
     const expectedReceiptVersion = exposedReceiptVersion === null ? null
       : replay ? exposedReceiptVersion - 1 : exposedReceiptVersion;
+    return {
+      runScope, gateRequest: request.value, runDetail: run.value, loop, gateKind, parkGate, receipt,
+      expectedLoopVersion, expectedReceiptVersion,
+    };
+  };
+
+  /** The decision vocabulary each gate kind admits — identical for the mint and the resolve. */
+  const iterationGateDecision = (body: Record<string, unknown>, parkGate: boolean, reply: FastifyReply) => {
+    const decision = string(body.decision) as 'approved' | 'declined' | 'rejected' | 'changes-requested';
+    if (parkGate && !['approved', 'declined'].includes(decision)) {
+      reply.code(400).send({ error: 'invalid-iteration-park-decision', detail: 'Approve or decline; more work requires a separate relaunch.' });
+      return null;
+    }
+    if (!parkGate && !['approved', 'rejected', 'changes-requested'].includes(decision)) {
+      reply.code(400).send({ error: 'invalid-iteration-completion-decision' });
+      return null;
+    }
+    return decision;
+  };
+
+  /** The signed tuple, recomputed server-side from the store record on BOTH legs [baseline-A §3]. */
+  const iterationGatePreimage = (
+    binding: NonNullable<ReturnType<typeof iterationGateBinding>>,
+    decision: string,
+    origin: string,
+    challengeExpiresAt: string,
+  ): IterationGateT3Preimage => ({
+    requestRef: binding.gateRequest.requestRef,
+    requestRevision: binding.gateRequest.revision,
+    gateRef: binding.gateRequest.requestRef,
+    gateKind: binding.gateKind,
+    parkReason: binding.loop.parkReason ?? null,
+    iterationLoopRef: binding.loop.iterationLoopRef,
+    loopVersion: binding.expectedLoopVersion,
+    receiptRef: binding.receipt?.receiptRef ?? null,
+    receiptVersion: binding.expectedReceiptVersion,
+    generationRefs: [...binding.loop.activeGenerationRefs],
+    decision,
+    origin,
+    challengeExpiresAt,
+  });
+
+  /**
+   * The iteration-gate ceremony, composed exactly like the shipped human-response one: the port exists
+   * only when the mode admits a ceremony AND a credential is provisioned, so an unprovisioned daemon
+   * fails CLOSED at `ceremony-unavailable` instead of degrading to the T2-strength authorization this
+   * route shipped with. Single use lives in the pending-challenge store: `consumeChallenge` spends the
+   * minted ceremony id once, so a replayed id can never re-verify.
+   */
+  const iterationGateCeremony = () => createIterationGateCeremonyService({
+    credentials: ctx.credentials,
+    now: () => (ctx.now?.() ?? new Date()).getTime(),
+    ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
+      ceremony: {
+        async verify(input: { assertion: unknown; challenge: string; origin: string }) {
+          const assertion = record(input.assertion);
+          const expectedChallenge = consumeChallenge(
+            string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
+          );
+          if (!expectedChallenge) return false;
+          if (expectedChallenge !== Buffer.from(input.challenge, 'utf8').toString('base64url')) return false;
+          let config;
+          try { config = ctx.webAuthnConfig(); } catch { return false; }
+          if (input.origin !== config.origin) return false;
+          const response = record(assertion.response);
+          const credential = findCredential(ctx.credentials(), string(response.id));
+          if (!credential) return false;
+          const verified = await verifyAssertion(assertion.response as never, {
+            expectedChallenge, credential, config,
+          });
+          return verified.verified;
+        },
+      },
+    } : {}),
+  });
+
+  // F3 [baseline-A §3]: the iteration-gate T3 challenge — registered on the SAME guarded scope and
+  // `preHandler` as the resolve route, minting through the SAME `credentialStore` pending map with the
+  // same 5-minute window, and binding through the SAME deterministic preimage the resolve recomputes.
+  // The tuple is derived from the STORE, never from the body: the caller chooses only the decision.
+  scope.post('/api/control/iteration-gates/:requestRef/challenge', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
+      return reply.code(403).send({ error: 'ceremony-unavailable' });
+    }
+    const requestRef = (req.params as { requestRef: string }).requestRef;
+    const binding = iterationGateBinding(sub, requestRef, req, reply);
+    if (binding === null) return reply;
+    const decision = iterationGateDecision(record(req.body), binding.parkGate, reply);
+    if (decision === null) return reply;
+    let config;
+    try { config = ctx.webAuthnConfig(); }
+    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
+    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
+    const now = (ctx.now?.() ?? new Date()).getTime();
+    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
+    const challenge = iterationGateChallenge(
+      iterationGatePreimage(binding, decision, config.origin, challengeExpiresAt),
+    );
+    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
+    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
+    return reply.send({ ceremonyId, options, challengeExpiresAt });
+  });
+
+  const resolveIterationGateRoute = async (
+    req: FastifyRequest,
+    reply: FastifyReply,
+  ) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    const requestRef = (req.params as { requestRef: string }).requestRef;
+    const binding = iterationGateBinding(sub, requestRef, req, reply);
+    if (binding === null) return reply;
+    const { runScope, gateRequest, runDetail, loop, gateKind, parkGate, receipt } = binding;
+    const { expectedLoopVersion, expectedReceiptVersion } = binding;
+    const decision = iterationGateDecision(body, parkGate, reply);
+    if (decision === null) return reply;
     const suppliedGenerationRefs = Array.isArray(body.expectedGenerationRefs)
       && body.expectedGenerationRefs.every((value) => typeof value === 'string')
       ? body.expectedGenerationRefs as string[] : null;
@@ -2043,18 +2166,30 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       && expectedGenerations.length === loop.activeGenerationRefs.length
       && expectedGenerations.every((value, index) => value === loop.activeGenerationRefs[index]);
     if (expectedGateRef !== requestRef || expectedGateKind !== gateKind || expectedParkReason !== (loop.parkReason ?? null)
-      || integer(body.expectedRequestRevision) !== request.value.revision || suppliedLoopVersion !== expectedLoopVersion
+      || integer(body.expectedRequestRevision) !== gateRequest.revision || suppliedLoopVersion !== expectedLoopVersion
       || suppliedReceiptVersion !== expectedReceiptVersion || !exactGenerationSet) {
       return reply.code(409).send({ error: 'iteration-gate-cas-mismatch', detail: 'The displayed gate or artifact set changed; reload before deciding.' });
     }
-    if (request.value.state === 'open') {
+    if (gateRequest.state === 'open') {
+      // F3 [baseline-A §3, item 4b]: T3 means a passkey assertion over the SAME tuple the CAS just
+      // checked — verified BEFORE the audit append, so a refused ceremony leaves no `authorized:` row
+      // and mutates nothing. A replay (state already `resolved`) is idempotent and re-verifies nothing,
+      // exactly as the shipped human-response path short-circuits its replay above its own ceremony.
+      const ceremony = await iterationGateCeremony().verify({
+        preimage: iterationGatePreimage(
+          binding, decision, string(req.headers.origin), string(body.challengeExpiresAt),
+        ),
+        assertion: body.ceremonyId == null || body.assertion == null
+          ? null : { ceremonyId: body.ceremonyId, response: body.assertion },
+      });
+      if (!ceremony.ok) return reply.code(ceremony.status).send({ error: ceremony.error });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-iteration-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
           result: `authorized:${decision}`,
           detail: {
-            requestRef, runRef: request.value.runRef, runOwnerSubject: run.value.ownerSubject,
-            requestRevision: request.value.revision, gateKind, parkReason: loop.parkReason ?? null,
+            requestRef, runRef: gateRequest.runRef, runOwnerSubject: runDetail.ownerSubject,
+            requestRevision: gateRequest.revision, gateKind, parkReason: loop.parkReason ?? null,
             iterationLoopRef: loop.iterationLoopRef, loopVersion: expectedLoopVersion,
             receiptRef: receipt?.receiptRef ?? null, receiptVersion: expectedReceiptVersion,
             generationRefs: [...loop.activeGenerationRefs], decision,
@@ -2065,7 +2200,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       }
     }
     const resolved = ctx.controlStore.resolveIterationGate(sub, requestRef, {
-      expectedRequestRevision: request.value.revision,
+      expectedRequestRevision: gateRequest.revision,
       expectedReceiptVersion,
       expectedLoopVersion,
       decision,
@@ -2074,8 +2209,8 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
-      ctx.controlStore.appendEvent(run.value.ownerSubject, request.value.runRef, {
-        kind: 'governance', source: 'human', stageRef: request.value.stageRef,
+      ctx.controlStore.appendEvent(runDetail.ownerSubject, gateRequest.runRef, {
+        kind: 'governance', source: 'human', stageRef: gateRequest.stageRef,
         status: decision === 'approved' ? 'success' : 'waiting',
         summary: parkGate
           ? `Iteration park gate ${decision}; separate relaunch is the only continuation path`
@@ -2084,17 +2219,17 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     }
     let failedRun: Run | null = null;
     if (parkGate && resolved.value.loop.state === 'declined') {
-      const currentRun = ctx.controlStore.getRun(sub, request.value.runRef, runScope);
+      const currentRun = ctx.controlStore.getRun(sub, gateRequest.runRef, runScope);
       if (!currentRun.ok) return sendResult(reply, currentRun);
       if (runLifecycleKind(currentRun.value.run.lifecycle) === 'failed') failedRun = currentRun.value.run;
       else {
-        const failed = ctx.controlStore.transitionRun(currentRun.value.ownerSubject, request.value.runRef, currentRun.value.run.version, 'failed');
+        const failed = ctx.controlStore.transitionRun(currentRun.value.ownerSubject, gateRequest.runRef, currentRun.value.run.version, 'failed');
         if (!failed.ok) return sendResult(reply, failed);
         failedRun = failed.value;
       }
     } else if (decision === 'approved' && !resolved.replayed) {
       resumeRunAfterBoundaryAccepted(ctx, {
-        actorSubject: sub, runRef: request.value.runRef, answeredTitle: request.value.title, scope: runScope,
+        actorSubject: sub, runRef: gateRequest.runRef, answeredTitle: gateRequest.title, scope: runScope,
       });
     }
     const value = failedRun ? { ...resolved.value, run: runDto(failedRun) } : resolved.value;

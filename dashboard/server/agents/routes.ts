@@ -11,6 +11,7 @@ import { projectEntityBrief, projectEntityList, projectEntitySummary, projectLiv
 import { runtimeExecutionHost } from '../runtime/capabilities.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs } from '../entities/outputs.ts';
+import { createOutputDigestReader } from '../control/artifactFiles.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
 import { runLifecycleKind } from '../control/runLifecycle.ts';
 import type { AttentionEnvelope, HostKind, RunOutcome, RunRow, RunnableRef } from '../control/p2Contracts.ts';
@@ -157,6 +158,8 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
     .map((run) => projectableFor(ctx, run))
     .map((run) => projectRunActivity(run, now.toISOString()).row);
   const roots = Object.fromEntries(declaration.projects.map((project) => [project, `orgs/${project}`]));
+  // F4: the download digest is bound HERE, where `ctx.repoRoot` exists; the projectors stay pure.
+  const readDigest = createOutputDigestReader(ctx.repoRoot, roots);
   const events = runs
     .filter((run) => sameOwner(run.owner, input.ref))
     .flatMap((run) => {
@@ -170,7 +173,8 @@ function agentDetail(ctx: SurfaceContext, declaration: DeclaredAgentDetail): Ent
       purpose: purposeOf(declaration),
       doingNow: summary.activeRuns[0]?.title ?? 'Idle.',
       recentRuns,
-      outputs: projectEventOutputRefs(events, roots),
+      // R5: stamp the projecting entity so the download route can rebuild THESE roots and no others.
+      outputs: projectEventOutputRefs(events, roots, readDigest, { type: 'agent', id: declaration.id }),
       pendingGates: summary.gatedRunCount,
       schedule: summary.nextSchedule,
       autonomyTier: declaration.autonomyTier ?? 'Not declared',

@@ -1,5 +1,18 @@
+import type { OutputRef } from '../../server/control/p2Contracts.ts';
 import type { EntityBrief as EntityBriefData } from '../../server/entities/contracts.ts';
 import { outputHref } from '../../server/entities/outputs.ts';
+
+/**
+ * R10 — the same guard `views/RunDetail.tsx#safeDownload` applies, and for the same two reasons. A file
+ * output is downloadable only once its bytes were hashed at projection time (no digest -> the route
+ * answers 400 `digest-required`) AND the projection stamped the entity the link is scoped to (no entity
+ * -> the route cannot build a roots map and answers 404). Either way the link is dead, so none is
+ * rendered; the label still shows, which is what an operator needs to see that the output exists.
+ */
+function safeOutputHref(output: OutputRef): string | null {
+  if (output.kind === 'external-pr') return outputHref(output);
+  return output.digest && output.entity ? outputHref(output) : null;
+}
 
 export interface EntityBriefProps {
   brief: EntityBriefData;
@@ -43,9 +56,14 @@ export function EntityBrief({ brief, onSelectRun, testId }: EntityBriefProps): R
 
     <section className="entity-brief__section">
       <h3 className="entity-brief__heading">Recent outputs</h3>
-      {brief.outputs.length ? <ul className="entity-list">{brief.outputs.map((output) => <li key={`${output.kind}:${output.label}`}>
-        <a className="entity-row entity-row--link" href={outputHref(output)}><span className="entity-row__main">{output.label}</span></a>
-      </li>)}</ul> : <p className="entity-note">No recent outputs</p>}
+      {brief.outputs.length ? <ul className="entity-list">{brief.outputs.map((output) => {
+        const href = safeOutputHref(output);
+        return <li key={`${output.kind}:${output.label}`}>
+          {href
+            ? <a className="entity-row entity-row--link" href={href}><span className="entity-row__main">{output.label}</span></a>
+            : <div className="entity-row"><span className="entity-row__main">{output.label}</span></div>}
+        </li>;
+      })}</ul> : <p className="entity-note">No recent outputs</p>}
     </section>
   </div>;
 }

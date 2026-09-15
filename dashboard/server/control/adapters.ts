@@ -17,12 +17,16 @@ import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import type { ExecutionProfile } from './policy.ts';
 import { isSafeRepoRelativePath } from './proposal.ts';
+import { indexSkills } from '../registry/skills.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import {
   canonicalStageResultHash,
   canonicalResultOperationKey,
   iterationResultOperationKey,
   type AccountingAdapter,
   type CanonicalStageResultPayload,
+  type CuratedContextBlock,
+  type CuratedContextResolver,
   type ExecutionBudget,
   type ExecutionUsage,
   type ResultIntegrator,
@@ -1074,6 +1078,95 @@ export function createCuratedSkillResolver(curatedSkills: ReadonlySet<string>): 
       const unknown = input.requested.find((skill) => !SAFE_REF.test(skill) || !admitted.has(skill));
       if (unknown) return { ok: false as const, reason: `skill is not curated: ${unknown}` };
       return { ok: true as const, skills: [...input.requested] };
+    },
+  };
+}
+
+const MAX_CURATED_SKILL_BODY_CHARS = 8_000;
+const MAX_CURATED_FRAME_CHARS = 8_000;
+
+function boundCuratedText(text: string, capChars: number): string {
+  if (text.length <= capChars) return text;
+  return `${text.slice(0, capChars)}\n[TRUNCATED: exceeded ${capChars} chars]`;
+}
+
+/**
+ * F1 — server-owned resolver for bounded, best-effort curated prompt context: the already-validated
+ * skill ids' SKILL.md bodies (from the same closed `skills/<tier>/<slug>/SKILL.md` catalog
+ * `indexSkills` already reads for the roster/registry projections), the assigned agent's declared
+ * knowledge source, and the project's GOAL.md/STATE.md frame. Every lookup is a closed, deterministic
+ * path derived from server-owned inputs (a validated skill id, an agent id already re-verified by
+ * `agentAssignmentResolver.ts`, and the approved proposal's project) — never a glob over caller input.
+ * A missing catalog entry, declaration, or frame file is simply omitted and recorded as a warning
+ * string; this resolver never throws, so a resolution problem degrades the prompt, never the run.
+ */
+export function createCuratedContextResolver(repoRoot: string): CuratedContextResolver {
+  return {
+    resolve(input) {
+      requireOperationKey(input.operationKey);
+      const warnings: string[] = [];
+      const blocks: CuratedContextBlock[] = [];
+
+      if (input.skillIds.length > 0) {
+        let curated: ReturnType<typeof indexSkills>['items'] = [];
+        try {
+          curated = indexSkills(repoRoot).items.filter((entry) => entry.tier === 'curated');
+        } catch {
+          warnings.push('curated skill catalog is unreadable');
+        }
+        // R11: key on `slug` only — the closed catalog identity — so a name that collides with another
+        // skill's slug (or an earlier skill's name) can never silently overwrite it. A name alias is
+        // registered only when it does not collide with any key already claimed; a colliding name is
+        // dropped with a warning rather than resolving to the wrong skill's body.
+        const bySkillId = new Map<string, (typeof curated)[number]>();
+        for (const entry of curated) bySkillId.set(entry.slug, entry);
+        for (const entry of curated) {
+          if (!entry.name || entry.name === entry.slug) continue;
+          if (bySkillId.has(entry.name)) {
+            warnings.push(`skill name '${entry.name}' collides with another skill's id; ignoring the alias`);
+            continue;
+          }
+          bySkillId.set(entry.name, entry);
+        }
+        for (const id of input.skillIds) {
+          const entry = bySkillId.get(id);
+          if (!entry) { warnings.push(`skill '${id}' has no curated catalog entry`); continue; }
+          try {
+            const body = readFileSync(join(repoRoot, entry.path), 'utf-8');
+            blocks.push({ label: `SKILL: ${id}`, text: boundCuratedText(body, MAX_CURATED_SKILL_BODY_CHARS) });
+          } catch {
+            warnings.push(`skill '${id}' SKILL.md is unreadable`);
+          }
+        }
+      }
+
+      if (input.agentId) {
+        let knowledgeSource: readonly string[] | null = null;
+        try {
+          knowledgeSource = readDeclaredAgentDetails(repoRoot).get(input.agentId)?.knowledgeSource ?? null;
+        } catch {
+          warnings.push(`agent '${input.agentId}' declaration is unreadable`);
+        }
+        if (knowledgeSource && knowledgeSource.length > 0) {
+          blocks.push({
+            label: 'KNOWLEDGE SOURCE',
+            text: boundCuratedText(knowledgeSource.join('\n'), MAX_CURATED_FRAME_CHARS),
+          });
+        }
+      }
+
+      for (const fileName of ['GOAL.md', 'STATE.md']) {
+        const relPath = `orgs/${input.project}/${fileName}`;
+        if (!isSafeRepoRelativePath(relPath)) { warnings.push(`project '${input.project}' path is unsafe`); continue; }
+        try {
+          const text = readFileSync(join(repoRoot, relPath), 'utf-8');
+          blocks.push({ label: `PROJECT FRAME: ${fileName}`, text: boundCuratedText(text, MAX_CURATED_FRAME_CHARS) });
+        } catch {
+          warnings.push(`project '${input.project}' ${fileName} is unavailable`);
+        }
+      }
+
+      return { blocks, warnings };
     },
   };
 }

@@ -1,5 +1,5 @@
 import type { EntityBrief, EntityBuilderRequest, EntityDetail, EntityDetails, EntityGroup, EntityList } from '../../server/entities/contracts.ts';
-import type { EntitySummary, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../../server/control/p2Contracts.ts';
+import type { EntitySummary, OutputEntityRef, OutputRef, RunRow, RunnableRef, ScheduleOccurrence } from '../../server/control/p2Contracts.ts';
 import { RUN_LIFECYCLE_KINDS } from '../../server/control/runLifecycle.ts';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient.ts';
 import { record } from './decodeGuards.ts';
@@ -101,8 +101,16 @@ function group(value: unknown): EntityGroup | null {
 function output(value: unknown): OutputRef | null {
   const row = record(value);
   if (!row || typeof row.label !== 'string') return null;
-  if ((row.kind === 'repository-file' || row.kind === 'artifact') && exactKeys(row, ['kind', 'label', 'path']) && typeof row.path === 'string') {
-    return { kind: row.kind, label: row.label, path: row.path };
+  if ((row.kind === 'repository-file' || row.kind === 'artifact') && exactKeys(row, ['kind', 'label', 'path'], ['digest', 'entity']) && typeof row.path === 'string') {
+    // F4/R5: both download parameters survive the wire or neither does. A row carrying a malformed
+    // digest or entity keeps its label and loses only the link — `EntityBrief` renders no anchor.
+    const digest = typeof row.digest === 'string' && /^[0-9a-f]{64}$/.test(row.digest) ? row.digest : undefined;
+    const entityRow = record(row.entity);
+    const entity: OutputEntityRef | undefined = entityRow && (entityRow.type === 'agent' || entityRow.type === 'workflow')
+      && typeof entityRow.id === 'string' && entityRow.id !== '' && exactKeys(entityRow, ['type', 'id'])
+      ? { type: entityRow.type, id: entityRow.id }
+      : undefined;
+    return { kind: row.kind, label: row.label, path: row.path, ...(digest ? { digest } : {}), ...(entity ? { entity } : {}) };
   }
   if (row.kind === 'external-pr' && exactKeys(row, ['kind', 'label', 'owner', 'repository', 'number'])
     && typeof row.owner === 'string' && typeof row.repository === 'string' && Number.isSafeInteger(row.number) && Number(row.number) > 0) {

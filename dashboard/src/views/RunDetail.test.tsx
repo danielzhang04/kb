@@ -2,10 +2,18 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { OutputRef } from '../../server/control/p2Contracts.ts';
-import type { OperationalEventDto, RunDetailDto } from '../control/controlClient.ts';
+import type { HumanRequestDto, IterationLoopDto, OperationalEventDto, RunDetailDto } from '../control/controlClient.ts';
+import * as controlClient from '../control/controlClient.ts';
 import { SessionProvider } from '../lib/sessionContext.tsx';
 import { clearStoredSession, persistSession } from '../lib/authClient.ts';
 import { RunDetail } from './RunDetail.tsx';
+
+// Only the ceremony helper is mocked - everything else (getRun, respond, etc.) stays real, exactly as
+// the other RunDetail tests exercise it through a stubbed fetchImpl.
+vi.mock('../control/controlClient.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../control/controlClient.ts')>();
+  return { ...actual, resolveIterationGateWithCeremony: vi.fn() };
+});
 
 // The pane itself is exercised by `ConsolePane.test.tsx`; here the mock records WHICH mount the Run
 // view chose - live attach vs read-only replay, and whether a replay was handed a REST source.
@@ -87,11 +95,56 @@ function humanRequest(
   } as RunDetailDto['humanRequests'][number];
 }
 
+function iterationGateRequest(requestRef: string, title: string, gateKind?: 'iteration-park'): HumanRequestDto {
+  return {
+    requestRef,
+    runRef: 'run-1',
+    displayName: 'Release dashboard',
+    shortRef: 1,
+    stageRef: 'stage-write',
+    kind: 'approval',
+    gateKind,
+    state: 'open',
+    title,
+    prompt: `${title} prompt`,
+    ask: `${title} ask`,
+    technicalDetail: null,
+    revision: 2,
+    response: null,
+    createdAt: '2026-08-21T00:00:00.000Z',
+    updatedAt: '2026-08-21T00:00:00.000Z',
+  } as HumanRequestDto;
+}
+
+function iterationLoop(overrides: Partial<IterationLoopDto> = {}): IterationLoopDto {
+  return {
+    iterationLoopRef: 'loop-1', runRef: 'run-1', definitionHash: 'definition', iterationGroupId: 'draft-loop',
+    participants: [{ participantId: 'producer', stageRef: 'stage-write', role: 'contributor', perspective: 'Own the draft.', mandate: 'Revise it.' }],
+    routes: [{ routeId: 'rework', senderParticipantId: 'judge', recipientParticipantId: 'producer', requestKinds: ['rework'], baseResolutionStageIds: ['stage-write'] }],
+    activation: { seedParticipantId: 'producer', seedArtifactIds: ['draft'] }, initialStepId: 'judge',
+    schedule: [{ stepId: 'judge', routeId: 'rework', cycle: 'current' }], artifacts: ['draft'],
+    criteria: [{ id: 'quality', description: 'Complete.' }],
+    maxCycles: 3, cycleUnit: 'judge verdicts', terminalAuthorities: [{ participantId: 'judge', verdict: 'pass' }],
+    cyclesUsed: 2, state: 'awaiting-completion-gate', activeGenerationRefs: ['generation-1'],
+    completionGateRef: 'gate-1', version: 7,
+    createdAt: '2026-08-21T00:00:00.000Z', updatedAt: '2026-08-21T00:00:00.000Z',
+    ...overrides,
+  } as IterationLoopDto;
+}
+
 const events = [event(1, 'research complete', 'stage-research'), event(2, 'drafting now', 'stage-write')];
 const outputs: OutputRef[] = [
-  { kind: 'repository-file', label: 'Report', path: 'reports/release.md' },
-  { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
+  { kind: 'repository-file', label: 'Report', path: 'reports/release.md', digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', entity: { type: 'agent', id: 'researcher' } },
+  // R5: digest but NO projecting entity — the route could not scope it, so no link is offered.
+  { kind: 'repository-file', label: 'Unscoped report', path: 'reports/unscoped.md', digest: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc' },
+  { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123', entity: { type: 'agent', id: 'researcher' } },
   { kind: 'external-pr', label: 'Pull request', owner: 'openai', repository: 'kb', number: 42 },
+  // F4: the run's OWN integrated artifact. Its scope is the run's integration worktree, so the link
+  // names the RUN as the projecting entity - the third entity kind the download route resolves.
+  {
+    kind: 'artifact', label: 'brief.json', path: 'orgs/kb-ops/output/demo/brief.json',
+    digest: 'd'.repeat(64), entity: { type: 'run', id: 'run-1' },
+  },
 ];
 
 describe('Dashboard v3 Run view', () => {
@@ -356,6 +409,29 @@ describe('Dashboard v3 Run view', () => {
     expect(copyText.mock.calls.flat().join('\n')).not.toContain('ghp_fixture_secret_123');
   });
 
+  it('offers a hash-verified download only for a digest-bound repository file', () => {
+    render(unlocked(<RunDetail runRef="run-1" detail={detail()} events={events} outputs={outputs} />));
+    // The repository file carries a projection-time digest, so its link is a real scoped download.
+    expect(screen.getByRole('link', { name: 'Download Report' }).getAttribute('href'))
+      .toBe('/api/control/files?path=reports%2Frelease.md&sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa&entityType=agent&entityId=researcher');
+    expect(screen.queryByRole('link', { name: 'Download Unscoped report' })).toBeNull();
+    // The artifact fixture has no digest and the PR is not a file: neither may offer a download.
+    expect(screen.queryByRole('link', { name: 'Download Fixture value' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Download Pull request' })).toBeNull();
+  });
+
+  /**
+   * RED ON REVERT: drop `run` from `OutputEntityRef` (or stop projecting run outputs server-side) and
+   * this link disappears - which is exactly what the VM showed for run-dacc2a6d, a completed run whose
+   * brief.json existed on disk with no download anywhere in the UI.
+   */
+  it('offers a run-scoped download for the run own integrated artifact', () => {
+    render(unlocked(<RunDetail runRef="run-1" detail={detail({ outputs })} events={events} />));
+    expect(screen.getByRole('link', { name: 'Download brief.json' }).getAttribute('href'))
+      .toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fdemo%2Fbrief.json'
+        + `&sha256=${'d'.repeat(64)}&entityType=run&entityId=run-1`);
+  });
+
   it('falls back to detail outputs without copying a secret-looking output', async () => {
     const copyText = vi.fn(async () => undefined);
     render(unlocked(<RunDetail runRef="run-1" detail={detail({ outputs })} events={events} copyText={copyText} />));
@@ -411,5 +487,139 @@ describe('Dashboard v3 Run view', () => {
     />));
     expect(screen.getByText('Run is waiting without an open request. Repair required.')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Respond' })).toBeNull();
+  });
+
+  // RED ON REVERT: a run parked in waiting-human with its only open request an iteration completion
+  // gate must NOT show the "repair required" banner - `openGates` deliberately excludes iteration-linked
+  // requests (commit d4d3b824), so the banner has to also check `pendingIterationGates()` before
+  // declaring the run request-less. The Iteration gates section is the call to action instead.
+  it('does not show repair banner when the only open request is a pending iteration gate', () => {
+    const gate = iterationGateRequest('gate-1', 'Draft completion');
+    const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1' });
+    render(unlocked(<RunDetail
+      runRef="run-1"
+      detail={detail({ run: { ...detail().run, state: 'waiting-human' }, iterationLoops: [loop], humanRequests: [gate] })}
+      events={events}
+    />));
+    expect(screen.queryByText('Run is waiting without an open request. Repair required.')).toBeNull();
+    expect(document.querySelector('section[aria-label="Iteration gates"]')).toBeTruthy();
+    expect(screen.getByText('Draft completion')).toBeTruthy();
+  });
+
+  describe('Iteration gates', () => {
+    afterEach(() => {
+      vi.mocked(controlClient.resolveIterationGateWithCeremony).mockClear();
+    });
+
+    // RED ON REVERT: drop the "Iteration gates" section (or its buttons) from RunDetail.tsx and this
+    // fails - a run with a pending T3 completion gate raised by an iteration loop currently renders NO
+    // control for it, so nobody can clear the demo's T3 completion gate from the dashboard.
+    it('lists a pending completion gate with its allowed decisions, and never as a generic gate', () => {
+      const gate = iterationGateRequest('gate-1', 'Draft completion');
+      const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1' });
+      render(unlocked(<RunDetail
+        runRef="run-1"
+        detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
+        events={events}
+      />));
+      expect(document.querySelector('section[aria-label="Iteration gates"]')).toBeTruthy();
+      expect(screen.getByText('Draft completion')).toBeTruthy();
+      expect(screen.getByText('Draft completion prompt')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Reject' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Request changes' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Decline' })).toBeNull();
+      // Never also rendered as a generic Human Request gate (that route is refused server-side).
+      expect(screen.getByText('No active gate.')).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: 'Approve' })).toHaveLength(1);
+    });
+
+    it('lists a pending park gate with only Approve/Decline, showing the park reason', () => {
+      const gate = iterationGateRequest('gate-2', 'Iteration parked', 'iteration-park');
+      const loop = iterationLoop({
+        state: 'awaiting-park-gate', completionGateRef: undefined, interventionRef: 'gate-2', parkReason: 'no-progress',
+      });
+      render(unlocked(<RunDetail
+        runRef="run-1"
+        detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
+        events={events}
+      />));
+      expect(screen.getByText('Iteration parked')).toBeTruthy();
+      expect(screen.getByText('Park gate · no-progress')).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Decline' })).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull();
+    });
+
+    it('resolves a completion gate through the ceremony helper with the exact CAS tuple from the DTO', async () => {
+      const gate = iterationGateRequest('gate-1', 'Draft completion');
+      const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1', version: 7, activeGenerationRefs: ['generation-1'] });
+      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
+      resolved.mockResolvedValueOnce({
+        loop: { ...loop, state: 'passed' }, receipt: null, receiptVersion: null,
+        gate: { ...gate, state: 'resolved' }, interventionRequest: null,
+      });
+      render(unlocked(<RunDetail
+        runRef="run-1"
+        detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
+        events={events}
+      />));
+      await screen.findByText('Draft completion'); // let the SessionProvider's async mode fetch settle first
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+      expect(resolved.mock.calls[0]![0]).toBe('gate-1');
+      expect(resolved.mock.calls[0]![1]).toMatchObject({
+        expectedGateRef: 'gate-1', expectedGateKind: null, expectedParkReason: null,
+        expectedRequestRevision: 2, expectedLoopVersion: 7, expectedGenerationRefs: ['generation-1'],
+        decision: 'approved',
+      });
+      expect(resolved.mock.calls[0]![2]).toBe('run-token');
+      await screen.findByText('Resolved');
+    });
+
+    it('resolves a park gate through the ceremony helper with the park CAS tuple, including park reason', async () => {
+      const gate = iterationGateRequest('gate-2', 'Iteration parked', 'iteration-park');
+      const loop = iterationLoop({
+        state: 'awaiting-park-gate', completionGateRef: undefined, interventionRef: 'gate-2',
+        parkReason: 'exhausted', version: 4, activeGenerationRefs: ['generation-2', 'generation-3'],
+      });
+      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
+      resolved.mockResolvedValueOnce({
+        loop: { ...loop, state: 'declined' }, receipt: null, receiptVersion: null,
+        gate: { ...gate, state: 'resolved' }, interventionRequest: null,
+      });
+      render(unlocked(<RunDetail
+        runRef="run-1"
+        detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
+        events={events}
+      />));
+      await screen.findByText('Iteration parked'); // let the SessionProvider's async mode fetch settle first
+      fireEvent.click(screen.getByRole('button', { name: 'Decline' }));
+      await waitFor(() => expect(resolved).toHaveBeenCalledTimes(1));
+      expect(resolved.mock.calls[0]![1]).toMatchObject({
+        expectedGateRef: 'gate-2', expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
+        expectedRequestRevision: 2, expectedLoopVersion: 4, expectedGenerationRefs: ['generation-2', 'generation-3'],
+        decision: 'declined',
+      });
+    });
+
+    it('renders the server refusal code verbatim on a ceremony failure', async () => {
+      const gate = iterationGateRequest('gate-1', 'Draft completion');
+      const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1' });
+      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
+      resolved.mockRejectedValueOnce(new controlClient.ControlApiError(403, 'ceremony expired', 'ceremony-expired'));
+      render(unlocked(<RunDetail
+        runRef="run-1"
+        detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
+        events={events}
+      />));
+      await screen.findByText('Draft completion'); // let the SessionProvider's async mode fetch settle first
+      fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
+      await screen.findByRole('alert');
+      expect(screen.getByRole('alert').textContent).toBe('Ceremony refused: ceremony-expired');
+      // Not left disabled/stuck - the operator can retry after reloading.
+      expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(false);
+    });
   });
 });

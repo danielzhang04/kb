@@ -8,7 +8,7 @@
 import type { IterationOutcomeContract } from '../control/iterationOutcome.ts';
 import type { ExecutionProfile } from '../control/policy.ts';
 import type { ProposalStage, ResolvedAgentAssignment } from '../control/proposal.ts';
-import type { WorkerExecutionResult } from '../control/execution.ts';
+import type { CuratedContextBlock, DependencyResultSummary, WorkerExecutionResult } from '../control/execution.ts';
 import type { SessionRunRecord } from './sessionRuns.ts';
 import type {
   DroppedLauncher,
@@ -81,6 +81,10 @@ export type ApprovedAttemptDeclaration = AssignmentDeclaration & IterationDeclar
   skills: readonly string[]; action: string; target: string; workOrder: string;
   readScope: readonly string[]; writeScope: readonly string[]; checkpoints: readonly string[];
   proposalStage: ProposalStage; project: string;
+  /** Bounded curated-context blocks (skill bodies, knowledge source, project frame) — inert data only. */
+  curatedContext?: readonly CuratedContextBlock[];
+  /** Bounded, best-effort canonical summaries of this stage's `dependsOn` predecessors — inert data only. */
+  dependencyResults?: readonly DependencyResultSummary[];
 };
 export type AttemptParserContext = {
   runtime: 'claude' | 'codex'; stdout: string; stderrTail: string; exitCode: number | null;
