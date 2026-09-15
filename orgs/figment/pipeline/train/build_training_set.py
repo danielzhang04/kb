@@ -299,11 +299,17 @@ def _collect_cells_qwen3vl(
         if not isinstance(body, str) or not body.strip():
             raise DatasetBuildError(f"job_runner returned an empty caption for {image}")
         stripped = body.strip()
-        # m10: refuse a caption body containing a newline/control character or longer
-        # than 500 chars -- never trust a pod's raw text output into a caption file
-        # (and, downstream, into a training/gen prompt) without this floor, whatever
-        # job_runner produced it (the live pod dispatcher or a test fake alike).
-        if len(stripped) > 500 or any(ord(ch) < 32 for ch in stripped):
+        # m10/MINOR 9 (REVIEW): refuse a caption body containing a newline/control
+        # character or longer than 500 chars -- never trust a pod's raw text output
+        # into a caption file (and, downstream, into a training/gen prompt) without
+        # this floor, whatever job_runner produced it (the live pod dispatcher or a
+        # test fake alike). DEL (U+007F) and the Unicode line/paragraph separators
+        # (U+2028, U+2029) are control-adjacent line breaks `ord(ch) < 32` alone
+        # misses -- both can split a prompt across lines exactly like a raw \n would.
+        if len(stripped) > 500 or any(
+            ord(ch) < 32 or ord(ch) == 127 or ch in (" ", " ")
+            for ch in stripped
+        ):
             raise DatasetBuildError(
                 f"job_runner returned an invalid caption body for {image} (over 500 "
                 "chars or contains a newline/control character)"

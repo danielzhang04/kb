@@ -537,11 +537,16 @@ def test_qwen3vl_mode_fails_closed_on_an_empty_caption_from_the_runner(tmp_path)
     "line one\nline two",  # newline
     "control\x07char",  # bell control character
     "x" * 501,  # over 500 chars
+    "del\x7fchar",  # MINOR 9 (REVIEW): DEL (U+007F), missed by `ord(ch) < 32`
+    "line one line two",  # MINOR 9: Unicode LINE SEPARATOR
+    "line one line two",  # MINOR 9: Unicode PARAGRAPH SEPARATOR
 ])
 def test_qwen3vl_mode_m10_rejects_a_control_character_or_overlong_caption_body(tmp_path, bad_body):
-    """m10: a pod's raw text output is never trusted verbatim -- a caption body with a
-    newline/control character, or one over 500 chars, is refused before it ever
-    reaches a caption sidecar (and, downstream, a training/gen prompt)."""
+    """m10/MINOR 9: a pod's raw text output is never trusted verbatim -- a caption body
+    with a newline/control character (including DEL and the Unicode line/paragraph
+    separators, which split a prompt across lines exactly like a raw \\n would), or one
+    over 500 chars, is refused before it ever reaches a caption sidecar (and,
+    downstream, a training/gen prompt)."""
     src_dir = tmp_path / "graded"
     src_dir.mkdir()
     _make_image(src_dir / "a.png")

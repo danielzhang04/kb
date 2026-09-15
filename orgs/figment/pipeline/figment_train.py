@@ -47,6 +47,10 @@ TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
 QWEN3VL_CAPTION_START_PATH = TRAIN_DIR / "runs" / "start-qwen3vl-caption.sh.template"
 CAPTION_ARTIFACT_NAME = "captions.json"
+# MINOR 9 (REVIEW): same bound `video/video_manifest.py`'s own `MAX_JSON_BYTES` uses --
+# a pod-produced captions.json is read through the generic, otherwise-unbounded
+# `_read_json`, so this caps it explicitly before that read.
+CAPTIONS_MAX_JSON_BYTES = 256 * 1024
 TESTER_NATIVE_DIMENSIONS = {"width": 1448, "height": 2176}
 TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
@@ -303,26 +307,37 @@ def _resolve_gen_style_lora(
     plan-building work). The strength floor mirrors `training_config.py`'s own "must
     be a positive number" rule for `training.style_lora_strength`, plus an explicit
     <=1.5 ceiling for a flag override (no persona has ever validated a number this high
-    -- a plan-time typo like `15` must not reach a live gen render)."""
+    -- a plan-time typo like `15` must not reach a live gen render).
+
+    MINOR 10 (REVIEW): the SAME pins-key and <=1.5-strength validation now also applies
+    to `training["style_lora"]` when it comes from the persona's own `training.yaml`
+    default, not only from the `--style-lora` flag -- previously a persona-declared
+    style LoRA reached `_gen_workflow`/`_gen_manifest` unvalidated (an unknown key there
+    fails later, mid-plan-build, with a less specific error; an out-of-range persona
+    strength was never checked at all)."""
     if style_lora_strength is not None and style_lora is None:
         raise FigmentTrainError("--style-lora-strength requires --style-lora")
-    if style_lora is None:
+    effective_key = style_lora if style_lora is not None else training.get("style_lora")
+    flag_source = style_lora is not None
+    if effective_key is None:
         return training
-    if not isinstance(style_lora, str) or not style_lora.strip():
-        raise FigmentTrainError("--style-lora must be a non-empty string key")
+    label = "--style-lora" if flag_source else "training.style_lora"
+    if not isinstance(effective_key, str) or not effective_key.strip():
+        raise FigmentTrainError(f"{label} must be a non-empty string key")
     known = pins.get("pins", {}).get("style_loras", {})
-    if not isinstance(known, dict) or style_lora not in known:
+    if not isinstance(known, dict) or effective_key not in known:
         raise FigmentTrainError(
-            f"unknown --style-lora key {style_lora!r}; known: {sorted(known) if isinstance(known, dict) else []}"
+            f"unknown {label} key {effective_key!r}; known: {sorted(known) if isinstance(known, dict) else []}"
         )
+    strength_label = "--style-lora-strength" if flag_source else "training.style_lora_strength"
     strength = training.get("style_lora_strength") if style_lora_strength is None else style_lora_strength
     if (isinstance(strength, bool) or not isinstance(strength, (int, float))
             or not (0 < strength <= STYLE_LORA_MAX_STRENGTH)):
         raise FigmentTrainError(
-            "--style-lora-strength must be a positive number, at most "
+            f"{strength_label} must be a positive number, at most "
             f"{STYLE_LORA_MAX_STRENGTH} (got {strength!r})"
         )
-    return {**training, "style_lora": style_lora, "style_lora_strength": float(strength)}
+    return {**training, "style_lora": effective_key, "style_lora_strength": float(strength)}
 
 
 def _read_json(path: Path, *, reads=None) -> Any:
@@ -2047,6 +2062,13 @@ def _live_qwen3vl_job_runner(
         captions_path = run_out / CAPTION_ARTIFACT_NAME
         if not captions_path.is_file():
             raise FigmentTrainError(f"caption pod job did not produce {captions_path}")
+        # MINOR 9 (REVIEW): bounded the same way the video/ readers bound their own JSON
+        # reads (`video_manifest.MAX_JSON_BYTES`) -- a pod's captions.json is never
+        # trusted to be a reasonable size before it is parsed.
+        if captions_path.stat().st_size > CAPTIONS_MAX_JSON_BYTES:
+            raise FigmentTrainError(
+                f"caption pod job artifact exceeds {CAPTIONS_MAX_JSON_BYTES} bytes: {captions_path}"
+            )
         captions = _read_json(captions_path)
         try:
             return [captions[image.name] for image in images]

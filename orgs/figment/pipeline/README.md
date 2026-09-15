@@ -371,6 +371,12 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   run, any single ceiling bigger than the daily limit (train always is, by the DOP
   arithmetic above) — informational only, never a second blocker on top of
   `enforce_daily_budget`.
+- NOTE: `_budget_preflight` measures the ledger's own recorded *spend*, never another
+  in-flight plan's *reservation* — it has no way to see a `plan.json` some other
+  process is about to write — so two plans built back-to-back, each affordable alone,
+  can both "clear" here even though their combined ceilings would not fit the arc cap;
+  `enforce_arc_cap` (`pod/runpod_run.py`), which runs at launch time against the same
+  ledger, is the actual authority a live `run` cannot get past.
 - Every manifest carries its own `max_minutes`/`max_placement_attempts: 1` (no automatic
   retry on a live run) and is `--dry-run` green before it ever spends.
 
