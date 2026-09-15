@@ -298,11 +298,21 @@ def _collect_cells_qwen3vl(
     for image, body in zip(images, bodies):
         if not isinstance(body, str) or not body.strip():
             raise DatasetBuildError(f"job_runner returned an empty caption for {image}")
+        stripped = body.strip()
+        # m10: refuse a caption body containing a newline/control character or longer
+        # than 500 chars -- never trust a pod's raw text output into a caption file
+        # (and, downstream, into a training/gen prompt) without this floor, whatever
+        # job_runner produced it (the live pod dispatcher or a test fake alike).
+        if len(stripped) > 500 or any(ord(ch) < 32 for ch in stripped):
+            raise DatasetBuildError(
+                f"job_runner returned an invalid caption body for {image} (over 500 "
+                "chars or contains a newline/control character)"
+            )
         # Same "<trigger> <class>, " opening figment_train.py's own
         # _persona_trigger_clause composes for tester/gen prompts -- a descriptive
         # caption stays identity-associated whether or not DOP's trigger_word
         # injection is on (see the qwen3vl docstring above).
-        captions.append(f"{trigger} {caption_word}, {body.strip()}")
+        captions.append(f"{trigger} {caption_word}, {stripped}")
     return list(zip(images, captions))
 
 
@@ -364,7 +374,12 @@ def build_training_set(
         with Image.open(image_path) as image:
             image.convert("RGB").save(image_out, format="PNG")
         caption_text = caption.strip() + "\n"
-        caption_out.write_text(caption_text, encoding="utf-8")
+        # newline="" keeps the written bytes exactly caption_text.encode("utf-8") on
+        # every platform -- without it, Python's text-mode write translates "\n" to
+        # "\r\n" on Windows, so a caption_sha256 computed from caption_text (below)
+        # would silently mismatch the real on-disk bytes lineage.dataset_subject
+        # verifies (M4(b)).
+        caption_out.write_text(caption_text, encoding="utf-8", newline="")
         digest = hashlib.sha256(image_out.read_bytes()).hexdigest()
         entry = {
             "image": image_out.name,
@@ -372,11 +387,12 @@ def build_training_set(
             "sha256": digest,
         }
         if caption_mode == "qwen3vl":
-            # F4: per-row audit trail for a model-generated caption -- provided/class
-            # captions are operator/config text, not worth hashing the same way.
-            entry["caption_sha256"] = hashlib.sha256(
-                caption_text.encode("utf-8")
-            ).hexdigest()
+            # F4/M4(b): per-row audit trail for a model-generated caption -- provided/
+            # class captions are operator/config text, not worth hashing the same way.
+            # Hashed from the bytes actually written to disk, not the pre-write
+            # string, so this can never silently drift from what
+            # lineage.dataset_subject re-verifies.
+            entry["caption_sha256"] = hashlib.sha256(caption_out.read_bytes()).hexdigest()
         files.append(entry)
 
     manifest = {
@@ -427,8 +443,40 @@ def build_parser() -> argparse.ArgumentParser:
         help="required for --mode qwen3vl: prefixed onto every generated caption as "
              "'<trigger> <caption-word>, ...'",
     )
-    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--out", type=Path, help="required unless --plan-root is given")
+    parser.add_argument(
+        "--plan-root", type=Path, default=None,
+        help="M4: --mode qwen3vl only. PLAN (never run) one qwen3vl captioning pod "
+             "job under this plan root and print its manifest/argv -- this tool still "
+             "never talks to a pod itself (GUARDRAILS); running the planned argv, "
+             "downloading captions.json, and feeding it back into this tool's own "
+             "local assembly is a separate step (figment_train.py's "
+             "_live_qwen3vl_job_runner). Requires --creator and --trigger.",
+    )
+    parser.add_argument("--creator", help="required with --plan-root")
+    parser.add_argument("--pod-class", default="l40s", help="only meaningful with --plan-root")
+    parser.add_argument("--ledger-dir", type=Path, help="only meaningful with --plan-root")
+    parser.add_argument(
+        "--skip-pin-verify", action="store_true",
+        help="only meaningful with --plan-root; offline/test use only",
+    )
     return parser
+
+
+def _figment_train_module():
+    """Lazy-load ../figment_train.py -- only touched by --plan-root (--mode qwen3vl's
+    plan-only path). This tool otherwise never imports it: figment_train.py already
+    loads THIS module the same way, via _build_set_module() -- a two-way lazy
+    relationship (importlib, no top-level import) that avoids a hard circular
+    dependency between the two files."""
+    figment_train_path = HERE.parent / "figment_train.py"
+    spec = importlib.util.spec_from_file_location(
+        "_build_training_set_figment_train", figment_train_path,
+    )
+    assert spec and spec.loader
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -439,13 +487,57 @@ def main(argv: list[str] | None = None) -> int:
             mode = "provided"
         elif args.source_dir is not None or args.images_from is not None:
             mode = "class"
+        elif args.plan_root is not None:
+            mode = "qwen3vl"
         else:
             print(
                 "build-training-set error: one of --approved-cells, --source-dir, "
-                "or --images-from is required",
+                "--images-from, or --plan-root is required",
                 file=sys.stderr,
             )
             return 2
+
+    if args.plan_root is not None:
+        if mode != "qwen3vl":
+            print("build-training-set error: --plan-root requires --mode qwen3vl", file=sys.stderr)
+            return 2
+        if not args.creator or not args.trigger:
+            print("build-training-set error: --plan-root requires --creator and --trigger", file=sys.stderr)
+            return 2
+        if (args.source_dir is None) == (args.images_from is None):
+            print(
+                "build-training-set error: --plan-root requires exactly one of "
+                "--source-dir or --images-from",
+                file=sys.stderr,
+            )
+            return 2
+        if args.source_dir is not None:
+            images = [image for image, _ in _collect_cells_class(args.source_dir, args.caption_word)]
+        else:
+            images = [
+                image for image, _ in
+                _collect_cells_images_from(args.images_from, args.caption_word, args.exclude)
+            ]
+        figment_train = _figment_train_module()
+        try:
+            planned = figment_train.plan_qwen3vl_caption(
+                args.creator, args.trigger, images, args.plan_root,
+                pod_class=args.pod_class, ledger_dir=args.ledger_dir,
+                skip_pin_verify=args.skip_pin_verify,
+            )
+        except figment_train.FigmentTrainError as exc:
+            print(f"build-training-set error: {exc}", file=sys.stderr)
+            return 2
+        print(
+            f"planned qwen3vl caption job for {len(images)} image(s) at "
+            f"{args.plan_root.resolve() / planned['manifest']} (ceiling_usd=${planned['ceiling_usd']})"
+        )
+        print(planned["cli"])
+        return 0
+
+    if args.out is None:
+        print("build-training-set error: --out is required unless --plan-root is given", file=sys.stderr)
+        return 2
     try:
         manifest = build_training_set(
             approved_cells=args.approved_cells,
@@ -456,10 +548,12 @@ def main(argv: list[str] | None = None) -> int:
             images_from=args.images_from,
             exclude=args.exclude,
             trigger=args.trigger,
-            # No CLI-wired dispatcher exists yet (F4 wires only the local shape/contract;
-            # see the qwen3vl docstring above) -- a CLI --mode qwen3vl run fails closed
-            # with the same "requires a job_runner" error the library call would, since
-            # this tool never talks to a pod itself.
+            # No CLI-wired LIVE dispatcher exists for this direct-build path -- a CLI
+            # --mode qwen3vl run without --plan-root fails closed with the same
+            # "requires a job_runner" error the library call would, since this tool
+            # never talks to a pod itself. Use --plan-root to plan the pod job, then
+            # figment_train.py's own apply-rulings dataset assembly (or a script that
+            # imports _live_qwen3vl_job_runner directly) to actually run it.
             job_runner=None,
         )
     except DatasetBuildError as exc:

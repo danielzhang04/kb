@@ -45,6 +45,8 @@ DETAIL_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "krea2_detail_only_api.json"
 AI_TEMPLATE_PATH = TRAIN_DIR / "ai-toolkit-krea2.yaml.template"
 TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
+QWEN3VL_CAPTION_START_PATH = TRAIN_DIR / "runs" / "start-qwen3vl-caption.sh.template"
+CAPTION_ARTIFACT_NAME = "captions.json"
 TESTER_NATIVE_DIMENSIONS = {"width": 1448, "height": 2176}
 TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
@@ -810,7 +812,10 @@ def _train_manifest(
     # operator-graded output) so the two lineages can never collide on disk.
     dataset_dirname = dataset_dirname or f"{creator_id}-tensor-dataset"
     upload_files = [f"{dataset_dirname}/*.png"]
-    if training["caption_mode"] == "provided":
+    # M4: "qwen3vl" already has real .txt sidecars on disk by train time (written by
+    # apply_rulings' dataset-stage assembly through the live captioning pod job) --
+    # upload them exactly like "provided" does.
+    if training["caption_mode"] in ("provided", "qwen3vl"):
         upload_files.append(f"{dataset_dirname}/*.txt")
     upload_files.append(f"{dataset_dirname}/training.json")
     manifest.update(_pod_base(pins, training["pod_class"], stage))
@@ -840,7 +845,13 @@ def _train_manifest(
             },
         ],
         "training": _training_runtime(
-            trigger, training["caption_mode"], intermediates, final,
+            trigger,
+            # M4: the pod's own start script (start-training-aitoolkit.sh.template)
+            # has no "qwen3vl" case -- by train time the captions already exist as
+            # real .txt sidecars (written locally, same as "provided"), so the pod
+            # only ever needs to verify them, never live-caption anything itself.
+            "provided" if training["caption_mode"] == "qwen3vl" else training["caption_mode"],
+            intermediates, final,
         ),
         "jobs": [{
             "seed": 100001,
@@ -1652,6 +1663,78 @@ def _detail_manifest(
     }
 
 
+def _caption_manifest(
+    pins: dict[str, Any], creator_id: str, trigger: str, names: list[str],
+    *, pod_class: str = "l40s",
+) -> dict[str, Any]:
+    """M4: qwen3vl captioning as one pinned pod job through the existing harness --
+    same manifest shape `_train_manifest` already uses (`_pod_base`, a ComfyUI
+    transport-sentinel job satisfying the harness's own job-completion contract while
+    `training.start_script_*` does the real work in the background, `artifacts` +
+    `wait_for` for the downloaded result), never a second framework.
+
+    `names` are filenames already staged under
+    `train/runs/_uploads/<creator_id>/` (`_copy_detail_images`'s own convention,
+    reused here -- pod/runpod_run.py's upload expansion refuses any path outside the
+    manifest's own directory, so an arbitrary source image must be staged first).
+
+    The pinned `caption` pin profile's safetensors shards (verified sha256,
+    tensor-pins.yaml) download through the SAME `manifest["models"]` mechanism every
+    other stage uses -- no separate transport. The small companion config/tokenizer
+    files are fetched at the SAME pinned, immutable revision at pod time (same
+    precedent as `start-training-aitoolkit.sh.template`'s own module-11
+    companion-model prewarm for Qwen3-VL-4B-Instruct / Qwen-Image)."""
+    caption_pin = pins["pins"]["caption"]
+    models = caption_pin.get("models")
+    if not isinstance(models, list) or not models:
+        raise FigmentTrainError("pins.pins.caption.models must be a non-empty list")
+    model_pin = models[0]
+    for field in ("repo_id", "revision", "destination_dir"):
+        if not isinstance(model_pin.get(field), str) or not model_pin[field].strip():
+            raise FigmentTrainError(f"pins.pins.caption model pin is missing {field!r}")
+    settings = _build_set_module().QWEN3VL_CAPTION_SETTINGS
+    return {
+        **_pod_base(pins, pod_class, "caption"),
+        "models": deepcopy(models),
+        "custom_nodes": deepcopy(caption_pin.get("custom_nodes", [])),
+        "workflow": {"1": {"class_type": "KSampler", "inputs": {"seed": 100001}}},
+        "seed_fields": ["seed", "noise_seed"],
+        "uploads": [{
+            "files": [f"_uploads/{creator_id}/{name}" for name in names]
+                     + [f"_uploads/{creator_id}/_images.ready"],
+            "subfolder": trigger,
+            "type": "input",
+            "overwrite": True,
+        }],
+        "training": {
+            "trigger": trigger,
+            "caption_model_repo": model_pin["repo_id"],
+            "caption_model_revision": model_pin["revision"],
+            "caption_model_dir": model_pin["destination_dir"],
+            "caption_model_dtype": settings["dtype"],
+            "caption_max_resolution": settings["max_resolution"],
+            "caption_max_new_tokens": settings["max_new_tokens"],
+            "hf_home": "/workspace/hf",
+            "complete_marker": "/workspace/output/_caption.complete",
+            "failed_marker": "/workspace/output/_caption.failed",
+            "start_script_path": "/workspace/start-qwen3vl-caption.sh",
+            "start_script_file": "start-qwen3vl-caption.sh.template",
+        },
+        "artifacts": [{
+            "remote": CAPTION_ARTIFACT_NAME,
+            "local": CAPTION_ARTIFACT_NAME,
+            "type": "output",
+            "wait_for": "_caption.complete",
+        }],
+        "jobs": [{
+            "seed": 100001,
+            "output_name": f"caption-transport-sentinel-{trigger}",
+            "substitutions": [],
+            "expected_images": 1,
+        }],
+    }
+
+
 def _render_training_config(
     trigger: str, steps: int, save_every: int, *,
     dop_enabled: bool = False, dop_multiplier: float = 1.0, dop_class: str = "person",
@@ -1792,6 +1875,97 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: P
     if "_budget" in manifest:
         result["budget"] = manifest["_budget"]
     return result
+
+
+def plan_qwen3vl_caption(
+    creator_id: str, trigger: str, image_paths: list[Path], plan_root: Path,
+    *, pod_class: str = "l40s", ledger_dir: Path | None = None,
+    skip_pin_verify: bool = False,
+) -> dict[str, Any]:
+    """M4: plan (never run) one qwen3vl captioning pod job -- the exact `_planned_run`
+    pattern `build_plan` uses for every other stage. Exposed for
+    `build_training_set.py --mode qwen3vl --plan-root <root>` (a local, never-a-pod
+    planning step, consistent with that tool's own "runs locally, never on a pod"
+    charter) and for `_live_qwen3vl_job_runner` below, which plans then actually
+    dispatches. Writes `<plan_root>/train/runs/<trigger>-tensor-caption.yaml` and
+    stages every image under `_uploads/<creator_id>/` (`_copy_detail_images`'s own
+    convention -- the harness refuses any upload path outside the manifest's own
+    directory). Never calls `subprocess`."""
+    plan_root = Path(plan_root).resolve()
+    pins = _read_json(PINS_PATH)
+    if not skip_pin_verify:
+        module = _verify_pins_module()
+        try:
+            results = module.verify_pins(pins, stages=["caption"])
+        except module.VerifyPinsError as exc:
+            raise FigmentTrainError(f"pin verification could not run: {exc}") from exc
+        if results:
+            lines = [
+                f"[caption] {problem}"
+                for problems in results.values() for problem in problems
+            ]
+            raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
+    names = _copy_detail_images(plan_root, {"id": creator_id}, image_paths)
+    upload_dir = plan_root / "train" / "runs" / "_uploads" / creator_id
+    (upload_dir / "_images.ready").write_text("", encoding="utf-8")
+    manifest = _caption_manifest(pins, creator_id, trigger, names, pod_class=pod_class)
+    manifest_path = plan_root / "train" / "runs" / f"{trigger}-tensor-caption.yaml"
+    if manifest_path.exists():
+        raise FigmentTrainError(
+            f"refusing to overwrite an existing caption manifest: {manifest_path}"
+        )
+    _write_json(manifest_path, manifest)
+    resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
+    run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
+    return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
+
+
+def _live_qwen3vl_job_runner(
+    creator_id: str, trigger: str, plan_root: Path, *, pod_class: str = "l40s",
+    ledger_dir: Path | None = None, skip_pin_verify: bool = False,
+):
+    """M4: the real dispatcher `build_training_set.py`'s `qwen3vl` caption mode
+    requires -- never invoked by build_training_set.py itself (GUARDRAILS:
+    build_training_set.py runs locally, never on a pod), only by a caller that owns a
+    plan root and a ledger (apply_rulings's own dataset-stage assembly, below). Plans
+    the job (`plan_qwen3vl_caption`), dispatches and verifies it exactly the way
+    `run_planned_stage` dispatches every other stage's run (`subprocess.run` the
+    frozen argv, then `verify_run_record`) -- not a second, parallel dispatch
+    mechanism, the same one, inlined for a job that isn't a STAGES plan entry. Reads
+    the downloaded `captions.json` artifact and returns bodies in the job's own image
+    order, satisfying `build_training_set.JobRunner`'s exact contract."""
+    resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
+
+    def _runner(job: dict[str, Any]) -> list[str]:
+        images = [Path(path) for path in job["images"]]
+        planned = plan_qwen3vl_caption(
+            creator_id, trigger, images, plan_root, pod_class=pod_class,
+            ledger_dir=resolved_ledger_dir, skip_pin_verify=skip_pin_verify,
+        )
+        manifest_path = plan_root / planned["manifest"]
+        run_out = plan_root / planned["out"]
+        try:
+            result = subprocess.run(planned["argv"], cwd=ROOT)
+        except OSError as exc:
+            raise FigmentTrainError(
+                f"could not launch the caption harness command: {exc}"
+            ) from exc
+        if result.returncode != 0:
+            raise FigmentTrainError(
+                f"caption harness stopped with exit code {result.returncode}; no retry attempted"
+            )
+        manifest = _read_json(manifest_path)
+        verify_run_record("caption", manifest, run_out, resolved_ledger_dir)
+        captions_path = run_out / CAPTION_ARTIFACT_NAME
+        if not captions_path.is_file():
+            raise FigmentTrainError(f"caption pod job did not produce {captions_path}")
+        captions = _read_json(captions_path)
+        try:
+            return [captions[image.name] for image in images]
+        except KeyError as exc:
+            raise FigmentTrainError(f"caption pod job did not caption {exc}") from exc
+
+    return _runner
 
 
 def _budget_preflight(
@@ -4015,18 +4189,42 @@ def apply_rulings(
                     f"{index:03d}-{row['image_id']}{source.suffix.lower()}",
                 )
             builder = _build_set_module()
-            try:
-                builder.build_training_set(
-                    approved_cells=None,
-                    source_dir=None,
-                    caption_mode="class",
-                    out_dir=temporary_dataset,
-                    caption_word="woman",
-                    images_from=[temporary_approved],
-                    exclude=None,
+            # M4: an operator-declared `training.caption_mode: "qwen3vl"` routes
+            # through the live pinned pod job (_live_qwen3vl_job_runner) instead of
+            # the single-word "class" caption -- everything else about this local
+            # assembly step is unchanged. Any other caption_mode value keeps the
+            # existing "class" behaviour (build_training_set.py's own "provided" mode
+            # is not reachable here -- it needs operator-authored captions this
+            # function never has).
+            qwen3vl = plan.get("training", {}).get("caption_mode") == "qwen3vl"
+            build_kwargs: dict[str, Any] = dict(
+                approved_cells=None,
+                source_dir=None,
+                out_dir=temporary_dataset,
+                caption_word="woman",
+                images_from=[temporary_approved],
+                exclude=None,
+            )
+            if qwen3vl:
+                trigger = plan["training"]["trigger"]
+                build_kwargs.update(
+                    caption_mode="qwen3vl",
+                    trigger=trigger,
+                    job_runner=_live_qwen3vl_job_runner(
+                        creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
+                    ),
                 )
+            else:
+                build_kwargs["caption_mode"] = "class"
+            try:
+                builder.build_training_set(**build_kwargs)
             except ValueError as exc:
                 raise FigmentTrainError(f"build_training_set rejected approved images: {exc}") from exc
+            except FigmentTrainError as exc:
+                # Only ever raised from inside the live qwen3vl job_runner above (a
+                # real pod/ledger/artifact failure) -- kept distinct from a rejected
+                # image so the operator sees which layer actually failed.
+                raise FigmentTrainError(f"qwen3vl caption pod job failed: {exc}") from exc
             shutil.copy2(root / plan["configs"]["train"], temporary_dataset / "training.json")
             approved_dir.parent.mkdir(parents=True, exist_ok=True)
             dataset_dir.parent.mkdir(parents=True, exist_ok=True)

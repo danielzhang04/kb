@@ -53,6 +53,15 @@
           "artifact_download_seconds": 180,
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "bash /workspace/start-training-aitoolkit.sh", "extra_args": ["--cpu", "--disable-all-custom-nodes"]}
         },
+        "caption": {
+          "max_minutes": 90,
+          "container_disk_gb": 80,
+          "volume_gb": 200,
+          "readiness_timeout_seconds": 3600,
+          "job_timeout_seconds": 1200,
+          "artifact_download_seconds": 120,
+          "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "bash /workspace/start-qwen3vl-caption.sh", "extra_args": ["--cpu", "--disable-all-custom-nodes"]}
+        },
         "train": {
           "max_minutes": 270,
           "container_disk_gb": 80,
@@ -192,6 +201,17 @@
         {"name": "RES4LYF", "git_url": "https://github.com/ClownsharkBatwing/RES4LYF.git", "installer_pin": "e716cd1cb2c5cff90131bf4914b75b75a0489d48"},
         {"name": "ComfyUI-Impact-Pack", "git_url": "https://github.com/ltdrdata/ComfyUI-Impact-Pack.git", "installer_pin": "429d0159ad429e64d2b3916e6e7be9c22d025c3c"}
       ]
+    },
+    "caption": {
+      "models": [
+        {"repo_id": "Qwen/Qwen3-VL-8B-Instruct", "filename": "model-00001-of-00004.safetensors", "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b", "sha256": "d5d0aef0eb170fc7453a296c43c0849a56f510555d3588e4fd662bb35490aefa", "destination_dir": "/workspace/hf-models/qwen3-vl-8b-instruct"},
+        {"repo_id": "Qwen/Qwen3-VL-8B-Instruct", "filename": "model-00002-of-00004.safetensors", "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b", "sha256": "8be88fb5501e4d5719a6d4cc212e6a13480330e74f3e8c77daa1a68f199106b5", "destination_dir": "/workspace/hf-models/qwen3-vl-8b-instruct"},
+        {"repo_id": "Qwen/Qwen3-VL-8B-Instruct", "filename": "model-00003-of-00004.safetensors", "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b", "sha256": "83de00eafe6e0d57ccd009dbcf71c9974d74df2f016c27afb7e95aafd16b2192", "destination_dir": "/workspace/hf-models/qwen3-vl-8b-instruct"},
+        {"repo_id": "Qwen/Qwen3-VL-8B-Instruct", "filename": "model-00004-of-00004.safetensors", "revision": "0c351dd01ed87e9c1b53cbc748cba10e6187ff3b", "sha256": "0a88b98e9f96270973f567e6a2c103ede6ccdf915ca3075e21c755604d0377a5", "destination_dir": "/workspace/hf-models/qwen3-vl-8b-instruct"}
+      ],
+      "custom_nodes": [],
+      "licence": "apache-2.0",
+      "licence_verified": "2026-09-15 (M4): api/models/Qwen/Qwen3-VL-8B-Instruct tags include license:apache-2.0 -- matches; sha256/revision HEAD-verified live against huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/<filename> (x-repo-commit/x-linked-etag) for all 4 shards. Small companion files (config/tokenizer/index, ~15MB total) are fetched live at this SAME pinned revision by start-qwen3vl-caption.sh.template -- same precedent as start-training-aitoolkit.sh.template's own Qwen3-VL-4B-Instruct/Qwen-Image companion prewarm -- and are deliberately not pinned here: HF's x-linked-etag for a non-LFS file is a 40-char git blob SHA-1, not a content sha256, so it cannot be verified through verify_model_pin's sha256 comparison the way every other pin in this file is."
     },
     "style_loras": {
       "inline-skin": {

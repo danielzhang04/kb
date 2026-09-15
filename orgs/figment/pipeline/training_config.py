@@ -66,7 +66,14 @@ DEFAULT_TRAINING = {
     "dop_class": "person",
 }
 ALLOWED_ARCHES = {"krea2"}
-ALLOWED_CAPTION_MODES = {"provided", "auto", "single_word"}
+# M4: "qwen3vl" is an operator-facing declaration only -- apply_rulings' dataset-stage
+# assembly (figment_train.py) routes it through the live pinned qwen3vl captioning pod
+# job and writes real .txt sidecars locally, exactly like "provided" does, BEFORE any
+# train plan is ever built. `_train_manifest` maps it to the pod-facing "provided"
+# value the train pod's own start script recognizes (start-training-aitoolkit.sh.template
+# has no "qwen3vl" case -- by train time the captions already exist as real files, so
+# the pod only ever needs to verify them, the same as "provided").
+ALLOWED_CAPTION_MODES = {"provided", "auto", "single_word", "qwen3vl"}
 SAFE_ID = re.compile(r"^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$")
 SAFE_TRIGGER = re.compile(r"^[a-z][a-z0-9]*$")
 

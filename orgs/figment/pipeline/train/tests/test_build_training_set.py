@@ -533,6 +533,40 @@ def test_qwen3vl_mode_fails_closed_on_an_empty_caption_from_the_runner(tmp_path)
         )
 
 
+@pytest.mark.parametrize("bad_body", [
+    "line one\nline two",  # newline
+    "control\x07char",  # bell control character
+    "x" * 501,  # over 500 chars
+])
+def test_qwen3vl_mode_m10_rejects_a_control_character_or_overlong_caption_body(tmp_path, bad_body):
+    """m10: a pod's raw text output is never trusted verbatim -- a caption body with a
+    newline/control character, or one over 500 chars, is refused before it ever
+    reaches a caption sidecar (and, downstream, a training/gen prompt)."""
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    with pytest.raises(bts.DatasetBuildError, match="invalid caption body"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER,
+            job_runner=lambda job: [bad_body],
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_qwen3vl_mode_m10_accepts_a_caption_body_at_exactly_the_500_char_ceiling(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    body = "x" * 500
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+        out_dir=tmp_path / "out", trigger=TRIGGER,
+        job_runner=lambda job: [body],
+    )
+    assert manifest["count"] == 1
+
+
 def test_cli_qwen3vl_mode_fails_closed_with_no_wired_dispatcher(tmp_path, capsys):
     """F4 wires the local shape/contract only -- no CLI-reachable dispatcher exists yet,
     so a real CLI invocation must still fail closed, never silently write garbage
@@ -546,6 +580,42 @@ def test_cli_qwen3vl_mode_fails_closed_with_no_wired_dispatcher(tmp_path, capsys
     ])
     assert rc == 2
     assert "job_runner" in capsys.readouterr().err
+
+
+def test_cli_plan_root_plans_a_caption_pod_job_without_running_anything(tmp_path, capsys):
+    """M4: --plan-root PLANS (never runs) one qwen3vl caption pod job -- same
+    contract as figment_train.py's own `plan` command: manifest + argv on disk,
+    nothing dispatched (plan_qwen3vl_caption never calls subprocess -- only
+    figment_train.py's _live_qwen3vl_job_runner, exercised separately, does)."""
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    _make_image(src_dir / "b.png")
+    plan_root = tmp_path / "plan"
+    rc = bts.main([
+        "--mode", "qwen3vl", "--source-dir", str(src_dir), "--trigger", TRIGGER,
+        "--creator", "creator-002", "--plan-root", str(plan_root),
+        "--skip-pin-verify",
+    ])
+    out = capsys.readouterr().out
+    assert rc == 0, out
+    manifest_path = plan_root / "train" / "runs" / f"{TRIGGER}-tensor-caption.yaml"
+    assert manifest_path.is_file()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["models"][0]["repo_id"] == "Qwen/Qwen3-VL-8B-Instruct"
+    for model in manifest["models"]:
+        assert model["filename"].endswith(".safetensors")
+    assert manifest["artifacts"] == [{
+        "remote": "captions.json", "local": "captions.json",
+        "type": "output", "wait_for": "_caption.complete",
+    }]
+    uploaded = manifest["uploads"][0]["files"]
+    assert f"_uploads/creator-002/a.png" in uploaded
+    assert f"_uploads/creator-002/b.png" in uploaded
+    assert f"_uploads/creator-002/_images.ready" in uploaded
+    assert (plan_root / "train" / "runs" / "_uploads" / "creator-002" / "a.png").is_file()
+    assert (plan_root / "train" / "runs" / "_uploads" / "creator-002" / "_images.ready").is_file()
+    assert "--max-usd" in out
 
 
 # ---------------------------------------------------------------------------

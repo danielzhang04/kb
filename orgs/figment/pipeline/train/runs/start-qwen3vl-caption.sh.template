@@ -1,0 +1,143 @@
+#!/usr/bin/env bash
+# Qwen3-VL-8B-Instruct auto-captioning launcher (M4), rendered into the pod
+# bootstrap by runpod_run.py and executed as comfyui.start_command exactly the way
+# start-training-aitoolkit.sh.template is -- the harness appends
+# --listen/--port/--output-directory, which reach ComfyUI through "$@". ComfyUI is
+# only ever used here for the harness's own health check and upload/output
+# transport; the real work (captioning) runs as a background script, gated by the
+# same complete_marker/failed_marker contract every other artifact-mode manifest
+# (train, smoke) already uses.
+#
+# UNVERIFIED on this harness: no pod has run this template yet (same honesty this
+# file's sibling once carried for its own "auto" branch, before that branch was
+# superseded by this dedicated captioning job -- M4).
+set -euo pipefail
+
+trigger='{{trigger}}'
+model_dir='{{caption_model_dir}}'
+model_repo='{{caption_model_repo}}'
+model_revision='{{caption_model_revision}}'
+model_dtype='{{caption_model_dtype}}'
+max_resolution='{{caption_max_resolution}}'
+max_new_tokens='{{caption_max_new_tokens}}'
+images_root="/workspace/ComfyUI/input/${trigger}"
+export HF_HOME='{{hf_home}}'
+
+output_dir=/workspace/output
+caption_log="${output_dir}/_caption.log"
+mkdir -p "$output_dir" "$images_root" "$HF_HOME"
+: > "$caption_log"
+rm -f "${output_dir}/_caption.complete" "${output_dir}/_caption.failed"
+
+log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$caption_log"; }
+comfy_pid=''
+fail() {
+  printf '%s\n' "$*" > "${output_dir}/_caption.failed"
+  log "FAILED $*"
+  if [[ -n "$comfy_pid" ]] && kill -0 "$comfy_pid" 2>/dev/null; then
+    wait "$comfy_pid" || true
+  fi
+  exit 1
+}
+
+# --- 1. ComfyUI comes up; the harness only now uploads the images -------------
+python /workspace/ComfyUI/main.py "$@" &
+comfy_pid=$!
+
+while [[ ! -f "${images_root}/_images.ready" ]]; do
+  kill -0 "$comfy_pid" 2>/dev/null || fail 'ComfyUI stopped before images upload'
+  sleep 2
+done
+log 'images marker observed'
+
+# --- 2. caption every uploaded image with the pinned Qwen3-VL-8B-Instruct ------
+log "captioning with ${model_repo}@${model_revision} (dtype=${model_dtype}, max_resolution=${max_resolution}, max_new_tokens=${max_new_tokens})"
+IMAGES_DIR="$images_root" MODEL_DIR="$model_dir" MODEL_REPO="$model_repo" \
+MODEL_REVISION="$model_revision" MODEL_DTYPE="$model_dtype" MAX_RES="$max_resolution" \
+MAX_TOKENS="$max_new_tokens" OUT_FILE="${output_dir}/captions.json" \
+python - <<'PYCAP' || fail 'qwen3vl captioning failed'
+import json
+import os
+import pathlib
+import sys
+
+import torch
+from huggingface_hub import hf_hub_download
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+images_dir = pathlib.Path(os.environ["IMAGES_DIR"])
+model_dir = os.environ["MODEL_DIR"]
+repo_id = os.environ["MODEL_REPO"]
+revision = os.environ["MODEL_REVISION"]
+dtype_name = os.environ["MODEL_DTYPE"]
+max_resolution = int(os.environ["MAX_RES"])
+max_new_tokens = int(os.environ["MAX_TOKENS"])
+out_file = pathlib.Path(os.environ["OUT_FILE"])
+
+# The safetensors shards were already pinned and downloaded by the harness's own
+# manifest["models"] mechanism (verified sha256, no live weight fetch here). The
+# remaining small companion files (config/tokenizer/index) are fetched fresh at the
+# SAME pinned, immutable revision -- same precedent as this pod's own module-11
+# companion-model prewarm (Qwen3-VL-4B-Instruct / Qwen-Image).
+for filename in (
+    "config.json", "generation_config.json", "model.safetensors.index.json",
+    "tokenizer.json", "tokenizer_config.json", "chat_template.json",
+    "preprocessor_config.json", "video_preprocessor_config.json",
+    "merges.txt", "vocab.json",
+):
+    try:
+        hf_hub_download(repo_id, filename, revision=revision, local_dir=model_dir)
+    except Exception as exc:  # a handful of these are optional across revisions
+        print(f"companion file {filename} unavailable: {exc}", file=sys.stderr)
+
+dtype = {"float8": torch.float8_e4m3fn, "bfloat16": torch.bfloat16}.get(dtype_name)
+if dtype is None:
+    raise SystemExit(f"unknown caption model dtype: {dtype_name}")
+
+instruction = (
+    "Caption this image as if you were going to try to generate it with an image "
+    "generator. Be thorough. Do not say things like 'It appears that' or 'possibly'. "
+    "Start out with things like 'A person on the beach'. No preamble."
+)
+processor = AutoProcessor.from_pretrained(model_dir)
+model = AutoModelForImageTextToText.from_pretrained(
+    model_dir, dtype=dtype, device_map="auto",
+).eval()
+
+captions: dict[str, str] = {}
+for image_path in sorted(images_dir.iterdir()):
+    if image_path.name == "_images.ready" or image_path.suffix.lower() not in {
+        ".png", ".jpg", ".jpeg", ".webp",
+    }:
+        continue
+    messages = [{"role": "user", "content": [
+        {
+            "type": "image", "url": str(image_path),
+            "max_pixels": max_resolution * max_resolution,
+        },
+        {"type": "text", "text": instruction},
+    ]}]
+    inputs = processor.apply_chat_template(
+        messages, add_generation_prompt=True, tokenize=True,
+        return_dict=True, return_tensors="pt",
+    ).to(model.device)
+    generated = model.generate(**inputs, max_new_tokens=max_new_tokens, do_sample=False)
+    text = processor.batch_decode(
+        generated[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True,
+    )[0].strip()
+    # m10: refuse a caption body with a newline/control character or over 500 chars --
+    # never write a malformed body into the artifact the harness downloads. The
+    # authoritative check lives in build_training_set.py's own
+    # _collect_cells_qwen3vl, which re-validates every body it reads back; this is a
+    # fail-fast mirror so a bad pod response never silently ships as a valid artifact.
+    if len(text) > 500 or any(ord(ch) < 32 for ch in text):
+        raise SystemExit(f"caption body invalid for {image_path.name}: {text!r}")
+    captions[image_path.name] = text
+
+if not captions:
+    raise SystemExit("no images were captioned")
+out_file.write_text(json.dumps(captions, ensure_ascii=False, indent=2), encoding="utf-8")
+PYCAP
+log 'captions written'
+touch "${output_dir}/_caption.complete"
+wait "$comfy_pid"

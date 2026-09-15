@@ -2229,3 +2229,224 @@ def test_build_plan_names_a_single_run_over_the_daily_limit_without_refusing(
     assert preflight["over_arc"] is False
     assert preflight["accepted"] is False
     assert train_run["manifest"] in preflight["runs_over_daily_limit"]
+
+
+def test_apply_rulings_dataset_stage_routes_through_the_live_qwen3vl_job_when_declared(
+    command, tmp_path, monkeypatch,
+):
+    """M4 end-to-end (offline): `training.caption_mode == "qwen3vl"` routes
+    apply-rulings' dataset-stage local assembly through `_live_qwen3vl_job_runner` --
+    one pinned pod job is planned and dispatched (the fake harness proves the SAME
+    argv/ledger contract every other stage's live call uses), its `captions.json`
+    artifact is read back, and the resulting `dataset_manifest.json`/
+    `dataset-approval.json` carry `caption_mode: "qwen3vl"` with a bound
+    `caption_sha256` per row -- `lineage.dataset_subject` (called by apply_rulings
+    itself right after) accepts it, proving the M4(b) lineage widening end to end."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    persona_path = personas_root / "creator-002" / "persona.yaml"
+    persona_document = load_json(persona_path)
+    persona_document.setdefault("training", {})["caption_mode"] = "qwen3vl"
+    persona_path.write_text(json.dumps(persona_document, indent=2) + "\n", encoding="utf-8")
+    out = tmp_path / "qwen3vl-dataset"
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "figment-2026-09-15.tsv"
+    ledger.write_text("model\tstep\tusd\n", encoding="utf-8")
+
+    command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root,
+        skip_pin_verify=True, ledger_dir=ledger_dir,
+    )
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+    grade = command.build_grade("creator-002", "dataset", plan_file)
+    template = load_json(Path(grade["rulings_template"]))
+    for ruling in template["rulings"]:
+        ruling.update({
+            "decision": "keep", "identity": "pass", "realism": "pass",
+            "hands": "pass", "lighting": "pass", "adult_read": "pass",
+            "garment_integrity": "pass", "real_person_resemblance": "clear",
+            "gate_override": "operator manually confirmed identity from the full-res original",
+        })
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:00:00Z"})
+    filled = Path(grade["rulings_template"]).with_name("qwen3vl-filled.json")
+    filled.write_text(json.dumps(template), encoding="utf-8")
+
+    calls: list[str] = []
+
+    def fake_harness(argv, cwd=None):
+        manifest_path = Path(argv[argv.index("--manifest") + 1])
+        run_out_dir = Path(argv[argv.index("--out") + 1])
+        job_manifest = load_json(manifest_path)
+        calls.append(manifest_path.name)
+        run_out_dir.mkdir(parents=True, exist_ok=True)
+        images_dir = manifest_path.parent / "_uploads" / "creator-002"
+        captions = {
+            p.name: f"a photo of the subject, cell {index}"
+            for index, p in enumerate(sorted(images_dir.glob("*.png")))
+        }
+        (run_out_dir / "captions.json").write_text(json.dumps(captions), encoding="utf-8")
+        pod_id = "pod-caption-1"
+        receipt = {
+            "error": None, "dry_run": False, "pod_id": pod_id, "ledger_day": "2026-09-15",
+            "termination_verified": True, "estimated_actual_usd": 0.01,
+            "placement_attempts": [{
+                "pod_id": pod_id, "estimated_actual_usd": 0.01, "termination_verified": True,
+            }],
+            "artifacts": [{
+                "remote": "captions.json",
+                "bytes": (run_out_dir / "captions.json").stat().st_size,
+            }],
+        }
+        (run_out_dir / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+        model = command._pod_runner_module().gpu_model_label(job_manifest["gpu"]["type"])
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(command.subprocess, "run", fake_harness)
+    result = command.apply_rulings("creator-002", "dataset", plan_file, filled)
+
+    assert len(calls) == 1 and "tensor-caption.yaml" in calls[0]
+    dataset_dir = out / "train" / "runs" / "creator-002-tensor-dataset"
+    dataset_manifest = load_json(dataset_dir / "dataset_manifest.json")
+    assert dataset_manifest["caption_mode"] == "qwen3vl"
+    assert dataset_manifest["count"] == 30
+    for row in dataset_manifest["files"]:
+        caption_text = (dataset_dir / row["caption_file"]).read_text(encoding="utf-8")
+        assert row["caption_sha256"] == hashlib.sha256(caption_text.encode("utf-8")).hexdigest()
+        assert caption_text.startswith("creator002krea2 woman, a photo of the subject")
+    assert (dataset_dir / "_dataset.ready").is_file()
+    approval = load_json(dataset_dir / "dataset-approval.json")
+    assert approval["schema"] == command._lineage_module().DATASET_APPROVAL_SCHEMA
+    assert approval["subject"]["caption_mode"] == "qwen3vl"
+    assert Path(result["approved_list"]).is_file()
+
+
+def test_caption_manifest_carries_only_pinned_safetensors_and_no_pickle(command):
+    pins = command._read_json(command.PINS_PATH)
+    manifest = command._caption_manifest(pins, "creator-002", "creator002krea2", ["01.png", "02.png"])
+    for model in manifest["models"]:
+        assert model["filename"].endswith(".safetensors")
+        assert not model["filename"].endswith((".pt", ".pth", ".pkl"))
+        assert isinstance(model["sha256"], str) and len(model["sha256"]) == 64
+    assert manifest["custom_nodes"] == []
+    assert manifest["artifacts"] == [{
+        "remote": "captions.json", "local": "captions.json",
+        "type": "output", "wait_for": "_caption.complete",
+    }]
+    assert manifest["uploads"][0]["files"] == [
+        "_uploads/creator-002/01.png", "_uploads/creator-002/02.png",
+        "_uploads/creator-002/_images.ready",
+    ]
+    assert manifest["training"]["complete_marker"] == "/workspace/output/_caption.complete"
+    assert manifest["training"]["failed_marker"] == "/workspace/output/_caption.failed"
+    assert manifest["training"]["start_script_file"] == "start-qwen3vl-caption.sh.template"
+
+
+def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess(
+    command, tmp_path, monkeypatch,
+):
+    def _forbidden(*args, **kwargs):
+        pytest.fail("plan_qwen3vl_caption must never invoke subprocess")
+    monkeypatch.setattr(command.subprocess, "run", _forbidden)
+
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("a.png", "b.png"):
+        (images_dir / name).write_bytes(PNG_1X1)
+    plan_root = tmp_path / "plan"
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2",
+        [images_dir / "a.png", images_dir / "b.png"], plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    assert manifest_path.is_file()
+    assert "--max-usd" in planned["argv"]
+    assert planned["ceiling_usd"] == command.manifest_ceiling(load_json(manifest_path))
+
+
+def test_live_qwen3vl_job_runner_rejects_a_pod_that_never_produced_captions(
+    command, tmp_path, monkeypatch,
+):
+    """A pod that "succeeds" (rc=0, run.json termination_verified, and even claims a
+    downloaded captions.json in run.json's own artifacts list) but whose captions.json
+    is not actually on disk must still fail closed -- never silently promote an empty
+    caption set on the strength of a claimed byte count alone."""
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "figment-2026-09-15.tsv"
+    ledger.write_text("model\tstep\tusd\n", encoding="utf-8")
+
+    def fake_harness(argv, cwd=None):
+        manifest_path = Path(argv[argv.index("--manifest") + 1])
+        job_manifest = load_json(manifest_path)
+        run_out_dir = Path(argv[argv.index("--out") + 1])
+        run_out_dir.mkdir(parents=True, exist_ok=True)
+        pod_id = "p1"
+        (run_out_dir / "run.json").write_text(json.dumps({
+            "error": None, "dry_run": False, "pod_id": pod_id, "ledger_day": "2026-09-15",
+            "termination_verified": True, "estimated_actual_usd": 0.01,
+            "placement_attempts": [{
+                "pod_id": pod_id, "estimated_actual_usd": 0.01, "termination_verified": True,
+            }],
+            # Claims the artifact downloaded clean -- but the file is never actually
+            # written below, proving the caller's own captions_path.is_file() check
+            # (not just verify_run_record's claimed-bytes bookkeeping) is load-bearing.
+            "artifacts": [{"remote": "captions.json", "bytes": 42}],
+        }), encoding="utf-8")
+        model = command._pod_runner_module().gpu_model_label(job_manifest["gpu"]["type"])
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(command.subprocess, "run", fake_harness)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    (images_dir / "a.png").write_bytes(PNG_1X1)
+    runner = command._live_qwen3vl_job_runner(
+        "creator-002", "creator002krea2", tmp_path / "plan",
+        ledger_dir=ledger_dir, skip_pin_verify=True,
+    )
+    with pytest.raises(command.FigmentTrainError, match="did not produce"):
+        runner({"images": [str(images_dir / "a.png")]})
+
+
+def test_lineage_dataset_subject_refuses_a_qwen3vl_row_with_a_mismatched_caption_sha256(
+    command, tmp_path,
+):
+    """M4(b): dataset_subject's caption_sha256 binding is load-bearing, not decorative
+    -- a row whose declared caption_sha256 disagrees with the caption bytes actually on
+    disk is refused, whatever it claims."""
+    lineage = command._lineage_module()
+    dataset_dir = tmp_path / "dataset"
+    dataset_dir.mkdir()
+    (dataset_dir / "01.png").write_bytes(PNG_1X1)
+    caption_bytes = b"creator002krea2 woman, a real caption\n"
+    (dataset_dir / "01.txt").write_bytes(caption_bytes)
+    manifest = {
+        "count": 1, "caption_mode": "qwen3vl",
+        "files": [{
+            "image": "01.png", "caption_file": "01.txt",
+            "sha256": hashlib.sha256((dataset_dir / "01.png").read_bytes()).hexdigest(),
+            "caption_sha256": "0" * 64,  # deliberately wrong
+        }],
+    }
+    (dataset_dir / "dataset_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    (dataset_dir / "_dataset.ready").write_text("", encoding="utf-8")
+    with pytest.raises(lineage.LineageError, match="caption hash mismatch"):
+        lineage.dataset_subject(dataset_dir)
+
+    # The correct hash of the real on-disk bytes is accepted.
+    manifest["files"][0]["caption_sha256"] = hashlib.sha256(caption_bytes).hexdigest()
+    (dataset_dir / "dataset_manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    subject = lineage.dataset_subject(dataset_dir)
+    assert subject["caption_mode"] == "qwen3vl"

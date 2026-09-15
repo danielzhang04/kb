@@ -646,8 +646,8 @@ def dataset_subject(dataset_dir: Path) -> dict[str, Any]:
     files = manifest.get("files")
     if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
         raise LineageError("dataset manifest count must be a positive integer")
-    if mode not in ("provided", "class"):
-        raise LineageError("dataset manifest caption_mode must be provided or class")
+    if mode not in ("provided", "class", "qwen3vl"):
+        raise LineageError("dataset manifest caption_mode must be provided, class, or qwen3vl")
     if not isinstance(files, list) or len(files) != count:
         raise LineageError("dataset manifest files length does not match count")
     seen: set[str] = set()
@@ -686,6 +686,15 @@ def dataset_subject(dataset_dir: Path) -> dict[str, Any]:
             raise LineageError(f"cannot read dataset caption {caption_name}: {exc}") from exc
         if not caption_text.strip():
             raise LineageError(f"dataset caption is empty: {caption_name}")
+        if mode == "qwen3vl":
+            # M4(b): bind the row's caption_sha256 to the caption bytes actually on
+            # disk -- build_training_set.py writes this per row for a model-generated
+            # caption's audit trail; a row missing or mismatching it is refused rather
+            # than silently trusted.
+            declared_caption_sha256 = row.get("caption_sha256")
+            if (not isinstance(declared_caption_sha256, str)
+                    or declared_caption_sha256 != caption["sha256"]):
+                raise LineageError(f"dataset caption hash mismatch for {caption_name}")
         entries.append({"image": image, "caption": caption})
     actual_images = {
         path.name for path in dataset_dir.iterdir()
