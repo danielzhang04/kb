@@ -225,12 +225,17 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   const inert: string[] = [];
   const deps = input.dependencyResults ?? [];
   if (deps.length > 0) {
+    // Cap the RAW join first, then sanitize the bounded string — sanitizing before the cut lets a
+    // payload line like `END INERT CONTEXT<padding>` (not neutralized: its trim() isn't an exact
+    // marker match) become an exact bare marker line once the slice lands right after the marker
+    // text. The truncation marker itself is appended after sanitizing, so it is never mangled and
+    // is always the true last line when truncation occurs.
     const joinedDeps = deps
-      .map((dep) => `### ${sanitizeInertPayload(dep.from.trim())}\n${sanitizeInertPayload(dep.summary.trim())}`)
+      .map((dep) => `### ${dep.from.trim()}\n${dep.summary.trim()}`)
       .join('\n\n');
     const boundedDeps = joinedDeps.length > MAX_DEPENDENCY_RESULTS_CHARS
-      ? `${joinedDeps.slice(0, MAX_DEPENDENCY_RESULTS_CHARS)}\n${DEPENDENCY_RESULTS_TRUNCATION_MARKER}`
-      : joinedDeps;
+      ? `${sanitizeInertPayload(joinedDeps.slice(0, MAX_DEPENDENCY_RESULTS_CHARS))}\n${DEPENDENCY_RESULTS_TRUNCATION_MARKER}`
+      : sanitizeInertPayload(joinedDeps);
     inert.push(`DEPENDENCY RESULTS:\n${boundedDeps}`);
   }
   if (input.iterationContract) {
@@ -242,12 +247,13 @@ export function buildWorkerPrompt(input: WorkerPromptInput): string {
   }
   const curatedBlocks = input.curatedContext ?? [];
   if (curatedBlocks.length > 0) {
+    // Same cap-then-sanitize ordering as DEPENDENCY RESULTS above (see comment there).
     const joined = curatedBlocks
-      .map((block) => `### ${block.label.trim()}\n${sanitizeInertPayload(block.text.trim())}`)
+      .map((block) => `### ${block.label.trim()}\n${block.text.trim()}`)
       .join('\n\n');
     const bounded = joined.length > MAX_CURATED_CONTEXT_CHARS
-      ? `${joined.slice(0, MAX_CURATED_CONTEXT_CHARS)}\n${CURATED_CONTEXT_TRUNCATION_MARKER}`
-      : joined;
+      ? `${sanitizeInertPayload(joined.slice(0, MAX_CURATED_CONTEXT_CHARS))}\n${CURATED_CONTEXT_TRUNCATION_MARKER}`
+      : sanitizeInertPayload(joined);
     inert.push(`CURATED CONTEXT:\n${bounded}`);
   }
   const feedback = input.feedback?.trim();

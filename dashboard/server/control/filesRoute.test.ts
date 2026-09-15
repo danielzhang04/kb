@@ -249,7 +249,7 @@ describe('scoped artifact download', () => {
    * open/check window) is backstopped by the digest, which the R6 mismatch case proves is enforced over
    * the bytes actually read from the descriptor.
    */
-  it('R7: a symlink swapped in where the artifact stood is refused under either digest', async () => {
+  it('R7: a symlink swapped in where the artifact stood is refused under either digest', async (ctx) => {
     const outside = mkdtempSync(join(tmpdir(), 'files-route-swap-'));
     const planted = 'planted bytes\n';
     writeFileSync(join(outside, 'planted.md'), planted);
@@ -259,7 +259,11 @@ describe('scoped artifact download', () => {
       symlinkSync(join(outside, 'planted.md'), artifact, 'file');
     } catch {
       rmSync(outside, { recursive: true, force: true });
-      return; // unprivileged Windows cannot create symlinks; the POSIX/elevated run covers this case
+      // S6 (review r2): a bare `return` here reported as a silent PASS, so this guard's coverage
+      // status on unprivileged Windows (the dev platform) was invisible in the run summary. Report it
+      // honestly as skipped instead.
+      ctx.skip();
+      return;
     }
     for (const sha of [DIGEST, sha256HexBytes(Buffer.from(planted, 'utf8'))]) {
       const res = await app.inject({ method: 'GET', url: url(BRIEF, sha), headers: headers(token) });
@@ -278,9 +282,15 @@ describe('scoped artifact download', () => {
   const RUN_BRIEF = 'orgs/demo/output/run-brief.json';
   const RUN_SCRATCH = 'orgs/demo/output/scratch.txt';
 
-  /** One approved single-stage plan + its run. `declared` is what the plan claims as artifacts. */
-  function seedRun(suffix: string, declared: string[]): string {
-    const proposal = controlStore.createProposalRevision('operator', {
+  /**
+   * One approved single-stage plan + its run. `declared` is what the plan claims as artifacts.
+   * `subject` defaults to `'operator'` for the existing cases; S2 (review r2) passes a non-operator
+   * subject to exercise the ownership check that `readScopeForSubject` gates — every prior case here
+   * ran as `OPERATOR_SUBJECT`, so `getRun` always resolved with `'all-subjects'` scope and the
+   * own-subject narrowing at artifactFilesRoute.ts:66-68 had no coverage.
+   */
+  function seedRun(suffix: string, declared: string[], subject: string = 'operator'): string {
+    const proposal = controlStore.createProposalRevision(subject, {
       sourceComposerRef: `composer-${suffix}`,
       sourceTurnId: `turn-${suffix}`,
       title: `Run ${suffix}`,
@@ -295,14 +305,14 @@ describe('scoped artifact download', () => {
       },
     });
     if (!proposal.ok) throw new Error(proposal.detail);
-    const approved = controlStore.decideProposal('operator', proposal.value.proposalRef, proposal.value.revision, {
+    const approved = controlStore.decideProposal(subject, proposal.value.proposalRef, proposal.value.revision, {
       expectedHash: proposal.value.hash,
       expectedApprovalRevision: 0,
       decision: 'approved',
       idempotencyKey: `approve-${suffix}`,
     });
     if (!approved.ok) throw new Error(approved.detail);
-    const run = controlStore.createRun('operator', {
+    const run = controlStore.createRun(subject, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
       executionHost: 'desktop',
       title: `Run ${suffix}`,
@@ -481,5 +491,36 @@ describe('scoped artifact download', () => {
     const detail = await app.inject({ method: 'GET', url: `/api/control/runs/${runRef}`, headers: headers(token) });
     expect(detail.statusCode, detail.body).toBe(200);
     expect((detail.json() as { value: { outputs: OutputRef[] } }).value.outputs).toEqual([]);
+  });
+
+  /**
+   * S2 (review r2). Every case above minted its session as `'operator'` (= `OPERATOR_SUBJECT`), so
+   * `readScopeForSubject` always returned `'all-subjects'` and the own-subject ownership narrowing at
+   * artifactFilesRoute.ts:66-68 (`ctx.controlStore.getRun(sub, runRef, readScopeForSubject(sub))`) ran
+   * unexercised — the whole suite stayed green even with `readScopeForSubject(sub)` hardcoded to
+   * `'all-subjects'`. This run is owned by non-operator subject A; a different non-operator subject B
+   * must be refused with the same flat 404 as a run that does not exist, and A must still succeed.
+   * RED ON REVERT: hardcoding `'all-subjects'` for `outputFileScopeForEntity`'s run branch (matching
+   * OPERATOR_SUBJECT's own-request scope) turns the cross-subject 404 below into a 200.
+   */
+  it('refuses a run-entity download for a non-operator subject that does not own the run, and serves it for the owner', async () => {
+    const runRef = seedRun('owned-by-a', [RUN_BRIEF], 'subject-a');
+    const integrated = '{"brief":"subject-a bytes"}\n';
+    writeIntegrated(runRef, RUN_BRIEF, integrated);
+    writeJournal([journalRecord(runRef, 'canonical-committed', [RUN_BRIEF])]);
+    const digest = sha256HexBytes(Buffer.from(integrated, 'utf8'));
+
+    const tokenA = mintSession('subject-a', SESSION).token;
+    const tokenB = mintSession('subject-b', SESSION).token;
+
+    const foreign = await app.inject({ method: 'GET', url: runUrl(runRef, RUN_BRIEF, digest), headers: headers(tokenB) });
+    expect([foreign.statusCode, foreign.json()]).toEqual([404, { error: 'not found' }]);
+    expect(foreign.body).not.toContain('subject-a bytes');
+    expect(auditRows.filter((entry) => entry.action === 'control-artifact-download')).toEqual([]);
+
+    const owner = await app.inject({ method: 'GET', url: runUrl(runRef, RUN_BRIEF, digest), headers: headers(tokenA) });
+    expect([owner.statusCode, owner.body]).toEqual([200, integrated]);
+    const row = auditRows.find((entry) => entry.action === 'control-artifact-download');
+    expect(row).toMatchObject({ owner: 'subject-a', riskTier: 'T2', target: RUN_BRIEF });
   });
 });

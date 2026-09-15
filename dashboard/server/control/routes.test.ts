@@ -74,6 +74,14 @@ afterEach(() => {
 
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
+/**
+ * S3 (review r2): allowlisted at the surface's CSRF origin check (`allowedOrigins`) but distinct from
+ * the WebAuthn RP `origin` the iteration-gate ceremony checks at routes.ts:2129 — the only way to reach
+ * that SECOND, ceremony-specific origin check at all. A plain foreign origin (e.g. `evil.localhost`) never
+ * gets that far: it is refused earlier, by the surface-wide origin allowlist preHandler, with an unrelated
+ * `{ error: 'forbidden', reason: 'origin-not-allowed' }` body.
+ */
+const ALT_ALLOWED_ORIGIN = 'http://localhost:5318';
 
 function makeSurfaceContext(
   overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
@@ -296,7 +304,11 @@ describe('control proposal routes', () => {
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       stateRoot,
       sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN],
+      // S3: a second allowlisted origin, distinct from the WebAuthn RP origin below, so the
+      // ceremony's own origin check (routes.ts:2129) is reachable and separately testable from the
+      // surface-wide CSRF origin allowlist. Every other case here still sends `headers(token)`, which
+      // sends `ORIGIN`, so this is additive and changes no existing behavior.
+      allowedOrigins: [ORIGIN, ALT_ALLOWED_ORIGIN],
       webAuthnConfig: () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN }),
       // R9: empty unless the running case opted in via `signIterationGate`.
       credentials: () => ceremonyCredentials,
@@ -1181,13 +1193,25 @@ describe('control proposal routes', () => {
       expect(minted.json()).toMatchObject({ error: 'invalid-iteration-park-decision' });
     });
 
+    /**
+     * S3 (review r2) — without `provisionCeremonyCredential()` the daemon has no credential, so
+     * routes.ts:2119 refuses with `403 ceremony-unavailable` BEFORE the origin check at routes.ts:2129
+     * ever runs; the case passed vacuously on that unrelated 403. Provision a credential so the request
+     * reaches the origin check, and assert the origin-specific `ceremony-invalid` body — distinct from
+     * `ceremony-unavailable` — so the origin refusal is what is actually being exercised.
+     */
     it('refuses to mint for a foreign origin', async () => {
+      provisionCeremonyCredential();
       const { request } = mockIterationGate('no-progress');
+      // ALT_ALLOWED_ORIGIN clears the surface-wide CSRF allowlist (so this request reaches the route
+      // handler at all) but does not match the WebAuthn RP `origin` configured above, so it exercises
+      // the ceremony's OWN origin check at routes.ts:2129.
       const minted = await app.inject({
         method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: { ...headers(token), origin: 'http://evil.localhost:5317' }, payload: { decision: 'approved' },
+        headers: { ...headers(token), origin: ALT_ALLOWED_ORIGIN }, payload: { decision: 'approved' },
       });
       expect(minted.statusCode, minted.body).toBe(403);
+      expect(minted.json()).toEqual({ error: 'ceremony-invalid' });
     });
   });
 

@@ -26,7 +26,7 @@ describe('entity client', () => {
     };
     visit(join(dashboard, 'src')); visit(join(dashboard, 'server'));
     expect(offenders).toEqual([]);
-  });
+  }, 30_000); // full src+server filesystem walk exceeds vitest's 5s default when run alone on Windows
   it('uses one entity envelope endpoint without client joins', async () => {
     const requests: string[] = [];
     const fetchImpl = async (url: string) => { requests.push(url); return new Response(JSON.stringify({ revision: 'r1', groups: [], items: [] }), { status: 200 }); };
