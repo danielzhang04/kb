@@ -344,6 +344,16 @@ defects below for where these two sources disagree past 09-04.
   (the review-candidate authority binding needs the `gen` and `video` plans to share a root
   that also contains this repo's own `persona.yaml`, a constraint no other stage's `--out`
   shares today).
+- **`calibrate/grid_run.py`'s `probe-a-zimage.yaml` fixture is stale against the live harness**
+  (xfail, not fixed: `calibrate/tests/test_grid_run.py::test_two_fixed_seeds_and_manifest_passes_harness_dry_run`,
+  `::test_grid01_is_40_single_axis_cells_with_probe_configuration`) — the probe pins
+  `max_minutes: 40`, but `pod/runpod_run.py:require_manifest` now requires `max_minutes` to
+  cover `readiness_timeout_seconds` plus `job_timeout_seconds` for every job (minimum 625 for
+  this probe's 40-job grid). `grid_run.py` is NO-STAGE / CLI-orphan per
+  `docs/figment/AUDIT-2026-09-15.md` §B.6 (no non-test caller, referenced only by
+  `calibrate/runs/grid-01-README.md`), so the fixture was left as-is rather than bumped —
+  a magic-number patch on dead code would just re-drift the next time the harness rule
+  changes, with nothing live to catch it.
 
 ## How to iterate
 
