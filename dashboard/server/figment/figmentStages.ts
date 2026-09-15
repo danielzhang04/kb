@@ -5,8 +5,8 @@
  * declaration of that list (E2 — Studio previously hardcoded the two stage names it uses,
  * `studioGenPlan.ts` its own `STAGE = 'gen'`, `planPreview.ts` its own `STAGE = 'tester'`,
  * with no shared source and no check that either string was still a real CLI stage).
- * `figmentStages.test.ts` asserts this tuple equals the live Python constant, read via
- * `FIGMENT_TEST_PYTHON_EXECUTABLE`, so the two lists cannot drift silently again.
+ * `figmentStages.integration.test.ts` asserts this tuple equals the live Python constant,
+ * read via `FIGMENT_TEST_PYTHON_EXECUTABLE`, so the two lists cannot drift silently again.
  */
 export const FIGMENT_STAGES = [
   'anchor', 'dataset', 'smoke', 'train', 'tester', 'gen', 'detail', 'video',

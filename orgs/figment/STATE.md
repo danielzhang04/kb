@@ -27,11 +27,15 @@ _Updated: 2026-09-15_
   plan-independent `run` — every `gate.json` on disk is byte-identical regardless of caller.
   The old SHA-bound `gates.py` `write_gate`/`gate_is_current` pair (a second, incompatible
   schema, zero non-test callers) was deleted; `gates.py` today is only `sha256_file`.
-- **One prompt composer.** `_compose_triggered_prompt` is the single place the trigger +
-  class clause is prepended, for every prompt that reaches a pod across every stage
-  (anchor, dataset, tester, gen, detail, caption trigger clause) — the trigger-word defect
-  of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with one) was
-  exactly the failure mode multiple independent composers produce.
+- **One prompt composer per era.** `_compose_triggered_prompt` is the single place the
+  persona's trigger is prepended, for every prompt that reaches a pod once a LoRA exists
+  to invoke (`tester`, `gen`, `detail`, the caption trigger clause) — the trigger-word
+  defect of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with
+  one) was exactly the failure mode multiple independent composers produce. `anchor` and
+  `dataset` generate the training material itself, before any LoRA exists, so they
+  deliberately do NOT route through it — they compose from `persona.identity.look` via
+  `_compose_look_clause` instead, a categorically different clause, not a fourth
+  independent trigger composer (see `_compose_triggered_prompt`'s own docstring).
 - **A plan-time budget preflight** (M2) sums every run a `plan`/`pipeline` call is about to
   write against the arc cap remaining before writing `plan.json`, and refuses unless
   `--accept-budget` is passed; the live per-run guards (`enforce_daily_budget`,

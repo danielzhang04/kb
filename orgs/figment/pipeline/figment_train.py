@@ -9,7 +9,6 @@ from __future__ import annotations
 import argparse
 import csv
 import glob
-import hashlib
 import html
 import importlib.util
 import json
@@ -60,6 +59,7 @@ QA_MODULE = HERE / "qa_stamp.py"
 SCORE_CELLS_MODULE = HERE / "score_cells.py"
 IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
 LINEAGE_MODULE = HERE / "lineage.py"
+GATES_MODULE = HERE / "gates.py"
 PERSONA_MODULE = HERE / "persona.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 VIDEO_DIR = HERE / "video"
@@ -192,6 +192,10 @@ def _identity_gate_module():
 
 def _lineage_module():
     return _load_module("_figment_train_lineage", LINEAGE_MODULE)
+
+
+def _gates_module():
+    return _load_module("_figment_train_gates", GATES_MODULE)
 
 
 def _persona_module():
@@ -386,11 +390,7 @@ def _write_frozen_json(path: Path, value: Any) -> None:
 def _sha256(path: Path, *, reads=None) -> str:
     if reads is not None:
         return reads.sha256(Path(path))
-    digest = hashlib.sha256()
-    with Path(path).open("rb") as handle:
-        for block in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return _gates_module().sha256_file(Path(path))
 
 
 def _relative(path: Path, root: Path, *, reads=None, walk_up: bool = False) -> str:
@@ -4764,6 +4764,38 @@ def _resolve_config_path(value: str, *, reads=None) -> Path:
     return reads.resolve(candidate) if reads is not None else candidate.resolve()
 
 
+def _write_accepted_checkpoint(
+    creator_id: str, plan: dict[str, Any], root: Path, normalized: dict[str, Any],
+    approval_out: Path, accepted_checkpoint_out: Path, checkpoint: dict[str, Any],
+    imported_ladder: bool,
+) -> None:
+    """Write `grade/tester/accepted-checkpoint.json` and persist the plan's checkpoint
+    selection. `apply_rulings` reaches this from two places -- the idempotent-replay
+    branch (rulings already applied, checkpoint newly promoted) and the normal
+    fresh-ruling path -- which used to build the identical document independently;
+    extracted so the two can never drift apart."""
+    accepted_document = {
+        "schema": _lineage_module().CHECKPOINT_SCHEMA,
+        "creator": creator_id,
+        "operator": {
+            "decided_by": normalized["decided_by"],
+            "decided_at": normalized["decided_at"],
+        },
+        "source_plan": str((root / "plan.json").resolve()),
+        "source_plan_sha256": _sha256(root / "plan.json"),
+        "approval_lineage": str(approval_out.resolve()),
+        "approval_lineage_sha256": _sha256(approval_out),
+        "training_inputs": _lineage_module().training_input_projection(plan["training"]),
+        "checkpoint": checkpoint,
+    }
+    if imported_ladder:
+        accepted_document["origin"] = "imported"
+    _write_json(accepted_checkpoint_out, accepted_document)
+    _persist_checkpoint_selection(
+        plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
+    )
+
+
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
     checkpoint_step: int | None = None, *, reads=None,
@@ -4950,25 +4982,9 @@ def apply_rulings(
             row.get("image_id") for row in approved_existing.get("images") or []
         }:
             raise FigmentTrainError("selected checkpoint was not kept by the applied tester rulings")
-        accepted_document = {
-            "schema": _lineage_module().CHECKPOINT_SCHEMA,
-            "creator": creator_id,
-            "operator": {
-                "decided_by": normalized["decided_by"],
-                "decided_at": normalized["decided_at"],
-            },
-            "source_plan": str((root / "plan.json").resolve()),
-            "source_plan_sha256": _sha256(root / "plan.json"),
-            "approval_lineage": str(approval_out.resolve()),
-            "approval_lineage_sha256": _sha256(approval_out),
-            "training_inputs": _lineage_module().training_input_projection(plan["training"]),
-            "checkpoint": checkpoint,
-        }
-        if imported_ladder:
-            accepted_document["origin"] = "imported"
-        _write_json(accepted_checkpoint_out, accepted_document)
-        _persist_checkpoint_selection(
-            plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
+        _write_accepted_checkpoint(
+            creator_id, plan, root, normalized, approval_out, accepted_checkpoint_out,
+            checkpoint, imported_ladder,
         )
         return {
             "rulings": str(rulings_out), "review_manifest": str(review_out),
@@ -5113,25 +5129,9 @@ def apply_rulings(
         "approval_lineage": str(approval_out),
     }
     if checkpoint is not None:
-        accepted_document = {
-            "schema": _lineage_module().CHECKPOINT_SCHEMA,
-            "creator": creator_id,
-            "operator": {
-                "decided_by": normalized["decided_by"],
-                "decided_at": normalized["decided_at"],
-            },
-            "source_plan": str((root / "plan.json").resolve()),
-            "source_plan_sha256": _sha256(root / "plan.json"),
-            "approval_lineage": str(approval_out.resolve()),
-            "approval_lineage_sha256": _sha256(approval_out),
-            "training_inputs": _lineage_module().training_input_projection(plan["training"]),
-            "checkpoint": checkpoint,
-        }
-        if imported_ladder:
-            accepted_document["origin"] = "imported"
-        _write_json(accepted_checkpoint_out, accepted_document)
-        _persist_checkpoint_selection(
-            plan, checkpoint["step"], checkpoint["sha256"], accepted_checkpoint_out,
+        _write_accepted_checkpoint(
+            creator_id, plan, root, normalized, approval_out, accepted_checkpoint_out,
+            checkpoint, imported_ladder,
         )
         result["accepted_checkpoint"] = str(accepted_checkpoint_out)
     return result
@@ -5586,11 +5586,16 @@ def _build_deliverable(
     receipts already carry): the kept gen stills, the kept detail images, and a
     manifest.json binding the gen/detail plan sha, the chosen checkpoint, every kept
     cell's gate row, and its ruling attribution. Built once detail is ruled (None
-    before then). Idempotent: a deliverable already bound to the current detail
-    approval-lineage is returned as-is rather than rebuilt on every `pipeline` call."""
+    before then). Idempotent: a deliverable already bound to the current gen, detail,
+    and video approval-lineage is returned as-is rather than rebuilt on every
+    `pipeline` call -- gen's own approval-lineage sha is folded in alongside detail's
+    so a gen re-ruling (a new kept set, even one that leaves detail's own digest
+    unchanged) is never missed."""
     detail_approval_path = detail_root / "grade" / "detail" / "approval-lineage.json"
     if not detail_approval_path.is_file():
         return None
+    gen_approval_path = gen_root / "grade" / "gen" / "approval-lineage.json"
+    gen_approval_sha256 = _sha256(gen_approval_path)
     video_approval_path = video_root / "grade" / "video" / "approval-lineage.json"
     video_approval_sha256 = (
         _sha256(video_approval_path) if video_approval_path.is_file() else None
@@ -5600,7 +5605,8 @@ def _build_deliverable(
     detail_approval_sha256 = _sha256(detail_approval_path)
     if manifest_path.is_file():
         existing = _read_json(manifest_path)
-        if (existing.get("detail_approval_sha256") == detail_approval_sha256
+        if (existing.get("gen_approval_sha256") == gen_approval_sha256
+                and existing.get("detail_approval_sha256") == detail_approval_sha256
                 and existing.get("video_approval_sha256") == video_approval_sha256):
             return existing
 
@@ -5667,6 +5673,7 @@ def _build_deliverable(
         },
         "gen_plan": {"path": str(gen_plan_path), "sha256": _sha256(gen_plan_path)},
         "detail_plan": {"path": str(detail_plan_path), "sha256": _sha256(detail_plan_path)},
+        "gen_approval_sha256": gen_approval_sha256,
         "detail_approval_sha256": detail_approval_sha256,
         "video_approval_sha256": video_approval_sha256,
         "stills": stills,
@@ -5695,7 +5702,7 @@ def command_pipeline(
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
 ) -> dict[str, Any]:
-    """F1: one resumable driver across anchor -> dataset -> smoke -> train -> tester
+    """One resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
     `command_gate`-equivalent freshness reads, and `apply_rulings` is left to the
     operator (a ruling is a human act, per contract.md) -- this function never writes
@@ -5705,8 +5712,8 @@ def command_pipeline(
 
     Exactly one of `plan_path` (resume an existing plan) or `out` (build a fresh
     `--stage all` plan there first) must be given. `gen` and `detail` are never part
-    of that primary plan (README: "gen is NEVER included in `--stage all`" -- F2
-    extends the same rule to detail); `pipeline` plans each of them itself, by name,
+    of that primary plan (README: "gen is NEVER included in `--stage all`", extended
+    to detail too); `pipeline` plans each of them itself, by name,
     the moment its upstream ruling exists, into a deterministic
     `<primary_root>/downstream/<stage>` directory (`_pipeline_downstream_root`) so a
     later invocation finds the same plan rather than creating a second one.
@@ -5718,12 +5725,12 @@ def command_pipeline(
     error). `dry_run` previews the next action (which stage would plan or run) without
     calling `run_planned_stage`/`build_plan`/`build_grade` at all -- it never invokes
     the pod harness, matching every other local-and-free command in this file; only
-    `run_planned_stage` itself ever spends. m7: there is deliberately no `max_usd`
+    `run_planned_stage` itself ever spends. There is deliberately no `max_usd`
     parameter here (or on `pipeline`'s CLI) -- ceilings are derived per-manifest at
     plan time (`manifest_ceiling`), never overridden at run time; see the README's
     Spend guards section.
 
-    `video` (F6a) is planned the same way, into `<primary_root>/downstream/video`, once
+    `video` is planned the same way, into `<primary_root>/downstream/video`, once
     `gen` is ruled -- but ONLY if this run root lies inside the repository, because
     `video_manifest`'s review-candidate mode binds the plan's own in-repo `persona.yaml`
     under one common containment root (`_video_authority_root`). A run rooted outside the
@@ -5773,14 +5780,17 @@ def command_pipeline(
 
     def deliverable_path() -> str | None:
         """Everything ruled so far, written once and re-read afterwards (idempotent on
-        the detail + video approval digests it is bound to)."""
+        the detail + video approval digests it is bound to). Under `dry_run` this is
+        read-only: an already-built deliverable is reported, but `_build_deliverable`
+        (which copies bytes and writes manifest.json) is never invoked -- `dry_run`
+        previews the next action without touching disk."""
+        manifest_path = primary_root / "deliverable" / "manifest.json"
+        if dry_run:
+            return str(manifest_path) if manifest_path.is_file() else None
         built = _build_deliverable(
             creator_id, primary_root, gen_root, detail_root, video_root,
         )
-        return (
-            str(primary_root / "deliverable" / "manifest.json")
-            if built is not None else None
-        )
+        return str(manifest_path) if built is not None else None
 
     for stage in order:
         if stage in ("anchor", "dataset", "smoke", "train", "tester"):
@@ -5963,13 +5973,13 @@ def build_parser() -> argparse.ArgumentParser:
     plan.add_argument(
         "--detail-images", default=None,
         help="glob of existing rendered cells to re-detail (only meaningful with "
-             "--stage gen); emits an extra <id>-tensor-detail.yaml manifest (r25 cause #2)",
+             "--stage gen); emits an extra <id>-tensor-detail.yaml manifest",
     )
     plan.add_argument(
         "--approved-gen-plan", default=None, type=Path,
         help="directory of an already-ruled gen plan. With --stage detail every image in "
-             "its grade/gen/approved-list.json is re-detailed (F2); with --stage video one "
-             "of them becomes the I2V first frame (F6a)",
+             "its grade/gen/approved-list.json is re-detailed; with --stage video one "
+             "of them becomes the I2V first frame",
     )
     plan.add_argument(
         "--approved-gen-image-id", default=None,
@@ -5983,19 +5993,19 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan.add_argument(
         "--accept-budget", action="store_true",
-        help="M2: required to write a plan whose planned run ceilings exceed the arc "
+        help="required to write a plan whose planned run ceilings exceed the arc "
              "cap remaining (arc_cap_usd - arc already spent); the acceptance and its "
              "numbers are recorded in plan.json's budget_preflight",
     )
     plan.add_argument(
         "--style-lora", default=None,
-        help="M3: gen-only style LoRA key (pins.pins.style_loras in tensor-pins.yaml), "
+        help="gen-only style LoRA key (pins.pins.style_loras in tensor-pins.yaml), "
              "e.g. inline-skin; overrides persona.training.style_lora for this one plan "
              "-- never a persona fork",
     )
     plan.add_argument(
         "--style-lora-strength", default=None, type=float,
-        help="M3: LoraLoaderModelOnly strength for --style-lora (0 < x <= 1.5); "
+        help="LoraLoaderModelOnly strength for --style-lora (0 < x <= 1.5); "
              "defaults to persona.training.style_lora_strength (0.8) when omitted",
     )
     plan.add_argument(
@@ -6013,7 +6023,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     pipeline = commands.add_parser(
         "pipeline",
-        help="F1/F6a: resumable driver across anchor..video; halts at every gate, "
+        help="resumable driver across anchor..video; halts at every gate, "
              "never plans/runs/grades twice for the same stage",
     )
     pipeline.add_argument("--creator", required=True)
@@ -6118,7 +6128,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     train_first.add_argument(
         "--accept-budget", action="store_true",
-        help="M2: required to write a plan whose planned run ceilings exceed the arc "
+        help="required to write a plan whose planned run ceilings exceed the arc "
              "cap remaining",
     )
     accept_dataset = commands.add_parser(

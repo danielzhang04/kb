@@ -924,3 +924,31 @@ def test_pipeline_dry_run_never_calls_the_harness_or_writes_grade_state(
     )
     assert result["status"] == "dry-run:plan"
     assert not primary_root.exists()
+
+    # A detail-ruled plan (minors): `_build_deliverable` copies bytes and writes
+    # manifest.json the first time it is reachable (gen + detail both ruled) --
+    # `deliverable_path()` used to call it unconditionally, so a dry-run pipeline call
+    # against an already-detail-ruled plan would silently write the deliverable to disk
+    # even though nothing else about dry_run ever touches disk. Drive a real (fake-
+    # harness) plan through detail first, THEN forbid the harness and dry-run it.
+    ruled_root = tmp_path / "ruled"
+    ledger_dir = tmp_path / "ledger"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    ruled_kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", ruled_root, ruled_kwargs)
+    deliverable_manifest = ruled_root / "deliverable" / "manifest.json"
+    assert not deliverable_manifest.exists()
+
+    monkeypatch.setattr(command.subprocess, "run", _forbidden)
+    ruled_plan_path = ruled_root / "plan.json"
+    dry_result = command.command_pipeline(
+        "creator-002", plan_path=ruled_plan_path, dry_run=True, **ruled_kwargs,
+    )
+    # `ruled_root` is outside the repository (tmp_path), so video is genuinely
+    # out-of-tree -- this is a real halt, not a "dry-run:*" preview status, and it is
+    # reached regardless of dry_run. What must hold either way is that reaching it
+    # never wrote the deliverable.
+    assert dry_result["status"] == "stopped:video-out-of-tree"
+    assert not deliverable_manifest.exists()
