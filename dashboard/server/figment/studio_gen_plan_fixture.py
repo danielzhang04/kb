@@ -47,7 +47,10 @@ def _prepare_creator001_accepted_checkpoint(command, anchor, personas: Path, out
         chosen_checkpoint_approval=None, save_every=250,
     )
     source = out_root / "source-lineage"
-    plan = command.build_plan(CREATOR, "all", source, personas_root=personas, skip_pin_verify=True)
+    plan = command.build_plan(
+        CREATOR, "all", source, personas_root=personas, skip_pin_verify=True,
+        accept_budget=True,
+    )
 
     train_run = plan["stages"]["train"]["runs"][0]
     train_manifest = anchor.load_json(source / train_run["manifest"])

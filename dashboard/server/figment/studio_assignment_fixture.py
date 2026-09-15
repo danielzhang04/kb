@@ -8,7 +8,9 @@ harness is called; production validators are neither patched nor replaced.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
+import io
 import json
 import os
 import subprocess
@@ -151,7 +153,14 @@ def bind(root: Path, plan: Path, legacy_out: Path, ledger: Path) -> None:
 
     # Compile a separate real legacy-layout plan in place, with the SAME real
     # canonical persona and selected checkpoint. Never copy or rewrite a plan.
-    command.build_plan(CREATOR, "gen", legacy_out, personas_root=root / "personas", skip_pin_verify=True, ledger_dir=ledger)
+    # B1: forward accept_budget like every other real build_plan call this fixture
+    # makes; the budget-preflight table print is swallowed (redirect_stdout) so it
+    # never contaminates this process's own single-line JSON stdout contract below.
+    with contextlib.redirect_stdout(io.StringIO()):
+        command.build_plan(
+            CREATOR, "gen", legacy_out, personas_root=root / "personas",
+            skip_pin_verify=True, ledger_dir=ledger, accept_budget=True,
+        )
     legacy_plan = legacy_out / "plan.json"
     legacy_bytes = legacy_plan.read_bytes()
     legacy_images = approve_synthetic_gen(command, anchor, legacy_plan)
