@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { createHash } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import {
   CONTROL_PLANE_ACCEPTED_SIZE_FILENAME,
   ControlStoreLimitError,
@@ -16,6 +17,7 @@ import {
   AUTHORIZED_20260801_FAILED_RUN_INPUT,
   AUTHORIZED_20260801_FAILED_RUN_REF,
   createInMemoryControlPlaneStore,
+  createPythonScheduleClaimRenderer,
   emptyStoreDocumentForTest,
   exactAuthorized20260801ProposalRevision,
   proposalSnapshotHash,
@@ -535,6 +537,66 @@ const CHECKER_COMPLETION_GATE = {
 afterEach(() => {
   fileStores.close();
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+});
+
+// P4 rehearsal-host evidence (C:/Users/danie/kb-rehearsal/tooling/rehearsal/p4/evidence.md section D):
+// on the VM, DASHBOARD_REPO_ROOT points at the coordination-only ops checkout (/var/lib/kb/ops), which
+// never contains scripts/ -- only DASHBOARD_PLATFORM_ROOT (/opt/kb-releases/current) does. The renderer
+// must resolve scripts/cards.py from the platform root, never the repo root, or every schedule claim
+// 503s with no journal line.
+describe('createPythonScheduleClaimRenderer platform-root resolution (hotfix-3)', () => {
+  const cardsSource = fileURLToPath(new URL('../../../scripts/cards.py', import.meta.url));
+
+  function emptyRoot(prefix: string): string {
+    const root = mkdtempSync(join(tmpdir(), prefix));
+    roots.push(root);
+    return root;
+  }
+
+  function rootWithCardsScript(prefix: string): string {
+    const root = emptyRoot(prefix);
+    mkdirSync(join(root, 'scripts'), { recursive: true });
+    copyFileSync(cardsSource, join(root, 'scripts', 'cards.py'));
+    return root;
+  }
+
+  const claimInput = {
+    scheduleId: createHash('sha256').update('hotfix-3-platform-root-test').digest('hex'),
+    scheduledFor: '2026-09-15T00:00:00.000Z',
+    nextAt: '2026-09-16T00:00:00.000Z',
+    owner: { type: 'agent' as const, id: 'codex-worker', sourcePath: 'agents/codex-worker.md' as const },
+    mirrorPath: 'HEARTBEAT.md' as const,
+  };
+
+  it('renders a claim from platformRoot/scripts/cards.py even when repoRoot (the ops checkout shape) has no scripts/ dir at all', async () => {
+    const repoRoot = emptyRoot('hotfix3-repo-');
+    const platformRoot = rootWithCardsScript('hotfix3-platform-');
+    const renderer = createPythonScheduleClaimRenderer(repoRoot, () => new Date('2026-09-15T00:00:00.000Z'), platformRoot);
+
+    const result = await renderer(claimInput);
+
+    expect(result.card).toBeTruthy();
+    expect(typeof result.cardBytesSha256).toBe('string');
+  });
+
+  it('logs one structured [control-store] warning naming the resolved script path before the 503, instead of failing silently', async () => {
+    const repoRoot = emptyRoot('hotfix3-repo-nowarn-');
+    const platformRoot = emptyRoot('hotfix3-platform-nowarn-');
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const renderer = createPythonScheduleClaimRenderer(repoRoot, () => new Date('2026-09-15T00:00:00.000Z'), platformRoot);
+
+      await expect(renderer(claimInput)).rejects.toThrow('schedule-card-renderer-failed');
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      const [line] = warnSpy.mock.calls[0];
+      expect(line).toContain('[control-store]');
+      expect(line).toContain('schedule-card-renderer-failed');
+      expect(line).toContain(join(platformRoot, 'scripts', 'cards.py'));
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
 
 describe('authorized 2026-07-31 execution-lock recovery', () => {

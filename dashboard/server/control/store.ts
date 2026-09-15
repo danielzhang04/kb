@@ -7,6 +7,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { defaultPlatformRoot } from '../runtime/python.ts';
 import { redactSensitiveText } from '../composer/publicTimeline.ts';
 import {
   canonicalJson, clone, isPlainRecord, iterationDefinitionHash, iterationRequestFingerprint, sha256,
@@ -414,12 +415,22 @@ function retryPredecessorRefusal(document: StoreDocument, predecessor: StoredRun
 }
 
 
-/** Invoke the canonical Python card renderer without a shell or caller-provided path. */
+/**
+ * Invoke the canonical Python card renderer without a shell or caller-provided path.
+ *
+ * `scripts/cards.py` ships with the platform release, not with the coordination-only ops
+ * checkout that `repoRoot` (DASHBOARD_REPO_ROOT) points at on the VM -- so the script is
+ * resolved from `platformRoot` (defaulting to DASHBOARD_PLATFORM_ROOT via `defaultPlatformRoot`,
+ * already provided by the systemd unit per deploy/validate_vm_runtime.py's EXPECTED_UNIT_ENV).
+ * On desktop, where repo and platform root coincide, `defaultPlatformRoot`'s own fallback
+ * resolves to the same tree, so `repoRoot` is never referenced as a fallback here directly.
+ */
 export function createPythonScheduleClaimRenderer(
   repoRoot: string,
   now: () => Date = () => new Date(),
+  platformRoot: string = defaultPlatformRoot(),
 ): NonNullable<ControlStoreOptions['renderScheduleClaim']> {
-  const script = join(repoRoot, 'scripts', 'cards.py');
+  const script = join(platformRoot, 'scripts', 'cards.py');
   return async (input) => {
     const command = process.platform === 'win32' ? 'py' : 'python3';
     const args = process.platform === 'win32'
@@ -439,6 +450,9 @@ export function createPythonScheduleClaimRenderer(
       windowsHide: true,
     });
     if (result.error || result.status !== 0 || !result.stdout) {
+      // The prior silent 503 was itself a P4 finding (evidence.md section D): 13 prod schedules
+      // showed nextAt null / never run with no journal line to explain why. One structured line.
+      console.warn(`[control-store] schedule-card-renderer-failed: script=${script} status=${result.status ?? 'null'} error=${result.error?.message ?? ''} stderr=${(result.stderr ?? '').toString().slice(0, 500)}`);
       throw Object.assign(new Error('schedule-card-renderer-failed'), { status: 503, code: 'schedule-card-renderer-failed' });
     }
     let parsed: unknown;
