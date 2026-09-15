@@ -1,0 +1,122 @@
+{
+  "id": "creator-001-skin",
+  "disclosure": {
+    "is_ai_generated": true,
+    "bio_line": null,
+    "profile_label": "required"
+  },
+  "identity": {
+    "references": ["anchors/g01.jpg", "anchors/g02.jpg", "anchors/g07.jpg"],
+    "look": {
+      "age_stage": "a woman in her early twenties, about twenty-one, an adult woman's face with a set jawline, an adult woman's proportions and an adult woman's frame, her hands and neck reading the same age as her face",
+      "hair": "jet-black hair parted in the middle and falling past the shoulders",
+      "eyes": "dark brown eyes",
+      "skin": "fair skin with visible pores and texture",
+      "brows": "her own full dark brows brushed up and not drawn in",
+      "makeup": "a thin brown line drawn close to the upper lash with one coat of mascara, lip balm over her natural lip colour",
+      "build": "slim with an ordinary adult figure",
+      "clothing": "wearing a fitted black crew-neck t-shirt and dark jeans, both fully opaque and intact"
+    },
+    "spec": {
+      "path": "identity-spec.md",
+      "sha256": "1a969804da8930a856a99de998337b50293aa6f95531dab1bcfe43c9592eacc0"
+    },
+    "floor": {
+      "anchor_cosine_p5": {
+        "status": "uncalibrated",
+        "value": null,
+        "calibration_set_sha": null,
+        "locked_by_gate": null
+      },
+      "min_face_px": {
+        "status": "uncalibrated",
+        "value": 600,
+        "calibration_set_sha": null,
+        "locked_by_gate": null
+      }
+    },
+    "calibration": {
+      "anchor_pairwise": {
+        "g01:g02": 0.9137569242493687,
+        "g01:g07": 0.9261845536192178,
+        "g02:g07": 0.8859605928789756
+      },
+      "anchor_cosine_floor_suggested": 0.8359605928789755,
+      "errors": null
+    }
+  },
+  "body_target": {
+    "source": "identity-spec#body",
+    "exemplars": ["g02", "g07"]
+  },
+  "grammar": {
+    "angles": ["front", "three-quarter-l", "three-quarter-r", "profile-l", "near-back"],
+    "distances": ["close", "half"],
+    "lights": ["flat-white", "window-day", "lamp-night", "on-camera-flash"],
+    "wardrobe_families": [
+      "corset-bustier",
+      "cami-chains",
+      "oversized-tee",
+      "knit-cardigan",
+      "going-out-mini"
+    ],
+    "traversal_order": ["angle", "distance", "light"],
+    "allocation": {
+      "strata": 40,
+      "replicates": 20,
+      "replicate_scope": "half-body-strata-only",
+      "replicate_policy": "alt-wardrobe-new-seed",
+      "seed_policy": "fixed-per-cell"
+    }
+  },
+  "register": {
+    "spec": {
+      "path": "../../pipeline/look-spec-v2.md",
+      "sha256": "95c54f02c3e54bc7b53a579b862cce09f7d1d04321e16cc83444463fc6827a14",
+      "section": "0"
+    },
+    "settings": {
+      "makeup": "abg-glam-v1",
+      "skin": "texture-visible",
+      "light": ["flat-white", "window-day", "lamp-night", "on-camera-flash"],
+      "wardrobe_families": [
+        "corset-bustier",
+        "cami-chains",
+        "oversized-tee",
+        "knit-cardigan",
+        "going-out-mini"
+      ]
+    }
+  },
+  "lora": {
+    "persona": null,
+    "register": null,
+    "trigger": null,
+    "base": "flux2-klein-base-4b",
+    "tier": "provisional-clothed-v1"
+  },
+  "voice": {
+    "manifest": null
+  },
+  "accounts": [
+    {
+      "platform": "instagram",
+      "handle": null,
+      "account_ref": null,
+      "tier": "instagram",
+      "disclosure_verification": "unverified",
+      "readiness_record": "unverified"
+    }
+  ],
+  "tiers": {
+    "instagram": {
+      "store": "batches/",
+      "ceiling": "swimwear",
+      "compute": "pod|local"
+    },
+    "explicit": {
+      "store": null,
+      "compute": "operator-hardware-only"
+    }
+  }
+}

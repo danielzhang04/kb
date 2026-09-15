@@ -25,6 +25,7 @@ VIDEO_REVIEW = PIPELINE / "video" / "video_review.py"
 GEN_WORKFLOW = PIPELINE / "train" / "workflows" / "krea2_gen_api.json"
 DETAIL_WORKFLOW = PIPELINE / "train" / "workflows" / "krea2_detail_only_api.json"
 PINS_PATH = PIPELINE / "train" / "tensor-pins.yaml"
+REAL_PERSONAS = PIPELINE.parent / "personas"
 
 
 def load_module(name: str, path: Path):
@@ -735,6 +736,43 @@ def test_gen_manifest_bakes_style_lora_filename_and_pins_its_model(command, tmp_
         sub for sub in m["jobs"][0]["substitutions"] if sub["node_id"] == "40"
     ]
     assert style_subs and style_subs[0]["value"] == "krea2_realism_lora.safetensors"
+
+
+def test_creator001_skin_branch_persona_wires_node_40_creator001_does_not_f3(command):
+    """F3: `personas/creator-001-skin` is a real, checked-in branch persona -- a copy of
+    creator-001's own persona.yaml/training.yaml with `style_lora: "inline-skin"`,
+    `style_lora_strength: 0.8` -- so a gen run can compare skin-on vs skin-off with
+    fixed inputs. creator-001 itself is untouched: its own real persona still plans
+    with no style LoRA at all."""
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+
+    skin_persona, skin_training, skin_pins = command._load_inputs(
+        "creator-001-skin", REAL_PERSONAS,
+    )
+    assert skin_persona["id"] == "creator-001-skin"
+    assert skin_training["style_lora"] == "inline-skin"
+    assert skin_training["style_lora_strength"] == 0.8
+
+    skin_workflow = command._gen_workflow(skin_training, skin_pins)
+    assert "40" in skin_workflow
+    assert skin_workflow["40"]["inputs"]["strength_model"] == 0.8
+
+    gen_training = {**skin_training, "chosen_checkpoint_step": skin_training["steps"]}
+    gen_manifest = command._gen_manifest(skin_persona, gen_training, skin_pins)
+    style_pin = pins["pins"]["style_loras"]["inline-skin"]["model"]
+    assert style_pin in gen_manifest["models"]
+    style_subs = [
+        sub for sub in gen_manifest["jobs"][0]["substitutions"] if sub["node_id"] == "40"
+    ]
+    assert style_subs and style_subs[0]["value"] == style_pin["filename"]
+
+    base_persona, base_training, base_pins = command._load_inputs(
+        "creator-001", REAL_PERSONAS,
+    )
+    assert base_training.get("style_lora") is None
+    base_workflow = command._gen_workflow(base_training, base_pins)
+    assert "40" not in base_workflow
+    assert base_workflow["8"]["inputs"]["model"] == ["4", 0]
 
 
 # ---------------------------------------------------------------------------
