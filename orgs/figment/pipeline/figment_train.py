@@ -54,6 +54,21 @@ SCORE_CELLS_MODULE = HERE / "score_cells.py"
 IDENTITY_GATE_MODULE = HERE / "identity_gate.py"
 LINEAGE_MODULE = HERE / "lineage.py"
 VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
+VIDEO_DIR = HERE / "video"
+VIDEO_MANIFEST_MODULE = VIDEO_DIR / "video_manifest.py"
+FRAME_ASSEMBLE_MODULE = VIDEO_DIR / "frame_assemble.py"
+# F6a: `pipeline --out` defaults here so a `video` stage is always plannable -- see
+# `_video_authority_root` and orgs/figment/runs/README.md. Gitignored except that README.
+RUNS_ROOT = ROOT / "orgs" / "figment" / "runs"
+VIDEO_MANIFEST_NAME = "video-manifest.json"
+# The one short, clothed motion instruction `video_manifest._motion` composes with the
+# persona's own identity.look.age_stage and identity.look.clothing. Overridable per plan
+# (`plan --stage video --video-action ...`); never persona-specific here, because the
+# persona supplies every persona-specific word already.
+VIDEO_DEFAULT_ACTION = "stands still and turns her head slowly toward the camera"
+# GATE video grades every Nth of the harness's own 81 native frames (1, 9, ... 81 -> 11
+# cells), so the existing identity gate scores identity/age/realism ACROSS the motion.
+VIDEO_FRAME_SAMPLE_EVERY = 8
 # Compatibility export for older callers. New plans resolve through the pod harness's
 # configured_ledger_dir() so they cannot silently bind this worktree-local fallback.
 LEDGER_DIR = ROOT / "ledgers" / "cost"
@@ -170,6 +185,50 @@ def _verify_pins_module():
     return _load_module("_figment_train_verify_pins", VERIFY_PINS_MODULE)
 
 
+def _video_manifest_module():
+    return _load_module("_figment_train_video_manifest", VIDEO_MANIFEST_MODULE)
+
+
+def _frame_assemble_module():
+    """Also the way to reach `frame_extract.py` (`.frames`): frame_assemble already
+    loads it as the shared containment/extraction primitive, so this driver never
+    creates a second instance of it."""
+    return _load_module("_figment_train_frame_assemble", FRAME_ASSEMBLE_MODULE)
+
+
+def _video_authority_root(path: Path, label: str) -> Path:
+    """F6a (boss ruling): a `video` plan, the persona it is bound to, the approved still
+    it starts from and every output it produces must share ONE containment root, because
+    `video_manifest.build_manifest`'s review-candidate mode binds the candidate to the
+    REAL in-repo `persona.yaml` the approved plan names and requires that file, the plan,
+    its six `grade/gen` evidence documents, the frame and the manifest to all sit below
+    its own `--root`. That root is this repository, so a `pipeline` run root must too --
+    which is exactly why `pipeline --out` defaults to
+    `orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/`.
+
+    `gen` and `detail` plans are unaffected: they may still be built anywhere (the
+    runbook's own `C:/tmp/creator-001-plan` keeps working). Only `video` refuses."""
+    resolved = Path(path).resolve()
+    try:
+        resolved.relative_to(ROOT.resolve())
+    except ValueError as exc:
+        raise FigmentTrainError(
+            f"the video stage requires {label} inside the repository authority root "
+            f"({ROOT}); `pipeline --out` defaults to "
+            "orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/ for exactly this reason "
+            "(video_manifest's review-candidate mode binds the plan's own in-repo "
+            "persona.yaml digest under one common --root). gen and detail may still be "
+            f"planned outside the repo; video may not. Got: {resolved}"
+        ) from exc
+    return resolved
+
+
+def _default_pipeline_out(creator_id: str) -> Path:
+    """The in-repo run root `pipeline --out` defaults to (F6a)."""
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S")
+    return RUNS_ROOT / creator_id / stamp
+
+
 def _verify_pins_preflight(pins: dict[str, Any], selected_stages: list[str]) -> None:
     """Run `verify_pins.verify_pins` for every pin profile `selected_stages` will actually
     consume, before a single model is ever bootstrapped on a pod (review HIGH-1: all four
@@ -240,12 +299,22 @@ def _sha256(path: Path, *, reads=None) -> str:
     return digest.hexdigest()
 
 
-def _relative(path: Path, root: Path, *, reads=None) -> str:
+def _relative(path: Path, root: Path, *, reads=None, walk_up: bool = False) -> str:
+    """`walk_up` (3.12+) permits a `../`-prefixed result. Used by exactly one caller --
+    `_planned_run` for the `video` stage, whose manifest is required by
+    `video_manifest.build_manifest` to be written beside the approved still it starts
+    from (APPROVED_GEN_ADAPTER.md: "--out must be beside the selected frame so the
+    existing harness can stage both without widening its upload boundary"), i.e. inside
+    the upstream `gen` plan's own output tree rather than the video plan's. It still
+    resolves through `root`, and `build_plan` independently proves both ends lie under
+    the repository authority root (`_video_authority_root`)."""
     if reads is not None:
+        if walk_up:
+            raise FigmentTrainError("observed-reads mode does not support walk-up relative paths")
         resolved = reads.resolve(Path(path))
         base = reads.resolve(Path(root))
         return resolved.relative_to(base).as_posix()
-    return path.resolve().relative_to(root.resolve()).as_posix()
+    return path.resolve().relative_to(root.resolve(), walk_up=walk_up).as_posix()
 
 
 def _creator_output_code(creator_id: str) -> str:
@@ -1711,7 +1780,12 @@ def _resolved_ledger_dir(explicit: Path | None = None) -> Path:
     return Path(pod_module.configured_ledger_dir(explicit)).resolve()
 
 
-def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: Path) -> dict[str, Any]:
+def _planned_run(
+    out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: Path,
+    external_manifest: bool = False,
+) -> dict[str, Any]:
+    """`external_manifest` is the `video` stage only -- see `_relative`'s own docstring
+    for why that one manifest cannot live inside its plan's root."""
     manifest = _read_json(manifest_path)
     ceiling = manifest_ceiling(manifest)
     argv = [
@@ -1727,7 +1801,7 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: P
         "--arc-ledger-glob", ARC_LEDGER_GLOB,
     ]
     result = {
-        "manifest": _relative(manifest_path, out),
+        "manifest": _relative(manifest_path, out, walk_up=external_manifest),
         "sha256": _sha256(manifest_path),
         "ceiling_usd": ceiling,
         "out": _relative(run_out, out),
@@ -1739,6 +1813,92 @@ def _planned_run(out: Path, manifest_path: Path, run_out: Path, *, ledger_dir: P
     return result
 
 
+def _stage_run_root(out: Path, stage: str) -> Path:
+    if stage in ("anchor", "dataset"):
+        return out / "expand" / "runs" / "out"
+    if stage == "video":
+        return out / "video" / "runs" / "out"
+    return out / "train" / "runs" / "out"
+
+
+def _plan_video_manifest(
+    creator_id: str, persona: dict[str, Any], out: Path, *,
+    approved_gen_plan: Path | None, approved_gen_image_id: str | None,
+    action: str | None,
+) -> tuple[dict[str, Any], Path]:
+    """Compile this plan's ONE Wan 2.2 I2V review candidate through the existing
+    `video_manifest.build_manifest`/`write_manifest` (F6a).
+
+    Everything the compiler's `review-candidate-v1` mode checks -- the ruled `gen` plan,
+    its six `grade/gen` evidence documents, the persona the plan itself names, the
+    approved still's bytes and the output manifest -- is resolved relative to one root,
+    and that root is the repository (`_video_authority_root`, already enforced by
+    `build_plan` for the plan's own `--out`). The manifest is written BESIDE the approved
+    still, as APPROVED_GEN_ADAPTER.md requires, which is why the planned run records it
+    with a walk-up relative path (see `_relative`).
+
+    Narrowed deliberately: the first frame is the approved *gen* still, not the approved
+    *detail* image. `validate_approved_gen_still`, `video_manifest._candidate_preflight`,
+    `video_review._rebuild_candidate` and `content/content_asset_binding.py`'s slot join
+    all bind the string "gen" (grade dir, approval stage, approved-list stage), so a
+    detail-sourced candidate needs a stage threaded through four reviewed authorities and
+    a widened on-disk candidate-manifest schema -- a design change, not a wiring one.
+    """
+    if approved_gen_plan is None:
+        raise FigmentTrainError(
+            "video requires --approved-gen-plan; run apply-rulings --stage gen first"
+        )
+    gen_plan_dir = _video_authority_root(Path(approved_gen_plan), "the approved gen plan")
+    approved_list_path = gen_plan_dir / "grade" / "gen" / "approved-list.json"
+    if not approved_list_path.is_file():
+        raise FigmentTrainError(
+            f"video requires a kept gen still; no {approved_list_path} -- "
+            "run apply-rulings --stage gen first"
+        )
+    approved = _read_json(approved_list_path)
+    kept = sorted(
+        row["image_id"] for row in approved.get("images", [])
+        if isinstance(row, dict) and isinstance(row.get("image_id"), str)
+    )
+    if not kept:
+        raise FigmentTrainError(f"gen approved-list has no kept images: {approved_list_path}")
+    image_id = approved_gen_image_id if approved_gen_image_id is not None else kept[0]
+    if image_id not in kept:
+        raise FigmentTrainError(
+            f"gen image {image_id!r} was not kept by this plan's rulings; kept: {kept}"
+        )
+    authority = validate_approved_gen_still(creator_id, gen_plan_dir / "plan.json", image_id)
+
+    authority_root = ROOT.resolve()
+    frame_path = Path(authority["path"]).resolve()
+    manifest_path = frame_path.parent / VIDEO_MANIFEST_NAME
+    persona_path = Path(persona["_persona_path"]).resolve()
+    video = _video_manifest_module()
+    try:
+        manifest = video.write_manifest(
+            root=authority_root,
+            persona_path=persona_path.relative_to(authority_root),
+            approved_gen_plan=(gen_plan_dir / "plan.json").relative_to(authority_root),
+            approved_gen_image_id=image_id,
+            action=action if action is not None else VIDEO_DEFAULT_ACTION,
+            out=manifest_path.relative_to(authority_root),
+            mode=video.CANDIDATE_MODE,
+        )
+    except video.VideoManifestError as exc:
+        raise FigmentTrainError(f"video manifest could not be compiled: {exc}") from exc
+    except ValueError as exc:
+        raise FigmentTrainError(f"video manifest inputs escape the authority root: {exc}") from exc
+    return {
+        "approved_gen_plan": str(gen_plan_dir),
+        "image_id": image_id,
+        "sha256": authority["sha256"],
+        "bytes": authority["bytes"],
+        "candidate_id": manifest["candidate_id"],
+        "manifest": str(manifest_path),
+        "action": manifest["motion"]["action"],
+    }, manifest_path
+
+
 def build_plan(
     creator_id: str,
     stage: str,
@@ -1748,6 +1908,8 @@ def build_plan(
     skip_pin_verify: bool = False,
     detail_images: str | None = None,
     approved_gen_plan: Path | None = None,
+    approved_gen_image_id: str | None = None,
+    video_action: str | None = None,
     ledger_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
@@ -1765,13 +1927,31 @@ def build_plan(
     re-validated through `validate_approved_gen_still` (never trusted from the approved
     list's bytes alone) and re-detailed at the package's own denoise band
     (`_detail_manifest`), always "gen`'s own kept outputs", never an arbitrary glob.
+
+    `approved_gen_plan` is also required for `"video"` (F6a), where it names the ruled
+    `gen` plan whose kept still becomes the I2V first frame: `approved_gen_image_id`
+    selects one (default: the first kept id in sorted order) and `video_action` overrides
+    `VIDEO_DEFAULT_ACTION`. The manifest itself is compiled by the EXISTING
+    `video_manifest.build_manifest` in its `review-candidate-v1` mode -- imported, never
+    reimplemented -- so the video first frame keeps the one still-lineage authority
+    (`validate_approved_gen_still`) the whole `video/` subsystem, `video_review.py`'s
+    candidate rebuild and `content/content_asset_binding.py`'s slot join already share.
+    Its output root must therefore be inside this repository (`_video_authority_root`).
     """
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     if detail_images is not None and stage not in ("gen", "all"):
         raise FigmentTrainError("--detail-images is only meaningful for --stage gen")
-    if approved_gen_plan is not None and stage != "detail":
-        raise FigmentTrainError("--approved-gen-plan is only meaningful for --stage detail")
+    if approved_gen_plan is not None and stage not in ("detail", "video"):
+        raise FigmentTrainError(
+            "--approved-gen-plan is only meaningful for --stage detail or --stage video"
+        )
+    if approved_gen_image_id is not None and stage != "video":
+        raise FigmentTrainError("--approved-gen-image-id is only meaningful for --stage video")
+    if video_action is not None and stage != "video":
+        raise FigmentTrainError("--video-action is only meaningful for --stage video")
+    if stage == "video":
+        _video_authority_root(out, "a video plan's --out")
     out = Path(out).resolve()
     if (out / "plan.json").exists():
         raise FigmentTrainError(f"refusing to overwrite an existing plan: {out / 'plan.json'}")
@@ -1842,6 +2022,7 @@ def build_plan(
     plan_stages: dict[str, Any] = {}
     gen_authority: dict[str, str] | None = None
     detail_source: dict[str, Any] | None = None
+    video_source: dict[str, Any] | None = None
     for current in selected:
         if current == "anchor":
             manifests = _anchor_manifests(
@@ -1942,13 +2123,29 @@ def build_plan(
             detail_manifest["workflow"] = "../workflows/krea2_detail_only_api.json"
             manifests = [detail_manifest]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-detail.yaml"]
+        elif current == "video":
+            video_source, manifest_path = _plan_video_manifest(
+                creator_id, persona, out,
+                approved_gen_plan=approved_gen_plan,
+                approved_gen_image_id=approved_gen_image_id,
+                action=video_action,
+            )
+            # `video_manifest.write_manifest` already wrote this manifest, and its exact
+            # bytes (sort_keys, indent 2, trailing newline) are what `frame_assemble.py`
+            # re-hashes into its own assembly receipt -- rewriting it through `_write_json`
+            # here would change them. Nothing left to write.
+            manifests = []
+            paths = [manifest_path]
         else:
             raise FigmentTrainError(f"unknown stage {current!r}")
         for path, manifest in zip(paths, manifests):
             _write_json(path, manifest)
-        run_root = out / ("expand" if current in ("anchor", "dataset") else "train") / "runs" / "out"
+        run_root = _stage_run_root(out, current)
         runs = [
-            _planned_run(out, path, run_root / path.stem, ledger_dir=resolved_ledger_dir)
+            _planned_run(
+                out, path, run_root / path.stem, ledger_dir=resolved_ledger_dir,
+                external_manifest=current == "video",
+            )
             for path in paths
         ]
         plan_stages[current] = {"runs": runs}
@@ -1974,6 +2171,8 @@ def build_plan(
         plan["gen_authority"] = gen_authority
     if detail_source is not None:
         plan["detail_source"] = detail_source
+    if video_source is not None:
+        plan["video_source"] = video_source
     _write_json(out / "plan.json", plan)
     return plan
 
@@ -2533,6 +2732,60 @@ def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     shutil.copy2(config_source, dataset_dir / "training.json")
 
 
+def _video_evidence_dirs(root: Path) -> dict[str, Path]:
+    return {
+        "assembly": root / "video" / "assembled",
+        "reel": root / "video" / "reel",
+        "samples": root / "video" / "samples",
+    }
+
+
+def _build_video_evidence(plan: dict[str, Any], root: Path) -> dict[str, Any]:
+    """The local, free half of the `video` stage (F6a): exactly the chain the video CLIs
+    already define -- `video_manifest` (at plan time) -> harness receipt -> `frame_assemble`
+    -> `frame_assemble reel` -> `frame_extract` -- driven here instead of by hand, against
+    the same repository authority root the manifest was compiled under. Each of the three
+    refuses a non-fresh output directory, so this is idempotent by re-reading an existing
+    receipt rather than rebuilding it; a re-invocation after a crash between two of them
+    resumes at the missing one. Spends nothing and starts no pod."""
+    authority = ROOT.resolve()
+    _video_authority_root(root, "the video plan root")
+    assembly_module = _frame_assemble_module()
+    runs = plan.get("stages", {}).get("video", {}).get("runs") or []
+    if len(runs) != 1:
+        raise FigmentTrainError("a video plan carries exactly one bounded 81-frame I2V run")
+    run = runs[0]
+    manifest_relative = (root / run["manifest"]).resolve().relative_to(authority)
+    receipt_relative = (root / run["out"] / "run.json").resolve().relative_to(authority)
+    directories = _video_evidence_dirs(root)
+    relative = {
+        key: value.resolve().relative_to(authority) for key, value in directories.items()
+    }
+    try:
+        if not (directories["assembly"] / "frame-assembly.json").is_file():
+            assembly_module.assemble_frames(
+                root=authority, manifest_path=manifest_relative,
+                run_receipt_path=receipt_relative, output_dir=relative["assembly"],
+            )
+        assembly = _read_json(directories["assembly"] / "frame-assembly.json")
+        if not (directories["reel"] / "reel-derivative.json").is_file():
+            assembly_module.build_reel_derivative(
+                root=authority,
+                assembly_receipt_path=relative["assembly"] / "frame-assembly.json",
+                output_dir=relative["reel"],
+            )
+        reel = _read_json(directories["reel"] / "reel-derivative.json")
+        if not (directories["samples"] / "frame-extraction.json").is_file():
+            assembly_module.frames.extract_frames(
+                root=authority, video_path=Path(assembly["movie"]["path"]),
+                output_dir=relative["samples"],
+            )
+        extraction = _read_json(directories["samples"] / "frame-extraction.json")
+    except (assembly_module.FrameAssembleError, assembly_module.frames.FrameExtractError) as exc:
+        raise FigmentTrainError(f"video evidence could not be built: {exc}") from exc
+    return {"assembly": assembly, "reel": reel, "extraction": extraction}
+
+
 def _tester_checkpoint_inputs(plan: dict[str, Any], root: Path, run: dict[str, Any]) -> list[dict[str, Any]]:
     manifest_path = root / run["manifest"]
     if _sha256(manifest_path) != run["sha256"]:
@@ -2684,6 +2937,7 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                 raise FigmentTrainError(f"planned manifest digest changed: {manifest_path}")
             expected_run = _planned_run(
                 root, manifest_path, root / run["out"], ledger_dir=plan_ledger_dir,
+                external_manifest=current == "video",
             )
             for field in ("ceiling_usd", "out", "argv", "cli"):
                 if run.get(field) != expected_run[field]:
@@ -2735,6 +2989,18 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                 raise
             state["runs"][key] = {**attempt, "status": "complete"}
             _write_stage_state(state_path, state)
+        if current == "video":
+            # The stage is not complete until its own local evidence exists: grading
+            # reads the native frames, and the deliverable reads the reel derivative
+            # and the native<->derivative correspondence. Failing here leaves the pod
+            # run recorded complete, so a re-invocation resumes at the assembly rather
+            # than launching a second pod.
+            try:
+                _build_video_evidence(plan, root)
+            except FigmentTrainError:
+                state["status"] = f"stopped:{current}"
+                _write_stage_state(state_path, state)
+                raise
         state["completed_stages"].append(current)
         state["status"] = f"complete:{current}"
         _write_stage_state(state_path, state)
@@ -2776,9 +3042,61 @@ def _find_job_image(run_out: Path, output_name: str) -> Path:
     return matches[0].resolve()
 
 
+def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, Any]]:
+    """GATE video is "does the face hold under motion", so its graded cells are the
+    harness's OWN native frames, sampled every `VIDEO_FRAME_SAMPLE_EVERY`-th of the 81
+    (1, 9, ... 81 -> 11 cells). That makes the whole existing grading stack do the right
+    thing with no new machinery: `build_grade` runs `identity_gate` over exactly those
+    frames, so `gate.json` carries per-frame identity/age/realism rows ACROSS the motion,
+    written by the single writer `identity_gate.write_gate_document`; the board shows the
+    same frames beside the anchors; and the operator rules the same seven axes per frame,
+    where `identity` on each sampled frame IS "the face holds here".
+
+    No temporal axis is added: `video/video_review.py` already owns the richer temporal
+    vocabulary (`SEQUENCE_AXES` -- `identity_stability`, `anatomy_stability`,
+    `background_stability`, ... -- and `PLAYBACK_AXES`) for its own attributed
+    accepted-video authority, and duplicating a second, weaker copy of it inside the
+    still-grading axes is exactly the divergence APPROVED_GEN_ADAPTER.md warns about."""
+    images: list[dict[str, Any]] = []
+    for run in plan["stages"]["video"]["runs"]:
+        manifest_path = root / run["manifest"]
+        if _sha256(manifest_path) != run["sha256"]:
+            raise FigmentTrainError(f"planned manifest digest changed: {manifest_path}")
+        manifest = _read_json(manifest_path)
+        run_out = root / run["out"]
+        for job in manifest.get("jobs") or []:
+            expected = job.get("expected_images", 1)
+            for index in range(1, expected + 1, VIDEO_FRAME_SAMPLE_EVERY):
+                image_id = f"{job['output_name']}_{index:02d}"
+                matches = [
+                    run_out / f"{image_id}{suffix}" for suffix in IMAGE_EXTENSIONS
+                    if (run_out / f"{image_id}{suffix}").is_file()
+                ]
+                if len(matches) != 1:
+                    raise FigmentTrainError(
+                        f"expected exactly one native video frame for {image_id!r} in "
+                        f"{run_out}, found {len(matches)}"
+                    )
+                if matches[0].stat().st_size <= 0:
+                    raise FigmentTrainError(f"grading image is empty: {matches[0]}")
+                images.append({
+                    "image_id": image_id,
+                    "path": str(matches[0].resolve()),
+                    "review_status": "unreviewed",
+                    "parked_reasons": [],
+                    "safety_failed": False,
+                    "safety_reasons": [],
+                })
+    if not images:
+        raise FigmentTrainError("stage 'video' has no grading frames")
+    return images
+
+
 def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[str, Any]]:
     if stage not in plan.get("stages", {}):
         raise FigmentTrainError(f"plan does not contain stage {stage!r}")
+    if stage == "video":
+        return _video_grading_images(plan, root)
     images: list[dict[str, Any]] = []
     for run in plan["stages"][stage]["runs"]:
         manifest_path = root / run["manifest"]
@@ -4172,8 +4490,93 @@ def _deliverable_entry(row: dict[str, Any], dest_dir: Path, root: Path) -> dict[
     }
 
 
+def _ruling_attribution(document: dict[str, Any], row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "decided_by": document.get("decided_by"), "decided_at": document.get("decided_at"),
+        "why": row.get("why"), "gate_override": row.get("gate_override"),
+    }
+
+
+def _deliverable_video(
+    creator_id: str, primary_root: Path, video_root: Path,
+) -> dict[str, Any]:
+    """On GATE video's ruling the deliverable gains the reel derivative itself --
+    `content/reel-templates.yaml`'s 1080x1920@30fps delivery file -- plus the exact
+    native<->derivative correspondence `frame_assemble.build_reel_derivative` recorded
+    (both movies' own sha256, the filter graph, both durations) and, per graded frame,
+    the native frame's own digest from the assembly receipt beside its gate row. A reader
+    can therefore prove the delivered mp4 is this run's own native movie re-rendered, and
+    that the frames the identity gate scored are the frames that movie was built from --
+    without trusting any of the three receipts on its own."""
+    grade_dir = video_root / "grade" / "video"
+    directories = _video_evidence_dirs(video_root)
+    assembly = _read_json(directories["assembly"] / "frame-assembly.json")
+    reel = _read_json(directories["reel"] / "reel-derivative.json")
+    extraction_path = directories["samples"] / "frame-extraction.json"
+    correspondence = reel["correspondence"]
+    candidate_id = (reel.get("candidate") or assembly.get("candidate") or {}).get("id")
+    if not isinstance(candidate_id, str) or not candidate_id:
+        raise FigmentTrainError("video evidence carries no review-candidate id")
+
+    destination_dir = primary_root / "deliverable" / "video"
+    destination = destination_dir / f"{candidate_id}.mp4"
+    if not destination.exists():
+        destination_dir.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(ROOT / correspondence["derivative"]["path"], destination)
+    digest = _sha256(destination)
+    if digest != correspondence["derivative"]["sha256"]:
+        raise FigmentTrainError(
+            "delivered reel bytes do not match the recorded native->derivative correspondence"
+        )
+    if correspondence["native"]["sha256"] != assembly["movie"]["sha256"]:
+        raise FigmentTrainError(
+            "reel derivative is not bound to this plan's own assembled native movie"
+        )
+
+    gate_by_id = {
+        row["image_id"]: row for row in _read_json(grade_dir / "gate.json").get("rows", [])
+    }
+    rulings_document = _read_json(grade_dir / "rulings.json")
+    ruling_by_id = {row["image_id"]: row for row in rulings_document.get("rulings", [])}
+    frame_by_id = {Path(row["path"]).stem: row for row in assembly.get("frames", [])}
+    approved = _read_json(grade_dir / "approved-list.json")
+    identity_rows = []
+    for row in approved.get("images", []):
+        image_id = row["image_id"]
+        native = frame_by_id.get(image_id)
+        if native is None:
+            raise FigmentTrainError(
+                f"graded video frame {image_id!r} is absent from the assembly receipt"
+            )
+        identity_rows.append({
+            "image_id": image_id,
+            "native_frame": {
+                "path": native["path"], "bytes": native["bytes"],
+                "sha256": native["sha256"], "index": native["index"],
+            },
+            "gate": gate_by_id.get(image_id),
+            "ruling": _ruling_attribution(rulings_document, ruling_by_id.get(image_id, {})),
+        })
+    return {
+        "candidate_id": candidate_id,
+        "reel": {
+            "path": _relative(destination, primary_root),
+            "bytes": destination.stat().st_size,
+            "sha256": digest,
+        },
+        "delivery_profile": reel["delivery_profile"],
+        "correspondence": correspondence,
+        "native_movie": assembly["movie"],
+        "extraction_receipt": {
+            "path": _relative(extraction_path, ROOT), "sha256": _sha256(extraction_path),
+        },
+        "identity_under_motion": identity_rows,
+    }
+
+
 def _build_deliverable(
     creator_id: str, primary_root: Path, gen_root: Path, detail_root: Path,
+    video_root: Path,
 ) -> dict[str, Any] | None:
     """The deliverable (F1's own spec, minimal -- no new schema beyond what the
     receipts already carry): the kept gen stills, the kept detail images, and a
@@ -4184,12 +4587,17 @@ def _build_deliverable(
     detail_approval_path = detail_root / "grade" / "detail" / "approval-lineage.json"
     if not detail_approval_path.is_file():
         return None
+    video_approval_path = video_root / "grade" / "video" / "approval-lineage.json"
+    video_approval_sha256 = (
+        _sha256(video_approval_path) if video_approval_path.is_file() else None
+    )
     deliverable_dir = primary_root / "deliverable"
     manifest_path = deliverable_dir / "manifest.json"
     detail_approval_sha256 = _sha256(detail_approval_path)
     if manifest_path.is_file():
         existing = _read_json(manifest_path)
-        if existing.get("detail_approval_sha256") == detail_approval_sha256:
+        if (existing.get("detail_approval_sha256") == detail_approval_sha256
+                and existing.get("video_approval_sha256") == video_approval_sha256):
             return existing
 
     gen_approved = _read_json(gen_root / "grade" / "gen" / "approved-list.json")
@@ -4211,25 +4619,19 @@ def _build_deliverable(
     stills = []
     for row in gen_approved.get("images", []):
         entry = _deliverable_entry(row, deliverable_dir / "stills", primary_root)
-        ruling = gen_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = gen_gate_by_id.get(row["image_id"])
-        entry["ruling"] = {
-            "decided_by": gen_rulings_doc.get("decided_by"),
-            "decided_at": gen_rulings_doc.get("decided_at"),
-            "why": ruling.get("why"), "gate_override": ruling.get("gate_override"),
-        }
+        entry["ruling"] = _ruling_attribution(
+            gen_rulings_doc, gen_ruling_by_id.get(row["image_id"], {}),
+        )
         stills.append(entry)
 
     detail_images = []
     for row in detail_approved.get("images", []):
         entry = _deliverable_entry(row, deliverable_dir / "detail", primary_root)
-        ruling = detail_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = detail_gate_by_id.get(row["image_id"])
-        entry["ruling"] = {
-            "decided_by": detail_rulings_doc.get("decided_by"),
-            "decided_at": detail_rulings_doc.get("decided_at"),
-            "why": ruling.get("why"), "gate_override": ruling.get("gate_override"),
-        }
+        entry["ruling"] = _ruling_attribution(
+            detail_rulings_doc, detail_ruling_by_id.get(row["image_id"], {}),
+        )
         detail_images.append(entry)
 
     gen_plan_path = gen_root / "plan.json"
@@ -4246,9 +4648,12 @@ def _build_deliverable(
         "gen_plan": {"path": str(gen_plan_path), "sha256": _sha256(gen_plan_path)},
         "detail_plan": {"path": str(detail_plan_path), "sha256": _sha256(detail_plan_path)},
         "detail_approval_sha256": detail_approval_sha256,
+        "video_approval_sha256": video_approval_sha256,
         "stills": stills,
         "detail": detail_images,
     }
+    if video_approval_sha256 is not None:
+        manifest["video"] = _deliverable_video(creator_id, primary_root, video_root)
     _write_json(manifest_path, manifest)
     return manifest
 
@@ -4295,11 +4700,13 @@ def command_pipeline(
     time (`manifest_ceiling`), not overridden at run time; see the README's Spend
     guards section.
 
-    `video` is not yet buildable by this driver (F6 tracks it separately: a manifest
-    builder, a temporal-QA acceptance path, and a template-fitting derivative did not
-    exist before this file and needed dedicated design). `pipeline` reports completion
-    through `detail` and names the manual path rather than crashing on an unknown
-    stage.
+    `video` (F6a) is planned the same way, into `<primary_root>/downstream/video`, once
+    `gen` is ruled -- but ONLY if this run root lies inside the repository, because
+    `video_manifest`'s review-candidate mode binds the plan's own in-repo `persona.yaml`
+    under one common containment root (`_video_authority_root`). A run rooted outside the
+    repo stops with `stopped:video-out-of-tree` after writing everything it honestly can
+    (the stills/detail deliverable); `gen` and `detail` themselves are unaffected. That
+    is why `pipeline --out` defaults to `orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/`.
     """
     if (plan_path is None) == (out is None):
         raise FigmentTrainError("pipeline requires exactly one of --plan or --out")
@@ -4328,23 +4735,20 @@ def command_pipeline(
 
     gen_root = _pipeline_downstream_root(primary_root, "gen")
     detail_root = _pipeline_downstream_root(primary_root, "detail")
+    video_root = _pipeline_downstream_root(primary_root, "video")
+
+    def deliverable_path() -> str | None:
+        """Everything ruled so far, written once and re-read afterwards (idempotent on
+        the detail + video approval digests it is bound to)."""
+        built = _build_deliverable(
+            creator_id, primary_root, gen_root, detail_root, video_root,
+        )
+        return (
+            str(primary_root / "deliverable" / "manifest.json")
+            if built is not None else None
+        )
 
     for stage in order:
-        if stage == "video":
-            deliverable = _build_deliverable(creator_id, primary_root, gen_root, detail_root)
-            return {
-                "status": "stopped:video-not-automated",
-                "message": (
-                    "detail stage complete; `video` is not yet driven by `pipeline` "
-                    "(F6 follow-up) -- see orgs/figment/pipeline/video/*.py and "
-                    "docs/figment/2026-09-09-operator-runbook.md for the current "
-                    "manual path"
-                ),
-                "deliverable": (
-                    str(primary_root / "deliverable" / "manifest.json")
-                    if deliverable is not None else None
-                ),
-            }
         if stage in ("anchor", "dataset", "smoke", "train", "tester"):
             if stage not in primary_plan.get("stages", {}):
                 continue
@@ -4398,6 +4802,40 @@ def command_pipeline(
                 )
                 active_root = detail_root
             active_plan_path = detail_root / "plan.json"
+        elif stage == "video":
+            deliverable = deliverable_path()
+            if (video_root / "plan.json").is_file():
+                active_plan, active_root = _load_plan(creator_id, video_root / "plan.json")
+            else:
+                if not (gen_root / "grade" / "gen" / "approval-lineage.json").is_file():
+                    return {
+                        "status": "stopped:video-not-planned",
+                        "message": (
+                            "gen has not been ruled yet; apply gen rulings before video "
+                            "can be planned"
+                        ),
+                        "deliverable": deliverable,
+                    }
+                try:
+                    _video_authority_root(primary_root, "this pipeline's run root")
+                except FigmentTrainError as exc:
+                    return {
+                        "status": "stopped:video-out-of-tree",
+                        "message": str(exc),
+                        "deliverable": deliverable,
+                    }
+                if dry_run:
+                    return {
+                        "status": "dry-run:video",
+                        "message": f"would build a fresh video plan at {video_root}",
+                    }
+                active_plan = build_plan(
+                    creator_id, "video", video_root, personas_root=personas_root,
+                    skip_pin_verify=skip_pin_verify, approved_gen_plan=gen_root,
+                    ledger_dir=ledger_dir,
+                )
+                active_root = video_root
+            active_plan_path = video_root / "plan.json"
         else:
             raise FigmentTrainError(f"pipeline does not know stage {stage!r}")
 
@@ -4437,7 +4875,10 @@ def command_pipeline(
                 )
                 print(instruction)
                 print(f"GATE {stage}: awaiting ruling")
-                return {"status": f"GATE {stage}", "message": instruction}
+                result = {"status": f"GATE {stage}", "message": instruction}
+                if stage == "video":
+                    result["deliverable"] = deliverable
+                return result
             if rejection_path.is_file() and not approval_path.is_file():
                 return {
                     "status": f"stopped:{stage}-rejected",
@@ -4455,7 +4896,11 @@ def command_pipeline(
                         ),
                     }
 
-    return {"status": "complete:detail", "message": "pipeline complete through detail"}
+    return {
+        "status": "complete:video",
+        "message": "pipeline complete through video",
+        "deliverable": deliverable_path(),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -4480,22 +4925,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     plan.add_argument(
         "--approved-gen-plan", default=None, type=Path,
-        help="directory of an already-ruled gen plan (only meaningful with --stage "
-             "detail); every image in its grade/gen/approved-list.json is re-detailed (F2)",
+        help="directory of an already-ruled gen plan. With --stage detail every image in "
+             "its grade/gen/approved-list.json is re-detailed (F2); with --stage video one "
+             "of them becomes the I2V first frame (F6a)",
+    )
+    plan.add_argument(
+        "--approved-gen-image-id", default=None,
+        help="--stage video only: which kept gen still becomes the first frame "
+             "(default: the first kept image id in sorted order)",
+    )
+    plan.add_argument(
+        "--video-action", default=None,
+        help=f"--stage video only: the short clothed motion instruction composed with the "
+             f"persona's own look (default: {VIDEO_DEFAULT_ACTION!r})",
     )
 
     pipeline = commands.add_parser(
         "pipeline",
-        help="F1: resumable driver across anchor..detail; halts at every gate, "
+        help="F1/F6a: resumable driver across anchor..video; halts at every gate, "
              "never plans/runs/grades twice for the same stage",
     )
     pipeline.add_argument("--creator", required=True)
-    pipeline_target = pipeline.add_mutually_exclusive_group(required=True)
+    pipeline_target = pipeline.add_mutually_exclusive_group()
     pipeline_target.add_argument(
         "--plan", type=Path, help="resume an existing --stage all plan.json",
     )
     pipeline_target.add_argument(
-        "--out", type=Path, help="build a fresh --stage all plan here first",
+        "--out", type=Path,
+        help="build a fresh --stage all plan here first (default when neither --plan nor "
+             "--out is given: orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/, the in-repo "
+             "run root the video stage requires -- see _video_authority_root)",
     )
     pipeline.add_argument("--from-stage", choices=STAGES, default=None)
     pipeline.add_argument("--dry-run", action="store_true")
@@ -4619,13 +5078,21 @@ def main(argv: list[str] | None = None) -> int:
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
                 detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
-                ledger_dir=args.ledger_dir,
+                approved_gen_image_id=args.approved_gen_image_id,
+                video_action=args.video_action, ledger_dir=args.ledger_dir,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
         elif args.command == "pipeline":
+            # F6a: the in-repo default run root. `command_pipeline` itself still requires
+            # exactly one of plan/out -- the default is a CLI convenience, so a caller
+            # that passes neither in-process still gets the explicit error.
+            out = args.out
+            if args.plan is None and out is None:
+                out = _default_pipeline_out(args.creator)
+                print(f"pipeline: new run root {out}")
             result = command_pipeline(
-                args.creator, plan_path=args.plan, out=args.out,
+                args.creator, plan_path=args.plan, out=out,
                 skip_pin_verify=args.skip_pin_verify, skip_judge=args.skip_judge,
                 dry_run=args.dry_run, from_stage=args.from_stage, max_usd=args.max_usd,
                 ledger_dir=args.ledger_dir,
