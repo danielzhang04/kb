@@ -2427,6 +2427,55 @@ def test_live_qwen3vl_job_runner_rejects_a_pod_that_never_produced_captions(
         runner({"images": [str(images_dir / "a.png")]})
 
 
+def test_live_qwen3vl_job_runner_bounds_the_captions_artifact_size(
+    command, tmp_path, monkeypatch,
+):
+    """MINOR 9 (REVIEW): `captions.json` is read through the generic, otherwise-
+    unbounded `_read_json` -- an oversized artifact (whatever produced it: a
+    misbehaving pod, a compromised one) is refused by its own size, exactly like
+    `video/video_manifest.py`'s readers already refuse an oversized JSON document,
+    rather than being parsed first."""
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    ledger = ledger_dir / "figment-2026-09-15.tsv"
+    ledger.write_text("model\tstep\tusd\n", encoding="utf-8")
+
+    def fake_harness(argv, cwd=None):
+        manifest_path = Path(argv[argv.index("--manifest") + 1])
+        job_manifest = load_json(manifest_path)
+        run_out_dir = Path(argv[argv.index("--out") + 1])
+        run_out_dir.mkdir(parents=True, exist_ok=True)
+        oversized = json.dumps({"a.png": "x" * (command.CAPTIONS_MAX_JSON_BYTES + 1)})
+        (run_out_dir / "captions.json").write_text(oversized, encoding="utf-8")
+        pod_id = "p1"
+        (run_out_dir / "run.json").write_text(json.dumps({
+            "error": None, "dry_run": False, "pod_id": pod_id, "ledger_day": "2026-09-15",
+            "termination_verified": True, "estimated_actual_usd": 0.01,
+            "placement_attempts": [{
+                "pod_id": pod_id, "estimated_actual_usd": 0.01, "termination_verified": True,
+            }],
+            "artifacts": [{
+                "remote": "captions.json",
+                "bytes": (run_out_dir / "captions.json").stat().st_size,
+            }],
+        }), encoding="utf-8")
+        model = command._pod_runner_module().gpu_model_label(job_manifest["gpu"]["type"])
+        with ledger.open("a", encoding="utf-8") as handle:
+            handle.write(f"{model}\tpod-create {pod_id}\t0.010000\n")
+        return type("Result", (), {"returncode": 0})()
+
+    monkeypatch.setattr(command.subprocess, "run", fake_harness)
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    (images_dir / "a.png").write_bytes(PNG_1X1)
+    runner = command._live_qwen3vl_job_runner(
+        "creator-002", "creator002krea2", tmp_path / "plan",
+        ledger_dir=ledger_dir, skip_pin_verify=True,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exceeds"):
+        runner({"images": [str(images_dir / "a.png")]})
+
+
 def test_lineage_dataset_subject_refuses_a_qwen3vl_row_with_a_mismatched_caption_sha256(
     command, tmp_path,
 ):

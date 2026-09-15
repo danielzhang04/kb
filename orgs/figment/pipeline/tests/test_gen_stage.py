@@ -951,6 +951,37 @@ def test_resolve_gen_style_lora_validates_key_and_strength(command):
     assert resolved["style_lora_strength"] == 0.8
 
 
+def test_resolve_gen_style_lora_validates_a_persona_default_not_only_the_flag(command):
+    """MINOR 10 (REVIEW): `training.yaml`'s OWN `style_lora`/`style_lora_strength`
+    (a persona default, no `--style-lora` flag at all) must pass the SAME pins-key and
+    <=1.5-strength validation the flag path already enforces -- previously an unknown
+    persona-declared key or an out-of-range persona strength reached `_gen_workflow`/
+    `_gen_manifest` unvalidated."""
+    pins = json.loads(PINS_PATH.read_text("utf-8"))
+
+    with pytest.raises(command.FigmentTrainError, match="unknown training.style_lora key"):
+        command._resolve_gen_style_lora(
+            {"style_lora": "not-a-real-key", "style_lora_strength": 0.8}, pins,
+            style_lora=None, style_lora_strength=None,
+        )
+    with pytest.raises(command.FigmentTrainError, match="training.style_lora_strength must be"):
+        command._resolve_gen_style_lora(
+            {"style_lora": "inline-skin", "style_lora_strength": 15}, pins,
+            style_lora=None, style_lora_strength=None,
+        )
+    with pytest.raises(command.FigmentTrainError, match="training.style_lora_strength must be"):
+        command._resolve_gen_style_lora(
+            {"style_lora": "inline-skin", "style_lora_strength": 0}, pins,
+            style_lora=None, style_lora_strength=None,
+        )
+    # A valid persona default still resolves exactly as the flag path would.
+    resolved = command._resolve_gen_style_lora(
+        {"style_lora": "inline-skin", "style_lora_strength": 0.8}, pins,
+        style_lora=None, style_lora_strength=None,
+    )
+    assert resolved["style_lora"] == "inline-skin" and resolved["style_lora_strength"] == 0.8
+
+
 def test_build_plan_style_lora_flag_refused_off_stage_gen(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)

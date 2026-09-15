@@ -589,6 +589,43 @@ def test_owned_cleanup_removes_only_captured_entries_and_preserves_surprises(tmp
     assert tracked.read_bytes() == b"replacement"
 
 
+def _past_max_path(root: Path, *, leaf: str = "tail") -> Path:
+    """Build a real directory whose path (plus `leaf`) crosses Windows' 260-character
+    MAX_PATH, the same construction `test_exclusive_publication_survives_a_store_past_max_path`
+    (test_video_review.py) already proves against `frame_extract.py`'s own primitives."""
+    store = root
+    while len(str(store / leaf)) <= 280:
+        store = store / "candidate-directory-segment"
+    os.makedirs(delivery.frames._os_path(store))
+    return store
+
+
+def test_owned_cleanup_capture_and_removal_survive_a_directory_past_max_path(tmp_path: Path) -> None:
+    """MINOR 4 (REVIEW): `_capture_samples` (line ~809) and `_remove_owned_tree`'s two
+    directory listings (lines ~859, ~877) used a plain `os.scandir` instead of its
+    siblings' `os.scandir(frames._os_path(...))` -- past MAX_PATH that fails with a bare
+    OSError that reads as "missing" rather than "too long" (F6b's own rationale for
+    every other OS call in this module)."""
+    directory = _past_max_path(tmp_path, leaf="owned")
+    assert len(str(directory / "owned")) > 260
+    tracked = directory / "tracked"
+    with delivery.frames._open(tracked, "wb") as handle:
+        handle.write(b"tracked")
+    directory_identity = delivery._capture_directory(directory, "test directory")
+    tracked_identity = delivery._capture_file(tracked, "test file")
+    assert delivery._remove_owned_tree(tmp_path, directory, directory_identity, None, {"tracked": tracked_identity})
+    assert not delivery.frames._exists(directory)
+
+    samples = _past_max_path(tmp_path, leaf="samples")
+    for name in ("first.png", "middle.png", "last.png"):
+        with delivery.frames._open(samples / name, "wb") as handle:
+            handle.write(b"sample bytes")
+    with delivery.frames._open(samples / "frame-extraction.json", "wb") as handle:
+        handle.write(b"{}")
+    directory_identity, captured = delivery._capture_samples(samples)
+    assert set(captured) == {"first.png", "middle.png", "last.png", "frame-extraction.json"}
+
+
 def test_validation_refuses_actual_fresh_extractor_sample_mismatch(
     delivery_case: tuple[Path, dict[str, object], Path, Path], monkeypatch: pytest.MonkeyPatch,
 ) -> None:

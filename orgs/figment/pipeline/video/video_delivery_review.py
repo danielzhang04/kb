@@ -806,7 +806,8 @@ def _capture_samples(path: Path) -> tuple[tuple[int, int], dict[str, tuple[int, 
     directory_identity = _capture_directory(path, "extracted samples directory")
     allowed = {"first.png", "middle.png", "last.png", "frame-extraction.json"}
     try:
-        names = {entry.name for entry in os.scandir(path)}
+        with os.scandir(frames._os_path(path)) as entries:
+            names = {entry.name for entry in entries}
     except OSError as exc:
         raise _fail("cannot inspect extracted samples ownership") from exc
     if names != allowed:
@@ -856,7 +857,7 @@ def _remove_owned_tree(root: Path, directory: Path, directory_identity: tuple[in
         checked = frames._within(root, relative, "owned delivery review directory")
         if checked != directory or not _matches(directory, directory_identity, directory=True):
             return False
-        with os.scandir(directory) as entries:
+        with os.scandir(frames._os_path(directory)) as entries:
             names = {entry.name for entry in entries}
         allowed = {name for name in file_identities if not name.startswith("samples/")}
         if sample_identity is not None:
@@ -874,7 +875,7 @@ def _remove_owned_tree(root: Path, directory: Path, directory_identity: tuple[in
             samples = directory / "samples"
             if sample_identity is None or not _matches(samples, sample_identity, directory=True):
                 return False
-            with os.scandir(samples) as entries:
+            with os.scandir(frames._os_path(samples)) as entries:
                 sample_names = {entry.name for entry in entries}
             expected_sample_names = {name.removeprefix("samples/") for name in file_identities if name.startswith("samples/")}
             if not sample_names <= expected_sample_names:

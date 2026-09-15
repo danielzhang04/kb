@@ -48,6 +48,10 @@ TRAIN_START_PATH = TRAIN_DIR / "runs" / "start-training-aitoolkit.sh.template"
 TESTER_START_PATH = TRAIN_DIR / "runs" / "start-comfy-lorapath.sh.template"
 QWEN3VL_CAPTION_START_PATH = TRAIN_DIR / "runs" / "start-qwen3vl-caption.sh.template"
 CAPTION_ARTIFACT_NAME = "captions.json"
+# MINOR 9 (REVIEW): same bound `video/video_manifest.py`'s own `MAX_JSON_BYTES` uses --
+# a pod-produced captions.json is read through the generic, otherwise-unbounded
+# `_read_json`, so this caps it explicitly before that read.
+CAPTIONS_MAX_JSON_BYTES = 256 * 1024
 TESTER_NATIVE_DIMENSIONS = {"width": 1448, "height": 2176}
 TRAINING_CONFIG_MODULE = HERE / "training_config.py"
 RENDER_MODULE = TRAIN_DIR / "render_aitoolkit_config.py"
@@ -222,18 +226,25 @@ def _video_authority_root(path: Path, label: str) -> Path:
     `orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/`.
 
     `gen` and `detail` plans are unaffected: they may still be built anywhere (the
-    runbook's own `C:/tmp/creator-001-plan` keeps working). Only `video` refuses."""
+    runbook's own `C:/tmp/creator-001-plan` keeps working). Only `video` refuses.
+
+    MINOR 3 (REVIEW): contained to `RUNS_ROOT` (`orgs/figment/runs/`), not merely `ROOT`
+    -- an otherwise-in-repo path like `orgs/figment/personas/<id>` is not a run root
+    (nothing gitignores it, `pipeline` never writes there, and the whole point of this
+    function is to bind every video-plan-related path to the one gitignored run tree
+    `pipeline --out` defaults to), so it must refuse here too."""
     resolved = Path(path).resolve()
     try:
-        resolved.relative_to(ROOT.resolve())
+        resolved.relative_to(RUNS_ROOT.resolve())
     except ValueError as exc:
         raise FigmentTrainError(
-            f"the video stage requires {label} inside the repository authority root "
-            f"({ROOT}); `pipeline --out` defaults to "
+            f"the video stage requires {label} inside the run-root authority root "
+            f"({RUNS_ROOT}); `pipeline --out` defaults to "
             "orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/ for exactly this reason "
             "(video_manifest's review-candidate mode binds the plan's own in-repo "
-            "persona.yaml digest under one common --root). gen and detail may still be "
-            f"planned outside the repo; video may not. Got: {resolved}"
+            "persona.yaml digest under one common --root, and only orgs/figment/runs/ "
+            "is that shared run-root tree). gen and detail may still be planned "
+            f"anywhere, including elsewhere in the repo; video may not. Got: {resolved}"
         ) from exc
     return resolved
 
@@ -302,26 +313,37 @@ def _resolve_gen_style_lora(
     plan-building work). The strength floor mirrors `training_config.py`'s own "must
     be a positive number" rule for `training.style_lora_strength`, plus an explicit
     <=1.5 ceiling for a flag override (no persona has ever validated a number this high
-    -- a plan-time typo like `15` must not reach a live gen render)."""
+    -- a plan-time typo like `15` must not reach a live gen render).
+
+    MINOR 10 (REVIEW): the SAME pins-key and <=1.5-strength validation now also applies
+    to `training["style_lora"]` when it comes from the persona's own `training.yaml`
+    default, not only from the `--style-lora` flag -- previously a persona-declared
+    style LoRA reached `_gen_workflow`/`_gen_manifest` unvalidated (an unknown key there
+    fails later, mid-plan-build, with a less specific error; an out-of-range persona
+    strength was never checked at all)."""
     if style_lora_strength is not None and style_lora is None:
         raise FigmentTrainError("--style-lora-strength requires --style-lora")
-    if style_lora is None:
+    effective_key = style_lora if style_lora is not None else training.get("style_lora")
+    flag_source = style_lora is not None
+    if effective_key is None:
         return training
-    if not isinstance(style_lora, str) or not style_lora.strip():
-        raise FigmentTrainError("--style-lora must be a non-empty string key")
+    label = "--style-lora" if flag_source else "training.style_lora"
+    if not isinstance(effective_key, str) or not effective_key.strip():
+        raise FigmentTrainError(f"{label} must be a non-empty string key")
     known = pins.get("pins", {}).get("style_loras", {})
-    if not isinstance(known, dict) or style_lora not in known:
+    if not isinstance(known, dict) or effective_key not in known:
         raise FigmentTrainError(
-            f"unknown --style-lora key {style_lora!r}; known: {sorted(known) if isinstance(known, dict) else []}"
+            f"unknown {label} key {effective_key!r}; known: {sorted(known) if isinstance(known, dict) else []}"
         )
+    strength_label = "--style-lora-strength" if flag_source else "training.style_lora_strength"
     strength = training.get("style_lora_strength") if style_lora_strength is None else style_lora_strength
     if (isinstance(strength, bool) or not isinstance(strength, (int, float))
             or not (0 < strength <= STYLE_LORA_MAX_STRENGTH)):
         raise FigmentTrainError(
-            "--style-lora-strength must be a positive number, at most "
+            f"{strength_label} must be a positive number, at most "
             f"{STYLE_LORA_MAX_STRENGTH} (got {strength!r})"
         )
-    return {**training, "style_lora": style_lora, "style_lora_strength": float(strength)}
+    return {**training, "style_lora": effective_key, "style_lora_strength": float(strength)}
 
 
 def _read_json(path: Path, *, reads=None) -> Any:
@@ -2185,6 +2207,13 @@ def _live_qwen3vl_job_runner(
         captions_path = run_out / CAPTION_ARTIFACT_NAME
         if not captions_path.is_file():
             raise FigmentTrainError(f"caption pod job did not produce {captions_path}")
+        # MINOR 9 (REVIEW): bounded the same way the video/ readers bound their own JSON
+        # reads (`video_manifest.MAX_JSON_BYTES`) -- a pod's captions.json is never
+        # trusted to be a reasonable size before it is parsed.
+        if captions_path.stat().st_size > CAPTIONS_MAX_JSON_BYTES:
+            raise FigmentTrainError(
+                f"caption pod job artifact exceeds {CAPTIONS_MAX_JSON_BYTES} bytes: {captions_path}"
+            )
         captions = _read_json(captions_path)
         try:
             return [captions[image.name] for image in images]
@@ -5315,7 +5344,7 @@ def _ruling_attribution(document: dict[str, Any], row: dict[str, Any]) -> dict[s
     }
 
 
-def _deliverable_video(primary_root: Path, video_root: Path) -> dict[str, Any]:
+def _deliverable_video(creator_id: str, primary_root: Path, video_root: Path) -> dict[str, Any]:
     """On GATE video's ruling the deliverable gains the reel derivative itself --
     `content/reel-templates.yaml`'s 1080x1920@30fps delivery file -- plus the exact
     native<->derivative correspondence `frame_assemble.build_reel_derivative` recorded
@@ -5323,7 +5352,22 @@ def _deliverable_video(primary_root: Path, video_root: Path) -> dict[str, Any]:
     the native frame's own digest from the assembly receipt beside its gate row. A reader
     can therefore prove the delivered mp4 is this run's own native movie re-rendered, and
     that the frames the identity gate scored are the frames that movie was built from --
-    without trusting any of the three receipts on its own."""
+    without trusting any of the three receipts on its own.
+
+    B1-video: an `approved-list.json` row is never treated as authority here, exactly as
+    B1 already refuses to for gen/detail stills. `_load_current_approval` is called first
+    -- a stale approval (subject/evaluation/gate.json changed since ruling) refuses before
+    any bytes are touched -- and `identity_rows` is built from that approval's OWN
+    `subject.images`, never the plan's `approved-list.json`. Every graded row must carry a
+    current `keep` ruling plus a gate pass or a non-empty attributed `gate_override`
+    (mirrors `_validate_approved_still`'s own kept-row check). `assembly["movie"]`, every
+    native frame `frame_assemble` recorded, and the delivered derivative are all re-hashed
+    against their real on-disk bytes -- never trusted from a receipt's own claimed digest."""
+    plan, loaded_root = _load_plan(creator_id, video_root / "plan.json")
+    if loaded_root != video_root:
+        raise FigmentTrainError("video plan root changed while loading")
+    approval = _load_current_approval(plan, video_root, "video")
+
     grade_dir = video_root / "grade" / "video"
     directories = _video_evidence_dirs(video_root)
     assembly = _read_json(directories["assembly"] / "frame-assembly.json")
@@ -5334,9 +5378,72 @@ def _deliverable_video(primary_root: Path, video_root: Path) -> dict[str, Any]:
     if not isinstance(candidate_id, str) or not candidate_id:
         raise FigmentTrainError("video evidence carries no review-candidate id")
 
+    # B1-video: re-hash the assembled native movie and every native frame against
+    # their real on-disk bytes -- a `frame-assembly.json` claim is never trusted alone.
+    movie_path = ROOT / assembly["movie"]["path"]
+    if not movie_path.is_file() or _sha256(movie_path) != assembly["movie"]["sha256"]:
+        raise FigmentTrainError("assembled native movie bytes do not match its own receipt")
+
+    frame_by_id: dict[str, dict[str, Any]] = {}
+    for row in assembly.get("frames", []):
+        frame_path = ROOT / row["path"]
+        if not frame_path.is_file() or _sha256(frame_path) != row["sha256"]:
+            raise FigmentTrainError(
+                f"assembled native frame {row.get('path')!r} bytes do not match its own receipt"
+            )
+        frame_by_id[Path(row["path"]).stem] = row
+
+    # B1-video: every identity row is fully validated -- current keep ruling, gate pass
+    # or attributed override, and a present native frame -- BEFORE a single byte is
+    # copied into deliverable/video/. A refusal here must never leave a partial or
+    # ungated delivery on disk.
+    gate_by_id = {
+        row["image_id"]: row for row in _read_json(grade_dir / "gate.json").get("rows", [])
+    }
+    rulings_document = _read_json(grade_dir / "rulings.json")
+    ruling_by_id = {row["image_id"]: row for row in rulings_document.get("rulings", [])}
+
+    subject_images = (
+        approval.get("subject", {}).get("images")
+        if isinstance(approval.get("subject"), dict) else None
+    )
+    if not isinstance(subject_images, list) or not subject_images:
+        raise FigmentTrainError("video approval carries no subject images")
+
+    identity_rows = []
+    for row in subject_images:
+        image_id = row.get("image_id") if isinstance(row, dict) else None
+        if not isinstance(image_id, str) or not image_id:
+            raise FigmentTrainError("video approval subject image id is invalid")
+        ruling = ruling_by_id.get(image_id)
+        if not isinstance(ruling, dict) or ruling.get("decision") != "keep":
+            continue
+        gate_row = gate_by_id.get(image_id)
+        override = ruling.get("gate_override")
+        if (gate_row is None or gate_row.get("pass") is not True) and (
+            not isinstance(override, str) or not override.strip()
+        ):
+            raise FigmentTrainError(f"kept video frame {image_id!r} lacks a gate pass or override")
+        native = frame_by_id.get(image_id)
+        if native is None:
+            raise FigmentTrainError(
+                f"graded video frame {image_id!r} is absent from the assembly receipt"
+            )
+        identity_rows.append({
+            "image_id": image_id,
+            "native_frame": {
+                "path": native["path"], "bytes": native["bytes"],
+                "sha256": native["sha256"], "index": native["index"],
+            },
+            "gate": gate_row,
+            "ruling": _ruling_attribution(rulings_document, ruling),
+        })
+    if not identity_rows:
+        raise FigmentTrainError("video approval carries no kept, gate-justified frames")
+
     destination_dir = primary_root / "deliverable" / "video"
     destination = destination_dir / f"{candidate_id}.mp4"
-    if not destination.exists():
+    if not destination.is_file() or _sha256(destination) != correspondence["derivative"]["sha256"]:
         destination_dir.mkdir(parents=True, exist_ok=True)
         shutil.copy2(ROOT / correspondence["derivative"]["path"], destination)
     digest = _sha256(destination)
@@ -5349,30 +5456,13 @@ def _deliverable_video(primary_root: Path, video_root: Path) -> dict[str, Any]:
             "reel derivative is not bound to this plan's own assembled native movie"
         )
 
-    gate_by_id = {
-        row["image_id"]: row for row in _read_json(grade_dir / "gate.json").get("rows", [])
-    }
-    rulings_document = _read_json(grade_dir / "rulings.json")
-    ruling_by_id = {row["image_id"]: row for row in rulings_document.get("rulings", [])}
-    frame_by_id = {Path(row["path"]).stem: row for row in assembly.get("frames", [])}
-    approved = _read_json(grade_dir / "approved-list.json")
-    identity_rows = []
-    for row in approved.get("images", []):
-        image_id = row["image_id"]
-        native = frame_by_id.get(image_id)
-        if native is None:
-            raise FigmentTrainError(
-                f"graded video frame {image_id!r} is absent from the assembly receipt"
-            )
-        identity_rows.append({
-            "image_id": image_id,
-            "native_frame": {
-                "path": native["path"], "bytes": native["bytes"],
-                "sha256": native["sha256"], "index": native["index"],
-            },
-            "gate": gate_by_id.get(image_id),
-            "ruling": _ruling_attribution(rulings_document, ruling_by_id.get(image_id, {})),
-        })
+    # MINOR 7: an earlier ruling's mp4 the current manifest no longer references is
+    # never left behind in deliverable/video/.
+    if destination_dir.is_dir():
+        for existing in destination_dir.iterdir():
+            if existing.is_file() and existing.name != destination.name and existing.suffix.lower() == ".mp4":
+                existing.unlink()
+
     return {
         "candidate_id": candidate_id,
         "reel": {
@@ -5442,7 +5532,6 @@ def _build_deliverable(
     for row in gen_approved.get("images", []):
         validated = validate_approved_gen_still(creator_id, gen_plan_path, row["image_id"])
         entry = _deliverable_entry(validated, deliverable_dir / "stills", primary_root)
-        ruling = gen_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = gen_gate_by_id.get(row["image_id"])
         entry["ruling"] = _ruling_attribution(
             gen_rulings_doc, gen_ruling_by_id.get(row["image_id"], {}),
@@ -5453,7 +5542,6 @@ def _build_deliverable(
     for row in detail_approved.get("images", []):
         validated = validate_approved_detail_still(creator_id, detail_plan_path, row["image_id"])
         entry = _deliverable_entry(validated, deliverable_dir / "detail", primary_root)
-        ruling = detail_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = detail_gate_by_id.get(row["image_id"])
         entry["ruling"] = _ruling_attribution(
             detail_rulings_doc, detail_ruling_by_id.get(row["image_id"], {}),
@@ -5487,7 +5575,7 @@ def _build_deliverable(
         "detail": detail_images,
     }
     if video_approval_sha256 is not None:
-        manifest["video"] = _deliverable_video(primary_root, video_root)
+        manifest["video"] = _deliverable_video(creator_id, primary_root, video_root)
     _write_json(manifest_path, manifest)
     return manifest
 

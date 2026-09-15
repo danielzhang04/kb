@@ -355,11 +355,30 @@ def test_refuses_stale_claimed_approval_and_unsafe_paths(tmp_path: Path) -> None
         video.build_manifest(root=tmp_path / "approval", persona_path=Path("../persona.json"), first_frame_receipt=Path(files["receipt"].name), action="walk slowly", out=Path("video-manifest.json"))
 
 
-def test_refuses_overwrite_nonlocal_upload_and_unreviewed_static_files(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_replans_idempotently_but_refuses_overwrite_nonlocal_upload_and_unreviewed_static_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch,
+) -> None:
     files = fixture(tmp_path)
-    compile_manifest(tmp_path, files)
+    first = compile_manifest(tmp_path, files)
+    # MINOR 6 (REVIEW): an unchanged replan against the SAME already-written manifest is
+    # idempotent -- accepted, not refused, and the on-disk bytes are untouched.
+    out_path = tmp_path / "video-manifest.json"
+    before_bytes = out_path.read_bytes()
+    second = compile_manifest(tmp_path, files)
+    assert second == first
+    assert out_path.read_bytes() == before_bytes
+
+    # A genuine change (different seed -> different manifest bytes) against the same
+    # output path still refuses rather than silently overwriting.
     with pytest.raises(video.VideoManifestError, match="overwrite"):
-        compile_manifest(tmp_path, files)
+        video.write_manifest(
+            root=tmp_path, persona_path=Path(files["persona"].name),
+            first_frame_receipt=Path(files["receipt"].name),
+            action="walk slowly toward the camera in a fully clothed street-style shot",
+            out=Path("video-manifest.json"), seed=78,
+        )
+    assert out_path.read_bytes() == before_bytes
+
     (tmp_path / "nested").mkdir()
     with pytest.raises(video.VideoManifestError, match="beside the first frame"):
         compile_manifest(tmp_path, files, "nested/video-manifest.json")

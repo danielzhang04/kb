@@ -353,6 +353,14 @@ closed on any mismatch or redirect (never follows a 302) — wired as a `plan`/`
 preflight unless `--skip-pin-verify` is passed. Full substitution log, licences, and open pin
 risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
 
+`.gitattributes` also pins four sibling *source* files consumed by
+`train/local_lora_matched_runtime.py`'s own self-hash gate (`C1_SHA256`, `OWNERSHIP_SHA256`,
+`PAIR_ENGINE_SHA256`) to `eol=lf`, so the pin is byte-identical on Windows and the Linux
+cloud VM regardless of `core.autocrlf`. Git does not retroactively re-smudge a file already
+on disk when an attribute is added — a checkout taken before the attribute landed stays
+CRLF until it is re-synced: run `git checkout HEAD -- <path>` for each pinned path after
+pulling (one command per path, quoted) to pick up the new attribute.
+
 n13: `verify_pins.py`'s HEAD/sha256 check covers `models` only. `detail`'s
 `custom_nodes` (RES4LYF, ComfyUI-Impact-Pack) clone at a *recorded* commit
 (`installer_pin`) that is never re-verified the way a model's sha256 is — the pin
@@ -401,6 +409,12 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   run, any single ceiling bigger than the daily limit (train always is, by the DOP
   arithmetic above) — informational only, never a second blocker on top of
   `enforce_daily_budget`.
+- NOTE: `_budget_preflight` measures the ledger's own recorded *spend*, never another
+  in-flight plan's *reservation* — it has no way to see a `plan.json` some other
+  process is about to write — so two plans built back-to-back, each affordable alone,
+  can both "clear" here even though their combined ceilings would not fit the arc cap;
+  `enforce_arc_cap` (`pod/runpod_run.py`), which runs at launch time against the same
+  ledger, is the actual authority a live `run` cannot get past.
 - Every manifest carries its own `max_minutes`/`max_placement_attempts: 1` (no automatic
   retry on a live run) and is `--dry-run` green before it ever spends.
 
