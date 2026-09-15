@@ -879,6 +879,11 @@ def test_receipted_spool_auto_detects_and_resumes_reconciliation(
     assert promote_module.main() == 0
     out = capsys.readouterr().out
     assert "resuming reconciliation" in out
+    # MEDIUM-3/LOW-7/LOW-9: the banner states which branch reason triggered this leg (here,
+    # auto-detect -- the flag was not passed) and that the signed-approval gate is skipped.
+    assert "already receipted on the VM" in out
+    assert "signed-approval gate is not consulted" in out
+    assert '"reconciled": 1' in out
     assert calls["return_bundle"] == "c" * 40
     assert calls["upload"] == ("vm.example.test", COMMIT, target)
 
@@ -1251,6 +1256,30 @@ def test_approval_request_path_refuses_before_signing_when_range_not_reconcilabl
 
     with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
         promote_module.main()
+
+
+def test_reconcilable_range_error_labels_existing_and_pending_paths_separately(tmp_path):
+    """LOW-7/LOW-9: the fail-fast error must tell "already on ops" apart from "in incoming
+    bundles" as two labelled lists, so the operator does not have to cross-reference the
+    outbox by hand to know which side of the range the offending path came from."""
+    existing_path = "orgs/x/already-on-ops.md"
+    pending_path = "orgs/y/in-a-bundle.md"
+
+    def fake_run(_repo, args, check=True):
+        if args[:2] == ["diff", "--name-only"]:
+            return completed(args, existing_path.encode() + b"\0")
+        if args[:2] == ["diff", "--raw"]:
+            return completed(args, raw_row(existing_path))
+        raise AssertionError(f"unexpected git call: {args}")
+
+    pending = [{"paths": [pending_path]}]
+    with pytest.raises(RuntimeError) as excinfo:
+        promote_module.require_reconcilable_range(
+            Path("unused"), BASE, COMMIT, pending, run=fake_run,
+        )
+    message = str(excinfo.value)
+    assert f"already on ops: {existing_path}" in message
+    assert f"in incoming bundles: {pending_path}" in message
 
 
 def test_instruction_and_coordination_allowlists_accept_org_goal_md():

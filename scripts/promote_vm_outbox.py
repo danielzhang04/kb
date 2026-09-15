@@ -261,13 +261,20 @@ def require_reconcilable_range(
         raise RuntimeError("outbox range diff is inconsistent between --name-only and --raw")
     if any(old not in SAFE_CHANGED_MODES or new not in SAFE_CHANGED_MODES for old, new in modes):
         raise RuntimeError("outbox range contains an unsafe object mode")
+    # LOW-7/LOW-9: label offending paths by origin so the operator can tell "this was already
+    # on ops before I touched anything" from "one of the bundles I'm about to push carries this"
+    # without cross-referencing the outbox manually.
     pending_paths = {path for manifest in pending for path in manifest["paths"]}
-    offending = sorted(
-        path for path in {*existing, *pending_paths} if RECONCILED.fullmatch(path) is None
-    )
-    if offending:
+    offending_existing = sorted(path for path in existing if RECONCILED.fullmatch(path) is None)
+    offending_pending = sorted(path for path in pending_paths if RECONCILED.fullmatch(path) is None)
+    if offending_existing or offending_pending:
+        labelled = []
+        if offending_existing:
+            labelled.append("already on ops: " + ", ".join(offending_existing))
+        if offending_pending:
+            labelled.append("in incoming bundles: " + ", ".join(offending_pending))
         raise RuntimeError(
-            "outbox range contains paths the VM reconciler would refuse: " + ", ".join(offending)
+            "outbox range contains paths the VM reconciler would refuse (" + "; ".join(labelled) + ")"
         )
 
 
@@ -1029,9 +1036,19 @@ def main() -> int:
             raise RuntimeError(
                 "--reconcile-only requires every outbox bundle in the spool to already be receipted"
             )
+        # MEDIUM-3/LOW-7/LOW-9: name which branch reason triggered this leg (an explicit
+        # operator flag reads very differently from an auto-detected all-receipted resume), and
+        # be explicit that the signed-approval gate below is not consulted here -- this leg never
+        # calls require_instruction_approval, because every instruction-bearing bundle in the
+        # chain was already approved (or exempt) on the promotion run that wrote its receipt.
+        reason = (
+            "operator requested --reconcile-only"
+            if args.reconcile_only
+            else f"all {len(chain)} bundle(s) already receipted on the VM; ready/ non-empty"
+        )
         print(
-            f"reconcile-only: {len(chain)} bundle(s) already receipted; "
-            "resuming reconciliation without re-promoting"
+            f"reconcile-only: {reason}; resuming reconciliation without re-promoting "
+            "(the signed-approval gate is not consulted on this path)"
         )
         promotion_target = _last_promoted_target(snapshot, chain)
         bundle, return_repo = create_return_bundle(args.repo, args.work_root, promotion_target)
@@ -1045,7 +1062,11 @@ def main() -> int:
         # clone's now-stale read of origin/ops.
         _verify_reconcilable_range(return_repo, args.trusted_ops_head, target, [], run_git)
         upload_and_apply_reconciliation(args.vm_host, bundle, snapshot / "receipts", source_head, target)
-        print(json.dumps({"promoted": 0, "pending": 0, "failed": 0}, sort_keys=True))
+        print(
+            json.dumps(
+                {"promoted": 0, "pending": 0, "failed": 0, "reconciled": len(chain)}, sort_keys=True,
+            )
+        )
         return 0
     if (
         any(any(INSTRUCTION.fullmatch(path) for path in item["paths"]) for item in chain)
