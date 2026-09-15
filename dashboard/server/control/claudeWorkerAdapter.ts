@@ -523,6 +523,10 @@ export function buildApprovedAttemptDeclaration(
     proposalStage: input.proposalStage,
     project: input.project,
     curatedContext: input.curatedContext,
+    // F2 defect fix: the engine resolves `dependencyResults` and hands them to `begin`, and
+    // `buildWorkerPrompt` renders `DEPENDENCY RESULTS:` from them — but this declaration builder
+    // dropped them on the floor, so no dependent stage's prompt ever carried a predecessor summary.
+    dependencyResults: input.dependencyResults,
   };
 }
 

@@ -107,6 +107,31 @@ describe('v1-acceptance-demo workflow definition (compiled proof)', () => {
     }
   });
 
+  /**
+   * REGRESSION GUARD (found live by `control/v1AcceptanceDemo.e2e.test.ts`): `execution.ts`
+   * `restrictedIntent` parks any stage whose work-order PROSE carries credential / spending /
+   * publication vocabulary, and only the PUBLICATION reason is ever releasable (and only by a declared
+   * publication gate, which this def has none of). A `spending-language-requires-human-review` park
+   * therefore re-mints on every reconciliation pass and NEVER clears — the engine's own comment says the
+   * def must be reworded. The shipped def said "spend no money" in both researcher work orders, so the
+   * v1 launch demo could not reach its first worker. Keep every work order clear of this vocabulary.
+   */
+  it('keeps every work order clear of the restricted-intent vocabulary that would park it forever', () => {
+    const restricted = [
+      /(?:credential|password|private key|api key|access token|secret)/,
+      /(?:purchase|spend|payment|credit card|buy)/,
+      /(?:publish|publication|deploy|release externally|upload externally)/,
+    ];
+    for (const stage of FIXTURE.plan.stages) {
+      for (const pattern of restricted) {
+        expect([stage.id, pattern.source, pattern.test(stage.workOrder.toLowerCase())])
+          .toEqual([stage.id, pattern.source, false]);
+        expect([stage.id, pattern.source, pattern.test(stage.action.toLowerCase())])
+          .toEqual([stage.id, pattern.source, false]);
+      }
+    }
+  });
+
   it('treats researcher stages as independent (no dependsOn between them) at maxConcurrency 2', () => {
     expect(FIXTURE.plan.maxConcurrency).toBe(2);
     expect(stages.get('researcher-a')?.workflowProfile).toBe('research');
