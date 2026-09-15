@@ -173,6 +173,34 @@ describe('scanOwnedDashboardCards', () => {
   });
 });
 
+// --- createQueueBridge.start: a timer tick can never take the daemon down -----------------------------
+
+describe('createQueueBridge.start', () => {
+  // Red-on-revert: with `void tick().catch(onError)` a throwing reporter escapes the timer callback as an
+  // unhandledRejection, and this process installs no unhandledRejection handler -- Node's default kills
+  // the daemon. The failing tick here is the outage shape: a scan that throws while the control document
+  // is unloadable, reported by a sink that then throws too.
+  it('survives a failing tick whose error reporter also throws', async () => {
+    const unhandled: unknown[] = [];
+    const onUnhandled = (reason: unknown): void => { unhandled.push(reason); };
+    process.on('unhandledRejection', onUnhandled);
+    const bridge = createQueueBridge({
+      repoRoot: '/repo', runPreamble: okPreamble,
+      runPy: () => { throw new Error('invalid control-plane creator attempt generation provenance'); },
+      onError: () => { throw new Error('reporter is gone too'); },
+    });
+    try {
+      bridge.start(1);
+      // Several macrotask turns: long enough for a few ticks AND for any rejection to be reported.
+      await new Promise((resolve) => { setTimeout(resolve, 40); });
+      expect(unhandled).toEqual([]);
+    } finally {
+      bridge.stop();
+      process.off('unhandledRejection', onUnhandled);
+    }
+  });
+});
+
 // --- createQueueBridge: preamble gate + single-flight, NO dispatch by default -------------------------
 
 describe('createQueueBridge.tick', () => {
