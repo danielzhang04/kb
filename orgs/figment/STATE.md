@@ -1,296 +1,114 @@
 # figment — STATE
 
-_Updated: 2026-09-03_
+_Updated: 2026-09-15_
 
 ## Now
 
-- **Design spec v2 twice-reviewed and rulings-folded** (in place — still v2):
-  `docs/superpowers/specs/2026-09-03-figment-creator-001-design.md` — creator-001 end to end
-  (stages 1–9, voice, explicit-tier machine, dashboard decision), 37-phase build order (P0–P16,
-  including new P7b/GATE B2 for the production LoRA). Both `REVIEW-*` and `REVIEW2-*` findings and
-  partial closures are folded under the operator's rulings of 2026-09-03.
-- Anchor closed. Reference set of record is `g01, g02, g07`, in that order (identity-spec §Reference
-  set of record, operator 2026-09-03 07:05). No composites — all composite cells were judged off on
-  second look and scrapped; composite runs 01–03 stay on disk (`orgs/figment/personas/creator-001/
-  composite-0{1,2,3}/run.json`) only as evidence of the klein reference-order, face-pixel-density,
-  and pod-timing findings; P1 migrates this evidence into the `batches/<id>/` layout.
-- Research r1–r19 complete and claim-checked in `research/`, including the 10sorlabs package audit
-  (r14/r15: workflows, settings, caption doctrine, dataset-tester, SOP compliance rejections) and
-  **all three r15b module-video reports** (`r15b-training.md`, `r15b-generation.md`,
-  `r15b-edit-motion.md`), claim-checked at commit `57221caf` and reconciled into S2/S3/S5/S6.
-- Harness at HEAD: fixes committed `4efea0de`/`f5ba643b`; 152 pod+train tests green; REVIEW-e
-  findings 1–17 and 20 fixed, **18/19/21 deferred to the remaining P0**. `DEFAULT_MAX_MINUTES` is
-  **840** — there is no hard 60-minute global and no `TRAINING_MAX_MINUTES` constant; every manifest
-  carries its own bound (expansion-02: 72 min; training: 180 min).
-- Infrastructure in place on `claude/figment`: pod harness with spend guards, HTTP transport, upload
-  and artifact paths, calibration grid driver, training scaffolding, `identity_check.py`, and the
-  FYT-ported review trio (`qa_stamp.py`, `blind_pool.py`, `build_grading_board.py`).
-- Model decisions: FLUX.2 klein 4B **Base** for identity (Apache-2.0), Z-Image Base as the aesthetic
-  challenger, Wan 2.2 TI2V-5B for the video proof, diffusion-pipe as the trainer.
+- **One resumable `pipeline` command drives the whole chain.** `figment_train.py pipeline
+  --creator <id>` walks `anchor → dataset → smoke → train → tester → gen → detail → video`,
+  halting with a printed `GATE <stage>: awaiting ruling` at every gradeable stage
+  (`anchor`, `dataset`, `tester`, `gen`, `detail`, `video`) and resuming safely from
+  `stage.json`/`grade/<stage>/*.json` receipts already on disk — no separate cursor file,
+  never re-plans/re-runs/re-grades a stage with current evidence. `--import-checkpoints
+  <dir>` is the second entry path: plans `tester` directly against an operator-trained
+  checkpoint ladder (MANDATE.md's tier constraint — explicit-tier LoRA training happens on
+  operator hardware, outside any pod), skipping anchor/dataset/smoke/train. Full detail:
+  `orgs/figment/RUNBOOK.md` (the operator command sequence) and `pipeline/README.md` (the
+  pipeline's own map).
+- **`detail` and `video` are now real `STAGES`/`GRADEABLE_STAGES` entries**, not side CLIs:
+  `detail` always re-detailts a ruled `gen` plan's own kept stills (never an operator glob);
+  `video` compiles a Wan 2.2 review-candidate manifest from a ruled `gen` plan's kept still,
+  runs it, builds local evidence (assembly, reel derivative, frame extraction), and grades
+  every 8th of 81 native frames through the existing identity/judge gate. Run roots default
+  to `orgs/figment/runs/<creator>/<stamp>/`, in-repo — `video` refuses to plan outside the
+  repository (`_video_authority_root`).
+- **One gate writer.** `identity_gate.write_gate_document` is the single writer of
+  `gate.json`, shared by `figment_train.py build_grade` and `identity_gate.py`'s own
+  plan-independent `run` — every `gate.json` on disk is byte-identical regardless of caller.
+  The old SHA-bound `gates.py` `write_gate`/`gate_is_current` pair (a second, incompatible
+  schema, zero non-test callers) was deleted; `gates.py` today is only `sha256_file`.
+- **One prompt composer.** `_compose_triggered_prompt` is the single place the trigger +
+  class clause is prepended, for every prompt that reaches a pod across every stage
+  (anchor, dataset, tester, gen, detail, caption trigger clause) — the trigger-word defect
+  of 2026-09-07 (tester prompts carried no trigger while the LoRA was trained with one) was
+  exactly the failure mode multiple independent composers produce.
+- **A plan-time budget preflight** (M2) sums every run a `plan`/`pipeline` call is about to
+  write against the arc cap remaining before writing `plan.json`, and refuses unless
+  `--accept-budget` is passed; the live per-run guards (`enforce_daily_budget`,
+  `enforce_arc_cap`) are unchanged and still the actual authority at launch time.
+- **One ledger.** The repo's own `ledgers/cost/` is the single reconciled arc-cap ledger
+  (E3) — the runbook no longer points at a private worktree path.
+- Pins repaired (F7): `flux2-klein-4B`'s HF rename is resolved in `tensor-pins.yaml`;
+  `verify_pins.py` (no `--stage`) reports all 9 stages clean, video pins included (E5).
+  Train profile at target (F5): `training.yaml` reads `steps: 3000` (DOP on, a deliberate
+  deviation from module 11's own recipe), matching `train/TENSOR-TRAINING.md`'s current
+  ruling; the checkpoint ladder is 12 (11 intermediates + final), screened by the tester,
+  never defaulted to the final step.
+- Qwen3-VL auto-captioning (F4) is implemented as a pinned pod job
+  (`build_training_set.py`'s `qwen3vl_caption_job`) rather than the earlier
+  `NotImplementedError` stub. The skin-texture style LoRA (F3) is wired as a per-plan
+  `--style-lora`/`--style-lora-strength` flag on `gen` (M3 — not a persona fork), so an A/B
+  is two `gen` plans on the same persona.
 
 ## Next
 
-1. P0 (T2 build card) — remaining scope only: REVIEW-e findings 18, 19, 21 (1–17/20 already fixed).
-2. P1 → P2 → P2R → P3, each under its own T2 build card, in that order (P2R reviews the union of
-   P1+P2 at their SHAs and gates only P3). P1: `persona.yaml` schema, reducer, gate writers, safety
-   axes. P2: `build_expansion_set.py` + 6 ephemeral-pod manifests (10 cells each,
-   `job_timeout_seconds: 300`, readiness 900, `max_minutes: 72`).
-3. P3 — expansion-02 live runs → score → blind board → **GATE A** (operator eye-gate). The run stops
-   there. Spend ceiling **$6.00** (`--max-usd 1.00` × 6 pods); with $0.87 already spent today, worst
-   case is $6.87 against the $10 daily guard.
-4. In parallel tonight, each under its own T2 build card: P4b (taxonomy/templates), P4e (agent
-   declarations + `orgs/figment/workflows/figment-creator.md`), P4f (`HEARTBEAT.md` cadence rows only).
+1. **Studio: G1 before G2** (per `docs/figment/AUDIT-2026-09-15.md` §G). G1 — a route that
+   renders an existing `grade/<stage>/` board and writes the same rulings JSON
+   `apply-rulings` already consumes (`decided_by` from the verified session, `decided_at`
+   from the server clock, keep/cull + all seven axes) — needs no new execution authority
+   and unblocks Studio recording a real ruling. G2 — launching a prepared plan's own
+   recorded argv — stays deferred behind the four preconditions
+   `2026-09-12-overall-plan-review.md` names (owned host/environment, spend bound,
+   sole-launcher operation, real passkey admission).
+2. Run creator-001 through a live `pipeline --creator creator-001` end to end at least once
+   with real operator rulings at each gate, to prove the eight-stage chain (not just its
+   fixture tests) against the current 3000-step/DOP train profile.
+3. Resolve the three placeholder `gate.yaml` thresholds (`identity_gate.age_delta_max_years`
+   / `gloss_max`; `judge.skin_realism_min` / `gloss_max` / `artifacts_max`) — calibration
+   already ran and reported honestly that these do not separate any evidence set.
 
-## Blocked
+## Blocked / open gaps
 
-- **Training pod: conditional.** P0R's sonnet pass now reads training pod **YES with conditions**
-  (findings 3/4/5/8 fixed, harness at 152 green). **An opus P0R pass is still owed before any training
-  pod runs.**
-- Stages 8–9 blocked on operator provisioning: an Instagram professional test account, the Meta app,
-  and the OAuth grant (Test 0).
-- Explicit tier blocked on an owned GPU.
-- Fanvue written confirmation still outstanding.
+- **No accepted checkpoint yet for creator-001.** Every historical tester candidate (Track-1
+  2000-step run, train-first 1250-step run) was culled or superseded before this arc's
+  3000-step/DOP profile landed; `grade/tester/accepted-checkpoint.json` does not exist for
+  the current profile, so `gen`/`detail`/`video`/the deliverable have never run against it.
+- **Studio still cannot launch a run or record a ruling** (`docs/figment/
+  AUDIT-2026-09-15.md` §G) — it prepares plans and reads evidence, nothing more. See "Next"
+  item 1.
+- **The qwen3vl caption pod job has never run live** — implemented and unit-tested, no pod
+  receipt exists yet.
+- **Video has never run live** — `video_manifest.py`/`frame_assemble.py`/`frame_extract.py`
+  are wired into `pipeline` and fixture-tested, but no real Wan 2.2 pod has rendered a
+  candidate for creator-001 yet.
+- **`figment_train.py` has not been audited for Windows MAX_PATH.** `video/`'s own
+  extended-length (`\\?\`) path handling (F6b) does not extend to `figment_train.py` itself;
+  a run root deep enough could still push a `grade/<stage>/*.json` path past 260 characters.
+- **`ADMISSION_SHA256` in `expand/local_omnigen2_runtime.py` is dead in practice** — the
+  OmniGen2 branch it belongs to is closed without a paid retry (`docs/figment/
+  AUDIT-2026-09-15.md` §B.5); the constant still has an in-module caller so it was not
+  pruned, but nothing upstream of it plans or runs.
+- **Stages 8–9 (post & measure, optimise) blocked on operator provisioning**: an Instagram
+  professional test account, the Meta app + OAuth grant (Test 0), and Fanvue written
+  confirmation are all still outstanding. The explicit tier is additionally blocked on an
+  owned GPU (MANDATE.md's tier constraint keeps unclothed generation/training off rented
+  compute).
+- Three `gate.yaml` thresholds remain unvalidated placeholders — see "Next" item 3.
 
-## Open decisions for the operator
+## Reading order
 
-The ten questions in §10 of the design spec. The four that gate near-term work:
+`MANDATE.md` → `pipeline/GUARDRAILS.md` → `pipeline/README.md` → `RUNBOOK.md` → this file →
+`contract.md`. See `_index.md` for the full map.
 
-- Raise `governance/budget.yaml` `daily_usd_limit` (currently 10.00) for run days, or split expansion
-  and training across days — tonight's worst case ($6.87) fits inside the current $10 without a raise.
-- Approve the training manifest's own bound (`job_timeout_seconds: 6000`, readiness 1200,
-  `max_minutes: 180`) or require checkpoint-resume — there is no global 60-minute ceiling to except
-  from (`DEFAULT_MAX_MINUTES` is 840), so no new constant is needed either way.
-- Whether swimwear/lingerie cells enter LoRA v1 or v2 (spec recommends v2 — now phase P7b, gated by
-  GATE B2).
-- Persona name, handle, home city, bio disclosure line, and link-in-bio door.
+## History (2026-09-03 through 2026-09-07, pre-pipeline-command arc)
 
-## Known gap in the evidence base
-
-Closed. All three r15b module-video reports (`r15b-training.md`, `r15b-generation.md`,
-`r15b-edit-motion.md`) now exist, are claim-checked at commit `57221caf`, and are reconciled into the
-design spec's S2/S3/S5/S6 blocks. LoRA rank, learning rate, batch size, checkpoint cadence, and the
-video motion block are no longer video-only estimates; the dataset-tester remains the arbiter of the
-final values.
-
-## Current state — 2026-09-03 18:05 (overnight build terminal close)
-
-- **Parked at GATE A (expansion-02 eye-gate).** Batch `orgs/figment/personas/creator-001/batches/expansion-02/`
-  stage `awaiting-eye-gate-a`: 60 cells over 6 ephemeral 4090 pods ($2.28, 31 min each), 56 scored raw
-  (anchor cosine median 0.68, min 0.09), 4 deterministic no-face quarantined (s034, s035, s040, r020). Blind board
-  `board.html` (56 images, local, gitignored) + `blind-key.json` (never shown to the grader). Nothing curated,
-  approved, stamped, or trained. Spend card 044ea509 (ops) covers the run; build card b618941b covers P1-P2R.
-- **Built and committed on `claude/figment` (HEAD 2d329cb3, unmerged):** research r15/r15b/r16/r17/r18/r19 all
-  claim-checked; spec v3 (`docs/superpowers/specs/2026-09-03-figment-creator-001-design.md`, two adversarial
-  rounds); plan v2 (`docs/superpowers/plans/2026-09-03-figment-creator-001-p1.md`); harness fixes (REVIEW-e 1-17,20;
-  P0R YES); P1 persona contract/lifecycle/gates/7-axis safety rulings; P2 deterministic expansion builder + 6
-  manifests (P2R LIVE-SAFE YES); P4b taxonomy + templates; P4e nine agent declarations + workflow DAG; P4f seven
-  cadences (armed: false). Suite: 270+ tests green.
-- **Spend:** arc $5.13 of $52.85; today $3.16 of $10.00 daily (budget.yaml raised to 10 on this branch by ruling).
-- **Next:** operator rules the board (seven axes; adult_read / garment_integrity / real_person_resemblance fail
-  closed) → `qa_stamp.py` → `gate.json` GATE A → curated 40 → P5 (opus P0R pass owed) → P7 LoRA v1.
-
-## Update — 2026-09-03 19:20 (operator viewed the GATE A board)
-
-- **expansion-02 FAILED its purpose: identity did not hold across cells** (operator: "90% wrong"; boss sampled six:
-  four different women). Root cause: free generation from an empty latent with 180-word scene prompts and the
-  three references as side input, plus no register words and profile/back angles with no reference information.
-  The package's proven dataset step is anchor img2img at denoise ≈0.23 with short angle/pose templates (r15b
-  module 10). Batch kept as evidence only; NOT to be graded or curated. GATE A card 65d8f246 stays open but its
-  subject is superseded by expansion-03.
-- **Next: expansion-03** — port of the module-10 method to klein 4B Base (anchor as initial latent + reference,
-  denoise 0.20-0.35, ≤40-word prompts with register words, small head/gaze/crop/light/wardrobe variations, no new
-  rooms, no profiles), 6-cell pilot first, then 30-36 cells, then GATE A on that board.
-
-## Update — 2026-09-03 21:05 — expansion-03 parked at GATE A (supersedes expansion-02's board)
-
-- **Method that worked: Mechanism A** = the verified klein multi-ref EDIT graph (target anchor first as canvas, empty
-  latent, full denoise) with ≤25-word edit-grammar prompts ("the same woman as the reference, identical face; <one
-  change>; same room, same light"). Pilot A/B: arm B (anchor as initial latent, denoise 0.28-0.35) returned near-copies
-  with the requested change ignored; arm A made true edits with identity held. Rotation wording matters: "thirty
-  degrees" rendered a full profile; "a quarter turn, face toward camera, both eyes visible" works.
-- **Batch `expansion-03`** (`orgs/figment/personas/creator-001/batches/expansion-03/`): 36 arm-A cells (12 templates
-  × g01/g02/g07), 5 pods, $1.44 (+$0.16 pilot-B); 35 scored, own-anchor cosine median 0.864 (min 0.673), 19 ≥ 0.836
-  (calibrated floor; anchors pairwise 0.886-0.926), 1 no-face quarantined (g01-t09). Blind board 35 cards; stage
-  `awaiting-eye-gate-a`. Spend card 57c33efe (ops). Head-turn cells score 0.78-0.83 while reading as the same woman;
-  the eye-gate, not the floor, decides them.
-- **expansion-02** stays quarantined evidence. Arc spend $8.74 of $52.85; today $5.38 of $10.
-- **Next:** operator rules the expansion-03 board (7 axes) → qa_stamp → GATE A → curated set (≥30 target; regenerate
-  the culled templates with new seeds if short) → P5 → LoRA v1 with checkpoint ranking.
-
-## Reset — 2026-09-03 22:10 (operator ruling)
-
-- **Operator verdict on expansion-03 at full resolution: mostly trash.** The boss's 24/35 keep grading was done on
-  460-px thumbnails and is withdrawn. expansion-02 AND expansion-03 are shelved as datasets (evidence only).
-- **Root failure (boss):** the mandate was research → replicate the package's process → trial on our anchors → adapt.
-  We read the process, then built our own klein multi-ref variant and spent on it twice; we never ran their pipeline
-  once and never ran a LoRA training at all.
-- **Track 1 now (faithful replication):** module 10 dataset generator (Z-Image Turbo + Qwen-Image-Edit-2511 +
-  Lightning LoRA, their templates, denoise 0.23 refine, face bbox; removal branch excluded) → module 11 training
-  (Ostris ai-toolkit headless, Krea-2 RAW if licence/gating allow, rank 32, LR 1e-4, 250-step saves, Qwen3-VL
-  captions) → dataset tester (12 branches) → module 09 generation (FaceDetailer 0.15-0.35 + refine). Every stage graded
-  by the operator at FULL resolution beside the anchors. Track 2 (Apache port: Qwen-Image / Qwen-Image-Edit) only after
-  Track 1 sets the reference.
-- Krea-2 is gated on HF: the operator adds a RunPod Secret `HF_TOKEN`; the harness references it by name only.
-
-## Update — 2026-09-03 23:50 — Track-1 ports reviewed and fixed; awaiting delta re-review before the first paid pod
-
-- Ports committed: dataset (e629617e), training (b2c679b9); harness secret refs (52ab87db), ladder budget (fda03ba2).
-- Review (codex sol, dbc868c6): LIVE-SAFE NO on all stages, 18 findings. Fix wave: manifests/scripts/bridge/smoke
-  (1dc406e9, sonnet) + harness/ledgers (794668c0, codex sol). 458 tests green; smoke, shard-01, train, tester, gen all
-  dry-run green. FaceDetailer removed from module-09 generation (no verifiable non-pickle face detector); rest faithful.
-- Ledgers reconciled: 09-02 $1.97, 09-03 $4.68, arc $6.65 (midnight provisional duplicate removed). Arc cap enforced
-  at $50.00 (contract text) from here.
-- Next: delta re-review (in flight) → dependency-smoke pod (1 job, L40S, ceiling $1.41) → dataset shard-01 (10 cells,
-  ceiling $2.75) → operator full-res grade → shards 02-03 → training next ledger day.
-
-## 2026-09-03 23:50 — Track-1 dependency smoke PASSED; shard-01 running
-
-- Smoke pod xxviaztv52cxl0 (L40S): readiness 11 min (all node-deps rc=0, all pinned model digests verified), one real
-  cell in 36 s, terminate verified, $0.22. Output `runs/out/creator-001-tensor-smoke/c001-tensor-smoke-f01.png`
-  1728×2416: front-on dataset portrait with real skin texture, register intact, reads as the g01/g07 woman — the
-  first output of this project that looks like the package's. Shard-01 (10 cells, ceiling $2.75) launched 23:49
-  under card d126c410 stage 1; operator grades all 11 at full resolution before anything trains.
-
-## 2026-09-04 17:40 — dataset complete; training smoke failed twice; diagnosis in flight
-
-- Dataset (module-10 port): smoke + shards 01-03 = 31 cells on L40S, $0.22 + $0.28 + $0.29 + $0.28; operator graded
-  the face cells at full res: "a lot closer", identity not exact, faces glossy, GO to judge at the LoRA test grid.
-- Training smoke (50 steps, module-11 port): attempt 1 failed at ComfyUI health (ai-toolkit downgraded PyAV under
-  ComfyUI v0.34.0) — fixed: transport = v0.20.1 + requirement floors restored (591e98da, 7fbda213), ~$0.30. Attempt 2
-  reached readiness and uploaded the dataset, then every /view poll returned 502 for the whole 40-min window (transport
-  server dead during the Krea-2 load), ~$0.90, no training log recovered. Terminate verified both times.
-- No third blind run: codex-deep diagnosis + hardening dispatched (ComfyUI --cpu transport, continuous training log +
-  heartbeat via /view, cgroup/RAM/VRAM logging, RunPod pod-log capture on failure, ai-toolkit krea2 config check vs the
-  pinned commit, pod-class verdict). Today's spend $2.35; arc ≈ $9.0 of $50.
-
-## 2026-09-04 19:05 — first LoRA steps ever taken; publish naming fix; 2000-step ruling
-
-- Smoke #3: failed on a Git-Bash-mangled dataset path (our render bug; guard added bd55b223). Smoke #4: environment OK,
-  Krea-2 raw loaded + quantized, 50 steps at 3.85 s/step, loss 4.5e-2 → 7e-2 range, checkpoint saved as the bare
-  `creator001krea2.safetensors` — our publish step expected `_000000050` and failed closed (~$0.45). Naming rule
-  (matches the package's tester list): intermediates `<trigger>_<step:09d>`, final = bare trigger name.
-- Ruling: full run at 2000 steps / 250-step saves (8 checkpoints) tonight — 3000 steps at 3.85 s/step is ~3.2 h on an
-  L40S, over the 180-min marker window and the daily budget; revisit 3000 on a fresh budget. Smoke #5 (100 steps)
-  proves the publish path before the full run. Today's spend ≈ $2.9.
-
-## 2026-09-04 19:40 — training path PROVEN (smoke #5); full 2000-step run + tester launched
-
-- Smoke #5 (pod 9dd4nur6in3hqa, $0.30): 100 steps at 3.8 s/step, intermediate `creator001krea2_000000050` + final bare
-  `creator001krea2.safetensors` published and downloaded (228 MB each), log retrieved, terminate verified. Five smokes
-  total (~$1.9) bought a proven, instrumented training path: transport v0.20.1 --cpu, requirement floors restored,
-  POSIX path guard, streamed log + heartbeat, real checkpoint names.
-- Full run launched 19:36 via the chain driver (smoke skipped): 2000 steps / 250-step saves = 8 checkpoints,
-  --max-usd 5.85 / 270 min, then the 8-branch tester (--max-usd 2.28). Today $3.18 before the full run.
-- Operator rule (memory: figment-pipeline-not-influencer): the deliverable is the pipeline; after this loop closes,
-  generalise the chain into `figment train --creator <id>` from persona.yaml, then re-run creator-001 as the
-  acceptance test, then fixture persona 002 (task T1-G).
-
-## 2026-09-04 23:55 — Track-1 chain COMPLETE end to end; LoRA test grid ready for the operator
-
-- Full training (pod igvqxqcrmltsig, L40S): 2000 steps in 99 min, $1.80; 8 checkpoints (250…1750 + final) downloaded to
-  `pipeline/train/runs/out/creator-001-tensor-train/`. Speed 1.3–2.5 s/step once latents/text embeddings were cached.
-- Tester (pod iw12lyi84um2b9): 8 images (one per checkpoint), $0.33, 18 min; checkpoints reached the pod as 112 × 16 MiB
-  parts and were sha-verified on the pod. Outputs + board: `pipeline/train/runs/out/creator-001-tensor-tester/` (`grade/board.html`).
-- Identity (facenet cosine vs anchors g01/g02/g07; anchor pairwise floor 0.836): step 250 = 0.26 (not learned), 500 = 0.81,
-  750 = 0.82, 1000 = 0.85, 1250 = 0.76, 1500 = **0.89/0.87/0.83**, 1750 = 0.88/0.85/0.83, final = 0.88/0.85/0.79.
-  Scores: `personas/creator-001/batches/tensor-tester-01/scores.json`. Boss read: consistent real-skin woman, same
-  identity 1500→final; reads older than the anchors and the passport prompt is flat-lit; realism passes not yet applied.
-- Three live defects found and fixed tonight, all harness/launcher, none in the package port: (1) fixed 240 s ComfyUI health
-  window vs the trainer's install running inside it (dfe18b83); (2) tester launcher `rmdir` on ComfyUI's stock models/loras
-  (d602cfe5); (3) 228 MB checkpoint POSTs vs the harness's fixed 30 s request timeout → chunked uploads (483b97eb).
-  Dependency-class bootstrap failures no longer blacklist hosts; full bootstrap/comfy logs are saved on failure.
-- Generalisation: `pipeline/figment_train.py plan|run|grade|apply-rulings --creator <id>` reproduces every tonight manifest
-  byte-for-byte from persona.yaml + training.yaml (review folded c8c7d49e); `grade --stage tester` built tonight's board.
-- Spend today $6.32 of $10; arc ≈ $16.7 of $50. Failed-attempt dirs kept beside the outputs as `*.failed-*`.
-- OPERATOR GATE: grade `pipeline/train/runs/out/creator-001-tensor-tester/grade/board.html` (identity? age? realism?)
-  and rule the checkpoint (boss recommends 1500 or 1750). Then: module-09 generation pass with the winner
-  (`train/runs/creator-001-tensor-gen.yaml`, 12 jobs, ≈ $4.0 ceiling) → stage-5 realism passes → creator-002 fixture run
-  through `figment_train.py` as the pipeline acceptance test.
-
-## 2026-09-06 — Track-2 approved, anchor stage ran, ruling: gate before eyes
-
-- Operator graded the Track-1 tester board "kind of close, glossy, reads a lot older, some inconsistent" and ruled: rebuild
-  the pipeline module-for-module as 10sorlabs does unless research shows better, then test on creator-001. Research r20
-  (fidelity audit), r21 (2026 methods), r22 (licence-clean assets), r23 (native MediaPipe nodes), r24 (identity-transfer
-  candidates) committed. Plan v2 `docs/superpowers/plans/2026-09-06-figment-track2-faithful-pipeline.md` (opus, review
-  folded). Phase A (module 03 passport anchor stage) built, reviewed (opus, 4H fixed: wrong sha256 pins → `verify_pins.py`
-  preflight; hardcoded look → `identity.look` in persona.yaml; clothing + framing clauses) and RUN LIVE through
-  `figment_train.py run --stage anchor` (first live use of `run`): 12 passport + 6 g01-edit candidates, $0.61.
-- OPERATOR RULING on that board: "absolutely not even close … our infrastructure isn't working how it's supposed to."
-  Read: creator-001 IS g01; offering fresh in-model faces was a category error; the unsolved core is the
-  reference-to-variation step (every method so far keeps the face loosely and drifts skin plastic / age up); no board may
-  reach the operator without automated gates. Passport-anchor path SHELVED (code kept; plan Phase A gate rewritten).
-- Phase B1+B3 built (half-body-first framing, full-body face-repair pass, skin clause, qwen-edit-skin pin, advisory
-  scorers). Identity gate v1 (`identity_gate.py`, `gate.yaml`) built and CALIBRATED on 95 local images: facenet own-anchor
-  floor 0.79 separates only gross misses (passport 0.23 vs anchors 0.89+); Track-1 cells and Qwen edits score 0.92 — the
-  embedding is blind to the drift the operator sees; ViT age, NIQE, gloss proxy do not separate either. A headless
-  Claude vision judge (`claude -p`, subscription) does: g01 vs tester-1500 → same_person 58, age 23→30, skin 55.
-  `vlm_judge.py` + judge calibration in flight; gate = facenet floor + judge thresholds.
-- Bake-off built (`expand/bakeoff/`): only Qwen-Image-Edit-2511 without Lightning + skin LoRA is licence-runnable (no
-  Z-Image-Edit exists; PuLID FaceNet path still pulls .pt). 18-cell ablation (A: 3 refs + LoRA, B: no LoRA, C: g01 only),
-  ceiling $2.65, WAITS for the judge-backed gate.
-- Spend 2026-09-06: $0.61. Branch `claude/figment` HEAD 595ef03d+.
-
-## 2026-09-07 00:40 — bake-off m1 scored; Path-B blocked; train-first building
-
-- Bake-off m1 (Qwen-Image-Edit-2511, Lightning removed, 26 steps, 18 cells, pod jm67txnsqfj662, $1.99 + $0.23 for a
-  240 s-timeout first attempt). Stage-1 facenet own-anchor: arm B (3 refs, no skin LoRA) 0.87–0.93 on 5/6 — best; arm A
-  (3 refs + `qwen-edit-skin`) 0.60–0.86 — the skin LoRA HURTS identity; arm C (g01 only) 0.50–0.77 — worst. Half-body
-  cells fail the persona `min_face_px` 600 floor (a dataset-framing floor, not an identity verdict). Judge on the two
-  cells it reached: same_person 55–62, skin_realism 20. Full 18-cell judge re-run in progress after a judge fix
-  (189780db: failures were cached; 4 concurrent full-size calls timed out).
-- Gate tooling landed: `identity_gate.py run` (plan-independent), judge downscaling/timeouts, harness pickle rejection
-  (`diagnostic_non_commercial` + `pickle_ack` escape hatch), gen stage D1/D2 + detail-only mode, lorapath launcher
-  copies bootstrapped LoRAs past the swap.
-- Operator ruling on licence posture: "whichever you believe is best, or both" → BOTH, Path A first. Path-B diagnostic
-  (`expand/bakeoff/m3diag_manifest.yaml`, PuLID-Flux on FLUX.1-dev, research-only, $3.70) built and dry-run green;
-  its launch was BLOCKED by the session permission classifier — operator can launch by hand (command in m3diag_README).
-- Building: train-first — `train/select_training_cells.py` (anchors + judge-passing cells), DOP flag in training.yaml /
-  render_aitoolkit_config, `train-first` plan stage.
-- Spend 2026-09-06: $2.83. Ops handoff `handoffs/2026-09-07-figment-track2-gate-bakeoff.md`.
-
-## 2026-09-07 05:40 — bake-off m1 judged: edit-model path exhausted; train-first DOP LoRA running
-
-- Full judge table (after the judge path fix bc24f5b2): arm A same_person 61 / skin 34, arm B 59 / 45 (facenet 0.897),
-  arm C 58.5 / 41.5; age Δ 0 everywhere. "Waxy over-smoothed skin, painted-on blush" on nearly every cell. Worse than
-  the Track-1 Lightning dataset (78). Verdict in `pipeline/expand/bakeoff/m1-RESULTS.md`: Qwen/klein edit methods are
-  exhausted for identity (six runs); skin LoRA harms identity; multi-ref only moves facenet.
-- Host incident 03:00–04:00: judge CLI under bypassPermissions ran `find /` ×14 + 137 stale bash → 99% CPU; fixed
-  (default permission mode, Read-only tools, absolute paths); memory `headless-judge-host-overload`.
-- Train-first launched 05:15 (pod placed): 23 images (anchors + 20 judge-passing cells), DOP on (class "woman",
-  ×1.0), 1250 steps, save 250, ceiling $5.85. Tester + judge follow; then gen/detail with the best checkpoint.
-- Building: train-first folded into the single plan schema (so `run` drives it); slim `pipeline/README.md`.
-
-## 2026-09-07 08:05 — train-first LoRA trained; tester exposed a trigger-word defect; infra slimmed
-
-- Train-first pod fn938tol6mgbtp: 23 images (3 anchors + 20 judge-passing cells), DOP on (class "woman"), 1250 steps,
-  141 min, $2.57, 5 checkpoints (250…1000 + final). Launched via the harness directly because `run` rejected the old
-  train-first plan schema — fixed the same hour (ea5eb424: train-first emits the single plan.json, `variant: train-first`).
-- Tester (pod idb1hskq79h4l3, $0.29) ran through `figment_train.py run --stage tester` (first live use on a train-first
-  plan) — every checkpoint scored facenet 0.17–0.23 (stranger): the tester prompt carried NO trigger word while the LoRA
-  was trained with `creator001krea2` in every caption (DOP requires it). Defect in prompt composition, not the LoRA;
-  fix in flight (trigger + class prefixed on every tester/gen/detail prompt); tester re-runs after.
-- Overnight infra: E1 retirement (hand manifests gone, plan is the sole producer; d6a97b13), slim `pipeline/README.md`
-  (fd207d53), DOP-aware train budgets (1f426a24), creator-002 acceptance fixture + suite (0a01936d) which found and led
-  to fixing two real defects (dataset prompts not persona-derived; harness float ceiling) (09faa490), opus review of
-  gate/judge/budgets/pickle folded (fb1f20ae), static workflows persona-free (cdd2f438). 889 tests green before the
-  last three commits; full rerun pending.
-- Spend 2026-09-07 so far: $2.86.
-
-## 2026-09-07 23:20 — HANDOFF: network outage orphaned a pod; tester rerun pending; harness hardening in flight
-
-- Trigger-word fix (abc91610) landed; tester #2 (pod pmi9y2gsoaxkea) and #3 (hvtovmusbx6a1t) both hit a LOCAL
-  DNS/network outage (NameResolutionError for rest.runpod.io) during readiness; the harness's terminate path gave up
-  after 5 attempts in ~30 s and exited "POD STILL RUNNING". #2 was terminated by hand at 08:30 (+3 min). #3 could not
-  be reached: the session itself lost the API for ~15 h; terminate + absence verified only at 23:16. **Worst-case
-  orphan charge 08:37→23:16 ≈ $16 at $1.09/h** — logged as `pod-orphan-estimate` rows in the ledger; VERIFY against
-  RunPod billing (the pod may have been stopped earlier by RunPod). This breaches the $10 day guard if real.
-- Harness hardening (terminate backoff ≥15 min, POD-STILL-RUNNING sentinel + ledger row + manual command, readiness
-  clock paused while our own network is down, `sweep` subcommand) was being built when the agent died on the same
-  outage; resumed at 23:17 — NOT yet landed. Until it lands: after any harness failure run
-  `runpod_run.py status` and `terminate --pod-id <id>` by hand.
-- Train-first LoRA (5 checkpoints under `orgs/figment/runs/c001-tf/train/runs/out/creator-001-tensor-train-first/`)
-  is still UNTESTED with the trigger word. Tester plan ready: `orgs/figment/runs/c001-tf4/plan.json` (outputs staged);
-  rerun = `figment_train.py run --creator creator-001 --stage tester --plan orgs/figment/runs/c001-tf4/plan.json`
-  (~$0.30) → `grade --stage tester` → pick checkpoint by judge → `apply-rulings` → `plan --stage gen` (+detail) → run.
-- Suite: 964 passed (detached run, 08:15). Branch `claude/figment` HEAD abc91610 (pushed).
+The detailed night-by-night log of the pre-`pipeline` arc — expansion-02/03 shelved,
+Track-1 (module-for-module replication) trained and tested at 2000 steps, the "gate before
+eyes" ruling, the bake-off, train-first (Path-A: r24 method 4 + r21 DOP) landing at 1250
+steps with a trigger-word defect found and fixed — is preserved in git history for this
+file (`git log -p -- orgs/figment/STATE.md`) and in `orgs/figment/pipeline/README.md`'s
+"Live-proven runs to date" table, rather than duplicated here. Read that table for exact
+pod IDs, costs, and verdicts through 2026-09-07; everything after 2026-09-07 up to this arc
+(the `pipeline` command, `detail`/`video` as stages, the pin/train-profile/caption/style-LoRA
+fixes, the one gate writer, the one ledger) is summarized in "Now" above and dated in
+`git log --oneline 701abe22..HEAD`.

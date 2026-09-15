@@ -1,55 +1,59 @@
 # figment — AI persona influencer pipeline
 
-Disclosed AI creator personas (disclosure copy is Daniel's, carried as a bible field).
-Pipeline goal: persona → assets → content → post → metrics → strategy, on lifted
-tooling wherever it exists. Two north stars: (1) non-AI look — consistency, anti-gloss,
-human cadence/variation; (2) growth → engagement → link clicks → revenue.
+Disclosed AI creator personas (disclosure copy is Daniel's, carried as a persona field).
+One reference image → identity expansion → persona LoRA → generation with detail passes →
+video with detail passes → research-driven content → post and measure → optimise. Two
+north stars: (1) non-AI look — consistency, anti-gloss, human cadence/variation; (2)
+growth → engagement → link clicks → revenue. Full standing goal: `MANDATE.md`.
 
-Phase now: research, testing, skills, connectors. Agents wrap the stages later.
-Constraints: per-wave spend approval (estimate on the card first); Daniel holds all
-account credentials/tokens (pipeline sees them only as provisioned env, never in repo);
-lift-first — build nothing a maintained repo/SaaS/MCP already does; keep files lean.
+Phase now: the eight-stage CLI chain is built and gated end to end through `detail`/`video`
+(F1–F7, `git log --oneline 701abe22..HEAD`); no accepted checkpoint yet for creator-001 at
+the current train profile, so `gen`/`detail`/`video`/the deliverable have not run live.
+Current state: `STATE.md`. Constraints: per-run spend guards (`--max-usd`, the plan-time
+budget preflight, the arc/daily caps); Daniel holds all account credentials/tokens
+(pipeline sees them only as provisioned env, never in the repo); lift-first — build
+nothing a maintained repo/SaaS/MCP already does; keep files lean.
 
 ## Layout
 
 ```
-personas/<id>/   bible.md · assets/ · content/<batch>/ · metrics/ · strategy/
-research/        W0 reports, bake-off scores, decision boards
-pipeline/        runnable stages + connectors (each standalone, agent-wrappable)
-skills/          written only once a stage stabilizes
+personas/<id>/   persona.yaml + training.yaml (machine source of truth) · identity-spec.md
+                 · anchors/*.jpg · batches/ · calibration/
+pipeline/        figment_train.py (the eight-stage driver) · pod/ (harness) · expand/
+                 (dataset-stage machinery, CLI-orphan on the live train-first path)
+                 · train/ · video/ · content/ · calibrate/, plus identity_gate.py /
+                 vlm_judge.py / qa_stamp.py / blind_pool.py / build_grading_board.py
+runs/<id>/       gitignored per-run output `pipeline --out` writes into this repo
+research/        r1–r25 reports, claim-checked; 10sorlabs-package/ bulk is gitignored
+content/         taxonomy, templates, briefs (stage 7 — content strategy)
 ```
 
-## Persona bible (schema sketch)
+## Persona (schema sketch)
 
-identity (name, age 23–27, origin) · face spec + multi-angle reference sheet ·
-body spec + motion notes · voice (caption grammar) · world (recurring sets, wardrobe —
-set continuity is the #1 AI tell) · archetype + content mix (per-persona data: e.g.
-bedroom-thirst-only vs lifestyle-variety vs mixed; format %, cadence, axis position) ·
-funnel (domain, per-door slug, terminal) · disclosure (Daniel's copy).
+`persona.yaml` (machine source of truth, validated by `pipeline/persona.py`): identity
+(name, age 23–27, origin), `identity.look` (register lock — makeup, skin, body, lighting,
+wardrobe families), reference anchors, safety axes. `training.yaml`: trigger, base arch,
+steps, save cadence, caption mode, pod class/price ceiling, skin LoRA, DOP flags. World
+continuity (recurring sets, wardrobe), voice, and funnel fields land on the persona as the
+later mandate stages (voice, Fanvue automation) come online — see `MANDATE.md`.
 
 ## Pipeline stages
 
-persona-forge · asset-base (refs + LoRA + consistency gate) · batch-gen · qa-gate
-(adversarial: identity consistency + AI-tell checklist, three-state stamp) · pack-post
-(official APIs only; unofficial private-API automation is a named Daniel-level risk
-decision, not a default) · metrics-pull (PLAYS/LIKES labeled, slug clicks, funnel subs,
-revenue; audience AI-suspicion logged as signal) · strategy-report (metrics → next batch).
+`anchor → dataset → smoke → train → tester → gen → detail → video`, driven by
+`figment_train.py pipeline` (one resumable command; the manual `plan|run|grade|gate|
+apply-rulings|train-first` chain it wraps is still available stage-by-stage). Six of the
+eight are gradeable (`anchor`, `dataset`, `tester`, `gen`, `detail`, `video`): a full-
+resolution operator eye-gate plus a written seven-axis ruling at each. See
+`pipeline/README.md` for the stage map and `RUNBOOK.md` for the operator command sequence.
+Stages 7–9 (content strategy, post & measure, optimise) are `content/` + future work —
+see `MANDATE.md` items 7–9 and `STATE.md`'s "Blocked" section for what gates them.
 
-## Waves and gates
+## Waves and gates (historical framing, superseded by the stage gates above)
 
-- W0 research: R1 stills stacks (SaaS + ComfyUI/Flux/SDXL + LoRA methods) ·
-  R2 video gen (API + open i2v) · R3 posting/metrics automation (Postiz, Graph API,
-  Insights) · R4 operator landscape (who runs AI influencers, with what stacks).
-  Then bake-off: same test set (multi-angle sheet, 10-image held pose, window-light
-  pan reel, motion clip, next-day regen stability) through shortlisted stacks.
-  GATE: stack pick + spend approval. Also verify kb VM GPU/VRAM before LoRA plans.
-- W1 persona-A bible (night-shift room archetype per board v4). GATE: bible approval.
-- W2 asset base + LoRA + consistency test. GATE: eye-gate.
-- W3 first 14-day batch + adversarial QA. GATE: batch approval.
-- W4 pack-post to private test account + metrics-pull wired. GATE: real-account go-live
-  (Daniel: account creation, disclosure, tokens).
-- W5 first strategy report from real metrics. GATE: review → scope the agents phase.
-
-Every wave ends with an adversarial review by a separate agent before its gate.
-Reference research: Persona Inspiration Board v4 (artifact 7f30f554), board §11
-directions A–E, §12 risk rules (no birth years, no school framing, stated age 23–27).
+The original W0–W5 wave plan (research → bake-off → persona bible → asset base/LoRA →
+first batch → pack-post → strategy report) is superseded by the per-stage gates the CLI
+now enforces directly (`pipeline/README.md` "The gate"): every gradeable stage carries its
+own eye-gate and seven-axis ruling in place of a wave-level gate. The wave framing's
+standing rules still hold: every unit of spend-controlling, identity-scoring, or posting
+code gets an adversarial review by a separate agent plus tests before it runs live; no
+birth years, no school framing, stated age 23–27 (Persona Inspiration Board v4 §12).

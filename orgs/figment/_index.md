@@ -6,38 +6,46 @@ Several creators from one dashboard, two content tiers from one identity.
 
 - [MANDATE](MANDATE.md) — the operator's standing end goal. Every spec, plan and brief derives from it.
   Human/boss-edited only.
-- [Pipeline README](pipeline/README.md) — the operator-facing entry point: what the pipeline is, the
-  one command (`figment_train.py plan|run|grade|gate|apply-rulings|train-first`), the gate, pins,
-  spend guards, live-proven runs, open defects, and how to iterate.
+- [Pipeline README](pipeline/README.md) — the pipeline's own map: the eight-stage chain (`anchor,
+  dataset, smoke, train, tester, gen, detail, video`), the one resumable driver
+  (`figment_train.py pipeline`, plus the manual `plan|run|grade|gate|apply-rulings|train-first`
+  chain it wraps), the gate, pins, spend guards, live-proven runs, open defects, and how to iterate.
+- [RUNBOOK](RUNBOOK.md) — the operator command sequence for `pipeline`: prerequisites, the two entry
+  paths, every gate with its exact `apply-rulings` command, `--style-lora` A/B, the deliverable, and
+  budget/recovery rules.
 - [GUARDRAILS](pipeline/GUARDRAILS.md) — hard lines that hold regardless of permission mode. Binds on
   top of the mandate.
 - [STATE](STATE.md) — current state (agents keep this current)
 - [contract](contract.md) — autonomy policy for this project
 - [HEARTBEAT](HEARTBEAT.md) — recurring research and measurement cadences
-- [Design spec](../../docs/superpowers/specs/2026-09-03-figment-creator-001-design.md) — creator-001
-  end to end (stages 1–9, voice, explicit tier, dashboard). The build plan derives from it.
+- [figment-creator workflow](workflows/figment-creator.md) — the agent-role/cadence view of the same
+  eight stages, for the agents that support a run rather than the CLI itself.
 
 ## Layout
 
 ```
-personas/<creator>/   persona.yaml (machine source of truth) · identity-spec.md · anchors/ · batches/
-pipeline/             pod · expand · train · register · passes · video · content · publish · insights
-                      · voice · explicit, plus qa_stamp.py / blind_pool.py / build_grading_board.py
-research/             r1–r19 reports, claim-checked; 10sorlabs-package/ bulk is gitignored
+personas/<creator>/   persona.yaml + training.yaml (machine source of truth) · identity-spec.md
+                      · anchors/ · batches/ · calibration/
+pipeline/             figment_train.py (the eight-stage driver: anchor · dataset · smoke · train
+                      · tester · gen · detail · video) · pod/ · expand/ · train/ · video/ · content/
+                      · calibrate/, plus identity_gate.py / vlm_judge.py / qa_stamp.py / blind_pool.py
+                      / build_grading_board.py
+runs/<creator>/       gitignored run roots `pipeline --out` writes into (this repo, per-run)
+research/             r1–r25 reports, claim-checked; 10sorlabs-package/ bulk is gitignored
 ```
 
-Image, video and package bulk is gitignored; `batch.json`, `scores.json`, `run.json`, manifests and
-review rulings are tracked.
+Image, video and package bulk is gitignored; `batch.json`, `scores.json`, `run.json`, manifests,
+`plan.json`, `stage.json`, and review rulings are tracked (or, under `runs/`, gitignored except the
+run root's own README — see `pipeline/README.md` "Run roots live inside the repository").
 
 ## Reading order for a fresh session
 
 1. `MANDATE.md`, then `pipeline/GUARDRAILS.md`.
-2. `pipeline/README.md` (the pipeline's own map: stages, the one command, the gate, spend guards).
+2. `pipeline/README.md` (the pipeline's own map: eight stages, the one resumable command, the gate,
+   spend guards), then `RUNBOOK.md` (the actual command sequence).
 3. `STATE.md` (where the arc actually is), then `contract.md`.
-4. The design spec above for the stage you are working on.
-5. For creator-001 specifically: `personas/creator-001/identity-spec.md` and `pipeline/look-spec-v2.md` §0.
-6. For anything touching a pod: `pipeline/pod/README.md` and `pipeline/pod/REVIEW-e-2026-09-03.md`
-   (the open defects and the two live-run verdicts).
+4. For creator-001 specifically: `personas/creator-001/identity-spec.md` and `pipeline/look-spec-v2.md` §0.
+5. For anything touching a pod: `pipeline/pod/README.md`.
 
 ## Standing rules that catch people out
 
