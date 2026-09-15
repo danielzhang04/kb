@@ -86,4 +86,37 @@ describe('cancelling a run with a rework-queued iteration loop', () => {
     // Every control read -- and the self-advertise beat -- goes through the same load().
     expect(store.listRuns(SUBJECT).map((run) => run.runRef)).toContain(RUN_REF);
   });
+
+  // B1 (PR #188 review): the fix above widened validateIterationDurability's
+  // terminatedProducerAttempt clause (store.ts:1572-1573) to accept the rework-queued producer
+  // attempt in 'stopped', 'interrupted', OR 'failed' -- cancelRun (execution.ts) walks every
+  // non-terminal attempt and can drive any of the three, and a crashed host can leave 'interrupted'
+  // behind without cancelRun ever running. The test above only exercises 'stopped'; these two cover
+  // the other states the widened clause names, on the same fixture and the same attempt, so a
+  // revert back to the single-state check (store.ts:1575, dropping 'interrupted' and 'failed' from
+  // the `.includes(...)` list) would fail here even though the 'stopped' case still passes.
+  it.each(['interrupted', 'failed'] as const)(
+    'keeps the prod document readable after the producer attempt is %s',
+    (state) => {
+      const root = seed(`cp-rev475-${state}`, fixture('control-plane.prod-2026-09-06-rev475.json'));
+
+      const store = fileStores.open(root);
+      const before = store.getRun(SUBJECT, RUN_REF);
+      if (!before.ok) throw new Error('fixture run must load');
+      const attempt = before.value.attempts.find((candidate) => candidate.attemptRef === PRODUCER_ATTEMPT);
+      expect(attempt?.state).toBe('queued');
+
+      const transitioned = store.transitionAttempt(SUBJECT, PRODUCER_ATTEMPT, attempt?.version ?? 0, state);
+      expect(transitioned.ok).toBe(true);
+
+      // Reads must survive it, same as the 'stopped' case above.
+      expect(store.getRun(SUBJECT, RUN_REF).ok).toBe(true);
+      expect(store.listRuns(SUBJECT).map((run) => run.runRef)).toContain(RUN_REF);
+
+      // And so must a daemon restart re-hydrating the persisted bytes.
+      const restarted = fileStores.restart(root);
+      expect(restarted.getRun(SUBJECT, RUN_REF).ok).toBe(true);
+      expect(restarted.listRuns(SUBJECT).map((run) => run.runRef)).toContain(RUN_REF);
+    },
+  );
 });
