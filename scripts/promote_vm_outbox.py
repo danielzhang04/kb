@@ -249,6 +249,18 @@ def require_reconcilable_range(
     existing = _nul_paths(
         run(repo, ["diff", "--name-only", "--no-renames", "-z", trusted_ops_head, remote_head]).stdout
     )
+    # MEDIUM-4: mirror apply_ops_reconciliation.py's own two-call form (its comment above the
+    # equivalent check explains why `--no-renames` is on BOTH calls). `--name-only` alone would
+    # let a rename or a mode flip (exec bit, symlink, gitlink) inside an otherwise-allowlisted
+    # path through unnoticed; cross-checking against `--raw` and SAFE_CHANGED_MODES here means
+    # the desktop refuses exactly what the VM would refuse, not a narrower approximation of it.
+    modes, raw_existing = parse_raw_diff(
+        run(repo, ["diff", "--raw", "--no-abbrev", "--no-renames", "-z", trusted_ops_head, remote_head]).stdout
+    )
+    if raw_existing != existing:
+        raise RuntimeError("outbox range diff is inconsistent between --name-only and --raw")
+    if any(old not in SAFE_CHANGED_MODES or new not in SAFE_CHANGED_MODES for old, new in modes):
+        raise RuntimeError("outbox range contains an unsafe object mode")
     pending_paths = {path for manifest in pending for path in manifest["paths"]}
     offending = sorted(
         path for path in {*existing, *pending_paths} if RECONCILED.fullmatch(path) is None
@@ -1040,6 +1052,14 @@ def main() -> int:
         and args.approval_signature is None
     ):
         inspection_repo = clone_fresh(args.repo, args.work_root / f"approval-{secrets.token_hex(4)}")
+        remote_head = _text(
+            run_git(inspection_repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout
+        ).strip()
+        if COMMIT_RE.fullmatch(remote_head) is None:
+            raise RuntimeError("origin/ops head is invalid")
+        # LOW-8: run the same range pre-check here too, so the operator learns the range is bad
+        # before ever being asked to sign an approval for it.
+        _verify_reconcilable_range(inspection_repo, args.trusted_ops_head, remote_head, chain, run_git)
         prefix = f"refs/kb-quarantine/{secrets.token_hex(6)}"
         validated = validate_quarantine_chain(snapshot, inspection_repo, args.trusted_ops_head, prefix)
         approval = args.approval or snapshot / "instruction-approval.json"

@@ -1190,6 +1190,69 @@ def test_normal_path_refuses_when_ops_advances_between_promote_clone_and_return_
     assert calls == []
 
 
+def test_reconcilable_range_check_refuses_unsafe_object_mode_in_allowlisted_path(tmp_path):
+    """MEDIUM-4: mirror apply_ops_reconciliation.py's two-call cross-check (--name-only vs
+    --raw) plus SAFE_CHANGED_MODES enforcement. An exec-bit flip landing on origin/ops inside
+    an otherwise-allowlisted coordination path must still be refused on the desktop, before
+    any push -- --name-only alone would let it through silently."""
+    origin, operator, _vm, spool, trusted, _manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    desktop = tmp_path / "desktop-unsafe"
+    git(tmp_path, "clone", str(origin), str(desktop))
+    configure_repo(desktop)
+    (desktop / "ledgers" / "exec.jsonl").write_text("exec\n", encoding="utf-8")
+    git(desktop, "add", "ledgers/exec.jsonl")
+    git(desktop, "update-index", "--chmod=+x", "ledgers/exec.jsonl")
+    git(desktop, "commit", "-m", "desktop exec bit")
+    git(desktop, "push", "origin", "ops")
+    before = upstream_state(origin)
+
+    with pytest.raises(RuntimeError, match="unsafe object mode"):
+        promote_pending(spool, operator, tmp_path / "work", trusted, max_attempts=1)
+
+    assert upstream_state(origin) == before
+
+
+def test_approval_request_path_refuses_before_signing_when_range_not_reconcilable(
+    tmp_path, monkeypatch,
+):
+    """LOW-8: the exit-3 approval-request path must run the same range pre-check too, using its
+    own inspection clone, so the operator learns the range is bad before ever being asked to
+    sign an approval for it."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("queue/inbox/vm-card.md", "from vm\n")],
+    )
+    advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("approval-request path continued past the range check")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(promote_module, "write_instruction_approval_request", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+
+
 def test_instruction_and_coordination_allowlists_accept_org_goal_md():
     """PR #182 (merged 09-11) added orgs/<project>/GOAL.md on ops; INSTRUCTION and COORDINATION
     must accept it exactly like the neighbouring STATE.md entry (drain-v2 README BLOCKER) -- an
