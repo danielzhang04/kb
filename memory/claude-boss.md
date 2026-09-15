@@ -398,3 +398,40 @@
 - **The release CI has been red since 09-11 for an environment reason** (depth-1 checkout vs a history-deriving test) — those "run failed" emails were real; nobody read them. PR #187 fixes it. Treat a red main workflow as a blocker to investigate the same day.
 - **Same-sha re-deploys are refused by activate_release** (`/opt/kb-releases/<sha>` exists); kb-deploy.ps1 now checks up front. PowerShell 5.1: never `2>&1` a native command under Stop; a `$Matches` reuse after a failed match is silent; bracket native calls with `Continue`/`Stop`.
 - **Persist tooling outside the session scratchpad** (`C:\Users\danie\kb-rehearsal\tooling\`) — the next terminal cannot read a dead session's scratchpad reliably.
+
+## 2026-09-15 — figment e2e infrastructure arc (one session, ~12 h, 14 subagents)
+- **Audit before build, and make the audit the spec.** One opus read-only audit (goal-vs-current per stage,
+  module→stage map with caller evidence, prune list, ordered build list F1–F7) let every later brief cite
+  `AUDIT.md §Fn` instead of re-explaining. It also overturned my own framing: the detailer and skin LoRA were
+  already built and switched off by config. Read the code map before assuming a gap.
+- **Parallel workers = one worktree each, merge in order, renormalise pinned files after every merge.** Seven
+  builder worktrees off one branch; conflicts only where two touched `figment_train.py`. A merge-resolution
+  worker with a test list beats resolving 249-line hunks by hand. Never let a builder edit the worktree a
+  full suite is running in — I invalidated one 90-min run that way.
+- **Detached pytest needs a console.** `Start-Process python … -RedirectStandardOutput` errored 2,300 tests
+  (Windows handle inheritance); `cmd /c "python … > log 2>&1"` hidden works. The old `PYTEST_DEBUG_TEMPROOT`
+  was ACL-locked; use a fresh short path. The figment conftest re-roots tmp per worktree: never two pytest
+  runs on one worktree at once.
+- **"Flaky" had three exact causes, none flakiness:** a TOCTOU defense fingerprinting every ancestor dir to the
+  drive root (tests in %TEMP% broke on any ambient write), CRLF checkout smudge breaking self-hash pins
+  (`.gitattributes eol=lf` + `git checkout HEAD -- <paths>` on old checkouts), and a stale fixture manifest.
+  Root-cause with a stop rule (xfail with reason) instead of "known flaky" lists.
+- **Adversarial passes converge when each finding carries a reproduction.** Two opus passes both came back
+  BLOCKED with concrete repros (deliverable copying unvalidated bytes; video block trusting receipts); the fix
+  worker used the repro as its failing test. Findings without a repro were the ones that got narrowed.
+- **A fix that reads a new file under an observed-read policy must admit it.** m9's gate-hash check silently
+  broke 24 tests ("operand was not admitted"); the admission set lives in `gen_source_read.py`, not next to
+  the read. Grep the policy builder whenever adding a read to an audited path.
+- **The classifier will not let the boss weaken a fail-closed gate, in any spelling** — override file, python
+  heredoc, Edit of one value. Right boundary: hand the exact edit + command to Daniel with `!`. Don't spend
+  three attempts finding that out; one denial on a gate is the answer.
+- **Ledger authority is `configured_ledger_dir()` (explicit → KB_LEDGER_DIR → OPS worktree → repo).** A branch
+  copy of `ledgers/cost` diverges immediately and lies in docs. Ledger rows go to `ops` per CLAUDE.md; the
+  reconciliation is a note for the ops push, never a branch file.
+- **Imported artefacts carry their own provenance.** An operator-trained checkpoint must be validated against
+  the training config it was trained with (`TRAIN_TIME_KEYS`), not the persona's current file; otherwise the
+  first config edit refuses every gen. Design the provenance split before the first import, not after the
+  first refusal.
+- **Live proof at the cheapest stage first.** One $0.33 tester run through the real pipeline proved spend
+  guards, teardown, gate, halt and board on real hardware and surfaced the provenance gap. Gen/detail/video
+  stayed fake-harness-proven only; that is the honest boundary in the handoff.
