@@ -552,6 +552,32 @@ def _load_imported_training_config(creator_id: str, path: Path) -> dict[str, Any
         raise FigmentTrainError(str(exc)) from exc
 
 
+def _reload_imported_training_projection(
+    creator_id: str, path: Path, *, reads=None,
+) -> dict[str, Any]:
+    """Re-derive an imported checkpoint's training-input projection straight from its
+    named `imported_training_config` file (gen-time drift check, P4i) -- tolerant of
+    either the training-only `{"training": {...}}` shape `--import-training-config`
+    requires, or a full persona document (the default-fallback case, where the config
+    path IS the persona's own persona.yaml/training.yaml sidecar, which legitimately
+    gains `chosen_checkpoint_*` selection fields after promotion). Comparing projections
+    rather than raw bytes means that legitimate write-back never registers as drift --
+    `training_input_projection` already excludes SELECTION_KEYS -- while any real change
+    to a training-relevant field does."""
+    exists = reads.file(path, required=False) is not None if reads is not None else path.is_file()
+    if not exists:
+        raise FigmentTrainError(f"imported training config is missing after checkpoint promotion: {path}")
+    document = _persona_module().load_document(path, reads=reads)
+    if not isinstance(document, dict) or not isinstance(document.get("training"), dict):
+        raise FigmentTrainError(f"imported training config no longer names a training object: {path}")
+    training_config = _training_config_module()
+    try:
+        reloaded = training_config.validate_training(document["training"], creator_id)
+    except training_config.TrainingConfigError as exc:
+        raise FigmentTrainError(f"imported training config is no longer valid: {exc}") from exc
+    return _lineage_module().training_input_projection(reloaded)
+
+
 def manifest_ceiling(manifest: dict[str, Any]) -> str:
     estimate = Decimal(str(manifest["price_usd_per_hour"])) * Decimal(
         str(manifest["max_minutes"])
@@ -5128,10 +5154,46 @@ def _validated_accepted_checkpoint(
             or approval_lineage_sha256 != accepted.get("approval_lineage_sha256")):
         raise FigmentTrainError("tester approval lineage changed after checkpoint promotion")
     _load_current_approval(source_plan, source_root, "tester", reads=reads)
-    expected_inputs = _lineage_module().training_input_projection(training)
-    if (accepted.get("training_inputs") != expected_inputs
-            or accepted.get("training_inputs")
-            != _lineage_module().training_input_projection(source_plan["training"])):
+    lineage = _lineage_module()
+    source_projection = lineage.training_input_projection(source_plan["training"])
+    if accepted.get("training_inputs") != source_projection:
+        raise FigmentTrainError("training inputs changed after checkpoint promotion")
+    current_projection = lineage.training_input_projection(training)
+    if accepted.get("origin") == "imported":
+        # P4i: an imported checkpoint's provenance is the training config the tester
+        # plan recorded at import time (`source_plan["imported_training_config"]`), not
+        # the persona's live training.yaml -- so TRAIN_TIME_KEYS are validated against
+        # that recorded projection (already proven above), and re-derived fresh from the
+        # named config file (`_reload_imported_training_projection`) so a post-promotion
+        # edit is caught. Every other projected key still has to match the persona's
+        # current training.yaml, same authority the in-plan path always used.
+        imported_config = source_plan.get("imported_training_config")
+        if (not isinstance(imported_config, dict)
+                or not isinstance(imported_config.get("path"), str)
+                or not isinstance(imported_config.get("sha256"), str)):
+            raise FigmentTrainError(
+                "chosen checkpoint is marked imported but its tester plan has no "
+                "imported_training_config; cannot validate its training provenance"
+            )
+        imported_config_path = _resolve_config_path(imported_config["path"], reads=reads)
+        reloaded_projection = _reload_imported_training_projection(
+            persona["id"], imported_config_path, reads=reads,
+        )
+        if reloaded_projection != source_projection:
+            raise FigmentTrainError(
+                "imported training config changed since the checkpoint ladder was "
+                "screened; re-run --import-checkpoints with the current file"
+            )
+        gen_time_keys = set(current_projection) - lineage.TRAIN_TIME_KEYS
+        current_gen_time = {key: current_projection[key] for key in gen_time_keys}
+        source_gen_time = {key: source_projection[key] for key in gen_time_keys}
+        if current_gen_time != source_gen_time:
+            raise FigmentTrainError(
+                "persona training changed after checkpoint promotion in a field this "
+                "imported checkpoint does not own (e.g. trigger/base_arch/caption_mode); "
+                "create a fresh gen plan"
+            )
+    elif current_projection != source_projection:
         raise FigmentTrainError("training inputs changed after checkpoint promotion")
     candidate = (
         _imported_checkpoint_candidate(source_plan, source_root, step, reads=reads)

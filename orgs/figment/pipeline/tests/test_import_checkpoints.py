@@ -294,6 +294,172 @@ def test_import_checkpoints_screens_ladder_to_accepted_gen_checkpoint(command, t
     assert command._sha256(staged_gen_checkpoint) == imported_row["sha256"]
 
 
+def _write_import_training_config(path: Path, *, steps: int, save_every: int, **extra) -> None:
+    """A standalone `--import-training-config` sidecar, same one-key shape
+    `training_config.load_persona_with_training`'s sidecar reads, naming the config an
+    imported ladder was actually trained with (P4i)."""
+    payload = {"training": {"steps": steps, "save_every": save_every, **extra}}
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def _promote_imported_checkpoint(
+    command, load_json, tmp_path: Path, monkeypatch, *, out: Path, plan: dict, chosen_step: int = 750,
+) -> dict:
+    """Run tester, grade with the fixture, and promote `chosen_step` -- shared by the
+    P4i gen-time-provenance tests below."""
+    command.run_planned_stage("creator-003", "tester", out / "plan.json")
+    command.build_grade("creator-003", "tester", out / "plan.json", skip_judge=True)
+    tester_manifest = load_json(out / plan["stages"]["tester"]["runs"][0]["manifest"])
+    chosen_filename = command._checkpoint_name(TRIGGER, chosen_step)
+    candidate_job = next(
+        job for job in tester_manifest["jobs"]
+        if any(item.get("field") == "lora_name" and item.get("value") == chosen_filename
+               for item in job.get("substitutions", []))
+    )
+    grade_dir = out / "grade" / "tester"
+    filled = _fill_tester_ruling(command, load_json, grade_dir, candidate_job["output_name"])
+    result = command.apply_rulings(
+        "creator-003", "tester", out / "plan.json", filled, checkpoint_step=chosen_step,
+    )
+    return load_json(Path(result["accepted_checkpoint"]))
+
+
+# ---------------------------------------------------------------------------
+# P4i: an imported checkpoint's provenance is ITS training config, never the persona's
+# current training.yaml -- gap flagged unreconciled by the P4e author.
+# ---------------------------------------------------------------------------
+
+
+def test_imported_checkpoint_gen_plan_survives_persona_steps_drift(command, tmp_path, monkeypatch):
+    """Persona currently trains at 3000 steps; the imported ladder was actually trained
+    at 1250 (`--import-training-config`). A tester ruling, then a fresh `gen` plan built
+    against the drifted persona, must still succeed -- the old code compared the
+    checkpoint's recorded training_inputs to the persona's CURRENT training and refused."""
+    personas = tmp_path / "personas"
+    persona_dir = _persona(personas)
+    _set_training(persona_dir, steps=3000, save_every=500)  # persona drifts after import
+    ladder_dir = tmp_path / "ladder"
+    _write_ladder(ladder_dir, command)  # ladder trained at TRIGGER/STEPS == 1250
+    import_config = tmp_path / "imported-training.yaml"
+    _write_import_training_config(import_config, steps=STEPS, save_every=SAVE_EVERY)
+    out = tmp_path / "plan"
+    ledger_dir = tmp_path / "ledger"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+
+    plan = command.build_plan(
+        "creator-003", "tester", out, personas_root=personas, skip_pin_verify=True,
+        import_checkpoints=ladder_dir, import_training_config=import_config,
+        ledger_dir=ledger_dir, accept_budget=True,
+    )
+    assert plan["imported_training_config"]["sha256"] == command._sha256(import_config)
+    assert plan["training"]["steps"] == STEPS
+
+    accepted = _promote_imported_checkpoint(command, load_json, tmp_path, monkeypatch, out=out, plan=plan)
+    assert accepted["origin"] == "imported"
+    assert accepted["training_inputs"]["steps"] == STEPS
+
+    gen_out = tmp_path / "gen"
+    gen_plan = command.build_plan(
+        "creator-003", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+        ledger_dir=ledger_dir, accept_budget=True,
+    )
+    assert gen_plan["training"]["steps"] == 3000
+    chosen_filename = command._checkpoint_name(TRIGGER, 750)
+    gen_manifest = load_json(gen_out / gen_plan["stages"]["gen"]["runs"][0]["manifest"])
+    assert gen_manifest["uploads"][0]["files"] == [f"accepted-checkpoint/{chosen_filename}"]
+    accepted_checkpoint_json = load_json(out / "grade" / "tester" / "accepted-checkpoint.json")
+    assert accepted_checkpoint_json["origin"] == "imported"
+    assert accepted_checkpoint_json["training_inputs"]["steps"] == STEPS
+    assert gen_plan["gen_authority"]["checkpoint_sha256"] == accepted_checkpoint_json["checkpoint"]["sha256"]
+
+
+def test_imported_checkpoint_refuses_config_drift_after_promotion(command, tmp_path, monkeypatch):
+    """The imported training config's bytes change after the checkpoint was promoted --
+    its provenance no longer matches what was screened, so gen must refuse with a clear
+    drift message, never silently trust the new file."""
+    personas = tmp_path / "personas"
+    persona_dir = _persona(personas)
+    _set_training(persona_dir, steps=3000, save_every=500)
+    ladder_dir = tmp_path / "ladder"
+    _write_ladder(ladder_dir, command)
+    import_config = tmp_path / "imported-training.yaml"
+    _write_import_training_config(import_config, steps=STEPS, save_every=SAVE_EVERY)
+    out = tmp_path / "plan"
+    ledger_dir = tmp_path / "ledger"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+
+    plan = command.build_plan(
+        "creator-003", "tester", out, personas_root=personas, skip_pin_verify=True,
+        import_checkpoints=ladder_dir, import_training_config=import_config,
+        ledger_dir=ledger_dir, accept_budget=True,
+    )
+    _promote_imported_checkpoint(command, load_json, tmp_path, monkeypatch, out=out, plan=plan)
+
+    # Drift the imported config's bytes after promotion.
+    _write_import_training_config(import_config, steps=STEPS, save_every=SAVE_EVERY, dop_class="animal")
+
+    gen_out = tmp_path / "gen"
+    with pytest.raises(command.FigmentTrainError, match="imported training config changed"):
+        command.build_plan(
+            "creator-003", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+            ledger_dir=ledger_dir, accept_budget=True,
+        )
+
+
+def test_import_training_config_refuses_trigger_mismatch_at_plan_time(command, tmp_path):
+    """`--import-training-config` naming a different identity (a mismatched trigger) is
+    refused when the tester plan is built, before any ladder screening or promotion."""
+    personas = tmp_path / "personas"
+    _persona(personas)
+    ladder_dir = tmp_path / "ladder"
+    _write_ladder(ladder_dir, command)
+    import_config = tmp_path / "imported-training.yaml"
+    _write_import_training_config(
+        import_config, steps=STEPS, save_every=SAVE_EVERY, trigger="someothercreatorkrea2",
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="trigger"):
+        command.build_plan(
+            "creator-003", "tester", tmp_path / "plan", personas_root=personas, skip_pin_verify=True,
+            import_checkpoints=ladder_dir, import_training_config=import_config,
+        )
+
+
+def test_imported_checkpoint_refuses_missing_imported_training_config(command, tmp_path, monkeypatch):
+    """A source tester plan whose `imported_checkpoints` marks it as an imported ladder
+    but which carries no top-level `imported_training_config` (hand-tampered, or a future
+    regression in `build_plan`) must refuse at gen time -- an imported checkpoint's
+    provenance can never be assumed from an absent config."""
+    personas = tmp_path / "personas"
+    persona_dir = _persona(personas)
+    ladder_dir = tmp_path / "ladder"
+    _write_ladder(ladder_dir, command)
+    out = tmp_path / "plan"
+    ledger_dir = tmp_path / "ledger"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+
+    plan = command.build_plan(
+        "creator-003", "tester", out, personas_root=personas, skip_pin_verify=True,
+        import_checkpoints=ladder_dir, ledger_dir=ledger_dir, accept_budget=True,
+    )
+    # Tamper the plan BEFORE anything hashes it: strip imported_training_config while
+    # `stages.tester.imported_checkpoints` (what marks origin=="imported") stays intact.
+    plan_path = out / "plan.json"
+    tampered = load_json(plan_path)
+    del tampered["imported_training_config"]
+    plan_path.write_text(json.dumps(tampered, indent=2) + "\n", encoding="utf-8")
+
+    accepted = _promote_imported_checkpoint(command, load_json, tmp_path, monkeypatch, out=out, plan=plan)
+    assert accepted["origin"] == "imported"
+
+    gen_out = tmp_path / "gen"
+    with pytest.raises(command.FigmentTrainError, match="imported_training_config"):
+        command.build_plan(
+            "creator-003", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+            ledger_dir=ledger_dir, accept_budget=True,
+        )
+
+
 def test_import_checkpoints_refuses_tampered_staged_file_before_launch(command, tmp_path, monkeypatch):
     personas = tmp_path / "personas"
     _persona(personas)

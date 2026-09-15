@@ -202,6 +202,22 @@ promotes an imported candidate exactly like an in-plan one — same evidence cla
 `checkpoint` block all carry forward so a reader can always tell an operator-trained
 checkpoint from one this pipeline trained itself.
 
+An imported checkpoint's provenance is *its own* training config, not whatever the
+persona's `training.yaml` says today. When gen (or detail/video) revalidates an
+`origin: "imported"` accepted checkpoint, `lineage.TRAIN_TIME_KEYS` (`steps`,
+`save_every`, `skin_lora`, `dop_enabled`, `dop_multiplier`, `dop_class` — the fields the
+training run actually consumed) are checked against the tester plan's recorded
+projection, with `imported_training_config`'s file re-read and re-projected (never a raw
+byte hash, since the default fallback path is the persona's own persona.yaml/training.yaml
+sidecar, which legitimately gains `chosen_checkpoint_*` fields on promotion) to catch a
+real post-promotion edit; every other training field (`trigger`, `base_arch`, `caption_mode`, `pod_class`,
+`price_ceiling_usd_per_hour`) is still validated against the persona's *current*
+`training.yaml`, the same authority the in-plan path always used. This means bumping
+`training.steps` for the *next* in-plan run no longer invalidates an already-promoted
+imported checkpoint, while a persona whose identity-defining fields (trigger/base_arch)
+no longer match the imported config's is still refused, and a source plan claiming
+`origin: "imported"` without an `imported_training_config` is refused outright.
+
 Fresh gen plans also capture a `gen_authority` snapshot. Before each base or
 detail launch, the driver revalidates the current persona, selected checkpoint,
 upstream approval and source bytes, then rechecks the staged copy. If those

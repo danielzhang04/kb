@@ -54,6 +54,19 @@ SELECTION_KEYS = frozenset({
 # The plan.json file hash (`review_subject`'s own "plan" file_entry) still changes
 # with it, so gen-stage review freshness is unaffected.
 GEN_TIME_ONLY_KEYS = frozenset({"style_lora", "style_lora_strength"})
+# P4i: an imported checkpoint ladder (`plan --stage tester --import-checkpoints`) has no
+# in-plan `train` receipt -- its provenance IS the training config named by
+# `plan["imported_training_config"]` at tester-plan time, never the persona's current
+# `training.yaml`. `_validated_accepted_checkpoint` (figment_train.py) therefore splits
+# `training_input_projection`'s remaining keys into two authorities for an `origin:
+# "imported"` accepted checkpoint: TRAIN_TIME_KEYS were consumed by the actual training
+# run and must still match what the imported ladder was trained with (the tester plan's
+# recorded projection, re-verified against the imported config file's current hash);
+# every other projected key (trigger, base_arch, caption_mode, pod_class,
+# price_ceiling_usd_per_hour) is a live gen-time choice and stays validated against the
+# persona's CURRENT training.yaml, exactly like the in-plan (non-imported) path. This
+# frozenset is the single place that split is named.
+TRAIN_TIME_KEYS = frozenset({"steps", "save_every", "skin_lora", "dop_enabled", "dop_multiplier", "dop_class"})
 
 
 class LineageError(ValueError):
