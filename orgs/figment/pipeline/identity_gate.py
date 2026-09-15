@@ -1511,9 +1511,34 @@ def run_gate(
         lambda: persona, anchors, images, out,
         skip_judge=skip_judge, workers=workers, model=model,
     )
-    gate_path = out / "gate.json"
-    gate_path.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    gate_path = write_gate_document(out / "gate.json", document)
     return {"gate": str(gate_path), "document": document}
+
+
+def write_gate_document(path: Path, document: dict[str, Any]) -> Path:
+    """The ONE writer of a `figment/gate@1` `gate.json` (E4 -- previously three
+    independent call sites wrote this file: `figment_train.py build_grade`, this
+    module's own `run_gate`, and `gates.py`'s unrelated, dead `write_gate`/
+    `gate_is_current` pair, which carried a second, incompatible SHA-bound
+    human-decision schema and had zero non-test callers -- see `gates.py`'s docstring).
+    `build_grade` and `run_gate` both call this so every `gate.json` on disk, whether
+    produced by a plan-driven grading stage or the ad hoc `run` CLI, is written the
+    same way: atomic (temp file + `os.replace`, so a reader never observes a
+    half-written gate), `indent=2`, matching the byte shape both prior call sites
+    already produced."""
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    try:
+        tmp.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    finally:
+        if tmp.exists():
+            try:
+                tmp.unlink()
+            except OSError:
+                pass
+    return path
 
 
 def format_gate_table(document: dict[str, Any]) -> str:

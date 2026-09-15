@@ -125,3 +125,112 @@ def test_refuses_non_successful_or_unproven_harness_receipts(tmp_path: Path, fie
     data = json.loads(run.read_text(encoding="utf-8")); data[field] = value; write_json(run, data)
     with pytest.raises(assembly.FrameAssembleError, match="successful terminated non-dry-run"):
         assembly.assemble_frames(root=tmp_path, manifest_path=Path(manifest.name), run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"))
+
+
+# ---------------------------------------------------------------------------
+# F6: the reel-templates.yaml (1080x1920@30fps) derivative
+# ---------------------------------------------------------------------------
+
+
+def test_reel_derivative_fits_the_template_delivery_profile_and_binds_to_its_native_source(
+    tmp_path: Path,
+) -> None:
+    manifest, _, _ = fixture(tmp_path)
+    native = assembly.assemble_frames(
+        root=tmp_path, manifest_path=Path(manifest.name),
+        run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"),
+    )
+    derivative = assembly.build_reel_derivative(
+        root=tmp_path, assembly_receipt_path=Path("assembled/frame-assembly.json"),
+        output_dir=Path("reel"),
+    )
+    assert derivative["schema"] == assembly.DERIVATIVE_SCHEMA
+    assert derivative["not_promotable"] is True
+    assert derivative["metadata"]["width"] == assembly.REEL_WIDTH
+    assert derivative["metadata"]["height"] == assembly.REEL_HEIGHT
+    assert derivative["metadata"]["fps"] == assembly.REEL_FPS
+    assert derivative["delivery_profile"] == {
+        "width": 1080, "height": 1920, "fps": 30,
+        "source": "content/reel-templates.yaml delivery",
+    }
+    # Native<->derivative correspondence: both hashes recorded, and they bind to the
+    # ACTUAL native movie this derivative was rendered from (not merely repeated
+    # metadata).
+    assert derivative["correspondence"]["native"]["sha256"] == native["movie"]["sha256"]
+    assert derivative["correspondence"]["native"]["sha256"] == assembly.frames._hash_file(
+        tmp_path, Path("assembled/diagnostic.mp4"), "native", assembly.frames.MAX_VIDEO_BYTES,
+    )["sha256"]
+    assert derivative["correspondence"]["derivative"]["sha256"] == assembly.frames._hash_file(
+        tmp_path, Path("reel/reel.mp4"), "derivative", assembly.frames.MAX_VIDEO_BYTES,
+    )["sha256"]
+    # Duration is preserved (fps resamples, it does not trim/loop); frame count
+    # necessarily differs (81 @16fps vs ~152 @30fps for the same wall-clock length).
+    import math
+    native_duration = float(derivative["correspondence"]["native_duration_seconds"])
+    derivative_duration = float(derivative["correspondence"]["derivative_duration_seconds"])
+    assert math.isclose(native_duration, derivative_duration, abs_tol=0.05)
+    assert (tmp_path / "reel" / "reel.mp4").is_file()
+    assert (tmp_path / "reel" / "reel-derivative.json").is_file()
+
+
+def test_reel_derivative_carries_candidate_identity_when_native_source_is_a_candidate(
+    tmp_path: Path,
+) -> None:
+    manifest, _, output_name = fixture(tmp_path, candidate=True)
+    assembly.assemble_frames(
+        root=tmp_path, manifest_path=Path(manifest.name),
+        run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"),
+    )
+    derivative = assembly.build_reel_derivative(
+        root=tmp_path, assembly_receipt_path=Path("assembled/frame-assembly.json"),
+        output_dir=Path("reel"),
+    )
+    assert derivative["candidate"] == {"id": output_name, "mode": assembly.CANDIDATE_MODE}
+
+
+def test_reel_derivative_output_directory_must_be_fresh(tmp_path: Path) -> None:
+    manifest, _, _ = fixture(tmp_path)
+    assembly.assemble_frames(
+        root=tmp_path, manifest_path=Path(manifest.name),
+        run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"),
+    )
+    (tmp_path / "occupied").mkdir()
+    with pytest.raises(assembly.FrameAssembleError, match="fresh"):
+        assembly.build_reel_derivative(
+            root=tmp_path, assembly_receipt_path=Path("assembled/frame-assembly.json"),
+            output_dir=Path("occupied"),
+        )
+
+
+def test_reel_derivative_refuses_if_native_movie_changed_since_its_own_receipt(
+    tmp_path: Path,
+) -> None:
+    manifest, _, _ = fixture(tmp_path)
+    assembly.assemble_frames(
+        root=tmp_path, manifest_path=Path(manifest.name),
+        run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"),
+    )
+    movie = tmp_path / "assembled" / "diagnostic.mp4"
+    movie.write_bytes(movie.read_bytes() + b"changed")
+    with pytest.raises(assembly.FrameAssembleError, match="changed since its own frame-assembly receipt"):
+        assembly.build_reel_derivative(
+            root=tmp_path, assembly_receipt_path=Path("assembled/frame-assembly.json"),
+            output_dir=Path("reel"),
+        )
+
+
+def test_cli_reel_command_produces_the_same_receipt_as_the_function(tmp_path: Path) -> None:
+    manifest, _, _ = fixture(tmp_path)
+    assembly.assemble_frames(
+        root=tmp_path, manifest_path=Path(manifest.name),
+        run_receipt_path=Path("run/run.json"), output_dir=Path("assembled"),
+    )
+    result = subprocess.run(
+        [sys.executable, str(VIDEO_DIR / "frame_assemble.py"), "reel",
+         "--root", str(tmp_path), "--assembly-receipt", "assembled/frame-assembly.json",
+         "--out", "reel"],
+        capture_output=True, text=True, timeout=60,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "reel" / "reel-derivative.json").is_file()
+    assert (tmp_path / "reel" / "reel.mp4").is_file()

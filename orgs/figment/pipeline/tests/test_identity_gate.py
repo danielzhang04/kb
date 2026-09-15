@@ -800,6 +800,44 @@ def test_run_gate_writes_gate_json_matching_the_figment_gate_schema(gate_module,
     assert "codex_diagnostic" not in on_disk["rows"][0]
 
 
+def test_write_gate_document_is_the_one_writer_atomic_no_leftover_tmp(gate_module, tmp_path):
+    # E4: identity_gate.write_gate_document is the ONE writer of gate.json, shared by
+    # this module's own run_gate and figment_train.py's build_grade. Direct-call
+    # coverage: atomic (no leftover .tmp file), round-trips the document exactly.
+    out = tmp_path / "grade" / "gen" / "gate.json"
+    document = {"schema": "figment/gate@1", "rows": [{"image_id": "a", "pass": True}]}
+    result_path = gate_module.write_gate_document(out, document)
+    assert result_path == out
+    assert json.loads(out.read_text(encoding="utf-8")) == document
+    assert not out.with_name(out.name + ".tmp").exists()
+
+
+def test_run_gate_writes_via_write_gate_document(gate_module, tmp_path, monkeypatch):
+    persona = _synthetic_persona(tmp_path)
+    personas_root = Path(persona["_persona_path"]).parents[1]
+    batch_dir = tmp_path / "batch"
+    _png(batch_dir, "cell-01.png")
+
+    monkeypatch.setattr(gate_module, "score_cells_for_stage", _fake_score_cells_for_stage)
+    fake_judge = _fake_judge_run_module(gate_module)
+    monkeypatch.setattr(gate_module, "_vlm_judge_module", lambda: fake_judge)
+
+    calls = []
+    real_writer = gate_module.write_gate_document
+
+    def _spy(path, document):
+        calls.append(Path(path))
+        return real_writer(path, document)
+
+    monkeypatch.setattr(gate_module, "write_gate_document", _spy)
+    out = tmp_path / "gate-out"
+    result = gate_module.run_gate(
+        "creator-xyz", [str(batch_dir)], out, personas_root=personas_root,
+    )
+    assert calls == [out / "gate.json"]
+    assert Path(result["gate"]) == out / "gate.json"
+
+
 def test_run_gate_raises_when_persona_not_found(gate_module, tmp_path):
     with pytest.raises(gate_module.IdentityGateError, match="persona not found"):
         gate_module.run_gate(
