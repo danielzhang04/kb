@@ -245,7 +245,7 @@ def test_pipeline_drives_dataset_through_detail_and_halts_at_each_gate(
     # stage refuses by name (F6a) while still writing everything ruled through detail ----
     result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
     assert result["status"] == "stopped:video-out-of-tree"
-    assert "inside the repository authority root" in result["message"]
+    assert "inside the run-root authority root" in result["message"]
     assert "orgs/figment/runs/<creator>/<YYYYMMDD-HHMMSS>/" in result["message"]
     assert not (primary_root / "downstream" / "video").exists()
     assert result["deliverable"] == str(primary_root / "deliverable" / "manifest.json")
@@ -434,9 +434,174 @@ def test_pipeline_drives_an_in_repo_run_root_through_video_to_the_deliverable(
     assert Path(result["deliverable"]).read_bytes() == before
 
 
+def _drive_through_video_ruled(command, in_repo_run_root, monkeypatch) -> tuple[Path, Path, dict]:
+    """dataset -> ... -> detail -> video, ruled -- the exact state
+    `test_pipeline_drives_an_in_repo_run_root_through_video_to_the_deliverable` reaches
+    just before its final `command_pipeline` call writes `deliverable/manifest.json`.
+    Factored out so B1-video's tamper reproductions below can each call
+    `command._build_deliverable(...)` directly against a fresh (not-yet-built)
+    deliverable, without re-driving the whole chain inline."""
+    personas = in_repo_run_root / "ps"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = in_repo_run_root / "lg"
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    primary_root = in_repo_run_root / "p"
+    primary_plan_path = primary_root / "plan.json"
+    kwargs = dict(
+        personas_root=personas, skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    _drive_through_detail(command, "creator-002", primary_root, kwargs)
+    result = command.command_pipeline("creator-002", plan_path=primary_plan_path, **kwargs)
+    assert result["status"] == "GATE video"
+    video_root = primary_root / "downstream" / "video"
+    _rule_current_grade(command, "creator-002", "video", video_root / "plan.json")
+    return primary_root, video_root, kwargs
+
+
+def _build_video_deliverable(command, primary_root: Path, video_root: Path) -> dict:
+    return command._build_deliverable(
+        "creator-002", primary_root, primary_root / "downstream" / "gen",
+        primary_root / "downstream" / "detail", video_root,
+    )
+
+
+def test_deliverable_video_refuses_a_fake_subject_image_appended_to_the_approval(
+    command, in_repo_run_root, monkeypatch,
+):
+    """B1-video repro (a): the OLD code trusted `grade/video/approved-list.json` rows
+    directly. The new one instead loads the CURRENT approval through
+    `_load_current_approval` and builds `identity_rows` from ITS OWN `subject.images` --
+    a hand-edited approval-lineage.json naming an extra, never-reviewed frame is caught
+    by the freshness check (a tampered `subject` no longer matches its own recorded
+    digest, or the freshly recomputed one) before any bytes are touched."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    approval_path = video_root / "grade" / "video" / "approval-lineage.json"
+    approval = load_json(approval_path)
+    fake_row = dict(approval["subject"]["images"][0])
+    fake_row["image_id"] = "evil-fake-frame-never-reviewed"
+    approval["subject"]["images"].append(fake_row)
+    approval_path.write_text(json.dumps(approval), encoding="utf-8")
+
+    with pytest.raises(command.FigmentTrainError, match="stale|corrupt"):
+        _build_video_deliverable(command, primary_root, video_root)
+    assert not (primary_root / "deliverable" / "video").exists()
+
+
+def test_deliverable_video_refuses_a_gate_failed_row_without_override(
+    command, in_repo_run_root, monkeypatch,
+):
+    """B1-video repro (b): every fixture cell fails the real gate (no real face), so the
+    happy path only ships because `_rule_current_grade` fills a `gate_override` on every
+    kept row. Stripping that override for one kept row -- leaving it gate-failed AND
+    override-free -- must refuse, not silently attach an empty ruling the way the old
+    `gate_by_id.get(image_id)`/`.get(image_id, {})` pair did."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    rulings_path = video_root / "grade" / "video" / "rulings.json"
+    rulings = load_json(rulings_path)
+    kept = next(row for row in rulings["rulings"] if row["decision"] == "keep")
+    kept["gate_override"] = None
+    rulings_path.write_text(json.dumps(rulings), encoding="utf-8")
+
+    with pytest.raises(command.FigmentTrainError, match="lacks a gate pass or override"):
+        _build_video_deliverable(command, primary_root, video_root)
+    assert not (primary_root / "deliverable" / "video").exists()
+
+
+def test_deliverable_video_refuses_a_tampered_native_frame_after_assembly(
+    command, in_repo_run_root, monkeypatch,
+):
+    """B1-video repro (c): `frame-assembly.json` records each native frame's own bytes
+    and sha256, but the old `_deliverable_video` copied `native_frame.sha256`/`bytes`
+    straight out of that receipt without ever re-reading the actual PNG. Tampering an
+    UNGRADED native frame (only every 8th of the 81 is graded -- `VIDEO_FRAME_SAMPLE_EVERY`)
+    on disk proves the fix specifically: the operator-approval freshness check alone
+    (recomputed only from the GRADED images) would never notice this tamper, so only the
+    new full re-hash of every assembled frame catches it."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    assembly = load_json(video_root / "video" / "assembled" / "frame-assembly.json")
+    graded = load_json(video_root / "grade" / "video" / "grading-manifest.json")
+    graded_ids = {row["image_id"] for row in graded["images"]}
+    frame_row = next(
+        row for row in assembly["frames"] if Path(row["path"]).stem not in graded_ids
+    )
+    (ROOT / frame_row["path"]).write_bytes(b"tampered native frame bytes, post-assembly")
+
+    with pytest.raises(command.FigmentTrainError, match="native frame .* bytes do not match"):
+        _build_video_deliverable(command, primary_root, video_root)
+    assert not (primary_root / "deliverable" / "video").exists()
+
+
+def test_deliverable_video_refuses_an_edited_reel_derivative_mp4_pair(
+    command, in_repo_run_root, monkeypatch,
+):
+    """B1-video repro (d): the old code compared the delivered mp4's digest only to
+    `reel-derivative.json`'s own claimed field -- never re-verified against the actual
+    source reel.mp4 bytes it was about to copy from. Corrupting the on-disk `reel.mp4`
+    the receipt still claims a now-stale sha256 for must refuse once those (now-wrong)
+    bytes are copied and re-hashed."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    reel = load_json(video_root / "video" / "reel" / "reel-derivative.json")
+    reel_movie_path = ROOT / reel["correspondence"]["derivative"]["path"]
+    reel_movie_path.write_bytes(b"corrupted reel derivative bytes")
+
+    with pytest.raises(command.FigmentTrainError, match="delivered reel bytes do not match"):
+        _build_video_deliverable(command, primary_root, video_root)
+
+
+def test_deliverable_video_happy_path_unchanged(command, in_repo_run_root, monkeypatch):
+    """B1-video repro (e): the ordinary, untampered chain still delivers -- every field
+    the pre-B1-video manifest shape carried is still present and still correct."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    assembly = load_json(video_root / "video" / "assembled" / "frame-assembly.json")
+    reel = load_json(video_root / "video" / "reel" / "reel-derivative.json")
+
+    manifest = _build_video_deliverable(command, primary_root, video_root)
+    delivered = manifest["video"]
+    reel_path = primary_root / delivered["reel"]["path"]
+    assert reel_path.is_file()
+    assert command._sha256(reel_path) == reel["correspondence"]["derivative"]["sha256"]
+    assert delivered["native_movie"] == assembly["movie"]
+    assert delivered["identity_under_motion"]
+    for row in delivered["identity_under_motion"]:
+        assert row["gate"]["pass"] is True or row["ruling"]["gate_override"]
+        assert row["ruling"]["decided_by"] == "operator-fixture"
+        assert command._sha256(ROOT / row["native_frame"]["path"]) == row["native_frame"]["sha256"]
+
+    # Idempotent: a second build against the same ruled state returns the same bytes.
+    again = _build_video_deliverable(command, primary_root, video_root)
+    assert again == manifest
+
+
+def test_deliverable_video_removes_an_orphaned_previous_mp4(command, in_repo_run_root, monkeypatch):
+    """MINOR 7: an earlier ruling's delivered mp4 that the current manifest no longer
+    references must not linger in deliverable/video/."""
+    primary_root, video_root, kwargs = _drive_through_video_ruled(command, in_repo_run_root, monkeypatch)
+    destination_dir = primary_root / "deliverable" / "video"
+    destination_dir.mkdir(parents=True, exist_ok=True)
+    orphan = destination_dir / "some-old-candidate-id.mp4"
+    orphan.write_bytes(b"orphaned mp4 from a previous ruling")
+
+    manifest = _build_video_deliverable(command, primary_root, video_root)
+    assert not orphan.exists()
+    assert {path.name for path in destination_dir.iterdir()} == {
+        Path(manifest["video"]["reel"]["path"]).name,
+    }
+
+
 def test_video_plan_refuses_an_out_of_tree_output_directory(command, tmp_path):
-    with pytest.raises(command.FigmentTrainError, match="inside the repository authority root"):
+    with pytest.raises(command.FigmentTrainError, match="inside the run-root authority root"):
         command.build_plan("creator-002", "video", tmp_path / "out", skip_pin_verify=True)
+
+
+def test_video_plan_refuses_an_in_repo_non_run_root_output_directory(command):
+    """MINOR 3 (REVIEW): `_video_authority_root` used to accept anything under `ROOT`,
+    so an in-repo-but-not-`orgs/figment/runs/` path (e.g. `orgs/figment/personas/x`) was
+    wrongly accepted as a video run root. It must refuse the same way an out-of-repo
+    path does, naming the run-root rule rather than the whole-repository rule."""
+    with pytest.raises(command.FigmentTrainError, match="inside the run-root authority root"):
+        command.build_plan(
+            "creator-002", "video", command.PERSONAS_ROOT / "x", skip_pin_verify=True,
+        )
 
 
 def test_pipeline_halts_and_resumes_at_anchor_then_requires_a_fresh_plan(
