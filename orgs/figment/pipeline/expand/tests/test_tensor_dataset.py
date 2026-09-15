@@ -14,6 +14,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import re
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -90,12 +91,41 @@ TEMPLATES = EXPAND / "templates" / "tensor-dataset-prompts.yaml"
 # `test_framing_policy_skin_clause_and_no_unused_subpack` /
 # `test_fullbody_jobs_route_through_the_face_repair_composite_node`, both already driven
 # through a live `build_plan` call.
+#
+# P2 (MANDATE.md stage 2): creator-001's REAL, checked-in `training.yaml` now sets
+# `dataset_source: klein-multiref` (the live chain runs the new source) -- but THIS file
+# is the qwen-edit module-10-replica regression suite specifically, per its own docstring
+# above. Rather than add a second persona directory under the real `personas/` tree, or
+# retire this file, mirror creator-001's real persona/training config into a tmp root
+# (same `tempfile.mkdtemp()` convention `_DATASET_PLAN_DIR` below already uses) with
+# ONE key overridden back to `"qwen-edit"` after the copy -- loaded through the exact
+# same loader (`figment_train.build_plan` -> `training_config.load_persona_with_training`),
+# no new machinery. The mirror preserves the real `orgs/figment/{pipeline,personas}`
+# sibling layout (not just the persona directory alone) because `register.spec.path`
+# ("../../pipeline/look-spec-v2.md") deliberately escapes the persona directory
+# (persona.py's own `must_stay_within=False`) and must still resolve.
+def _creator001_qwen_edit_personas_root() -> Path:
+    root = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-qwen-edit-root-"))
+    personas_root = root / "personas"
+    shutil.copytree(REAL_PERSONAS / "creator-001", personas_root / "creator-001")
+    pipeline_root = root / "pipeline"
+    pipeline_root.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(PIPELINE / "look-spec-v2.md", pipeline_root / "look-spec-v2.md")
+
+    training_path = personas_root / "creator-001" / "training.yaml"
+    document = json.loads(training_path.read_text(encoding="utf-8"))
+    document["training"]["dataset_source"] = "qwen-edit"
+    training_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+    return personas_root
+
+
+_QWEN_EDIT_PERSONAS_ROOT = _creator001_qwen_edit_personas_root()
 _DATASET_PLAN_DIR = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-plan-"))
 # M2: manifest-replication check, not a budget check -- the live shared ledger's
 # remaining arc margin can dip below dataset's own ceiling depending on other workers'
 # spend on this machine, so accept_budget is required deterministically.
 _DATASET_PLAN = figment_train.build_plan(
-    "creator-001", "dataset", _DATASET_PLAN_DIR, personas_root=REAL_PERSONAS,
+    "creator-001", "dataset", _DATASET_PLAN_DIR, personas_root=_QWEN_EDIT_PERSONAS_ROOT,
     skip_pin_verify=True, accept_budget=True,
 )
 SHARDS = tuple(

@@ -184,7 +184,15 @@ def test_pins_are_the_single_source_for_every_generated_manifest(command, tmp_pa
         accept_budget=True,
     )
     pins = load_json(PIPELINE / "train" / "tensor-pins.yaml")
-    for stage, profile in (("dataset", "dataset"), ("smoke", "train"),
+    # P2: creator-001's own training.yaml now sets dataset_source: klein-multiref, so
+    # its "dataset" stage manifests pull pins.pins.dataset_multiref, not pins.dataset --
+    # resolve the profile the same way _verify_pins_preflight does, rather than a fixed
+    # tuple that only ever matched the qwen-edit default.
+    dataset_profile = (
+        "dataset_multiref" if plan["training"].get("dataset_source") == "klein-multiref"
+        else "dataset"
+    )
+    for stage, profile in (("dataset", dataset_profile), ("smoke", "train"),
                            ("train", "train"), ("tester", "tester")):
         for run in plan["stages"][stage]["runs"]:
             manifest = load_json(plan_path(out, run))
@@ -384,12 +392,12 @@ def test_build_plan_dataset_stage_qwen_edit_default_still_produces_four_manifest
     assert len(plan["stages"]["dataset"]["runs"]) == 4
 
 
-def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_path):
-    """The existing dataset grade path must consume klein-multiref cells unchanged --
-    same gate.json schema, same rulings-template shape, as the qwen-edit path."""
-    personas_root = tmp_path / "personas"
-    _synthetic_persona(personas_root, dataset_source="klein-multiref")
-    out = tmp_path / "klein-multiref-grade-plan"
+def _build_and_grade_dataset(command, tmp_path, *, label: str, dataset_source: str):
+    """Shared helper: plan the dataset stage for a synthetic persona, fake every
+    job's output image, grade it, and return (gate.json, rulings-template) dicts."""
+    personas_root = tmp_path / f"personas-{label}"
+    _synthetic_persona(personas_root, dataset_source=dataset_source)
+    out = tmp_path / f"grade-plan-{label}"
     command.build_plan(
         "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
     )
@@ -406,11 +414,32 @@ def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_
     grade = command.build_grade("creator-002", "dataset", plan_file)
     gate = load_json(Path(grade["gate"]))
     template = load_json(Path(grade["rulings_template"]))
-    assert len(template["rulings"]) == 30
-    assert gate["schema"] == "figment/gate@1"
-    assert gate["summary"]["total"] == 30
-    for row in gate["rows"]:
+    return gate, template
+
+
+def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_path):
+    """The existing dataset grade path must consume klein-multiref cells unchanged --
+    the SAME gate.json schema (top-level keys, per-row keys) and the SAME
+    rulings-template shape as the qwen-edit path, built and graded side by side so
+    this is a real structural comparison, not two independently-asserted literals."""
+    qwen_gate, qwen_template = _build_and_grade_dataset(
+        command, tmp_path, label="qwen-edit", dataset_source="qwen-edit",
+    )
+    klein_gate, klein_template = _build_and_grade_dataset(
+        command, tmp_path, label="klein-multiref", dataset_source="klein-multiref",
+    )
+
+    assert klein_gate["schema"] == qwen_gate["schema"] == "figment/gate@1"
+    assert set(klein_gate) == set(qwen_gate)
+    assert set(klein_gate["rows"][0]) == set(qwen_gate["rows"][0])
+    assert set(klein_gate["summary"]) == set(qwen_gate["summary"])
+    assert klein_gate["summary"]["total"] == qwen_gate["summary"]["total"] == 30
+    for row in klein_gate["rows"]:
         assert "image_id" in row and "pass" in row
+
+    assert set(klein_template) == set(qwen_template)
+    assert len(klein_template["rulings"]) == len(qwen_template["rulings"]) == 30
+    assert set(klein_template["rulings"][0]) == set(qwen_template["rulings"][0])
 
 
 def test_qwen3vl_caption_prompt_and_settings_match_module_11(command):
