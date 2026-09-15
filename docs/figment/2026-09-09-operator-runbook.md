@@ -37,7 +37,6 @@ $py = 'C:/Users/danie/AppData/Local/Programs/Python/Python313/python.exe'
 $creator = 'creator-001'
 $dataset = '<REVIEWED_DATASET_DIR>'
 $planRoot = '<PLAN_ROOT>'
-$ledger = 'C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost'
 $env:DASHBOARD_FIGMENT_CLOUD_PAIR_BUNDLE = 'qwen-reference-v1'
 $env:DASHBOARD_FIGMENT_CLOUD_PAIR_ROOT = 'C:/Users/danie/kb/_private/figment-qwen-reference-run-20260909-v1'
 ```
@@ -56,7 +55,7 @@ times, or rulings.
   --decided-by '<ACTUAL_DECIDER>' --decided-at '<ACTUAL_ISO_8601_TIME>'
 
 & $py orgs/figment/pipeline/figment_train.py train-first `
-  --creator $creator --dataset-dir $dataset --out $planRoot --ledger-dir $ledger
+  --creator $creator --dataset-dir $dataset --out $planRoot
 ```
 
 Do not use `--skip-pin-verify` for a real path. Read the generated train budget
@@ -64,11 +63,14 @@ from the command output and `<PLAN_ROOT>/plan.json`; it is plan-derived, not a
 fixed quoted price. The plan’s recorded harness argv supplies the actual
 manifest paths, output paths, ledger directory, arc cap, and per-stage ceilings.
 The planner resolves that directory to an absolute path and freezes it in the
-plan and every harness argv. Use the reconciled canonical ledger above: the
-managed OPS fallback currently has no Figment baseline, so a live harness
-correctly fails closed there. Do not reset the arc or use an empty-ledger override.
-Existing plans are not migrated; create a fresh plan with this explicit ledger
-instead of hand-editing or replaying a plan bound to a stale worktree ledger.
+plan and every harness argv. Omit `--ledger-dir` and let it resolve the
+default (`configured_ledger_dir()`: explicit, then `KB_LEDGER_DIR`, then the
+managed OPS worktree if present, then this repo's own `ledgers/cost/`) — the
+repo directory is now the single reconciled Figment arc-cap ledger (E3), so a
+frozen absolute path to a private worktree is no longer needed and would only
+drift out of sync with it again. Do not reset the arc or use an
+empty-ledger override. Existing plans are not migrated; create a fresh plan
+rather than hand-editing or replaying a plan bound to a stale worktree ledger.
 
 ## Training and tester selection
 
@@ -150,7 +152,7 @@ hand.
 $genRoot = '<FRESH_EMPTY_GEN_PLAN_ROOT>'
 
 & $py orgs/figment/pipeline/figment_train.py plan `
-  --creator $creator --stage gen --out $genRoot --ledger-dir $ledger
+  --creator $creator --stage gen --out $genRoot
 
 & $py orgs/figment/pipeline/figment_train.py run `
   --creator $creator --stage gen --plan "$genRoot/plan.json"
@@ -213,7 +215,6 @@ authorized dollar ceiling must be checked at execution time.
   --out '<FRESH_VIDEO_RUN_OUTPUT_DIRECTORY>' `
   --max-usd <APPROVED_USD_BOUND_FROM_MANIFEST_AND_CURRENT_LEDGER> `
   --max-minutes 80 `
-  --ledger-dir 'C:/Users/danie/kb/_private/codex-worktrees/figment-analysis-ops-2026-09-07/ledgers/cost' `
   --arc-cap-usd 50 --arc-ledger-glob 'figment-*.tsv'
 ```
 
