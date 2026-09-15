@@ -552,6 +552,136 @@ def test_grade_apply_rulings_and_gate_accept_gen(command, tmp_path):
     assert document["rows"]
 
 
+# ---------------------------------------------------------------------------
+# F2: `detail` as its own STAGES entry -- always follows gen's own kept outputs
+# ---------------------------------------------------------------------------
+
+
+def test_build_plan_excludes_detail_and_video_from_stage_all(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    out = tmp_path / "all"
+    plan = command.build_plan(
+        "creator-002", "all", out, personas_root=personas, skip_pin_verify=True,
+    )
+    assert "detail" not in plan["stages"]
+    assert "video" not in plan["stages"]
+
+
+def test_approved_gen_plan_requires_stage_detail(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    with pytest.raises(command.FigmentTrainError, match="--approved-gen-plan is only meaningful"):
+        command.build_plan(
+            "creator-002", "gen", tmp_path / "c", personas_root=personas,
+            skip_pin_verify=True, approved_gen_plan=tmp_path / "nope",
+        )
+
+
+def test_detail_stage_requires_approved_gen_plan(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    with pytest.raises(command.FigmentTrainError, match="detail requires --approved-gen-plan"):
+        command.build_plan(
+            "creator-002", "detail", tmp_path / "d", personas_root=personas,
+            skip_pin_verify=True,
+        )
+
+
+def _approve_all_gen_images(command, creator_id: str, gen_out: Path) -> dict:
+    grade = command.build_grade(creator_id, "gen", gen_out / "plan.json", skip_judge=True)
+    template = load_json(Path(grade["rulings_template"]))
+    for row in template["rulings"]:
+        row.update(anchor_stage_test._axes(), decision="keep")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:00:00Z"})
+    filled = gen_out / "gen-filled.json"
+    filled.write_text(json.dumps(template), "utf-8")
+    return command.apply_rulings(creator_id, "gen", gen_out / "plan.json", filled)
+
+
+def test_detail_stage_always_follows_gens_own_kept_outputs(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    gen_out = tmp_path / "g"
+    gen_plan = command.build_plan(
+        "creator-002", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+    )
+    anchor_stage_test._fake_stage_outputs(gen_out, gen_plan, "gen")
+    _approve_all_gen_images(command, "creator-002", gen_out)
+    approved_count = len(load_json(gen_out / "grade" / "gen" / "approved-list.json")["images"])
+    assert approved_count > 0
+
+    detail_out = tmp_path / "d"
+    detail_plan = command.build_plan(
+        "creator-002", "detail", detail_out, personas_root=personas, skip_pin_verify=True,
+        approved_gen_plan=gen_out,
+    )
+    assert "detail" in detail_plan["stages"]
+    assert detail_plan["detail_source"]["approved_gen_plan"] == str(gen_out.resolve())
+    assert len(detail_plan["detail_source"]["images"]) == approved_count
+
+    run = detail_plan["stages"]["detail"]["runs"][0]
+    manifest = load_json(detail_out / run["manifest"])
+    model_files = [m["filename"] for m in manifest["models"]]
+    assert any("mediapipe" in f.lower() for f in model_files)
+    for f in model_files:
+        assert not f.endswith(".pt") and not f.endswith(".pth")
+    _banned_free(json.dumps(manifest))
+    # Two denoise-variant jobs (0.15/0.27) per kept gen image -- "paired base/detail
+    # rows" (AUDIT-2026-09-15.md F2's own test spec).
+    assert len(manifest["jobs"]) == approved_count * 2
+
+    anchor_stage_test._fake_stage_outputs(detail_out, detail_plan, "detail")
+    detail_grade = command.build_grade(
+        "creator-002", "detail", detail_out / "plan.json", skip_judge=True,
+    )
+    gate = load_json(Path(detail_grade["gate"]))
+    assert gate["schema"] == "figment/gate@1"
+    assert len(gate["rows"]) == approved_count * 2
+
+    template = load_json(Path(detail_grade["rulings_template"]))
+    for row in template["rulings"]:
+        row.update(anchor_stage_test._axes(), decision="keep")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:05:00Z"})
+    filled = detail_out / "detail-filled.json"
+    filled.write_text(json.dumps(template), "utf-8")
+    applied = command.apply_rulings("creator-002", "detail", detail_out / "plan.json", filled)
+    assert Path(applied["approved_list"]).is_file()
+
+
+def test_detail_stage_rejects_stale_gen_source(command, tmp_path):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002", steps=3000)
+    _prepare_accepted_checkpoint(command, personas, tmp_path)
+    gen_out = tmp_path / "g"
+    gen_plan = command.build_plan(
+        "creator-002", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+    )
+    anchor_stage_test._fake_stage_outputs(gen_out, gen_plan, "gen")
+    _approve_all_gen_images(command, "creator-002", gen_out)
+
+    detail_out = tmp_path / "d"
+    detail_plan = command.build_plan(
+        "creator-002", "detail", detail_out, personas_root=personas, skip_pin_verify=True,
+        approved_gen_plan=gen_out,
+    )
+    # Mutate the source gen image bytes after the detail plan was compiled -- the next
+    # launch boundary must refuse rather than re-detail stale pixels.
+    approved = load_json(gen_out / "grade" / "gen" / "approved-list.json")
+    real_path = Path(next(
+        row["path"] for row in approved["images"]
+        if row["image_id"] == detail_plan["detail_source"]["images"][0]["image_id"]
+    ))
+    real_path.write_bytes(b"mutated pixels")
+    # `validate_approved_gen_still` (reused verbatim, not duplicated) catches this at
+    # the gen approval-lineage layer before detail's own sha comparison would even run
+    # -- still fail-closed, just a step earlier in the same chain.
+    with pytest.raises(command.FigmentTrainError, match="stale"):
+        command._install_stage_config("detail", detail_plan, detail_out)
+
+
 def test_real_approved_gen_lineage_compiles_nonpromotable_video_and_rejects_stale_evidence(command, tmp_path):
     personas = tmp_path / "personas"
     _promoted_persona(personas, creator_id="creator-002", steps=3000)

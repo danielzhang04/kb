@@ -59,13 +59,13 @@ VERIFY_PINS_MODULE = TRAIN_DIR / "verify_pins.py"
 LEDGER_DIR = ROOT / "ledgers" / "cost"
 ARC_CAP_USD = "50.00"
 ARC_LEDGER_GLOB = "figment-*.tsv"
-STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen")
+STAGES = ("anchor", "dataset", "smoke", "train", "tester", "gen", "detail", "video")
 # Track-2 Task D2 (review H3): the one, single source of truth for "which stages have a
 # grading board" -- `build_grade`, `apply_rulings`, and `command_gate` each used to carry
 # their own local tuple, so widening one and not the others silently reopened the exact
-# gap H3 first closed for "anchor". "gen" is gradeable; "smoke"/"train" never are (no
-# per-cell operator ruling makes sense for either).
-GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen")
+# gap H3 first closed for "anchor". "gen"/"detail"/"video" are gradeable; "smoke"/"train"
+# never are (no per-cell operator ruling makes sense for either).
+GRADEABLE_STAGES = ("anchor", "dataset", "tester", "gen", "detail", "video")
 IMAGE_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp")
 KEY_MISMATCH_RE = re.compile(
     r"missing_keys|unexpected_keys|missing key\(s\)|unexpected key\(s\)", re.I,
@@ -100,6 +100,11 @@ STAGE_PIN_PROFILES = {
     "train": ("train",),
     "tester": ("tester",),
     "gen": ("gen",),
+    "detail": ("detail",),
+    # "video" is deliberately absent: its pins live in
+    # video/wan22_ti2v_5b.model-pins.json, which verify_pins.py does not cover today
+    # (AUDIT-2026-09-15.md E5) -- unchanged by F6, which is scoped to the stage entry,
+    # not a new pin-verification path.
 }
 SHARD_NOTES = (
     "face-row and half-body-row cells (framing: half), part 1 of 3",
@@ -1742,6 +1747,7 @@ def build_plan(
     personas_root: Path = PERSONAS_ROOT,
     skip_pin_verify: bool = False,
     detail_images: str | None = None,
+    approved_gen_plan: Path | None = None,
     ledger_dir: Path | None = None,
 ) -> dict[str, Any]:
     """Generate a complete, immutable plan without touching the hand-written runs.
@@ -1750,11 +1756,22 @@ def build_plan(
     only when `"gen"` is being planned: each match is staged into the plan's own upload
     tree and an extra `<id>-tensor-detail.yaml` manifest is emitted alongside
     `<id>-tensor-gen.yaml`, re-detailing those existing cells instead of regenerating.
+    This is the legacy ad hoc re-detail path (any operator-chosen cells, not
+    necessarily gen's own kept output) -- kept unchanged for that use.
+
+    `approved_gen_plan` (F2) is required when `"detail"` is being planned as its own
+    STAGES entry: the directory of an already-graded, already-ruled `gen` plan whose
+    `grade/gen/approved-list.json` names the KEPT gen stills. Every kept image is
+    re-validated through `validate_approved_gen_still` (never trusted from the approved
+    list's bytes alone) and re-detailed at the package's own denoise band
+    (`_detail_manifest`), always "gen`'s own kept outputs", never an arbitrary glob.
     """
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     if detail_images is not None and stage not in ("gen", "all"):
         raise FigmentTrainError("--detail-images is only meaningful for --stage gen")
+    if approved_gen_plan is not None and stage != "detail":
+        raise FigmentTrainError("--approved-gen-plan is only meaningful for --stage detail")
     out = Path(out).resolve()
     if (out / "plan.json").exists():
         raise FigmentTrainError(f"refusing to overwrite an existing plan: {out / 'plan.json'}")
@@ -1777,8 +1794,12 @@ def build_plan(
         selected.remove("anchor")
     # "gen" is only ever planned explicitly, after GATE 3 (Task D2 step5) -- never as
     # part of a `--stage all` chain, alongside the promoted-anchor exclusion above.
-    if stage == "all" and "gen" in selected:
-        selected.remove("gen")
+    # "detail" and "video" (F2/F6) are likewise always planned explicitly, by name,
+    # each pointed at an already-approved upstream stage's output -- neither can be
+    # known at `--stage all` planning time.
+    for _later_stage in ("gen", "detail", "video"):
+        if stage == "all" and _later_stage in selected:
+            selected.remove(_later_stage)
 
     if not skip_pin_verify:
         _verify_pins_preflight(pins, selected)
@@ -1820,6 +1841,7 @@ def build_plan(
 
     plan_stages: dict[str, Any] = {}
     gen_authority: dict[str, str] | None = None
+    detail_source: dict[str, Any] | None = None
     for current in selected:
         if current == "anchor":
             manifests = _anchor_manifests(
@@ -1873,6 +1895,53 @@ def build_plan(
                 detail_manifest["workflow"] = "../workflows/krea2_detail_only_api.json"
                 manifests.append(detail_manifest)
                 paths.append(out / "train" / "runs" / f"{creator_id}-tensor-detail.yaml")
+        elif current == "detail":
+            # F2: `detail` as its own STAGES entry always re-detailts a `gen` plan's own
+            # KEPT outputs -- never an operator-chosen glob (that remains the legacy
+            # `--detail-images` side mode on "gen", untouched above).
+            if approved_gen_plan is None:
+                raise FigmentTrainError(
+                    "detail requires --approved-gen-plan; run apply-rulings --stage gen first"
+                )
+            gen_plan_dir = Path(approved_gen_plan).resolve()
+            approved_list_path = gen_plan_dir / "grade" / "gen" / "approved-list.json"
+            if not approved_list_path.is_file():
+                raise FigmentTrainError(
+                    f"detail requires kept gen images; no {approved_list_path} -- "
+                    "run apply-rulings --stage gen first"
+                )
+            approved = _read_json(approved_list_path)
+            approved_image_ids = [
+                row["image_id"] for row in approved.get("images", [])
+                if isinstance(row, dict) and isinstance(row.get("image_id"), str)
+            ]
+            if not approved_image_ids:
+                raise FigmentTrainError(f"gen approved-list has no kept images: {approved_list_path}")
+            validated = [
+                validate_approved_gen_still(creator_id, gen_plan_dir / "plan.json", image_id)
+                for image_id in sorted(approved_image_ids)
+            ]
+            accepted_checkpoint = _validated_accepted_checkpoint(persona, training)
+            checkpoint_upload = _stage_accepted_checkpoint(
+                out, persona, training, accepted_checkpoint=accepted_checkpoint,
+            )
+            gen_authority = _accepted_checkpoint_snapshot(accepted_checkpoint)
+            names = _copy_detail_images(out, persona, [Path(row["path"]) for row in validated])
+            detail_source = {
+                "approved_gen_plan": str(gen_plan_dir),
+                "images": [
+                    {"image_id": row["image_id"], "sha256": row["sha256"], "bytes": row["bytes"]}
+                    for row in validated
+                ],
+            }
+            detail_manifest = _detail_manifest(
+                persona, training, pins, names, checkpoint_upload=checkpoint_upload,
+            )
+            detail_workflow_path = out / "train" / "workflows" / "krea2_detail_only_api.json"
+            _write_json(detail_workflow_path, detail_manifest.pop("workflow"))
+            detail_manifest["workflow"] = "../workflows/krea2_detail_only_api.json"
+            manifests = [detail_manifest]
+            paths = [out / "train" / "runs" / f"{creator_id}-tensor-detail.yaml"]
         else:
             raise FigmentTrainError(f"unknown stage {current!r}")
         for path, manifest in zip(paths, manifests):
@@ -1903,6 +1972,8 @@ def build_plan(
     }
     if gen_authority is not None:
         plan["gen_authority"] = gen_authority
+    if detail_source is not None:
+        plan["detail_source"] = detail_source
     _write_json(out / "plan.json", plan)
     return plan
 
@@ -2321,12 +2392,14 @@ def _write_stage_state(path: Path, state: dict[str, Any]) -> None:
     _write_json(path, state)
 
 
-def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
-    _revalidate_planned_gen_authority(plan, reads=reads)
-    expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
-    if not isinstance(expected, str):
-        raise FigmentTrainError("gen plan has no accepted checkpoint digest")
-    for run in plan["stages"]["gen"]["runs"]:
+def _validate_staged_checkpoint_upload(
+    plan: dict[str, Any], root: Path, stage: str, expected: str, *, reads=None,
+) -> None:
+    """Shared by `gen` and `detail` (F2): the manifest's own checkpoint upload must
+    still be the exact bytes recorded at planning time, and must not escape the
+    reviewed plan root. Extracted verbatim from the gen-only check this used to be --
+    no behaviour change for gen's own tests."""
+    for run in plan["stages"][stage]["runs"]:
         manifest_path = root / run["manifest"]
         manifest = _read_json(manifest_path, reads=reads)
         checkpoint_files = [
@@ -2336,7 +2409,7 @@ def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None)
             if isinstance(value, str) and value.endswith(".safetensors")
         ]
         if len(checkpoint_files) != 1 or any(ch in checkpoint_files[0] for ch in "*?[]"):
-            raise FigmentTrainError("gen manifest must upload exactly one explicit checkpoint")
+            raise FigmentTrainError(f"{stage} manifest must upload exactly one explicit checkpoint")
         staged_operand = manifest_path.parent / checkpoint_files[0]
         if reads is not None:
             staged = reads.resolve(staged_operand)
@@ -2347,23 +2420,64 @@ def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None)
         try:
             staged.relative_to(root_resolved)
         except ValueError as exc:
-            raise FigmentTrainError("gen checkpoint upload escapes the reviewed plan root") from exc
+            raise FigmentTrainError(f"{stage} checkpoint upload escapes the reviewed plan root") from exc
         if reads is not None:
             observed = reads.file(staged, required=False)
             if observed is None or _sha256(staged, reads=reads) != expected:
                 raise FigmentTrainError(
-                    "staged gen checkpoint changed after planning; create a fresh gen plan"
+                    f"staged {stage} checkpoint changed after planning; create a fresh {stage} plan"
                 )
         else:
             if not staged.is_file() or _sha256(staged) != expected:
                 raise FigmentTrainError(
-                    "staged gen checkpoint changed after planning; create a fresh gen plan"
+                    f"staged {stage} checkpoint changed after planning; create a fresh {stage} plan"
                 )
+
+
+def _validate_gen_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
+    _revalidate_planned_gen_authority(plan, reads=reads)
+    expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
+    if not isinstance(expected, str):
+        raise FigmentTrainError("gen plan has no accepted checkpoint digest")
+    _validate_staged_checkpoint_upload(plan, root, "gen", expected, reads=reads)
+
+
+def _validate_detail_source_inputs(plan: dict[str, Any], root: Path, *, reads=None) -> None:
+    """F2: `detail` always re-detailts a specific gen plan's KEPT images, staged with the
+    same accepted checkpoint gen uses. Re-checked at every launch boundary the same way
+    `_validate_gen_source_inputs` re-checks gen's own checkpoint: the checkpoint upload
+    must be unchanged, and every source still image must still be the current, approved
+    gen output (re-run through `validate_approved_gen_still`, never trusted from the
+    plan's own frozen copy alone)."""
+    _revalidate_planned_gen_authority(plan, reads=reads)
+    expected = plan.get("training", {}).get("chosen_checkpoint_sha256")
+    if not isinstance(expected, str):
+        raise FigmentTrainError("detail plan has no accepted checkpoint digest")
+    _validate_staged_checkpoint_upload(plan, root, "detail", expected, reads=reads)
+    source = plan.get("detail_source")
+    if (not isinstance(source, dict) or not isinstance(source.get("approved_gen_plan"), str)
+            or not isinstance(source.get("images"), list) or not source["images"]):
+        raise FigmentTrainError("detail plan has no captured gen source provenance; replan")
+    approved_gen_plan_path = Path(source["approved_gen_plan"])
+    for row in source["images"]:
+        if not isinstance(row, dict) or not isinstance(row.get("image_id"), str):
+            raise FigmentTrainError("detail plan gen source provenance is malformed")
+        current = validate_approved_gen_still(
+            plan["creator"], approved_gen_plan_path / "plan.json", row["image_id"], reads=reads,
+        )
+        if current.get("sha256") != row.get("sha256"):
+            raise FigmentTrainError(
+                f"gen source image {row['image_id']!r} changed after detail planning; "
+                "create a fresh detail plan"
+            )
 
 
 def _install_stage_config(stage: str, plan: dict[str, Any], root: Path) -> None:
     if stage == "gen":
         _validate_gen_source_inputs(plan, root)
+        return
+    if stage == "detail":
+        _validate_detail_source_inputs(plan, root)
         return
     if stage not in ("smoke", "train"):
         return
@@ -2554,10 +2668,11 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
                     "live) before touching this plan again — never launch a second pod for the "
                     "same manifest"
                 )
-            # A gen plan may carry a base run and optional detail run.  Recheck the
-            # external selected-checkpoint authority at every launch boundary, not
-            # merely once before the stage loop.
-            if current == "gen":
+            # A gen plan may carry a base run and optional legacy --detail-images run;
+            # a detail STAGES plan (F2) has its own external checkpoint + gen-source
+            # authority. Recheck at every launch boundary, not merely once before the
+            # stage loop.
+            if current in ("gen", "detail"):
                 try:
                     _install_stage_config(current, plan, root)
                 except FigmentTrainError:
@@ -4038,6 +4153,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="glob of existing rendered cells to re-detail (only meaningful with "
              "--stage gen); emits an extra <id>-tensor-detail.yaml manifest (r25 cause #2)",
     )
+    plan.add_argument(
+        "--approved-gen-plan", default=None, type=Path,
+        help="directory of an already-ruled gen plan (only meaningful with --stage "
+             "detail); every image in its grade/gen/approved-list.json is re-detailed (F2)",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -4142,7 +4262,8 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "plan":
             result = build_plan(
                 args.creator, args.stage, args.out, skip_pin_verify=args.skip_pin_verify,
-                detail_images=args.detail_images, ledger_dir=args.ledger_dir,
+                detail_images=args.detail_images, approved_gen_plan=args.approved_gen_plan,
+                ledger_dir=args.ledger_dir,
             )
             print(f"wrote {args.out.resolve() / 'plan.json'} ({len(result['stages'])} stage(s))")
             _print_train_budget(result)
