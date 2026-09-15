@@ -43,6 +43,26 @@ dataset fan-out instead of a low-denoise *edit* of an existing photo. `_dataset_
 
 **Dataset ceiling (klein-multiref, 2 shards of 15 cells each):** `pins.pod_classes.l40s.stages.dataset_multiref` sets `readiness_timeout_seconds: 1800` (matches the `anchor` stage's own readiness budget for a comparable ~16 GB pull: klein-base-4b 7.75 GB + qwen_3_4b 8.04 GB + flux2-vae 0.34 GB, vs. `dataset`/`anchor_edit`'s heavier 2700 s for a 5-model, 4-custom-node pull) and `job_timeout_seconds: 300` per cell. Per-cell time estimate: **no direct L40S measurement of this exact graph exists in-repo.** The only real numbers available are (a) `bakeoff/MANIFESTS.md`'s own cross-GPU bracket for this exact `klein4b_multiref_api.json` workflow at 50 steps/1024×1280 — "Per image on RTX 4090: ESTIMATE 25–40 seconds; ComfyUI documents about 17 seconds for Base on an RTX 5090" — and (b) `build_expansion_set.py`'s own reviewed `MANIFEST_OVERRIDES` comment, "the 82-minute max_minutes ... keeps 38% margin over the measured 260 s cold-first-job (P2R medium 3)" for the SAME graph on an RTX 4090. `job_timeout_seconds: 300` is roughly 5–7× the (a) estimate and comfortably above the (b) measured cold-first-job figure, on an L40S (Ada-class, same generation as the 4090 this was measured on, no dedicated L40S benchmark found). `minimum_runtime_minutes` (`pod/runpod_run.py`) then derives `max_minutes = 1800/60 + (300 × 15)/60 + 5 = 110` per shard; at `$1.30/h` that is **$2.3833/shard × 2 shards = $4.7667**, under the brief's $5.00 dataset-source ceiling (the operator's $20 covers dataset+captions+train+tester+gen+detail+video for the whole live chain).
 
+**Rollout status — creator-001's live `training.yaml` stays on `"qwen-edit"` (not flipped by this pass).**
+The mechanism, pins, and gate path are fully implemented and tested (unit + integration, synthetic
+personas), but `personas/creator-001/training.yaml` was deliberately left unchanged: `expand/tests/
+test_tensor_dataset.py` builds its ENTIRE fixture set (31 tests: `manifests`/`workflow`/`generated_workflow`
+module-scope fixtures) by planning the `dataset` stage against creator-001's REAL, live persona/training
+config at collection time (its own module docstring: "never a synthetic one ... this file specifically
+replicates against the live config"). Flipping `dataset_source` there would silently swap every one of
+those fixtures onto the klein-multiref graph — no more `g01.jpg`/`g07.jpg` LoadImage nodes, no more
+25-job/3-shard qwen-edit structure, no more `tensor_dataset_v2_api.json` node ids — breaking essentially
+all 31 assertions (`test_the_two_reference_inputs_are_the_g01_g07_pair`,
+`test_twentyfive_jobs_in_three_shards_for_the_half_framed_images`,
+`test_templates_hold_two_lists_of_fifteen_rows`, etc.), none of which this brief's own acceptance list
+names as a suite to run. Deciding whether to (a) flip creator-001 and retire/rewrite that 31-test file's
+fixture strategy, or (b) keep creator-001 on `qwen-edit` and stand up klein-multiref on a second persona
+first, is an operator call outside this pass's scope — not something to resolve unilaterally by breaking
+a deliberately-designed regression suite. `validate_training`/`_dataset_manifests_klein_multiref` are
+exercised end-to-end today via synthetic fixtures in `tests/test_figment_train.py` (dry-run clean,
+gate-schema-identical, ceiling-checked) and via the live `verify_pins.py --stage dataset_multiref` pin
+check above — the capability is real and ready, only the creator-001 persona flip is deferred.
+
 ## Model and licence
 
 | Thing | What it is | Licence | Gated | Verdict |
