@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { sha256Hex } from '../shared/hashing.ts';
 import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
+import { registerArtifactFileRoute } from './artifactFilesRoute.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
 import { boundSummary } from './claudeWorkerAdapter.ts';
@@ -1439,6 +1440,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   registerRunPtyRoutes(scope, ctx, preHandler);
+  registerArtifactFileRoute(scope, ctx, preHandler);
 
   scope.post('/api/control/runs/:runRef/manager/messages', { preHandler }, async (req, reply) => {
     const sub = subject(req);

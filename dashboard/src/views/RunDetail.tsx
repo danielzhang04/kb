@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { OutputRef } from '../../server/control/p2Contracts.ts';
+import { outputHref } from '../../server/entities/outputs.ts';
 import type { NavTarget } from '../nav/stack.ts';
 import {
   ControlApiError,
@@ -180,6 +181,14 @@ function safeExternalPr(output: OutputRef): string | null {
     || !Number.isSafeInteger(output.number)
     || output.number < 1) return null;
   return `https://github.com/${output.owner}/${output.repository}/pull/${output.number}`;
+}
+
+/**
+ * F4: a file output is downloadable only once its bytes have been hashed at projection time. Without a
+ * digest the scoped route refuses the request, so no link is offered rather than one that 400s.
+ */
+function safeDownload(output: OutputRef): string | null {
+  return output.kind === 'external-pr' || !output.digest ? null : outputHref(output);
 }
 
 function defaultCopy(value: string): Promise<void> {
@@ -539,9 +548,11 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
             <h2>Output links</h2>
             {outputs.map((output) => {
               const url = safeExternalPr(output);
+              const download = safeDownload(output);
               return <div key={`${output.kind}:${output.label}`}>
                 <span>{output.label}</span>
                 {url ? <button type="button" onClick={() => void copy(url)}>Copy {output.label} link</button> : null}
+                {download ? <a href={download} download>Download {output.label}</a> : null}
               </div>;
             })}
           </section> : null}

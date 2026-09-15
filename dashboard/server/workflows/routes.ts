@@ -42,6 +42,7 @@ import { computeCapabilityRequirement, type StageAgentCapabilityFields } from '.
 import type { CapabilityRequirement } from '../placement/contracts.ts';
 import { projectRunAttention } from '../control/attention.ts';
 import { projectEventOutputRefs, projectOutputRef } from '../entities/outputs.ts';
+import { createOutputDigestReader } from '../control/artifactFiles.ts';
 import { projectRunActivity, type ProjectableRun } from '../control/runProjection.ts';
 import { runLifecycleKind } from '../control/runLifecycle.ts';
 import { instantiateWorkflowDef, parseWorkflowDef, type WorkflowDef } from './defs.ts';
@@ -1062,6 +1063,9 @@ function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: Workfl
   const recentRuns: RunRow[] = runs.filter((run) => sameWorkflowOwner(run.owner, input.ref))
     .map((run) => projectableWorkflowRun(ctx, run)).map((run) => projectRunActivity(run, now.toISOString()).row);
   const roots = { [scanned.entry.project]: `orgs/${scanned.entry.project}` };
+  // F4: same binder as the agent producer — a declared artifact that does not exist yet simply gets no
+  // digest, so its link renders but cannot masquerade as a verified download.
+  const readDigest = createOutputDigestReader(ctx.repoRoot, roots);
   const events = runs.filter((run) => sameWorkflowOwner(run.owner, input.ref)).flatMap((run) => {
     const page = ctx.controlStore.listEvents(run.ownerSubject, run.runRef, 0, 250);
     return page.ok ? page.value : [];
@@ -1078,10 +1082,10 @@ function workflowDetail(ctx: SurfaceContext, scanned: ScannedDef & { def: Workfl
   } : null;
   const outputs = new Map<string, OutputRef>();
   for (const artifact of scanned.def.stages.flatMap((stage) => stage.artifacts ?? [])) {
-    const output = projectOutputRef({ kind: 'artifact', label: artifact.description, rootId: scanned.entry.project, path: artifact.path }, roots);
+    const output = projectOutputRef({ kind: 'artifact', label: artifact.description, rootId: scanned.entry.project, path: artifact.path }, roots, readDigest);
     if (output.kind !== 'external-pr') outputs.set(output.path, output);
   }
-  for (const output of projectEventOutputRefs(events, roots)) if (output.kind !== 'external-pr') outputs.set(output.path, output);
+  for (const output of projectEventOutputRefs(events, roots, readDigest)) if (output.kind !== 'external-pr') outputs.set(output.path, output);
   return {
     revision: workflowRevision(ctx, [scanned]), summary,
     brief: projectEntityBrief({

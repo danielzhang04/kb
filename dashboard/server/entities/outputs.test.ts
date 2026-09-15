@@ -17,6 +17,40 @@ describe('output projectors', () => {
     expect(() => projectOutputRef({ kind: 'external-pr', label: 'Bad', owner: 'openai/kb', repository: 'kb', number: 0 }, {})).toThrow('unsafe-pr');
   });
 
+  it('binds the projection-time digest into a scoped, hash-verified download href', () => {
+    const digested = projectOutputRef(
+      { kind: 'repository-file', label: 'Brief', rootId: 'kb', path: 'orgs/kb-ops/output/brief.md' },
+      { kb: 'orgs/kb-ops' },
+      (path) => (path === 'orgs/kb-ops/output/brief.md' ? 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' : null),
+    );
+    expect(digested).toEqual({ kind: 'repository-file', label: 'Brief', path: 'orgs/kb-ops/output/brief.md', digest: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' });
+    expect(outputHref(digested)).toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fbrief.md&sha256=bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb');
+  });
+
+  it('drops a malformed digest and links without one rather than shipping an unverifiable sha256', () => {
+    const output = projectOutputRef(
+      { kind: 'repository-file', label: 'Brief', rootId: 'kb', path: 'orgs/kb-ops/output/brief.md' },
+      { kb: 'orgs/kb-ops' },
+      () => 'NOT-A-DIGEST',
+    );
+    expect(output).toEqual({ kind: 'repository-file', label: 'Brief', path: 'orgs/kb-ops/output/brief.md' });
+    expect(outputHref(output)).toBe('/api/control/files?path=orgs%2Fkb-ops%2Foutput%2Fbrief.md');
+  });
+
+  it('never offers the digest reader a path the roots map already refused', () => {
+    const offered: string[] = [];
+    projectEventOutputRefs(
+      [{
+        cursor: 1, runRef: 'run-1', kind: 'file', source: 'worker', stageRef: null, attemptRef: null, sessionRef: null,
+        status: 'success', summary: null, command: null, toolName: null, path: '../secret', diff: null, checkpoint: null,
+        createdAt: '2026-08-21T00:00:00.000Z',
+      }],
+      { kb: 'orgs/kb-ops' },
+      (path) => { offered.push(path); return null; },
+    );
+    expect(offered).toEqual([]);
+  });
+
   it('rejects an unmapped symbolic root as an unsafe output path', () => {
     expect(() => projectOutputRef(
       { kind: 'repository-file', label: 'Brief', rootId: 'missing-root', path: 'orgs/kb-ops/output/brief.md' },

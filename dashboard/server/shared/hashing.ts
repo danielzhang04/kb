@@ -12,6 +12,16 @@ export function sha256Hex(input: string): string {
   return createHash('sha256').update(input, 'utf8').digest('hex');
 }
 
+/**
+ * One-shot lowercase-hex SHA-256 of EXACT bytes. Distinct from {@link sha256Hex} (UTF-8 text) and from
+ * `control/textArtifactHash.ts#normalizedTextSha256` (EOL/BOM-normalized text): a digest that guards a
+ * byte-for-byte download must describe the bytes actually transferred, so neither normalizing variant
+ * can stand in for it.
+ */
+export function sha256HexBytes(bytes: Uint8Array): string {
+  return createHash('sha256').update(bytes).digest('hex');
+}
+
 const HEX40 = /^[0-9a-f]{40}$/;
 const HEX64 = /^[0-9a-f]{64}$/;
 

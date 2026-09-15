@@ -103,8 +103,8 @@ export interface ScheduleOccurrence {
 
 /** Safe, server-projected output target. */
 export type OutputRef =
-  | { kind: 'repository-file'; label: string; path: string }
-  | { kind: 'artifact'; label: string; path: string }
+  | { kind: 'repository-file'; label: string; path: string; digest?: string }
+  | { kind: 'artifact'; label: string; path: string; digest?: string }
   | { kind: 'external-pr'; label: string; owner: string; repository: string; number: number };
 
 /** Ordered, redacted control-stream page for replay and SSE parity. */

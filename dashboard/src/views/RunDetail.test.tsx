@@ -134,7 +134,7 @@ function iterationLoop(overrides: Partial<IterationLoopDto> = {}): IterationLoop
 
 const events = [event(1, 'research complete', 'stage-research'), event(2, 'drafting now', 'stage-write')];
 const outputs: OutputRef[] = [
-  { kind: 'repository-file', label: 'Report', path: 'reports/release.md' },
+  { kind: 'repository-file', label: 'Report', path: 'reports/release.md', digest: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' },
   { kind: 'artifact', label: 'Fixture value', path: 'artifacts/ghp_fixture_secret_123' },
   { kind: 'external-pr', label: 'Pull request', owner: 'openai', repository: 'kb', number: 42 },
 ];
@@ -399,6 +399,16 @@ describe('Dashboard v3 Run view', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Copy Pull request link' }));
     await waitFor(() => expect(copyText).toHaveBeenCalledWith('https://github.com/openai/kb/pull/42'));
     expect(copyText.mock.calls.flat().join('\n')).not.toContain('ghp_fixture_secret_123');
+  });
+
+  it('offers a hash-verified download only for a digest-bound repository file', () => {
+    render(unlocked(<RunDetail runRef="run-1" detail={detail()} events={events} outputs={outputs} />));
+    // The repository file carries a projection-time digest, so its link is a real scoped download.
+    expect(screen.getByRole('link', { name: 'Download Report' }).getAttribute('href'))
+      .toBe('/api/control/files?path=reports%2Frelease.md&sha256=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa');
+    // The artifact fixture has no digest and the PR is not a file: neither may offer a download.
+    expect(screen.queryByRole('link', { name: 'Download Fixture value' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Download Pull request' })).toBeNull();
   });
 
   it('falls back to detail outputs without copying a secret-looking output', async () => {
