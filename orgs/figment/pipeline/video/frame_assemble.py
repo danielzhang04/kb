@@ -25,6 +25,7 @@ def _load_frame_helpers() -> Any:
 
 frames = _load_frame_helpers()
 SCHEMA = "figment/video-frame-assembly@1"
+DERIVATIVE_SCHEMA = "figment/video-reel-derivative@1"
 MANIFEST_SCHEMA = "figment/video-i2v-manifest@1"
 CANDIDATE_MANIFEST_SCHEMA = "figment/video-review-candidate@1"
 DIAGNOSTIC_MODE = "diagnostic"
@@ -36,6 +37,11 @@ FRAME_COUNT = 81
 FPS = 16
 CANDIDATE_WIDTH = 1280
 CANDIDATE_HEIGHT = 704
+# F6: content/reel-templates.yaml's own "delivery" block -- the one template-fitting
+# derivative this module produces from an already-assembled native movie.
+REEL_WIDTH = 1080
+REEL_HEIGHT = 1920
+REEL_FPS = 30
 MAX_JSON_DEPTH = 32
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
 
@@ -153,6 +159,23 @@ def _frame_records(root: Path, run_dir: Path, files: list[dict[str, Any]], budge
     return records
 
 
+def _probe_fps(root: Path, relative: Path, label: str) -> Decimal:
+    """The `avg_frame_rate` ffprobe alone reports, shared by the native-assembly probe
+    and the reel-derivative probe below (the same 81-frame-video probe used twice, not
+    forked)."""
+    try:
+        source = frames._within(root, relative, label)
+        probe = frames._tool(frames.FFPROBE_PATH, "ffprobe")
+        rate = frames._probe_json([probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "json", str(source)], "ffprobe frame-rate probe")
+        value = rate["streams"][0]["avg_frame_rate"]
+        numerator, denominator = (int(part) for part in value.split("/", 1))
+    except (frames.FrameExtractError, KeyError, IndexError, TypeError, ValueError) as exc:
+        raise FrameAssembleError(f"ffprobe did not report a valid {label} frame rate") from exc
+    if denominator <= 0:
+        raise FrameAssembleError(f"ffprobe reported an invalid {label} frame rate")
+    return Decimal(numerator) / Decimal(denominator)
+
+
 def _probe_movie(root: Path, relative: Path) -> dict[str, Any]:
     try: metadata = frames._probe_video(root, relative)
     except frames.FrameExtractError as exc: raise _fail_from_frames(exc) from exc
@@ -160,16 +183,29 @@ def _probe_movie(root: Path, relative: Path) -> dict[str, Any]:
     observed = Decimal(metadata["duration_seconds"])
     if metadata["frame_count"] != FRAME_COUNT or abs(observed - expected_duration) > Decimal("0.01"):
         raise FrameAssembleError("assembled MP4 does not have exactly 81 frames at the expected duration")
-    try:
-        source = frames._within(root, relative, "assembled MP4")
-        probe = frames._tool(frames.FFPROBE_PATH, "ffprobe")
-        rate = frames._probe_json([probe, "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=avg_frame_rate", "-of", "json", str(source)], "ffprobe frame-rate probe")
-        value = rate["streams"][0]["avg_frame_rate"]
-        numerator, denominator = (int(part) for part in value.split("/", 1))
-    except (frames.FrameExtractError, KeyError, IndexError, TypeError, ValueError) as exc: raise FrameAssembleError("ffprobe did not report a valid assembled frame rate") from exc
-    if denominator <= 0 or Decimal(numerator) / Decimal(denominator) != FPS:
+    if _probe_fps(root, relative, "assembled MP4") != FPS:
         raise FrameAssembleError("assembled MP4 frame rate is not 16 fps")
     return metadata | {"fps": FPS, "expected_duration_seconds": str(expected_duration)}
+
+
+def _probe_reel_derivative(root: Path, relative: Path, expected_duration: Decimal) -> dict[str, Any]:
+    """Validate the ONE reel-fit transformation's own output: exactly
+    `content/reel-templates.yaml`'s delivery spec (1080x1920 @30fps), and a duration
+    that still matches the native movie's -- the `fps` filter resamples, it does not
+    trim or loop, so wall-clock length is preserved even though the frame COUNT
+    changes (81 @16fps -> ~152 @30fps for the same ~5.06s)."""
+    try:
+        metadata = frames._probe_video(root, relative)
+    except frames.FrameExtractError as exc:
+        raise _fail_from_frames(exc) from exc
+    if metadata["width"] != REEL_WIDTH or metadata["height"] != REEL_HEIGHT:
+        raise FrameAssembleError("reel derivative is not 1080x1920")
+    observed = Decimal(metadata["duration_seconds"])
+    if abs(observed - expected_duration) > Decimal("0.05"):
+        raise FrameAssembleError("reel derivative duration does not match its native source")
+    if _probe_fps(root, relative, "reel derivative MP4") != REEL_FPS:
+        raise FrameAssembleError("reel derivative frame rate is not 30 fps")
+    return metadata | {"fps": REEL_FPS}
 
 
 def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, output_dir: Path) -> dict[str, Any]:
@@ -209,12 +245,131 @@ def assemble_frames(*, root: Path, manifest_path: Path, run_receipt_path: Path, 
         raise
 
 
+def build_reel_derivative(*, root: Path, assembly_receipt_path: Path, output_dir: Path) -> dict[str, Any]:
+    """F6: the ONE transformation from an already-assembled native diagnostic/
+    candidate movie (`assemble_frames`' own 81-frame receipt) to
+    `content/reel-templates.yaml`'s own delivery spec (1080x1920 @30fps) -- a thin
+    ffmpeg scale+pad+fps caller reusing `assemble_frames`' own containment, fresh-
+    output, and before/after hash-stability discipline verbatim, never a second
+    assembly path. The receipt records the native<->derivative correspondence: both
+    movies' own sha256, the exact filter graph, and the native and derivative
+    durations, so a downstream grader (`grade --stage video`) can prove the derivative
+    really is this native movie's own reel-fit rendering."""
+    try:
+        root = frames._root(root)
+    except frames.FrameExtractError as exc:
+        raise _fail_from_frames(exc) from exc
+    receipt, receipt_path, receipt_hash = _json(root, assembly_receipt_path, "frame-assembly receipt")
+    if receipt.get("schema") != SCHEMA:
+        raise FrameAssembleError("frame-assembly receipt has an unsupported schema")
+    movie_entry = receipt.get("movie")
+    native_metadata = receipt.get("metadata")
+    if (not isinstance(movie_entry, dict) or not isinstance(movie_entry.get("path"), str)
+            or not isinstance(native_metadata, dict)):
+        raise FrameAssembleError("frame-assembly receipt has no assembled movie or metadata")
+    # `movie_entry["path"]` is already root-relative (assemble_frames' own
+    # `_hash_file(root, final, ...)` records it that way -- `final` there is built
+    # from the caller's `output_dir`, itself root-relative), never receipt-dir-relative.
+    native_relative = Path(movie_entry["path"])
+    native = frames._hash_file(root, native_relative, "native assembled MP4", frames.MAX_VIDEO_BYTES)
+    if native["bytes"] != movie_entry.get("bytes") or native["sha256"] != movie_entry.get("sha256"):
+        raise FrameAssembleError("native assembled MP4 changed since its own frame-assembly receipt")
+    try:
+        expected_duration = Decimal(native_metadata["duration_seconds"])
+    except Exception as exc:
+        raise FrameAssembleError("frame-assembly receipt has an invalid native duration") from exc
+
+    try:
+        destination = frames._within(root, output_dir, "output directory", must_exist=False)
+    except frames.FrameExtractError as exc:
+        raise _fail_from_frames(exc) from exc
+    if destination.exists():
+        raise FrameAssembleError("output directory must be fresh")
+    destination.mkdir()
+    try:
+        if frames._unsafe_link(destination) or not frames._real_below(root, destination):
+            raise FrameAssembleError("output directory could not be created safely")
+        partial = output_dir / f".reel-{uuid.uuid4().hex}.partial.mp4"
+        final = output_dir / "reel.mp4"
+        filter_graph = (
+            f"scale=w={REEL_WIDTH}:h={REEL_HEIGHT}:force_original_aspect_ratio=decrease,"
+            f"pad={REEL_WIDTH}:{REEL_HEIGHT}:(ow-iw)/2:(oh-ih)/2,fps={REEL_FPS}"
+        )
+        source = root / native_relative
+        frames._run([
+            frames._tool(frames.FFMPEG_PATH, "ffmpeg"), "-v", "error", "-i", str(source),
+            "-vf", filter_graph, "-c:v", "libx264", "-pix_fmt", "yuv420p", str(root / partial),
+        ], "ffmpeg reel derivative")
+        after_native = frames._hash_file(root, native_relative, "native assembled MP4", frames.MAX_VIDEO_BYTES)
+        if after_native["bytes"] != native["bytes"] or after_native["sha256"] != native["sha256"]:
+            raise FrameAssembleError("native assembled MP4 changed during derivative rendering")
+        derivative_metadata = _probe_reel_derivative(root, partial, expected_duration)
+        before = frames._hash_file(root, partial, "reel derivative MP4", frames.MAX_VIDEO_BYTES)
+        os.replace(root / partial, root / final)
+        after = frames._hash_file(root, final, "reel derivative MP4", frames.MAX_VIDEO_BYTES)
+        if before["bytes"] != after["bytes"] or before["sha256"] != after["sha256"]:
+            raise FrameAssembleError("reel derivative MP4 changed while being finalized")
+        receipt_out = {
+            "schema": DERIVATIVE_SCHEMA,
+            "not_promotable": receipt.get("not_promotable", True),
+            "provenance": (
+                "local reel-fit derivative of an already-assembled native movie; no "
+                "identity, approval, temporal-quality, or production claim"
+            ),
+            "source_assembly": {"path": assembly_receipt_path.as_posix(), "sha256": receipt_hash},
+            "correspondence": {
+                "native": native,
+                "derivative": after,
+                "filter_graph": filter_graph,
+                "native_duration_seconds": native_metadata["duration_seconds"],
+                "derivative_duration_seconds": derivative_metadata["duration_seconds"],
+            },
+            "delivery_profile": {
+                "width": REEL_WIDTH, "height": REEL_HEIGHT, "fps": REEL_FPS,
+                "source": "content/reel-templates.yaml delivery",
+            },
+            "metadata": derivative_metadata,
+        }
+        if "candidate" in receipt:
+            receipt_out["candidate"] = receipt["candidate"]
+        frames._write_receipt(root, output_dir / "reel-derivative.json", receipt_out)
+        return receipt_out
+    except Exception:
+        frames._cleanup_owned_directory(root, destination)
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    for flag in ("--root", "--manifest", "--run-receipt", "--out"): parser.add_argument(flag, required=True, type=Path)
+    parser.add_argument(
+        "command", nargs="?", choices=("assemble", "reel"), default="assemble",
+        help="'assemble' (default, unchanged): native 81-frame MP4 from harness "
+             "output. 'reel': the 1080x1920@30fps content/reel-templates.yaml "
+             "derivative of an already-assembled native MP4 (F6).",
+    )
+    parser.add_argument("--root", required=True, type=Path)
+    parser.add_argument("--manifest", type=Path, help="'assemble' only")
+    parser.add_argument("--run-receipt", type=Path, help="'assemble' only")
+    parser.add_argument("--assembly-receipt", type=Path, help="'reel' only")
+    parser.add_argument("--out", required=True, type=Path)
     args = parser.parse_args(argv)
-    try: assemble_frames(root=args.root, manifest_path=args.manifest, run_receipt_path=args.run_receipt, output_dir=args.out)
-    except FrameAssembleError as exc: parser.error(str(exc))
+    try:
+        if args.command == "assemble":
+            if args.manifest is None or args.run_receipt is None:
+                parser.error("assemble requires --manifest and --run-receipt")
+            assemble_frames(
+                root=args.root, manifest_path=args.manifest,
+                run_receipt_path=args.run_receipt, output_dir=args.out,
+            )
+        else:
+            if args.assembly_receipt is None:
+                parser.error("reel requires --assembly-receipt")
+            build_reel_derivative(
+                root=args.root, assembly_receipt_path=args.assembly_receipt,
+                output_dir=args.out,
+            )
+    except FrameAssembleError as exc:
+        parser.error(str(exc))
     return 0
 
 
