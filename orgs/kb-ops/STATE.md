@@ -1,7 +1,12 @@
 # kb-ops — STATE
-## 2026-09-15 — kb v1 launch: PR #185 ready, rehearsal proven, prod deploy owed
-Resume from `handoffs/2026-09-15-kb-v1-launch-ready.md` (morning ceremony inside). PR #173 (hydrate fix, rebased) + PR #185 (`claude/kb-v1-launch` @ 359aa810: prompt context, dependency summaries, T3 ceremony on iteration gates, run-scoped digest-verified artifact download, boot resilience, premerge CI, v1-acceptance-demo) await Daniel's merge; CI acceptance green; two opus review rounds folded. Draft PR #186 = desktop lane units 1-2 (schema-safe). Demo path proven live on a rehearsal host through the real broker (stub claude) incl. the T3 passkey approval and the artifact download. Prod VM still down since 09-06 — recovers via the rehearsed `kb-deploy.ps1` daemon-down path after the merges. Not proven: scheduled run with browser closed; real subscription-CLI workers (prod only).
-_Updated: 2026-09-15 09:00_
+## 2026-09-15 15:30 - merged (#173, #185 -> main bce8a7a3); prod deploy ON HOLD behind a hotfix
+Resume from `handoffs/2026-09-15-kb-v1-launch-deploy-hold.md`. Release bce8a7a3 built; a rehearsal on a copy of PROD's
+control-plane document found two blockers before touching prod: B1 `manager/stop` on the stale run persists an invalid
+document (crash-loop on hydrate); B2 the VM reconciler allowlist lacks orgs/*/GOAL.md so the drain would wedge. Hotfix
+branch `claude/v1-hotfix-1` in flight (both fixes + tests) -> PR -> re-rehearse deploy->stop->drain on prod's data ->
+Daniel deploys. Read-only prod access for terminals is live (`ssh kb-reader`). Tooling persisted at
+C:/Users/danie/kb-rehearsal/tooling/.
+_Updated: 2026-09-15 15:30_
 ## Now
 VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 2026-09-06 19:04:55Z
 — every boot on release 39197cf5 died at hydrate (`invalid control-plane creator attempt
