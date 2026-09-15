@@ -363,13 +363,42 @@ def test_train_first_rechecks_rendered_training_config_before_launch(
         command.run_planned_stage("creator-002", "train", out / "plan.json")
 
 
-def test_dataset_source_is_a_train_time_key(command):
-    """P2: `dataset_source` picks the model family/conditioning that produced every
-    training image -- at least as identity-determining as `skin_lora`, which is
-    already in TRAIN_TIME_KEYS despite also being a dataset-stage-only input (see
-    TENSOR-TRAINING.md's P2 section for the full argument). `caption_mode` stays OUT
-    on purpose: it only changes caption text, never pixels."""
+def test_dataset_source_change_invalidates_training_input_projection_equality(command):
+    """MEDIUM-3 (adversarial review): membership in TRAIN_TIME_KEYS is inert unless it
+    actually participates in the freshness/equality checks checkpoint promotion runs.
+    Prove the BEHAVIOUR, not just the frozenset literal: a projection differing ONLY in
+    `dataset_source` must compare unequal on the direct (non-imported) promotion check
+    (`current_projection != source_projection`, figment_train.py) -- dataset_source
+    really does invalidate freshness. For the imported-ladder path (P4i), which
+    deliberately excludes every TRAIN_TIME_KEYS field from the "did the operator's live
+    persona training drift in a field this checkpoint doesn't own" comparison, a
+    dataset_source-only diff must be invisible there instead -- it is validated
+    separately against the imported config file itself, never against the persona's
+    live training.yaml. `dataset_source` picks the model family/conditioning that
+    produced every training image -- at least as identity-determining as `skin_lora`,
+    already in TRAIN_TIME_KEYS for the same dataset-stage-only reason (TENSOR-TRAINING.md
+    P2). `caption_mode` stays OUT on purpose: it only changes caption text, never
+    pixels."""
     lineage = command._lineage_module()
-    assert "dataset_source" in lineage.TRAIN_TIME_KEYS
+    base = {
+        "steps": 600, "save_every": 200, "trigger": "t", "base_arch": "krea2",
+        "dataset_source": "qwen-edit",
+    }
+    changed = dict(base, dataset_source="klein-multiref")
+    source_projection = lineage.training_input_projection(base)
+    current_projection = lineage.training_input_projection(changed)
+
+    # Direct (non-imported) promotion check: ANY projection diff invalidates freshness,
+    # dataset_source included -- this is the real mechanism, not a label.
+    assert current_projection != source_projection
+
+    # Imported-ladder gen-time check: TRAIN_TIME_KEYS fields (dataset_source included)
+    # are deliberately excluded here, so a dataset_source-only diff does NOT show up.
+    gen_time_keys = set(current_projection) - lineage.TRAIN_TIME_KEYS
+    current_gen_time = {key: current_projection[key] for key in gen_time_keys}
+    source_gen_time = {key: source_projection[key] for key in gen_time_keys}
+    assert current_gen_time == source_gen_time
+
+    assert "dataset_source" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
     assert "skin_lora" in lineage.TRAIN_TIME_KEYS  # the precedent this follows
     assert "caption_mode" not in lineage.TRAIN_TIME_KEYS  # deliberately excluded

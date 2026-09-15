@@ -789,12 +789,16 @@ def _generalized_prompts(persona: dict) -> dict[str, Any]:
     return prompts
 
 
-def _compose_look_clause(look: dict[str, Any]) -> str:
+def _compose_look_clause(look: dict[str, Any], *, exclude: tuple[str, ...] = ()) -> str:
     """Join `identity.look`'s eight fields into one comma-separated descriptive clause,
-    with no trailing punctuation -- the caller decides how the clause continues."""
+    with no trailing punctuation -- the caller decides how the clause continues.
+    `exclude` drops named fields entirely (HIGH-1 review fix): a caller that is about to
+    append its OWN wardrobe/clothing clause passes `exclude=("clothing",)` so the composed
+    clause never carries a second, contradictory "wearing ..." from `look["clothing"]`."""
     return ", ".join(
         look[key] for key in
         ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+        if key not in exclude
     )
 
 
@@ -961,40 +965,27 @@ def _dataset_manifests(
 # 148+i, edit 1098688918602660/241731167782064/269789944143426, tester/gen 100001,
 # build_expansion_set.py's own SEED_BASE=520001).
 KLEIN_MULTIREF_SEED_BASE = 610001
-# First N of persona.grammar's own lists (module 10's own 15+15 cell counts, derived
-# from the same grammar `build_expansion_set.generate_allocation` already reads
-# rather than a second hand-authored 15-row prompt list -- see TENSOR-TRAINING.md's
-# P2 settings table, "prompt template shape" row, for the documented trade-off).
-KLEIN_MULTIREF_FACE_LIGHTS = 3
+# module 10's own fixed 15+15 cell counts (r15b-training.md).
+KLEIN_MULTIREF_FACE_CELL_COUNT = 15
+KLEIN_MULTIREF_BODY_CELL_COUNT = 15
+# HIGH-2 (adversarial review): the face shard's angle ALWAYS comes from angles[:3] --
+# persona.grammar's own angle order leads with front/three-quarter-l/three-quarter-r
+# before profile-l/near-back (module 10's own ordering) -- so a face cell can never be
+# a profile or near-back view, which MTCNN/FaceNet cannot gate (no frontal face to
+# measure). Body cells keep drawing their angle from the same first-3 slice.
+KLEIN_MULTIREF_FACE_ANGLES = 3
 KLEIN_MULTIREF_BODY_ANGLES = 3
 
-_KLEIN_MULTIREF_ANGLE_PHRASES = {
-    "front": "a straight-on frontal view of her face",
-    "three-quarter-l": "a three-quarter view of her face turned to her own left",
-    "three-quarter-r": "a three-quarter view of her face turned to her own right",
-    "profile-l": "a full left profile view of her face",
-    "near-back": "a near-back view, mostly turned away with only the edge of her face visible",
-}
-_KLEIN_MULTIREF_LIGHT_PHRASES = {
-    "flat-white": "even flat white studio light",
-    "window-day": "soft daylight through one window",
-    "lamp-night": "a single lamp at night, one side of the face falling into shadow",
-    "on-camera-flash": "a direct on-camera phone flash at night",
-}
-_KLEIN_MULTIREF_WARDROBE_PHRASES = {
-    "corset-bustier": "a fully opaque corset-style bustier top, fabric unbroken and fully covering",
-    "cami-chains": (
-        "a fully opaque camisole top layered with thin silver chain necklaces, "
-        "fabric unbroken and fully covering"
-    ),
-    "oversized-tee": "a fully opaque oversized t-shirt, fabric unbroken and fully covering",
-    "knit-cardigan": (
-        "a fully opaque buttoned knit cardigan over a plain top, fabric unbroken and fully covering"
-    ),
-    "going-out-mini": (
-        "a fully opaque long-sleeved going-out mini dress, fabric unbroken and fully covering"
-    ),
-}
+
+def _klein_multiref_phrase(table: dict[str, str], token: str, *, kind: str) -> str:
+    """LOW (adversarial review): an unknown persona.grammar token must fail closed with
+    FigmentTrainError, never a bare KeyError."""
+    try:
+        return table[token]
+    except KeyError as exc:
+        raise FigmentTrainError(
+            f"unknown klein-multiref grammar {kind} token: {token!r}"
+        ) from exc
 
 
 def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
@@ -1009,25 +1000,43 @@ def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
     angles = list(grammar["angles"])
     lights = list(grammar["lights"])
     wardrobe_families = list(grammar["wardrobe_families"])
-    if len(angles) < KLEIN_MULTIREF_BODY_ANGLES or len(lights) < KLEIN_MULTIREF_FACE_LIGHTS:
+    if len(angles) < KLEIN_MULTIREF_BODY_ANGLES or not lights:
         raise FigmentTrainError(
             "persona.grammar needs at least "
-            f"{KLEIN_MULTIREF_BODY_ANGLES} angles and {KLEIN_MULTIREF_FACE_LIGHTS} lights "
-            "for the klein-multiref dataset source"
+            f"{KLEIN_MULTIREF_BODY_ANGLES} angles and one light for the klein-multiref "
+            "dataset source"
         )
-    face_lights = lights[:KLEIN_MULTIREF_FACE_LIGHTS]
+    # HIGH-2: never angles[3:] (profile-l/near-back) for the face shard.
+    face_angles = angles[:KLEIN_MULTIREF_FACE_ANGLES]
     body_angles = angles[:KLEIN_MULTIREF_BODY_ANGLES]
 
     ordinal = 0
     face_cells: list[dict[str, Any]] = []
-    for angle in angles:
-        for light in face_lights:
+    for angle in face_angles:
+        for light in lights:
             ordinal += 1
             face_cells.append({
                 "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
                 "angle": angle, "distance": "close", "light": light,
                 "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
             })
+    if len(face_cells) > KLEIN_MULTIREF_FACE_CELL_COUNT:
+        raise FigmentTrainError(
+            "persona.grammar's angles[:3] x lights grid already produces more than "
+            f"{KLEIN_MULTIREF_FACE_CELL_COUNT} face cells; trim angles or lights"
+        )
+    # HIGH-2: fewer than 5 lights (the shipped grammar has 4) means angles[:3] x lights
+    # falls short of 15 -- pad with more front-angle cells, cycling back through the
+    # SAME lights, rather than reaching into the forbidden profile-l/near-back angles.
+    while len(face_cells) < KLEIN_MULTIREF_FACE_CELL_COUNT:
+        light = lights[len(face_cells) % len(lights)]
+        ordinal += 1
+        face_cells.append({
+            "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
+            "angle": face_angles[0], "distance": "close", "light": light,
+            "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+        })
+
     body_cells: list[dict[str, Any]] = []
     for angle in body_angles:
         for wardrobe_family in wardrobe_families:
@@ -1037,17 +1046,21 @@ def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
                 "angle": angle, "distance": "half", "wardrobe_family": wardrobe_family,
                 "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
             })
-    if len(face_cells) != 15 or len(body_cells) != 15:
+    if len(face_cells) != KLEIN_MULTIREF_FACE_CELL_COUNT or len(body_cells) != KLEIN_MULTIREF_BODY_CELL_COUNT:
         raise FigmentTrainError(
-            "expected 15 face + 15 body klein-multiref cells, got "
-            f"{len(face_cells)} + {len(body_cells)}"
+            f"expected {KLEIN_MULTIREF_FACE_CELL_COUNT} face + {KLEIN_MULTIREF_BODY_CELL_COUNT} "
+            f"body klein-multiref cells, got {len(face_cells)} + {len(body_cells)}"
         )
     return face_cells, body_cells
 
 
 def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
-    angle = _KLEIN_MULTIREF_ANGLE_PHRASES[cell["angle"]]
-    light = _KLEIN_MULTIREF_LIGHT_PHRASES[cell["light"]]
+    """LOW (adversarial review): angle/light phrases come from `build_expansion_set`'s
+    own `ANGLE_PHRASES`/`LIGHT_PHRASES` (the same tables expansion-02's `build_prompt`
+    reads) rather than a second, near-duplicate hand-authored table drifting from it."""
+    expansion = _build_expansion_set_module()
+    angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
+    light = _klein_multiref_phrase(expansion.LIGHT_PHRASES, cell["light"], kind="light")
     return (
         f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
         f"{angle}, framed close from the chest up, {light}, plain white wall background. "
@@ -1057,8 +1070,15 @@ def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
 
 
 def _klein_multiref_body_prompt(clause: str, cell: dict[str, Any]) -> str:
-    angle = _KLEIN_MULTIREF_ANGLE_PHRASES[cell["angle"]]
-    wardrobe = _KLEIN_MULTIREF_WARDROBE_PHRASES[cell["wardrobe_family"]]
+    """HIGH-1 (adversarial review): `clause` here is ALREADY composed with
+    `exclude=("clothing",)` by the caller, so appending "wearing {wardrobe}" below is
+    this cell's only "wearing" clause -- never a second one contradicting
+    `identity.look.clothing`."""
+    expansion = _build_expansion_set_module()
+    angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
+    wardrobe = _klein_multiref_phrase(
+        expansion.WARDROBE_PHRASES, cell["wardrobe_family"], kind="wardrobe_family",
+    )
     return (
         f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
         f"{angle}, framed half-body from the waist up, wearing {wardrobe}, "
@@ -1066,6 +1086,69 @@ def _klein_multiref_body_prompt(clause: str, cell: dict[str, Any]) -> str:
         "exactly as shown in the reference images; do not alter, blend, or invent "
         "any facial feature."
     )
+
+
+# UPSCALE TAIL (ruling: adopt): `klein4b_multiref_api.json` renders natively at
+# 1024x1280 (`EmptyFlux2LatentImage`), but the dataset identity gate's `face_px_min:
+# 600` is measured on the SAVED image -- close-framed cells at 1024x1280 land
+# 535-885px, about half failing the floor (TENSOR-TRAINING.md P2 "Resolution/gate"
+# row). New node ids, one past the committed graph's own 1-28.
+_KLEIN_MULTIREF_UPSCALE_LOADER_NODE = "29"
+_KLEIN_MULTIREF_UPSCALE_MODEL_NODE = "30"
+_KLEIN_MULTIREF_UPSCALE_SCALE_NODE = "31"
+
+
+def _klein_multiref_dataset_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
+    """Graft the SAME output tail `tensor_dataset_v2_api.json` already carries
+    (`UpscaleModelLoader` + `ImageUpscaleWithModel` with the pinned
+    `4xNomosWebPhoto_RealPLKSR`, then `ImageScaleBy 0.5`, net 2x) between the rebound
+    graph's `VAEDecode` (node 27) and `SaveImage` (node 28), so `SaveImage` receives
+    2048x2560. Only the dataset-stage code path grafts this -- the committed
+    `klein4b_multiref_api.json` graph stays exactly as bake-off m1 verified it for
+    `build_expansion_set.build_manifests`'s own (unrelated) expansion-02 consumer of
+    the same file."""
+    workflow = deepcopy(workflow)
+    decode, save = workflow.get("27"), workflow.get("28")
+    if not isinstance(decode, dict) or decode.get("class_type") != "VAEDecode":
+        raise FigmentTrainError(
+            "klein-multiref workflow node '27' is not a VAEDecode node -- refusing to "
+            "graft an upscale tail onto an unverified graph"
+        )
+    if not isinstance(save, dict) or save.get("class_type") != "SaveImage":
+        raise FigmentTrainError(
+            "klein-multiref workflow node '28' is not a SaveImage node -- refusing to "
+            "graft an upscale tail onto an unverified graph"
+        )
+    new_ids = (
+        _KLEIN_MULTIREF_UPSCALE_LOADER_NODE, _KLEIN_MULTIREF_UPSCALE_MODEL_NODE,
+        _KLEIN_MULTIREF_UPSCALE_SCALE_NODE,
+    )
+    collisions = [node_id for node_id in new_ids if node_id in workflow]
+    if collisions:
+        raise FigmentTrainError(
+            f"klein-multiref workflow already has node id(s) {collisions} -- cannot "
+            "graft the upscale tail without an id collision"
+        )
+    workflow[_KLEIN_MULTIREF_UPSCALE_LOADER_NODE] = {
+        "class_type": "UpscaleModelLoader",
+        "inputs": {"model_name": "4xNomosWebPhoto_RealPLKSR.safetensors"},
+    }
+    workflow[_KLEIN_MULTIREF_UPSCALE_MODEL_NODE] = {
+        "class_type": "ImageUpscaleWithModel",
+        "inputs": {
+            "upscale_model": [_KLEIN_MULTIREF_UPSCALE_LOADER_NODE, 0],
+            "image": ["27", 0],
+        },
+    }
+    workflow[_KLEIN_MULTIREF_UPSCALE_SCALE_NODE] = {
+        "class_type": "ImageScaleBy",
+        "inputs": {
+            "image": [_KLEIN_MULTIREF_UPSCALE_MODEL_NODE, 0],
+            "upscale_method": "lanczos", "scale_by": 0.5,
+        },
+    }
+    workflow["28"]["inputs"]["images"] = [_KLEIN_MULTIREF_UPSCALE_SCALE_NODE, 0]
+    return workflow
 
 
 def _dataset_manifests_klein_multiref(
@@ -1086,10 +1169,15 @@ def _dataset_manifests_klein_multiref(
         workflow = expansion._rebind_workflow(KLEIN_MULTIREF_WORKFLOW_PATH, persona)
     except expansion.ExpansionBuildError as exc:
         raise FigmentTrainError(f"cannot rebind klein-multiref workflow: {exc}") from exc
+    workflow = _klein_multiref_dataset_workflow(workflow)
 
     face_cells, body_cells = _klein_multiref_cells(persona)
     short = _creator_output_code(persona["id"])
-    clause = _compose_look_clause(persona["identity"]["look"])
+    look = persona["identity"]["look"]
+    clause = _compose_look_clause(look)
+    # HIGH-1: the body clause drops `look["clothing"]` -- `_klein_multiref_body_prompt`
+    # supplies the one and only "wearing {wardrobe}" clause for a body cell.
+    body_clause = _compose_look_clause(look, exclude=("clothing",))
 
     def _job(cell: dict[str, Any], prompt: str) -> dict[str, Any]:
         return {
@@ -1107,7 +1195,7 @@ def _dataset_manifests_klein_multiref(
         "overwrite": True,
     }
 
-    def _shard(label: str, cells: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> dict[str, Any]:
+    def _shard(label: str, jobs: list[dict[str, Any]]) -> dict[str, Any]:
         return {
             "_replicates": (
                 "orgs/figment/research/10sorlabs-package/10_dataset_generator_v2/"
@@ -1116,20 +1204,21 @@ def _dataset_manifests_klein_multiref(
                 "bake-off m1 winner (r24/r25). See train/TENSOR-TRAINING.md's P2 section."
             ),
             "_shard": label,
+            "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
             **_pod_base(pins, training["pod_class"], "dataset_multiref"),
             "models": deepcopy(pins["pins"]["dataset_multiref"]["models"]),
             "custom_nodes": deepcopy(pins["pins"]["dataset_multiref"]["custom_nodes"]),
             "workflow": deepcopy(workflow),
             "seed_fields": ["noise_seed"],
-            "uploads": [dict(upload)],
+            "uploads": [deepcopy(upload)],
             "jobs": jobs,
         }
 
     face_jobs = [_job(cell, _klein_multiref_face_prompt(clause, cell)) for cell in face_cells]
-    body_jobs = [_job(cell, _klein_multiref_body_prompt(clause, cell)) for cell in body_cells]
+    body_jobs = [_job(cell, _klein_multiref_body_prompt(body_clause, cell)) for cell in body_cells]
     return [
-        _shard("15 face-angle cells (framing: close)", face_cells, face_jobs),
-        _shard("15 body-pose cells (framing: half, clothed register)", body_cells, body_jobs),
+        _shard("15 face-angle cells (framing: close)", face_jobs),
+        _shard("15 body-pose cells (framing: half, clothed register)", body_jobs),
     ]
 
 
@@ -2392,13 +2481,21 @@ def plan_qwen3vl_caption(
     (upload_dir / "_images.ready").write_text("", encoding="utf-8")
     manifest = _caption_manifest(pins, creator_id, trigger, names, pod_class=pod_class)
     manifest_path = plan_root / "train" / "runs" / f"{trigger}-tensor-caption.yaml"
-    if manifest_path.exists():
+    run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
+    # MEDIUM-1 (adversarial review): a bare `manifest_path.exists()` check permanently
+    # blocked every future `apply-rulings --stage dataset` retry after a single failed
+    # caption pod job -- the manifest is written before the pod ever runs, and nothing
+    # removes it on failure. Only refuse when a RUN RECORD (run.json) actually names
+    # this manifest's own out dir -- proof a pod already consumed it, so overwriting it
+    # now would sever that receipt's lineage. No run record yet means the previous
+    # attempt never got as far as a pod completing (or never launched), so
+    # regenerating it is safe.
+    if manifest_path.exists() and (run_out / "run.json").is_file():
         raise FigmentTrainError(
-            f"refusing to overwrite an existing caption manifest: {manifest_path}"
+            f"refusing to overwrite a caption manifest with a recorded run: {manifest_path}"
         )
     _write_json(manifest_path, manifest)
     resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
-    run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
     return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
 
 

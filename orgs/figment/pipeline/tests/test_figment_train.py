@@ -1,10 +1,12 @@
 """Contract tests for the persona-driven Track-1 command (brief T1-G)."""
 from __future__ import annotations
 
+import ast
 import base64
 import hashlib
 import importlib.util
 import json
+import re
 import subprocess
 import sys
 import threading
@@ -329,8 +331,15 @@ def test_dataset_manifests_klein_multiref_binds_three_references_and_pins(comman
             assert manifest["workflow"][node_id]["inputs"]["image"] == f"creator-002/{name}"
         assert manifest["seed_fields"] == ["noise_seed"]
 
-    # Ceiling: sum of both shards must clear the brief's $5.00 dataset-source cap.
-    total_ceiling = sum(float(command.manifest_ceiling(manifest)) for manifest in manifests)
+    # Ceiling: TENSOR-TRAINING.md's P2 "Dataset ceiling" section derives max_minutes=110
+    # per shard at $1.30/h = $2.3833/shard exactly (before manifest_ceiling's
+    # round-to-the-cent-up), $4.7667 total -- not just "clears the $5.00 cap" (which a
+    # broken/regressed ceiling could still satisfy by accident).
+    per_shard_ceilings = [float(command.manifest_ceiling(manifest)) for manifest in manifests]
+    for ceiling in per_shard_ceilings:
+        assert ceiling == pytest.approx(2.3833, abs=0.01), ceiling
+    total_ceiling = sum(per_shard_ceilings)
+    assert total_ceiling == pytest.approx(4.7667, abs=0.02), total_ceiling
     assert total_ceiling <= 5.00, total_ceiling
 
     # Seeds carried through to the job dicts, matching _klein_multiref_cells exactly.
@@ -351,6 +360,165 @@ def test_dataset_manifests_klein_multiref_requires_exactly_three_references(comm
     pins = command._read_json(command.PINS_PATH)
     with pytest.raises(command.FigmentTrainError, match="3"):
         command._dataset_manifests_klein_multiref(persona, training, pins)
+
+
+def _klein_multiref_persona(command, tmp_path):
+    """Shared setup: a synthetic creator-002 persona on klein-multiref."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    return command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+
+
+def _klein_multiref_manifests(command, tmp_path):
+    """Shared setup: builds the klein-multiref dataset manifests once for a synthetic
+    creator-002 persona, reused by the review-fix tests below."""
+    persona = _klein_multiref_persona(command, tmp_path)
+    training = command._training_config_module().validate_training(
+        {"dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    return persona, command._dataset_manifests_klein_multiref(persona, training, pins)
+
+
+def test_klein_multiref_body_prompt_carries_exactly_one_wearing_clause(command, tmp_path):
+    """HIGH-1 (adversarial review): `identity.look.clothing` already reads "wearing ..."
+    (`_compose_look_clause`), and `_klein_multiref_body_prompt` used to append a SECOND,
+    contradictory "wearing {wardrobe}" clause on top of it. Every body job prompt must
+    carry exactly one "wearing" and the wardrobe phrase for its own cell."""
+    persona, (_, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    expansion = command._build_expansion_set_module()
+    _, body_cells = command._klein_multiref_cells(persona)
+    for job, cell in zip(body_manifest["jobs"], body_cells):
+        prompt = job["substitutions"][0]["value"]
+        assert prompt.count("wearing") == 1, prompt
+        assert expansion.WARDROBE_PHRASES[cell["wardrobe_family"]] in prompt
+
+
+def test_klein_multiref_face_cells_never_use_profile_or_near_back_angle(command, tmp_path):
+    """HIGH-2 (adversarial review): the face shard must never draw an angle MTCNN/
+    FaceNet cannot gate (no frontal face in profile-l/near-back). Still 15 cells."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert len(face_cells) == 15
+    assert len(body_cells) == 15
+    forbidden_angles = {"profile-l", "near-back"}
+    assert all(cell["angle"] not in forbidden_angles for cell in face_cells)
+
+    expansion = command._build_expansion_set_module()
+    forbidden_phrases = (
+        expansion.ANGLE_PHRASES["profile-l"], expansion.ANGLE_PHRASES["near-back"],
+    )
+    clause = command._compose_look_clause(persona["identity"]["look"])
+    for cell in face_cells:
+        prompt = command._klein_multiref_face_prompt(clause, cell)
+        for phrase in forbidden_phrases:
+            assert phrase not in prompt
+
+
+def test_klein_multiref_jobs_substitute_node_4_with_composed_clause_and_cell_phrases(
+    command, tmp_path,
+):
+    """MEDIUM-2: every klein-multiref job substitutes node id '4' (the graph's own
+    CLIPTextEncode), and a face/body prompt each carry the composed look clause plus
+    their own cell's angle/light-or-wardrobe phrase."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    for manifest in (face_manifest, body_manifest):
+        for job in manifest["jobs"]:
+            assert len(job["substitutions"]) == 1
+            assert job["substitutions"][0]["node_id"] == "4"
+            assert job["substitutions"][0]["field"] == "text"
+
+    expansion = command._build_expansion_set_module()
+    clause = command._compose_look_clause(persona["identity"]["look"])
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    face_prompt = face_manifest["jobs"][0]["substitutions"][0]["value"]
+    assert clause in face_prompt
+    assert expansion.ANGLE_PHRASES[face_cells[0]["angle"]] in face_prompt
+    assert expansion.LIGHT_PHRASES[face_cells[0]["light"]] in face_prompt
+
+    body_clause = command._compose_look_clause(persona["identity"]["look"], exclude=("clothing",))
+    body_prompt = body_manifest["jobs"][0]["substitutions"][0]["value"]
+    assert body_clause in body_prompt
+    assert expansion.ANGLE_PHRASES[body_cells[0]["angle"]] in body_prompt
+    assert expansion.WARDROBE_PHRASES[body_cells[0]["wardrobe_family"]] in body_prompt
+
+
+def test_klein_multiref_unknown_grammar_token_raises_figment_train_error(command, tmp_path):
+    """LOW (adversarial review): an unknown grammar token must fail closed with
+    FigmentTrainError, never a bare KeyError."""
+    clause = "a clause"
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_face_prompt(clause, {"angle": "upside-down", "light": "flat-white"})
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_face_prompt(clause, {"angle": "front", "light": "strobe"})
+    with pytest.raises(command.FigmentTrainError):
+        command._klein_multiref_body_prompt(
+            clause, {"angle": "front", "wardrobe_family": "tuxedo"},
+        )
+
+
+def test_klein_multiref_shards_do_not_alias_the_upload_files_list(command, tmp_path):
+    """LOW (adversarial review): each shard's `uploads[0]["files"]` must be its own
+    list, never the same list object shared (and silently co-mutated) across shards."""
+    _, (face_manifest, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    assert face_manifest["uploads"][0]["files"] == body_manifest["uploads"][0]["files"]
+    face_manifest["uploads"][0]["files"].append("_uploads/creator-002/intruder.jpg")
+    assert "_uploads/creator-002/intruder.jpg" not in body_manifest["uploads"][0]["files"]
+
+
+def test_klein_multiref_workflow_carries_the_upscale_tail_between_decode_and_save(
+    command, tmp_path,
+):
+    """UPSCALE TAIL (adopt): the emitted klein-multiref workflow must carry the same
+    output tail `tensor_dataset_v2_api.json` uses (`UpscaleModelLoader` +
+    `ImageUpscaleWithModel` with the pinned `4xNomosWebPhoto_RealPLKSR`, then
+    `ImageScaleBy 0.5`) wired between the graph's `VAEDecode` and `SaveImage` nodes, so
+    the dataset identity gate's `face_px_min: 600` has native 2048x2560 pixels to
+    measure against instead of the graph's raw 1024x1280 render."""
+    _, (face_manifest, _) = _klein_multiref_manifests(command, tmp_path)
+    workflow = face_manifest["workflow"]
+    decode_id = next(
+        node_id for node_id, node in workflow.items() if node["class_type"] == "VAEDecode"
+    )
+    save_id = next(
+        node_id for node_id, node in workflow.items() if node["class_type"] == "SaveImage"
+    )
+    save_source_id = workflow[save_id]["inputs"]["images"][0]
+    scale_by = workflow[save_source_id]
+    assert scale_by["class_type"] == "ImageScaleBy"
+    assert scale_by["inputs"]["scale_by"] == 0.5
+    upscale_id = scale_by["inputs"]["image"][0]
+    upscale = workflow[upscale_id]
+    assert upscale["class_type"] == "ImageUpscaleWithModel"
+    assert upscale["inputs"]["image"][0] == decode_id
+    loader_id = upscale["inputs"]["upscale_model"][0]
+    loader = workflow[loader_id]
+    assert loader["class_type"] == "UpscaleModelLoader"
+    assert loader["inputs"]["model_name"] == "4xNomosWebPhoto_RealPLKSR.safetensors"
+
+    pins = command._read_json(command.PINS_PATH)
+    pinned = next(
+        m for m in pins["pins"]["dataset_multiref"]["models"]
+        if m["filename"] == "4xNomosWebPhoto_RealPLKSR.safetensors"
+    )
+    assert pinned["destination_dir"] == "/workspace/ComfyUI/models/upscale_models"
 
 
 def test_build_plan_dataset_stage_klein_multiref_dry_runs_clean(command, tmp_path):
@@ -454,20 +622,17 @@ def test_qwen3vl_caption_prompt_and_settings_match_module_11(command):
 
     template_path = PIPELINE / "train" / "runs" / "start-qwen3vl-caption.sh.template"
     text = template_path.read_text(encoding="utf-8")
-    expected = (
+    # MEDIUM-3 (adversarial review): parse the actual `instruction = (...)` string
+    # literal the template runs, rather than a fuzzy substring-or-fragments check that
+    # would still pass with extra/reworded text between the fragments.
+    match = re.search(r"instruction = \(\n(.*?)\n\)\n", text, re.DOTALL)
+    assert match, "start-qwen3vl-caption.sh.template must define instruction = (...)"
+    instruction = ast.literal_eval("(" + match.group(1) + ")")
+    assert instruction == (
         "Caption this image as if you were going to try to generate it with an image "
         "generator. Be thorough. Do not say things like 'It appears that' or 'possibly'. "
         "Start out with things like 'A person on the beach'. No preamble."
     )
-    assert expected in text.replace("\n", " ").replace('    "', " ").replace('    ', ' ') \
-        or all(
-            fragment in text for fragment in (
-                "Caption this image as if you were going to try to generate it",
-                "Do not say things like 'It appears that' or 'possibly'",
-                "Start out with things like 'A person on the beach'",
-                "No preamble.",
-            )
-        )
 
 
 def test_generalized_prompts_note_derives_from_actual_reference_names_not_g01_g07(
@@ -2678,6 +2843,62 @@ def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess
     assert manifest_path.is_file()
     assert "--max-usd" in planned["argv"]
     assert planned["ceiling_usd"] == command.manifest_ceiling(load_json(manifest_path))
+
+
+def _plan_qwen3vl_caption_images(tmp_path):
+    images_dir = tmp_path / "images"
+    images_dir.mkdir()
+    for name in ("a.png", "b.png"):
+        (images_dir / name).write_bytes(PNG_1X1)
+    return [images_dir / "a.png", images_dir / "b.png"]
+
+
+def test_plan_qwen3vl_caption_regenerates_a_manifest_with_no_recorded_run(
+    command, tmp_path,
+):
+    """MEDIUM-1 (adversarial review): a caption manifest survives on disk after a pod
+    that never got as far as writing a run.json (crash before dispatch, a launch that
+    never happened, etc). That must NOT permanently block every future
+    `apply-rulings --stage dataset` retry -- regenerate the manifest instead."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    first = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / first["manifest"]
+    run_out = plan_root / first["out"]
+    assert not (run_out / "run.json").exists()
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+
+
+def test_plan_qwen3vl_caption_refuses_to_overwrite_a_manifest_with_a_recorded_run(
+    command, tmp_path,
+):
+    """MEDIUM-1 (adversarial review): once a run.json exists for this manifest, a pod
+    actually consumed it -- overwriting it now would sever that receipt's own lineage,
+    so the refusal stays."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    run_out.mkdir(parents=True, exist_ok=True)
+    (run_out / "run.json").write_text(json.dumps({"error": None}), encoding="utf-8")
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
 
 
 def test_live_qwen3vl_job_runner_rejects_a_pod_that_never_produced_captions(

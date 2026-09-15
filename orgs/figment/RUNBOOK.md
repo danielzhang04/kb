@@ -218,6 +218,12 @@ digests, it is left alone rather than rebuilt on every `pipeline` call.
 - **Every pod carries its own `--max-usd`/`--max-minutes`** (`max_placement_attempts: 1` —
   no automatic retry on a live run); `train`'s ceiling is derived from `steps × per-step
   rate`, never a fixed quoted figure — read it off your own `plan.json`.
+- **The qwen3vl caption pod ($1.95 ceiling, `caption` stage profile) is NOT in the
+  plan-time preflight table.** `caption_mode: "qwen3vl"` only dispatches its pod later,
+  from inside `apply-rulings --stage dataset` (`_live_qwen3vl_job_runner`) — `plan` never
+  plans or budgets it up front the way it does anchor/dataset/train/tester/gen/detail.
+  Hold $1.95 back mentally against the arc cap before running `apply-rulings --stage
+  dataset` on a `caption_mode: "qwen3vl"` persona.
 - **Teardown is verified, not assumed**, on every exit path — success, failure, or error —
   via the RunPod API. If a harness invocation fails outside the normal flow, confirm the
   true pod state by hand before retrying:
@@ -244,6 +250,15 @@ plan, the error names the exact recovery path:
 Never hand-edit `plan.json`, `stage.json`, receipts, manifests, grading records, or copied
 media to work around this — the fix is always patience-and-retry or a verified-absent pod,
 never a file edit.
+
+**The one exception this rule already builds in:** the qwen3vl caption manifest
+(`train/runs/<trigger>-tensor-caption.yaml`, written by `plan_qwen3vl_caption` inside
+`apply-rulings --stage dataset`) regenerates itself on the next `apply-rulings` retry as
+long as no `run.json` has been recorded for it yet — a caption pod that crashed before
+launch, or never got dispatched at all, does not leave a permanent block behind. Once a
+`run.json` for that manifest exists, it IS a recorded run and the ordinary refusal above
+applies — the manifest will not be silently regenerated out from under a completed
+receipt.
 
 ## Command-shape evidence
 

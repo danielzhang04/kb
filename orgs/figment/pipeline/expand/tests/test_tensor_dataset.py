@@ -11,6 +11,7 @@ own BANNED_PHRASES mirror rather than a third copy, the same way
 """
 from __future__ import annotations
 
+import atexit
 import importlib.util
 import json
 import re
@@ -104,15 +105,27 @@ TEMPLATES = EXPAND / "templates" / "tensor-dataset-prompts.yaml"
 # sibling layout (not just the persona directory alone) because `register.spec.path`
 # ("../../pipeline/look-spec-v2.md") deliberately escapes the persona directory
 # (persona.py's own `must_stay_within=False`) and must still resolve.
+# LOW (adversarial review): copy only what `load_persona_with_training` actually reads
+# for creator-001 -- persona.yaml/training.yaml/identity-spec.md/anchors/ -- never the
+# whole creator-001 directory (`batches/`, `calibration/`: ~560 KB of images this
+# loader never opens). Cleanup is registered with `atexit` rather than left to the OS
+# temp-dir reaper, since this tmp root is built once at collection time (module scope),
+# not inside a fixture that could own a `yield`-based teardown.
 def _creator001_qwen_edit_personas_root() -> Path:
     root = Path(tempfile.mkdtemp(prefix="figment-tensor-dataset-qwen-edit-root-"))
+    atexit.register(shutil.rmtree, root, ignore_errors=True)
+    source = REAL_PERSONAS / "creator-001"
     personas_root = root / "personas"
-    shutil.copytree(REAL_PERSONAS / "creator-001", personas_root / "creator-001")
+    target = personas_root / "creator-001"
+    target.mkdir(parents=True)
+    for name in ("persona.yaml", "training.yaml", "identity-spec.md"):
+        shutil.copy2(source / name, target / name)
+    shutil.copytree(source / "anchors", target / "anchors")
     pipeline_root = root / "pipeline"
     pipeline_root.mkdir(parents=True, exist_ok=True)
     shutil.copy2(PIPELINE / "look-spec-v2.md", pipeline_root / "look-spec-v2.md")
 
-    training_path = personas_root / "creator-001" / "training.yaml"
+    training_path = target / "training.yaml"
     document = json.loads(training_path.read_text(encoding="utf-8"))
     document["training"]["dataset_source"] = "qwen-edit"
     training_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
@@ -208,6 +221,21 @@ def jobs(manifests):
 
 def subs(job):
     return {(s["node_id"], s["field"]): s["value"] for s in job["substitutions"]}
+
+
+# ---------------------------------------------------------------------------
+# LOW (adversarial review): the qwen-edit mirror copies only what the loader needs
+# ---------------------------------------------------------------------------
+
+
+def test_creator001_qwen_edit_personas_root_copies_only_the_loader_inputs():
+    copied = _QWEN_EDIT_PERSONAS_ROOT / "creator-001"
+    assert (copied / "persona.yaml").is_file()
+    assert (copied / "training.yaml").is_file()
+    assert (copied / "identity-spec.md").is_file()
+    assert (copied / "anchors").is_dir()
+    assert not (copied / "batches").exists()
+    assert not (copied / "calibration").exists()
 
 
 # ---------------------------------------------------------------------------
