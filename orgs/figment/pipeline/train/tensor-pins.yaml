@@ -64,7 +64,7 @@
           "comfyui": {"root": "/workspace/ComfyUI", "git_ref": "v0.20.1", "port": 8188, "start_command": "bash /workspace/start-training-aitoolkit.sh", "extra_args": ["--cpu", "--disable-all-custom-nodes"]}
         },
         "tester": {
-          "max_minutes": 115,
+          "max_minutes": 130,
           "container_disk_gb": 80,
           "volume_gb": 200,
           "readiness_timeout_seconds": 2400,
@@ -196,11 +196,13 @@
     "style_loras": {
       "inline-skin": {
         "model": {"repo_id": "inlineresearch/skin-lora-krea-2-raw", "filename": "inline-skin-lora-krea-2-raw.safetensors", "revision": "15fbc074697eed816159dbbc99f9c98170301b14", "sha256": "7ac516bc335953be4afffa53411e38a012e91eaff56afc16c79232438b7040ac", "destination_dir": "/workspace/ComfyUI/models/loras"},
-        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)"
+        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)",
+        "licence_verified": "2026-09-15 (F3): api/models/inlineresearch/skin-lora-krea-2-raw cardData license=other, license_name=krea-2-community-license, license_link=LICENSE -- matches"
       },
       "gokay-realism": {
         "model": {"repo_id": "gokaygokay/Krea-2-Realism-LoRA", "filename": "krea2_realism_lora.safetensors", "revision": "32f0436ac10e985134364e7555898c9f121a46ce", "sha256": "6c38a7934c54a56e0f67753660a4500a094d6dce28a0ee4a0d1dc9f4975d32d2", "destination_dir": "/workspace/ComfyUI/models/loras"},
-        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)"
+        "licence": "krea-2-community-license (commercial free under $1M trailing-12-month revenue, r22 §2)",
+        "licence_verified": "2026-09-15 (F3): api/models/gokaygokay/Krea-2-Realism-LoRA cardData license=other, license_name=krea-2-community-license, license_link=huggingface.co/krea/Krea-2-Turbo/blob/main/LICENSE -- matches"
       }
     }
   }

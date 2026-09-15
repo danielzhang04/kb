@@ -10,6 +10,8 @@
     "skin_lora": null,
     "dop_enabled": true,
     "dop_multiplier": 1.0,
-    "dop_class": "woman"
+    "dop_class": "woman",
+    "style_lora": "inline-skin",
+    "style_lora_strength": 0.8
   }
 }

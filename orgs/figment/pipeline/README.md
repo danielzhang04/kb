@@ -280,14 +280,23 @@ risks: `expand/TENSOR-REPLICATION.md`, `train/TENSOR-TRAINING.md`.
 - Arc: `ARC_CAP_USD = "50.00"` in `figment_train.py`, checked against every `figment-*.tsv`
   ledger row before a live `run`.
 - Per-stage ceilings (`--max-usd`; `train/TENSOR-TRAINING.md`'s cost table): train-smoke
-  $2.28, tester $2.28, gen $3.58; dataset shard $2.71/pod, ~$8.13 for 3 shards, dependency
-  smoke $1.41 (`expand/TENSOR-REPLICATION.md`). Bake-off ablation $2.65, Path-B diagnostic
-  $3.70 (STATE.md 2026-09-06). **train is not a fixed number** — `_apply_train_budget`
-  derives the ceiling from steps x the per-step rate (plus `runpod_run.minimum_runtime_
-  minutes`'s floor), so it moves with the plan's own `steps`/DOP: a real `plan` run on
-  2026-09-07 printed `steps=1250 per_step_s=9.0 max_minutes=351 ceiling_usd=$7.61` — not the
-  $5.85 an earlier plan produced. Read the ceiling off your own `plan.json`, never quote a
-  fixed figure for train.
+  $2.28, tester $2.82 (F5: `max_minutes` raised 115 -> 130 to cover the 12-job ladder a
+  3000-step/save_every-250 checkpoint schedule now tests), gen $3.58; dataset shard
+  $2.71/pod, ~$8.13 for 3 shards, dependency smoke $1.41 (`expand/TENSOR-REPLICATION.md`).
+  Bake-off ablation $2.65, Path-B diagnostic $3.70 (STATE.md 2026-09-06). **train is not a
+  fixed number** — `_apply_train_budget` derives the ceiling from steps x the per-step rate
+  (plus `runpod_run.minimum_runtime_minutes`'s floor), so it moves with the plan's own
+  `steps`/DOP: a real `plan` run on 2026-09-15 (F5: `steps: 1250 -> 3000`, DOP still on)
+  printed `steps=3000 per_step_s=9.0 max_minutes=726 ceiling_usd=$15.73` — up from the
+  earlier `steps=1250` plan's `$7.61`. Read the ceiling off your own `plan.json`, never
+  quote a fixed figure for train. **This now exceeds `governance/budget.yaml`'s $10.00
+  daily limit on its own**, even on a day with zero prior Figment spend — DOP's ~3.6x
+  per-step rate (9.0s vs 2.5s, r21) times 3000 steps is the real cost of training-to-3000
+  screened-by-tester rather than defaulting to a shorter run (F5 ruling, r25 causes #4/#6);
+  it is well inside the $50.00 arc cap (`ledgers/cost/` totals $33.7234 as of E3) but a live
+  `run --stage train` still needs its own calendar day with no other Figment spend, checked
+  at plan/run time by `enforce_daily_budget` (fails closed otherwise) — same "spend its own
+  day" constraint the arc cap and per-stage ceilings above already impose on `gen`.
 - Every manifest carries its own `max_minutes`/`max_placement_attempts: 1` (no automatic
   retry on a live run) and is `--dry-run` green before it ever spends.
 
@@ -321,9 +330,14 @@ defects below for where these two sources disagree past 09-04.
   still open): `ledgers/cost/figment-2026-09-06.tsv` sums to $2.822, against STATE.md's stated
   "$0.61" for that day; `figment-2026-09-07.tsv` carries an unnarrated $5.85 row
   (`fn938tol6mgbtp`). Do not trust a single day's total from either source alone.
-- **`flux2-klein-4B` renamed on Hugging Face** (`expand/TENSOR-REPLICATION.md` open risk 5):
-  every `pins.dataset`/`pins.anchor_edit` pin now HEADs a 307; `verify_pins.py` fails closed on
-  it until `repo_id` is updated to the new name.
+- ~~**`flux2-klein-4B` renamed on Hugging Face**~~ — RESOLVED (`expand/TENSOR-REPLICATION.md`
+  open risk 5, F7): `pins.dataset`/`pins.anchor_edit` already repoint to the current repo id
+  `Comfy-Org/vae-text-encorder-for-flux-klein-4b` (`tensor-pins.yaml:117-119,135-137`, landed
+  commit `9ffec37a`). Re-verified live 2026-09-15: `verify_pins.py` (no `--stage` — every stage)
+  reports `verified 9 stage(s) clean: anchor, anchor_edit, dataset, detail, gen, skin_loras,
+  style_loras, tester, train`; the repo's own HF API record (`api/models/Comfy-Org/vae-text-
+  encorder-for-flux-klein-4b`) confirms `modelId` == `id` (no further redirect) and
+  `license: apache-2.0`.
 - **Three of gate.yaml's eight thresholds are unvalidated placeholders** (identity_gate's
   `age_delta_max_years`/`gloss_max`; judge's `skin_realism_min`/`gloss_max`/`artifacts_max`) —
   calibration ran and reported honestly that these do not separate any evidence set (`gate.yaml`
@@ -331,10 +345,15 @@ defects below for where these two sources disagree past 09-04.
 - **Path-B diagnostic** (`expand/bakeoff/m3diag_manifest.yaml`) is built and dry-run green but
   its launch was BLOCKED by the session permission classifier — operator must launch by hand
   (command in `m3diag_README.md`); not yet run as of STATE.md 2026-09-07 00:40.
-- `personas/creator-001/training.yaml` in this worktree currently reads `steps: 1250`,
-  `dop_enabled: true` (uncommitted, in-flight edit for the `train-first` build) — not yet
-  reflected in `train/TENSOR-TRAINING.md`'s "2000, not 3000" ruling, which was written for the
-  earlier module-11 port. Whichever value ships live is the number that matters.
+- ~~`personas/creator-001/training.yaml` reads `steps: 1250`, not yet reflected in
+  `train/TENSOR-TRAINING.md`'s ruling~~ — RESOLVED (F5, 2026-09-15): `training.yaml` now reads
+  `steps: 3000` (`dop_enabled` stays `true`), matching `train/TENSOR-TRAINING.md`'s current
+  "Step count: 3000, screened by the tester" ruling and `render_aitoolkit_config.py`'s
+  `MODULE_11["steps"]`/`check_module_11` default (also raised to 3000). The checkpoint ladder
+  is 11 intermediates + final (12, matching module 11's own count, not the earlier 8); the
+  tester's pinned `max_minutes` (`tensor-pins.yaml`) was raised 115 -> 130 to cover the extra
+  jobs. The derived train ceiling (`$15.73`) now exceeds the $10.00 daily cap on its own — see
+  "Spend guards" above — so a live `train` run needs its own day, same as `gen`.
 - **`video_review.py` review-store writes can exceed Windows MAX_PATH** under a deep enough
   repo/worktree/`--basetemp` root — see "Video" above for the diagnosis
   (`content/tests/test_motion_asset_binding.py::test_real_video_producer_to_content_cli_then_stale_movie_refuses`).

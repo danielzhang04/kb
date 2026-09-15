@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import base64
+import csv
 import hashlib
 import importlib.util
 import json
@@ -2047,3 +2048,97 @@ def test_planning_freezes_explicit_ledger_for_both_plan_entrypoints_and_harness_
         skip_pin_verify=True,
     )
     assert env_plan["ledger_dir"] == str(stale.resolve())
+
+
+def _repo_figment_ledger_total(pod_module) -> float:
+    """Independent (non-`arc_budget_state`) sum of every real `figment-*.tsv` row in
+    the repo's own `ledgers/cost/`, for cross-checking E3's merged ledger."""
+    total = 0.0
+    for path in sorted(pod_module.repo_ledger_dir().glob("figment-*.tsv")):
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            if not reader.fieldnames or "usd" not in reader.fieldnames:
+                continue
+            for row in reader:
+                total += float(row["usd"])
+    return total
+
+
+def test_repo_ledger_is_the_default_single_arc_cap_ledger_e3(
+    command, tmp_path, monkeypatch,
+):
+    """E3: after reconciling every historical `figment-*.tsv` row into this repo's own
+    `ledgers/cost/` (union merge, no duplicate/superseded rows -- the two 2026-09-07
+    `pod-orphan-estimate` placeholders are superseded by their `pod-orphan-reconciled`
+    corrections, never double-counted), the repo directory alone must be a truthful,
+    self-sufficient arc-cap ledger: a plan built with no `--ledger-dir` and no managed
+    OPS worktree present resolves straight to it, and the harness's own arc-cap function
+    sums it to the same total an independent read gets.
+    """
+    pod_module = command._pod_runner_module()
+    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
+    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
+
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)
+    plan = command.build_plan(
+        "creator-002", "smoke", tmp_path / "default-ledger", personas_root=personas_root,
+        skip_pin_verify=True,
+    )
+
+    assert plan["ledger_dir"] == str(pod_module.repo_ledger_dir().resolve())
+
+    expected_total = _repo_figment_ledger_total(pod_module)
+    # The brief's own recorded figure for the reconciled repo total (rounds to $33.72);
+    # a hard floor here catches an accidental partial merge without pinning every cent.
+    assert expected_total == pytest.approx(33.7234, abs=0.01)
+
+    cap, spent = pod_module.arc_budget_state(
+        arc_cap_usd=50.0, ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert cap == 50.0
+    assert spent == pytest.approx(expected_total)
+
+    # The 2026-09-07 supersession specifically: no leftover "pod-orphan-estimate" row
+    # survives the merge once its "pod-orphan-reconciled" correction is present.
+    day_ledger = pod_module.repo_ledger_dir() / "figment-2026-09-07.tsv"
+    text = day_ledger.read_text(encoding="utf-8")
+    assert "pod-orphan-estimate" not in text
+    assert text.count("pod-orphan-reconciled") == 2
+
+
+def test_creator001_live_3000_step_train_ceiling_still_clears_the_arc_cap_f5(
+    command, tmp_path, monkeypatch,
+):
+    """F5: `personas/creator-001/training.yaml` now reads `steps: 3000` (DOP stays on,
+    see TENSOR-TRAINING.md "Step count: 3000, screened by the tester" and r25 causes
+    #4/#6). `_apply_train_budget` derives a ceiling from that (~$15.73) which exceeds the
+    $10.00 daily cap on its own (a separate, deliberate consequence -- see
+    train/tests/test_tensor_track.py's
+    test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it) but must still
+    clear the much larger $50.00 whole-arc cap against the real, reconciled repo ledger
+    (E3) -- this is the actual gate `run --stage train` checks before ever creating a pod.
+    """
+    pod_module = command._pod_runner_module()
+    monkeypatch.delenv("KB_LEDGER_DIR", raising=False)
+    monkeypatch.setattr(pod_module, "OPS_LEDGER_DIR", tmp_path / "no-ops-worktree-here")
+
+    plan = command.build_plan("creator-001", "train", tmp_path / "plan", skip_pin_verify=True)
+    train_run = plan["stages"]["train"]["runs"][0]
+    budget = train_run["budget"]
+
+    assert budget["steps"] == 3000
+    checkpoints = command._checkpoint_steps(3000, 250)
+    assert len(checkpoints) == 11, "11 intermediates (250..2750) plus the final = 12 total"
+
+    ceiling = float(budget["ceiling_usd"])
+    cap, spent = pod_module.arc_budget_state(
+        arc_cap_usd=50.0, ledger_dir=Path(plan["ledger_dir"]),
+    )
+    assert spent + ceiling <= cap, (
+        f"train's own ceiling ${ceiling:.2f} plus ${spent:.2f} already spent must still "
+        f"clear the ${cap:.2f} arc cap"
+    )
+    # Not a tautology: this is a real, narrow margin at steps=3000 -- prove it is not
+    # trivially satisfied by an oversized cap or an emptied-out ledger.
+    assert cap - (spent + ceiling) < 1.0

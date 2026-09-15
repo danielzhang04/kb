@@ -9,7 +9,7 @@ its checkpoint-ranking harness (module 11's dataset tester), and its generation 
 (module 09), ported to `pipeline/pod/runpod_run.py`. Every number below is either read off
 their UI/JSON, read out of upstream source, a declared ceiling, or (torch/CUDA, state-dict
 compatibility, per-step throughput) measured live by the training smoke — see "Step count:
-2000, not 3000" below. Sources: `research/r15b-training.md` (module 11),
+3000, screened by the tester" below. Sources: `research/r15b-training.md` (module 11),
 `research/r15-10sorlabs-artefacts.md` §3e and §3g, and the two package JSONs.
 
 ## Model and licence
@@ -53,7 +53,7 @@ Qwen-Image's VAE and a Qwen3-VL encoder. Z-Image Base / klein 4B Base remain the
 | "do not use the turbo with the training adapter" | raw only | raw only | turbo is inference-only for us too |
 | target / rank | LoRA / 32 | `network.linear: 32`, `linear_alpha: 32` | |
 | optimizer / lr / weight decay | AdamW8Bit / 1e-4 / 1e-4 | `adamw8bit` / `1.0e-4` / `optimizer_params.weight_decay` | `1e-4` unquoted is a YAML *string*; must be `1.0e-4` |
-| steps / batch / grad accum | 3000 / 1 / 1 | **2000** / 1 / 1 | deviation — see "Step count: 2000, not 3000" below |
+| steps / batch / grad accum | 3000 / 1 / 1 | identical (F5) | see "Step count: 3000, screened by the tester" below — DOP (off in module 11) is the real, deliberate deviation on top |
 | save dtype / every / keep | BF16 / 250 / 15 | identical | 15 is what makes every save rankable |
 | quantize transformer / TE | qfloat8 / qfloat8, Low VRAM on, offload off | identical | |
 | timestep / bias / loss | Linear / Balanced / MSE | identical | |
@@ -63,7 +63,7 @@ Qwen-Image's VAE and a Qwen3-VL encoder. Z-Image Base / klein 4B Base remain the
 | caption dropout / ext / repeats | 0.05 / txt / 1 | identical | |
 | captions | Qwen3-VL auto-caption in the toolkit UI | `caption_mode` = `provided` (default) / `auto` / `single_word` | see below |
 | GPU / wall clock | RTX PRO 6000 Blackwell 96 GB, 1 h 17 m | L40S 48 GB, **unmeasured** | the one number we cannot inherit |
-| tester | 12 branches, one graph, seed 1595, 4 steps, cfg 1, res_2s/beta, 1448×2176, LoRA 1.0/1.0 | 8 **jobs**, one graph, all of the above identical | harness counts images per job; 8 not 12 because our run saves 7 intermediate checkpoints (steps=2000/save_every=250) plus the final, not module 11's 11 |
+| tester | 12 branches, one graph, seed 1595, 4 steps, cfg 1, res_2s/beta, 1448×2176, LoRA 1.0/1.0 | 12 **jobs**, one graph, all of the above identical | harness counts images per job, not graph branches; 12 jobs because our run (F5: steps=3000/save_every=250) now saves the same 11 intermediate checkpoints plus the final that module 11's own 12 branches ranked |
 | module 09 | base 4-step → NMKD ×4 → ×0.25 → re-encode → 4-step @ 0.35 → FaceDetailer @ 0.15 | base 4-step → RealPLKSR ×4 → ×0.25 → re-encode → 4-step @ 0.35 | style LoRAs and FaceDetailer dropped (finding 16 — see the model/licence table) |
 
 Captioning: their captioner is `Qwen/Qwen3-VL-8B-Instruct` (float8, max res 512, 128 new
@@ -125,11 +125,12 @@ py -3 build_training_set.py --mode class \
    runs/creator-001-tensor-dataset/training.json`. This is the only writer of `training.json`
    in this directory — the ai-toolkit trainer config, uploaded and read by the pod as
    `training.config_name`. It refuses to write a config that has drifted off our numbers
-   (module 11's, except `steps` — see "Step count: 2000, not 3000" below; `--allow-drift` to
-   override, deliberately loud). The same command with `--set steps=100 --set save_every=50
-   --allow-drift` renders the reduced-step config the training smoke (next) uploads instead —
-   same directory, same filename, run before the smoke and re-rendered back to our numbers
-   (no `--set`, no `--allow-drift` needed) before the full run.
+   (module 11's, `steps` included since F5 restored 3000 as the default — see "Step count:
+   3000, screened by the tester" below; `--allow-drift` to override, deliberately loud). The
+   same command with `--set steps=100 --set save_every=50 --allow-drift` renders the
+   reduced-step config the training smoke (next) uploads instead — same directory, same
+   filename, run before the smoke and re-rendered back to our numbers (no `--set`, no
+   `--allow-drift` needed) before the full run.
 
    **Checkpoint naming: the final step is bare, every other save is step-suffixed.** ai-toolkit
    writes every intermediate save (any step strictly below the run's `steps`) as
@@ -171,8 +172,8 @@ py -3 build_training_set.py --mode class \
    dataset (`NN.png`/`NN.txt`/`training.json`, then `_dataset.ready`); the script captions
    (module 04/05 `single_word` fallback only — `provided` is the default and already captioned
    by step 2), records resource limits, runs `run.py training.json` under `nohup` while
-   streaming `_training.log` and a 30-second heartbeat, then verifies and copies **all 8**
-   declared checkpoints (the 7 save-every-250 steps plus the exact step-2000 final under its
+   streaming `_training.log` and a 30-second heartbeat, then verifies and copies **all 12**
+   declared checkpoints (the 11 save-every-250 steps plus the exact step-3000 final under its
    bare trigger name, never an mtime-sorted guess) into `/workspace/output/`, writes a
    `_checkpoints.json` index, and only then touches `_training.complete` — failing closed with
    `_training.failed` if any of the 8 is missing or empty (finding 10).
@@ -224,39 +225,81 @@ are $8.13, so gen must run on its own day (or a day where nothing else has spent
 ledger reconciliation review findings 1-2 flag must be resolved before trusting any daily total —
 not addressed by this pass, see `REVIEW-2026-09-03-track1.md`.
 
-## Step count: 2000, not 3000
+**This table predates `_apply_train_budget` and F5's step count.** `train`'s row above is a
+static, pre-defect-fix number (fixed 270 `max_minutes` at the pod-class pin floor, no DOP);
+`train`'s ceiling is now derived dynamically from `training.steps`/`training.dop_enabled`
+(never a fixed figure — `pipeline/README.md` "Spend guards") and `tester`'s `max_minutes` was
+raised 115 -> 130 for the 12-job ladder (F5). Read `train`'s and `tester`'s real current
+ceilings off your own `plan.json`, not this table; see "Step count: 3000, screened by the
+tester" above for the current numbers and why train alone now needs its own day.
 
-Module 11 trained 3000 steps. Smoke #4 measured this harness's actual L40S throughput at
-**3.85 s/step** (2026-09-04, `runs/out/creator-001-tensor-train-smoke/_harness/_training.log`).
-At that rate, 3000 steps of train time alone is `3000 × 3.85 s ≈ 11550 s ≈ 3.2 h` — past the
-`job_timeout_seconds` marker-wait window this harness budgets, and (at $1.30/h) past what the
-$10.00 daily budget can spend on a single stage alongside the tester. 2000 steps
-(`2000 × 3.85 s ≈ 7700 s`, `job_timeout_seconds: 10800` is comfortably above that with setup
-headroom) is the largest step count that fits both constraints without widening either the job
-timeout or the daily budget. `MODULE_11["steps"]` in `render_aitoolkit_config.py` (and its
-`check_module_11` drift guard) is set to `2000`; the full manifest renders it with no `--set`/
-`--allow-drift` needed. `save_every` stays module 11's `250`, so the checkpoint ladder is 7
-intermediates (`250..1750`) plus the bare final at `2000` — 8 checkpoints, not module 11's 12.
-3000 steps is not ruled out permanently — it is a candidate to revisit once either the job-timeout
-window or the daily budget has room, not something this pass decided against on the merits.
+## Step count: 3000, screened by the tester
+
+**Current ruling (F5, supersedes the earlier "2000, not 3000" pass below the fold).**
+`personas/creator-001/training.yaml` and `MODULE_11["steps"]`/`check_module_11` in
+`render_aitoolkit_config.py` both read `3000` — module 11's own number, restored. The
+step count was never the load-bearing variable: `research/r25-why-they-can-and-we-cant.md`'s
+own ranked, evidence-graded causes for the identity/quality gap rank "checkpoint not screened
+against its own ranking" (#4, **moderate**) ahead of "2000 vs 3000 training steps" (#6, weak,
+explicitly "already shown secondary to #4"). Our own tester data made #4 concrete: a
+step-2000 run's own tester ranked step 1500 best, not the final step — trained-to-2000 was
+never the same claim as "screened-to-2000," and a checkpoint promoted by *training to a step
+count* rather than by *the tester's own ranking* is exactly the failure mode #4 names.
+`apply-rulings --stage tester --checkpoint-step <N>` already requires an explicit, operator-
+chosen produced step (`pipeline/README.md` "The gate") — training to 3000 does not change
+that contract; it only gives the tester's 11-intermediate-plus-final ladder (`250..2750` +
+the bare final at `3000`, matching module 11's own 12) more candidates to rank, including ones
+past 1500 that a 2000-step run never produced. **Never default the chosen checkpoint to the
+final step** — the same tester-ranking discipline that picked 1500 out of a 2000-step run
+applies unchanged to a 3000-step run's own 12.
+
+DOP (Differential Output Preservation) stays **on** in creator-001's live training.yaml. This
+is a **deliberate deviation from module 11's own recipe, not drift** — `check_module_11`
+correctly flags `train.diff_output_preservation: True != False` because DOP genuinely is not
+part of 10sorLabs' module 11 chain; the deviation is argued, not accidental. It is r21's own
+regularization lead (`research/r21-better-methods-2026.md` §Differential Output Preservation,
+an official ai-toolkit feature) layered onto the train-first path chosen from r24's ranked
+bakeoff shortlist (`research/r24-identity-transfer-bakeoff-candidates.md` "Ranked shortlist
+for the bakeoff", item **4**: "Train-first Krea-2 LoRA … bake identity into weights first"),
+together the r24-method-4-plus-r21-DOP combination `pipeline/README.md` already calls
+Path-A. r25's own causes list folds the step-count question into #4 rather than treating it
+independently (#6: "none standalone — folds into #4; a from-scratch 3000-step run with DOP …
+is the natural follow-up") — this ruling is that follow-up.
+
+**Cost consequence, not a free change.** Smoke #4 measured this harness's actual L40S
+throughput at **3.85 s/step with DOP off** (2026-09-04,
+`runs/out/creator-001-tensor-train-smoke/_harness/_training.log`) — that measurement cleared
+torch/CUDA and the state-dict load (see "What blocks a live run" below) but does not describe
+the live DOP path, which re-runs every step's forward pass an extra time for the regularization
+target. `_apply_train_budget`'s `TRAIN_STEP_RATE_DOP_S = 9.0` (`figment_train.py`, r21) is the
+measured-with-margin DOP rate; at `steps=3000` it derives `job_timeout_seconds`/`max_minutes`
+dynamically per persona (never a fixed, unrecomputed pod-class pin — see `_apply_train_budget`
+and `pipeline/README.md` "Spend guards"), landing at `ceiling_usd=$15.73` — comfortably inside
+the $50.00 arc cap (`ledgers/cost/` totals $33.7234 as of E3) but **above** the $10.00/day
+governance limit on its own, so a live `train` run needs its own calendar day with no other
+Figment spend, exactly like `gen` already does. `save_every` stays module 11's `250`, so the
+checkpoint ladder is 11 intermediates (`250..2750`) plus the bare final at `3000` — 12
+checkpoints, matching module 11's own 12, not the 8 an earlier 2000-step pass produced.
 
 ## Deviations, and why
 
-1. **All eight artifacts publish, no network volume (findings 10, 12).**
+1. **All twelve artifacts publish, no network volume (findings 10, 12).**
    `minimum_runtime_minutes` reserves one shared `job_timeout_seconds` budget for the
    completion-marker wait plus `artifact_download_seconds` (180 s) for each further artifact,
    not `job_timeout × artifact_count` — see `HARNESS-CHANGES.md`'s addendum. The start script
-   verifies and copies the 7 save-every-250 checkpoints plus the exact step-2000 final (under
+   verifies and copies the 11 save-every-250 checkpoints plus the exact step-3000 final (under
    its bare trigger name — see "Checkpoint naming" under Step order 3) into `/workspace/output/`
    (never an mtime-sorted guess) and fails closed before touching `_training.complete` if any is
-   missing. The tester then uploads those 8 files from the harness's own local download
+   missing. The tester then uploads those 12 files from the harness's own local download
    directory — no recurring network-volume charge, no `REPLACE-WITH-RUNPOD-NETWORK-VOLUME-ID`
-   sentinel.
-2. **Tester is 8 jobs, not 12 graph branches.** The dry-run client returns exactly one image
-   per job, so `expected_images > 1` can never be dry-run green. Eight one-image jobs keep
-   every variable except the checkpoint fixed, which is the whole point of §3g — eight because
-   our run's checkpoint ladder (steps=2000/save_every=250, see "Step count" above) is shorter
-   than module 11's (steps=3000/save_every=250).
+   sentinel. (Before F5's step count restored 3000, this was 8 files from a shorter 2000-step
+   ladder — same mechanism, fewer checkpoints.)
+2. **Tester is 12 jobs, not 12 graph branches.** The dry-run client returns exactly one image
+   per job, so `expected_images > 1` can never be dry-run green. Twelve one-image jobs keep
+   every variable except the checkpoint fixed, which is the whole point of §3g — twelve because
+   our run's checkpoint ladder (F5: steps=3000/save_every=250, see "Step count" above) now
+   matches module 11's own (steps=3000/save_every=250) exactly, rather than the shorter
+   2000-step/8-job ladder an earlier pass ran.
 3. **Generation has two `SaveImage` outputs (base, refined), not the package's three
    (finding 16).** `expected_images: 2` is dry-run green now that multi-image dry-run support
    exists (commit `fda03ba2`). The third output — the package's FaceDetailer "final" — has no
@@ -307,13 +350,18 @@ window or the daily budget has room, not something this pass decided against on 
    order 3a.
 5. **Third-party node input names** (`res_2s`) are transcribed from the package graph and are
    not validated by dry-run.
-6. **Throughput on 48 GB — measured by smoke #4: 3.85 s/step.** Their 77 min was a 96 GB
-   Blackwell. At 3.85 s/step, our 2000-step run's train time alone is `2000 × 3.85 s ≈ 7700 s`,
-   comfortably inside the `job_timeout_seconds: 10800` marker deadline with setup headroom; see
-   "Step count: 2000, not 3000" above for why 2000 rather than module 11's 3000. This is a
-   lower bound only — it does not necessarily extrapolate linearly to 2000 steps (fixed
+6. **Throughput on 48 GB — measured by smoke #4: 3.85 s/step, DOP off.** Their 77 min was a
+   96 GB Blackwell. This was the 50-step probe that cleared torch/CUDA and the state-dict load
+   (items 3-4 above); it does not describe the live DOP path (see "Step count: 3000, screened
+   by the tester" above), whose extra regularization forward-pass raises the real per-step cost
+   — `_apply_train_budget`'s `TRAIN_STEP_RATE_DOP_S = 9.0` (r21, measured-with-margin) is what
+   the harness actually budgets against for `training.yaml`'s live `steps=3000`/
+   `dop_enabled=true`, deriving `job_timeout_seconds`/`max_minutes` dynamically per persona
+   rather than comparing a fixed step count against the pod-class pin's static
+   `job_timeout_seconds: 10800` floor. Smoke #4's 3.85 s/step remains the correct lower bound
+   for a non-DOP run and is not extrapolated linearly beyond its own 50-step sample (fixed
    setup/caching costs do not repeat per step, but memory pressure or thermal throttling over a
-   longer run are not ruled out by a 50-step sample).
+   longer run are not ruled out by it).
 7. **Model provenance — closed (review finding 5).** Every model entry across
    `creator-001-tensor-train.yaml`, `-train-smoke.yaml`, `-tester.yaml`, and `-gen.yaml` now
    carries an immutable `revision` (40-hex commit) and a verified `sha256`, fetched from the

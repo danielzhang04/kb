@@ -20,6 +20,16 @@ closed.
 `--stage <name>` (repeatable) limits verification to specific `pins.pins` keys; the default
 is every stage. Exit code is non-zero on any problem, and `figment_train.py plan` runs this
 as a preflight (see `_verify_pins_preflight`, skippable with `--skip-pin-verify`).
+
+E5 (one preflight covers video too): `--stage video` runs the identical HEAD/sha256 check
+(`verify_model_pin`/`head_etag`, no second loader) over a SECOND file source --
+`video/wan22_ti2v_5b.model-pins.json`'s own flat `models` list, which lives outside
+`tensor-pins.yaml` entirely (a different schema, `figment/video-model-pins@1`, not one more
+`pins.pins` key). `video` is included in the default "every stage" sweep alongside the
+`tensor-pins.yaml` stages, so one `verify_pins.py` run with no `--stage` covers both files.
+This CLI-level `video` stage is separate from the importable `verify_pins(pins, stages=...)`
+function `figment_train.py`'s own preflight calls directly (unchanged — it still only ever
+sees `tensor-pins.yaml`'s stages); see `verify_video_pins` for the video-only check.
 """
 from __future__ import annotations
 
@@ -33,6 +43,8 @@ from typing import Any
 
 HERE = Path(__file__).resolve().parent
 DEFAULT_PINS_PATH = HERE / "tensor-pins.yaml"
+DEFAULT_VIDEO_PINS_PATH = HERE.parent / "video" / "wan22_ti2v_5b.model-pins.json"
+VIDEO_STAGE_NAME = "video"
 _ACCEPTABLE_STATUSES = (200, 302)
 
 
@@ -60,6 +72,15 @@ def _read_pins(path: Path) -> dict[str, Any]:
         return json.loads(Path(path).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         raise VerifyPinsError(f"cannot read pins document {path}: {exc}") from exc
+
+
+def _read_video_pins(path: Path) -> dict[str, Any]:
+    """A second file source for the identical model-pin check (E5) -- its own JSON
+    document (`figment/video-model-pins@1`), not one more `tensor-pins.yaml` stage."""
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise VerifyPinsError(f"cannot read video pins document {path}: {exc}") from exc
 
 
 def _pin_url(model: dict[str, Any]) -> str:
@@ -160,12 +181,32 @@ def verify_pins(
     return results
 
 
+def verify_video_pins(video_pins: dict[str, Any]) -> list[str]:
+    """E5: the identical per-model HEAD/sha256 check `verify_pins` runs over
+    `tensor-pins.yaml`'s stages, run instead over the video model-pins document's own
+    flat `models` list -- same `verify_model_pin`, no new loader. Returns problem
+    strings directly (there is only ever one "stage" in this file, so no
+    `{stage: [...]}` wrapping is needed the way multi-stage `tensor-pins.yaml` needs)."""
+    models = video_pins.get("models")
+    if not isinstance(models, list):
+        raise VerifyPinsError("video pins document has no 'models' list")
+    problems: list[str] = []
+    for model in models:
+        problems.extend(verify_model_pin(model))
+    return problems
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--pins", type=Path, default=DEFAULT_PINS_PATH)
     parser.add_argument(
+        "--video-pins", type=Path, default=DEFAULT_VIDEO_PINS_PATH,
+        help="video model-pins document checked by --stage video (E5)",
+    )
+    parser.add_argument(
         "--stage", action="append", default=None,
-        help="limit verification to this pins.pins stage (repeatable); default: every stage",
+        help="limit verification to this pins.pins stage, or 'video' for the video "
+             "model-pins document (repeatable); default: every stage, video included",
     )
     return parser
 
@@ -173,12 +214,45 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     pins = _read_pins(args.pins)
+    all_pins = pins.get("pins")
+    if not isinstance(all_pins, dict):
+        print("STOP: tensor-pins.yaml has no 'pins' object", file=sys.stderr)
+        return 1
+    known_stages = sorted(all_pins) + [VIDEO_STAGE_NAME]
+
+    if args.stage is not None:
+        unknown = sorted(set(args.stage) - set(known_stages))
+        if unknown:
+            print(
+                f"STOP: unknown stage(s): {unknown}; known: {known_stages}",
+                file=sys.stderr,
+            )
+            return 1
+        checked = list(args.stage)
+    elif args.pins == DEFAULT_PINS_PATH:
+        # "Every stage" folds in `video` only for the real default tensor-pins.yaml --
+        # an unrelated custom `--pins` document (e.g. a bakeoff's own tiny pins.yaml)
+        # must keep its old "every stage IN THAT DOCUMENT" meaning, never silently pick
+        # up this repo's real video pins file too. `--stage video` (or `--stage <name>
+        # --stage video`) still works against any --pins for an explicit request.
+        checked = known_stages
+    else:
+        checked = sorted(all_pins)
+
+    yaml_stages = [stage for stage in checked if stage != VIDEO_STAGE_NAME]
+    results: dict[str, list[str]] = {}
     try:
-        results = verify_pins(pins, stages=args.stage)
+        if yaml_stages:
+            results.update(verify_pins(pins, stages=yaml_stages))
+        if VIDEO_STAGE_NAME in checked:
+            video_pins = _read_video_pins(args.video_pins)
+            video_problems = verify_video_pins(video_pins)
+            if video_problems:
+                results[VIDEO_STAGE_NAME] = video_problems
     except VerifyPinsError as exc:
         print(f"STOP: {exc}", file=sys.stderr)
         return 1
-    checked = args.stage if args.stage is not None else sorted(pins.get("pins", {}))
+
     if results:
         for stage in checked:
             for problem in results.get(stage, []):

@@ -154,7 +154,7 @@ def test_config_renderer_refuses_a_drifted_config():
         "network.linear_alpha: 16 != 32",
     ]
     assert renderer.check_module_11(render_config(steps=5000)) == [
-        "train.steps: 5000 != 2000"
+        "train.steps: 5000 != 3000"
     ]
 
 
@@ -295,10 +295,10 @@ def test_training_start_script_streams_detached_training_evidence():
 def test_training_start_script_publishes_all_checkpoints_by_exact_name():
     """Finding 10 (plus the smoke-#4 final-naming defect): the start script must
     copy every intermediate save plus the final checkpoint (creator-001's live
-    1250-step train-first run: 4 intermediates + final) into /workspace/output
-    under the manifest's declared artifact names, fail closed before the
-    completion marker if any is missing, and never infer "final" from mtime.
-    ai-toolkit writes the final step's save ONLY under the bare trigger name,
+    3000-step train-first run, restored by F5: 11 intermediates + final) into
+    /workspace/output under the manifest's declared artifact names, fail closed
+    before the completion marker if any is missing, and never infer "final" from
+    mtime. ai-toolkit writes the final step's save ONLY under the bare trigger name,
     never a step-suffixed one (evidence: smoke #4 wrote
     creator001krea2.safetensors at the final step, no
     creator001krea2_<step>.safetensors alongside it) — the source path for the
@@ -306,11 +306,11 @@ def test_training_start_script_publishes_all_checkpoints_by_exact_name():
     _remote, rendered = runner.rendered_training_start_script(
         manifest("train"), MANIFESTS["train"],
     )
-    for step in range(250, 1250, 250):
+    for step in range(250, 3000, 250):
         assert f"{step:09d}" in rendered
     # final_step still renders (used to filter checkpoint_steps below it), but
     # never as part of a step-suffixed filename.
-    assert "final_step='000001250'" in rendered
+    assert "final_step='000003000'" in rendered
     assert "_${final_step}.safetensors" not in rendered
     assert 'final_ckpt="${checkpoint_dir}/${trigger}.safetensors"' in rendered
     assert f"cp \"$final_ckpt\" \"/workspace/output/${{trigger}}.safetensors\"" in rendered
@@ -667,7 +667,17 @@ def test_manifest_uses_the_conservative_rate_and_never_retries_placement(name):
     assert doc["max_placement_attempts"] == 1
 
 
-@pytest.mark.parametrize("name", sorted(MANIFESTS))
+# F5 (steps 1250 -> 3000, DOP stays on): train's own derived ceiling now legitimately
+# exceeds the $10.00 daily_usd_limit on its own (see README "Spend guards" and
+# test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it below) -- a
+# deliberate cost of training-to-3000 screened-by-tester (r25 causes #4/#6), not a
+# regression, so it is carved out of the blanket "every manifest fits a fresh day" check.
+DAILY_CAP_EXEMPT_STAGES = {"train"}
+
+
+@pytest.mark.parametrize(
+    "name", sorted(name for name in MANIFESTS if name not in DAILY_CAP_EXEMPT_STAGES),
+)
 def test_manifest_ceilings_fit_the_daily_budget(name):
     doc = manifest(name)
     minimum = runner.minimum_runtime_minutes(doc)
@@ -680,20 +690,48 @@ def test_manifest_ceilings_fit_the_daily_budget(name):
     )
 
 
+def test_train_manifest_ceiling_exceeds_the_daily_cap_and_is_refused_by_it(tmp_path):
+    """F5 (steps 1250 -> 3000, DOP still on): the train stage's own derived ceiling
+    (~$15.73 at these numbers) now exceeds governance/budget.yaml's $10.00
+    daily_usd_limit on its own -- DOP's ~3.6x per-step rate (9.0s vs 2.5s, r21) times
+    3000 screened-by-tester steps (r25 causes #4/#6) is a deliberate cost, not a
+    regression, which is why `train` is carved out of
+    `test_manifest_ceilings_fit_the_daily_budget` above. This proves the real
+    fail-closed consequence instead of just skipping the assertion: the harness's own
+    daily-budget preflight refuses a live `train` run even on a fresh day with zero
+    prior spend -- exactly the protection `run` would hit before ever creating a pod,
+    so a live train run needs its own calendar day (same "spend its own day"
+    constraint the arc cap and other per-stage ceilings already impose on `gen`)."""
+    doc = manifest("train")
+    minimum = runner.minimum_runtime_minutes(doc)
+    assert doc["max_minutes"] >= minimum
+    estimate = runner.estimate_cost(doc, doc["max_minutes"], None)
+    daily_limit, spent_on_empty_day = runner.daily_budget_state(ledger_dir=tmp_path)
+    assert spent_on_empty_day == 0.0
+    assert estimate > daily_limit, (
+        f"train estimate ${estimate:.2f} was expected to exceed the "
+        f"${daily_limit:.2f} daily limit at steps=3000/DOP -- if this now passes, "
+        "the cost model or governance budget changed and this carve-out is stale"
+    )
+    with pytest.raises(runner.HarnessError, match="daily budget refused"):
+        runner.enforce_daily_budget(estimate, ledger_dir=tmp_path)
+
+
 def test_full_manifest_ceiling_covers_creator_001s_live_train_first_arithmetic():
-    """creator-001's live training.yaml (Path-A train-first, r24 method 4): steps=1250,
-    save_every=250, dop_enabled=true -- a 5-checkpoint ladder (4 intermediates + final).
-    job_timeout_seconds/max_minutes are now DERIVED per persona from
-    training.steps/training.dop_enabled (defect fix -- they used to be a static,
-    unrecomputed pod-class pin regardless of either, see `_apply_train_budget`), floored
-    at tensor-pins.yaml's pinned values. This checks the manifest carries exactly what
-    that derivation computes, not a hardcoded number."""
+    """creator-001's live training.yaml (Path-A train-first, r24 method 4 + r21 DOP):
+    steps=3000, save_every=250, dop_enabled=true -- an 11-intermediate-checkpoint ladder
+    plus the final, screened by the tester rather than defaulted to (r25 causes #4/#6;
+    F5 ruling, TENSOR-TRAINING.md "Step count"). job_timeout_seconds/max_minutes are now
+    DERIVED per persona from training.steps/training.dop_enabled (defect fix -- they used
+    to be a static, unrecomputed pod-class pin regardless of either, see
+    `_apply_train_budget`), floored at tensor-pins.yaml's pinned values. This checks the
+    manifest carries exactly what that derivation computes, not a hardcoded number."""
     doc = manifest("train")
     expected = _expected_train_budget()
     assert doc["job_timeout_seconds"] == expected["job_timeout_seconds"]
     assert doc["readiness_timeout_seconds"] == 3600
     assert doc["artifact_download_seconds"] == 180
-    assert len(runner.manifest_artifacts(doc)) == 5
+    assert len(runner.manifest_artifacts(doc)) == 12
     minimum = runner.minimum_runtime_minutes(doc)
     assert doc["max_minutes"] == expected["max_minutes"]
     assert doc["max_minutes"] >= minimum
@@ -715,21 +753,22 @@ def test_training_manifest_replicates_module_11_transport():
     assert {item.subfolder for item in uploads} == {TRIGGER}
     assert any(item.remote_name == "training.json" for item in uploads)
     artifacts = runner.manifest_artifacts(doc)
-    # The live 5-checkpoint ladder (steps=1250, save_every=250 -- module 11's
-    # save-every kept identical while creator-001's own training.yaml now runs
-    # train-first at 1250 steps, see TENSOR-TRAINING.md) comes back through /view
-    # like any other artifact — no network volume required. minimum_runtime_minutes
-    # no longer multiplies the job timeout by the artifact count (that was the
-    # defect); it reserves one shared job timeout for the completion marker plus one
+    # The live 12-checkpoint ladder (steps=3000, save_every=250 -- module 11's own
+    # numbers restored by F5: creator-001's training.yaml runs train-first at 3000
+    # steps again, screened by the tester rather than defaulted to, see
+    # TENSOR-TRAINING.md "Step count") comes back through /view like any other
+    # artifact — no network volume required. minimum_runtime_minutes no longer
+    # multiplies the job timeout by the artifact count (that was the defect); it
+    # reserves one shared job timeout for the completion marker plus one
     # artifact_download_seconds allowance per further artifact. See
     # HARNESS-CHANGES.md addendum.
     step_checkpoints = [
-        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 1250, 250)
+        f"{TRIGGER}_{step:09d}.safetensors" for step in range(250, 3000, 250)
     ]
     assert [artifact["remote"] for artifact in artifacts] == [
         *step_checkpoints, f"{TRIGGER}.safetensors",
     ]
-    assert len(artifacts) == 5
+    assert len(artifacts) == 12
     assert all(artifact["wait_for"] == "_training.complete" for artifact in artifacts)
     # job_timeout_seconds/max_minutes are derived from steps/dop_enabled (defect fix) --
     # compare against the same production helper's own output, not a hardcoded number.
@@ -815,7 +854,7 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
     assert lora["strength_model"] == 1.0 and lora["strength_clip"] == 1.0
 
     jobs = doc["jobs"]
-    assert len(jobs) == 5, "our live 1250-step run ranks 4 step saves plus the final checkpoint"
+    assert len(jobs) == 12, "our live 3000-step run ranks 11 step saves plus the final checkpoint"
     assert {job["seed"] for job in jobs} == {1595}
     assert {job["expected_images"] for job in jobs} == {1}
     varied = set()
@@ -823,10 +862,10 @@ def test_tester_holds_everything_but_the_checkpoint_fixed():
         fields = {(sub["node_id"], sub["field"]) for sub in job["substitutions"]}
         assert fields == {("4", "lora_name")}
         varied.add(job["substitutions"][0]["value"])
-    assert len(varied) == 5
+    assert len(varied) == 12
     assert f"{TRIGGER}_000000250.safetensors" in varied
-    assert f"{TRIGGER}_000001000.safetensors" in varied
-    assert f"{TRIGGER}_000001250.safetensors" not in varied, "final ships bare, never step-suffixed"
+    assert f"{TRIGGER}_000002750.safetensors" in varied
+    assert f"{TRIGGER}_000003000.safetensors" not in varied, "final ships bare, never step-suffixed"
     assert f"{TRIGGER}.safetensors" in varied
 
 
