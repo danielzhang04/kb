@@ -3062,22 +3062,23 @@ def _load_current_approval(
     return approval
 
 
-def validate_approved_gen_still(
-    creator_id: str, plan_path: Path, image_id: str, *, reads=None,
+def _validate_approved_still(
+    creator_id: str, plan_path: Path, image_id: str, stage: str, *, reads=None,
 ) -> dict[str, Any]:
-    """Return one current, kept `gen` still without changing any Figment record.
+    """Return one current, kept `stage` still without changing any Figment record.
 
-    Video is a consumer of the existing still-review contract.  It must not treat an
-    arbitrary `approved-list.json` entry as authority: this repeats the existing
+    Shared by `validate_approved_gen_still` (video, detail source provenance) and
+    `validate_approved_detail_still` (the deliverable, B1): neither may treat an
+    arbitrary `approved-list.json` entry as authority -- this repeats the existing
     rulings, gate, and freshness checks before returning the selected image bytes.
     """
     if not isinstance(image_id, str) or not image_id:
-        raise FigmentTrainError("approved gen image id must be a non-empty string")
+        raise FigmentTrainError(f"approved {stage} image id must be a non-empty string")
     resolved_plan = (
         reads.resolve(Path(plan_path)) if reads is not None else Path(plan_path).resolve()
     )
     root = resolved_plan.parent
-    grade_dir = root / "grade" / "gen"
+    grade_dir = root / "grade" / stage
     approval_path = grade_dir / "approval-lineage.json"
     approved_path = grade_dir / "approved-list.json"
     rulings_path = grade_dir / "rulings.json"
@@ -3094,14 +3095,14 @@ def validate_approved_gen_still(
             label: (_sha256(path) if reads is None else _sha256(path, reads=reads)) for label, path in evidence_paths.items()
         }
     except OSError as exc:
-        raise FigmentTrainError("gen approval evidence is incomplete") from exc
+        raise FigmentTrainError(f"{stage} approval evidence is incomplete") from exc
     plan, loaded_root = (_load_plan(creator_id, resolved_plan) if reads is None else _load_plan(creator_id, resolved_plan, reads=reads))
     if loaded_root != root:
-        raise FigmentTrainError("approved gen plan root changed while loading")
-    approval = (_load_current_approval(plan, root, "gen") if reads is None else _load_current_approval(plan, root, "gen", reads=reads))
-    if (approval.get("creator") != creator_id or approval.get("stage") != "gen"
+        raise FigmentTrainError(f"approved {stage} plan root changed while loading")
+    approval = (_load_current_approval(plan, root, stage) if reads is None else _load_current_approval(plan, root, stage, reads=reads))
+    if (approval.get("creator") != creator_id or approval.get("stage") != stage
             or approval.get("decision") != "verified"):
-        raise FigmentTrainError("gen approval lineage does not authorize this creator/stage")
+        raise FigmentTrainError(f"{stage} approval lineage does not authorize this creator/stage")
     if not (all(
         (
             reads.file(path, required=False) is not None
@@ -3110,38 +3111,38 @@ def validate_approved_gen_still(
         )
         for path in (approved_path, rulings_path, grading_path, evaluation_path, gate_path)
     )):
-        raise FigmentTrainError("gen approval evidence is incomplete")
+        raise FigmentTrainError(f"{stage} approval evidence is incomplete")
     if approval.get("rulings_sha256") != (_sha256(rulings_path) if reads is None else _sha256(rulings_path, reads=reads)):
-        raise FigmentTrainError("gen rulings changed after approval")
+        raise FigmentTrainError(f"{stage} rulings changed after approval")
     grading = (_read_json(grading_path) if reads is None else _read_json(grading_path, reads=reads))
     images = grading.get("images") if isinstance(grading, dict) else None
     if (not isinstance(grading, dict) or grading.get("creator") != creator_id
-            or grading.get("stage") != "gen" or not isinstance(images, list) or not images):
-        raise FigmentTrainError("gen grading manifest creator/stage or images are invalid")
+            or grading.get("stage") != stage or not isinstance(images, list) or not images):
+        raise FigmentTrainError(f"{stage} grading manifest creator/stage or images are invalid")
     image_ids = [row.get("image_id") if isinstance(row, dict) else None for row in images]
     if any(not isinstance(value, str) for value in image_ids) or len(set(image_ids)) != len(image_ids):
-        raise FigmentTrainError("gen grading manifest has invalid or duplicate image ids")
+        raise FigmentTrainError(f"{stage} grading manifest has invalid or duplicate image ids")
     evaluation = (_read_json(evaluation_path) if reads is None else _read_json(evaluation_path, reads=reads))
     if (not isinstance(evaluation, dict) or evaluation.get("schema") != _lineage_module().EVALUATION_SCHEMA
             or evaluation.get("subject_sha256") != approval.get("reviewed_subject_sha256")):
-        raise FigmentTrainError("gen approval is not bound to its current evaluation")
+        raise FigmentTrainError(f"{stage} approval is not bound to its current evaluation")
     normalized = _normalize_rulings(
-        creator_id, "gen", (_read_json(rulings_path) if reads is None else _read_json(rulings_path, reads=reads)), image_ids, evaluation["subject_sha256"],
+        creator_id, stage, (_read_json(rulings_path) if reads is None else _read_json(rulings_path, reads=reads)), image_ids, evaluation["subject_sha256"],
     )
     gate = (_read_json(gate_path) if reads is None else _read_json(gate_path, reads=reads))
     if gate.get("schema") != "figment/gate@1" or not isinstance(gate.get("rows"), list):
-        raise FigmentTrainError("gen gate evidence is invalid")
+        raise FigmentTrainError(f"{stage} gate evidence is invalid")
     gate_by_id = {
         row.get("image_id"): row for row in gate["rows"]
         if isinstance(row, dict) and isinstance(row.get("image_id"), str)
     }
     if len(gate_by_id) != len(gate["rows"]) or set(gate_by_id) != set(image_ids):
-        raise FigmentTrainError("gen gate does not cover exactly the reviewed images")
+        raise FigmentTrainError(f"{stage} gate does not cover exactly the reviewed images")
     review = deepcopy(grading)
     try:
         _qa_module().stamp(review, normalized)
     except ValueError as exc:
-        raise FigmentTrainError(f"gen rulings are invalid: {exc}") from exc
+        raise FigmentTrainError(f"{stage} rulings are invalid: {exc}") from exc
     ruling_by_id = {row["image_id"]: row for row in normalized["rulings"]}
     expected: list[dict[str, str]] = []
     for row in review["images"]:
@@ -3151,49 +3152,49 @@ def validate_approved_gen_still(
         gate_row = gate_by_id[row["image_id"]]
         override = ruling.get("gate_override")
         if gate_row.get("pass") is not True and (not isinstance(override, str) or not override.strip()):
-            raise FigmentTrainError(f"kept gen image {row['image_id']!r} lacks a gate pass or override")
+            raise FigmentTrainError(f"kept {stage} image {row['image_id']!r} lacks a gate pass or override")
         if row.get("safety_failed") or row.get("review_status") != "verified":
-            raise FigmentTrainError(f"kept gen image {row['image_id']!r} is not quality/safety verified")
+            raise FigmentTrainError(f"kept {stage} image {row['image_id']!r} is not quality/safety verified")
         if not isinstance(row.get("path"), str):
-            raise FigmentTrainError("gen grading image path is invalid")
+            raise FigmentTrainError(f"{stage} grading image path is invalid")
         expected.append({"image_id": row["image_id"], "path": row["path"]})
     approved = (_read_json(approved_path) if reads is None else _read_json(approved_path, reads=reads))
     if (not isinstance(approved, dict) or approved.get("schema") != "figment/approved-images@1"
-            or approved.get("creator") != creator_id or approved.get("stage") != "gen"
+            or approved.get("creator") != creator_id or approved.get("stage") != stage
             or approved.get("images") != expected):
-        raise FigmentTrainError("approved gen list is not the current kept review set")
+        raise FigmentTrainError(f"approved {stage} list is not the current kept review set")
     selected = next((row for row in expected if row["image_id"] == image_id), None)
     if selected is None:
-        raise FigmentTrainError("requested gen image was not approved")
+        raise FigmentTrainError(f"requested {stage} image was not approved")
     image = Path(selected["path"])
     try:
         resolved = reads.resolve(image) if reads is not None else image.resolve(strict=True)
         resolved.relative_to(reads.resolve(root) if reads is not None else root.resolve())
     except (OSError, ValueError) as exc:
-        raise FigmentTrainError("approved gen image escapes its reviewed plan root") from exc
+        raise FigmentTrainError(f"approved {stage} image escapes its reviewed plan root") from exc
     if reads is not None:
         observation = reads.file(resolved, required=True)
         if observation is None or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
-            raise FigmentTrainError("approved gen image is not a regular supported image")
+            raise FigmentTrainError(f"approved {stage} image is not a regular supported image")
     else:
         if image.is_symlink() or not resolved.is_file() or resolved.suffix.lower() not in IMAGE_EXTENSIONS:
-            raise FigmentTrainError("approved gen image is not a regular supported image")
+            raise FigmentTrainError(f"approved {stage} image is not a regular supported image")
     subject_images = approval.get("subject", {}).get("images") if isinstance(approval.get("subject"), dict) else None
     subject = next((row for row in subject_images or [] if isinstance(row, dict) and row.get("image_id") == image_id), None)
     if not isinstance(subject, dict):
-        raise FigmentTrainError("approved gen image is absent from approval lineage")
+        raise FigmentTrainError(f"approved {stage} image is absent from approval lineage")
     bytes_seen = observation.size if reads is not None else resolved.stat().st_size
     digest = (_sha256(resolved) if reads is None else _sha256(resolved, reads=reads))
     if bytes_seen <= 0 or subject.get("bytes") != bytes_seen or subject.get("sha256") != digest:
-        raise FigmentTrainError("approved gen image bytes changed after approval")
+        raise FigmentTrainError(f"approved {stage} image bytes changed after approval")
     try:
         if any(
             (_sha256(path) if reads is None else _sha256(path, reads=reads)) != initial_digests[label]
             for label, path in evidence_paths.items()
         ):
-            raise FigmentTrainError("gen approval evidence changed while validating")
+            raise FigmentTrainError(f"{stage} approval evidence changed while validating")
     except OSError as exc:
-        raise FigmentTrainError("gen approval evidence changed while validating") from exc
+        raise FigmentTrainError(f"{stage} approval evidence changed while validating") from exc
     return {
         "image_id": image_id, "path": str(resolved), "bytes": bytes_seen, "sha256": digest,
         "source_plan": {"path": str(resolved_plan), "sha256": initial_digests["source_plan"]},
@@ -3206,6 +3207,22 @@ def validate_approved_gen_still(
             "sha256": initial_digests["approved_list"],
         },
     }
+
+
+def validate_approved_gen_still(
+    creator_id: str, plan_path: Path, image_id: str, *, reads=None,
+) -> dict[str, Any]:
+    """Return one current, kept `gen` still -- see `_validate_approved_still`."""
+    return _validate_approved_still(creator_id, plan_path, image_id, "gen", reads=reads)
+
+
+def validate_approved_detail_still(
+    creator_id: str, plan_path: Path, image_id: str, *, reads=None,
+) -> dict[str, Any]:
+    """Return one current, kept `detail` still -- see `_validate_approved_still`. Used
+    by the deliverable (B1) so a crafted `detail/grade/approved-list.json` row (an
+    out-of-root path, a gate-failed or unruled image) is refused rather than shipped."""
+    return _validate_approved_still(creator_id, plan_path, image_id, "detail", reads=reads)
 
 
 def _run_identity_gate(
@@ -4159,16 +4176,22 @@ def _pipeline_gate_instruction(
     )
 
 
-def _deliverable_entry(row: dict[str, Any], dest_dir: Path, root: Path) -> dict[str, Any]:
-    source = Path(row["path"])
-    destination = dest_dir / f"{row['image_id']}{source.suffix.lower()}"
-    if not destination.exists():
-        dest_dir.mkdir(parents=True, exist_ok=True)
+def _deliverable_entry(validated: dict[str, Any], dest_dir: Path, root: Path) -> dict[str, Any]:
+    """B1: `validated` is the return of `_validate_approved_still` (never a raw
+    `approved-list.json` row) -- the deliverable copies exactly the bytes the
+    approval authority just re-verified, and binds `manifest.json` to that
+    validated sha256. m6: re-copies whenever the destination's bytes drift from
+    the validated sha (a re-ruling, or a stale/edited file) so a re-ruling never
+    leaves stale bytes in `deliverable/`."""
+    source = Path(validated["path"])
+    destination = dest_dir / f"{validated['image_id']}{source.suffix.lower()}"
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    if not destination.is_file() or _sha256(destination) != validated["sha256"]:
         shutil.copy2(source, destination)
     return {
-        "image_id": row["image_id"],
+        "image_id": validated["image_id"],
         "path": _relative(destination, root),
-        "sha256": _sha256(destination),
+        "sha256": validated["sha256"],
     }
 
 
@@ -4192,6 +4215,9 @@ def _build_deliverable(
         if existing.get("detail_approval_sha256") == detail_approval_sha256:
             return existing
 
+    gen_plan_path = gen_root / "plan.json"
+    detail_plan_path = detail_root / "plan.json"
+
     gen_approved = _read_json(gen_root / "grade" / "gen" / "approved-list.json")
     gen_gate_by_id = {
         row["image_id"]: row
@@ -4208,9 +4234,13 @@ def _build_deliverable(
     detail_rulings_doc = _read_json(detail_root / "grade" / "detail" / "rulings.json")
     detail_ruling_by_id = {row["image_id"]: row for row in detail_rulings_doc.get("rulings", [])}
 
+    # B1: every row is re-verified through the approval authority before its bytes
+    # are copied into the deliverable -- an `approved-list.json` entry alone is never
+    # trusted, whatever path, gate state, or ruling it claims.
     stills = []
     for row in gen_approved.get("images", []):
-        entry = _deliverable_entry(row, deliverable_dir / "stills", primary_root)
+        validated = validate_approved_gen_still(creator_id, gen_plan_path, row["image_id"])
+        entry = _deliverable_entry(validated, deliverable_dir / "stills", primary_root)
         ruling = gen_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = gen_gate_by_id.get(row["image_id"])
         entry["ruling"] = {
@@ -4222,7 +4252,8 @@ def _build_deliverable(
 
     detail_images = []
     for row in detail_approved.get("images", []):
-        entry = _deliverable_entry(row, deliverable_dir / "detail", primary_root)
+        validated = validate_approved_detail_still(creator_id, detail_plan_path, row["image_id"])
+        entry = _deliverable_entry(validated, deliverable_dir / "detail", primary_root)
         ruling = detail_ruling_by_id.get(row["image_id"], {})
         entry["gate"] = detail_gate_by_id.get(row["image_id"])
         entry["ruling"] = {
@@ -4232,8 +4263,6 @@ def _build_deliverable(
         }
         detail_images.append(entry)
 
-    gen_plan_path = gen_root / "plan.json"
-    detail_plan_path = detail_root / "plan.json"
     gen_training = _read_json(gen_plan_path).get("training", {})
     manifest = {
         "schema": "figment/deliverable@1",

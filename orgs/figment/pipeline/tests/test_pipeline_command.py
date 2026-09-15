@@ -287,6 +287,92 @@ def test_pipeline_halts_and_resumes_at_anchor_then_requires_a_fresh_plan(
     assert len(calls) == 2
 
 
+def _build_approved_gen_and_detail(command, tmp_path):
+    """Build a real gen -> detail approval chain (not the full pipeline harness) --
+    the minimal fixture B1's deliverable tests need. Reuses `test_gen_stage.py`'s own
+    helpers exactly the way `test_figment_train.py` already does."""
+    gen_stage_test = load_module(
+        "figment_pipeline_test_gen_stage_for_deliverable", PIPELINE / "tests" / "test_gen_stage.py",
+    )
+    personas = tmp_path / "personas"
+    gen_stage_test._promoted_persona(personas, creator_id="creator-002", steps=3000)
+    gen_stage_test._prepare_accepted_checkpoint(command, personas, tmp_path)
+
+    gen_out = tmp_path / "g"
+    gen_plan = command.build_plan(
+        "creator-002", "gen", gen_out, personas_root=personas, skip_pin_verify=True,
+    )
+    _fake_stage_outputs(gen_out, gen_plan, "gen")
+    gen_stage_test._approve_all_gen_images(command, "creator-002", gen_out)
+
+    detail_out = tmp_path / "d"
+    command.build_plan(
+        "creator-002", "detail", detail_out, personas_root=personas, skip_pin_verify=True,
+        approved_gen_plan=gen_out,
+    )
+    _fake_stage_outputs(detail_out, load_json(detail_out / "plan.json"), "detail")
+    detail_grade = command.build_grade(
+        "creator-002", "detail", detail_out / "plan.json", skip_judge=True,
+    )
+    template = load_json(Path(detail_grade["rulings_template"]))
+    for row in template["rulings"]:
+        row.update(_axes(), decision="keep")
+    template.update({"decided_by": "operator-fixture", "decided_at": "2026-09-15T00:05:00Z"})
+    filled = detail_out / "detail-filled.json"
+    filled.write_text(json.dumps(template), encoding="utf-8")
+    command.apply_rulings("creator-002", "detail", detail_out / "plan.json", filled)
+    return gen_out, detail_out
+
+
+def test_deliverable_refuses_a_crafted_approved_list_row(command, tmp_path):
+    """B1 reproduction: a hand-edited `grade/gen/approved-list.json` naming an
+    out-of-root, gate-failed, never-ruled PNG must never reach `deliverable/` --
+    every row is re-verified through `validate_approved_gen_still` before its bytes
+    are copied."""
+    gen_out, detail_out = _build_approved_gen_and_detail(command, tmp_path)
+
+    evil_dir = tmp_path / "outside-plan-root"
+    evil_dir.mkdir()
+    evil_image = evil_dir / "evil.png"
+    Image.new("RGB", (8, 8)).save(evil_image)
+
+    approved_path = gen_out / "grade" / "gen" / "approved-list.json"
+    approved = load_json(approved_path)
+    approved["images"].append({"image_id": "evil-1", "path": str(evil_image)})
+    approved_path.write_text(json.dumps(approved), encoding="utf-8")
+
+    primary_root = tmp_path
+    with pytest.raises(command.FigmentTrainError, match="approved gen list is not the current kept review set"):
+        command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+
+    assert not (primary_root / "deliverable").exists()
+
+
+def test_deliverable_happy_path_binds_manifest_to_validated_bytes(command, tmp_path):
+    gen_out, detail_out = _build_approved_gen_and_detail(command, tmp_path)
+    primary_root = tmp_path
+
+    manifest = command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+    assert manifest["schema"] == "figment/deliverable@1"
+    gen_kept = load_json(gen_out / "grade" / "gen" / "approved-list.json")["images"]
+    detail_kept = load_json(detail_out / "grade" / "detail" / "approved-list.json")["images"]
+    assert len(manifest["stills"]) == len(gen_kept)
+    assert len(manifest["detail"]) == len(detail_kept)
+    for row in manifest["stills"]:
+        destination = primary_root / row["path"]
+        assert destination.is_file()
+        assert command._sha256(destination) == row["sha256"]
+
+    # m6: a re-ruling (same kept image, tampered destination bytes) is re-copied
+    # rather than left stale -- delete the cached manifest to force a rebuild.
+    (primary_root / "deliverable" / "manifest.json").unlink()
+    stale_still = primary_root / manifest["stills"][0]["path"]
+    stale_still.write_bytes(b"stale bytes that do not match the validated source")
+    rebuilt = command._build_deliverable("creator-002", primary_root, gen_out, detail_out)
+    assert command._sha256(stale_still) == rebuilt["stills"][0]["sha256"]
+    assert stale_still.read_bytes() != b"stale bytes that do not match the validated source"
+
+
 def test_pipeline_requires_exactly_one_of_plan_or_out(command, tmp_path):
     with pytest.raises(command.FigmentTrainError, match="exactly one of --plan or --out"):
         command.command_pipeline("creator-002")
