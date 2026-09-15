@@ -398,6 +398,11 @@ side mode, so this open surface is exercised by default, not opt-in — read GUA
   $2.28, tester $2.82 (F5: `max_minutes` raised 115 -> 130 to cover the 12-job ladder a
   3000-step/save_every-250 checkpoint schedule now tests), gen $3.58; dataset shard
   $2.71/pod, ~$8.13 for 3 shards, dependency smoke $1.41 (`expand/TENSOR-REPLICATION.md`).
+  `training.dataset_source: "klein-multiref"` (P2, MANDATE.md stage 2) plans the
+  `dataset` stage as 2 shards (face, body; `pins.pod_classes.l40s.stages.dataset_multiref`)
+  instead: **$2.3833/shard, $4.7667 total** — see `train/TENSOR-TRAINING.md`'s P2 section
+  for the per-cell time estimate and its source. The default `"qwen-edit"` (unchanged)
+  keeps the 3-shard-plus-fullbody shape and ceilings above.
   Bake-off ablation $2.65, Path-B diagnostic $3.70 (STATE.md 2026-09-06). **train is not a
   fixed number** — `_apply_train_budget` derives the ceiling from steps x the per-step rate
   (plus `runpod_run.minimum_runtime_minutes`'s floor), so it moves with the plan's own
@@ -543,3 +548,8 @@ defects below for where these two sources disagree past 09-04.
   `_grading_images` branch choosing which cells the board shows.
 - **Swap a model pin.** Edit `train/tensor-pins.yaml`; `verify_pins.py --stage <name>` checks it
   live before you spend a plan run on a stale digest.
+- **Change the dataset stage's source.** Set `training.dataset_source: "klein-multiref"`
+  (default `"qwen-edit"`, unchanged) in a persona's `training.yaml`/inline `training` block —
+  `build_plan --stage dataset` then plans `_dataset_manifests_klein_multiref` (2 shards, klein
+  4B Base + `ReferenceLatent` x3) instead of the qwen-edit two-stage replica. No code change;
+  `train/TENSOR-TRAINING.md`'s P2 section has the full settings table.

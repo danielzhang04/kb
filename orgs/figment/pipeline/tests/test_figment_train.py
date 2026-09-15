@@ -224,6 +224,7 @@ def _synthetic_persona(
     anchor_names: tuple = ("a01.jpg", "a02.jpg", "a03.jpg"),
     exemplars: list = ("a02", "a03"),
     look: dict | None = None,
+    dataset_source: str = "qwen-edit",
 ) -> Path:
     source = load_json(PERSONAS / "creator-001" / "persona.yaml")
     target = personas_root / creator_id
@@ -263,10 +264,181 @@ def _synthetic_persona(
         # the live pipeline instead of falling back to DEFAULT_TRAINING's generic
         # "person" (training_config.py).
         "dop_class": "woman",
+        "dataset_source": dataset_source,
     }
     path = target / "persona.yaml"
     path.write_text(json.dumps(source, indent=2) + "\n", encoding="utf-8")
     return path
+
+
+# ---------------------------------------------------------------------------
+# P2 (MANDATE.md stage 2): klein 3-ref dataset source
+# ---------------------------------------------------------------------------
+
+
+def test_klein_multiref_cells_are_15_face_plus_15_body_with_deterministic_seeds(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert len(face_cells) == 15
+    assert len(body_cells) == 15
+
+    # Deterministic: rebuilding from the same persona yields byte-identical cells.
+    face_again, body_again = command._klein_multiref_cells(persona)
+    assert face_cells == face_again
+    assert body_cells == body_again
+
+    all_seeds = [cell["seed"] for cell in face_cells + body_cells]
+    assert len(set(all_seeds)) == 30, "every cell must carry a unique seed"
+    for cell in face_cells:
+        assert cell["distance"] == "close"
+    for cell in body_cells:
+        assert cell["distance"] == "half"
+        assert "wardrobe_family" in cell
+
+
+def test_dataset_manifests_klein_multiref_binds_three_references_and_pins(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+    training = command._training_config_module().validate_training(
+        {"dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+
+    manifests = command._dataset_manifests_klein_multiref(persona, training, pins)
+    assert len(manifests) == 2
+
+    total_jobs = sum(len(manifest["jobs"]) for manifest in manifests)
+    assert total_jobs == 30
+
+    for manifest in manifests:
+        assert manifest["models"] == pins["pins"]["dataset_multiref"]["models"]
+        assert manifest["custom_nodes"] == pins["pins"]["dataset_multiref"]["custom_nodes"]
+        for node_id, name in zip(("6", "7", "8"), ("a01.jpg", "a02.jpg", "a03.jpg")):
+            assert manifest["workflow"][node_id]["inputs"]["image"] == f"creator-002/{name}"
+        assert manifest["seed_fields"] == ["noise_seed"]
+
+    # Ceiling: sum of both shards must clear the brief's $5.00 dataset-source cap.
+    total_ceiling = sum(float(command.manifest_ceiling(manifest)) for manifest in manifests)
+    assert total_ceiling <= 5.00, total_ceiling
+
+    # Seeds carried through to the job dicts, matching _klein_multiref_cells exactly.
+    seeds = {job["seed"] for manifest in manifests for job in manifest["jobs"]}
+    assert len(seeds) == 30
+
+
+def test_dataset_manifests_klein_multiref_requires_exactly_three_references(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(
+        personas_root, dataset_source="klein-multiref",
+        anchor_names=("a01.jpg", "a02.jpg"), exemplars=["a02"],
+    )
+    persona = command._training_config_module().load_persona_with_training(personas_root / "creator-002" / "persona.yaml")
+    training = command._training_config_module().validate_training(
+        {"dataset_source": "klein-multiref"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    with pytest.raises(command.FigmentTrainError, match="3"):
+        command._dataset_manifests_klein_multiref(persona, training, pins)
+
+
+def test_build_plan_dataset_stage_klein_multiref_dry_runs_clean(command, tmp_path):
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    out = tmp_path / "klein-multiref-plan"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    assert plan["training"]["dataset_source"] == "klein-multiref"
+    runs = plan["stages"]["dataset"]["runs"]
+    assert len(runs) == 2
+
+    for index, run in enumerate(runs):
+        generated = plan_path(out, run)
+        result = subprocess.run(
+            [
+                sys.executable, str(POD_RUNNER), "run",
+                "--manifest", str(generated),
+                "--out", str(tmp_path / "dry-runs" / str(index)),
+                "--dry-run",
+            ],
+            cwd=ROOT, text=True, capture_output=True,
+        )
+        assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_build_plan_dataset_stage_qwen_edit_default_still_produces_four_manifests(command, tmp_path):
+    """Regression: the existing qwen-edit path (default dataset_source) must stay
+    exactly as it was before this key existed -- 3 half/close shards + 1 fullbody
+    manifest, never touched by the new klein-multiref branch."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    out = tmp_path / "qwen-edit-plan"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    assert plan["training"]["dataset_source"] == "qwen-edit"
+    assert len(plan["stages"]["dataset"]["runs"]) == 4
+
+
+def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_path):
+    """The existing dataset grade path must consume klein-multiref cells unchanged --
+    same gate.json schema, same rulings-template shape, as the qwen-edit path."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    out = tmp_path / "klein-multiref-grade-plan"
+    command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+    )
+    plan_file = out / "plan.json"
+    plan = load_json(plan_file)
+
+    for run in plan["stages"]["dataset"]["runs"]:
+        manifest = load_json(plan_path(out, run))
+        run_out = out / run["out"]
+        run_out.mkdir(parents=True)
+        for job in manifest["jobs"]:
+            (run_out / f"{job['output_name']}.png").write_bytes(PNG_1X1)
+
+    grade = command.build_grade("creator-002", "dataset", plan_file)
+    gate = load_json(Path(grade["gate"]))
+    template = load_json(Path(grade["rulings_template"]))
+    assert len(template["rulings"]) == 30
+    assert gate["schema"] == "figment/gate@1"
+    assert gate["summary"]["total"] == 30
+    for row in gate["rows"]:
+        assert "image_id" in row and "pass" in row
+
+
+def test_qwen3vl_caption_prompt_and_settings_match_module_11(command):
+    """Confirm (per the brief) that the caption pod prompt equals module 11's
+    tool-default caption prompt (r15b-training.md) and settings float8/512/128 --
+    both already matched before this task; this pins that fact as a regression test."""
+    build_set = command._build_set_module()
+    assert build_set.QWEN3VL_CAPTION_SETTINGS == {
+        "dtype": "float8", "max_resolution": 512, "max_new_tokens": 128,
+    }
+    assert build_set.QWEN3VL_CAPTION_MODEL_ID == "Qwen/Qwen3-VL-8B-Instruct"
+
+    template_path = PIPELINE / "train" / "runs" / "start-qwen3vl-caption.sh.template"
+    text = template_path.read_text(encoding="utf-8")
+    expected = (
+        "Caption this image as if you were going to try to generate it with an image "
+        "generator. Be thorough. Do not say things like 'It appears that' or 'possibly'. "
+        "Start out with things like 'A person on the beach'. No preamble."
+    )
+    assert expected in text.replace("\n", " ").replace('    "', " ").replace('    ', ' ') \
+        or all(
+            fragment in text for fragment in (
+                "Caption this image as if you were going to try to generate it",
+                "Do not say things like 'It appears that' or 'possibly'",
+                "Start out with things like 'A person on the beach'",
+                "No preamble.",
+            )
+        )
 
 
 def test_generalized_prompts_note_derives_from_actual_reference_names_not_g01_g07(

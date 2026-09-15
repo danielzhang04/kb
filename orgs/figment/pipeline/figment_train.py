@@ -37,6 +37,11 @@ PINS_PATH = TRAIN_DIR / "tensor-pins.yaml"
 PROMPTS_PATH = EXPAND_DIR / "templates" / "tensor-dataset-prompts.yaml"
 WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_v2_api.json"
 FULLBODY_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "tensor_dataset_fullbody_api.json"
+# P2 (MANDATE.md stage 2): klein 3-ref generation dataset source -- the bake-off m1
+# winner's own verified graph (ReferenceLatent x3, CFGGuider cfg 4, Flux2Scheduler 50
+# steps, 1024x1280), reused as-is (see TENSOR-TRAINING.md's P2 section).
+KLEIN_MULTIREF_WORKFLOW_PATH = TRAIN_DIR / "workflows" / "klein4b_multiref_api.json"
+BUILD_EXPANSION_SET_MODULE = EXPAND_DIR / "build_expansion_set.py"
 ANCHOR_PROMPTS_PATH = EXPAND_DIR / "templates" / "anchor-prompts.yaml"
 ANCHOR_WORKFLOW_PATH = EXPAND_DIR / "workflows" / "zimage_passport_api.json"
 GEN_PROMPTS_PATH = EXPAND_DIR / "templates" / "gen-prompts.yaml"
@@ -202,6 +207,13 @@ def _persona_module():
     return _load_module("_figment_train_persona", PERSONA_MODULE)
 
 
+def _build_expansion_set_module():
+    """P2: the one, already-reviewed home for `_rebind_workflow` (nodes 6/7/8 ->
+    persona.identity.references) -- klein-multiref reuses it exactly rather than
+    writing a second rebind implementation."""
+    return _load_module("_figment_train_build_expansion_set", BUILD_EXPANSION_SET_MODULE)
+
+
 def _pod_runner_module():
     return _load_module("_figment_train_pod_runpod_run", POD_RUNNER)
 
@@ -273,10 +285,18 @@ def _verify_pins_preflight(
     profile (`verify_pins._stage_models` already recognizes that shape, precedent
     `skin_loras`) whenever `training["style_lora"]` names one -- caller resolves that
     key (the plan-time `--style-lora` override, or a persona default, or -- for
-    `detail` -- the upstream gen plan's own choice) into `training` before calling."""
+    `detail` -- the upstream gen plan's own choice) into `training` before calling.
+
+    P2: `dataset` swaps its `"dataset"` profile for `"dataset_multiref"` when
+    `training["dataset_source"] == "klein-multiref"` -- the two pin profiles carry
+    different models (klein-base-4b vs. the qwen-edit + klein-4b-edit chain), so
+    verifying the wrong one would silently pass while the plan itself pulls the other."""
     profiles: list[str] = []
     for stage in selected_stages:
         for profile in STAGE_PIN_PROFILES.get(stage, ()):
+            if (stage == "dataset" and profile == "dataset"
+                    and training and training.get("dataset_source") == "klein-multiref"):
+                profile = "dataset_multiref"
             if profile not in profiles:
                 profiles.append(profile)
         if (stage in ("gen", "detail") and training and training.get("style_lora")
@@ -934,6 +954,183 @@ def _dataset_manifests(
         "jobs": full_jobs,
     })
     return manifests
+
+
+# P2 (MANDATE.md stage 2): klein 3-ref generation dataset source. Deterministic base
+# seed, distinct from every other hardcoded seed already in this file (anchor
+# 148+i, edit 1098688918602660/241731167782064/269789944143426, tester/gen 100001,
+# build_expansion_set.py's own SEED_BASE=520001).
+KLEIN_MULTIREF_SEED_BASE = 610001
+# First N of persona.grammar's own lists (module 10's own 15+15 cell counts, derived
+# from the same grammar `build_expansion_set.generate_allocation` already reads
+# rather than a second hand-authored 15-row prompt list -- see TENSOR-TRAINING.md's
+# P2 settings table, "prompt template shape" row, for the documented trade-off).
+KLEIN_MULTIREF_FACE_LIGHTS = 3
+KLEIN_MULTIREF_BODY_ANGLES = 3
+
+_KLEIN_MULTIREF_ANGLE_PHRASES = {
+    "front": "a straight-on frontal view of her face",
+    "three-quarter-l": "a three-quarter view of her face turned to her own left",
+    "three-quarter-r": "a three-quarter view of her face turned to her own right",
+    "profile-l": "a full left profile view of her face",
+    "near-back": "a near-back view, mostly turned away with only the edge of her face visible",
+}
+_KLEIN_MULTIREF_LIGHT_PHRASES = {
+    "flat-white": "even flat white studio light",
+    "window-day": "soft daylight through one window",
+    "lamp-night": "a single lamp at night, one side of the face falling into shadow",
+    "on-camera-flash": "a direct on-camera phone flash at night",
+}
+_KLEIN_MULTIREF_WARDROBE_PHRASES = {
+    "corset-bustier": "a fully opaque corset-style bustier top, fabric unbroken and fully covering",
+    "cami-chains": (
+        "a fully opaque camisole top layered with thin silver chain necklaces, "
+        "fabric unbroken and fully covering"
+    ),
+    "oversized-tee": "a fully opaque oversized t-shirt, fabric unbroken and fully covering",
+    "knit-cardigan": (
+        "a fully opaque buttoned knit cardigan over a plain top, fabric unbroken and fully covering"
+    ),
+    "going-out-mini": (
+        "a fully opaque long-sleeved going-out mini dress, fabric unbroken and fully covering"
+    ),
+}
+
+
+def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
+    """Derive the 15 face-angle + 15 body-pose cells for the klein-multiref dataset
+    source -- module 10's own fixed 15+15 cell counts (r15b-training.md), composed
+    from `persona["grammar"]` (the SAME grammar `build_expansion_set.generate_allocation`
+    already reads for expansion-02/03) instead of a second hand-authored 15-row prompt
+    template. Deterministic: the same persona always yields the same 30 cells, in a
+    fixed face-then-body order, each carrying a base-seed-plus-ordinal seed (module 10
+    fixes seed per cell)."""
+    grammar = persona["grammar"]
+    angles = list(grammar["angles"])
+    lights = list(grammar["lights"])
+    wardrobe_families = list(grammar["wardrobe_families"])
+    if len(angles) < KLEIN_MULTIREF_BODY_ANGLES or len(lights) < KLEIN_MULTIREF_FACE_LIGHTS:
+        raise FigmentTrainError(
+            "persona.grammar needs at least "
+            f"{KLEIN_MULTIREF_BODY_ANGLES} angles and {KLEIN_MULTIREF_FACE_LIGHTS} lights "
+            "for the klein-multiref dataset source"
+        )
+    face_lights = lights[:KLEIN_MULTIREF_FACE_LIGHTS]
+    body_angles = angles[:KLEIN_MULTIREF_BODY_ANGLES]
+
+    ordinal = 0
+    face_cells: list[dict[str, Any]] = []
+    for angle in angles:
+        for light in face_lights:
+            ordinal += 1
+            face_cells.append({
+                "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
+                "angle": angle, "distance": "close", "light": light,
+                "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+            })
+    body_cells: list[dict[str, Any]] = []
+    for angle in body_angles:
+        for wardrobe_family in wardrobe_families:
+            ordinal += 1
+            body_cells.append({
+                "cell_id": f"mr-b{len(body_cells) + 1:02d}", "ordinal": ordinal,
+                "angle": angle, "distance": "half", "wardrobe_family": wardrobe_family,
+                "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+            })
+    if len(face_cells) != 15 or len(body_cells) != 15:
+        raise FigmentTrainError(
+            "expected 15 face + 15 body klein-multiref cells, got "
+            f"{len(face_cells)} + {len(body_cells)}"
+        )
+    return face_cells, body_cells
+
+
+def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
+    angle = _KLEIN_MULTIREF_ANGLE_PHRASES[cell["angle"]]
+    light = _KLEIN_MULTIREF_LIGHT_PHRASES[cell["light"]]
+    return (
+        f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
+        f"{angle}, framed close from the chest up, {light}, plain white wall background. "
+        "Keep her identity, face shape, and features exactly as shown in the "
+        "reference images; do not alter, blend, or invent any facial feature."
+    )
+
+
+def _klein_multiref_body_prompt(clause: str, cell: dict[str, Any]) -> str:
+    angle = _KLEIN_MULTIREF_ANGLE_PHRASES[cell["angle"]]
+    wardrobe = _KLEIN_MULTIREF_WARDROBE_PHRASES[cell["wardrobe_family"]]
+    return (
+        f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
+        f"{angle}, framed half-body from the waist up, wearing {wardrobe}, "
+        "plain white wall background. Keep her identity, face shape, and features "
+        "exactly as shown in the reference images; do not alter, blend, or invent "
+        "any facial feature."
+    )
+
+
+def _dataset_manifests_klein_multiref(
+    persona: dict, training: dict, pins: dict,
+) -> list[dict[str, Any]]:
+    """Klein 3-ref generation dataset source (MANDATE.md stage 2 / P2): FLUX.2 klein 4B
+    Base, `ReferenceLatent` x3 off `persona.identity.references` -- the bake-off m1
+    winner (facenet 0.87-0.93, `pipeline/README.md` "Live-proven runs" 09-07) --
+    producing 30 clothed cells (15 face-angle + 15 body-pose) at fixed deterministic
+    seeds. Reuses `build_expansion_set._rebind_workflow` (never a second rebind) and
+    the SAME dataset gate path every other dataset source feeds (`_grading_images`
+    iterates `plan["stages"]["dataset"]["runs"]` generically). Two manifests (face,
+    body shards) so each pod's readiness overhead (klein-base-4b + qwen_3_4b download)
+    is paid once per shard, not once per cell -- see TENSOR-TRAINING.md's P2 section
+    for the per-cell time estimate, its source, and the resulting dataset ceiling."""
+    expansion = _build_expansion_set_module()
+    try:
+        workflow = expansion._rebind_workflow(KLEIN_MULTIREF_WORKFLOW_PATH, persona)
+    except expansion.ExpansionBuildError as exc:
+        raise FigmentTrainError(f"cannot rebind klein-multiref workflow: {exc}") from exc
+
+    face_cells, body_cells = _klein_multiref_cells(persona)
+    short = _creator_output_code(persona["id"])
+    clause = _compose_look_clause(persona["identity"]["look"])
+
+    def _job(cell: dict[str, Any], prompt: str) -> dict[str, Any]:
+        return {
+            "seed": cell["seed"],
+            "output_name": f"{short}-tds-{cell['cell_id']}",
+            "expected_images": 1,
+            "substitutions": [{"node_id": "4", "field": "text", "value": prompt}],
+        }
+
+    references = [Path(value).name for value in persona["identity"]["references"]]
+    upload = {
+        "files": [f"_uploads/{persona['id']}/{name}" for name in references],
+        "subfolder": persona["id"],
+        "type": "input",
+        "overwrite": True,
+    }
+
+    def _shard(label: str, cells: list[dict[str, Any]], jobs: list[dict[str, Any]]) -> dict[str, Any]:
+        return {
+            "_replicates": (
+                "orgs/figment/research/10sorlabs-package/10_dataset_generator_v2/"
+                "10sorlabs_dataset_generator_v2.json (module 10's 15+15 cell counts); "
+                "conditioning graph is train/workflows/klein4b_multiref_api.json, the "
+                "bake-off m1 winner (r24/r25). See train/TENSOR-TRAINING.md's P2 section."
+            ),
+            "_shard": label,
+            **_pod_base(pins, training["pod_class"], "dataset_multiref"),
+            "models": deepcopy(pins["pins"]["dataset_multiref"]["models"]),
+            "custom_nodes": deepcopy(pins["pins"]["dataset_multiref"]["custom_nodes"]),
+            "workflow": deepcopy(workflow),
+            "seed_fields": ["noise_seed"],
+            "uploads": [dict(upload)],
+            "jobs": jobs,
+        }
+
+    face_jobs = [_job(cell, _klein_multiref_face_prompt(clause, cell)) for cell in face_cells]
+    body_jobs = [_job(cell, _klein_multiref_body_prompt(clause, cell)) for cell in body_cells]
+    return [
+        _shard("15 face-angle cells (framing: close)", face_cells, face_jobs),
+        _shard("15 body-pose cells (framing: half, clothed register)", body_cells, body_jobs),
+    ]
 
 
 def _fullbody_dataset_workflow(dataset_workflow: dict[str, Any]) -> dict[str, Any]:
@@ -2628,11 +2825,20 @@ def build_plan(
                 for arm in ("passport", "edit")
             ]
         elif current == "dataset":
-            manifests = _dataset_manifests(persona, training, pins, prompts)
-            paths = [
-                out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
-                for n in range(1, 4)
-            ] + [out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml"]
+            if training.get("dataset_source") == "klein-multiref":
+                # P2: a second dataset-stage source (MANDATE.md stage 2) -- 2 shards
+                # (face, body), never the qwen-edit 3-shard-plus-fullbody shape below.
+                manifests = _dataset_manifests_klein_multiref(persona, training, pins)
+                paths = [
+                    out / "expand" / "runs" / f"{creator_id}-tensor-dataset-multiref-{label}.yaml"
+                    for label in ("face", "body")
+                ]
+            else:
+                manifests = _dataset_manifests(persona, training, pins, prompts)
+                paths = [
+                    out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
+                    for n in range(1, 4)
+                ] + [out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml"]
         elif current == "smoke":
             manifests = [_train_manifest(persona, training, pins, smoke=True)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train-smoke.yaml"]
