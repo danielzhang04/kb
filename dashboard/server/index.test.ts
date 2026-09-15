@@ -549,6 +549,8 @@ describe('server', () => {
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
   it.each([
     '/api/schedules', '/api/schedules/example/arm', '/api/control/human-requests/example/respond/challenge',
+    // F3: the iteration-gate T3 mint sits on the same guarded scope as the human-response one.
+    '/api/control/iteration-gates/example/challenge',
   ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });

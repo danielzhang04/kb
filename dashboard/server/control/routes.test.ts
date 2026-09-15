@@ -34,6 +34,20 @@ import { normalizedTextSha256 } from './textArtifactHash.ts';
 import { advertiseSelfOnce } from '../placement/selfAdvertise.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
+/**
+ * F3 — the WebAuthn SIGNATURE check is the only part of a ceremony a Fastify `inject` cannot produce, so
+ * it is the only call stubbed here; every other export passes through untouched. Mint, purpose binding,
+ * the single-use `consumeChallenge`, expiry and origin all run REAL against the shipped modules, which is
+ * where this fix's security actually lives.
+ */
+vi.mock('../auth/webauthn.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../auth/webauthn.ts')>();
+  return { ...actual, verifyAssertion: async () => ({ verified: true }) };
+});
+
+/** One provisioned passkey, so the iteration-gate ceremony is REACHABLE in this suite. */
+const ITERATION_CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
+
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
 
@@ -259,7 +273,8 @@ describe('control proposal routes', () => {
       stateRoot,
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
-      credentials: () => [],
+      webAuthnConfig: () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN }),
+      credentials: () => [ITERATION_CRED],
       composerStore,
       controlStore,
       appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
@@ -747,6 +762,20 @@ describe('control proposal routes', () => {
     return { runRef: created.value.run.runRef, gate, loop, receipt: detail.value.iterationReceipts[0]! };
   }
 
+  /**
+   * F3 — mint the iteration-gate T3 challenge and return the wire fields a resolve must carry. The
+   * server derives the whole signed tuple from the store record; the caller chooses only the decision.
+   */
+  async function signIterationGate(requestRef: string, decision: string) {
+    const minted = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/challenge`,
+      headers: headers(token), payload: { decision },
+    });
+    if (minted.statusCode !== 200) throw new Error(`challenge refused: ${minted.statusCode} ${minted.body}`);
+    const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
+    return { ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt };
+  }
+
   it('imports only a completed visible assistant proposal and returns a hash-bound diff', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
@@ -839,7 +868,8 @@ describe('control proposal routes', () => {
       expect(response.json()).toMatchObject({ error: 'iteration-gate-cas-mismatch' });
     }
     const approved = await app.inject({
-      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token), payload: exact,
+      method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
+      payload: { ...exact, ...await signIterationGate(request.requestRef, 'approved') },
     });
     expect(approved.statusCode, approved.body).toBe(200);
     expect(approved.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed', acceptedGenerationRefs: loop.activeGenerationRefs } },
@@ -859,6 +889,7 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: receipt?.version ?? null,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', idempotencyKey: 'decline-exhausted',
+        ...await signIterationGate(request.requestRef, 'declined'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -896,6 +927,7 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'parked',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-explicit-park',
+        ...await signIterationGate(request.requestRef, 'approved'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -918,6 +950,7 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', idempotencyKey: 'completion-still-intervenes',
+        ...await signIterationGate(request.requestRef, 'changes-requested'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -938,6 +971,7 @@ describe('control proposal routes', () => {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-generic-completion-route',
+        ...await signIterationGate(gate.requestRef, 'approved'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -959,6 +993,7 @@ describe('control proposal routes', () => {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', idempotencyKey: 'reject-generic-completion-route',
+        ...await signIterationGate(gate.requestRef, 'rejected'),
       },
     });
     expect(rejected.statusCode, rejected.body).toBe(200);
@@ -978,6 +1013,118 @@ describe('control proposal routes', () => {
       })]),
     } });
     expect(after.ok && after.value.humanRequests.filter((request) => request.state === 'open')).toEqual([]);
+  });
+
+  /**
+   * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so it takes a passkey assertion bound to the
+   * exact tuple the CAS just checked. Before this fix the route carried a `riskTier: 'T3'` audit row with
+   * T2-strength authorization, and the generic route reserves these gates to it (`iteration-gate-reserved`),
+   * so EVERY iteration completion/park gate was resolvable with a session bearer and no assertion at all.
+   */
+  describe('iteration-gate T3 ceremony', () => {
+    const parkPayload = (
+      request: { requestRef: string; revision: number },
+      loop: { version: number; activeGenerationRefs: readonly string[] },
+      decision: string,
+      key: string,
+    ) => ({
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, idempotencyKey: key,
+    });
+    const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
+    });
+    const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
+
+    it('refuses an unsigned resolve, mutates nothing, and writes NO T3 audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('refuses an expired challenge with ceremony-expired and no audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const signed = await signIterationGate(request.requestRef, 'approved');
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'expired-park'),
+        ...signed, challengeExpiresAt: '2020-01-01T00:00:00.000Z',
+      });
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'ceremony-expired' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('verifies once and refuses the replayed ceremonyId, writing exactly one T3 audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const signed = await signIterationGate(request.requestRef, 'approved');
+      const payload = { ...parkPayload(request, loop, 'approved', 'replayed-park'), ...signed };
+      const first = await resolveGate(request.requestRef, payload);
+      expect(first.statusCode, first.body).toBe(200);
+      const second = await resolveGate(request.requestRef, payload);
+      expect(second.statusCode, second.body).toBe(403);
+      expect(second.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
+    });
+
+    it('refuses an assertion minted for generation set A replayed against set B — 403, never a 409', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      loop.activeGenerationRefs = ['generation-set-a-1', 'generation-set-a-2'];
+      const signed = await signIterationGate(request.requestRef, 'approved');
+      loop.activeGenerationRefs = ['generation-set-b-1', 'generation-set-b-2'];
+      // The CAS passes: the caller binds the CURRENT set. Only the signature still covers set A.
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'cross-set-park'), ...signed,
+      });
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('resolves on a signed decision and records the T3 row over the signed tuple', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'signed-park'),
+        ...await signIterationGate(request.requestRef, 'approved'),
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({
+        riskTier: 'T3', result: 'authorized:approved',
+        detail: expect.objectContaining({
+          requestRef: request.requestRef, gateKind: 'iteration-park', parkReason: 'no-progress',
+          loopVersion: loop.version, generationRefs: [...loop.activeGenerationRefs], decision: 'approved',
+        }),
+      });
+    });
+
+    it('mints only for the decision vocabulary the gate kind admits', async () => {
+      const { request } = mockIterationGate('no-progress');
+      const minted = await app.inject({
+        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
+        headers: headers(token), payload: { decision: 'changes-requested' },
+      });
+      expect(minted.statusCode, minted.body).toBe(400);
+      expect(minted.json()).toMatchObject({ error: 'invalid-iteration-park-decision' });
+    });
+
+    it('refuses to mint for a foreign origin', async () => {
+      const { request } = mockIterationGate('no-progress');
+      const minted = await app.inject({
+        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
+        headers: { ...headers(token), origin: 'http://evil.localhost:5317' }, payload: { decision: 'approved' },
+      });
+      expect(minted.statusCode, minted.body).toBe(403);
+    });
   });
 
   it('does not let the generic intervention endpoint bypass the iteration gate contract', async () => {

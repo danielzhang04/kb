@@ -1787,6 +1787,46 @@ export function resolveIterationGate(
   ).then((body) => body.value);
 }
 
+/** The T3 challenge for one iteration gate: the server derives the whole signed tuple from the store. */
+export function requestIterationGateChallenge(
+  requestRef: string,
+  input: { decision: ResolveIterationGateDto['decision'] },
+  token: string,
+  fetchImpl?: FetchLike,
+): Promise<HumanResponseChallengeDto> {
+  return write<HumanResponseChallengeDto>(
+    `/api/control/iteration-gates/${segment(requestRef)}/challenge`, input, token, fetchImpl,
+  );
+}
+
+/**
+ * F3 — an iteration gate is T3: resolve it with a passkey assertion over the exact displayed gate,
+ * park reason, loop/receipt versions and ordered generation set, exactly as a T3 human response is
+ * signed. The ceremony is the SAME one (`performAssertion` over server-issued options); only the
+ * purpose differs. Without it the server refuses 403 `ceremony-*` and writes no audit row.
+ */
+export async function resolveIterationGateWithCeremony(
+  requestRef: string,
+  input: ResolveIterationGateDto,
+  token: string,
+  fetchImpl?: FetchLike,
+  perform: (options: PublicKeyCredentialRequestOptionsJSON) => Promise<AuthenticationResponseJSON> = performAssertion,
+): Promise<IterationGateResultDto> {
+  const challenge = await requestIterationGateChallenge(requestRef, { decision: input.decision }, token, fetchImpl);
+  const assertion = await perform(challenge.options);
+  return write<{ ok: true; value: IterationGateResultDto }>(
+    `/api/control/iteration-gates/${segment(requestRef)}/resolve`,
+    {
+      ...input,
+      ceremonyId: challenge.ceremonyId,
+      assertion,
+      challengeExpiresAt: challenge.challengeExpiresAt,
+    },
+    token,
+    fetchImpl,
+  ).then((body) => body.value);
+}
+
 export async function getRetentionInventory(token: string, fetchImpl?: FetchLike): Promise<StorageInventoryDto> {
   const body = await read<{ inventory: StorageInventoryDto }>('/api/control/retention/inventory', token, fetchImpl);
   return body.inventory;
