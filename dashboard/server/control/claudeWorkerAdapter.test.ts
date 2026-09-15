@@ -553,3 +553,30 @@ describe('buildWorkerPrompt curated context', () => {
     expect(prompt.includes(huge)).toBe(false);
   });
 });
+
+/**
+ * F2 (item 3b): a dependent stage's predecessor canonical summaries are resolved server-side
+ * (`execution.ts` `resolveDependencyResultSummaries`) and must render exactly like every other
+ * inert-boundary datum — inside INERT_CONTEXT_BOUNDARY, before END_INERT_CONTEXT, under a
+ * `DEPENDENCY RESULTS:` header, never as authority. This is the render half; the producer half
+ * (execution.ts actually populating `dependencyResults`) is covered in execution.test.ts.
+ */
+describe('buildWorkerPrompt dependency results', () => {
+  it('renders a predecessor canonical summary under DEPENDENCY RESULTS inside the inert boundary', () => {
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Write the report.', readScope: ['dashboard'], writeScope: [],
+      dependencyResults: [{ from: 'research-a', summary: 'Found three comparable vendors, priced $10-40k/yr.' }],
+    });
+    const boundaryIndex = prompt.indexOf(INERT_CONTEXT_BOUNDARY);
+    const endIndex = prompt.indexOf(END_INERT_CONTEXT);
+    const headerIndex = prompt.indexOf('DEPENDENCY RESULTS:');
+    const summaryIndex = prompt.indexOf('Found three comparable vendors, priced $10-40k/yr.');
+    expect(boundaryIndex).toBeGreaterThanOrEqual(0);
+    expect(endIndex).toBeGreaterThan(boundaryIndex);
+    expect(headerIndex).toBeGreaterThan(boundaryIndex);
+    expect(headerIndex).toBeLessThan(endIndex);
+    expect(summaryIndex).toBeGreaterThan(headerIndex);
+    expect(summaryIndex).toBeLessThan(endIndex);
+    expect(prompt).toContain('### research-a');
+  });
+});

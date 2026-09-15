@@ -363,6 +363,7 @@ function prepareAttempt(
     readScope: input.readScope,
     writeScope: input.writeScope,
     curatedContext: input.curatedContext,
+    dependencyResults: input.dependencyResults,
     ...(input.profile.runtime === 'codex' && !resumeRef && input.instructionMarkdown !== undefined
       ? { agentDeclarationMarkdown: input.instructionMarkdown } : {}),
     ...(input.iterationContract

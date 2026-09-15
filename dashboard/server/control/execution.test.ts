@@ -2050,6 +2050,53 @@ describe('AutomaticExecutionEngine', () => {
     expect(detail.ok && detail.value.sessions.every((item) => ['completed', 'failed', 'stopped', 'interrupted'].includes(item.state))).toBe(true);
   });
 
+  /**
+   * F2 (item 3b) — red on revert: before this fix, `dependencyResultOperationKeys` was computed only to
+   * resolve the dependent's git base commit; nothing ever read the predecessor's CANONICAL summary text
+   * into the dependent's `workers.begin` call, so a dependent got its predecessor's files but was never
+   * told what they concluded. `verify` depends on `compile`; once `compile`'s canonical result is
+   * integrated, `verify`'s worker.begin input must carry it as `dependencyResults`, which
+   * `claudeWorkerAdapter.ts` renders under `DEPENDENCY RESULTS:` inside the inert boundary.
+   */
+  it('populates dependencyResults for a dependent stage from its predecessor canonical summary', async () => {
+    const store = createStore();
+    const plan = proposal([stage('compile'), stage('verify', ['compile'])]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const seenDependencyResults: unknown[] = [];
+    fake.workers = {
+      async execute(input) {
+        const id = input.action.split(':')[1];
+        if (id === 'verify') seenDependencyResults.push(input.dependencyResults);
+        fake.executionOrder.push(id);
+        return {
+          state: 'succeeded', summary: `${id} passed`, usage: { inputTokens: 2, outputTokens: 1, costUsdMicros: 3 },
+          artifacts: [{ path: `dashboard/server/${id}.txt`, digest: 'b'.repeat(64) }], checkpoints: [`${id}-checked`],
+        };
+      },
+    };
+    const resultsByKey = new Map<string, Awaited<ReturnType<ResultIntegrator['lookup']>>>();
+    fake.results = {
+      async lookup(value) { return resultsByKey.get(value.operationKey) ?? null; },
+      async resolveBase() { return 'd'.repeat(40); },
+      async integrate(value) {
+        fake.integrationOrder.push(value.stageId);
+        resultsByKey.set(value.operationKey, {
+          summary: value.summary, artifacts: [...value.artifacts], changed: [...value.changed],
+          checkpoints: [...value.checkpoints], resultHash: value.resultHash,
+          durability: 'inactive' as const, attemptBaseCommit: null, integrationCommit: null,
+        });
+        return { status: 'integrated' as const, resultHash: value.resultHash, durability: 'inactive' as const };
+      },
+    };
+    const engine = new AutomaticExecutionEngine(engineOptions(store, fake));
+
+    const outcome = await engine.runToBoundary({ subject: 'operator', runRef: run.runRef, proposal: plan });
+
+    expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['compile', 'verify'] });
+    expect(seenDependencyResults).toEqual([[{ from: 'compile', summary: 'compile passed' }]]);
+  });
+
   // ---------------------------------------------------------------------------------------------
   // The fail-closed workflow-profile token. `execution.ts` forwards `stage.workflowProfile ?? input.proposal.profile ?? null`
   // to the worker adapter, and that `?? null` is the WHOLE engine-side guarantee: the adapter refuses

@@ -24,6 +24,15 @@ import {
   type IterationOutcomeContract,
 } from './iterationOutcome.ts';
 
+// F2: same cap value/style as adapters.ts `boundCuratedText` (MAX_CURATED_SKILL_BODY_CHARS /
+// MAX_CURATED_FRAME_CHARS) — bounded plain text with a truncation marker, no redaction (the source is
+// an already-integrated canonical summary, not arbitrary file content).
+const MAX_DEPENDENCY_RESULT_SUMMARY_CHARS = 8_000;
+function boundDependencyResultSummary(text: string): string {
+  if (text.length <= MAX_DEPENDENCY_RESULT_SUMMARY_CHARS) return text;
+  return `${text.slice(0, MAX_DEPENDENCY_RESULT_SUMMARY_CHARS)}\n[TRUNCATED: exceeded ${MAX_DEPENDENCY_RESULT_SUMMARY_CHARS} chars]`;
+}
+
 const SAFE_REF = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/;
 const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
 const REQUIRED_POLICY_REFS = ['CLAUDE.md', 'governance/agent-rules.md', 'governance/risk-tiers.md'] as const;
@@ -119,6 +128,17 @@ export interface CuratedContextBlock {
   text: string;
 }
 
+/**
+ * One canonical, already-integrated predecessor result summary for a dependent stage's prompt.
+ * Rendered only as inert boundary data (`claudeWorkerAdapter.ts` `DEPENDENCY RESULTS:`), never authority.
+ * No artifact bytes — summary text only, and bounded the same way curated-context text is bounded.
+ */
+export interface DependencyResultSummary {
+  /** Predecessor stage id; rendered as the block's header. */
+  from: string;
+  summary: string;
+}
+
 export interface CuratedContextResolver {
   /**
    * Best-effort, bounded curated context for one attempt: the already-validated skill ids' SKILL.md
@@ -200,6 +220,8 @@ export interface WorkerAdapter {
     project?: string;
     /** Bounded curated-context blocks (skill bodies, knowledge source, project frame) — inert data only. */
     curatedContext?: readonly CuratedContextBlock[];
+    /** Bounded, best-effort canonical summaries of this stage's `dependsOn` predecessors — inert data only. */
+    dependencyResults?: readonly DependencyResultSummary[];
   }): AttemptLaunch;
 }
 
@@ -1540,6 +1562,30 @@ export class AutomaticExecutionEngine {
   }
 
   /**
+   * F2 — best-effort canonical result summaries for a dependent stage's prompt: for each predecessor
+   * named in `proposalStage.dependsOn`, look up the EXACT accepted-generation canonical result
+   * `dependencyResultOperationKeys` already resolved (the same keys `resolveBase` uses, so the summary
+   * always matches the commit the dependent's worktree is based on) and carry its `summary` text only —
+   * never artifact bytes. A lookup miss (result not yet durable, e.g. an `inactive` integrator) simply
+   * omits that predecessor; it degrades the prompt, never the run, mirroring the curated-context
+   * resolver's best-effort contract.
+   */
+  private async resolveDependencyResultSummaries(
+    input: ExecuteRunInput,
+    keys: readonly { stageId: string; operationKey: string }[],
+  ): Promise<readonly DependencyResultSummary[]> {
+    const out: DependencyResultSummary[] = [];
+    for (const { stageId, operationKey } of keys) {
+      const canonical = await this.options.results.lookup({
+        operationKey, subject: input.subject, runRef: input.runRef, stageId,
+      });
+      if (!canonical) continue;
+      out.push({ from: stageId, summary: boundDependencyResultSummary(canonical.summary) });
+    }
+    return out;
+  }
+
+  /**
    * Complete store transitions after canonical integration in the only order accepted by the durable
    * iteration state machine. It is intentionally reusable by normal execution and restart recovery.
    */
@@ -2222,20 +2268,28 @@ export class AutomaticExecutionEngine {
     }
     let baseCommit: string | undefined = iterationContract?.request.baseCommit
       ?? attempt.baseCommit ?? undefined;
-    if (baseCommit === undefined && proposalStage.dependsOn.length > 0) {
-      if (!this.options.results.resolveBase) {
-        throw new AutomaticExecutionError('result integrator cannot resolve committed dependency lineage');
+    let dependencyResults: readonly DependencyResultSummary[] | undefined;
+    if (proposalStage.dependsOn.length > 0) {
+      const dependencyResultOperationKeys = this.dependencyResultOperationKeys(this.detail(input), [...proposalStage.dependsOn].sort());
+      if (baseCommit === undefined) {
+        if (!this.options.results.resolveBase) {
+          throw new AutomaticExecutionError('result integrator cannot resolve committed dependency lineage');
+        }
+        baseCommit = await this.options.results.resolveBase({
+          operationKey: `result-base:${input.runRef}:${stage.stageId}`,
+          subject: input.subject,
+          runRef: input.runRef,
+          stageId: stage.stageId,
+          dependencyStageIds: [...proposalStage.dependsOn].sort(),
+          dependencyResultOperationKeys,
+        }) ?? undefined;
+        if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
+        if (!baseCommit) throw new AutomaticExecutionError('committed dependency lineage is unavailable');
       }
-      baseCommit = await this.options.results.resolveBase({
-        operationKey: `result-base:${input.runRef}:${stage.stageId}`,
-        subject: input.subject,
-        runRef: input.runRef,
-        stageId: stage.stageId,
-        dependencyStageIds: [...proposalStage.dependsOn].sort(),
-        dependencyResultOperationKeys: this.dependencyResultOperationKeys(this.detail(input), [...proposalStage.dependsOn].sort()),
-      }) ?? undefined;
+      // F2: the SAME accepted-generation operation keys used to resolve lineage above, so a dependent's
+      // prompt summary always matches the commit its worktree is actually based on.
+      dependencyResults = await this.resolveDependencyResultSummaries(input, dependencyResultOperationKeys);
       if (this.cancellationObserved(input)) return { state: 'stopped', stageId: stage.stageId };
-      if (!baseCommit) throw new AutomaticExecutionError('committed dependency lineage is unavailable');
     }
     await this.options.worktrees.ensure({
       operationKey: `worktree:${attempt.attemptRef}`, runRef: input.runRef, path: worktreePath, baseCommit,
@@ -2326,6 +2380,7 @@ export class AutomaticExecutionEngine {
         proposalStage,
         project: input.proposal.project,
         curatedContext: curated?.blocks,
+        ...(dependencyResults && dependencyResults.length > 0 ? { dependencyResults } : {}),
         ...(iterationContract ? { iterationContract, expectsIterationOutcome: true } : {}),
         ...(assignedAgent ? { assignment: assignedAgent.assignment, instructionMarkdown: assignedAgent.instructionMarkdown } : {}),
       });
