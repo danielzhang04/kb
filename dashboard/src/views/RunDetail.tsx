@@ -6,7 +6,11 @@ import {
   getRun,
   listRunEvents,
   readRunSessionReplay,
+  resolveIterationGateWithCeremony,
   type AttemptSessionPublicRow,
+  type HumanRequestDto,
+  type IterationLoopDto,
+  type ResolveIterationGateDto,
   type RunSessionReplayRefusal,
   respondToHumanRequest,
   respondToHumanRequestWithCeremony,
@@ -185,6 +189,69 @@ function defaultCopy(value: string): Promise<void> {
 
 const LIVE_RUN_STATES = new Set(['planned', 'recovering', 'running', 'waiting-human', 'stopping']);
 
+type IterationGateDecision = 'approved' | 'rejected' | 'changes-requested' | 'declined';
+
+interface PendingIterationGate {
+  loop: IterationLoopDto;
+  gate: HumanRequestDto;
+}
+
+/** A pending gate is a loop parked at either gate state, with its (guaranteed-open) gate resolved by ref. */
+function pendingIterationGates(detail: RunDetailDto): PendingIterationGate[] {
+  return detail.iterationLoops.flatMap((loop) => {
+    if (loop.state !== 'awaiting-completion-gate' && loop.state !== 'awaiting-park-gate') return [];
+    const gateRef = loop.state === 'awaiting-park-gate' ? loop.interventionRef : loop.completionGateRef;
+    const gate = gateRef === undefined ? undefined : detail.humanRequests.find((request) => request.requestRef === gateRef);
+    return gate === undefined ? [] : [{ loop, gate }];
+  });
+}
+
+interface IterationGateRowProps {
+  loop: IterationLoopDto;
+  gate: HumanRequestDto;
+  onResolve(decision: IterationGateDecision): Promise<void>;
+}
+
+/** One pending iteration gate: kind, park reason (if any), prompt, and one button per allowed decision. */
+function IterationGateRow(props: IterationGateRowProps): React.JSX.Element {
+  const [status, setStatus] = useState<'idle' | 'pending' | 'success' | 'refused'>('idle');
+  const [refusalCode, setRefusalCode] = useState<string | null>(null);
+  const parkGate = props.gate.gateKind === 'iteration-park';
+  const decisions: readonly IterationGateDecision[] = parkGate
+    ? ['approved', 'declined']
+    : ['approved', 'rejected', 'changes-requested'];
+  const disabled = status === 'pending' || status === 'success';
+
+  const submit = (decision: IterationGateDecision): void => {
+    if (disabled) return;
+    setStatus('pending');
+    setRefusalCode(null);
+    void props.onResolve(decision).then(() => setStatus('success')).catch((cause: unknown) => {
+      setStatus('refused');
+      setRefusalCode(cause instanceof ControlApiError ? cause.code : errorMessage(cause));
+    });
+  };
+
+  const decisionLabel = (decision: IterationGateDecision): string => decision === 'approved' ? 'Approve'
+    : decision === 'rejected' ? 'Reject'
+      : decision === 'changes-requested' ? 'Request changes' : 'Decline';
+
+  return <li>
+    <h3>{props.gate.title}</h3>
+    <p>{parkGate ? 'Park gate' : 'Completion gate'}{props.loop.parkReason ? ` · ${props.loop.parkReason}` : ''}</p>
+    <p>{props.gate.prompt}</p>
+    {decisions.map((decision) => <button
+      key={decision}
+      type="button"
+      disabled={disabled}
+      onClick={() => submit(decision)}
+    >{decisionLabel(decision)}</button>)}
+    {status === 'pending' ? <p role="status">Signing…</p> : null}
+    {status === 'success' ? <p role="status">Resolved</p> : null}
+    {status === 'refused' ? <p role="alert">Ceremony refused: {refusalCode}</p> : null}
+  </li>;
+}
+
 /** Dashboard v3 Run: one redacted stream, one inspector, and no second execution canvas. */
 export function RunDetail(props: RunDetailProps): React.JSX.Element {
   // W47: T3 gate ceremony reachability comes from the SERVER (`/api/auth/context` reports
@@ -261,7 +328,16 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     [detail, stream.events],
   );
   const visibleEvents = graph?.eventsFor(selectedStageRef) as OperationalEventDto[] | undefined;
-  const openGates = detail?.humanRequests.filter((request) => request.state === 'open') ?? [];
+  // Mirrors the server's `isIterationGateRequest`: a completion or iteration-park gate is fingerprint-
+  // bound to its loop/receipt CAS tuple and resolved ONLY through `resolveIterationGateWithCeremony`
+  // (see the "Iteration gates" section below) - the generic responder refuses it ('invalid'). A
+  // rejection-minted `intervention` request stays generically answerable even when a loop still links it.
+  const iterationGateRefs = new Set(
+    detail?.iterationLoops.flatMap((loop) => [loop.completionGateRef, loop.interventionRef])
+      .filter((value): value is string => value !== undefined) ?? [],
+  );
+  const openGates = detail?.humanRequests.filter((request) =>
+    request.state === 'open' && (request.kind === 'intervention' || !iterationGateRefs.has(request.requestRef))) ?? [];
 
   const detach = (): void => {
     setAttached(false);
@@ -322,6 +398,40 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     if (props.detail === undefined) setLoadVersion((value) => value + 1);
   };
 
+  /**
+   * F3 — an iteration gate is resolved with the exact displayed gate/park-reason and loop/generation CAS,
+   * signed by the SAME passkey ceremony a T3 human response uses (`resolveIterationGateWithCeremony`).
+   * `expectedParkReason`/`expectedGateKind` are typed as a discriminated pair on `ResolveIterationGateDto`,
+   * so the decision is narrowed against `parkGate` before either branch is built — never cast.
+   */
+  const resolveGate = async (
+    loop: IterationLoopDto,
+    gate: HumanRequestDto,
+    decision: IterationGateDecision,
+  ): Promise<void> => {
+    const active = await session.requireSession();
+    if (!active) throw new Error('Session required');
+    const parkGate = gate.gateKind === 'iteration-park';
+    const cas = {
+      expectedGateRef: gate.requestRef,
+      expectedRequestRevision: gate.revision,
+      expectedLoopVersion: loop.version,
+      expectedGenerationRefs: loop.activeGenerationRefs,
+      idempotencyKey: `iteration-gate:${gate.requestRef}:${gate.revision}:${decision}`,
+      response: null,
+    };
+    let input: ResolveIterationGateDto;
+    if (parkGate && (decision === 'approved' || decision === 'declined')) {
+      input = { ...cas, expectedGateKind: 'iteration-park', expectedParkReason: loop.parkReason ?? 'parked', decision };
+    } else if (!parkGate && (decision === 'approved' || decision === 'rejected' || decision === 'changes-requested')) {
+      input = { ...cas, expectedGateKind: null, expectedParkReason: null, decision };
+    } else {
+      throw new Error(`decision "${decision}" is not valid for this gate`);
+    }
+    await resolveIterationGateWithCeremony(gate.requestRef, input, active.token, props.fetchImpl);
+    if (props.detail === undefined) setLoadVersion((value) => value + 1);
+  };
+
   if (loading && detail === null) return <main className="run-v3"><p role="status">Loading run…</p></main>;
   if (detail === null) return <main className="run-v3">
     <p role="alert">Run failed to load{loadError ? `: ${loadError}` : '.'}</p>
@@ -335,6 +445,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     .filter((event) => event.kind === 'checkpoint' || event.kind === 'tool')
     .map((event) => event.summary ?? event.toolName ?? event.kind);
   const linkedCards = detail.stages.flatMap((stage) => stage.canonicalCardRef ? [stage.canonicalCardRef] : []);
+  const iterationGates = pendingIterationGates(detail);
 
   return <main className="run-v3">
     <header className="run-v3__header">
@@ -413,6 +524,17 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
             }}
             onRespond={respond}
           />
+          {iterationGates.length > 0 ? <section aria-label="Iteration gates">
+            <h2>Iteration gates</h2>
+            <ul>
+              {iterationGates.map(({ loop, gate }) => <IterationGateRow
+                key={gate.requestRef}
+                loop={loop}
+                gate={gate}
+                onResolve={(decision) => resolveGate(loop, gate, decision)}
+              />)}
+            </ul>
+          </section> : null}
           {outputs.length > 0 ? <section aria-label="Output actions">
             <h2>Output links</h2>
             {outputs.map((output) => {
