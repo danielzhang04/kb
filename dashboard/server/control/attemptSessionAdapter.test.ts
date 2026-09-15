@@ -1116,6 +1116,30 @@ describe('registry-owned attempt session adapter', () => {
     expect(prompt).toContain('Now: nothing yet.');
   });
 
+  /**
+   * R1/R2: `buildApprovedAttemptDeclaration` (claudeWorkerAdapter.ts) previously copied `curatedContext`
+   * onto the declaration but never `dependencyResults`, so F2 predecessor summaries were consumed by
+   * `resolveDependencyResultSummaries` and then dropped before this adapter ever saw them — inert for
+   * both runtimes. Red on revert: without the `dependencyResults: input.dependencyResults,` line in
+   * `buildApprovedAttemptDeclaration`, this declaration's `dependencyResults` field is `undefined` here
+   * and this assertion fails.
+   */
+  it('carries a resolved dependency result summary through to the worker prompt', async () => {
+    const host = new MemorySessionHost();
+    const input = declaration('claude', {
+      dependencyResults: [{ from: 'research-a', summary: 'Found three comparable vendors, priced $10-40k/yr.' }],
+    });
+    const adapter = createAttemptSessionAdapter({ host, bindings: new MemoryBindings() });
+    const launch = adapter.begin(input);
+    await vi.waitFor(() => expect(host.attempts).toHaveLength(1));
+    host.resolveCreate(0);
+    await launch.receipt;
+    expect(host.writes).toHaveLength(2);
+    const prompt = Buffer.from(host.writes[1].bytes).toString('utf8');
+    expect(prompt).toContain('DEPENDENCY RESULTS:');
+    expect(prompt).toContain('Found three comparable vendors, priced $10-40k/yr.');
+  });
+
   it('includes every declaration field in exact-operation identity and enforces the iteration outcome fence', async () => {
     const complete = declaration('claude', { iterationContract: ITERATION_CONTRACT, expectsIterationOutcome: true });
     const mutations: Array<[string, (value: ApprovedAttemptDeclaration) => ApprovedAttemptDeclaration]> = [

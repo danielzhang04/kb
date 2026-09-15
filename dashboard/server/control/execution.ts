@@ -2314,6 +2314,16 @@ export class AutomaticExecutionEngine {
     for (const warning of curated?.warnings ?? []) {
       console.warn(`curated context [run ${input.runRef} stage ${stage.stageId} attempt ${attempt.attemptRef}]: ${warning}`);
     }
+    // R13: a warning-only console.warn is invisible in the UI, so a silently frame-less prompt left no
+    // operational trace. Mirror it as one attempt-scoped governance event, same shape as the other
+    // system-sourced governance signals above (e.g. the reconciled-canonical-result lifecycle event).
+    if (curated && curated.warnings.length > 0) {
+      this.options.store.appendEvent(input.subject, input.runRef, {
+        kind: 'governance', source: 'system', stageRef: stage.stageRef, attemptRef: attempt.attemptRef,
+        sessionRef: session.sessionRef, status: 'waiting',
+        summary: `curated context resolution had ${curated.warnings.length} warning(s): ${curated.warnings.join('; ')}`,
+      });
+    }
     const reservation = await this.options.accounting.reserve({
       operationKey: `reserve:${attempt.attemptRef}`,
       subject: input.subject,

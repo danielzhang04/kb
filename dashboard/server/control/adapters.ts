@@ -1114,10 +1114,19 @@ export function createCuratedContextResolver(repoRoot: string): CuratedContextRe
         } catch {
           warnings.push('curated skill catalog is unreadable');
         }
+        // R11: key on `slug` only — the closed catalog identity — so a name that collides with another
+        // skill's slug (or an earlier skill's name) can never silently overwrite it. A name alias is
+        // registered only when it does not collide with any key already claimed; a colliding name is
+        // dropped with a warning rather than resolving to the wrong skill's body.
         const bySkillId = new Map<string, (typeof curated)[number]>();
+        for (const entry of curated) bySkillId.set(entry.slug, entry);
         for (const entry of curated) {
-          bySkillId.set(entry.slug, entry);
-          if (entry.name) bySkillId.set(entry.name, entry);
+          if (!entry.name || entry.name === entry.slug) continue;
+          if (bySkillId.has(entry.name)) {
+            warnings.push(`skill name '${entry.name}' collides with another skill's id; ignoring the alias`);
+            continue;
+          }
+          bySkillId.set(entry.name, entry);
         }
         for (const id of input.skillIds) {
           const entry = bySkillId.get(id);

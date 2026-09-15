@@ -3517,4 +3517,38 @@ describe('curated context resolver (F1)', () => {
       warnSpy.mockRestore();
     }
   });
+
+  /**
+   * R13: a curated-context resolution warning went only to `console.warn` — invisible in the UI, unlike
+   * every other engine signal. It must also land as one attempt-scoped operational event so a silently
+   * frame-less prompt is visible on the run's timeline.
+   */
+  it('appends an attempt-scoped governance event when curated-context resolution produces warnings', async () => {
+    const store = createStore();
+    const plan = proposal([stage('a')]);
+    const run = createApprovedRun(store, plan);
+    const fake = fakes();
+    const options = engineOptions(store, fake);
+    options.curatedContext = {
+      resolve() {
+        return { blocks: [], warnings: ["project 'kb-ops' GOAL.md is unavailable"] };
+      },
+    };
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const outcome = await new AutomaticExecutionEngine(options).runToBoundary({
+        subject: 'operator', runRef: run.runRef, proposal: plan,
+      });
+      expect(outcome).toMatchObject({ state: 'succeeded', completedStageIds: ['a'] });
+      const events = store.listEvents('operator', run.runRef);
+      if (!events.ok) throw new Error(events.detail);
+      const governanceEvent = events.value.find((event) => event.kind === 'governance'
+        && (event.summary ?? '').includes("project 'kb-ops' GOAL.md is unavailable"));
+      expect(governanceEvent).toBeDefined();
+      expect(governanceEvent?.stageRef).toBeTruthy();
+      expect(governanceEvent?.attemptRef).toBeTruthy();
+    } finally {
+      warnSpy.mockRestore();
+    }
+  });
 });
