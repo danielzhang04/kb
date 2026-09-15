@@ -4,6 +4,7 @@ same pattern as `test_tensor_track.py`/`test_training_tools.py`.
 """
 from __future__ import annotations
 
+import hashlib
 import importlib.util
 import json
 import sys
@@ -375,16 +376,176 @@ def test_cli_images_from_multiple_dirs_with_exclude(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-def test_qwen3vl_mode_is_a_documented_hook_not_implemented(tmp_path):
+# F4: caption_mode == "qwen3vl" -- module 11's Qwen3-VL-8B-Instruct auto-captioning,
+# shaped as a pod job over this tool's own already-collected image list. This tool still
+# never runs a model itself (GUARDRAILS: no ambient pod spend from a "local, never a
+# pod" tool) -- a caller-supplied `job_runner` stands in for the real pod dispatcher.
+
+TRIGGER = "creator001krea2"
+
+
+def _fake_job_runner(job):
+    assert job["model"] == bts.QWEN3VL_CAPTION_MODEL_ID
+    assert job["settings"] == {"dtype": "float8", "max_resolution": 512, "max_new_tokens": 128}
+    return [f"a photo of the subject in {Path(path).name}" for path in job["images"]]
+
+
+def test_qwen3vl_mode_requires_a_job_runner(tmp_path):
     src_dir = tmp_path / "graded"
     src_dir.mkdir()
     _make_image(src_dir / "a.png")
     out_dir = tmp_path / "out"
-    with pytest.raises(bts.DatasetBuildError, match="not implemented"):
+    with pytest.raises(bts.DatasetBuildError, match="job_runner"):
         bts.build_training_set(
-            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl", out_dir=out_dir,
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=out_dir, trigger=TRIGGER,
         )
     assert not out_dir.exists(), "must not write any partial output before failing"
+
+
+def test_qwen3vl_mode_requires_a_trigger(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    out_dir = tmp_path / "out"
+    with pytest.raises(bts.DatasetBuildError, match="--trigger"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=out_dir, trigger=None, job_runner=_fake_job_runner,
+        )
+    assert not out_dir.exists()
+
+
+@pytest.mark.parametrize("bad_trigger", ["Creator001Krea2", "creator 001", "-creator001", ""])
+def test_qwen3vl_mode_rejects_a_malformed_trigger(tmp_path, bad_trigger):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    out_dir = tmp_path / "out"
+    with pytest.raises(bts.DatasetBuildError, match="--trigger"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=out_dir, trigger=bad_trigger, job_runner=_fake_job_runner,
+        )
+    assert not out_dir.exists()
+
+
+def test_qwen3vl_mode_forbids_approved_cells(tmp_path):
+    cells_path = tmp_path / "approved.json"
+    cells_path.write_text(json.dumps([{"image": "a.png", "caption": "x"}]), encoding="utf-8")
+    with pytest.raises(bts.DatasetBuildError, match="qwen3vl"):
+        bts.build_training_set(
+            approved_cells=cells_path, source_dir=tmp_path, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER, job_runner=_fake_job_runner,
+        )
+
+
+def test_qwen3vl_mode_requires_exactly_one_of_source_dir_or_images_from(tmp_path):
+    with pytest.raises(bts.DatasetBuildError, match="exactly one"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=None, images_from=None, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER, job_runner=_fake_job_runner,
+        )
+
+
+def test_qwen3vl_job_description_lists_model_settings_and_images_in_order(tmp_path):
+    a, b = tmp_path / "01.png", tmp_path / "02.png"
+    job = bts.qwen3vl_caption_job([a, b])
+    assert job == {
+        "model": "Qwen/Qwen3-VL-8B-Instruct",
+        "settings": {"dtype": "float8", "max_resolution": 512, "max_new_tokens": 128},
+        "images": [str(a), str(b)],
+    }
+
+
+def test_qwen3vl_mode_emits_one_sidecar_per_image_with_trigger_prefixed_captions(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.jpg", (200, 0, 0))
+    _make_image(src_dir / "b.png", (0, 200, 0))
+    out_dir = tmp_path / "out"
+
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl", out_dir=out_dir,
+        trigger=TRIGGER, job_runner=_fake_job_runner,
+    )
+
+    assert manifest["count"] == 2
+    assert manifest["caption_mode"] == "qwen3vl"
+    assert (out_dir / "01.png").is_file() and (out_dir / "02.png").is_file()
+    caption_1 = (out_dir / "01.txt").read_text(encoding="utf-8")
+    caption_2 = (out_dir / "02.txt").read_text(encoding="utf-8")
+    # sorted by source filename: a.jpg before b.png
+    assert caption_1 == f"{TRIGGER} woman, a photo of the subject in a.jpg\n"
+    assert caption_2 == f"{TRIGGER} woman, a photo of the subject in b.png\n"
+    for caption in (caption_1, caption_2):
+        assert caption.startswith(f"{TRIGGER} woman, "), "every caption opens trigger + class"
+    assert (out_dir / "_dataset.ready").is_file()
+
+    # per-row caption hash, additive over the provided/class shape (image/caption_file/sha256)
+    for entry in manifest["files"]:
+        assert set(entry) == {"image", "caption_file", "sha256", "caption_sha256"}
+        caption_text = (out_dir / entry["caption_file"]).read_text(encoding="utf-8")
+        assert entry["caption_sha256"] == hashlib.sha256(
+            caption_text.encode("utf-8")
+        ).hexdigest()
+
+
+def test_qwen3vl_mode_honours_caption_word_and_images_from(tmp_path):
+    shard = tmp_path / "shard-01"
+    shard.mkdir()
+    _make_image(shard / "c001-tds-f01.png")
+    out_dir = tmp_path / "out"
+
+    manifest = bts.build_training_set(
+        approved_cells=None, source_dir=None, images_from=[shard], caption_mode="qwen3vl",
+        out_dir=out_dir, caption_word="creator", trigger=TRIGGER, job_runner=_fake_job_runner,
+    )
+
+    assert manifest["count"] == 1
+    caption = (out_dir / "01.txt").read_text(encoding="utf-8")
+    assert caption.startswith(f"{TRIGGER} creator, ")
+
+
+def test_qwen3vl_mode_fails_closed_when_job_runner_returns_the_wrong_count(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    _make_image(src_dir / "b.png")
+    with pytest.raises(bts.DatasetBuildError, match="one caption per image"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER,
+            job_runner=lambda job: ["only one caption"],
+        )
+    assert not (tmp_path / "out").exists()
+
+
+def test_qwen3vl_mode_fails_closed_on_an_empty_caption_from_the_runner(tmp_path):
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    with pytest.raises(bts.DatasetBuildError, match="empty caption"):
+        bts.build_training_set(
+            approved_cells=None, source_dir=src_dir, caption_mode="qwen3vl",
+            out_dir=tmp_path / "out", trigger=TRIGGER,
+            job_runner=lambda job: ["   "],
+        )
+
+
+def test_cli_qwen3vl_mode_fails_closed_with_no_wired_dispatcher(tmp_path, capsys):
+    """F4 wires the local shape/contract only -- no CLI-reachable dispatcher exists yet,
+    so a real CLI invocation must still fail closed, never silently write garbage
+    captions or fall back to another mode."""
+    src_dir = tmp_path / "graded"
+    src_dir.mkdir()
+    _make_image(src_dir / "a.png")
+    rc = bts.main([
+        "--mode", "qwen3vl", "--source-dir", str(src_dir),
+        "--trigger", TRIGGER, "--out", str(tmp_path / "out"),
+    ])
+    assert rc == 2
+    assert "job_runner" in capsys.readouterr().err
 
 
 # ---------------------------------------------------------------------------

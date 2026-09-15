@@ -28,12 +28,25 @@ Caption modes:
   class      every image gets the single word `--caption-word` (default
              `woman`, matching the manifest's `training.caption_word`).
              Requires `--source-dir`.
-  qwen3vl    documented hook for module 11's Qwen3-VL-8B auto-captioning.
-             NOT IMPLEMENTED here — this tool never runs a model. Calling it
-             raises DatasetBuildError so a live run cannot silently proceed
-             on an empty/garbage caption set. See TENSOR-TRAINING.md
-             "Captioning" for what an implementation would need to match
-             (Qwen/Qwen3-VL-8B-Instruct, float8, max res 512, 128 new tokens).
+  qwen3vl    module 11's Qwen3-VL-8B-Instruct auto-captioning (float8, max res
+             512, 128 new tokens — TENSOR-TRAINING.md "Captioning"), shaped as
+             a pod job over this tool's own already-collected image list: this
+             tool still never runs a model itself (GUARDRAILS: no ambient pod
+             spend from a "local, never a pod" tool) — it builds the job
+             description (`qwen3vl_caption_job`) and calls the caller-supplied
+             `job_runner(job) -> [caption body, ...]` (one raw description per
+             image, same order), which is what actually talks to a pod in a
+             real run. `job_runner` and `trigger` (F4) are REQUIRED for this
+             mode; there is no default live dispatcher here. Requires
+             `--source-dir` or `--images-from`, like `class`. Every written
+             caption is `"<trigger> <caption-word>, <model body>"` — the same
+             `"<trigger> <class>, "` opening `figment_train.py`'s
+             `_persona_trigger_clause` composes for tester/gen prompts, so a
+             descriptive caption is self-contained (identity-associated
+             whether or not DOP's own trigger_word injection is on). Each
+             manifest file entry additionally carries `caption_sha256`
+             (sha256 of the written caption text, trailing newline included)
+             so a captioning run is auditable per row.
 
 Outputs, all under `--out` (normally `train/runs/creator-001-tensor-dataset/`):
   NN.png             one 1-indexed, zero-padded (width >= 2) PNG per approved
@@ -42,7 +55,9 @@ Outputs, all under `--out` (normally `train/runs/creator-001-tensor-dataset/`):
   NN.txt              same-basename caption sidecar, UTF-8, trailing newline.
   dataset_manifest.json  {"count", "caption_mode", "files": [{"image",
                       "caption_file", "sha256"}, ...]} — bookkeeping for this
-                      dataset build. NOT `training.json`: that filename is the
+                      dataset build (`qwen3vl` additionally carries
+                      "caption_sha256" per file; other modes' shape is
+                      unchanged). NOT `training.json`: that filename is the
                       ai-toolkit trainer config `render_aitoolkit_config.py`
                       writes into this same directory as TENSOR-TRAINING.md's
                       step 2, and it is uploaded to the pod as
@@ -61,9 +76,10 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from PIL import Image
 
@@ -75,6 +91,21 @@ TRAINING_JSON_NAME = "training.json"
 
 HERE = Path(__file__).resolve().parent
 RENDER_MODULE_PATH = HERE / "render_aitoolkit_config.py"
+
+# F4: module 11's captioner, ported as a pod job (TENSOR-TRAINING.md "Captioning").
+QWEN3VL_CAPTION_MODEL_ID = "Qwen/Qwen3-VL-8B-Instruct"
+QWEN3VL_CAPTION_SETTINGS = {
+    "dtype": "float8", "max_resolution": 512, "max_new_tokens": 128,
+}
+# Same shape figment_train.py's own trigger validation uses (training_config.py
+# SAFE_TRIGGER) -- a caption-formatting helper here should refuse the same malformed
+# triggers the training config itself would refuse, not accept a wider set.
+_SAFE_TRIGGER = re.compile(r"^[a-z][a-z0-9]*$")
+
+# One raw, untriggered caption body per image, same order as the job's "images" list.
+# The real dispatcher (pod-side, not this tool -- see the qwen3vl docstring above)
+# lives elsewhere; tests inject a fake one.
+JobRunner = Callable[[dict[str, Any]], list[str]]
 
 
 class DatasetBuildError(ValueError):
@@ -205,6 +236,76 @@ def _collect_cells_images_from(
     return cells
 
 
+def _validate_trigger(trigger: str) -> None:
+    if not isinstance(trigger, str) or not _SAFE_TRIGGER.fullmatch(trigger):
+        raise DatasetBuildError(
+            "--trigger must be a lowercase alphanumeric token (matches "
+            "training_config.py's own SAFE_TRIGGER) when caption_mode is 'qwen3vl'"
+        )
+
+
+def qwen3vl_caption_job(image_paths: list[Path]) -> dict[str, Any]:
+    """The pod-job description for module 11's Qwen3-VL-8B-Instruct auto-captioning
+    (TENSOR-TRAINING.md "Captioning"): model id + settings this tool documents but never
+    runs itself, plus the exact image list (order load-bearing -- the runner's returned
+    captions are matched back to images positionally, same contract every other
+    `job_runner` in this pipeline uses for its own `jobs`/`substitutions` lists)."""
+    return {
+        "model": QWEN3VL_CAPTION_MODEL_ID,
+        "settings": dict(QWEN3VL_CAPTION_SETTINGS),
+        "images": [str(path) for path in image_paths],
+    }
+
+
+def _collect_cells_qwen3vl(
+    source_dir: Path | None,
+    images_from: list[Path] | None,
+    exclude: list[str] | None,
+    *,
+    trigger: str,
+    caption_word: str,
+    job_runner: JobRunner | None,
+) -> list[tuple[Path, str]]:
+    """Collect the approved image list exactly like `class` mode (same
+    `--source-dir`/`--images-from`/`--exclude` contract), then replace the bare
+    class-word caption with a Qwen3-VL-8B-Instruct description, run as a pod job (F4)
+    rather than in this process. `trigger`/`job_runner` are validated here, before any
+    image is touched, so a misconfigured caller fails closed before spending anything."""
+    if job_runner is None:
+        raise DatasetBuildError(
+            "caption_mode 'qwen3vl' requires a job_runner -- this tool never talks to "
+            "a pod itself (GUARDRAILS: build_training_set.py runs locally, never on a "
+            "pod); pass the real dispatcher in a live run, or a fake one in tests"
+        )
+    _validate_trigger(trigger)
+    _validate_caption_word(caption_word)
+    if source_dir is not None:
+        images = [image for image, _ in _collect_cells_class(source_dir, caption_word)]
+    else:
+        images = [
+            image for image, _ in
+            _collect_cells_images_from(images_from or [], caption_word, exclude)
+        ]
+
+    job = qwen3vl_caption_job(images)
+    bodies = job_runner(job)
+    if not isinstance(bodies, list) or len(bodies) != len(images):
+        raise DatasetBuildError(
+            f"job_runner must return exactly one caption per image "
+            f"({len(images)} images, got {len(bodies) if isinstance(bodies, list) else bodies!r})"
+        )
+    captions: list[str] = []
+    for image, body in zip(images, bodies):
+        if not isinstance(body, str) or not body.strip():
+            raise DatasetBuildError(f"job_runner returned an empty caption for {image}")
+        # Same "<trigger> <class>, " opening figment_train.py's own
+        # _persona_trigger_clause composes for tester/gen prompts -- a descriptive
+        # caption stays identity-associated whether or not DOP's trigger_word
+        # injection is on (see the qwen3vl docstring above).
+        captions.append(f"{trigger} {caption_word}, {body.strip()}")
+    return list(zip(images, captions))
+
+
 def build_training_set(
     *,
     approved_cells: Path | None,
@@ -214,23 +315,31 @@ def build_training_set(
     caption_word: str = "woman",
     images_from: list[Path] | None = None,
     exclude: list[str] | None = None,
+    trigger: str | None = None,
+    job_runner: JobRunner | None = None,
 ) -> dict[str, Any]:
     if caption_mode not in CAPTION_MODES:
         raise DatasetBuildError(f"unknown caption_mode: {caption_mode!r}")
-    if caption_mode == "qwen3vl":
-        # Documented hook only. See the module docstring: never runs a model here.
-        raise DatasetBuildError(
-            "caption_mode 'qwen3vl' is not implemented — it is a documented hook for "
-            "module 11's Qwen3-VL-8B auto-captioning (float8, max res 512, 128 new "
-            "tokens). Use 'provided' (operator-graded captions) or 'class' (single-word) "
-            "until an implementation lands."
-        )
     if exclude and images_from is None:
         raise DatasetBuildError("--exclude requires --images-from")
     if caption_mode == "provided":
         if approved_cells is None or source_dir is not None or images_from is not None:
             raise DatasetBuildError("caption_mode 'provided' requires --approved-cells only")
         cells = _collect_cells_provided(approved_cells)
+    elif caption_mode == "qwen3vl":
+        if approved_cells is not None:
+            raise DatasetBuildError(
+                "caption_mode 'qwen3vl' requires --source-dir or --images-from, "
+                "not --approved-cells"
+            )
+        if (source_dir is None) == (images_from is None):
+            raise DatasetBuildError(
+                "caption_mode 'qwen3vl' requires exactly one of --source-dir or --images-from"
+            )
+        cells = _collect_cells_qwen3vl(
+            source_dir, images_from, exclude,
+            trigger=trigger, caption_word=caption_word, job_runner=job_runner,
+        )
     else:  # class
         if approved_cells is not None:
             raise DatasetBuildError(
@@ -254,13 +363,21 @@ def build_training_set(
         caption_out = out_dir / f"{stem}.txt"
         with Image.open(image_path) as image:
             image.convert("RGB").save(image_out, format="PNG")
-        caption_out.write_text(caption.strip() + "\n", encoding="utf-8")
+        caption_text = caption.strip() + "\n"
+        caption_out.write_text(caption_text, encoding="utf-8")
         digest = hashlib.sha256(image_out.read_bytes()).hexdigest()
-        files.append({
+        entry = {
             "image": image_out.name,
             "caption_file": caption_out.name,
             "sha256": digest,
-        })
+        }
+        if caption_mode == "qwen3vl":
+            # F4: per-row audit trail for a model-generated caption -- provided/class
+            # captions are operator/config text, not worth hashing the same way.
+            entry["caption_sha256"] = hashlib.sha256(
+                caption_text.encode("utf-8")
+            ).hexdigest()
+        files.append(entry)
 
     manifest = {
         "count": len(files),
@@ -305,6 +422,11 @@ def build_parser() -> argparse.ArgumentParser:
              "'class' with --source-dir or --images-from",
     )
     parser.add_argument("--caption-word", default="woman")
+    parser.add_argument(
+        "--trigger",
+        help="required for --mode qwen3vl: prefixed onto every generated caption as "
+             "'<trigger> <caption-word>, ...'",
+    )
     parser.add_argument("--out", type=Path, required=True)
     return parser
 
@@ -333,6 +455,12 @@ def main(argv: list[str] | None = None) -> int:
             caption_word=args.caption_word,
             images_from=args.images_from,
             exclude=args.exclude,
+            trigger=args.trigger,
+            # No CLI-wired dispatcher exists yet (F4 wires only the local shape/contract;
+            # see the qwen3vl docstring above) -- a CLI --mode qwen3vl run fails closed
+            # with the same "requires a job_runner" error the library call would, since
+            # this tool never talks to a pod itself.
+            job_runner=None,
         )
     except DatasetBuildError as exc:
         print(f"build-training-set error: {exc}", file=sys.stderr)
