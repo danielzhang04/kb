@@ -482,7 +482,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     {!replayComplete ? <p role="alert">Replay incomplete: the server cursor did not reach the end.</p> : null}
     {stopState === 'failed' ? <p role="alert">Stop failed: {stopError}</p> : null}
     {stopState === 'confirmed' ? <p role="status">Stop confirmed</p> : null}
-    {detail.run.state === 'waiting-human' && openGates.length === 0
+    {detail.run.state === 'waiting-human' && openGates.length === 0 && iterationGates.length === 0
       ? <p role="alert">Run is waiting without an open request. Repair required.</p>
       : null}
 

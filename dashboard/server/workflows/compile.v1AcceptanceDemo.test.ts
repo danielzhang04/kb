@@ -64,6 +64,12 @@ describe('v1-acceptance-demo workflow definition (compiled proof)', () => {
       requiresReview: 'pass',
     });
 
+    // RED ON REVERT: the completion gate prompt is shown verbatim to a human in the dashboard (no
+    // agent there to interpret `{{TOPIC}}` the way a work order's prose does), so `instantiateWorkflowDef`
+    // must substitute it mechanically at instantiation, exactly like `<topic>` is substituted in paths.
+    expect(group?.completionGate?.prompt).toContain(PROOF_TOPIC);
+    expect(group?.completionGate?.prompt).not.toContain('{{TOPIC}}');
+
     // The writer's output is declared under artifacts so it projects a downloadable OutputRef.
     expect(stages.get('writer')?.artifacts).toEqual([{
       id: 'brief-json',

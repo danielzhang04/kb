@@ -471,6 +471,23 @@ describe('Dashboard v3 Run view', () => {
     expect(screen.queryByRole('button', { name: 'Respond' })).toBeNull();
   });
 
+  // RED ON REVERT: a run parked in waiting-human with its only open request an iteration completion
+  // gate must NOT show the "repair required" banner - `openGates` deliberately excludes iteration-linked
+  // requests (commit d4d3b824), so the banner has to also check `pendingIterationGates()` before
+  // declaring the run request-less. The Iteration gates section is the call to action instead.
+  it('does not show repair banner when the only open request is a pending iteration gate', () => {
+    const gate = iterationGateRequest('gate-1', 'Draft completion');
+    const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1' });
+    render(unlocked(<RunDetail
+      runRef="run-1"
+      detail={detail({ run: { ...detail().run, state: 'waiting-human' }, iterationLoops: [loop], humanRequests: [gate] })}
+      events={events}
+    />));
+    expect(screen.queryByText('Run is waiting without an open request. Repair required.')).toBeNull();
+    expect(document.querySelector('section[aria-label="Iteration gates"]')).toBeTruthy();
+    expect(screen.getByText('Draft completion')).toBeTruthy();
+  });
+
   describe('Iteration gates', () => {
     afterEach(() => {
       vi.mocked(controlClient.resolveIterationGateWithCeremony).mockClear();
