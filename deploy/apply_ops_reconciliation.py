@@ -19,7 +19,7 @@ from pathlib import Path, PurePosixPath
 # (dashboard/server/write/branch.ts#COORDINATION_PREFIXES), mirrored verbatim by the outbound leg in
 # scripts/promote_vm_outbox.py.  Deliberately NOT widened below: the VM must never be able to
 # originate an agent-catalog or workflow-script edit and have this script accept it as its own.
-COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$")
+COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
 
 # What the *reconciled ops history* may touch.  A deliberate superset of COORDINATION, because the
 # desktop half of the loop has three more legitimate ops writers that the VM never originates.  It is
