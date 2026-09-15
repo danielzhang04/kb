@@ -1562,7 +1562,17 @@ function validateIterationDurability(
       && openTurnRequest !== undefined && ARTIFACT_PRODUCING_REQUEST_KINDS.has(openTurnRequest.kind)
       && turnOwnerAttempt !== undefined && ['queued', 'starting', 'running', 'succeeded'].includes(turnOwnerAttempt.state)
       && activeGenerations.every((generation) => generation?.state === 'committed');
+    // A rework-queued loop's producer attempt is a LIVENESS fact, not a durability one: the loop's
+    // durable shape is the generation/request/receipt structure asserted below, and that survives the
+    // attempt dying. Run cancellation legitimately drives this exact attempt from 'queued' to
+    // 'stopped'/'interrupted'/'failed' (execution.ts cancelRun walks every non-terminal attempt), and a
+    // crashed host leaves it there too. Refusing those states made the document unreadable AFTER the
+    // engine had already persisted them -- every later load() threw and the daemon crash-looped. A
+    // terminated producer attempt is therefore accepted here and reconciled by the stop/park routes.
+    const terminatedProducerAttempt = turnOwnerAttempt !== undefined
+      && ['stopped', 'interrupted', 'failed'].includes(turnOwnerAttempt.state);
     const queuedProducerAttempt = loop.state === 'rework-queued' && (turnOwnerAttempt?.state === 'queued'
+      || terminatedProducerAttempt
       || (turnOwnerAttempt?.state === 'interrupted' && turnOwnerStage?.state === 'waiting-human'
         && humanRequests.some((request) => request.subject === loop.subject && request.runRef === loop.runRef
           && request.stageRef === turnOwnerStage.stageRef && request.state === 'open'
