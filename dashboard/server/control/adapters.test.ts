@@ -861,17 +861,147 @@ describe('file accounting adapter', () => {
     expect(outcomes.filter((outcome) => !outcome.ok)).toEqual([{ ok: false, reason: 'global concurrency limit reached' }]);
   });
 
-  it('rejects a changed server policy for an existing durable accounting window', async () => {
+  it('rejects a narrower server policy for an existing durable accounting window', async () => {
     const stateRoot = temporaryRoot();
-    const original = createFileAccountingAdapter({ stateRoot, windowId: 'window-1', maxConcurrency: 1, globalBudget });
+    const original = createFileAccountingAdapter({ stateRoot, windowId: 'window-1', maxConcurrency: 2, globalBudget });
     await original.reserve({
       operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
       limits: { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 },
     });
-    const changed = createFileAccountingAdapter({ stateRoot, windowId: 'window-1', maxConcurrency: 2, globalBudget });
-    await expect(changed.reserve({
+    // maxConcurrency dropped 2 -> 1: not every field is >= the recorded policy, so this is not a safe
+    // widening and must still refuse.
+    const narrowed = createFileAccountingAdapter({ stateRoot, windowId: 'window-1', maxConcurrency: 1, globalBudget });
+    await expect(narrowed.reserve({
       operationKey: 'reserve:2', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-2',
       limits: { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 },
+    })).rejects.toThrow('accounting policy differs');
+  });
+
+  it('leaves a document untouched when the policy is unchanged', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const adapter = createFileAccountingAdapter({
+      stateRoot, windowId: 'window-same', maxConcurrency: 2, globalBudget, newId: () => `id-${++ids}`,
+    });
+    await adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 },
+    });
+    const before = JSON.parse(readFileSync(join(stateRoot, 'control', 'execution-accounting', 'window-same.json'), 'utf8')) as {
+      revision: number; policyChanges?: unknown[];
+    };
+    // A second adapter over the SAME policy must not touch the document at all.
+    const second = createFileAccountingAdapter({
+      stateRoot, windowId: 'window-same', maxConcurrency: 2, globalBudget, newId: () => `id-${++ids}`,
+    });
+    await second.reserve({
+      operationKey: 'reserve:2', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-2',
+      limits: { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 },
+    });
+    const after = JSON.parse(readFileSync(join(stateRoot, 'control', 'execution-accounting', 'window-same.json'), 'utf8')) as {
+      revision: number; policyChanges?: unknown[];
+    };
+    expect(after.revision).toBe(before.revision + 1);
+    expect(after.policyChanges ?? []).toEqual([]);
+  });
+
+  it('migrates an existing document in place when the current policy is a strict widening, preserving reservations and admitting the next reserve', async () => {
+    const stateRoot = temporaryRoot();
+    const narrow = { maxAttempts: 3, maxInputTokens: 100, maxOutputTokens: 100, maxCostUsdMicros: 1_000 };
+    const wide = { maxAttempts: 3, maxInputTokens: 200, maxOutputTokens: 100, maxCostUsdMicros: 4_000 };
+    const original = createFileAccountingAdapter({ stateRoot, windowId: 'window-widen', maxConcurrency: 2, globalBudget: narrow });
+    const first = await original.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: { maxAttempts: 1, maxInputTokens: 60, maxOutputTokens: 40, maxCostUsdMicros: 600 },
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) throw new Error(first.reason);
+
+    // maxConcurrency unchanged, every ExecutionBudget field >= the recorded policy: a safe widening.
+    const widened = createFileAccountingAdapter({ stateRoot, windowId: 'window-widen', maxConcurrency: 2, globalBudget: wide });
+    const second = await widened.reserve({
+      operationKey: 'reserve:2', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-2',
+      limits: { maxAttempts: 1, maxInputTokens: 60, maxOutputTokens: 40, maxCostUsdMicros: 600 },
+    });
+    // Refused under the OLD 1,000 cost ceiling (600 + 600 = 1,200 > 1,000) but admitted once migrated
+    // to the wider 4,000 ceiling — this is the live proof the migration actually ran before enforcement.
+    expect(second.ok).toBe(true);
+
+    const onDisk = JSON.parse(readFileSync(join(stateRoot, 'control', 'execution-accounting', 'window-widen.json'), 'utf8')) as {
+      policy: { maxConcurrency: number; globalBudget: typeof wide };
+      policyHash: string;
+      policyChanges: { at: string; fromHash: string; toHash: string }[];
+      reservations: { operationKey: string }[];
+    };
+    expect(onDisk.policy).toEqual({ maxConcurrency: 2, globalBudget: wide });
+    expect(onDisk.policyChanges).toHaveLength(1);
+    expect(onDisk.policyChanges[0].fromHash).not.toBe(onDisk.policyChanges[0].toHash);
+    expect(onDisk.policyChanges[0].toHash).toBe(onDisk.policyHash);
+    // The reservation recorded under the old policy is still there, untouched by the migration.
+    expect(onDisk.reservations.map((item) => item.operationKey)).toEqual(['reserve:1', 'reserve:2']);
+  });
+
+  it('migrates a pre-policy-field document whose policyHash matches the legacy pre-#198 DEFAULT_BUDGET', async () => {
+    const stateRoot = temporaryRoot();
+    const legacyBudget = { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 };
+    const legacyHash = documentFingerprint({ maxConcurrency: 2, globalBudget: legacyBudget });
+    const dir = join(stateRoot, 'control', 'execution-accounting');
+    mkdirSync(dir, { recursive: true });
+    // Hand-written to look exactly like a document written before this field existed: no `policy`.
+    writeFileSync(join(dir, 'window-legacy.json'), JSON.stringify({
+      schema: 'kb.execution-accounting/v1', revision: 1, policyHash: legacyHash, windowId: 'window-legacy',
+      reservations: [],
+    }), 'utf8');
+
+    const adapter = createFileAccountingAdapter({ stateRoot, windowId: 'window-legacy', maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    const reserved = await adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    expect(reserved.ok).toBe(true);
+
+    const onDisk = JSON.parse(readFileSync(join(dir, 'window-legacy.json'), 'utf8')) as {
+      policy: { maxConcurrency: number; globalBudget: typeof DEFAULT_BUDGET };
+      policyChanges: { fromHash: string; toHash: string }[];
+    };
+    const currentHash = documentFingerprint({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    expect(onDisk.policy).toEqual({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    expect(onDisk.policyChanges).toEqual([{ at: expect.any(String), fromHash: legacyHash, toHash: currentHash }]);
+  });
+
+  it('rejects a pre-policy-field document whose policyHash is unknown (neither current, recorded, nor a legacy policy)', async () => {
+    const stateRoot = temporaryRoot();
+    const dir = join(stateRoot, 'control', 'execution-accounting');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'window-unknown.json'), JSON.stringify({
+      schema: 'kb.execution-accounting/v1', revision: 1, policyHash: 'a'.repeat(64), windowId: 'window-unknown',
+      reservations: [],
+    }), 'utf8');
+
+    const adapter = createFileAccountingAdapter({ stateRoot, windowId: 'window-unknown', maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    await expect(adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: DEFAULT_ATTEMPT_BUDGET,
+    })).rejects.toThrow('accounting policy differs');
+  });
+
+  it('rejects when the document windowId differs from the requested window, even under a wider policy', async () => {
+    const stateRoot = temporaryRoot();
+    const dir = join(stateRoot, 'control', 'execution-accounting');
+    mkdirSync(dir, { recursive: true });
+    const narrow = { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 };
+    writeFileSync(join(dir, 'window-mismatch.json'), JSON.stringify({
+      schema: 'kb.execution-accounting/v1', revision: 1,
+      policyHash: documentFingerprint({ maxConcurrency: 1, globalBudget: narrow }),
+      policy: { maxConcurrency: 1, globalBudget: narrow },
+      windowId: 'some-other-window',
+      reservations: [],
+    }), 'utf8');
+
+    const adapter = createFileAccountingAdapter({ stateRoot, windowId: 'window-mismatch', maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    await expect(adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: DEFAULT_ATTEMPT_BUDGET,
     })).rejects.toThrow('accounting policy differs');
   });
 });
