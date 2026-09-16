@@ -128,6 +128,13 @@ def _creator001_qwen_edit_personas_root() -> Path:
     training_path = target / "training.yaml"
     document = json.loads(training_path.read_text(encoding="utf-8"))
     document["training"]["dataset_source"] = "qwen-edit"
+    # P2 task 3 (2026-09-16): the real, checked-in training.yaml now also sets
+    # `dataset_replicates: 2` (creator-001's live rollout) -- this qwen-edit
+    # module-10-replica regression suite was written and its SHARDS/job-count
+    # assertions tuned against the base (1x) 3 half/close + 1 fullbody shape, so
+    # override the replicate count back to 1 here rather than rewrite every
+    # assertion below for a doubled, differently-sharded job list.
+    document["training"]["dataset_replicates"] = 1
     training_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
     return personas_root
 

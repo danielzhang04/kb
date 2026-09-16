@@ -11,6 +11,7 @@
     "dop_enabled": true,
     "dop_multiplier": 1.0,
     "dop_class": "woman",
-    "dataset_source": "klein-multiref"
+    "dataset_source": "qwen-edit",
+    "dataset_replicates": 2
   }
 }

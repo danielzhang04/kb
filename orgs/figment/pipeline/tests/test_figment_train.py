@@ -384,10 +384,10 @@ def _klein_multiref_manifests(command, tmp_path):
 
 
 def test_klein_multiref_body_prompt_carries_exactly_one_wearing_clause(command, tmp_path):
-    """HIGH-1 (adversarial review): `identity.look.clothing` already reads "wearing ..."
-    (`_compose_look_clause`), and `_klein_multiref_body_prompt` used to append a SECOND,
-    contradictory "wearing {wardrobe}" clause on top of it. Every body job prompt must
-    carry exactly one "wearing" and the wardrobe phrase for its own cell."""
+    """HIGH-1 (adversarial review; 2026-09-16 fix dropped `_compose_look_clause` from
+    this composer entirely, so there is no longer a second source of "wearing ..." to
+    collide with). Every body job prompt must carry exactly one "wearing" and the
+    wardrobe phrase for its own cell."""
     persona, (_, body_manifest) = _klein_multiref_manifests(command, tmp_path)
     expansion = command._build_expansion_set_module()
     _, body_cells = command._klein_multiref_cells(persona)
@@ -415,9 +415,8 @@ def test_klein_multiref_face_cells_never_use_profile_or_near_back_angle(command,
     forbidden_phrases = (
         expansion.ANGLE_PHRASES["profile-l"], expansion.ANGLE_PHRASES["near-back"],
     )
-    clause = command._compose_look_clause(persona["identity"]["look"])
     for cell in face_cells:
-        prompt = command._klein_multiref_face_prompt(clause, cell)
+        prompt = command._klein_multiref_face_prompt(cell)
         for phrase in forbidden_phrases:
             assert phrase not in prompt
 
@@ -462,8 +461,7 @@ def test_klein_multiref_face_prompt_never_names_two_settings_at_once(command, tm
     one prompt. The background clause must drop "white" for that light, and no
     emitted face prompt (across all 15 real cells) may ever say "bedroom" and "white
     wall" together."""
-    clause = "a woman"
-    prompt = command._klein_multiref_face_prompt(clause, {"angle": "front", "light": "flat-white"})
+    prompt = command._klein_multiref_face_prompt({"angle": "front", "light": "flat-white"})
     assert "bedroom" in prompt
     assert "white wall" not in prompt
 
@@ -473,18 +471,18 @@ def test_klein_multiref_face_prompt_never_names_two_settings_at_once(command, tm
         personas_root / "creator-002" / "persona.yaml"
     )
     face_cells, _body_cells = command._klein_multiref_cells(persona)
-    look_clause = command._compose_look_clause(persona["identity"]["look"])
     for cell in face_cells:
-        prompt = command._klein_multiref_face_prompt(look_clause, cell)
+        prompt = command._klein_multiref_face_prompt(cell)
         assert not ("bedroom" in prompt and "white wall" in prompt)
 
 
-def test_klein_multiref_jobs_substitute_node_4_with_composed_clause_and_cell_phrases(
+def test_klein_multiref_jobs_substitute_node_4_with_reference_lock_and_cell_phrases(
     command, tmp_path,
 ):
-    """MEDIUM-2: every klein-multiref job substitutes node id '4' (the graph's own
-    CLIPTextEncode), and a face/body prompt each carry the composed look clause plus
-    their own cell's angle/light-or-wardrobe phrase."""
+    """MEDIUM-2, updated 2026-09-16: every klein-multiref job substitutes node id '4'
+    (the graph's own CLIPTextEncode), and a face/body prompt each carry the shared
+    adult-framing sentence + reference-lock clause plus their own cell's
+    angle/light-or-wardrobe phrase."""
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root, dataset_source="klein-multiref")
     persona = command._training_config_module().load_persona_with_training(
@@ -504,31 +502,62 @@ def test_klein_multiref_jobs_substitute_node_4_with_composed_clause_and_cell_phr
             assert job["substitutions"][0]["field"] == "text"
 
     expansion = command._build_expansion_set_module()
-    clause = command._compose_look_clause(persona["identity"]["look"])
     face_cells, body_cells = command._klein_multiref_cells(persona)
     face_prompt = face_manifest["jobs"][0]["substitutions"][0]["value"]
-    assert clause in face_prompt
+    assert expansion.ADULT_FRAMING_SENTENCE in face_prompt
+    assert command._KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE in face_prompt
     assert expansion.ANGLE_PHRASES[face_cells[0]["angle"]] in face_prompt
     assert expansion.LIGHT_PHRASES[face_cells[0]["light"]] in face_prompt
 
-    body_clause = command._compose_look_clause(persona["identity"]["look"], exclude=("clothing",))
     body_prompt = body_manifest["jobs"][0]["substitutions"][0]["value"]
-    assert body_clause in body_prompt
+    assert expansion.ADULT_FRAMING_SENTENCE in body_prompt
+    assert command._KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE in body_prompt
     assert expansion.ANGLE_PHRASES[body_cells[0]["angle"]] in body_prompt
     assert expansion.WARDROBE_PHRASES[body_cells[0]["wardrobe_family"]] in body_prompt
+
+
+def test_klein_multiref_face_prompts_never_carry_an_identity_look_value(command, tmp_path):
+    """2026-09-16 fix: the live 0/30 dataset gate (orgs/figment/runs/creator-001/
+    live-20260915b) traced to the composer prepending `_compose_look_clause` (a
+    hair/eyes/brows/makeup/skin text description) ahead of the three ReferenceLatent
+    images -- the text encoder followed the description over the references.
+    `identity.look`'s value strings must never appear in a klein-multiref face OR body
+    prompt again; identity now comes from the reference images alone."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    look = persona["identity"]["look"]
+    look_values = [
+        look[key] for key in
+        ("age_stage", "hair", "eyes", "skin", "brows", "makeup", "build", "clothing")
+    ]
+
+    face_manifest, body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    for manifest in (face_manifest, body_manifest):
+        for job in manifest["jobs"]:
+            prompt = job["substitutions"][0]["value"]
+            for value in look_values:
+                assert value not in prompt, (value, prompt)
 
 
 def test_klein_multiref_unknown_grammar_token_raises_figment_train_error(command, tmp_path):
     """LOW (adversarial review): an unknown grammar token must fail closed with
     FigmentTrainError, never a bare KeyError."""
-    clause = "a clause"
     with pytest.raises(command.FigmentTrainError):
-        command._klein_multiref_face_prompt(clause, {"angle": "upside-down", "light": "flat-white"})
+        command._klein_multiref_face_prompt({"angle": "upside-down", "light": "flat-white"})
     with pytest.raises(command.FigmentTrainError):
-        command._klein_multiref_face_prompt(clause, {"angle": "front", "light": "strobe"})
+        command._klein_multiref_face_prompt({"angle": "front", "light": "strobe"})
     with pytest.raises(command.FigmentTrainError):
         command._klein_multiref_body_prompt(
-            clause, {"angle": "front", "wardrobe_family": "tuxedo"},
+            {"angle": "front", "wardrobe_family": "tuxedo"},
         )
 
 
@@ -695,6 +724,100 @@ def test_dataset_manifests_qwen_edit_keeps_framing_on_the_written_job(command, t
     for manifest in manifests:
         for job in manifest["jobs"]:
             assert job["framing"] in ("close", "half", "full")
+
+
+# ---------------------------------------------------------------------------
+# P2 task 2 (2026-09-16): `dataset_replicates` -- N distinct-seed jobs per prompt row
+# ---------------------------------------------------------------------------
+
+
+def _qwen_edit_dataset_manifests(command, personas_root, *, dataset_replicates=None):
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    raw_training = {"dataset_source": "qwen-edit"}
+    if dataset_replicates is not None:
+        raw_training["dataset_replicates"] = dataset_replicates
+    training = command._training_config_module().validate_training(raw_training, persona["id"])
+    pins = command._read_json(command.PINS_PATH)
+    prompts = command._generalized_prompts(persona)
+    return command._dataset_manifests(persona, training, pins, prompts)
+
+
+def test_dataset_replicates_default_produces_manifests_identical_to_today(command, tmp_path):
+    """`dataset_replicates` defaults to 1 -- every existing qwen-edit persona/fixture
+    must keep producing byte-identical manifests (job count, shard count, seeds,
+    output names, shard notes) now that the key exists."""
+    explicit = _qwen_edit_dataset_manifests(
+        command, tmp_path / "explicit", dataset_replicates=1,
+    )
+    default = _qwen_edit_dataset_manifests(command, tmp_path / "default")
+    assert explicit == default
+    assert len(default) == 4  # 3 half/close shards + 1 fullbody manifest, unchanged
+    total_jobs = sum(len(manifest["jobs"]) for manifest in default)
+    assert total_jobs == 30  # 15 face + 15 body rows, unchanged
+
+
+def test_dataset_replicates_two_doubles_jobs_and_varies_seeds_per_replicate(
+    command, tmp_path,
+):
+    """`dataset_replicates: 2` must double the total job count (60), give every row's
+    k=2 copy a DIFFERENT (outer seed, seed-node substitution) pair than its k=1 copy
+    (so the pod renders a genuinely different image, not a byte-identical duplicate),
+    keep every output_name unique, preserve `framing` per row, and keep every
+    manifest's job count within its pinned `max_minutes` (the shard COUNT scales with
+    replicates instead of the shard SIZE growing past the pin)."""
+    replicates_1 = _qwen_edit_dataset_manifests(command, tmp_path / "r1", dataset_replicates=1)
+    manifests = _qwen_edit_dataset_manifests(command, tmp_path / "r2", dataset_replicates=2)
+
+    total_jobs = sum(len(manifest["jobs"]) for manifest in manifests)
+    assert total_jobs == 60
+    assert sum(len(manifest["jobs"]) for manifest in replicates_1) * 2 == total_jobs
+
+    all_jobs = [job for manifest in manifests for job in manifest["jobs"]]
+    names = [job["output_name"] for job in all_jobs]
+    assert len(set(names)) == len(names), "every output_name must be unique"
+
+    def _seed_pair(job):
+        substitution_seed = next(
+            s["value"] for s in job["substitutions"] if s["field"] == "seed"
+        )
+        return (job["seed"], substitution_seed)
+
+    by_base_name = {}
+    for job in all_jobs:
+        base_name = job["output_name"][:-3] if job["output_name"].endswith(("r02",)) else job["output_name"]
+        by_base_name.setdefault(base_name, []).append(job)
+    replicate_rows = [jobs for jobs in by_base_name.values() if len(jobs) == 2]
+    assert replicate_rows, "expected at least one row with both a k=1 and a k=2 job"
+    for k1_job, k2_job in replicate_rows:
+        assert _seed_pair(k1_job) != _seed_pair(k2_job), (
+            "a row's k=1 and k=2 jobs must not share the same seed pair, or the pod "
+            "would render byte-identical images for two different replicates"
+        )
+        assert not k1_job["output_name"].endswith("r02")
+        assert k2_job["output_name"].endswith("r02")
+
+    # k=1 jobs reproduce the exact seed pairs `dataset_replicates=1` produces.
+    r1_seed_pairs = {job["output_name"]: _seed_pair(job) for m in replicates_1 for job in m["jobs"]}
+    k1_jobs = [job for job in all_jobs if not job["output_name"].endswith("r02")]
+    assert len(k1_jobs) == len(r1_seed_pairs) == 30
+    for job in k1_jobs:
+        assert _seed_pair(job) == r1_seed_pairs[job["output_name"]]
+
+    # `framing` must still be one of the three valid values, carried onto every job.
+    for job in all_jobs:
+        assert job["framing"] in ("close", "half", "full")
+
+    # Shard count doubled (6 half/close + 2 fullbody = 8 manifests), never max_minutes.
+    assert len(manifests) == 8
+    pod_runner = command._pod_runner_module()
+    for manifest in manifests:
+        minimum_minutes = pod_runner.minimum_runtime_minutes(manifest)
+        assert minimum_minutes <= manifest["max_minutes"], (
+            manifest["_shard"], minimum_minutes, manifest["max_minutes"],
+        )
 
 
 def _build_and_grade_dataset(command, tmp_path, *, label: str, dataset_source: str):

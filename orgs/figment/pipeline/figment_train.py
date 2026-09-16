@@ -862,7 +862,18 @@ def _chunks(items: list[Any], count: int) -> list[list[Any]]:
     return chunks
 
 
-def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]]:
+# P2 task 2 (2026-09-16): seed stride between two `dataset_replicates` copies of the
+# same prompt row -- distinct from every other hardcoded seed/base already in this file
+# (see the comment above `KLEIN_MULTIREF_SEED_BASE`). Applied to BOTH the job-level
+# outer seed and the seed-node substitution (previously a single constant shared by
+# every row in a branch) so replicate k>=2 renders a genuinely different image for the
+# same prompt row instead of a byte-identical duplicate.
+DATASET_REPLICATE_SEED_STRIDE = 7919
+
+
+def _dataset_jobs(
+    persona: dict, prompts: dict[str, Any], *, replicates: int = 1,
+) -> list[dict[str, Any]]:
     """Build every face + body job, each tagged with its own `framing` ("close"|"half"|
     "full", Track-2 Task B1/D24-D25; "close" added by the 2026-09-15 per-framing face
     floor ruling -- see `identity_gate.identity_floor_gate`). Face rows are always plain
@@ -876,6 +887,16 @@ def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]
     gate row that grades this cell -- `pod/runpod_run.py`'s `apply_job` reads only the
     specific keys it needs and ignores unknown ones, so this is not a schema change for
     the pod harness.
+
+    P2 task 2 (2026-09-16): `replicates` (`training.dataset_replicates`, default 1)
+    emits `replicates` jobs per prompt row instead of one, to push dataset yield above
+    the identity gate's approval floor when a chunk of cells fail it. Replicate 1 is
+    BYTE-IDENTICAL to the pre-replicates job (same seed, same substitution seed, same
+    output_name) -- `replicates=1` (the default) reproduces every existing fixture and
+    manifest unchanged. Replicate k>=2 offsets both the job-level `seed` and the
+    seed-node substitution's value by `DATASET_REPLICATE_SEED_STRIDE * (k - 1)`, and its
+    `output_name` carries an `r{k:02d}` suffix so it never collides with another
+    replicate's rendered file.
     """
     short = _creator_output_code(persona["id"])
     jobs: list[dict[str, Any]] = []
@@ -890,27 +911,48 @@ def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]
             else:
                 text, framing = row, default_framing
             output_node = FULLBODY_OUTPUT_NODE if framing == "full" else image_node
-            substitutions = [
-                {"node_id": "832", "field": "images", "value": [output_node, 0]},
-                {"node_id": seed_node, "field": "seed", "value": 1098688918602660},
-                {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + text},
-            ]
-            if framing == "full":
-                # D25: the face-repair tail's own TextEncodeQwenImageEditPlus (node 952)
-                # needs its placeholder prompt substituted too -- a fixed instruction, not
-                # a per-row scene description (see fullbody_repair_prompt_note).
-                substitutions.append({
-                    "node_id": "952", "field": "prompt",
-                    "value": prompts["fullbody_repair_prompt"],
+            for replicate in range(1, replicates + 1):
+                offset = DATASET_REPLICATE_SEED_STRIDE * (replicate - 1)
+                substitutions = [
+                    {"node_id": "832", "field": "images", "value": [output_node, 0]},
+                    {"node_id": seed_node, "field": "seed", "value": 1098688918602660 + offset},
+                    {"node_id": prompt_node, "field": "prompt", "value": block["identity"] + text},
+                ]
+                if framing == "full":
+                    # D25: the face-repair tail's own TextEncodeQwenImageEditPlus (node 952)
+                    # needs its placeholder prompt substituted too -- a fixed instruction, not
+                    # a per-row scene description (see fullbody_repair_prompt_note).
+                    substitutions.append({
+                        "node_id": "952", "field": "prompt",
+                        "value": prompts["fullbody_repair_prompt"],
+                    })
+                suffix = "" if replicate == 1 else f"r{replicate:02d}"
+                jobs.append({
+                    "seed": outer_seed + offset,
+                    "output_name": f"{short}-tds-{label}{index:02d}{suffix}",
+                    "expected_images": 1,
+                    "framing": framing,
+                    "substitutions": substitutions,
                 })
-            jobs.append({
-                "seed": outer_seed,
-                "output_name": f"{short}-tds-{label}{index:02d}",
-                "expected_images": 1,
-                "framing": framing,
-                "substitutions": substitutions,
-            })
     return jobs
+
+
+HALF_CLOSE_SHARD_COUNT_BASE = 3
+FULLBODY_SHARD_COUNT_BASE = 1
+
+
+def _half_close_shard_note(index: int, total: int) -> str:
+    """Same wording `SHARD_NOTES` freezes for the `replicates=1` 3-shard case (kept as
+    the tuple below for that exact byte-for-byte case), generalized to any shard count
+    -- P2 task 2 (2026-09-16): `dataset_replicates > 1` scales the shard COUNT (never
+    the pinned per-shard `max_minutes`), so this needs to describe more than 3 parts."""
+    return f"face-row and half-body-row cells (framing: half), part {index + 1} of {total}"
+
+
+def _fullbody_shard_note(index: int, total: int) -> str:
+    if total == 1:
+        return FULLBODY_SHARD_NOTE
+    return f"{FULLBODY_SHARD_NOTE}, part {index + 1} of {total}"
 
 
 def _dataset_manifests(
@@ -919,8 +961,20 @@ def _dataset_manifests(
     """Three shards of face + half-body-framed cells on the v2 workflow, plus one
     `fullbody` manifest of full-body-framed cells on the face-repair workflow (Track-2
     Task B1). `full` cells are never mixed into the v2 shards -- the repair tail only
-    exists in `tensor_dataset_fullbody_api.json`."""
-    jobs = _dataset_jobs(persona, prompts)
+    exists in `tensor_dataset_fullbody_api.json`.
+
+    P2 task 2 (2026-09-16): `training.dataset_replicates` (default 1) multiplies both
+    the job count AND the shard count by the same factor -- `HALF_CLOSE_SHARD_COUNT_BASE
+    * replicates` half/close shards, `FULLBODY_SHARD_COUNT_BASE * replicates` fullbody
+    manifests -- so each shard's job count (and therefore its
+    `minimum_runtime_minutes`) stays the same as the proven `replicates=1` shape instead
+    of growing past the pinned `max_minutes` floor in `tensor-pins.yaml`. Per the P2
+    task 2 brief: prefer more pods of the proven size over an unproven longer one, so
+    this never raises `max_minutes` itself -- it only ever changes how many manifests
+    the (now larger) job list is split across. `replicates=1` reproduces today's shard
+    counts (3, 1) and shard notes exactly."""
+    replicates = training.get("dataset_replicates", 1)
+    jobs = _dataset_jobs(persona, prompts, replicates=replicates)
     half_jobs: list[dict[str, Any]] = []
     full_jobs: list[dict[str, Any]] = []
     for job in jobs:
@@ -938,10 +992,11 @@ def _dataset_manifests(
         "overwrite": True,
     }
     manifests: list[dict[str, Any]] = []
-    for index, shard_jobs in enumerate(_chunks(half_jobs, 3)):
+    half_close_shard_count = HALF_CLOSE_SHARD_COUNT_BASE * replicates
+    for index, shard_jobs in enumerate(_chunks(half_jobs, half_close_shard_count)):
         manifests.append({
             "_replicates": REPLICATION_NOTE,
-            "_shard": SHARD_NOTES[index],
+            "_shard": _half_close_shard_note(index, half_close_shard_count),
             "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
             **_pod_base(pins, training["pod_class"], "dataset"),
             "models": deepcopy(pins["pins"]["dataset"]["models"]),
@@ -951,30 +1006,32 @@ def _dataset_manifests(
             "uploads": [dict(upload)],
             "jobs": shard_jobs,
         })
-    manifests.append({
-        "_replicates": REPLICATION_NOTE,
-        "_shard": FULLBODY_SHARD_NOTE,
-        "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
-        **_pod_base(pins, training["pod_class"], "dataset_fullbody"),
-        # Review-precedent D23 (anchor_edit): the fullbody manifest reuses the dataset
-        # profile's own models/custom_nodes verbatim -- the repair tail (FaceBoundingBox,
-        # ImageResizeKJv2, core KSampler/VAEEncode/VAEDecode/ImageScale/
-        # ImageCompositeMasked/ConditioningZeroOut) needs no model or node this profile
-        # doesn't already carry.
-        "models": deepcopy(pins["pins"]["dataset"]["models"]),
-        "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
-        "workflow": "../workflows/tensor_dataset_fullbody_api.json",
-        "seed_fields": ["seed"],
-        "uploads": [dict(upload)],
-        "jobs": full_jobs,
-    })
+    fullbody_shard_count = FULLBODY_SHARD_COUNT_BASE * replicates
+    for index, shard_jobs in enumerate(_chunks(full_jobs, fullbody_shard_count)):
+        manifests.append({
+            "_replicates": REPLICATION_NOTE,
+            "_shard": _fullbody_shard_note(index, fullbody_shard_count),
+            "_pin_enforcement": PIN_ENFORCEMENT_NOTE,
+            **_pod_base(pins, training["pod_class"], "dataset_fullbody"),
+            # Review-precedent D23 (anchor_edit): the fullbody manifest reuses the dataset
+            # profile's own models/custom_nodes verbatim -- the repair tail (FaceBoundingBox,
+            # ImageResizeKJv2, core KSampler/VAEEncode/VAEDecode/ImageScale/
+            # ImageCompositeMasked/ConditioningZeroOut) needs no model or node this profile
+            # doesn't already carry.
+            "models": deepcopy(pins["pins"]["dataset"]["models"]),
+            "custom_nodes": deepcopy(pins["pins"]["dataset"]["custom_nodes"]),
+            "workflow": "../workflows/tensor_dataset_fullbody_api.json",
+            "seed_fields": ["seed"],
+            "uploads": [dict(upload)],
+            "jobs": shard_jobs,
+        })
     return manifests
 
 
 # P2 (MANDATE.md stage 2): klein 3-ref generation dataset source. Deterministic base
 # seed, distinct from every other hardcoded seed already in this file (anchor
 # 148+i, edit 1098688918602660/241731167782064/269789944143426, tester/gen 100001,
-# build_expansion_set.py's own SEED_BASE=520001).
+# build_expansion_set.py's own SEED_BASE=520001, dataset-replicate stride 7919 below).
 KLEIN_MULTIREF_SEED_BASE = 610001
 # module 10's own fixed 15+15 cell counts (r15b-training.md).
 KLEIN_MULTIREF_FACE_CELL_COUNT = 15
@@ -1081,9 +1138,39 @@ def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
 _KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING = frozenset({"flat-white"})
 
 
-def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
-    """LOW (adversarial review): angle/light phrases come from `build_expansion_set`'s
-    own `ANGLE_PHRASES`/`LIGHT_PHRASES` (the same tables expansion-02's `build_prompt`
+# 2026-09-16 fix (live evidence, orgs/figment/runs/creator-001/live-20260915b): the
+# prior shape prepended `_compose_look_clause` (a long textual hair/eyes/brows/makeup/
+# skin description) ahead of the reference images, and the text encoder followed that
+# description over the three `ReferenceLatent` inputs -- identity_own vs g01 landed
+# median ~0.61 (range 0.16-0.85) against the 0.7907 floor, gating 0/30. The prior
+# proven graph run (expansion-03, n=35) never described the face in text at all -- it
+# opened with a minimal reference-lock sentence ("Keep her identity, face shape, and
+# features exactly as shown in the reference images; do not alter, blend, or invent
+# any facial feature.") and scored identity_own median 0.842 (0.678-0.91). These two
+# composers now follow that proven shape exactly: NO `_compose_look_clause` call, NO
+# `identity.look` value (hair/eyes/brows/makeup/skin text) anywhere in the prompt --
+# the adult-framing sentence (shared verbatim with `build_expansion_set.build_prompt`
+# via `ADULT_FRAMING_SENTENCE`, so the two dataset sources never drift), then the
+# reference-lock clause FIRST (before any angle/crop/wardrobe phrase -- the earlier
+# shape put it last, after everything else the encoder could latch onto), then angle +
+# distance/crop, then (body only) the one "wearing {wardrobe}" clause, then light (body
+# cells carry no light field) + plain background, then a phone-camera/no-retouch
+# clause. NOT yet live-validated -- see TENSOR-TRAINING.md's P2 "Prompt template shape"
+# row.
+_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE = (
+    "The same woman as the reference images, identical face; keep her identity, "
+    "face shape, and features exactly as shown; do not alter, blend, or invent any "
+    "facial feature."
+)
+_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE = (
+    "Shot on a phone camera, straight out of the camera with no edits afterward, "
+    "fine vellus hair and natural micro-texture, no retouching."
+)
+
+
+def _klein_multiref_face_prompt(cell: dict[str, Any]) -> str:
+    """LOW (adversarial review): angle/distance phrases come from `build_expansion_set`'s
+    own `ANGLE_PHRASES`/`DISTANCE_PHRASES` (the same tables expansion-02's `build_prompt`
     reads) rather than a second, near-duplicate hand-authored table drifting from it.
 
     MEDIUM-3 (opus review, 2026-09-15): a `crop: "tight"` cell (the pad cells
@@ -1095,14 +1182,18 @@ def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
     LOW (opus review, 2026-09-15): when the cell's light phrase names its own setting
     (`_KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING`), the background clause drops
     "white" -- a bedroom's own wall, not a studio backdrop -- so the prompt never
-    asserts two different rooms in one breath."""
+    asserts two different rooms in one breath.
+
+    2026-09-16 fix: no `clause` parameter -- this prompt never describes the face in
+    text (see the module-level comment above `_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE`).
+    """
     expansion = _build_expansion_set_module()
     angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
     light = _klein_multiref_phrase(expansion.LIGHT_PHRASES, cell["light"], kind="light")
     crop_clause = (
         "framed tight head-and-shoulders portrait"
         if cell.get("crop") == "tight"
-        else "framed close from the chest up"
+        else expansion.DISTANCE_PHRASES["close"]
     )
     background_clause = (
         "plain undecorated wall behind her"
@@ -1110,29 +1201,29 @@ def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
         else "plain white wall background"
     )
     return (
-        f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
-        f"{angle}, {crop_clause}, {light}, {background_clause}. "
-        "Keep her identity, face shape, and features exactly as shown in the "
-        "reference images; do not alter, blend, or invent any facial feature."
+        f"{expansion.ADULT_FRAMING_SENTENCE} {_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE} "
+        f"She is {angle}, {crop_clause}. {light}, {background_clause}. "
+        f"{_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE}"
     )
 
 
-def _klein_multiref_body_prompt(clause: str, cell: dict[str, Any]) -> str:
-    """HIGH-1 (adversarial review): `clause` here is ALREADY composed with
-    `exclude=("clothing",)` by the caller, so appending "wearing {wardrobe}" below is
-    this cell's only "wearing" clause -- never a second one contradicting
-    `identity.look.clothing`."""
+def _klein_multiref_body_prompt(cell: dict[str, Any]) -> str:
+    """HIGH-1 (adversarial review): `identity.look.clothing` is never composed into
+    this prompt at all (2026-09-16 fix dropped `_compose_look_clause` entirely), so
+    appending "wearing {wardrobe}" below is this cell's only "wearing" clause.
+
+    2026-09-16 fix: no `clause` parameter -- see the module-level comment above
+    `_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE`."""
     expansion = _build_expansion_set_module()
     angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
     wardrobe = _klein_multiref_phrase(
         expansion.WARDROBE_PHRASES, cell["wardrobe_family"], kind="wardrobe_family",
     )
+    distance = expansion.DISTANCE_PHRASES["half"]
     return (
-        f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
-        f"{angle}, framed half-body from the waist up, wearing {wardrobe}, "
-        "plain white wall background. Keep her identity, face shape, and features "
-        "exactly as shown in the reference images; do not alter, blend, or invent "
-        "any facial feature."
+        f"{expansion.ADULT_FRAMING_SENTENCE} {_KLEIN_MULTIREF_REFERENCE_LOCK_CLAUSE} "
+        f"She is {angle}, {distance}, wearing {wardrobe}. Plain white wall "
+        f"background. {_KLEIN_MULTIREF_PHONE_CAMERA_CLAUSE}"
     )
 
 
@@ -1228,11 +1319,6 @@ def _dataset_manifests_klein_multiref(
 
     face_cells, body_cells = _klein_multiref_cells(persona)
     short = _creator_output_code(persona["id"])
-    look = persona["identity"]["look"]
-    clause = _compose_look_clause(look)
-    # HIGH-1: the body clause drops `look["clothing"]` -- `_klein_multiref_body_prompt`
-    # supplies the one and only "wearing {wardrobe}" clause for a body cell.
-    body_clause = _compose_look_clause(look, exclude=("clothing",))
 
     def _job(cell: dict[str, Any], prompt: str) -> dict[str, Any]:
         return {
@@ -1274,8 +1360,8 @@ def _dataset_manifests_klein_multiref(
             "jobs": jobs,
         }
 
-    face_jobs = [_job(cell, _klein_multiref_face_prompt(clause, cell)) for cell in face_cells]
-    body_jobs = [_job(cell, _klein_multiref_body_prompt(body_clause, cell)) for cell in body_cells]
+    face_jobs = [_job(cell, _klein_multiref_face_prompt(cell)) for cell in face_cells]
+    body_jobs = [_job(cell, _klein_multiref_body_prompt(cell)) for cell in body_cells]
     return [
         _shard("15 face-angle cells (framing: close)", face_jobs),
         _shard("15 body-pose cells (framing: half, clothed register)", body_jobs),
@@ -3001,10 +3087,27 @@ def build_plan(
                 ]
             else:
                 manifests = _dataset_manifests(persona, training, pins, prompts)
+                # P2 task 2 (2026-09-16): `_dataset_manifests` scales BOTH the half/close
+                # and fullbody shard counts with `training.dataset_replicates` -- derive
+                # the path list's shape from the manifest list it actually returned
+                # (half/close shards first, fullbody shards last, per its own docstring)
+                # rather than a hardcoded 3+1, or a `replicates > 1` plan would zip()
+                # away every manifest past the 4th and silently never write it to disk.
+                fullbody_shard_count = FULLBODY_SHARD_COUNT_BASE * training.get(
+                    "dataset_replicates", 1,
+                )
+                half_close_shard_count = len(manifests) - fullbody_shard_count
                 paths = [
                     out / "expand" / "runs" / f"{creator_id}-tensor-dataset-shard-{n:02d}.yaml"
-                    for n in range(1, 4)
-                ] + [out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml"]
+                    for n in range(1, half_close_shard_count + 1)
+                ]
+                if fullbody_shard_count == 1:
+                    paths.append(out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody.yaml")
+                else:
+                    paths += [
+                        out / "expand" / "runs" / f"{creator_id}-tensor-dataset-fullbody-{n:02d}.yaml"
+                        for n in range(1, fullbody_shard_count + 1)
+                    ]
         elif current == "smoke":
             manifests = [_train_manifest(persona, training, pins, smoke=True)]
             paths = [out / "train" / "runs" / f"{creator_id}-tensor-train-smoke.yaml"]

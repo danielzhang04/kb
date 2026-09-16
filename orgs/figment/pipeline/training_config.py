@@ -21,6 +21,7 @@ TRAINING_KEYS = {
     "style_lora", "style_lora_strength", "chosen_checkpoint_step",
     "chosen_checkpoint_sha256", "chosen_checkpoint_approval",
     "dop_enabled", "dop_multiplier", "dop_class", "dataset_source",
+    "dataset_replicates",
 }
 DEFAULT_TRAINING = {
     "trigger": None,
@@ -72,6 +73,12 @@ DEFAULT_TRAINING = {
     # off the persona's own identity references, no edit/denoise pass
     # (`_dataset_manifests_klein_multiref`).
     "dataset_source": "qwen-edit",
+    # P2 task 2 (2026-09-16): how many distinct-seed renders `_dataset_jobs`
+    # (`figment_train.py`, `qwen-edit` source only) emits per prompt row, to push the
+    # dataset yield above the identity gate's approval floor when a chunk of cells fail
+    # it. 1 (default) reproduces today's job counts and manifests byte-for-byte -- every
+    # existing test and persona keeps behaving exactly as it did before this key existed.
+    "dataset_replicates": 1,
 }
 ALLOWED_ARCHES = {"krea2"}
 ALLOWED_DATASET_SOURCES = {"qwen-edit", "klein-multiref"}
@@ -168,6 +175,11 @@ def validate_training(raw: Any, creator_id: str) -> dict[str, Any]:
     if config["dataset_source"] not in ALLOWED_DATASET_SOURCES:
         raise TrainingConfigError(
             f"persona.training.dataset_source must be one of {sorted(ALLOWED_DATASET_SOURCES)}"
+        )
+    replicates = config["dataset_replicates"]
+    if isinstance(replicates, bool) or not isinstance(replicates, int) or replicates < 1:
+        raise TrainingConfigError(
+            "persona.training.dataset_replicates must be an integer >= 1"
         )
     if not isinstance(config["pod_class"], str) or not config["pod_class"].strip():
         raise TrainingConfigError("persona.training.pod_class must be a non-empty string")

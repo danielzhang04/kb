@@ -88,3 +88,24 @@ def test_dataset_source_accepts_klein_multiref():
 def test_dataset_source_rejects_anything_outside_the_allowed_set(bad):
     with pytest.raises(tc.TrainingConfigError, match="dataset_source"):
         tc.validate_training({"dataset_source": bad}, "creator-002")
+
+
+# P2 task 2 (2026-09-16): `dataset_replicates` -- how many distinct-seed jobs
+# `_dataset_jobs` emits per qwen-edit prompt row, to push dataset yield above the
+# identity gate's approval floor. Default preserves today's behaviour.
+
+
+def test_dataset_replicates_defaults_to_one():
+    config = tc.validate_training(None, "creator-002")
+    assert config["dataset_replicates"] == 1
+
+
+def test_dataset_replicates_accepts_a_larger_integer():
+    config = tc.validate_training({"dataset_replicates": 2}, "creator-002")
+    assert config["dataset_replicates"] == 2
+
+
+@pytest.mark.parametrize("bad", [0, -1, 1.5, "2", None, True, False])
+def test_dataset_replicates_rejects_anything_outside_a_positive_integer(bad):
+    with pytest.raises(tc.TrainingConfigError, match="dataset_replicates"):
+        tc.validate_training({"dataset_replicates": bad}, "creator-002")
