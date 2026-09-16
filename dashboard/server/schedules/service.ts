@@ -2,7 +2,7 @@ import { sha256Hex } from '../shared/hashing.ts';
 import type { FastifyInstance, preHandlerHookHandler } from 'fastify';
 import { OPERATOR_SUBJECT } from '../auth/operator.ts';
 import { verifiedSession } from '../http/middleware.ts';
-import { validateScheduleCadence } from '../../src/lib/scheduleWords.ts';
+import { cronDayLabel, validateScheduleCadence } from '../../src/lib/scheduleWords.ts';
 import type { RunnableRef } from '../control/p2Contracts.ts';
 import type { RunnableSelector } from '../entities/contracts.ts';
 import type {
@@ -117,8 +117,10 @@ function cronWords(source: string): string {
     const time = formatTime(Number(fields[1]), Number(fields[0]));
     if (fields[4] === '*') return `Daily · ${time}`;
     if (fields[4].toLowerCase() === 'mon-fri') return `Every weekday (Mon–Fri) · ${time}`;
-    const day = DAY_NAME.has(fields[4].toLowerCase()) ? fields[4].slice(0, 3) : fields[4];
-    return `${day.charAt(0).toUpperCase()}${day.slice(1).toLowerCase()} · ${time}`;
+    // A numeric day-of-week (`15 3 * * 0`) is as legal as `sun` and is what HEARTBEAT.md seeds use;
+    // the old inline title-case only understood names and rendered the number back verbatim.
+    const label = cronDayLabel(fields[4]);
+    return label ? `${label} · ${time}` : source;
   }
   return source;
 }

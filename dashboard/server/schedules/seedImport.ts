@@ -1,4 +1,5 @@
 import { sha256Hex } from '../shared/hashing.ts';
+import { cronDayLabel } from '../../src/lib/scheduleWords.ts';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import type { RunnableRef } from '../control/p2Contracts.ts';
@@ -172,8 +173,11 @@ function wordsFor(source: string): string | null {
     if (minute > 59 || hour > 23) return null;
     const time = `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
     if (fields[4] === '*') return `Daily · ${time}`;
-    const day = fields[4].slice(0, 3);
-    return `${day.charAt(0).toUpperCase()}${day.slice(1).toLowerCase()} · ${time}`;
+    // Same defect as service.ts cronWords: HEARTBEAT.md declares `15 3 * * 0` / `45 2 * * 1`, and
+    // slicing the first three characters rendered the bare digit. Returning `source` (never null)
+    // for an unrepresentable day field keeps `supported` true, so arming is unchanged.
+    const label = cronDayLabel(fields[4]);
+    return label ? `${label} · ${time}` : source;
   }
   return source;
 }

@@ -89,6 +89,18 @@ function day(value: string): Day | null {
   return DAY_NUMBER[normalized] ?? (DAYS.includes(normalized as Day) ? normalized as Day : null);
 }
 
+/**
+ * Short label for a cron day-of-week field that names exactly one day, by name (`sun`, `mon`)
+ * or by number (`0`-`7`, where both `0` and `7` are Sunday). Returns null for `*`, ranges,
+ * lists, or anything else that is not a single day, so callers can fall back.
+ */
+export function cronDayLabel(field: string): string | null {
+  const raw = field.trim();
+  if (!/^[a-z0-9]+$/i.test(raw)) return null;
+  const resolved = day(raw);
+  return resolved ? DAY_LABEL[resolved] : null;
+}
+
 function parseDays(field: string, allowWeekdayRange = true): Day[] | null {
   if (field === '*') return [...DAYS];
   if (allowWeekdayRange && field.toLowerCase() === 'mon-fri') return ['mon', 'tue', 'wed', 'thu', 'fri'];
