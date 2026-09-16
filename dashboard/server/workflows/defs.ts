@@ -42,6 +42,9 @@ const MAX_STAGE_HUMAN_GATES = 16;
 const MAX_READ_SCOPE_ITEMS = 64;
 const MAX_ITERATION_ITEMS = 64;
 const MAX_ITERATION_SUMMARY_CHARS = 4_000;
+/** Bound mirrors the signed-approval payload's own `tags` bound (spec §4.2/§4.4): at most 8 labels. */
+const MAX_TAGS = 8;
+const TAG_RE = /^[a-z][a-z0-9-]{0,31}$/;
 
 /** Every workflow target must live under `orgs/<project>/` — see the containment note in validateStage. */
 const ORGS_DIR = 'orgs';
@@ -307,6 +310,14 @@ export interface WorkflowDef {
    * compiles to today's exact `[orgs/<project>]` behaviour (compile.ts).
    */
   readScope: string[];
+  /**
+   * Governing labels; `publish` and `spend` escalate gate resolution to the signed channel (spec §4.4).
+   * Declared explicitly here, but `effectiveWorkflowTags` below is the actual authority: it also DERIVES
+   * `publish`/`spend` from what a definition's stages prove (a `publish:` action, a publication or spend
+   * human gate), so a definition can never escape the rule by simply omitting the label. `[]` when the
+   * frontmatter omits `tags`.
+   */
+  tags: string[];
   /** The Markdown body after the frontmatter (also the fallback work order for a stage). */
   description: string;
   stages: WorkflowStageDef[];
@@ -1116,7 +1127,7 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
     return { ok: false, detail: 'definition frontmatter is not valid YAML' };
   }
   if (!isRecord(frontmatter)) return { ok: false, detail: 'definition frontmatter must be a mapping' };
-  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'purpose', 'model', 'tools', 'skills', 'connectors', 'filesystemRoots', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'stages', 'iterationGroups']);
+  const allowed = new Set(['schemaVersion', 'id', 'project', 'title', 'purpose', 'model', 'tools', 'skills', 'connectors', 'filesystemRoots', 'executionMode', 'maxConcurrency', 'profile', 'governedBy', 'manager', 'parameters', 'readScope', 'tags', 'stages', 'iterationGroups']);
   const unknownKey = Object.keys(frontmatter).find((key) => !allowed.has(key));
   if (unknownKey) return { ok: false, detail: `frontmatter has unknown field '${unknownKey}'` };
 
@@ -1210,6 +1221,14 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
   }
   const readScope = validateReadScope(frontmatter.readScope, project);
   if (!readScope.ok) return readScope;
+
+  const rawTags = frontmatter.tags === undefined ? [] : frontmatter.tags;
+  if (!Array.isArray(rawTags) || rawTags.length > MAX_TAGS
+    || rawTags.some((value) => typeof value !== 'string' || !TAG_RE.test(value))) {
+    return { ok: false, detail: `tags must be a list of at most ${MAX_TAGS} lowercase identifiers matching ${TAG_RE}` };
+  }
+  if (new Set(rawTags).size !== rawTags.length) return { ok: false, detail: 'tags must not contain duplicate entries' };
+  const tags = [...rawTags] as string[];
 
   const description = split.body.trim();
   if (description.length > MAX_DESCRIPTION_CHARS) return { ok: false, detail: 'description body is too long' };
@@ -1319,11 +1338,30 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
       schemaVersion: schemaVersion as number | undefined,
       id, project, title, ...(purpose ? { purpose } : {}), ...(model ? { model } : {}), tools, skills, connectors, filesystemRoots,
       ...(executionMode ? { executionMode } : {}), ...(maxConcurrency ? { maxConcurrency } : {}),
-      profile, readScope: readScope.value, parameters: [...parameters],
+      profile, readScope: readScope.value, tags, parameters: [...parameters],
       ...(governedBy ? { governedBy } : {}), ...(manager ? { manager } : {}), description, stages,
       ...(parsedIterationGroups.value.length > 0 ? { iterationGroups: parsedIterationGroups.value } : {}),
     },
   };
+}
+
+/**
+ * The tags that GOVERN this definition: its declared `tags`, plus what its stages prove. `publish` and
+ * `spend` are DERIVED, not merely declared, so a definition cannot escape the boss-intervention rule
+ * (spec §4.5) by omitting a label: a `publish:` stage action or a `publicationAuthorization` human gate
+ * always tags `publish`; a `spendAuthorization` human gate always tags `spend`. This mirrors the exact
+ * signals `parseWorkflowDef`'s `validation-slice` check above already treats as the publish/T3 markers.
+ */
+export function effectiveWorkflowTags(def: WorkflowDef): ReadonlySet<string> {
+  const tags = new Set(def.tags);
+  for (const stage of def.stages) {
+    if (stage.action.startsWith('publish:')) tags.add('publish');
+    for (const gate of stage.humanGates ?? []) {
+      if (gate.publicationAuthorization === true) tags.add('publish');
+      if (gate.spendAuthorization === true) tags.add('spend');
+    }
+  }
+  return tags;
 }
 
 /** Substitute only declared launch parameters; unrelated placeholders such as `<shot-id>` remain literal. */

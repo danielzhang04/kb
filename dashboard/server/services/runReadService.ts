@@ -119,6 +119,10 @@ export interface RespondPort {
     challengeExpiresAt: string | undefined;
     reason: string;
     actorLabel: Actor;
+    /** T5 [design:4.4/4.5]: the `{payload, signature}` signed-approval body, forwarded verbatim from the
+     *  request. Required only when the run this request belongs to is `publish`/`spend`-tagged; see
+     *  `humanResponse.ts#HumanResponseInput.approval`. */
+    approval?: unknown;
   }): Promise<RespondResult>;
 }
 
@@ -170,6 +174,7 @@ export async function respondHumanRequestRoute(
     challengeExpiresAt: input.challengeExpiresAt == null ? undefined : str(input.challengeExpiresAt),
     reason,
     actorLabel,
+    approval: input.approval,
   });
   if (!result.ok) {
     return {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AuditEvent } from '../audit/log.ts';
 import {
   createHumanResponseService, deployDigest, iterationGateDigest, iterationGateT3Preimage,
@@ -91,10 +91,14 @@ const ordinaryInput = {
   reason: 'looks correct', actorLabel: 'daniel' as const,
 };
 
+/** T5 [design:4.4/4.5]: the default `workflowTags` port for scenarios that don't care about escalation —
+ *  every run governs no tags, so `respond()` never reaches the signed-approval check. */
+const NO_TAGS = () => new Set<string>();
+
 describe('gate-kind-aware human response service', () => {
   it('returns direct generic 409 iteration-gate-reserved before audit or mutation', async () => {
     const h = harness([request({ gateKind: 'iteration-park' })], new Set(['ask-1']));
-    const result = await createHumanResponseService({ store: h.store, audit: h.audit }).respond(ordinaryInput);
+    const result = await createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS }).respond(ordinaryInput);
     expect(result).toMatchObject({ ok: false, status: 409, error: 'iteration-gate-reserved' });
     expect(h.audits).toEqual([]);
     expect(h.events).toEqual([]);
@@ -102,19 +106,15 @@ describe('gate-kind-aware human response service', () => {
 
   it('allows a minted intervention even when it carries reserved iteration lineage', async () => {
     const h = harness([request({ kind: 'intervention', gateKind: 'iteration-park' })], new Set(['ask-1']));
-    const result = await createHumanResponseService({ store: h.store, audit: h.audit }).respond(ordinaryInput);
+    const result = await createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS }).respond(ordinaryInput);
     expect(result).toMatchObject({ ok: true, replayed: false });
     expect(h.audits).toHaveLength(1);
     expect(h.events).toEqual(['ask-1']);
   });
 
-  // T2 removed the ceremony that used to gate a T3-kind (approval/review/governance-refusal)
-  // request here. `t3` still drives the audit's riskTier/detail, but no verification runs — the service
-  // authorizes the same way for every kind now. A later task moves the signed-approval channel's
-  // escalation into this gap (see humanResponse.ts's comment at the `t3` computation).
-  it('authorizes a T3-kind request without a ceremony, and still stamps riskTier T3 on the audit row', async () => {
+  it('proceeds on the open class for a T3-kind decision on an untagged run (no approval), and still stamps riskTier T3 + responseDigest/origin', async () => {
     const h = harness([request({ kind: 'approval' })]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     const input = { ...ordinaryInput, decision: 'approved' as const };
 
     const first = await service.respond(input);
@@ -126,7 +126,10 @@ describe('gate-kind-aware human response service', () => {
     expect(h.audits[0]).toMatchObject({
       action: 'control-human-response-authorize',
       riskTier: 'T3',
-      detail: { runOwnerSubject: 'owner:run-1', responseDigest: expect.stringMatching(/^[a-f0-9]{64}$/), origin: 'https://dashboard.test' },
+      detail: {
+        runOwnerSubject: 'owner:run-1', signedRequired: false, workflowTags: [],
+        responseDigest: expect.stringMatching(/^[a-f0-9]{64}$/), origin: 'https://dashboard.test',
+      },
     });
     expect(h.events).toEqual(['ask-1']);
     expect(h.resumes).toEqual(['run-1']);
@@ -134,7 +137,7 @@ describe('gate-kind-aware human response service', () => {
 
   it('a non-T3 (input) kind stamps riskTier T2 and carries no responseDigest/origin in the detail', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     await service.respond(ordinaryInput);
     expect(h.audits).toHaveLength(1);
     expect(h.audits[0]).toMatchObject({ riskTier: 'T2' });
@@ -144,7 +147,7 @@ describe('gate-kind-aware human response service', () => {
 
   it('emits once per fresh response but resumes only after the last of two requests', async () => {
     const h = harness([request(), request({ requestRef: 'ask-2', kind: 'intervention', title: 'Second' })]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     await service.respond(ordinaryInput);
     expect(h.events).toEqual(['ask-1']);
     expect(h.resumes).toEqual([]);
@@ -155,7 +158,7 @@ describe('gate-kind-aware human response service', () => {
 
   it('repairs a committed answer when event append fails, without emitting twice', async () => {
     const h = harness([request()], new Set(), { append: 1 });
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
 
     await expect(service.respond(ordinaryInput)).rejects.toThrow('event append unavailable');
     expect(h.requests.get('ask-1')?.response?.idempotencyKey).toBe('respond-1');
@@ -169,7 +172,7 @@ describe('gate-kind-aware human response service', () => {
 
   it('repairs a committed answer when resume fails, without appending a second event', async () => {
     const h = harness([request()], new Set(), { resume: 1 });
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
 
     await expect(service.respond(ordinaryInput)).rejects.toThrow('resume unavailable');
     expect(h.events).toEqual(['ask-1']);
@@ -182,7 +185,7 @@ describe('gate-kind-aware human response service', () => {
 
   it('refuses stale revisions and host identities before audit', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     await expect(service.respond({ ...ordinaryInput, expectedRevision: 0 })).resolves.toEqual({
       ok: false, status: 409, error: 'request-revision-changed',
     });
@@ -197,11 +200,103 @@ describe('gate-kind-aware human response service', () => {
     const service = createHumanResponseService({
       store: h.store,
       audit: { append: async () => { throw new Error('audit unavailable'); } },
+      workflowTags: NO_TAGS,
     });
     const result = await service.respond(ordinaryInput);
     expect(result).toEqual({ ok: false, status: 500, error: 'human-response-audit-required' });
     expect(h.requests.get('ask-1')?.state).toBe('open');
     expect(h.events).toEqual([]);
+  });
+});
+
+// =====================================================================================================
+// T5 [design:4.4/4.5] — the boss-intervention rule: an untagged run's decision proceeds on the open
+// class; a run whose `effectiveWorkflowTags` include `publish` or `spend` requires a valid signed
+// approval, whatever actor is deciding — `daniel` included. `vi.fn()` mocks below replace the removed
+// ceremony port the tests above used to exercise; this is what took its place in `respond()`.
+// =====================================================================================================
+describe('workflow-tag escalation (T5)', () => {
+  it('resolves an untagged run with no approval', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: true });
+  });
+
+  it('refuses a publish-tagged run with no approval', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({
+      store: h.store, audit: h.audit,
+      workflowTags: () => new Set(['publish']),
+      verifyApproval: async () => ({ ok: false, status: 403, error: 'approval-invalid' }),
+    });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: false, status: 403, error: 'approval-required' });
+    expect(h.audits).toEqual([]);
+  });
+
+  it('refuses a spend-tagged run with no approval', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({
+      store: h.store, audit: h.audit,
+      workflowTags: () => new Set(['spend']),
+      verifyApproval: async () => ({ ok: false, status: 403, error: 'approval-invalid' }),
+    });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: false, status: 403, error: 'approval-required' });
+  });
+
+  it('refuses a tagged run with 503 approval-unavailable when no verifier is wired', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']) });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: false, status: 503, error: 'approval-unavailable' });
+    expect(h.audits).toEqual([]);
+  });
+
+  it('accepts a tagged run with a valid approval', async () => {
+    const h = harness([request()]);
+    const verifyApproval = vi.fn().mockResolvedValue({ ok: true });
+    const service = createHumanResponseService({
+      store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']), verifyApproval,
+    });
+    const result = await service.respond({ ...ordinaryInput, approval: { payload: 'p', signature: 's' } });
+    expect(result).toMatchObject({ ok: true });
+    expect(verifyApproval).toHaveBeenCalledWith({ payload: 'p', signature: 's' });
+    expect(h.audits[0]).toMatchObject({ detail: { signedRequired: true, workflowTags: ['publish'] } });
+  });
+
+  it('passes a verifier refusal through verbatim', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({
+      store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']),
+      verifyApproval: async () => ({ ok: false, status: 409, error: 'approval-replayed' }),
+    });
+    const result = await service.respond({ ...ordinaryInput, approval: {} });
+    expect(result).toMatchObject({ ok: false, status: 409, error: 'approval-replayed' });
+    expect(h.audits).toEqual([]);
+  });
+
+  it('ignores the actor label when deciding — daniel included', async () => {
+    for (const actorLabel of ['daniel', 'boss', 'worker:x', 'unknown'] as const) {
+      const h = harness([request()]);
+      const result = await createHumanResponseService({
+        store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']),
+      }).respond({ ...ordinaryInput, actorLabel });
+      expect(result).toMatchObject({ ok: false, status: 503, error: 'approval-unavailable' });
+    }
+  });
+
+  it('a workflowTags rejection (e.g. an unresolvable workflow) never downgrades to open', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({
+      store: h.store, audit: h.audit,
+      // Production binds an unresolvable workflow to {'publish','spend'} — fail closed (spec §4.5).
+      workflowTags: () => new Set(['publish', 'spend']),
+      verifyApproval: async () => ({ ok: false, status: 403, error: 'approval-invalid' }),
+    });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: false, status: 403, error: 'approval-required' });
   });
 });
 
@@ -212,7 +307,7 @@ describe('gate-kind-aware human response service', () => {
 describe('reason + resolvedBy (T4)', () => {
   it('refuses a CLI-actor response with no reason', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     const result = await service.respond({ ...ordinaryInput, actorLabel: 'boss', reason: '   ' });
     expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
     expect(h.audits).toEqual([]);
@@ -220,7 +315,7 @@ describe('reason + resolvedBy (T4)', () => {
 
   it('refuses a worker actor with an absent reason', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     const result = await service.respond({ ...ordinaryInput, actorLabel: 'worker:sonnet-01', reason: '' });
     expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
   });
@@ -228,7 +323,7 @@ describe('reason + resolvedBy (T4)', () => {
   it('does NOT require a reason from daniel or an unknown actor', async () => {
     for (const actorLabel of ['daniel', 'unknown'] as const) {
       const h = harness([request()]);
-      const service = createHumanResponseService({ store: h.store, audit: h.audit });
+      const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
       const result = await service.respond({ ...ordinaryInput, actorLabel, reason: '' });
       expect(result).toMatchObject({ ok: true });
     }
@@ -236,7 +331,7 @@ describe('reason + resolvedBy (T4)', () => {
 
   it('records resolvedBy on the resolved request', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     const result = await service.respond({ ...ordinaryInput, reason: 'sources look right', actorLabel: 'boss' });
     expect(result.ok).toBe(true);
     expect(h.lastRespondInput?.resolvedBy).toEqual({
@@ -246,7 +341,7 @@ describe('reason + resolvedBy (T4)', () => {
 
   it('stamps reason + actor onto the audit row detail', async () => {
     const h = harness([request()]);
-    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
     await service.respond({ ...ordinaryInput, reason: 'sources look right', actorLabel: 'boss' });
     expect(h.audits[0]).toMatchObject({ detail: { reason: 'sources look right', actor: 'boss' } });
   });

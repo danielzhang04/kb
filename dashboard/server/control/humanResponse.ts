@@ -38,13 +38,15 @@ export interface HumanResponseInput {
   idempotencyKey: string;
   response?: string | null;
   origin: string;
-  ceremonyAssertion?: unknown;
-  challengeExpiresAt?: string;
   /** Free text explaining the decision. Required (non-empty after trim) from a `boss`/`worker:<id>`
    *  actor; optional from `daniel`/`unknown`. See {@link reasonRequiredFor}. */
   reason: string;
   /** The `X-KB-Actor` claim for this request — self-asserted, never an authority input. */
   actorLabel: Actor;
+  /** T5 [design:4.4/4.5]: the `{payload, signature}` signed-approval body, required only when this
+   *  request's run is `publish`/`spend`-tagged. Unvalidated here — `options.verifyApproval` (T3's
+   *  `authority/approval.ts#verifyApproval`, bound to this route + entityRef) is the sole judge. */
+  approval?: unknown;
 }
 
 export interface HumanResponseRequestContext {
@@ -71,7 +73,7 @@ export interface HumanResponseAuditPort {
 
 export type HumanResponseResult =
   | { ok: true; status: 200; value: HumanRequest; replayed: boolean }
-  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; gateKind?: string; resolveUrl?: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500 | 503; error: string; gateKind?: string; resolveUrl?: string };
 
 export interface HumanResponseService {
   respond(input: HumanResponseInput): Promise<HumanResponseResult>;
@@ -101,6 +103,14 @@ function sameReplay(request: HumanRequest, input: HumanResponseInput): boolean {
 export function createHumanResponseService(options: {
   store: HumanResponseStorePort;
   audit: HumanResponseAuditPort;
+  /** T5 [design:4.4/4.5]: the governing tag set for the run this request belongs to. REQUIRED — unlike
+   *  `verifyApproval`, this is never defaulted to "no tags": a caller that forgets to wire it would
+   *  silently exempt every publish/spend run from the signed channel, which is exactly the "fail open"
+   *  this design exists to rule out. */
+  workflowTags: (actorSubject: string, runRef: string) => Awaitable<ReadonlySet<string>>;
+  /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller.
+   *  Absent ⇒ any run whose tags actually require signing is refused `503 approval-unavailable`. */
+  verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
   now?: () => number;
 }): HumanResponseService {
   const now = options.now ?? Date.now;
@@ -147,10 +157,20 @@ export function createHumanResponseService(options: {
         return { ok: false, status: 409, error: 'request-revision-changed' };
       }
 
-      // T2 removed the ceremony verification that used to gate a T3 kind here. `t3` is kept
-      // (it still drives the audit riskTier/detail below) but authorizes nothing on its own until T5
-      // wires the workflow-tag escalation rule in its place.
+      // T3_KINDS/`t3` is RETAINED [design:4.5] — the audit row below still records that this was a
+      // T3-class decision. What changed is which channel proves it: not a per-request assertion-based ceremony
+      // keyed off `request.kind`, but the boss-intervention rule keyed off the RUN's workflow tags. A
+      // T3-kind decision on an untagged run now proceeds on the open class, exactly like an ordinary one.
       const t3 = T3_KINDS.has(request.kind);
+
+      const tags = await options.workflowTags(input.actor.subject, request.runRef);
+      const signedRequired = tags.has('publish') || tags.has('spend');
+      if (signedRequired) {
+        if (!options.verifyApproval) return { ok: false, status: 503, error: 'approval-unavailable' };
+        if (input.approval == null) return { ok: false, status: 403, error: 'approval-required' };
+        const checked = await options.verifyApproval(input.approval);
+        if (!checked.ok) return { ok: false, status: checked.status, error: checked.error };
+      }
 
       // T4 [design:4.3] — WHO resolved this, over what channel, and why. `attribution` reflects the SAME
       // bound identity `audit/log.ts#attributed` stamps onto the row above; `tailnetIdentity` is `null`
@@ -177,6 +197,8 @@ export function createHumanResponseService(options: {
             decision: input.decision,
             reason: reasonTrimmed,
             actor: input.actorLabel,
+            signedRequired,
+            workflowTags: [...tags],
             ...(t3 ? { responseDigest: humanResponseDigest(input), origin: input.origin } : {}),
           },
         });
@@ -258,4 +280,51 @@ export function iterationGateT3Preimage(preimage: IterationGateT3Preimage): stri
 /** Server-side decision digest for the iteration-gate purpose: sha256 of the recomputed preimage. */
 export function iterationGateDigest(preimage: IterationGateT3Preimage): string {
   return sha256Hex(iterationGateT3Preimage(preimage));
+}
+// =====================================================================================================
+// T5 [design:4.5] — `createIterationGateCeremonyService`'s SUCCESSOR. The iteration-gate resolve route
+// (`control/routes.ts#resolveIterationGateRoute`) keeps its existing CAS and refusal ladder byte for
+// byte; only the verification step changes — from a browser-signature ceremony assertion over the gate's preimage
+// to the SAME boss-intervention rule `createHumanResponseService#respond` enforces: an untagged run
+// proceeds; a run whose `effectiveWorkflowTags` include `publish` or `spend` requires a valid signed
+// approval for this route + `requestRef`.
+// =====================================================================================================
+
+export interface IterationGateAuthorityContext {
+  /** The governing tag set for the run this gate belongs to. REQUIRED — see the same note on
+   *  `createHumanResponseService`'s `workflowTags`. */
+  workflowTags: (actorSubject: string, runRef: string) => Awaitable<ReadonlySet<string>>;
+  /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller. */
+  verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
+}
+
+export interface IterationGateAuthorityRequest {
+  actorSubject: string;
+  runRef: string;
+  /** The request body's `approval` key, unvalidated — mirrors `HumanResponseInput.approval`. */
+  approval: unknown;
+}
+
+export type IterationGateAuthorityResult =
+  | { ok: true; status: 200 }
+  | { ok: false; status: 403 | 409 | 503; error: string };
+
+export interface IterationGateAuthorityService {
+  verify(request: IterationGateAuthorityRequest): Promise<IterationGateAuthorityResult>;
+}
+
+export function createIterationGateAuthorityService(
+  context: IterationGateAuthorityContext,
+): IterationGateAuthorityService {
+  return {
+    async verify(request) {
+      const tags = await context.workflowTags(request.actorSubject, request.runRef);
+      if (!(tags.has('publish') || tags.has('spend'))) return { ok: true, status: 200 };
+      if (!context.verifyApproval) return { ok: false, status: 503, error: 'approval-unavailable' };
+      if (request.approval == null) return { ok: false, status: 403, error: 'approval-required' };
+      const checked = await context.verifyApproval(request.approval);
+      if (!checked.ok) return { ok: false, status: checked.status, error: checked.error };
+      return { ok: true, status: 200 };
+    },
+  };
 }

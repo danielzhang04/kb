@@ -52,6 +52,11 @@ import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
+import { classifyRoute, routeKey } from '../authority/policy.ts';
+import { verifyApproval as verifySignedApproval } from '../authority/approval.ts';
+import { defaultSshsigVerifier } from '../authority/sshsig.ts';
+import { createNonceStore } from '../authority/nonceStore.ts';
+import { effectiveWorkflowTags } from '../workflows/defs.ts';
 import { acceptsBoundary, compiledPolicyUnchanged, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import { selectPlacementHost } from '../placement/select.ts';
 import type { CapabilityRequirement } from '../placement/contracts.ts';
@@ -67,6 +72,7 @@ import { createRunEventService, type RunEventSource } from './runEventService.ts
 import { createRunEventStream } from './runEventStream.ts';
 import {
   createHumanResponseService,
+  createIterationGateAuthorityService,
   type HumanResponseInput,
 } from './humanResponse.ts';
 import {
@@ -174,6 +180,60 @@ function workflowRefIndex(ctx: SurfaceContext, sub: string, scope: ReadScope): M
     if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
   }
   return byProposal;
+}
+
+/**
+ * T5 [design:4.4/4.5] — the boss-intervention rule's `workflowTags` port, bound to `humanResponse.ts`'s
+ * `createHumanResponseService`/`createIterationGateAuthorityService`. Resolved FRESH on every call (never
+ * cached across requests) via the SAME `scanWorkflowDefs` + owner-match the predecessor-launch route
+ * already uses (`:664`-ish, `owner.type === 'workflow'`).
+ *
+ * FAIL CLOSED exactly as spec §4.5 requires: a run this cannot pin to one valid, still-parseable
+ * workflow-owned definition returns the maximal `{'publish','spend'}` — an unreadable run, or a
+ * definition since deleted/renamed/made invalid, is refused, never silently exempted. An AGENT-owned run
+ * has no *workflow* to govern it — the rule's antecedent ("the run's workflow's effectiveWorkflowTags")
+ * never applies to one, so it stays untagged: every ordinary agent-run gate resolution keeps behaving
+ * exactly as it did before this design existed.
+ */
+const WORKFLOW_TAGS_UNRESOLVABLE: ReadonlySet<string> = Object.freeze(new Set(['publish', 'spend']));
+const WORKFLOW_TAGS_NONE: ReadonlySet<string> = Object.freeze(new Set<string>());
+
+function resolveRunWorkflowTags(
+  ctx: SurfaceContext, actorSubject: string, runRef: string, scope: ReadScope,
+): ReadonlySet<string> {
+  const run = ctx.controlStore.getRun(actorSubject, runRef, scope);
+  if (!run.ok) return WORKFLOW_TAGS_UNRESOLVABLE;
+  const owner = run.value.run.owner;
+  // A run somehow missing its owner entirely is an anomaly, not an ordinary agent-owned run — fail
+  // closed, exactly like an unresolvable definition below, rather than reading a property of `undefined`.
+  if (!owner) return WORKFLOW_TAGS_UNRESOLVABLE;
+  if (owner.type !== 'workflow') return WORKFLOW_TAGS_NONE;
+  const definition = scanWorkflowDefs(ctx.repoRoot).find((item) => item.def?.id === owner.id
+    && item.def.project === owner.project && item.entry.path === owner.sourcePath && item.entry.valid);
+  if (!definition?.def) return WORKFLOW_TAGS_UNRESOLVABLE;
+  return effectiveWorkflowTags(definition.def);
+}
+
+/**
+ * T5 [design:4.5] — binds T3's `authority/approval.ts#verifyApproval` to ONE route + entityRef, exactly
+ * as `authority/gate.ts#requireAuthority` binds it for a `signed`-class route. Reused here (not routed
+ * through the generic gate) because `/human-requests/:requestRef/respond` and
+ * `/iteration-gates/:requestRef/resolve` are `open`-class WITH `escalate: 'workflow-tag'` (policy.ts): the
+ * escalation is a per-request, RUN-tag-conditioned decision the generic route-classification gate cannot
+ * make on its own — it has no run to look up.
+ */
+function bindVerifyApproval(ctx: SurfaceContext, method: 'POST', url: string, entityRef: string) {
+  const entry = classifyRoute(method, url);
+  const expectedRoute = entry ? routeKey(entry) : `${method} ${url}`;
+  return (approval: unknown) => verifySignedApproval({
+    approval,
+    expectedRoute,
+    expectedEntityRef: entityRef,
+    allowedSigners: ctx.humanApproverAllowedSigners ?? '',
+    verifier: ctx.sshsigVerifier ?? defaultSshsigVerifier,
+    nonces: ctx.approvalNonces ?? createNonceStore(ctx.stateRoot),
+    now: () => (ctx.now?.() ?? new Date()).getTime(),
+  });
 }
 
 /**
@@ -1831,6 +1891,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
         },
       },
+      // T5 [design:4.4/4.5]: the boss-intervention rule. `req.routeOptions?.url ?? req.url` is the exact
+      // pattern `authority/gate.ts#requireAuthority` binds `expectedRoute` from — this handler is shared
+      // verbatim by BOTH the `/api/control/human-requests/:requestRef/respond` registration below and the
+      // v1 mirror (`api/v1/routes.ts`, wired through `ctx.v1.respondPort`), so the bound route must be
+      // read from the live request, never hardcoded to one of the two paths.
+      workflowTags: (actorSubject, runRef) => resolveRunWorkflowTags(ctx, actorSubject, runRef, scope),
+      verifyApproval: bindVerifyApproval(
+        ctx, 'POST', req.routeOptions?.url ?? req.url, (req.params as { requestRef?: string }).requestRef ?? '',
+      ),
       now: () => (ctx.now?.() ?? new Date()).getTime(),
     });
   };
@@ -1911,6 +1980,19 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return decision;
   };
 
+  /**
+   * T5 [design:4.5] — the boss-intervention rule, bound to THIS route's key + `requestRef`. The resolve
+   * route's CAS and refusal ladder around this call are untouched — only the verification step differs
+   * from an ordinary route: `open`-class WITH `escalate: 'workflow-tag'` (policy.ts) means T1's generic
+   * `requireAuthority` gate passes every request straight through, and this per-request, run-tag-
+   * conditioned check is the only thing standing between a publish/spend-tagged run's gate and an
+   * unsigned decision.
+   */
+  const iterationGateAuthority = (req: FastifyRequest, requestRef: string) => createIterationGateAuthorityService({
+    workflowTags: (actorSubject, runRef) => resolveRunWorkflowTags(ctx, actorSubject, runRef, readScope(req)),
+    verifyApproval: bindVerifyApproval(ctx, 'POST', req.routeOptions?.url ?? req.url, requestRef),
+  });
+
   const resolveIterationGateRoute = async (
     req: FastifyRequest,
     reply: FastifyReply,
@@ -1955,10 +2037,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'iteration-gate-cas-mismatch', detail: 'The displayed gate or artifact set changed; reload before deciding.' });
     }
     if (gateRequest.state === 'open') {
-      // T2 removed the ceremony that used to verify an assertion over this tuple here, before
-      // the audit append. The riskTier: 'T3' audit row (still the SAME tuple the CAS above just
-      // checked) stays; authorization moves to the ssh-signed channel via T1's requireAuthority gate,
-      // not a route-local verify. A replay (state already `resolved`) skips this block entirely.
+      // T5 [design:4.5]: the boss-intervention rule — verified BEFORE the audit append, so a refusal
+      // leaves no `authorized:` row and mutates nothing. A replay (state already `resolved`) is
+      // idempotent and re-verifies nothing, exactly as the shipped human-response path short-circuits
+      // its replay above its own check.
+      const authority = await iterationGateAuthority(req, requestRef).verify({
+        actorSubject: sub, runRef: gateRequest.runRef, approval: body.approval,
+      });
+      if (!authority.ok) return reply.code(authority.status).send({ error: authority.error });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-iteration-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',

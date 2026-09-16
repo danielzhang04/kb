@@ -455,13 +455,24 @@ describe('control proposal routes', () => {
     return { request, loop, iterationRequest, receipt };
   }
 
-  function mockIterationGate(reason: 'exhausted' | 'no-progress' | 'parked') {
+  /**
+   * T5 [design:4.4/4.5]: `resolveRunWorkflowTags` reads `run.owner.type` to decide whether the
+   * boss-intervention rule applies at all. Defaults to an AGENT owner — no workflow to govern it, so it
+   * stays untagged, exactly like every iteration-gate resolution here did before that design existed.
+   * `tagged: true` instead points at a workflow id this fixture repo root names no real definition for —
+   * `resolveRunWorkflowTags` fails CLOSED on an unresolvable workflow, which is the cheapest way this
+   * in-memory suite can force `signedRequired` without writing a definition file to disk.
+   */
+  function mockIterationGate(reason: 'exhausted' | 'no-progress' | 'parked', tagged = false) {
     const fixture = iterationGateFixture(reason);
+    const owner = tagged
+      ? { type: 'workflow' as const, id: 'no-such-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/no-such-workflow.md' as const }
+      : { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const };
     const detail = {
       ownerSubject: 'operator',
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
         proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
-        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '' },
+        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner },
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
     };
@@ -1063,6 +1074,106 @@ describe('control proposal routes', () => {
     });
     expect(differentReason.statusCode, differentReason.body).toBe(409);
     expect(differentReason.json()).toMatchObject({ error: 'idempotency-conflict' });
+  });
+
+  /**
+   * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so the resolve route enforces the SAME
+   * boss-intervention rule (spec §4.5) `responseService`'s `workflowTags`/`verifyApproval` enforce, via
+   * `createIterationGateAuthorityService` — the generic route reserves these gates to this one
+   * (`iteration-gate-reserved`), so EVERY iteration completion/park gate goes through it. T5 replaced the
+   * browser-signature ceremony this block used to exercise (`authority/gate.test.ts` and `authority/approval.test.ts`
+   * cover the signed channel's own crypto in isolation); this block instead proves the WIRING: an untagged
+   * run stays open, a tagged run demands a valid signed approval, and a replayed one is refused.
+   */
+  describe('iteration-gate authority (T5)', () => {
+    const parkPayload = (
+      request: { requestRef: string; revision: number },
+      loop: { version: number; activeGenerationRefs: readonly string[] },
+      decision: string,
+      key: string,
+    ) => ({
+      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
+      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, idempotencyKey: key,
+    });
+    const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
+    });
+    const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
+    const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
+
+    it('proceeds on the open class for an untagged (agent-owned) run — no approval sent, none required', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress');
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'untagged-park'));
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
+    });
+
+    it('refuses a tagged run\'s resolve with no approval, mutates nothing, and writes NO T3 audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-required' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('refuses a tagged run\'s resolve with an approval bound to the wrong entityRef — 403 approval-invalid', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'mismatched-park'),
+        approval: signedApproval(RESOLVE_ROUTE, 'some-other-request-ref'),
+      });
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-invalid' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+    });
+
+    it('resolves a tagged run on a valid signed approval and records the T3 row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const response = await resolveGate(request.requestRef, {
+        ...parkPayload(request, loop, 'approved', 'signed-park'),
+        approval: signedApproval(RESOLVE_ROUTE, request.requestRef),
+      });
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({
+        riskTier: 'T3', result: 'authorized:approved',
+        detail: expect.objectContaining({
+          requestRef: request.requestRef, gateKind: 'iteration-park', parkReason: 'no-progress',
+          loopVersion: loop.version, generationRefs: [...loop.activeGenerationRefs], decision: 'approved',
+        }),
+      });
+    });
+
+    it('verifies once and refuses a replayed approval nonce, writing exactly one T3 audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const payload = { ...parkPayload(request, loop, 'approved', 'replayed-park'), approval: signedApproval(RESOLVE_ROUTE, request.requestRef) };
+      const first = await resolveGate(request.requestRef, payload);
+      expect(first.statusCode, first.body).toBe(200);
+      const second = await resolveGate(request.requestRef, payload);
+      expect(second.statusCode, second.body).toBe(409);
+      expect(second.json()).toEqual({ error: 'approval-replayed' });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
+    });
+
+    // T2 removed the browser-signature ceremony minting route entirely.
+    it('T2 removed the /iteration-gates/:requestRef/challenge mint route entirely (404)', async () => {
+      const { request } = mockIterationGate('no-progress');
+      const minted = await app.inject({
+        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
+        headers: headers(token), payload: { decision: 'approved' },
+      });
+      expect(minted.statusCode, minted.body).toBe(404);
+    });
   });
 
 
@@ -4319,7 +4430,10 @@ describe('Dashboard v3 run and gate routes', () => {
     } finally { await fixture.app.close(); }
   });
 
-  it('T2: the removed /respond/challenge route is gone entirely (404, not a ceremony refusal)', async () => {
+  it('T2 removed the /respond/challenge mint route entirely (404); T5 fails closed on the resolve route '
+    + 'via the workflow-tag rule instead: `daily-news` names no real definition on this fixture repo root, '
+    + 'so the run\'s workflow cannot be resolved and the unresolvable-fail-closed default (spec §4.5) '
+    + 'demands a signed approval nobody sent', async () => {
     const fixture = seededSurface();
     try {
       const challenge = await fixture.app.inject({
@@ -4330,14 +4444,17 @@ describe('Dashboard v3 run and gate routes', () => {
       });
       expect(challenge.statusCode).toBe(404);
 
-      // The plain (now unceremonied) respond route still works.
       const response = await fixture.app.inject({
         method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond`,
         headers: headers(fixture.operatorToken), payload: {
           expectedRevision: fixture.request.revision, decision: 'approved', idempotencyKey: 'approve-result', response: null,
         },
       });
-      expect(response.statusCode, response.body).toBe(200);
+      expect(response.statusCode).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-required' });
+      expect(fixture.store.getHumanRequest('dashboard-engine', fixture.request.requestRef)).toMatchObject({
+        ok: true, value: { state: 'open', response: null },
+      });
     } finally { await fixture.app.close(); }
   });
 });

@@ -8,7 +8,8 @@
  *
  * Scenarios
  *   1. Parallel research -> dependent synthesis -> judge rejects cycle 1, passes cycle 2 (F1, F2).
- *   2. The completion gate: generic respond refused, the reserved route resolves once, replay is idempotent.
+ *   2. The completion gate: generic respond refused; an untagged run's gate resolves with no approval
+ *      and idempotently replays; T5's tests elsewhere cover the tagged (signed-approval-required) case.
  *   3. The declared artifact downloads through GET /api/control/files with its bound digest (F4).
  *   4. Two independent runs on different topics, both complete, both artifacts downloadable.
  *   5. Recovery: a session dies mid-attempt with unknown physical state; resume does not re-run the
@@ -52,7 +53,7 @@ import {
 } from './execution.ts';
 import { loadWorkflowCompileEnvironment } from './environment.ts';
 import { compileWorkflowDef } from '../workflows/compile.ts';
-import { instantiateWorkflowDef, parseWorkflowDef } from '../workflows/defs.ts';
+import { effectiveWorkflowTags, instantiateWorkflowDef, parseWorkflowDef } from '../workflows/defs.ts';
 import { loadOrgDef } from '../workflows/orgDefSource.ts';
 
 const DEF_PATH = 'orgs/kb-ops/workflows/v1-acceptance-demo.md';
@@ -450,7 +451,7 @@ function detailOf(demo: DemoHarness) {
 // The control surface — real routes over the SAME store the engine just drove.
 // ---------------------------------------------------------------------------------------------
 
-function surface(store: ControlPlaneStore, repoRoot: string, sharedStateRoot?: string) {
+function surface(store: ControlPlaneStore, repoRoot: string, sharedStateRoot?: string, now?: () => Date) {
   const auditRows: Record<string, unknown>[] = [];
   // The harness's OWN state root when one is given, so the routes read the very integrations the
   // engine just wrote. A scenario that touches no run output can still take a fresh one.
@@ -459,6 +460,7 @@ function surface(store: ControlPlaneStore, repoRoot: string, sharedStateRoot?: s
   registerWriteSurface(app, makeSurfaceContext({
     repoRoot, stateRoot, sessionConfig: SESSION, allowedOrigins: [ORIGIN],
     controlStore: store,
+    ...(now ? { now } : {}),
     appendAudit: (_root, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
     appendAuditLocal: (_root, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
   }));
@@ -597,8 +599,23 @@ function declaredArtifactPath(demo: DemoHarness): string {
   return path;
 }
 
-describe('v1 acceptance demo — the human completion gate is a real T3 authorization', { timeout: 120_000 }, () => {
-  it('reserves the gate from generic respond, resolves once, and is idempotent on replay', async () => {
+// T5 [design:4.4/4.5]: the boss-intervention rule only escalates a `publish`/`spend`-tagged run's gate
+// resolution to the signed channel; the shipped demo definition derives NEITHER — no `tags`, no
+// `publish:` stage action, no publication/spend human gate — so its completion gate resolves on the open
+// class, exactly like an ordinary decision, and Daniel or the boss can answer it with no signed approval.
+// (This describe superseded the browser-signature-ceremony version of this test: T3's signed channel and the
+// generic gate refusal ladder have their own dedicated coverage in `authority/*.test.ts`; what THIS file
+// proves is the real shipped definition's derived-tag outcome end to end, against the real engine.)
+describe('v1 acceptance demo — the human completion gate resolves on the open class (no publish/spend tags)', () => {
+  it('the shipped definition derives no publish/spend tags', () => {
+    const parsedDef = parseWorkflowDef(SOURCE.text, { knownProfiles: new Set(ENVIRONMENT.registry.workflowProfiles ?? []) });
+    if (!parsedDef.ok) throw new Error(parsedDef.detail);
+    expect([...effectiveWorkflowTags(parsedDef.value)]).toEqual([]);
+  });
+
+  // Under a loaded CI/WSL box a full engine run exceeds vitest's 5 s default (seen 3x on the Linux gate,
+  // green alone) — bound it explicitly, exactly as the T3-ceremony version of this test did.
+  it('reserves the gate from generic respond, resolves it with no approval attached, and is idempotent on replay', { timeout: 120_000 }, async () => {
     const store = createInMemoryControlPlaneStore({ newId: () => `id-${++sequence}` });
     const repoRoot = makeFixtureRepo();
     const demo = harness({ topic: 'gate-topic', store, repoRoot, markers: { 'researcher-a': 'MARKER-GATE-A', 'researcher-b': 'MARKER-GATE-B' } });
@@ -611,12 +628,14 @@ describe('v1 acceptance demo — the human completion gate is a real T3 authoriz
     expect(gate.gateKind ?? null).toBeNull();
     expect(gate.title).toBe('Iteration completion: brief-review');
 
-    const { app, auditRows, token } = surface(demo.store, demo.repoRoot);
+    // A FIXED clock: `resolveIterationGate`'s idempotency check fingerprints the whole resolution input.
+    // Pinning `now` keeps this test's replay behavior deterministic regardless of wall-clock timing.
+    const { app, auditRows, token } = surface(demo.store, demo.repoRoot, undefined, () => new Date('2026-09-16T12:00:00.000Z'));
     openApps.push(app);
     await app.ready();
     const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
 
-    // (a) The generic human-response route refuses a reserved iteration gate.
+    // (a) The generic human-response route still refuses a reserved iteration gate — unaffected by T5.
     const generic = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${gate.requestRef}/respond`, headers: headers(token),
       payload: { expectedRevision: gate.revision, decision: 'approved', idempotencyKey: 'generic-bypass' },
@@ -624,23 +643,21 @@ describe('v1 acceptance demo — the human completion gate is a real T3 authoriz
     expect(generic.statusCode, generic.body).toBe(409);
     expect(generic.json()).toMatchObject({ error: 'iteration-gate-reserved' });
 
-    // (b) The reserved route resolves the exact CAS-bound tuple directly — no ceremony, no assertion —
-    // and still stamps a T3 audit row over exactly that tuple.
-    const resolvePayload = { ...payload, idempotencyKey: 'gate-completion' };
+    // (b) The reserved route resolves this untagged run's gate with NO approval in the payload at all:
+    // `signedRequired` is false, so the signed channel is never even consulted.
     const resolved = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`,
-      headers: headers(token), payload: resolvePayload,
+      headers: headers(token), payload: { ...payload, idempotencyKey: 'no-approval-needed' },
     });
     expect(resolved.statusCode, resolved.body).toBe(200);
     expect(authorizeRows()).toHaveLength(1);
     expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
 
-    // (c) The identical request replayed is idempotent BY DESIGN (routes.ts short-circuits once the
-    // gate is `resolved`), so it returns the same 200 -- but it writes no second T3 row. Asserted
-    // explicitly rather than assumed to be a refusal.
+    // (c) The identical request replayed is idempotent BY DESIGN (routes.ts short-circuits once the gate
+    // is `resolved`), so it returns the same 200 — but it re-checks nothing and writes no second T3 row.
     const idempotent = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`,
-      headers: headers(token), payload: resolvePayload,
+      headers: headers(token), payload: { ...payload, idempotencyKey: 'no-approval-needed' },
     });
     expect(idempotent.statusCode, idempotent.body).toBe(200);
     expect(idempotent.json()).toMatchObject({ replayed: true });
