@@ -1039,13 +1039,20 @@ def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
     # HIGH-2: fewer than 5 lights (the shipped grammar has 4) means angles[:3] x lights
     # falls short of 15 -- pad with more front-angle cells, cycling back through the
     # SAME lights, rather than reaching into the forbidden profile-l/near-back angles.
+    # MEDIUM-3 (opus review, 2026-09-15): cycling the SAME lights back through the SAME
+    # front angle used to make these pad cells byte-identical prompts to f01-f03 (angle,
+    # light, AND crop clause all repeated) -- useless training signal, wasted spend. Tag
+    # each pad cell `crop: "tight"` so `_klein_multiref_face_prompt` swaps in a tighter
+    # head-and-shoulders crop clause instead of the wide chest-up one, keeping the pad
+    # cells gateable (still `distance: "close"`, so `identity_floor_gate` applies the
+    # same 600px close floor) while making every one of the 15 face prompts unique.
     while len(face_cells) < KLEIN_MULTIREF_FACE_CELL_COUNT:
         light = lights[len(face_cells) % len(lights)]
         ordinal += 1
         face_cells.append({
             "cell_id": f"mr-f{len(face_cells) + 1:02d}", "ordinal": ordinal,
             "angle": face_angles[0], "distance": "close", "light": light,
-            "seed": KLEIN_MULTIREF_SEED_BASE + ordinal,
+            "seed": KLEIN_MULTIREF_SEED_BASE + ordinal, "crop": "tight",
         })
 
     body_cells: list[dict[str, Any]] = []
@@ -1065,16 +1072,46 @@ def _klein_multiref_cells(persona: dict) -> tuple[list[dict], list[dict]]:
     return face_cells, body_cells
 
 
+# LOW (opus review, 2026-09-15): `build_expansion_set.LIGHT_PHRASES["flat-white"]`
+# names a specific setting ("daylight through a bedroom window") that contradicts the
+# klein-multiref face composer's own fixed "plain white wall background" clause -- a
+# bedroom is not a bare white-walled studio. Fixed HERE, in the composer that owns the
+# background clause, never by editing the shared table other callers (expansion-02's
+# `build_prompt`) also read.
+_KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING = frozenset({"flat-white"})
+
+
 def _klein_multiref_face_prompt(clause: str, cell: dict[str, Any]) -> str:
     """LOW (adversarial review): angle/light phrases come from `build_expansion_set`'s
     own `ANGLE_PHRASES`/`LIGHT_PHRASES` (the same tables expansion-02's `build_prompt`
-    reads) rather than a second, near-duplicate hand-authored table drifting from it."""
+    reads) rather than a second, near-duplicate hand-authored table drifting from it.
+
+    MEDIUM-3 (opus review, 2026-09-15): a `crop: "tight"` cell (the pad cells
+    `_klein_multiref_cells` adds when the grammar has fewer than 5 lights) swaps the
+    wide "framed close from the chest up" clause for a tighter head-and-shoulders one
+    -- same `distance: "close"` bucket for gating purposes, but a visibly different
+    prompt from the angle/light combinations it would otherwise duplicate.
+
+    LOW (opus review, 2026-09-15): when the cell's light phrase names its own setting
+    (`_KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING`), the background clause drops
+    "white" -- a bedroom's own wall, not a studio backdrop -- so the prompt never
+    asserts two different rooms in one breath."""
     expansion = _build_expansion_set_module()
     angle = _klein_multiref_phrase(expansion.ANGLE_PHRASES, cell["angle"], kind="angle")
     light = _klein_multiref_phrase(expansion.LIGHT_PHRASES, cell["light"], kind="light")
+    crop_clause = (
+        "framed tight head-and-shoulders portrait"
+        if cell.get("crop") == "tight"
+        else "framed close from the chest up"
+    )
+    background_clause = (
+        "plain undecorated wall behind her"
+        if cell["light"] in _KLEIN_MULTIREF_LIGHT_TOKENS_NAMING_A_SETTING
+        else "plain white wall background"
+    )
     return (
         f"{clause}, fine vellus hair and natural micro-texture, no retouching, "
-        f"{angle}, framed close from the chest up, {light}, plain white wall background. "
+        f"{angle}, {crop_clause}, {light}, {background_clause}. "
         "Keep her identity, face shape, and features exactly as shown in the "
         "reference images; do not alter, blend, or invent any facial feature."
     )
@@ -1110,12 +1147,19 @@ _KLEIN_MULTIREF_UPSCALE_SCALE_NODE = "31"
 
 
 def _klein_multiref_dataset_workflow(workflow: dict[str, Any]) -> dict[str, Any]:
-    """Graft the SAME output tail `tensor_dataset_v2_api.json` already carries
-    (`UpscaleModelLoader` + `ImageUpscaleWithModel` with the pinned
-    `4xNomosWebPhoto_RealPLKSR`, then `ImageScaleBy 0.5`, net 2x) between the rebound
-    graph's `VAEDecode` (node 27) and `SaveImage` (node 28), so `SaveImage` receives
-    2048x2560. Only the dataset-stage code path grafts this -- the committed
-    `klein4b_multiref_api.json` graph stays exactly as bake-off m1 verified it for
+    """Graft an upscale tail (`UpscaleModelLoader` + `ImageUpscaleWithModel` with the
+    pinned `4xNomosWebPhoto_RealPLKSR`, then `ImageScaleBy 0.5`, net 2x) between the
+    rebound graph's `VAEDecode` (node 27) and `SaveImage` (node 28), so `SaveImage`
+    receives 2048x2560. The committed `klein4b_multiref_api.json` FILE carries no such
+    nodes at all -- this function grafts them onto the in-memory graph at build time,
+    every time a dataset plan is built, never onto the checked-in file. This mirrors
+    `tensor_dataset_v2_api.json`'s own resolution-boost tail in spirit (same upscale
+    model, same 0.5 scale-back), though that graph's tail sits ahead of its refine
+    `KSampler` (denoise 0.23), feeding it a higher-resolution latent, rather than
+    directly before its `SaveImage` -- the klein-multiref graph has no such refine
+    pass, so the grafted tail here goes straight to `SaveImage`. Only the
+    dataset-stage code path grafts this -- the committed `klein4b_multiref_api.json`
+    graph stays exactly as bake-off m1 verified it for
     `build_expansion_set.build_manifests`'s own (unrelated) expansion-02 consumer of
     the same file."""
     workflow = deepcopy(workflow)
@@ -2826,6 +2870,15 @@ def build_plan(
     persona, training, pins = _load_inputs(creator_id, Path(personas_root))
     persona = dict(persona)
     persona["_persona_path"] = str(Path(personas_root) / creator_id / "persona.yaml")
+
+    # MEDIUM-1 (opus review, 2026-09-15): validate the persona's own identity-gate
+    # thresholds at PLAN time, not at grade time -- a malformed
+    # `identity.floor.min_face_px.by_framing` (e.g. an override above the persona's own
+    # default floor, an unknown framing key, or a non-numeric value) must fail before a
+    # single manifest is written, never silently ride along until the dataset gate runs
+    # days later. The return value is discarded here; this call exists for its
+    # fail-closed validation side effect only.
+    _identity_gate_module().load_thresholds(persona)
 
     imported_training_config: dict[str, str] | None = None
     if import_checkpoints is not None:

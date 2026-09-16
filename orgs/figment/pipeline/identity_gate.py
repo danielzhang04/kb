@@ -120,6 +120,14 @@ class IdentityGateError(RuntimeError):
     """The gate could not be evaluated, or a model failed integrity verification."""
 
 
+# LOW (opus review, 2026-09-15): the only framing names any planner in this repo ever
+# writes onto a cell (`figment_train.py`'s dataset/tester/gen job builders) -- a
+# `by_framing` key outside this set can never match a real cell's `framing`, so it is
+# either a typo or a stale ruling and must fail closed at load time rather than sit
+# there silently matching nothing.
+KNOWN_FRAMINGS = frozenset({"close", "half", "full"})
+
+
 # ---------------------------------------------------------------------------
 # Sibling-module loading -- same ad-hoc-by-path pattern every module here uses (no
 # package __init__.py exists in this tree).
@@ -203,6 +211,12 @@ def load_thresholds(
             default_floor = thresholds.get("face_px_min")
             resolved: dict[str, float] = {}
             for framing, value in by_framing.items():
+                if framing not in KNOWN_FRAMINGS:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}] is not a known framing -- allowed: "
+                        f"{sorted(KNOWN_FRAMINGS)}"
+                    )
                 if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
                     raise IdentityGateError(
                         "identity.floor.min_face_px.by_framing"
@@ -337,6 +351,12 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
     face_px_min_applied = thresholds.get("face_px_min")
     if framing and isinstance(by_framing, dict) and framing in by_framing:
         face_px_min_applied = by_framing[framing]
+    # LOW (opus review, 2026-09-15): `gate.yaml`'s own `face_px_min: 600` parses as a
+    # YAML int, not a float -- normalize so `face_px_min_applied` on the returned dict
+    # (surfaced verbatim on `gate.json`) is always a float, never sometimes-int
+    # sometimes-float depending on which branch set it.
+    if face_px_min_applied is not None:
+        face_px_min_applied = float(face_px_min_applied)
 
     face_px = scores.get("face_px")
     if face_px is None:

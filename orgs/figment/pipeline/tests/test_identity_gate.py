@@ -168,6 +168,48 @@ def test_load_thresholds_rejects_a_non_positive_by_framing_value(gate_module):
         gate_module.load_thresholds(persona)
 
 
+# --- LOW (opus review, 2026-09-15): by_framing must reject anything that could never
+# match a real cell's `framing`, or that is not a usable pixel floor -----------------
+
+
+def test_load_thresholds_rejects_an_unknown_by_framing_key(gate_module):
+    """`by_framing`'s keys must be one of the framings a planner actually writes onto a
+    cell (`identity_gate.KNOWN_FRAMINGS`) -- a typo like "haf" would otherwise sit
+    there silently matching nothing, ever."""
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"haf": 300}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="haf"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_a_non_dict_by_framing(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": "half"}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="by_framing"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_an_empty_dict_by_framing(gate_module):
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="by_framing"):
+        gate_module.load_thresholds(persona)
+
+
+def test_load_thresholds_rejects_a_bool_by_framing_value(gate_module):
+    """`True`/`False` are `int` subclasses in Python -- `isinstance(True, (int, float))`
+    is true, so a bare numeric-type check would silently accept a bool floor. Must
+    still fail closed."""
+    persona = {
+        "identity": {"floor": {"min_face_px": {"value": 600, "by_framing": {"half": True}}}},
+    }
+    with pytest.raises(gate_module.IdentityGateError, match="half"):
+        gate_module.load_thresholds(persona)
+
+
 def test_load_judge_thresholds_reads_gate_yaml_judge_block(gate_module):
     thresholds = gate_module.load_judge_thresholds()
     for key in gate_module._vlm_judge_module().JUDGE_THRESHOLD_KEYS:
@@ -277,6 +319,19 @@ def test_identity_floor_gate_records_face_px_min_applied_without_by_framing(gate
     result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
     assert result["pass"] is True
     assert result["face_px_min_applied"] == STAGE1_THRESHOLDS["face_px_min"]
+
+
+def test_identity_floor_gate_face_px_min_applied_is_always_a_float(gate_module):
+    """LOW (opus review, 2026-09-15): `gate.yaml`'s own `face_px_min: 600` parses as a
+    YAML int -- `face_px_min_applied` (surfaced verbatim on `gate.json`) must be
+    normalized to float regardless of whether the plain default or a by-framing
+    override applied."""
+    result = gate_module.identity_floor_gate(GOOD_STAGE1_SCORES, STAGE1_THRESHOLDS)
+    assert isinstance(result["face_px_min_applied"], float)
+
+    by_framing_scores = dict(GOOD_STAGE1_SCORES, face_px=350, framing="half")
+    result = gate_module.identity_floor_gate(by_framing_scores, STAGE1_THRESHOLDS_BY_FRAMING)
+    assert isinstance(result["face_px_min_applied"], float)
 
 
 def test_two_stage_gate_short_circuits_stage2_when_stage1_fails(gate_module, monkeypatch):

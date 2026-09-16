@@ -331,16 +331,17 @@ def test_dataset_manifests_klein_multiref_binds_three_references_and_pins(comman
             assert manifest["workflow"][node_id]["inputs"]["image"] == f"creator-002/{name}"
         assert manifest["seed_fields"] == ["noise_seed"]
 
-    # Ceiling: TENSOR-TRAINING.md's P2 "Dataset ceiling" section derives max_minutes=110
-    # per shard at $1.30/h = $2.3833/shard exactly (before manifest_ceiling's
-    # round-to-the-cent-up), $4.7667 total -- not just "clears the $5.00 cap" (which a
-    # broken/regressed ceiling could still satisfy by accident).
+    # Ceiling: TENSOR-TRAINING.md's P2 "Dataset ceiling" section derives max_minutes=155
+    # per shard (job_timeout_seconds=480, HIGH-1 opus-review fix: the pinned
+    # klein4b_multiref_api.json's own creator-001 receipts measure 154.6-164.7 s/job on
+    # a 4090 BEFORE the 4x upscale tail) at $1.30/h = $3.3583/shard exactly (before
+    # manifest_ceiling's round-to-the-cent-up), $6.7167 total -- not just "clears some cap"
+    # (which a broken/regressed ceiling could still satisfy by accident).
     per_shard_ceilings = [float(command.manifest_ceiling(manifest)) for manifest in manifests]
     for ceiling in per_shard_ceilings:
-        assert ceiling == pytest.approx(2.3833, abs=0.01), ceiling
+        assert ceiling == pytest.approx(3.3583, abs=0.01), ceiling
     total_ceiling = sum(per_shard_ceilings)
-    assert total_ceiling == pytest.approx(4.7667, abs=0.02), total_ceiling
-    assert total_ceiling <= 5.00, total_ceiling
+    assert total_ceiling == pytest.approx(6.7167, abs=0.02), total_ceiling
 
     # Seeds carried through to the job dicts, matching _klein_multiref_cells exactly.
     seeds = {job["seed"] for manifest in manifests for job in manifest["jobs"]}
@@ -419,6 +420,63 @@ def test_klein_multiref_face_cells_never_use_profile_or_near_back_angle(command,
         prompt = command._klein_multiref_face_prompt(clause, cell)
         for phrase in forbidden_phrases:
             assert phrase not in prompt
+
+
+def test_klein_multiref_face_manifest_has_fifteen_unique_prompts(command, tmp_path):
+    """MEDIUM-3 (opus review, 2026-09-15): angles[:3] x 4 lights only produces 12 face
+    cells, so `_klein_multiref_cells` pads 3 more (f13-f15) -- before this fix those
+    pad cells cycled back through the SAME front angle and the SAME lights as
+    f01-f03, with the SAME crop clause, so they were byte-identical prompts: wasted
+    training signal. The pad cells now carry `crop: "tight"`, giving every one of the
+    15 face prompts a distinct string while staying "close"-framed (still gateable
+    at the 600px close floor) and never touching a profile/near-back phrase."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_manifest, _body_manifest = command._dataset_manifests_klein_multiref(
+        persona,
+        command._training_config_module().validate_training(
+            {"dataset_source": "klein-multiref"}, persona["id"],
+        ),
+        command._read_json(command.PINS_PATH),
+    )
+    prompts = [job["substitutions"][0]["value"] for job in face_manifest["jobs"]]
+    assert len(prompts) == 15
+    assert len(set(prompts)) == 15, "every face cell must have a distinct prompt"
+
+    expansion = command._build_expansion_set_module()
+    forbidden_phrases = (
+        expansion.ANGLE_PHRASES["profile-l"], expansion.ANGLE_PHRASES["near-back"],
+    )
+    for prompt in prompts:
+        for phrase in forbidden_phrases:
+            assert phrase not in prompt
+
+
+def test_klein_multiref_face_prompt_never_names_two_settings_at_once(command, tmp_path):
+    """LOW (opus review, 2026-09-15): `LIGHT_PHRASES["flat-white"]` names its own
+    setting ("daylight through a bedroom window") which used to collide with the face
+    composer's fixed "plain white wall background" clause -- two different rooms in
+    one prompt. The background clause must drop "white" for that light, and no
+    emitted face prompt (across all 15 real cells) may ever say "bedroom" and "white
+    wall" together."""
+    clause = "a woman"
+    prompt = command._klein_multiref_face_prompt(clause, {"angle": "front", "light": "flat-white"})
+    assert "bedroom" in prompt
+    assert "white wall" not in prompt
+
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    face_cells, _body_cells = command._klein_multiref_cells(persona)
+    look_clause = command._compose_look_clause(persona["identity"]["look"])
+    for cell in face_cells:
+        prompt = command._klein_multiref_face_prompt(look_clause, cell)
+        assert not ("bedroom" in prompt and "white wall" in prompt)
 
 
 def test_klein_multiref_jobs_substitute_node_4_with_composed_clause_and_cell_phrases(
@@ -561,6 +619,29 @@ def test_build_plan_dataset_stage_klein_multiref_dry_runs_clean(command, tmp_pat
             cwd=ROOT, text=True, capture_output=True,
         )
         assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_build_plan_rejects_malformed_identity_floor_by_framing_before_writing_a_manifest(command, tmp_path):
+    """MEDIUM-1 (opus review, 2026-09-15): `identity_gate.load_thresholds` already
+    fails closed on a persona's `identity.floor.min_face_px.by_framing` override that
+    exceeds the persona's own default floor -- but until this fix, nothing called it
+    at plan time, so a malformed override rode along silently until the dataset gate
+    ran, days and dollars later. `build_plan` must call it up front and raise before a
+    single manifest is written."""
+    personas_root = tmp_path / "personas"
+    persona_path = _synthetic_persona(personas_root, dataset_source="klein-multiref")
+    document = load_json(persona_path)
+    document["identity"]["floor"]["min_face_px"]["by_framing"] = {"half": 900}
+    persona_path.write_text(json.dumps(document, indent=2) + "\n", encoding="utf-8")
+
+    out = tmp_path / "malformed-floor-plan"
+    identity_gate_module = command._identity_gate_module()
+    with pytest.raises(identity_gate_module.IdentityGateError, match="exceeds"):
+        command.build_plan(
+            "creator-002", "dataset", out, personas_root=personas_root, skip_pin_verify=True,
+        )
+    assert not (out / "plan.json").exists()
+    assert not list(out.glob("*.yaml"))
 
 
 def test_build_plan_dataset_stage_qwen_edit_default_still_produces_four_manifests(command, tmp_path):

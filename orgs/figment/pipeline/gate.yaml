@@ -76,7 +76,13 @@
 # recorded verbatim.) Rationale: MANDATE stage 3 needs body coverage; the 600 floor is
 # `status: uncalibrated` in persona.yaml and was set for close-framed deliverables;
 # FaceNet embeds a 160px crop, so 300px loses nothing measurable. A deliberate
-# operator gate ruling, not a weakening by an agent.
+# operator gate ruling, not a weakening by an agent. This `half` floor applies to every
+# dataset source's half-framed cells alike -- qwen-edit's half/body shard exactly as
+# much as klein-multiref's -- since `by_framing` keys off the cell's own `framing`
+# value, never the dataset source that produced it; `full`-framed cells deliberately
+# keep the plain 600px default floor (no `full` entry has been added to any persona's
+# `by_framing` map), since MANDATE stage 3's body-coverage need is about half-body
+# cells, not full-body ones.
 #
 # Mechanism: a persona may declare identity.floor.min_face_px.by_framing, a
 # `{framing: px}` mapping -- `load_thresholds` overlays it onto
