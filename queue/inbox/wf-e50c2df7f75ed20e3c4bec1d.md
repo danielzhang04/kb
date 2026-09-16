@@ -7,7 +7,7 @@ target: orgs/faceless-youtube/output/iteration-loop-demo/gate4b-20260906/no-prog
 risk-tier: T2
 owner: codex-worker
 claim-token: f18ff253c350f3d1
-state: blocked
+state: inbox
 approval: null
 workflow: run-971d5ba4-16e5-4010-895f-33e69122984a
 depends-on: []
