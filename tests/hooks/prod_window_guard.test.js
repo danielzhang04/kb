@@ -224,6 +224,18 @@ const CASES = [
   ['C14 human-approval signature blocked when window closed', 'closed', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 2],
   ['C14 human-approval signature allowed when window open', 'open', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 0],
 
+  // ---- C15 — prod-signed-call.ps1, WINDOWED (T9). It is the script that actually PLACES a
+  // signed, consequential call against the prod-defaulted URL, so with its default -URL the
+  // command string names no host and, before T9, slipped past every classifier unclassified.
+  ['C15 prod-signed-call blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\approval.json`, 2],
+  ['C15 prod-signed-call allowed when window open', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\approval.json`, 0],
+  ['C15 prod-signed-call with -Approval under kb-backups, window open', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "POST /api/control/budget/override" -Approval C:\\Users\\danie\\kb-backups\\approval-current\\approval.json -BodyFile ${T}\\body.json`, 0],
+  ['C15 prod-signed-call with -Actor and -DryRun, window open', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\approval.json -Actor boss -DryRun`, 0],
+  ['C15 prod-signed-call -Approval traversal blocked', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\..\\..\\secrets\\approval.json`, 2],
+  ['C15 prod-signed-call -Approval outside T/kb-backups blocked', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval C:\\tmp\\approval.json`, 2],
+  ['C15 inline -Body is refused on prod (use -BodyFile)', 'open', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "POST /api/control/budget/override" -Approval ${T}\\approval.json -Body "{\\"windowDay\\":\\"2026-09-16\\"}"`, 2],
+  ['C15 rehearsal URL always allowed, window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-signed-call.ps1" -Route "DELETE /api/schedules/:id" -Approval ${T}\\rehearsal\\p11\\approval.json -Body "{}" -URL http://127.0.0.1:4417`, 0],
+
   // ---- deploy/drain/preflight/canary/stop remain WINDOWED, unchanged by T7 ------------------
   ['windowed: kb-deploy still blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
   ['windowed: kb-deploy still allowed when window open', 'open', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST}`, 0],

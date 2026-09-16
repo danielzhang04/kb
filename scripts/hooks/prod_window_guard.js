@@ -16,10 +16,11 @@
  *   OPEN class    — monitoring, launching workflows, resolving gates/interventions,
  *                   and schedule management. Runs with NO window, still only in its
  *                   reviewed argument shape, still subject to the standing blocks.
- *   WINDOWED class — deploy, drain, canary, stop, preflight, and anything that
- *                   drives a signing key (prod-sign-approval.ps1, the
- *                   kb-human-approval ssh-keygen sign command). Refused outside an
- *                   explicitly opened prod window; anchored shapes only inside one.
+ *   WINDOWED class — deploy, drain, canary, stop, preflight, anything that drives a
+ *                   signing key (prod-sign-approval.ps1, the kb-human-approval
+ *                   ssh-keygen sign command), and anything that PLACES a signed call
+ *                   (prod-signed-call.ps1). Refused outside an explicitly opened prod
+ *                   window; anchored shapes only inside one.
  *   (Standing blocks and the Agent-tool rule apply to every class identically.)
  *
  * Rules
@@ -167,6 +168,24 @@ const C13 = new RegExp(PRE + PS + '-file\\s+' + P('prod-sign-approval.ps1')
   + '\\s+-entity\\s+([a-z0-9._:-]{1,120})'
   + '(?:\\s+-ttlminutes\\s+([0-9]{1,2}))?(?:\\s+-signingkey\\s+' + PATHARG + ')?$');
 
+// C15 — prod-signed-call.ps1, WINDOWED class. It is the one script that actually PLACES a signed,
+// consequential call at the prod-defaulted URL, so its shape is anchored like the deploy's:
+//   -Route "<METHOD /api/...>" -Approval <path> [-BodyFile <path>] [-Actor <actor>] [-DryRun]
+// The approval file must live under the tooling tree or kb-backups (no traversal), and an INLINE
+// -Body is deliberately refused — its JSON carries quotes and braces that the `powershell -File`
+// argument parser mangles (documented in the script's own header), so the reviewed prod shape is
+// -BodyFile only. Argument ORDER is pinned, same discipline as every other C-shape.
+const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
+// An optionally quoted path under the tooling tree or kb-backups, with a `..` traversal veto.
+const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B
+  + '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+["\']?';
+const C15 = new RegExp(PRE + PS + '-file\\s+' + P('prod-signed-call.ps1')
+  + '\\s+-route\\s+' + ROUTE_ARG
+  + '\\s+-approval\\s+' + SAFE_T_OR_BACKUPS
+  + '(?:\\s+-bodyfile\\s+' + SAFE_T_OR_BACKUPS + ')?'
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + '(?:\\s+-dryrun)?$');
+
 // C14 — the human-approval signature itself, WINDOWED class (spec's kb-human-approval namespace,
 // distinct from C4's kb-ops-instructions drain-approval namespace).
 const C14 = new RegExp('^ssh-keygen\\s+-y\\s+sign\\s+-f\\s+' + PATHARG
@@ -216,7 +235,7 @@ function isReadVerb(raw) {
 // though the command string names neither the host nor the URL. Split into the
 // two authority classes (spec §4.7): OPEN needs no window; WINDOWED still does.
 const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1)/;
-const WINDOWED_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-sign-approval\.ps1)/;
+const WINDOWED_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1)/;
 
 /** `ssh [-o ...] kb-reader[@ip] ...` — the read-only identity, never prod-targeting. */
 function isKbReaderRead(n) {
@@ -379,6 +398,7 @@ function allowlistMatch(n) {
   if (C6B.test(n)) return 'C6b';
   if (C13.test(n)) return 'C13';
   if (C14.test(n)) return 'C14';
+  if (C15.test(n)) return 'C15';
   const ssh = n.match(SSH_ROOT);
   if (ssh && isReadVerb(ssh[1])) return 'C7';
   return null;
@@ -482,7 +502,7 @@ function decide(raw) {
   if (!allowed) {
     block('the prod window is open, but this command is not one of the reviewed shapes '
       + '(preflight / kb-deploy / drain-step1 / sign / drain-step2 / ops-refresh / prod-stop-run / '
-      + 'prod-canary-launch / prod-sign-approval / the human-approval signature / an allowlisted '
+      + 'prod-canary-launch / prod-sign-approval / prod-signed-call / the human-approval signature / an allowlisted '
       + 'read-only root ssh verb). Extra parameters are refused on purpose. Run it by hand outside '
       + 'the fleet, or add the shape to scripts/hooks/prod_window_guard.js and its tests first.',
       tool, prodRule, command, true);
@@ -503,7 +523,7 @@ process.stdin.on('end', function () {
   } catch (err) {
     // FAIL CLOSED for anything that smells of prod; fail open for the rest, so a
     // guard bug cannot wedge ordinary work.
-    const smells = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|kb-human-approval/i
+    const smells = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|kb-human-approval/i
       .test(String(raw));
     if (smells) {
       try { audit('BLOCK', 'unknown', 'F-failclosed', String(raw).slice(0, 300)); } catch (_) {}
