@@ -166,18 +166,57 @@ def load_thresholds(
     from that persona's OWN `identity.floor.min_face_px.value` (falling back to
     `gate.yaml`'s own `face_px_min` when the persona declares none) -- the one
     persona-specific number this module ever reads, and it is read generically from
-    whatever persona document is passed in, never hardcoded to one creator."""
+    whatever persona document is passed in, never hardcoded to one creator.
+
+    Operator ruling 2026-09-15 ("Per-framing face floor: half-body dataset cells gate
+    at 300 px (after the 2x upscale tail), close-framed cells stay at 600 px; judge
+    axes unchanged"): a persona may additionally declare
+    `identity.floor.min_face_px.by_framing`, a `{framing: px}` mapping overlaid onto
+    `thresholds["face_px_min_by_framing"]` the same generic way `value` already
+    overlays `face_px_min` -- never hardcoded to one creator or one framing name.
+    `identity_floor_gate` picks the matching entry for a cell's own `framing`, falling
+    back to the plain `face_px_min` floor for any framing not listed (and for cells
+    that carry no framing at all -- tester/gen stages, or an older dataset plan).
+    Fails closed at LOAD time, not gate time: every declared override must be a
+    positive number no larger than the persona's own default floor, or this raises
+    `IdentityGateError` -- a mistyped override should never silently loosen the gate
+    beyond what the persona's own `value` already permits."""
     document = yaml.safe_load(Path(gate_config_path).read_text(encoding="utf-8"))
     if not isinstance(document, dict):
         raise IdentityGateError(f"{gate_config_path} does not contain a mapping")
     thresholds = dict(document)
     if persona is not None:
         try:
-            min_face_px = persona["identity"]["floor"]["min_face_px"]["value"]
+            min_face_px_block = persona["identity"]["floor"]["min_face_px"]
         except (KeyError, TypeError):
-            min_face_px = None
+            min_face_px_block = None
+        min_face_px = min_face_px_block.get("value") if isinstance(min_face_px_block, dict) else None
         if isinstance(min_face_px, (int, float)):
             thresholds["face_px_min"] = float(min_face_px)
+        by_framing = min_face_px_block.get("by_framing") if isinstance(min_face_px_block, dict) else None
+        if by_framing is not None:
+            if not isinstance(by_framing, dict) or not by_framing:
+                raise IdentityGateError(
+                    "identity.floor.min_face_px.by_framing must be a non-empty mapping "
+                    "of framing name to a positive pixel floor"
+                )
+            default_floor = thresholds.get("face_px_min")
+            resolved: dict[str, float] = {}
+            for framing, value in by_framing.items():
+                if not isinstance(value, (int, float)) or isinstance(value, bool) or value <= 0:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}] must be a positive number, got {value!r}"
+                    )
+                if default_floor is not None and value > default_floor:
+                    raise IdentityGateError(
+                        "identity.floor.min_face_px.by_framing"
+                        f"[{framing!r}]={value} exceeds the persona's own default "
+                        f"face_px_min floor ({default_floor}) -- a per-framing override "
+                        "may only narrow the floor, never raise it above the default"
+                    )
+                resolved[framing] = float(value)
+            thresholds["face_px_min_by_framing"] = resolved
     return thresholds
 
 
@@ -265,6 +304,18 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
     All three metrics are still computed onto every `score_cell` row (informational,
     shown on the grading board) and `gate()` itself is untouched -- this function is
     additive, not a replacement.
+
+    Operator ruling 2026-09-15 (per-framing face floor): `scores["framing"]`, when
+    present, selects a narrower `face_px_min` from `thresholds["face_px_min_by_framing"]`
+    (`load_thresholds`'s own overlay of the persona's `identity.floor.min_face_px.
+    by_framing`) -- e.g. a half-body cell gates at 300px instead of the 600px default.
+    `framing` is never inferred from the image or the output filename; it must reach
+    this function on the row exactly as the plan's own job record declared it (see
+    `score_cells_for_stage`). A cell with no framing, or a framing absent from the
+    override mapping, always falls back to the plain `face_px_min` floor -- the same
+    behaviour every caller had before this ruling. The floor actually applied is
+    recorded on the returned dict as `face_px_min_applied` so `gate.json` shows which
+    one gated a given cell, whether or not a by-framing override exists at all.
     """
     reasons: list[str] = []
 
@@ -280,8 +331,24 @@ def identity_floor_gate(scores: dict[str, Any], thresholds: dict[str, Any]) -> d
             reasons.append(f"{metric} {value:.4g} is below the required floor {limit:.4g}")
 
     _floor("identity_own", "identity_own_min", scores.get("identity_own"))
-    _floor("face_px", "face_px_min", scores.get("face_px"))
-    return {"pass": not reasons, "reasons": reasons}
+
+    framing = scores.get("framing")
+    by_framing = thresholds.get("face_px_min_by_framing")
+    face_px_min_applied = thresholds.get("face_px_min")
+    if framing and isinstance(by_framing, dict) and framing in by_framing:
+        face_px_min_applied = by_framing[framing]
+
+    face_px = scores.get("face_px")
+    if face_px is None:
+        reasons.append("unavailable: face_px")
+    elif face_px_min_applied is None:
+        reasons.append("unavailable: face_px_min")
+    elif face_px < face_px_min_applied:
+        reasons.append(
+            f"face_px {face_px:.4g} is below the required floor {face_px_min_applied:.4g}"
+        )
+
+    return {"pass": not reasons, "reasons": reasons, "face_px_min_applied": face_px_min_applied}
 
 
 # REVIEW-2026-09-07 finding #3: `vlm_judge.py`'s `DEFAULT_WORKERS` was lowered to 2
@@ -1135,6 +1202,13 @@ def score_cells_for_stage(
                 metric: f"{type(exc).__name__}: {exc}" for metric in GATE_METRICS
             }}
         row["image_id"] = item.get("image_id", row["image_id"])
+        # Operator ruling 2026-09-15 (per-framing face floor): `framing` travels with
+        # the row exactly as the caller's own image record declared it (the plan's job
+        # record, never inferred from the image or the output filename) so
+        # `identity_floor_gate` can pick the right face_px_min floor downstream. `None`
+        # for any image record that declares no framing at all (tester/gen stages, or
+        # an older dataset plan) -- that is the existing, unchanged default-floor path.
+        row["framing"] = item.get("framing")
         rows.append(row)
     return rows
 

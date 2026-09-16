@@ -249,6 +249,14 @@ across 6 evidence sets — full distributions in
 Combined `judge_gate` at these thresholds (`gate.yaml`): anchors 3/3, track1-dataset 22/31,
 lora-tester 0/8, qwen-anchor-edits 4/6, passport-candidates 0/12, expansion-03 23/35.
 
+Operator ruling 2026-09-15: half-framed dataset cells (half-body coverage, needed by
+MANDATE stage 3) gate `face_px_min` at **300px** instead of the 600px default — declared
+per-persona under `identity.floor.min_face_px.by_framing` and overlaid by
+`identity_gate.load_thresholds` into `face_px_min_by_framing`; `identity_floor_gate`
+picks the floor from each cell's own `framing` (carried from the plan's job record, never
+inferred from the image), records which one applied as `face_px_min_applied` on the gate
+row, and falls back to the plain 600px floor for any close-framed or unframed cell.
+
 ## Stage: detail (F2)
 
 `detail` is a `STAGES`/`GRADEABLE_STAGES` entry that always re-detailts a specific `gen`

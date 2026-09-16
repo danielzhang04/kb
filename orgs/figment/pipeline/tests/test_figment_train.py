@@ -521,6 +521,23 @@ def test_klein_multiref_workflow_carries_the_upscale_tail_between_decode_and_sav
     assert pinned["destination_dir"] == "/workspace/ComfyUI/models/upscale_models"
 
 
+def test_klein_multiref_jobs_carry_their_own_cell_framing(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling: every klein-multiref job's `framing`
+    must be `cell["distance"]` verbatim ("close" for the 15 face cells, "half" for the
+    15 body cells) -- never a second hand-authored label -- so `_grading_images` can
+    carry it onto the gate row that grades this cell."""
+    persona, (face_manifest, body_manifest) = _klein_multiref_manifests(command, tmp_path)
+    face_cells, body_cells = command._klein_multiref_cells(persona)
+    assert [job["framing"] for job in face_manifest["jobs"]] == [
+        cell["distance"] for cell in face_cells
+    ]
+    assert all(framing == "close" for framing in (job["framing"] for job in face_manifest["jobs"]))
+    assert [job["framing"] for job in body_manifest["jobs"]] == [
+        cell["distance"] for cell in body_cells
+    ]
+    assert all(framing == "half" for framing in (job["framing"] for job in body_manifest["jobs"]))
+
+
 def test_build_plan_dataset_stage_klein_multiref_dry_runs_clean(command, tmp_path):
     personas_root = tmp_path / "personas"
     _synthetic_persona(personas_root, dataset_source="klein-multiref")
@@ -558,6 +575,45 @@ def test_build_plan_dataset_stage_qwen_edit_default_still_produces_four_manifest
     )
     assert plan["training"]["dataset_source"] == "qwen-edit"
     assert len(plan["stages"]["dataset"]["runs"]) == 4
+
+
+def test_dataset_jobs_qwen_edit_face_rows_are_tagged_close_framing(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling: face rows are always plain strings
+    (already close framings, per `_dataset_jobs`'s own docstring) -- they must be
+    tagged `framing: "close"`, not the body branch's "half" default, so
+    `identity_floor_gate` never applies the half-body 300px floor to a face cell."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    prompts = command._generalized_prompts(persona)
+    jobs = command._dataset_jobs(persona, prompts)
+    face_jobs = [job for job in jobs if job["output_name"].split("-tds-")[-1].startswith("f")]
+    body_jobs = [job for job in jobs if job["output_name"].split("-tds-")[-1].startswith("b")]
+    assert face_jobs and body_jobs
+    assert all(job["framing"] == "close" for job in face_jobs)
+    assert {job["framing"] for job in body_jobs} <= {"half", "full"}
+
+
+def test_dataset_manifests_qwen_edit_keeps_framing_on_the_written_job(command, tmp_path):
+    """`_dataset_manifests` used to `pop("framing")` before bucketing a job into the
+    half/full shard lists -- the 2026-09-15 ruling needs `framing` to survive onto the
+    WRITTEN manifest so `_grading_images` can read it back off `manifest["jobs"]`."""
+    personas_root = tmp_path / "personas"
+    _synthetic_persona(personas_root)  # default dataset_source="qwen-edit"
+    persona = command._training_config_module().load_persona_with_training(
+        personas_root / "creator-002" / "persona.yaml"
+    )
+    training = command._training_config_module().validate_training(
+        {"dataset_source": "qwen-edit"}, persona["id"],
+    )
+    pins = command._read_json(command.PINS_PATH)
+    prompts = command._generalized_prompts(persona)
+    manifests = command._dataset_manifests(persona, training, pins, prompts)
+    for manifest in manifests:
+        for job in manifest["jobs"]:
+            assert job["framing"] in ("close", "half", "full")
 
 
 def _build_and_grade_dataset(command, tmp_path, *, label: str, dataset_source: str):
@@ -608,6 +664,35 @@ def test_dataset_grade_path_schema_is_unchanged_for_klein_multiref(command, tmp_
     assert set(klein_template) == set(qwen_template)
     assert len(klein_template["rulings"]) == len(qwen_template["rulings"]) == 30
     assert set(klein_template["rulings"][0]) == set(qwen_template["rulings"][0])
+
+
+def test_klein_multiref_framing_reaches_gate_json_through_build_grade(command, tmp_path):
+    """2026-09-15 per-framing face floor ruling, end to end: a klein-multiref plan's
+    job-record `framing` ("close" for face cells, "half" for body cells) must survive
+    plan -> manifest -> `_grading_images` -> `score_cells_for_stage` -> gate.json row,
+    and each row's `stage1` must record which `face_px_min` floor it was gated against
+    (`face_px_min_applied`) -- never inferred from the image or the output_name string.
+    Real (unmocked) `build_grade`/`score_cells_for_stage`; the fixture's fabricated
+    1x1 images have no real face, so every cell fails closed, but the plumbing under
+    test (framing + face_px_min_applied) does not depend on that outcome."""
+    gate, _ = _build_and_grade_dataset(
+        command, tmp_path, label="klein-multiref-framing", dataset_source="klein-multiref",
+    )
+    assert gate["summary"]["total"] == 30
+    face_rows = [row for row in gate["rows"] if row["image_id"].split("-tds-mr-")[-1].startswith("f")]
+    body_rows = [row for row in gate["rows"] if row["image_id"].split("-tds-mr-")[-1].startswith("b")]
+    assert len(face_rows) == 15
+    assert len(body_rows) == 15
+    assert all(row["framing"] == "close" for row in face_rows)
+    assert all(row["framing"] == "half" for row in body_rows)
+    # stage1 is present (though failed, since no real face) and records the floor it
+    # gated against: face cells against the persona default (600), body cells against
+    # the persona's own by-framing override (300, creator-001's own persona.yaml, which
+    # `_synthetic_persona` clones verbatim for this fixture's identity.floor block).
+    for row in face_rows:
+        assert row["stage1"]["face_px_min_applied"] == 600
+    for row in body_rows:
+        assert row["stage1"]["face_px_min_applied"] == 300
 
 
 def test_qwen3vl_caption_prompt_and_settings_match_module_11(command):

@@ -69,6 +69,25 @@
 #     ("uncalibrated" status there too) -- used only when a persona declares no
 #     min_face_px of its own; not re-derived from this calibration run (identity/age/
 #     realism evidence doesn't bear on what counts as a usably-sized face crop).
+#
+# --- OPERATOR RULING 2026-09-15: per-framing face_px_min override ------------------
+# "Per-framing face floor: half-body dataset cells gate at 300 px (after the 2x
+# upscale tail), close-framed cells stay at 600 px; judge axes unchanged." (Daniel,
+# recorded verbatim.) Rationale: MANDATE stage 3 needs body coverage; the 600 floor is
+# `status: uncalibrated` in persona.yaml and was set for close-framed deliverables;
+# FaceNet embeds a 160px crop, so 300px loses nothing measurable. A deliberate
+# operator gate ruling, not a weakening by an agent.
+#
+# Mechanism: a persona may declare identity.floor.min_face_px.by_framing, a
+# `{framing: px}` mapping -- `load_thresholds` overlays it onto
+# `face_px_min_by_framing` the same generic way `value` already overlays `face_px_min`
+# (see that function's own docstring). `identity_floor_gate` picks the matching entry
+# for a cell's own `framing` (carried from the plan's job record through
+# `_grading_images`/`score_cells_for_stage` -- NEVER inferred from the image or the
+# output filename), falling back to the plain `face_px_min` floor for any cell whose
+# framing is absent or not listed. Every declared override must be positive and no
+# larger than the persona's own default floor, checked at load time, fail-closed.
+# creator-001's own persona.yaml now carries `by_framing: {half: 300}` under this key.
 identity_own_min: 0.7907
 age_delta_max_years: 5.0
 gloss_max: 0.08

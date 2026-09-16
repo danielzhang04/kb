@@ -863,25 +863,32 @@ def _chunks(items: list[Any], count: int) -> list[list[Any]]:
 
 
 def _dataset_jobs(persona: dict, prompts: dict[str, Any]) -> list[dict[str, Any]]:
-    """Build every face + body job, each tagged with its own `framing` ("half"|"full",
-    Track-2 Task B1/D24-D25). Face rows are always plain strings (already close framings,
-    never routed to the fullbody face-repair pass); body rows are now `{"text",
-    "framing"}` objects. A "full" body job's `832`/`images` substitution points at the
-    fullbody workflow's face-repair composite output instead of the raw refine decode, so
-    the same job dict works unchanged whichever manifest (`_dataset_manifests`) it lands in.
+    """Build every face + body job, each tagged with its own `framing` ("close"|"half"|
+    "full", Track-2 Task B1/D24-D25; "close" added by the 2026-09-15 per-framing face
+    floor ruling -- see `identity_gate.identity_floor_gate`). Face rows are always plain
+    strings (already close framings, never routed to the fullbody face-repair pass) and
+    always tagged "close"; body rows are now `{"text", "framing"}` objects, or a plain
+    string defaulting to "half". A "full" body job's `832`/`images` substitution points
+    at the fullbody workflow's face-repair composite output instead of the raw refine
+    decode, so the same job dict works unchanged whichever manifest (`_dataset_manifests`)
+    it lands in. `framing` stays on the job dict all the way into the written manifest
+    (`_dataset_manifests` no longer pops it) so `_grading_images` can carry it onto the
+    gate row that grades this cell -- `pod/runpod_run.py`'s `apply_job` reads only the
+    specific keys it needs and ignores unknown ones, so this is not a schema change for
+    the pod harness.
     """
     short = _creator_output_code(persona["id"])
     jobs: list[dict[str, Any]] = []
     branches = (
-        ("f", "174", "791", "788", 241731167782064, prompts["face"]),
-        ("b", "676", "776", "778", 269789944143426, prompts["body"]),
+        ("f", "174", "791", "788", 241731167782064, prompts["face"], "close"),
+        ("b", "676", "776", "778", 269789944143426, prompts["body"], "half"),
     )
-    for label, prompt_node, image_node, seed_node, outer_seed, block in branches:
+    for label, prompt_node, image_node, seed_node, outer_seed, block, default_framing in branches:
         for index, row in enumerate(block["rows"], start=1):
             if isinstance(row, dict):
                 text, framing = row["text"], row["framing"]
             else:
-                text, framing = row, "half"
+                text, framing = row, default_framing
             output_node = FULLBODY_OUTPUT_NODE if framing == "full" else image_node
             substitutions = [
                 {"node_id": "832", "field": "images", "value": [output_node, 0]},
@@ -917,8 +924,12 @@ def _dataset_manifests(
     half_jobs: list[dict[str, Any]] = []
     full_jobs: list[dict[str, Any]] = []
     for job in jobs:
-        framing = job.pop("framing")
-        (full_jobs if framing == "full" else half_jobs).append(job)
+        # `framing` stays on the job dict (not popped) so it survives into the written
+        # manifest -- `_grading_images` reads it back off `manifest["jobs"]` to carry
+        # onto the gate row (2026-09-15 per-framing face floor ruling). This bucketing
+        # split is unaffected: only a "full" job routes to the fullbody manifest, "close"
+        # (face) and "half" (body) jobs both land in the v2 shards below.
+        (full_jobs if job["framing"] == "full" else half_jobs).append(job)
     references = [Path(value).name for value in persona["identity"]["references"]]
     upload = {
         "files": [f"_uploads/{persona['id']}/{name}" for name in references],
@@ -1184,6 +1195,11 @@ def _dataset_manifests_klein_multiref(
             "seed": cell["seed"],
             "output_name": f"{short}-tds-{cell['cell_id']}",
             "expected_images": 1,
+            # 2026-09-15 per-framing face floor ruling: `cell["distance"]` is already
+            # "close" for face cells / "half" for body cells (`_klein_multiref_cells`)
+            # -- reused as-is, never a second hand-authored framing label, so
+            # `_grading_images` -> `identity_floor_gate` picks the right face_px_min.
+            "framing": cell["distance"],
             "substitutions": [{"node_id": "4", "field": "text", "value": prompt}],
         }
 
@@ -4096,6 +4112,10 @@ def _video_grading_images(plan: dict[str, Any], root: Path) -> list[dict[str, An
                     "parked_reasons": [],
                     "safety_failed": False,
                     "safety_reasons": [],
+                    # See `_grading_images`'s own comment: no video job declares a
+                    # framing today, so this is always None (default-floor) -- carried
+                    # the same generic way rather than special-casing this stage.
+                    "framing": job.get("framing"),
                 })
     if not images:
         raise FigmentTrainError("stage 'video' has no grading frames")
@@ -4123,6 +4143,12 @@ def _grading_images(plan: dict[str, Any], root: Path, stage: str) -> list[dict[s
                 "parked_reasons": [],
                 "safety_failed": False,
                 "safety_reasons": [],
+                # 2026-09-15 per-framing face floor ruling: carried straight from the
+                # plan's own job record, never inferred from the image or output_name --
+                # `None` for any stage/job whose manifest never declared one (tester,
+                # gen, detail, and any dataset job predating this ruling), which is the
+                # existing default-floor behaviour, unchanged.
+                "framing": job.get("framing"),
             })
     if not images:
         raise FigmentTrainError(f"stage {stage!r} has no grading images")
