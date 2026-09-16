@@ -115,6 +115,14 @@ offline by pinning those specs in `tensor-pins.yaml`, installing them before the
 renaming the log to `_training.log`, and adding a heartbeat, but this is still UNVERIFIED against
 a live pod.
 
+**Rollout note (2026-09-16, fourth attempt, third caption pod, $0.15):** deps installed and
+Qwen3-VL-8B loaded, and a caption was generated — then the pod's own validator rejected it: the
+body was ~560 chars against a hardcoded 500-char cap, contradicting the pinned
+`max_new_tokens: 128` setting (up to ~900 chars of English). Fixed offline by raising the bound to
+`CAPTIONS_MAX_BODY_CHARS = 1200` (`train/build_training_set.py`), rendered into the template as
+`{{caption_max_body_chars}}` instead of a hardcoded literal; still a hard failure past the bound,
+never a silent truncation. UNVERIFIED against a live pod.
+
 **Yield arithmetic:** the qwen-edit dataset produces 30 base cells per replicate — 15 face (`close`,
 600px floor) + 10 half-body (`half`, 300px floor) + 5 full-body (`full`; `persona.yaml`
 `identity.floor.min_face_px.by_framing` only overrides `"half"`, so `"full"` falls back to the

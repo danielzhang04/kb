@@ -29,6 +29,7 @@ model_revision='{{caption_model_revision}}'
 model_dtype='{{caption_model_dtype}}'
 max_resolution='{{caption_max_resolution}}'
 max_new_tokens='{{caption_max_new_tokens}}'
+max_body_chars='{{caption_max_body_chars}}'
 # Word-split deliberately below (not quoted at the call site): this is a
 # space-separated list of pip specs, and the harness's own placeholder renderer
 # (pod/runpod_run.py rendered_training_start_script) always shlex.quote()s a
@@ -97,7 +98,7 @@ python -m pip install --no-cache-dir $caption_pip_specs >>"$caption_log" 2>&1 \
 log "captioning with ${model_repo}@${model_revision} (dtype=${model_dtype}, max_resolution=${max_resolution}, max_new_tokens=${max_new_tokens})"
 IMAGES_DIR="$images_root" MODEL_DIR="$model_dir" MODEL_REPO="$model_repo" \
 MODEL_REVISION="$model_revision" MODEL_DTYPE="$model_dtype" MAX_RES="$max_resolution" \
-MAX_TOKENS="$max_new_tokens" OUT_FILE="${output_dir}/captions.json" \
+MAX_TOKENS="$max_new_tokens" MAX_BODY_CHARS="$max_body_chars" OUT_FILE="${output_dir}/captions.json" \
 python - <<'PYCAP' >>"$caption_log" 2>&1 || fail 'qwen3vl captioning failed'
 import json
 import os
@@ -117,6 +118,7 @@ try:
     dtype_name = os.environ["MODEL_DTYPE"]
     max_resolution = int(os.environ["MAX_RES"])
     max_new_tokens = int(os.environ["MAX_TOKENS"])
+    max_body_chars = int(os.environ["MAX_BODY_CHARS"])
     out_file = pathlib.Path(os.environ["OUT_FILE"])
 
     # The safetensors shards were already pinned and downloaded by the harness's own
@@ -182,12 +184,17 @@ try:
         text = processor.batch_decode(
             generated[:, inputs["input_ids"].shape[1]:], skip_special_tokens=True,
         )[0].strip()
-        # m10: refuse a caption body with a newline/control character or over 500 chars --
-        # never write a malformed body into the artifact the harness downloads. The
-        # authoritative check lives in build_training_set.py's own
-        # _collect_cells_qwen3vl, which re-validates every body it reads back; this is a
-        # fail-fast mirror so a bad pod response never silently ships as a valid artifact.
-        if len(text) > 500 or any(ord(ch) < 32 for ch in text):
+        # m10: refuse a caption body with a newline/control character or over
+        # max_body_chars (build_training_set.CAPTIONS_MAX_BODY_CHARS, rendered here as
+        # {{caption_max_body_chars}}) -- never write a malformed body into the artifact
+        # the harness downloads. The authoritative check lives in build_training_set.py's
+        # own _collect_cells_qwen3vl, which re-validates every body it reads back; this
+        # is a fail-fast mirror so a bad pod response never silently ships as a valid
+        # artifact. LIVE FAILURE 2026-09-16 (third caption pod, $0.15): a genuine
+        # max_new_tokens=128 caption came back ~560 chars and was wrongly rejected by a
+        # hardcoded 500-char cap; the bound is now rendered from the same constant
+        # build_training_set.py enforces, raised to 1200.
+        if len(text) > max_body_chars or any(ord(ch) < 32 for ch in text):
             raise SystemExit(f"caption body invalid for {image_path.name}: {text!r}")
         captions[image_path.name] = text
 

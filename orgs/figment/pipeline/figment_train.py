@@ -2427,7 +2427,8 @@ def _caption_manifest(
     if (not isinstance(pip_specs, list) or not pip_specs
             or not all(isinstance(spec, str) and spec.strip() for spec in pip_specs)):
         raise FigmentTrainError("pins.pins.caption.pip must be a non-empty list of strings")
-    settings = _build_set_module().QWEN3VL_CAPTION_SETTINGS
+    build_set_module = _build_set_module()
+    settings = build_set_module.QWEN3VL_CAPTION_SETTINGS
     return {
         **_pod_base(pins, pod_class, "caption"),
         "models": deepcopy(models),
@@ -2449,6 +2450,11 @@ def _caption_manifest(
             "caption_model_dtype": settings["dtype"],
             "caption_max_resolution": settings["max_resolution"],
             "caption_max_new_tokens": settings["max_new_tokens"],
+            # LIVE FAILURE 2026-09-16 (third caption pod, $0.15): rendered into the
+            # template's own mirror check instead of a hardcoded 500 (which
+            # contradicted max_new_tokens=128's up-to-~900-char output); the
+            # authoritative bound is build_training_set.CAPTIONS_MAX_BODY_CHARS.
+            "caption_max_body_chars": build_set_module.CAPTIONS_MAX_BODY_CHARS,
             "caption_pip_specs": " ".join(pip_specs),
             "hf_home": "/workspace/hf",
             "complete_marker": "/workspace/output/_caption.complete",

@@ -3203,6 +3203,74 @@ def test_caption_dtype_float8_loads_bfloat16_not_a_float8_storage(command, tmp_p
     assert '{"float8": torch.bfloat16, "bfloat16": torch.bfloat16}' in rendered
 
 
+def test_caption_manifest_carries_the_body_char_bound_from_build_training_set(command, tmp_path):
+    """LIVE FAILURE 2026-09-16 (third caption pod, $0.15): a genuine
+    max_new_tokens=128 caption came back ~560 chars and was rejected by a hardcoded
+    500-char body cap. `_caption_manifest` must render the SAME bound
+    build_training_set.py enforces locally (CAPTIONS_MAX_BODY_CHARS), not an
+    independent copy that can drift."""
+    build_set = command._build_set_module()
+    assert build_set.CAPTIONS_MAX_BODY_CHARS == 1200
+
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    assert manifest["training"]["caption_max_body_chars"] == build_set.CAPTIONS_MAX_BODY_CHARS
+
+
+def test_caption_body_bound_renders_into_the_template_with_no_hardcoded_500(command, tmp_path):
+    """The rendered pod script's own mirror check must use the rendered
+    {{caption_max_body_chars}} value, never a literal `> 500` -- and the actual
+    rendered comparison, evaluated against representative bodies, must match
+    build_training_set.py's own accept/reject boundary (560 chars accepted, the
+    live-failure length; 1300 chars rejected)."""
+    build_set = command._build_set_module()
+    runpod_run = load_module("runpod_run_caption_body_bound_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    assert "> 500" not in rendered
+    assert f"max_body_chars='{build_set.CAPTIONS_MAX_BODY_CHARS}'" in rendered
+
+    match = re.search(
+        r"if len\(text\) > (\w+) or any\(ord\(ch\) < 32 for ch in text\):", rendered,
+    )
+    assert match, "rendered validator must still gate on a body-length bound"
+    bound_var = match.group(1)
+    assert bound_var != "500", "the bound must be a variable, not a hardcoded literal"
+
+    def check(text_value: str) -> bool:
+        namespace = {"text": text_value, bound_var: build_set.CAPTIONS_MAX_BODY_CHARS}
+        condition_src = f"len(text) > {bound_var} or any(ord(ch) < 32 for ch in text)"
+        return bool(eval(condition_src, {}, namespace))
+
+    assert check("x" * 560) is False, "the live 2026-09-16 560-char caption must pass"
+    assert check("x" * 1300) is True, "a 1300-char body must still be rejected"
+
+
+def test_captions_max_body_chars_fits_captions_max_json_bytes(command):
+    """32 captions at the new 1200-char cap (worst case, ASCII, plus JSON string
+    quoting/escaping and filename-key overhead) must still fit comfortably under
+    CAPTIONS_MAX_JSON_BYTES (256 KiB): 32 * 1200 = 38,400 bytes vs a
+    262,144-byte ceiling -- more than 6x headroom."""
+    build_set = command._build_set_module()
+    worst_case = 32 * build_set.CAPTIONS_MAX_BODY_CHARS
+    assert worst_case < command.CAPTIONS_MAX_JSON_BYTES
+
+
 def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess(
     command, tmp_path, monkeypatch,
 ):
