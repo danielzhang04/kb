@@ -435,3 +435,19 @@
 - **Live proof at the cheapest stage first.** One $0.33 tester run through the real pipeline proved spend
   guards, teardown, gate, halt and board on real hardware and surfaced the provenance gap. Gen/detail/video
   stayed fake-harness-proven only; that is the honest boundary in the handoff.
+
+## 2026-09-15/16 — v1 launch rehearsal: one layer out per pass
+- Rehearsal on prod's real document + real ops history found a new defect class every pass (validator whitelist → allowlist → ops merge commit → schedule renderer path → JSON key order → frontmatter inline-mapping → schema drift): never call a deploy ready after one green pass; run the ceremony from the top again after each fix.
+- Full drain must be rehearsed against a stand-in remote, never only dry-run.
+- WSL kb-rehearsal auto-terminates seconds after the last command: keep-alive with a background sleep process.
+- Auto-mode classifier refuses `reset --hard`/`branch -f` even when provably lossless: hand those to Daniel as one-line commands.
+- `claude setup-token` prints a token; `auth login` stores the credential (headless: URL + paste code).
+- The signing tool's sign step always writes to stderr; the abort rule belongs on the verify step, not sign.
+- PowerShell 5.1 traps: `-File` collapses array args (use `-Command`), `$Args` never binds, native stderr under ErrorActionPreference=Stop is terminating, BOM+CRLF corrupts `.sh` piped into `bash -s`.
+- `git worktree add` with Windows paths from Git Bash mangles the path: use PowerShell.
+- Kill subagent `find /` storms.
+- Opus review found 2 RCEs in a "hardened" reader shell (pty pager `less` `!cmd`, forwarded `GIT_*` env): pin `env -i`, `--no-pager`, `GIT_CONFIG_GLOBAL`, require `-u kb-*`.
+- Recovery-path deploy never wrote `previous`; rollback after a hotfix that mutates the document = code AND document together.
+- Drain wedge is silent (admission 404 while `ready/` non-empty): judge by `ready/` + ops head.
+- Execution latch is in-memory: no daemon restart between lock and drain.
+- Bare `pytest` in WSL Ubuntu lacks a `python` executable → 41 false failures; use the shim.
