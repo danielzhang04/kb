@@ -11,20 +11,9 @@ import { classifyRoute, routeKey } from './policy.ts';
 import { verifyApproval } from './approval.ts';
 import { defaultSshsigVerifier } from './sshsig.ts';
 import { createNonceStore } from './nonceStore.ts';
+import { ACTOR_HEADER, parseActor } from './actor.ts';
 
 const PASS_THROUGH_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-/** Bounded, character-classed actor read straight off the header for the refusal audit row only —
- *  never a capability (spec §4.3). T4 supersedes this with the full `actor.ts#parseActor`; kept
- *  minimal here so the refusal row is never blocked on that landing. */
-const ACTOR_PATTERN = /^[a-z][a-z0-9._:-]{0,63}$/;
-
-function rawActor(req: FastifyRequest): string {
-  const header = req.headers['x-kb-actor'];
-  const value = Array.isArray(header) ? header[0] : header;
-  if (typeof value !== 'string') return 'unknown';
-  const trimmed = value.trim().slice(0, 64);
-  return ACTOR_PATTERN.test(trimmed) ? trimmed : 'unknown';
-}
 
 function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -47,7 +36,10 @@ async function refuse(
     await auditFn(ctx)(ctx.repoRoot, {
       action: 'authority-approval-refused',
       result: error,
-      detail: { route, entityRef, actor: rawActor(req) },
+      // T4 [design:4.3]: `actor` is a TOP-LEVEL AuditEvent field, self-asserted and therefore a record,
+      // never a capability — the SAME `X-KB-Actor` parse every other governed route's refusal row uses.
+      actor: parseActor(req.headers[ACTOR_HEADER]),
+      detail: { route, entityRef },
     });
   } catch {
     // The refusal must still land even when the audit row could not be written.
