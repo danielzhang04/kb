@@ -230,6 +230,30 @@ function duplicateJsonKey(text: string): string | null {
   }
 }
 
+const FENCE_OPEN_LINE = /^```(?:json)?[ \t]*$/i;
+const FENCE_LINE = /^```[ \t]*$/;
+
+/**
+ * The server-owned iteration contract instructs the model to return a bare JSON object, but a
+ * real judge turn (2026-09-16, canary run-4113b3b2) wrapped its otherwise-correct outcome in a
+ * ```json fence and the server's plain `JSON.parse` rejected it outright. If `text` (trimmed) is
+ * EXACTLY one fenced code block — an opening ``` or ```json (case-insensitive) alone on the first
+ * line, a closing ``` alone on the last line, and no other fence-delimiter line in between — return
+ * the inner text. Any other shape (no fence, prose outside the fence, two fenced blocks) is returned
+ * unchanged so it still falls through to the existing `JSON.parse` rejection path below, with the
+ * same error message as today.
+ */
+function unwrapFencedIterationOutcome(text: string): string {
+  const trimmed = text.trim();
+  const lines = trimmed.split(/\r\n|\r|\n/);
+  if (lines.length < 3) return trimmed;
+  if (!FENCE_OPEN_LINE.test(lines[0])) return trimmed;
+  if (!FENCE_LINE.test(lines[lines.length - 1])) return trimmed;
+  const body = lines.slice(1, -1);
+  if (body.some((line) => FENCE_LINE.test(line) || FENCE_OPEN_LINE.test(line))) return trimmed;
+  return body.join('\n').trim();
+}
+
 const ITERATION_OUTCOME_REQUIRED_FIELDS = [
   'schema', 'requestRef', 'iterationLoopRef', 'participantId', 'cycle', 'verdict',
   'inputGenerationRefs', 'criteria', 'findings', 'positions', 'recordedDissent', 'summary',
@@ -270,11 +294,12 @@ function samePosition(left: IterationPosition, right: IterationPosition): boolea
 export function parseIterationOutcome(text: string, contract: IterationOutcomeContract): IterationOutcomeParseResult {
   if (text.length > MAX_ITERATION_OUTCOME_CHARS) return invalidIteration('payload exceeds the iteration outcome bound');
   if (text.includes('\uFFFD')) return invalidIteration('payload is not valid UTF-8');
-  const duplicate = duplicateJsonKey(text);
+  const unwrapped = unwrapFencedIterationOutcome(text);
+  const duplicate = duplicateJsonKey(unwrapped);
   if (duplicate !== null) return invalidIteration(`duplicate JSON object key '${duplicate}'`);
   let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    raw = JSON.parse(unwrapped);
   } catch {
     return invalidIteration('payload is not JSON');
   }
@@ -329,7 +354,12 @@ export function parseIterationOutcome(text: string, contract: IterationOutcomeCo
   if (!isLegalIterationVerdict(contract, participant.participantId, verdict)) {
     return invalidIteration(`participant '${participant.participantId}' is not authorized to issue verdict '${verdict}'`);
   }
-  const hasResolvedFindingRefs = Object.prototype.hasOwnProperty.call(raw, 'resolvedFindingRefs');
+  // An empty resolvedFindingRefs is treated exactly as if the key were absent, for every verdict: the
+  // contract advertises the key as optional (`resolvedFindingRefs?:string[]`), and a real judge turn
+  // (2026-09-16 canary run-4113b3b2) emitted `[]` on a `fail` verdict while following that contract to
+  // the letter. Only a NON-empty array outside complete/consensus is still rejected below.
+  const hasResolvedFindingRefs = Object.prototype.hasOwnProperty.call(raw, 'resolvedFindingRefs')
+    && !(Array.isArray(raw.resolvedFindingRefs) && raw.resolvedFindingRefs.length === 0);
   let resolvedFindingRefs: string[] | undefined;
   if (hasResolvedFindingRefs) {
     if (verdict !== 'complete' && verdict !== 'consensus') {

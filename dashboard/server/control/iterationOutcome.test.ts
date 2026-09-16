@@ -411,4 +411,170 @@ describe('parseIterationOutcome', () => {
       value: { schema: 'kb.iteration-outcome/v1' },
     });
   });
+
+  describe('a fenced result (2026-09-16 canary run-4113b3b2)', () => {
+    it('unwraps a ```json fenced object to the same outcome as the raw object', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const fenced = ['```json', raw, '```'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toEqual(parseIterationOutcome(raw, iteration));
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({ ok: true, value: { verdict: 'pass' } });
+    });
+
+    it('unwraps a fence without the json tag', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const fenced = ['```', raw, '```'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({ ok: true, value: { verdict: 'pass' } });
+    });
+
+    it('rejects a fence with leading prose, with the existing not-JSON error', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const fenced = ['Here is the outcome:', '```json', raw, '```'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/payload is not JSON/),
+      });
+    });
+
+    it('rejects two fenced objects, with the existing not-JSON error', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const fenced = ['```json', raw, '```', '```json', raw, '```'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/payload is not JSON/),
+      });
+    });
+
+    it('still parses a raw unfenced object', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      expect(parseIterationOutcome(iterationOutcome(iteration, 'pass'), iteration)).toMatchObject({
+        ok: true,
+        value: { verdict: 'pass' },
+      });
+    });
+
+    it('still fires the duplicate-key guard inside a fence', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass').replace('"verdict":"pass"', '"verdict":"pass","verdict":"pass"');
+      const fenced = ['```json', raw, '```'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/duplicate JSON object key 'verdict'/),
+      });
+    });
+
+    it('parses the real prod judge payload identically whether fenced or raw (attempt-322eb62c)', () => {
+      // The literal payload the brief-judge participant returned on prod (canary run-4113b3b2,
+      // 2026-09-16 09:51Z), wrapped exactly as the model wrapped it. requestRef/iterationLoopRef/
+      // participantId/generation refs are held byte-for-byte; only the surrounding contract is
+      // built locally so the outcome binds to a declared route and criterion.
+      const participantId = 'brief-judge';
+      const contract: IterationOutcomeContract = {
+        iterationGroup: {
+          iterationGroupId: 'brief-judge-group',
+          participants: [
+            { participantId: 'source', stageRef: 'source-stage', role: 'contributor', perspective: 'Source', mandate: 'Supply work.' },
+            { participantId, stageRef: 'brief-judge-stage', role: 'judge', perspective: 'Check sourcing.', mandate: 'Apply the criteria.' },
+          ],
+          routes: [{
+            routeId: 'brief-judge-route',
+            senderParticipantId: 'source',
+            recipientParticipantId: participantId,
+            requestKinds: ['review'],
+            baseResolutionStageIds: ['source-stage'],
+          }],
+          activation: { seedParticipantId: 'source', seedArtifactIds: ['artifact'] },
+          initialStepId: 'brief-judge-step',
+          schedule: [
+            { stepId: 'brief-judge-step', routeId: 'brief-judge-route', cycle: 'current' },
+            {
+              stepId: 'brief-judge-after-fail', routeId: 'brief-judge-route',
+              after: { stepId: 'brief-judge-step', participantId, verdict: 'fail' }, cycle: 'next',
+            },
+          ],
+          artifacts: ['artifact'],
+          criteria: [{ id: 'sources-listed', description: 'brief.json lists its sources.' }],
+          maxCycles: 2,
+          cycleUnit: 'one check',
+          terminalAuthorities: [],
+        },
+        request: {
+          schema: 'kb.iteration-request/v1',
+          requestRef: 'iteration-request-bc5427d2-c082-44f2-8d89-4de9dbab0404',
+          iterationLoopRef: 'iteration-loop-b6e49863-2d61-4e8d-a948-8ab539726ea9',
+          routeId: 'brief-judge-route',
+          senderParticipantId: 'source',
+          recipientParticipantId: participantId,
+          kind: 'review',
+          cycle: 1,
+          inputGenerationRefs: ['generation-fbb841fb-d079-4917-9739-427b83918771'],
+          baseCommit: 'a'.repeat(40),
+          artifactHashes: { artifact: 'b'.repeat(64) },
+          criteria: [{ id: 'sources-listed', description: 'brief.json lists its sources.' }],
+          unresolvedFindingRefs: [],
+          preservedInvariants: [],
+          nextAcceptanceCheck: 'Apply the authored criteria.',
+          instructions: 'Return one closed outcome.',
+        },
+        currentPositions: [],
+      };
+      const rawProdPayload = '{"schema":"kb.iteration-outcome/v1","requestRef":"iteration-request-bc5427d2-c082-44f2-8d89-4de9dbab0404","iterationLoopRef":"iteration-loop-b6e49863-2d61-4e8d-a948-8ab539726ea9","participantId":"brief-judge","cycle":1,"verdict":"fail","inputGenerationRefs":["generation-fbb841fb-d079-4917-9739-427b83918771"],"criteria":[{"criterionId":"sources-listed","verdict":"fail","findingIds":["missing-sources"]}],"findings":[{"findingId":"missing-sources","criterionId":"sources-listed","severity":"blocking","summary":"brief.json has sourcesListed=false and revision=1; no sources array is present, so the sources-listed criterion is not met on the pinned generation.","evidencePaths":["orgs/kb-ops/output/v1-acceptance-demo/tailscale-tailnet-trust/brief/brief.json"]}],"resolvedFindingRefs":[],"positions":[],"recordedDissent":[],"summary":"Pinned generation generation-fbb841fb-d079-4917-9739-427b83918771 fails sources-listed: sourcesListed is false and revision is 1, not the required true/revision-2 successor."}';
+      const fencedProdPayload = ['```json', rawProdPayload, '```'].join('\n');
+      const rawResult = parseIterationOutcome(rawProdPayload, contract);
+      const fencedResult = parseIterationOutcome(fencedProdPayload, contract);
+      // Fenced now behaves EXACTLY like raw — proving the unwrap, not the payload's own business
+      // rules, was the only thing standing between this real judge turn and a receipt. The payload's
+      // own `resolvedFindingRefs:[]` alongside a `fail` verdict is a second real defect (the judge was
+      // following the contract's `resolvedFindingRefs?:string[]` to the letter): an empty array is now
+      // treated exactly as if the key were absent, for every verdict, so this receipts cleanly.
+      expect(fencedResult).toEqual(rawResult);
+      expect(rawResult).toMatchObject({
+        ok: true,
+        value: {
+          verdict: 'fail',
+          findings: [expect.objectContaining({ findingId: 'missing-sources', criterionId: 'sources-listed', severity: 'blocking' })],
+        },
+      });
+      expect(rawResult.ok && !('resolvedFindingRefs' in rawResult.value)).toBe(true);
+    });
+  });
+
+  describe('an empty resolvedFindingRefs (live defect alongside the fence, 2026-09-16)', () => {
+    it('treats resolvedFindingRefs:[] as absent on fail pass fulfilled and rework', () => {
+      const failIteration = iterationContract('judge', ['fail']);
+      expect(parseIterationOutcome(iterationOutcome(failIteration, 'fail', {
+        ...negativeFields(), resolvedFindingRefs: [],
+      }), failIteration)).toMatchObject({ ok: true, value: { verdict: 'fail' } });
+
+      const passIteration = iterationContract('judge', ['pass'], ['pass']);
+      const passResult = parseIterationOutcome(
+        iterationOutcome(passIteration, 'pass', { resolvedFindingRefs: [] }), passIteration,
+      );
+      expect(passResult).toMatchObject({ ok: true, value: { verdict: 'pass' } });
+      expect(passResult.ok && !('resolvedFindingRefs' in passResult.value)).toBe(true);
+
+      const fulfilledIteration = iterationContract('contributor', ['fulfilled'], [], { kind: 'rework' });
+      expect(parseIterationOutcome(iterationOutcome(fulfilledIteration, 'fulfilled', {
+        criteria: [], resolvedFindingRefs: [],
+      }), fulfilledIteration)).toMatchObject({ ok: true, value: { verdict: 'fulfilled' } });
+
+      const reworkIteration = iterationContract('peer', ['rework']);
+      expect(parseIterationOutcome(iterationOutcome(reworkIteration, 'rework', {
+        ...negativeFields(), resolvedFindingRefs: [],
+      }), reworkIteration)).toMatchObject({ ok: true, value: { verdict: 'rework' } });
+    });
+
+    it('still rejects a non-empty resolvedFindingRefs on fail with the existing message', () => {
+      const iteration = iterationContract('judge', ['fail']);
+      expect(parseIterationOutcome(iterationOutcome(iteration, 'fail', {
+        ...negativeFields(), resolvedFindingRefs: ['finding-1'],
+      }), iteration)).toMatchObject({
+        ok: false,
+        detail: 'invalid iteration outcome: resolvedFindingRefs are allowed only for complete and consensus',
+      });
+    });
+  });
 });
