@@ -3362,3 +3362,65 @@ def test_load_current_approval_refuses_a_gate_json_swapped_after_evaluation_m9(
     plan, root = command._load_plan("creator-002", plan_file)
     with pytest.raises(command.FigmentTrainError, match="gate.json changed"):
         command._load_current_approval(plan, root, "dataset")
+
+
+# ---------------------------------------------------------------------------------
+# P4 retry follow-ups (opus review of 1c29bc21): unit coverage for the two small
+# retry helpers that stand on their own, independent of the full harness fixture
+# `test_pipeline_command.py::_install_flaky_fake_harness` drives. See that file's
+# `-k retry` tests for the integration-level MEDIUM-1/2/3 coverage.
+# ---------------------------------------------------------------------------------
+
+
+def test_first_free_retry_rename_path_skips_an_existing_collision(command, tmp_path):
+    """LOW-3: a `.failed-N` collision (e.g. a leftover dir from an earlier, unrelated
+    interruption) is skipped for the next free suffix rather than raising a raw
+    `FileExistsError` at the caller's `out_dir.rename(...)`."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    (out_dir.with_name("run-out.failed-1")).mkdir()
+
+    target = command._first_free_retry_rename_path(out_dir, 1)
+
+    assert target == out_dir.with_name("run-out.failed-2")
+    assert not target.exists()
+
+
+def test_first_free_retry_rename_path_raises_when_exhausted(command, tmp_path):
+    """LOW-3: when every candidate in the search window is taken, raise
+    `FigmentTrainError` naming the path rather than looping forever or raising a raw
+    `FileExistsError`."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    out_dir.with_name("run-out.failed-5").mkdir()
+    out_dir.with_name("run-out.failed-6").mkdir()
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"cannot find a free \.failed-N retry rename target near .*run-out",
+    ):
+        command._first_free_retry_rename_path(out_dir, 5, limit=2)
+
+
+def test_has_stray_retry_output_ignores_only_known_bookkeeping_files(command, tmp_path):
+    """LOW-2: `run.json`, `manifest.json`, `recovery-*.json` journals, and the two
+    `pod/recovery.py` lock files are the ONLY names a clean zero-output transport
+    failure legitimately leaves behind; anything else -- including something nested
+    in a subdirectory -- is a stray output."""
+    out_dir = tmp_path / "run-out"
+    out_dir.mkdir()
+    (out_dir / "run.json").write_text("{}", encoding="utf-8")
+    (out_dir / "manifest.json").write_text("{}", encoding="utf-8")
+    (out_dir / "recovery-figment-bakeoff-20260916-000000-abcdef.json").write_text(
+        "{}", encoding="utf-8",
+    )
+    (out_dir / ".figment-recovery-run.lock").write_text("", encoding="utf-8")
+    (out_dir / "recovery-figment-bakeoff-20260916-000000-abcdef.json.create-lock").write_text(
+        "", encoding="utf-8",
+    )
+    assert command._has_stray_retry_output(out_dir) is False
+
+    nested = out_dir / "nested" / "leftover.bin"
+    nested.parent.mkdir(parents=True)
+    nested.write_bytes(b"x")
+    assert command._has_stray_retry_output(out_dir) is True

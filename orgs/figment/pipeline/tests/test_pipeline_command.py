@@ -981,6 +981,7 @@ def _install_flaky_fake_harness(
     jobs=None,
     artifacts=None,
     extra_receipt_fields: dict | None = None,
+    extra_files: dict[str, str] | None = None,
     fails_every_time: bool = False,
 ):
     """Every manifest runs through `_install_fake_harness`'s real (offline) fixture,
@@ -1020,6 +1021,11 @@ def _install_flaky_fake_harness(
                 if extra_receipt_fields:
                     receipt.update(extra_receipt_fields)
                 (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+                if extra_files:
+                    for name, content in extra_files.items():
+                        target = run_out / name
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text(content, encoding="utf-8")
                 state["failed_once"] = True
                 return type("Result", (), {"returncode": fail_returncode})()
         return good_harness(argv, cwd=cwd, **kwargs)
@@ -1097,14 +1103,17 @@ def test_retry_failed_retries_a_verified_zero_output_transport_failure(
     state = command.run_planned_stage(
         "creator-002", "dataset", plan_path, retry_failed=True,
     )
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
     assert state["status"] == "complete"
     assert state["completed_stages"] == ["dataset"]
     assert state["runs"][flaky_manifest]["status"] == "complete"
+    # LOW-1: the renamed prior-attempt dir is recorded on its own attempt entry, so
+    # a later eligibility re-check (MEDIUM-1's "retrying" recovery path) can find the
+    # evidence even after the rename has already happened.
     assert state["runs"][flaky_manifest]["attempts"] == [
-        {"status": "failed", "returncode": 1},
+        {"status": "failed", "returncode": 1, "out_renamed": str(renamed)},
     ]
 
-    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
     assert renamed.is_dir()
     assert (renamed / "run.json").is_file()
     assert original_out_dir.is_dir()
@@ -1209,3 +1218,220 @@ def test_pipeline_dry_run_retry_failed_previews_without_renaming(
     assert not original_out_dir.with_name(f"{original_out_dir.name}.failed-1").exists()
     state_after = load_json(root / "stage.json")
     assert state_after["runs"][flaky_manifest] == {"status": "failed", "returncode": 1}
+
+
+def test_retry_failed_refuses_when_placement_attempt_lacks_verified_termination(
+    command, tmp_path, monkeypatch,
+):
+    """MEDIUM-3: eligibility must not stop at the top-level `termination_verified` --
+    a receipt can carry that as true while one of its own `placement_attempts` rows
+    (a prior placement that got superseded, say) never verified its termination."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_receipt_fields={
+            "placement_attempts": [
+                {"pod_id": "pod-flaky", "termination_verified": True, "estimated_actual_usd": 0.01},
+                {"pod_id": "pod-flaky-2", "termination_verified": False, "estimated_actual_usd": 0.0},
+            ],
+        },
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*placement.*verified termination",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_when_recovery_journal_is_not_verified_terminated(
+    command, tmp_path, monkeypatch,
+):
+    """MEDIUM-3: a `recovery-*.json` journal (pod/recovery.py) left in the out dir
+    must itself show a verified-terminated pod, mirroring `verify_run_record`'s own
+    placement check -- an `uncertain`/non-absence-verified journal means the prior
+    pod's fate was never actually confirmed, live-run.json evidence notwithstanding."""
+    journal = {
+        "schema": "figment/pod-recovery@1",
+        "state": "uncertain",
+        "attempt_id": "figment-bakeoff-20260916-000000-abcdef",
+        "pod_name": "figment-bakeoff-20260916-000000-abcdef",
+        "manifest_path": "C:/nowhere/manifest.yaml",
+        "manifest_sha256": "0" * 64,
+        "max_minutes": 60,
+        "max_usd": None,
+        "created_utc": "2026-09-16T00:00:00+00:00",
+        "receipt_path": "C:/nowhere/run.json",
+        "pod_id": "pod-flaky",
+        "absence_verified": False,
+        "intent_sha256": "irrelevant-for-this-test",
+    }
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_files={"recovery-figment-bakeoff-20260916-000000-abcdef.json": json.dumps(journal)},
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*recovery journal.*verified",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_when_stray_output_is_nested(command, tmp_path, monkeypatch):
+    """LOW-2: the stray-output check is recursive over the whole out dir, not merely
+    its top level, and flags any leftover file (not only images)."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    nested = out_dir / "logs" / "stray.txt"
+    nested.parent.mkdir(parents=True, exist_ok=True)
+    nested.write_text("not an image, still not clean", encoding="utf-8")
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*unexpected output files",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_mid_retry_status_without_flag_refuses(
+    command, tmp_path, monkeypatch,
+):
+    """MEDIUM-1: a prior `--retry-failed` call whose retry bookkeeping (rename +
+    `status: "retrying"` state write) committed, then crashed before relaunch could
+    happen -- inside `_install_stage_config`, the manifest-sha check, `_planned_run`'s
+    comparison, or `_tester_checkpoint_inputs` -- must still require `--retry-failed`
+    and a fresh eligibility check on the next call, never fall through to a bare
+    relaunch just because the record carries no recognized status."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    # Simulate the interrupted call: rename + state write both committed (a `--retry-
+    # failed` call got exactly this far), but the process died before relaunching.
+    state = load_json(root / "stage.json")
+    prior = state["runs"][flaky_manifest]
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
+    original_out_dir.rename(renamed)
+    state["runs"][flaky_manifest] = {
+        "status": "retrying",
+        "attempts": [{**prior, "out_renamed": str(renamed)}],
+    }
+    command._write_stage_state(root / "stage.json", state)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"planned run .*fullbody\.yaml is mid-retry.*create a reviewed new plan",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    # Unchanged by the refusal.
+    state_after = load_json(root / "stage.json")
+    assert state_after["runs"][flaky_manifest]["status"] == "retrying"
+    assert original_out_dir.is_dir() is False
+    assert renamed.is_dir()
+
+    # With the flag, it re-verifies eligibility against the renamed attempt and, since
+    # that attempt's evidence is a clean transport-class failure, proceeds to relaunch
+    # and succeeds via the real (non-flaky) fixture.
+    result = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    assert result["status"] == "complete"
+    assert result["runs"][flaky_manifest]["status"] == "complete"
+    assert result["runs"][flaky_manifest]["attempts"] == [
+        {"status": "failed", "returncode": 1, "out_renamed": str(renamed)},
+    ]
+
+
+def test_retry_failed_mid_retry_status_finishes_interrupted_rename_then_retries(
+    command, tmp_path, monkeypatch,
+):
+    """MEDIUM-2: the rename to `<out>.failed-N` now happens AFTER the state write, so a
+    crash between the two steps leaves `status: "retrying"` recorded with the rename
+    target named on the attempt, but the rename itself never executed -- `out_dir`
+    still holds the failed prior receipt. The next `--retry-failed` call must finish
+    that rename (not relaunch into a dir that still has a `run.json`) and then
+    succeed."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    # Simulate the crash BETWEEN the state write and the rename: state already says
+    # "retrying" and names the rename target, but `original_out_dir` was never
+    # actually renamed.
+    state = load_json(root / "stage.json")
+    prior = state["runs"][flaky_manifest]
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
+    state["runs"][flaky_manifest] = {
+        "status": "retrying",
+        "attempts": [{**prior, "out_renamed": str(renamed)}],
+    }
+    command._write_stage_state(root / "stage.json", state)
+    assert original_out_dir.is_dir()
+    assert not renamed.exists()
+
+    result = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    assert result["status"] == "complete"
+    assert result["runs"][flaky_manifest]["status"] == "complete"
+    assert renamed.is_dir()
+    old_receipt = load_json(renamed / "run.json")
+    assert old_receipt.get("error")
+    retried_receipt = load_json(original_out_dir / "run.json")
+    assert not retried_receipt.get("error")
+
+
+def test_retry_failed_refuses_on_unrecognized_prior_status(
+    command, tmp_path, monkeypatch,
+):
+    """MEDIUM-1's catch-all: any `state["runs"][key]["status"]` outside
+    {complete, failed, running, retrying} is unexplained state, never a launch
+    authorization -- refuse loudly rather than silently relaunching."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = load_json(root / "stage.json")
+    state["runs"][flaky_manifest] = {"status": "bogus-status"}
+    command._write_stage_state(root / "stage.json", state)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"unrecognized status 'bogus-status'",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)

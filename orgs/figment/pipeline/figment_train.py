@@ -4050,13 +4050,71 @@ RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
 MAX_RUN_RETRIES = 2
 
 
-def _retry_ineligibility_reason(root: Path, run: dict[str, Any]) -> str | None:
+def _is_retry_bookkeeping_file(path: Path) -> bool:
+    """LOW-2 allow-list: files a clean zero-output transport failure legitimately
+    leaves in its out dir -- its own receipt/manifest copy, `pod/recovery.py`'s
+    journals, and the two lock files that module uses (`RUN_DIRECTORY_LOCK_NAME` and
+    a journal's `.create-lock`, duplicated here as literals rather than importing the
+    module just for two constants)."""
+    name = path.name
+    if name in ("run.json", "manifest.json"):
+        return True
+    if name == ".figment-recovery-run.lock" or name.endswith(".create-lock"):
+        return True
+    if name.startswith("recovery-") and name.endswith(".json"):
+        return True
+    return False
+
+
+def _has_stray_retry_output(out_dir: Path) -> bool:
+    """LOW-2: recursive over the WHOLE out dir and over any file, not merely a
+    top-level image -- a nested or non-image leftover is exactly as disqualifying
+    for a clean zero-output transport failure."""
+    for path in out_dir.rglob("*"):
+        if path.is_dir():
+            continue
+        if not _is_retry_bookkeeping_file(path):
+            return True
+    return False
+
+
+def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 1000) -> Path:
+    """LOW-3: the `.failed-N` rename target for a retried run's prior out dir -- the
+    first suffix from `start` that is not already taken, rather than a bare
+    `out_dir.rename(...)` that raises a raw `FileExistsError` on a collision (e.g. a
+    leftover `.failed-N` dir from an earlier, unrelated interruption)."""
+    for offset in range(limit):
+        candidate = out_dir.with_name(f"{out_dir.name}.failed-{start + offset}")
+        if not candidate.exists():
+            return candidate
+    raise FigmentTrainError(
+        f"cannot find a free .failed-N retry rename target near {out_dir} "
+        f"(checked {limit} candidates starting at {start})"
+    )
+
+
+def _retry_ineligibility_reason(
+    root: Path, run: dict[str, Any], *, attempts: list[dict[str, Any]] | None = None,
+) -> str | None:
     """`None` when a failed planned `run` is safe for `--retry-failed` to re-launch, else
     the human-readable reason it refuses. Reads only the prior attempt's own harness
     receipt (`<out>/run.json`) -- `state["runs"][key]`'s "failed"/"returncode" bookkeeping
-    in `stage.json` never carries enough to tell a transport blip from a job failure."""
+    in `stage.json` never carries enough to tell a transport blip from a job failure.
+
+    `attempts` (MEDIUM-1/MEDIUM-2): when the prior attempt's out dir has ALREADY been
+    renamed to `.failed-N` -- because this is re-checking a `status: "retrying"` record
+    left by an interrupted earlier `--retry-failed` call -- `out_dir` itself no longer
+    has a `run.json`. Fall back to the rename target recorded on the last completed
+    attempt (`out_renamed`, LOW-1) rather than reporting a false "no run.json"."""
     out_dir = root / run["out"]
     run_json_path = out_dir / "run.json"
+    if not run_json_path.is_file() and attempts:
+        renamed = attempts[-1].get("out_renamed")
+        if isinstance(renamed, str) and renamed:
+            candidate_dir = Path(renamed)
+            if (candidate_dir / "run.json").is_file():
+                out_dir = candidate_dir
+                run_json_path = out_dir / "run.json"
     if not run_json_path.is_file():
         return f"no run.json found at {run_json_path} to verify the failure was transport-class"
     try:
@@ -4067,12 +4125,31 @@ def _retry_ineligibility_reason(root: Path, run: dict[str, Any]) -> str | None:
         return "prior run.json is not an object"
     if data.get("termination_verified") is not True:
         return "prior run.json does not show verified pod termination"
+    if any(
+        placement.get("termination_verified") is not True
+        for placement in data.get("placement_attempts") or []
+    ):
+        return "prior run.json has a placement without verified termination"
     if any((job.get("files") or []) for job in data.get("jobs") or []):
         return "prior run.json recorded job outputs; this is not a clean zero-output failure"
     if any((artifact.get("bytes") or 0) > 0 for artifact in data.get("artifacts") or []):
         return "prior run.json recorded artifact outputs; this is not a clean zero-output failure"
-    if any(True for suffix in IMAGE_EXTENSIONS for _ in out_dir.glob(f"*{suffix}")):
-        return "prior attempt's out dir already contains image outputs"
+    if _has_stray_retry_output(out_dir):
+        return "prior attempt's out dir already contains unexpected output files"
+    for journal_path in sorted(out_dir.glob("recovery-*.json")):
+        try:
+            journal = _read_json(journal_path)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+            return f"prior recovery journal {journal_path.name} could not be read: {exc}"
+        if (
+            not isinstance(journal, dict)
+            or journal.get("state") != "terminated"
+            or journal.get("absence_verified") is not True
+        ):
+            return (
+                f"prior recovery journal {journal_path.name} does not show a verified "
+                "terminated pod"
+            )
     error = data.get("error")
     if not isinstance(error, str) or not error:
         return "prior run.json has no error recorded; refusing to guess the failure class"
@@ -4132,31 +4209,82 @@ def run_planned_stage(
             if prior and prior.get("status") == "complete":
                 continue
             attempts = list((prior or {}).get("attempts") or [])
-            if prior and prior.get("status") == "failed":
+            prior_status = prior.get("status") if prior else None
+            if prior_status in ("failed", "retrying"):
                 if not retry_failed:
+                    verb = (
+                        "already failed" if prior_status == "failed"
+                        else 'is mid-retry (status "retrying")'
+                    )
                     raise FigmentTrainError(
-                        f"planned run {key} already failed; create a reviewed new plan to retry"
+                        f"planned run {key} {verb}; create a reviewed new plan to retry"
                     )
                 if len(attempts) >= MAX_RUN_RETRIES:
                     raise FigmentTrainError(
                         f"planned run {key} has already been retried {len(attempts)} time(s) "
                         f"(limit {MAX_RUN_RETRIES}); create a reviewed new plan to retry further"
                     )
-                reason = _retry_ineligibility_reason(root, run)
-                if reason:
-                    raise FigmentTrainError(
-                        f"planned run {key} already failed and --retry-failed refuses to "
-                        f"re-launch it: {reason}"
-                    )
                 out_dir = root / run["out"]
-                if out_dir.is_dir():
-                    renamed = out_dir.with_name(f"{out_dir.name}.failed-{len(attempts) + 1}")
-                    out_dir.rename(renamed)
-                attempts.append({k: v for k, v in prior.items() if k != "attempts"})
-                state["runs"][key] = {"attempts": attempts}
-                _write_stage_state(state_path, state)
+                if prior_status == "failed":
+                    reason = _retry_ineligibility_reason(root, run)
+                    if reason:
+                        raise FigmentTrainError(
+                            f"planned run {key} already failed and --retry-failed refuses to "
+                            f"re-launch it: {reason}"
+                        )
+                    renamed = (
+                        _first_free_retry_rename_path(out_dir, len(attempts) + 1)
+                        if out_dir.is_dir() else None
+                    )
+                    completed_attempt = {k: v for k, v in prior.items() if k != "attempts"}
+                    if renamed is not None:
+                        completed_attempt["out_renamed"] = str(renamed)
+                    attempts.append(completed_attempt)
+                    # MEDIUM-1: record "retrying" (never a bare `{"attempts": [...]}`
+                    # with no status) BEFORE the rename below, and durably (state write
+                    # first) -- MEDIUM-2. If anything between here and the actual
+                    # relaunch raises (`_install_stage_config`, the manifest-sha check,
+                    # `_planned_run`'s comparison, `_tester_checkpoint_inputs`, all
+                    # below), every later call still finds a recognized, guarded status
+                    # rather than falling through every check that gates a launch.
+                    state["runs"][key] = {"status": "retrying", "attempts": attempts}
+                    _write_stage_state(state_path, state)
+                    if renamed is not None and out_dir.is_dir():
+                        # This necessarily orphans any recovery-*.json journal bound to
+                        # the renamed dir (pod/recovery.py binds a journal to its own
+                        # directory, LOW-1) -- but `_retry_ineligibility_reason` above
+                        # only clears a retry whose journals already show verified
+                        # termination, so only DEAD journals are ever moved this way.
+                        out_dir.rename(renamed)
+                else:
+                    # A previous --retry-failed call's bookkeeping committed (above)
+                    # but crashed before relaunch could happen. Re-verify eligibility
+                    # against the renamed prior attempt rather than assuming the
+                    # earlier check still holds.
+                    reason = _retry_ineligibility_reason(root, run, attempts=attempts)
+                    if reason:
+                        raise FigmentTrainError(
+                            f"planned run {key} is mid-retry and --retry-failed refuses "
+                            f"to re-launch it: {reason}"
+                        )
+                    renamed_target = attempts[-1].get("out_renamed") if attempts else None
+                    if (
+                        isinstance(renamed_target, str) and renamed_target
+                        and out_dir.is_dir() and (out_dir / "run.json").is_file()
+                    ):
+                        # MEDIUM-2: the crash landed between the state write and the
+                        # rename -- finish that half-completed bookkeeping now, before
+                        # considering a fresh relaunch into `out_dir`.
+                        target = Path(renamed_target)
+                        if target.exists():
+                            raise FigmentTrainError(
+                                f"planned run {key} retry bookkeeping is inconsistent: both "
+                                f"{out_dir} and its recorded rename target {target} contain "
+                                "evidence; resolve by hand before retrying"
+                            )
+                        out_dir.rename(target)
                 prior = None
-            if prior and prior.get("status") == "running":
+            elif prior_status == "running":
                 # n12: this is the recovery message a SECOND concurrent `pipeline`/`run`
                 # invocation on the SAME plan actually hits (stage.json's own "running"
                 # mark is the lock) -- most of the time that other process is simply
@@ -4173,6 +4301,15 @@ def run_planned_stage(
                     "pod state with `runpod_run.py status`/`probe` (and terminate it if "
                     "still live) before retrying. Never launch a second pod for the same "
                     "manifest, and never start a fresh plan over this one for that alone."
+                )
+            elif prior_status is not None:
+                # MEDIUM-1 catch-all: any status outside {complete, failed, running,
+                # retrying} is unexplained `stage.json` state, never a launch
+                # authorization.
+                raise FigmentTrainError(
+                    f"planned run {key} has an unrecognized status {prior_status!r}; this "
+                    "indicates stage.json state corruption -- investigate by hand before "
+                    "continuing"
                 )
             # A gen plan may carry a base run and optional legacy --detail-images run;
             # a detail STAGES plan (F2) has its own external checkpoint + gen-source
@@ -6254,21 +6391,25 @@ def _dry_run_retry_preview(
 ) -> dict[str, Any] | None:
     """`pipeline --dry-run --retry-failed`'s preview of the one retry `run_planned_stage`
     would actually attempt for this stage: the same manifest a live invocation would hit
-    first (in plan order), only when it is `failed` and `_retry_ineligibility_reason`
-    clears it. Read-only -- never renames a dir or invokes the harness. Returns `None`
-    when there is nothing eligible to retry here, so the caller falls back to the
-    ordinary `dry-run:<stage>` preview."""
+    first (in plan order), only when it is `failed` or `retrying` (MEDIUM-1: a `retrying`
+    record left by an interrupted earlier retry is guarded exactly like `failed`) and
+    `_retry_ineligibility_reason` clears it. Read-only -- never renames a dir or invokes
+    the harness. Returns `None` when there is nothing eligible to retry here, so the
+    caller falls back to the ordinary `dry-run:<stage>` preview."""
     for run in plan["stages"][stage]["runs"]:
         key = run["manifest"]
         prior = state["runs"].get(key)
         if prior and prior.get("status") == "complete":
             continue
-        if not prior or prior.get("status") != "failed":
+        status = prior.get("status") if prior else None
+        if status not in ("failed", "retrying"):
             return None
         attempts = list(prior.get("attempts") or [])
         if len(attempts) >= MAX_RUN_RETRIES:
             return None
-        reason = _retry_ineligibility_reason(root, run)
+        reason = _retry_ineligibility_reason(
+            root, run, attempts=attempts if status == "retrying" else None,
+        )
         if reason:
             return None
         return {

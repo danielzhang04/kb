@@ -273,20 +273,34 @@ plan.
 `--retry-failed` re-launches a `failed` run ONLY when its own harness receipt
 (`<out>/run.json`, not `stage.json`) shows ALL of:
 
-- `termination_verified: true` — the pod's teardown was itself confirmed;
+- `termination_verified: true` for the receipt AND for every row in
+  `run.json["placement_attempts"]` — the pod's teardown, including any earlier
+  superseded placement, was itself confirmed;
 - zero verified job outputs — no `run.json["jobs"]` entries with files, no artifact bytes,
-  and no image files already sitting in its `out` dir;
+  and no other file anywhere under its `out` dir beyond its own receipt/manifest/recovery
+  bookkeeping (recursive — a nested stray file disqualifies it exactly like a top-level
+  one);
+- every `recovery-*.json` journal left in the out dir (`pod/recovery.py`) shows
+  `state: "terminated"` and `absence_verified: true` — an `uncertain` or unterminated
+  journal refuses the retry even if the receipt itself looks clean;
 - an `error` string naming a transport/placement failure (substring match against
   `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`);
 - fewer than 2 prior retries already recorded for that exact manifest key
   (`state["runs"][key]["attempts"]`) — the 3rd failure always requires a fresh plan.
 
 When it retries, the prior attempt's `stage.json` record moves into that run's `attempts`
-list (never deleted) and its `out` dir is renamed to `<out>.failed-<n>` (also never
-deleted) BEFORE the harness is invoked again, so the retry writes a clean `run.json`. The
-exact same harness invocation, ceilings, and budget/arc-cap checks apply — this is not a
-weaker run, only a permitted second launch for the same manifest. Without `--retry-failed`
-(the default), behavior is unchanged: `failed` always refuses, byte for byte.
+list (never deleted, and tagged with `out_renamed` naming where it went) and its `out` dir
+is renamed to `<out>.failed-<n>` (also never deleted; the first free suffix is used on a
+naming collision) AFTER `stage.json` durably records `status: "retrying"` for that run but
+BEFORE the harness is invoked again, so the retry writes a clean `run.json`. If the process
+is interrupted anywhere between that `retrying` write and the actual relaunch, the next
+call — whether or not it passes `--retry-failed` — finds `status: "retrying"` and treats it
+exactly like `failed`: `--retry-failed` is still required, and eligibility is re-verified
+against the renamed prior attempt (finishing the rename first if it didn't complete) rather
+than assuming the earlier check still holds. The exact same harness invocation, ceilings,
+and budget/arc-cap checks apply — this is not a weaker run, only a permitted second launch
+for the same manifest. Without `--retry-failed` (the default), behavior is unchanged:
+`failed` always refuses, byte for byte.
 
 `pipeline --dry-run --retry-failed` previews the one retry it would attempt (status
 `dry-run:retry <key>`) without renaming anything or invoking the harness. If the failed

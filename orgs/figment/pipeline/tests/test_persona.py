@@ -51,6 +51,7 @@ def test_persona_contract():
     assert persona["identity"]["floor"]["min_face_px"] == {
         "status": "uncalibrated",
         "value": 600,
+        "by_framing": {"half": 300},
         "calibration_set_sha": None,
         "locked_by_gate": None,
     }
