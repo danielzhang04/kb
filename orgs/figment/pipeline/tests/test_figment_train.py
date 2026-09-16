@@ -2512,7 +2512,7 @@ def test_train_first_plan_run_stage_all_executes_train_then_tester_in_order(
     pod_module = command._pod_runner_module()
     order: list[str] = []
 
-    def _fake_harness_run(argv, cwd=None):
+    def _fake_harness_run(argv, cwd=None, **kwargs):
         manifest_path = Path(argv[argv.index("--manifest") + 1])
         run_out = Path(argv[argv.index("--out") + 1])
         manifest = load_json(manifest_path)

@@ -1442,6 +1442,200 @@ def test_retry_failed_refuses_on_unrecognized_prior_status(
 
 
 # ---------------------------------------------------------------------------------
+# P7 (LIVE 2026-09-16b, creator-001 train stage): a daily-budget/arc-cap refusal in
+# harness preflight exits non-zero WITHOUT ever creating the out dir (no pod, no
+# run.json, no recovery journal) -- it never attempted anything, so it must be
+# recorded `refused`, never `failed`, and the next invocation must retry it with no
+# flag at all (nothing was spent, nothing to protect against re-launching).
+# ---------------------------------------------------------------------------------
+
+_BUDGET_REFUSED_STDERR = (
+    "figment_train.py: preflight checks starting\n"
+    "daily budget refused: $6.1967 spent + $15.7300 estimate exceeds $10.0000\n"
+)
+
+
+def _install_refusing_fake_harness(
+    command,
+    monkeypatch,
+    ledger_dir: Path,
+    *,
+    refuse_manifest: str,
+    stderr: str = _BUDGET_REFUSED_STDERR,
+    fail_returncode: int = 1,
+    refuses_every_time: bool = True,
+):
+    """A preflight refusal never reaches the pod-create call, so -- unlike
+    `_install_flaky_fake_harness`'s zero-output-but-verified-teardown shape -- the out
+    dir is never created at all: no `run.json`, no `recovery-*.json`. Every other
+    manifest runs through `_install_fake_harness`'s real (offline) fixture."""
+    calls = _install_fake_harness(command, monkeypatch, ledger_dir)
+    good_harness = command.subprocess.run
+    state = {"refused_count": 0}
+
+    def refusing_harness(argv, cwd=None, **kwargs):
+        if len(argv) >= 2 and Path(str(argv[1])).name == command.POD_RUNNER.name:
+            manifest_path = Path(argv[argv.index("--manifest") + 1])
+            if manifest_path.name == refuse_manifest and (
+                refuses_every_time or state["refused_count"] == 0
+            ):
+                state["refused_count"] += 1
+                return type(
+                    "Result", (), {"returncode": fail_returncode, "stderr": stderr},
+                )()
+        return good_harness(argv, cwd=cwd, **kwargs)
+
+    monkeypatch.setattr(command.subprocess, "run", refusing_harness)
+    return calls
+
+
+def _build_refusing_dataset_plan(command, tmp_path, monkeypatch, **harness_kwargs):
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = tmp_path / "ledger"
+    out = tmp_path / "primary"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas, skip_pin_verify=True,
+        ledger_dir=ledger_dir,
+    )
+    refuse_manifest = next(
+        run["manifest"] for run in plan["stages"]["dataset"]["runs"]
+        if Path(run["manifest"]).name == "creator-002-tensor-dataset-fullbody.yaml"
+    )
+    _install_refusing_fake_harness(
+        command, monkeypatch, ledger_dir,
+        refuse_manifest=Path(refuse_manifest).name, **harness_kwargs,
+    )
+    return plan, out / "plan.json", refuse_manifest, ledger_dir
+
+
+def test_run_planned_stage_records_refused_not_failed_when_never_launched(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, refuse_manifest, _ledger_dir = _build_refusing_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = load_json(plan_path.parent / "stage.json")
+    record = state["runs"][refuse_manifest]
+    assert record == {
+        "status": "refused", "returncode": 1,
+        "stderr_tail": "daily budget refused: $6.1967 spent + $15.7300 estimate exceeds $10.0000",
+    }
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == refuse_manifest
+    )
+    assert not (plan_path.parent / fullbody_run["out"]).exists()
+
+
+def test_run_planned_stage_with_run_json_is_never_reclassified_as_refused(
+    command, tmp_path, monkeypatch,
+):
+    """A returncode!=0 attempt that DID write a run.json (real harness output, real
+    possible spend) stays `failed` -- only a genuinely never-launched attempt (no
+    run.json, no recovery journal) is `refused`. Unchanged path, byte for byte."""
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+    state = load_json(plan_path.parent / "stage.json")
+    assert state["runs"][flaky_manifest] == {"status": "failed", "returncode": 1}
+
+
+def test_run_planned_stage_refused_run_relaunches_without_retry_flag_and_records_refusals(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, refuse_manifest, _ledger_dir = _build_refusing_dataset_plan(
+        command, tmp_path, monkeypatch, refuses_every_time=False,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    # No `retry_failed=True` here: a `refused` run is treated exactly like "not yet
+    # run" -- no flag needed, no rename, nothing to count against a retry cap.
+    state = command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    assert state["status"] == "complete"
+    record = state["runs"][refuse_manifest]
+    assert record["status"] == "complete"
+    assert record["refusals"] == [{"status": "refused", "returncode": 1, "stderr_tail": (
+        "daily budget refused: $6.1967 spent + $15.7300 estimate exceeds $10.0000"
+    )}]
+
+
+def test_run_planned_stage_refused_run_raises_after_max_never_created_retries(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, refuse_manifest, _ledger_dir = _build_refusing_dataset_plan(
+        command, tmp_path, monkeypatch, refuses_every_time=True,
+    )
+    for _ in range(command.MAX_NEVER_CREATED_RETRIES):
+        with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+            command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = load_json(plan_path.parent / "stage.json")
+    record = state["runs"][refuse_manifest]
+    assert record["status"] == "refused"
+    assert len(record.get("refusals", [])) == command.MAX_NEVER_CREATED_RETRIES - 1
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"refused 8 time\(s\) \(limit 8\)",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+
+def test_run_planned_stage_reclassifies_a_legacy_never_launched_failed_record_as_refused(
+    command, tmp_path, monkeypatch,
+):
+    """P7/LIVE 2026-09-16b: creator-001's real stage.json recorded the OLD code's bare
+    `{"status": "failed", "returncode": 1}` for the train budget refusal, before this
+    classification existed. On read, an out dir with no run.json and no recovery
+    journal provably never launched -- reclassify it as `refused` and relaunch with no
+    flag, rather than demanding a fresh plan."""
+    plan, plan_path, refuse_manifest, _ledger_dir = _build_refusing_dataset_plan(
+        command, tmp_path, monkeypatch, refuses_every_time=False,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    root = plan_path.parent
+    state = load_json(root / "stage.json")
+    state["runs"][refuse_manifest] = {"status": "failed", "returncode": 1}
+    command._write_stage_state(root / "stage.json", state)
+
+    result = command.run_planned_stage("creator-002", "dataset", plan_path)
+    assert result["status"] == "complete"
+    record = result["runs"][refuse_manifest]
+    assert record["status"] == "complete"
+    assert record["refusals"] == [{"status": "failed", "returncode": 1}]
+
+
+def test_pipeline_dry_run_on_a_refused_run_previews_ordinary_dry_run(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, refuse_manifest, ledger_dir = _build_refusing_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    stage_path = plan_path.parent / "stage.json"
+    mtime_before = stage_path.stat().st_mtime_ns
+
+    result = command.command_pipeline(
+        "creator-002", plan_path=plan_path, dry_run=True,
+        skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    assert result["status"] == "dry-run:dataset"
+    assert stage_path.stat().st_mtime_ns == mtime_before
+
+
+# ---------------------------------------------------------------------------------
 # P5 (LIVE 2026-09-16, creator-001/live-20260916b qwen3vl caption): a RunPod capacity
 # 500 at `POST /pods` create time never places a pod at all -- `termination_verified`
 # stays `false` forever because there was never a pod to terminate. These reuse the

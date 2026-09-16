@@ -329,6 +329,26 @@ run is not eligible (any of the checks above fails), dry-run falls back to its o
 `dry-run:<stage>` preview — the live invocation is what raises the specific refusal
 reason.
 
+## A budget/arc-cap refusal before launch
+
+A harness preflight refusal (daily budget, arc cap, or any other check the harness runs
+before it ever calls RunPod's create API) exits non-zero without creating the run's `out`
+dir at all — no `run.json`, no `recovery-*.json` journal, no pod, no spend. `run_planned_stage`
+records this shape as `status: "refused"` (never `failed`), carrying `returncode` and a
+`stderr_tail` (the harness's last "refused"/"REFUSED" line, or its last ~5 lines of stderr
+when no such line exists) for audit; a legacy `{"status": "failed", "returncode": N}` record
+whose out dir the same way never launched (predating this classification, e.g.
+creator-001/live-20260916b's train stage) is reclassified as `refused` on read. Unlike a
+`failed` run, a `refused` run needs no `--retry-failed` flag and no fresh plan: the very next
+`pipeline`/`run` invocation on the same plan treats it exactly like "not yet run" and simply
+launches again, folding the prior refusal(s) into a `refusals` list on whatever record comes
+next (another refusal, a `failed`, or the eventual `complete`) so the history survives. That
+list is bounded the same way never-created retries are: after `MAX_NEVER_CREATED_RETRIES` (8)
+consecutive refusals for the same manifest key, the next call raises and demands operator
+investigation rather than looping forever. `pipeline --dry-run` (with or without
+`--retry-failed`) previews a `refused` run exactly like any other not-yet-run stage
+(`dry-run:<stage>`) — it would simply run.
+
 ## Command-shape evidence
 
 Every command above was checked against `figment_train.py --help`, `pipeline --help`,

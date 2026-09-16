@@ -4512,6 +4512,42 @@ def _retry_ineligibility_reason(
     return _out_dir_retry_eligibility_reason(out_dir)
 
 
+def _run_never_launched(out_dir: Path) -> bool:
+    """True when `out_dir` carries no evidence a harness attempt was ever placed: no
+    `run.json` receipt and no `recovery-*.json` journal. A preflight refusal (daily
+    budget, arc cap, or any other harness check that exits before the pod-create call)
+    never gets this far, so this is the same "nothing ran, nothing was spent" fact
+    `_prior_attempt_never_created` proves for a create-call failure -- but simpler,
+    since a refusal has no journal shape to verify either, only absence.
+
+    Shared by (a) `run_planned_stage`'s own returncode!=0 handling, which uses this to
+    write `refused` instead of `failed`, and (b) reclassifying a legacy `{"status":
+    "failed", "returncode": N}` record on read (P5/LIVE 2026-09-16b creator-001 train
+    budget refusal, recorded before this classification existed) -- if it provably
+    never launched, it always was a refusal, whatever the old code called it."""
+    if (out_dir / "run.json").is_file():
+        return False
+    if out_dir.is_dir() and any(out_dir.glob("recovery-*.json")):
+        return False
+    return True
+
+
+def _stderr_tail(text: str, *, lines: int = 5) -> str:
+    """The actionable slice of captured harness stderr for a `refused` record: the
+    last line mentioning a refusal (case-insensitive `refused`), when the harness
+    printed one -- that is almost always the one line an operator needs -- else the
+    last `lines` non-blank lines, for context when no such line exists."""
+    if not text:
+        return ""
+    non_blank = [line for line in text.splitlines() if line.strip()]
+    if not non_blank:
+        return ""
+    refusal_lines = [line for line in non_blank if "refused" in line.lower()]
+    if refusal_lines:
+        return refusal_lines[-1].strip()
+    return "\n".join(line.strip() for line in non_blank[-lines:])
+
+
 def run_planned_stage(
     creator_id: str, stage: str, plan_path: Path, *, retry_failed: bool = False,
 ) -> dict[str, Any]:
@@ -4565,8 +4601,26 @@ def run_planned_stage(
             if prior and prior.get("status") == "complete":
                 continue
             attempts = list((prior or {}).get("attempts") or [])
+            refusals = list((prior or {}).get("refusals") or [])
             prior_status = prior.get("status") if prior else None
-            if prior_status in ("failed", "retrying"):
+            out_dir_for_status = root / run["out"]
+            if prior_status == "failed" and _run_never_launched(out_dir_for_status):
+                # Reclassify on read: whatever the record called itself (this branch
+                # also catches every LEGACY `{"status": "failed", "returncode": N}`
+                # written before `refused` existed, P5/LIVE 2026-09-16b), an out dir
+                # with no run.json and no recovery journal provably never launched --
+                # it always was a refusal.
+                prior_status = "refused"
+            if prior_status == "refused":
+                refusals = refusals + [{k: v for k, v in prior.items() if k != "refusals"}]
+                if len(refusals) >= MAX_NEVER_CREATED_RETRIES:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been refused {len(refusals)} "
+                        f"time(s) (limit {MAX_NEVER_CREATED_RETRIES}); investigate the "
+                        "harness preflight (budget/arc-cap/other) before continuing"
+                    )
+                prior = None
+            elif prior_status in ("failed", "retrying"):
                 if not retry_failed:
                     verb = (
                         "already failed" if prior_status == "failed"
@@ -4668,8 +4722,8 @@ def run_planned_stage(
                     "manifest, and never start a fresh plan over this one for that alone."
                 )
             elif prior_status is not None:
-                # MEDIUM-1 catch-all: any status outside {complete, failed, running,
-                # retrying} is unexplained `stage.json` state, never a launch
+                # MEDIUM-1 catch-all: any status outside {complete, failed, refused,
+                # running, retrying} is unexplained `stage.json` state, never a launch
                 # authorization.
                 raise FigmentTrainError(
                     f"planned run {key} has an unrecognized status {prior_status!r}; this "
@@ -4709,25 +4763,65 @@ def run_planned_stage(
                 attempt["checkpoint_inputs"] = tester_inputs
             if attempts:
                 attempt["attempts"] = attempts
+            if refusals:
+                attempt["refusals"] = refusals
             state["runs"][key] = attempt
             _write_stage_state(state_path, state)
             try:
-                result = subprocess.run(run["argv"], cwd=ROOT)
+                # stderr is captured (not inherited) so a refusal's tail can be
+                # recorded on the state record; it is never silenced from the
+                # console for that -- it is echoed to sys.stderr and written to a
+                # log file next to stage.json the moment the harness exits, below.
+                # stdout is left inherited/streaming exactly as before.
+                result = subprocess.run(run["argv"], cwd=ROOT, stderr=subprocess.PIPE, text=True)
             except OSError as exc:
                 failed = {"status": "failed", "error": type(exc).__name__}
                 if attempts:
                     failed["attempts"] = attempts
+                if refusals:
+                    failed["refusals"] = refusals
                 state["runs"][key] = failed
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
                 raise FigmentTrainError(f"could not launch the planned harness command: {exc}") from exc
             if result.returncode != 0:
-                failed = {"status": "failed", "returncode": result.returncode}
+                stderr_text = getattr(result, "stderr", None) or ""
+                if stderr_text:
+                    # Not silenced: the harness's own stderr streamed to console DURING
+                    # the run under the old uncaptured subprocess.run; now that it is
+                    # captured (so the refusal tail below can be recorded durably), it is
+                    # echoed back to the console the moment the process exits, and kept
+                    # next to stage.json for later reading.
+                    sys.stderr.write(stderr_text)
+                    try:
+                        (state_path.parent / f"{current}-harness-stderr.log").write_text(
+                            stderr_text, encoding="utf-8",
+                        )
+                    except OSError:
+                        pass
+                run_out_dir = root / run["out"]
+                never_launched = _run_never_launched(run_out_dir)
+                if never_launched:
+                    record: dict[str, Any] = {
+                        "status": "refused", "returncode": result.returncode,
+                        "stderr_tail": _stderr_tail(stderr_text),
+                    }
+                else:
+                    record = {"status": "failed", "returncode": result.returncode}
                 if attempts:
-                    failed["attempts"] = attempts
-                state["runs"][key] = failed
+                    record["attempts"] = attempts
+                if refusals:
+                    record["refusals"] = refusals
+                state["runs"][key] = record
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
+                if never_launched:
+                    raise FigmentTrainError(
+                        f"harness refused {key} before launch with exit code "
+                        f"{result.returncode} (no out dir, no run.json: nothing ran, "
+                        "nothing was spent); no fresh plan is required -- the next "
+                        "invocation retries automatically"
+                    )
                 raise FigmentTrainError(
                     f"harness stopped for {key} with exit code {result.returncode}; no retry attempted"
                 )
