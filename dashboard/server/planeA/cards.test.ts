@@ -47,6 +47,84 @@ describe('parseCardFrontmatter / groupByState', () => {
     });
   });
 
+  // hotfix-5: `scripts/cards.py` renders a workflow-owner schedule-occurrence claim with
+  // `parameters: {}` (yaml.safe_dump's flow style for an empty mapping). Before this fix
+  // `coerceScalar` had no mapping branch, so the value came back as the STRING '{}' and
+  // schemas/cards/v1.schema.json (`parameters: {type: object}`) rejected the card the platform
+  // had just written: "card schema validation failed: /parameters must be object", at every boot.
+  it('parses an inline mapping value into an object (parameters: {})', () => {
+    const card = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nworkflow-def: self-lint-report\nparameters: {}',
+    );
+    expect(parseCardFrontmatter(card).meta.parameters).toEqual({});
+    expect(parseValidatedCard(card).meta.parameters).toEqual({});
+  });
+
+  it('parses a non-empty inline mapping into string values', () => {
+    const card = MINIMAL_CARD.replace(
+      'owner: null',
+      "owner: null\nworkflow-def: v1-acceptance-demo\nparameters: {topic: overnight, mode: 'fast run'}",
+    );
+    expect(parseValidatedCard(card).meta.parameters).toEqual({ topic: 'overnight', mode: 'fast run' });
+  });
+
+  // hotfix-6: schemas/cards/v1.schema.json was `additionalProperties: false` and did not declare
+  // `scheduled_for`/`dispatched_at` (stamped by scripts/cards.py's stamp_schedule, written on every
+  // cadence-dispatched card) nor `kit_sha`/`agent_version` (stamped by scripts/codex_dispatch.py).
+  // All four are documented in governance/card-schema.md but were missing from the strict schema, so
+  // `assertCardSchema` (the strict path used by claim/execute) rejected every one of these
+  // platform-written cards with "must NOT have additional properties". This is the exact rehearsal
+  // card `6b1db8c1-470018ed` (T\rehearsal\p6\evidence.md:217-229).
+  const LIVE_SCHEDULE_CARD = [
+    '---',
+    'id: 6b1db8c1-470018ed',
+    'project: kb-ops',
+    'action: cadence:self-lint-report',
+    'target: orgs/kb-ops/workflows/self-lint-report.md',
+    'risk-tier: T1',
+    'owner: self-lint-report',
+    'execution-controller: dashboard',
+    "scheduled_for: '2026-09-16T00:33:00-04:00'",
+    "dispatched_at: '2026-09-16T04:34:32.175Z'",
+    'workflow-def: self-lint-report',
+    'parameters: {}',
+    'state: done',
+    '---', '', '## Result', 'ok', '',
+  ].join('\n');
+
+  it('accepts the live rehearsal schedule-occurrence card shape strictly (hotfix-6)', () => {
+    const parsed = parseValidatedCard(LIVE_SCHEDULE_CARD);
+    expect(parsed.meta.scheduled_for).toBe('2026-09-16T00:33:00-04:00');
+    expect(parsed.meta.dispatched_at).toBe('2026-09-16T04:34:32.175Z');
+    expect(parsed.meta.state).toBe('done');
+  });
+
+  const CODEX_STAMPED_CARD = MINIMAL_CARD.replace(
+    'owner: null',
+    'owner: null\nkit_sha: a53ff2d9b1c2d3e4f5061728394a5b6c7d8e9f00\nagent_version: demo-agent@v4',
+  );
+
+  it('accepts a codex-stamped card with kit_sha + agent_version strictly (hotfix-6)', () => {
+    const parsed = parseValidatedCard(CODEX_STAMPED_CARD);
+    expect(parsed.meta.kit_sha).toBe('a53ff2d9b1c2d3e4f5061728394a5b6c7d8e9f00');
+    expect(parsed.meta.agent_version).toBe('demo-agent@v4');
+  });
+
+  it('still rejects a truly undeclared key alongside the four newly-declared stamps (hotfix-6)', () => {
+    const bad = CODEX_STAMPED_CARD.replace('owner: null', 'owner: null\ntotally-unknown-field: nope');
+    expect(() => parseValidatedCard(bad)).toThrow(/card schema/);
+  });
+
+  it.each([
+    'parameters: {topic}',
+    'parameters: {topic: {nested: 1}}',
+    'parameters: {topic: [a, b]}',
+  ])('rejects an inline mapping shape the card parser does not support: %s', (line) => {
+    expect(() => parseCardFrontmatter(MINIMAL_CARD.replace('owner: null', `owner: null\n${line}`)))
+      .toThrow(/inline mapping/);
+  });
+
   it.each(['schema-version: 2', 'schema-version: one'])('rejects %s', (line) => {
     expect(() => parseValidatedCard(MINIMAL_CARD.replace('---\n', `---\n${line}\n`))).toThrow(/schema-version/);
   });

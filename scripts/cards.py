@@ -312,7 +312,24 @@ def _main(argv: list[str] | None = None) -> int:
     except (KeyError, TypeError, ValueError, ValidationError, json.JSONDecodeError) as error:
         print(str(error)[:256], file=sys.stderr)
         return 2
-    print(json.dumps(result, separators=(",", ":"), sort_keys=True))
+    # NOT sort_keys=True: `render()` (see above) digests `card.meta` in its
+    # natural insertion order via `yaml.safe_dump(..., sort_keys=False)`, and
+    # `cardBytesSha256` above is computed from that exact rendering. Alphabetizing
+    # `result["card"]["meta"]` here would desync the JSON payload's key order from
+    # the bytes the digest actually covers; the dashboard daemon (store.ts
+    # createPythonScheduleClaimRenderer) round-trips this JSON verbatim through
+    # JSON.parse -- preserving whatever order lands on the wire -- and later
+    # replay (dispatch.py:_claim_card) rebuilds a Card from that persisted meta
+    # and re-renders it. sort_keys=True here made that replay re-render with
+    # alphabetized keys while the original digest was taken pre-alphabetization,
+    # so every replay's digest mismatched the claim's `cardBytesSha256`
+    # (`ScheduleDispatchError: schedule-card-digest-conflict`, 100% of the time).
+    # Preserving insertion order keeps the CLI's JSON bytes order-identical to
+    # what `render()` already hashed, so the round trip is stable in both
+    # directions without touching `render()` itself (which stays untouched here
+    # to avoid reordering -- and thus changing the digest/bytes of -- every other
+    # already-persisted card on disk, not just schedule-claim ones).
+    print(json.dumps(result, separators=(",", ":"), sort_keys=False))
     return 0
 
 

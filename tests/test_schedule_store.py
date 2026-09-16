@@ -169,6 +169,66 @@ def test_schedule_claim_bytes_are_owned_by_cards_render():
     assert card.meta["scheduled_for"] == "2026-08-21T12:15:00-04:00"
 
 
+def _cli_claim_receipt(schedule_id: str, scheduled_for: str, phase: str = "claimed") -> dict:
+    """Build a claim receipt the way production actually does: through the
+    `scripts/cards.py --schedule-occurrence-claim` CLI subprocess, JSON on stdin,
+    JSON on stdout -- exactly what dashboard/server/control/store.ts's
+    `createPythonScheduleClaimRenderer` spawns and `JSON.parse`s. `_claim_receipt`
+    above calls `cards.schedule_occurrence_claim` in-process and never exercises
+    the CLI's own `json.dumps` in `cards._main`, so it cannot see a bug that only
+    lives in that print statement (hotfix-4: `sort_keys=True` there alphabetized
+    the nested `card.meta` object, desyncing it from the digest `render()` had
+    already taken over the natural key order).
+    """
+    request = {
+        "scheduleId": schedule_id,
+        "scheduledFor": scheduled_for,
+        "owner": {"type": "agent", "id": "hygiene", "sourcePath": "agents/hygiene.md"},
+        "mirrorPath": "HEARTBEAT.md",
+        "dispatchedAt": "2026-08-21T12:15:01-04:00",
+    }
+    result = subprocess.run(
+        [sys.executable, str(REPO_ROOT / "scripts" / "cards.py"), "--schedule-occurrence-claim"],
+        input=json.dumps(request), cwd=REPO_ROOT, text=True, capture_output=True, timeout=15,
+    )
+    assert result.returncode == 0, result.stderr
+    receipt = json.loads(result.stdout)
+    receipt["phase"] = phase
+    return receipt
+
+
+def test_cli_json_round_trip_preserves_render_digest():
+    """Reproduces the hotfix-4 defect directly: render() -> CLI JSON -> parse ->
+    re-render must yield the identical digest/id regardless of transport
+    ordering. Red before the fix (CLI alphabetized `card.meta`, so replaying it
+    through `cards.render()` produced different bytes than `cardBytesSha256`);
+    green after (CLI preserves render()'s natural key order end to end)."""
+    receipt = _cli_claim_receipt("a" * 64, "2026-08-21T12:15:00-04:00")
+    # The JSON on the wire is what the daemon actually persists and later replays
+    # from -- rebuild the Card exactly as dispatch.py's _claim_card does.
+    card = cards.Card(meta=dict(receipt["card"]["meta"]), body=receipt["card"]["body"])
+    assert hashlib.sha256(cards.render(card)).hexdigest() == receipt["cardBytesSha256"]
+    assert card.meta["id"] == dispatch._occurrence_card_id("a" * 64, "2026-08-21T12:15:00-04:00")
+
+
+def test_dispatch_replay_accepts_claim_from_cli_json_path(tmp_path):
+    """dispatch.py:1070's replay digest check (schedule-card-digest-conflict)
+    must pass on a claim that actually went through the CLI JSON path -- the
+    path every real schedule claim takes in production, and the one
+    `_claim_receipt`/`ClaimClient` above (in-process, no CLI) never exercised."""
+    schedule_id = "a" * 64
+    scheduled_for = "2026-08-21T12:15:00-04:00"
+    receipt = _cli_claim_receipt(schedule_id, scheduled_for)
+    client = ClaimClient(receipt)
+    result = dispatch.dispatch_claimed_occurrence(
+        tmp_path, client, schedule_id=schedule_id, scheduled_for=scheduled_for,
+        next_at="2026-08-21T12:30:00-04:00", expected_version=3, agent_id="dispatcher-cloud",
+    )
+    assert result["phase"] == "ledger-appended"
+    card_path = tmp_path / "queue" / "inbox" / f"{result['card_id']}.md"
+    assert hashlib.sha256(card_path.read_bytes()).hexdigest() == result["card_bytes_sha256"]
+
+
 class ClaimClient:
     def __init__(self, receipt: dict, fail_after: str | None = None):
         self.receipt = receipt

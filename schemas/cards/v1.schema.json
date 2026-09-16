@@ -31,7 +31,11 @@
     "assurance_class": { "enum": ["acts-alone", "possession-eligible", "T3-novel", "T3-established", "signed-only"] },
     "workflow-def": { "type": "string", "minLength": 1 },
     "parameters": { "type": "object", "additionalProperties": { "type": "string" } },
-    "created": { "type": "string", "minLength": 1 }
+    "created": { "type": "string", "minLength": 1 },
+    "scheduled_for": { "type": "string", "minLength": 1 },
+    "dispatched_at": { "type": "string", "minLength": 1 },
+    "kit_sha": { "type": "string", "minLength": 1 },
+    "agent_version": { "type": "string", "minLength": 1 }
   },
   "additionalProperties": false
 }
