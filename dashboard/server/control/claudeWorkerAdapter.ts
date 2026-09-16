@@ -181,7 +181,7 @@ function iterationContractLines(contract: IterationOutcomeContract, inputStage: 
   return [
     'SERVER-OWNED ITERATION CONTRACT (binding authority):',
     'Return ONLY one UTF-8 JSON object in your final result. No markdown, prose, WAITING-HUMAN marker, array, or extra object. Do not wrap it in a code fence.',
-    'Its exact shape is {schema:"kb.iteration-outcome/v1",requestRef,iterationLoopRef,participantId,cycle,verdict,inputGenerationRefs,criteria:[{criterionId,verdict:"pass"|"fail"|"unverified",findingIds:string[]}],findings:[{findingId,criterionId,severity:"blocking"|"advisory",summary,evidencePaths:string[]}],resolvedFindingRefs?:string[],positions:[{positionId,participantId,summary,generationRefs:string[]}],recordedDissent:[{dissentId,participantId,positionId,summary}],summary}.',
+    'Its exact shape is {schema:"kb.iteration-outcome/v1",requestRef,iterationLoopRef,participantId,cycle,verdict,inputGenerationRefs,criteria:[{criterionId,verdict:"pass"|"fail"|"unverified",findingIds:string[]}],findings:[{findingId,criterionId,severity:"blocking"|"advisory",summary,evidencePaths:string[]}],resolvedFindingRefs?:string[],positions:[{positionId,participantId,summary,generationRefs:string[]}],recordedDissent:[{dissentId,participantId,positionId,summary}],summary}. resolvedFindingRefs: omit or [] unless verdict is complete/consensus.',
     'positions and recordedDissent MUST be [] unless the verdict is exactly "consensus" or "continue".',
     `RECIPIENT PARTICIPANT (immutable): ${participant.participantId}`,
     `RECIPIENT MANDATE (immutable): ${participant.mandate}`,

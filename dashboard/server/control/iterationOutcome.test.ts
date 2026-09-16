@@ -523,12 +523,55 @@ describe('parseIterationOutcome', () => {
       };
       const rawProdPayload = '{"schema":"kb.iteration-outcome/v1","requestRef":"iteration-request-bc5427d2-c082-44f2-8d89-4de9dbab0404","iterationLoopRef":"iteration-loop-b6e49863-2d61-4e8d-a948-8ab539726ea9","participantId":"brief-judge","cycle":1,"verdict":"fail","inputGenerationRefs":["generation-fbb841fb-d079-4917-9739-427b83918771"],"criteria":[{"criterionId":"sources-listed","verdict":"fail","findingIds":["missing-sources"]}],"findings":[{"findingId":"missing-sources","criterionId":"sources-listed","severity":"blocking","summary":"brief.json has sourcesListed=false and revision=1; no sources array is present, so the sources-listed criterion is not met on the pinned generation.","evidencePaths":["orgs/kb-ops/output/v1-acceptance-demo/tailscale-tailnet-trust/brief/brief.json"]}],"resolvedFindingRefs":[],"positions":[],"recordedDissent":[],"summary":"Pinned generation generation-fbb841fb-d079-4917-9739-427b83918771 fails sources-listed: sourcesListed is false and revision is 1, not the required true/revision-2 successor."}';
       const fencedProdPayload = ['```json', rawProdPayload, '```'].join('\n');
+      const rawResult = parseIterationOutcome(rawProdPayload, contract);
+      const fencedResult = parseIterationOutcome(fencedProdPayload, contract);
       // Fenced now behaves EXACTLY like raw — proving the unwrap, not the payload's own business
-      // rules, was the only thing standing between this real judge turn and a receipt. (Separately:
-      // this payload's own `resolvedFindingRefs:[]` alongside a `fail` verdict is rejected by an
-      // unrelated, pre-existing rule — see the PR description; that is not this fixture's job to fix.)
-      expect(parseIterationOutcome(fencedProdPayload, contract)).toEqual(parseIterationOutcome(rawProdPayload, contract));
-      expect(parseIterationOutcome(rawProdPayload, contract)).toMatchObject({
+      // rules, was the only thing standing between this real judge turn and a receipt. The payload's
+      // own `resolvedFindingRefs:[]` alongside a `fail` verdict is a second real defect (the judge was
+      // following the contract's `resolvedFindingRefs?:string[]` to the letter): an empty array is now
+      // treated exactly as if the key were absent, for every verdict, so this receipts cleanly.
+      expect(fencedResult).toEqual(rawResult);
+      expect(rawResult).toMatchObject({
+        ok: true,
+        value: {
+          verdict: 'fail',
+          findings: [expect.objectContaining({ findingId: 'missing-sources', criterionId: 'sources-listed', severity: 'blocking' })],
+        },
+      });
+      expect(rawResult.ok && !('resolvedFindingRefs' in rawResult.value)).toBe(true);
+    });
+  });
+
+  describe('an empty resolvedFindingRefs (live defect alongside the fence, 2026-09-16)', () => {
+    it('treats resolvedFindingRefs:[] as absent on fail pass fulfilled and rework', () => {
+      const failIteration = iterationContract('judge', ['fail']);
+      expect(parseIterationOutcome(iterationOutcome(failIteration, 'fail', {
+        ...negativeFields(), resolvedFindingRefs: [],
+      }), failIteration)).toMatchObject({ ok: true, value: { verdict: 'fail' } });
+
+      const passIteration = iterationContract('judge', ['pass'], ['pass']);
+      const passResult = parseIterationOutcome(
+        iterationOutcome(passIteration, 'pass', { resolvedFindingRefs: [] }), passIteration,
+      );
+      expect(passResult).toMatchObject({ ok: true, value: { verdict: 'pass' } });
+      expect(passResult.ok && !('resolvedFindingRefs' in passResult.value)).toBe(true);
+
+      const fulfilledIteration = iterationContract('contributor', ['fulfilled'], [], { kind: 'rework' });
+      expect(parseIterationOutcome(iterationOutcome(fulfilledIteration, 'fulfilled', {
+        criteria: [], resolvedFindingRefs: [],
+      }), fulfilledIteration)).toMatchObject({ ok: true, value: { verdict: 'fulfilled' } });
+
+      const reworkIteration = iterationContract('peer', ['rework']);
+      expect(parseIterationOutcome(iterationOutcome(reworkIteration, 'rework', {
+        ...negativeFields(), resolvedFindingRefs: [],
+      }), reworkIteration)).toMatchObject({ ok: true, value: { verdict: 'rework' } });
+    });
+
+    it('still rejects a non-empty resolvedFindingRefs on fail with the existing message', () => {
+      const iteration = iterationContract('judge', ['fail']);
+      expect(parseIterationOutcome(iterationOutcome(iteration, 'fail', {
+        ...negativeFields(), resolvedFindingRefs: ['finding-1'],
+      }), iteration)).toMatchObject({
         ok: false,
         detail: 'invalid iteration outcome: resolvedFindingRefs are allowed only for complete and consensus',
       });

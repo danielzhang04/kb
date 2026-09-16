@@ -354,7 +354,12 @@ export function parseIterationOutcome(text: string, contract: IterationOutcomeCo
   if (!isLegalIterationVerdict(contract, participant.participantId, verdict)) {
     return invalidIteration(`participant '${participant.participantId}' is not authorized to issue verdict '${verdict}'`);
   }
-  const hasResolvedFindingRefs = Object.prototype.hasOwnProperty.call(raw, 'resolvedFindingRefs');
+  // An empty resolvedFindingRefs is treated exactly as if the key were absent, for every verdict: the
+  // contract advertises the key as optional (`resolvedFindingRefs?:string[]`), and a real judge turn
+  // (2026-09-16 canary run-4113b3b2) emitted `[]` on a `fail` verdict while following that contract to
+  // the letter. Only a NON-empty array outside complete/consensus is still rejected below.
+  const hasResolvedFindingRefs = Object.prototype.hasOwnProperty.call(raw, 'resolvedFindingRefs')
+    && !(Array.isArray(raw.resolvedFindingRefs) && raw.resolvedFindingRefs.length === 0);
   let resolvedFindingRefs: string[] | undefined;
   if (hasResolvedFindingRefs) {
     if (verdict !== 'complete' && verdict !== 'consensus') {
