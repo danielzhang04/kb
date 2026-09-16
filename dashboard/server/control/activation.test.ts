@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
+  ActivationError,
   isExecutionActivated,
   isExecutionUnlockGrant,
   buildActivatedExecution,
@@ -9,6 +10,7 @@ import {
   DASHBOARD_EXECUTOR_SUBJECT,
   DEFAULT_ATTEMPT_BUDGET,
   DEFAULT_BUDGET,
+  resolveWindowBudget,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
   type ExecutionLatchState,
@@ -314,6 +316,119 @@ describe('buildActivatedExecution — gate ON', () => {
     }
     // The window's cost ceiling never outruns the human daily cap - it is held AT it.
     expect(DEFAULT_BUDGET.maxCostUsdMicros).toBe(governanceDailyCapMicros);
+  });
+
+  /**
+   * The window is a per-host, per-UTC-day guard, and a disposable REHEARSAL host burns a day's worth of
+   * attempts replaying one acceptance run. On 2026-09-16 the rehearsal host's writer stage died with
+   * 'global attempt budget exhausted' on the eighth replay at the old 30-attempt ceiling (P9 F2). The
+   * default now leaves room for a full day of replays; the env knobs let a host go wider still without
+   * moving what prod ships.
+   */
+  it('pins the window defaults, including the 300-attempt retry ceiling', () => {
+    expect(DEFAULT_BUDGET).toEqual({
+      maxAttempts: 300,
+      maxInputTokens: 6_000_000,
+      maxOutputTokens: 400_000,
+      maxCostUsdMicros: 20_000_000,
+    });
+    // The retry ceiling moved and NOTHING else did: the cost ceiling is still the governance daily cap
+    // and the token ceilings are still the measured-ledger sizing from W67.
+    expect(DEFAULT_BUDGET.maxCostUsdMicros).toBe(20_000_000);
+    expect(resolveWindowBudget({})).toEqual(DEFAULT_BUDGET);
+  });
+
+  it('leaves the window at its defaults when no KB_EXECUTION_BUDGET_* variable is set', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.budget).toEqual(DEFAULT_BUDGET);
+    expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
+  });
+
+  it.each([
+    ['KB_EXECUTION_BUDGET_MAX_ATTEMPTS', 'maxAttempts', '10000', 10_000],
+    ['KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS', 'maxInputTokens', '900000000', 900_000_000],
+    ['KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS', 'maxOutputTokens', '50000000', 50_000_000],
+    ['KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS', 'maxCostUsdMicros', '2000000000', 2_000_000_000],
+  ] as const)('overrides exactly the %s field and leaves the rest at the default', (variable, field, raw, expected) => {
+    expect(resolveWindowBudget({ [variable]: raw })).toEqual({ ...DEFAULT_BUDGET, [field]: expected });
+    // Surrounding whitespace is tolerated - an env file that indents its values is not a misconfiguration.
+    expect(resolveWindowBudget({ [variable]: ` ${raw} ` })).toEqual({ ...DEFAULT_BUDGET, [field]: expected });
+  });
+
+  it('applies every override at once, through the real activation path', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, {
+      DASHBOARD_EXECUTION_ACTIVATED: '1',
+      KB_EXECUTION_BUDGET_MAX_ATTEMPTS: '5000',
+      KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS: '600000000',
+      KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS: '40000000',
+      KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS: '2000000000',
+    }));
+    const widened = {
+      maxAttempts: 5_000,
+      maxInputTokens: 600_000_000,
+      maxOutputTokens: 40_000_000,
+      maxCostUsdMicros: 2_000_000_000,
+    };
+    const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.budget).toEqual(widened);
+    // The accounting adapter - the thing that actually refuses a reservation - gets the SAME widened
+    // window, not the default. A knob the engine honors and the ledger does not would be worthless.
+    expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: widened }));
+  });
+
+  /**
+   * FAIL LOUD. A present-but-unparseable knob must never fall back to the default: the operator who set
+   * it believes they are running wide, and a silent default turns that into a mid-run refusal hours
+   * later instead of a boot failure they can see.
+   */
+  it.each([
+    ['empty', ''],
+    ['whitespace only', '   '],
+    ['zero', '0'],
+    ['negative', '-5'],
+    ['decimal', '10.5'],
+    ['exponent', '1e6'],
+    ['separators', '1_000'],
+    ['trailing junk', '100x'],
+    ['not a number', 'lots'],
+    ['hex', '0x10'],
+    ['beyond safe integer', '9007199254740993'],
+  ])('refuses a %s KB_EXECUTION_BUDGET_MAX_ATTEMPTS with an ActivationError', (_label, raw) => {
+    expect(() => resolveWindowBudget({ KB_EXECUTION_BUDGET_MAX_ATTEMPTS: raw }))
+      .toThrow(/KB_EXECUTION_BUDGET_MAX_ATTEMPTS must be a positive integer/);
+    const deps = spyDeps();
+    expect(() => buildActivatedExecution(baseOptions(deps, {
+      DASHBOARD_EXECUTION_ACTIVATED: '1',
+      KB_EXECUTION_BUDGET_MAX_ATTEMPTS: raw,
+    }))).toThrow(ActivationError);
+    expect(deps.createEngine).not.toHaveBeenCalled();
+  });
+
+  /**
+   * The knob does not buy an escape from {@link assertAttemptBudgetFitsWindow}: shrinking the window
+   * under the per-attempt ceiling still fails at construction, naming the field.
+   */
+  it('still enforces the attempt-fits-window arithmetic against an overridden window', () => {
+    const deps = spyDeps();
+    expect(() => buildActivatedExecution(baseOptions(deps, {
+      DASHBOARD_EXECUTION_ACTIVATED: '1',
+      KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS: '1000',
+    }))).toThrow(/attempt budget maxInputTokens .* exceeds the window budget \(1000\)/);
+    expect(deps.createEngine).not.toHaveBeenCalled();
+  });
+
+  it('lets an explicit options.budget outrank the environment', () => {
+    const deps = spyDeps();
+    const explicit = { maxAttempts: 9, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 20_000_000 };
+    buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1', KB_EXECUTION_BUDGET_MAX_ATTEMPTS: '5000' }),
+      budget: explicit,
+    });
+    const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(engineOptions.budget).toEqual(explicit);
   });
 
   it('hands the accounting adapter a window RESOLVER, so a long-lived daemon rolls at UTC midnight', () => {

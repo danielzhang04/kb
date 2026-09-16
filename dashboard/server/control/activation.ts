@@ -125,13 +125,70 @@ const SAFE_PROJECT = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/;
  * attempts in one window id). Subscription runs report 0 cost; the micro-dollar ceiling is a fail-closed
  * guard, never a spend authorization. Never used as a single attempt's reservation limit — see
  * {@link DEFAULT_ATTEMPT_BUDGET}.
+ *
+ * `maxAttempts` is a RETRY/replay ceiling for the whole day, not a spend ceiling - the spend ceiling is
+ * `maxCostUsdMicros`, still held at governance/budget.yaml's daily cap. At 30 it stopped being a guard
+ * against a runaway and started being a guard against a normal day's work: one acceptance run is 6
+ * attempts, so six replays exhausted it and the seventh run died mid-stage with 'global attempt budget
+ * exhausted' (rehearsal P9 F2, prod-shaped). 300 is 50 such runs; the cost ceiling is what actually
+ * stops a runaway, and it did not move.
  */
 export const DEFAULT_BUDGET: ExecutionBudget = {
-  maxAttempts: 30,
+  maxAttempts: 300,
   maxInputTokens: 6_000_000,
   maxOutputTokens: 400_000,
   maxCostUsdMicros: 20_000_000,
 };
+
+/**
+ * Per-field environment overrides for the WINDOW ceiling, read once per activation.
+ *
+ * Why they exist: the window is a per-host, per-UTC-day guard, and a REHEARSAL host legitimately burns a
+ * day's worth of attempts replaying the same acceptance run. On 2026-09-16 the disposable `kb-rehearsal`
+ * host exhausted its window on the eighth replay and the writer stage died with `global attempt budget
+ * exhausted` (rehearsal packet P9 F2) - the guard working exactly as designed, on a host where the guard
+ * is not the thing under test. Raising the shipped default far enough for that host would widen PROD by
+ * the same amount; an env knob lets the disposable host run wide while prod keeps whatever
+ * `DEFAULT_BUDGET` says.
+ *
+ * Validation is deliberately fail-loud: a PRESENT but unparseable value is an {@link ActivationError} at
+ * construction, never a silent fall back to the default. An operator who believes the window is 10,000
+ * and is actually running on the default would otherwise learn it from a mid-run refusal instead of a
+ * boot failure. ABSENT is the only way to get the default.
+ */
+const WINDOW_BUDGET_ENV_OVERRIDES: readonly { field: keyof ExecutionBudget; variable: string }[] = [
+  { field: 'maxAttempts', variable: 'KB_EXECUTION_BUDGET_MAX_ATTEMPTS' },
+  { field: 'maxInputTokens', variable: 'KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS' },
+  { field: 'maxOutputTokens', variable: 'KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS' },
+  { field: 'maxCostUsdMicros', variable: 'KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS' },
+];
+
+/** Decimal digits only: no sign, no exponent, no separator, no decimal point, and never empty. */
+const POSITIVE_INTEGER = /^[0-9]+$/;
+
+/**
+ * The window ceiling this activation runs on: {@link DEFAULT_BUDGET} with every PRESENT
+ * `KB_EXECUTION_BUDGET_*` variable replacing its one field. The result still has to pass
+ * {@link assertAttemptBudgetFitsWindow}, so an override that shrinks the window below one concurrent
+ * wave plus a settled attempt fails at construction exactly like any other bad pairing.
+ */
+export function resolveWindowBudget(
+  env: Record<string, string | undefined> = process.env,
+  base: ExecutionBudget = DEFAULT_BUDGET,
+): ExecutionBudget {
+  const resolved: ExecutionBudget = { ...base };
+  for (const { field, variable } of WINDOW_BUDGET_ENV_OVERRIDES) {
+    const raw = env[variable];
+    if (raw === undefined) continue;
+    const trimmed = raw.trim();
+    const value = Number(trimmed);
+    if (!POSITIVE_INTEGER.test(trimmed) || !Number.isSafeInteger(value) || value <= 0) {
+      throw new ActivationError(`${variable} must be a positive integer, got ${JSON.stringify(raw)}`);
+    }
+    resolved[field] = value;
+  }
+  return resolved;
+}
 
 /**
  * PER-ATTEMPT reservation limits, DERIVED FROM THE MEASURED LEDGER - not from a round number.
@@ -454,7 +511,9 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   const repoRoot = options.repoRoot;
   const worktreeRoot = options.worktreeRoot ?? defaultWorktreeRoot(stateRoot, env);
   const integrationRoot = options.integrationRoot ?? join(stateRoot, 'control', 'integration');
-  const budget = options.budget ?? DEFAULT_BUDGET;
+  // Explicit `options.budget` outranks the environment (hermetic tests and the one-shot inactive
+  // bundle pass one); otherwise the defaults, per-field overridable by KB_EXECUTION_BUDGET_*.
+  const budget = options.budget ?? resolveWindowBudget(env);
   const attemptBudget = options.attemptBudget ?? DEFAULT_ATTEMPT_BUDGET;
   // Keep legacy definitions at one worker per run while leaving enough server-owned headroom for a
   // definition that explicitly proves independent sibling work (the iteration-loop demo declares 2).

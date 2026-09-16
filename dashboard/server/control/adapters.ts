@@ -773,24 +773,28 @@ function policyAtLeast(candidate: AccountingPolicy, floor: AccountingPolicy): bo
 }
 
 /**
- * Pre-#198 policies, explicit and testable rather than a blanket bypass. A durable accounting document
- * written before the `policy` field existed carries only a `policyHash`; if that hash matches one of
- * these known-old policies exactly, a wider current policy can still migrate it. Today's single entry:
- * the DEFAULT_BUDGET shipped before #198 raised maxCostUsdMicros 5,000,000 -> 20,000,000 (maxAttempts,
- * token ceilings, and maxConcurrency unchanged).
+ * Superseded shipped policies, explicit and testable rather than a blanket bypass. A durable accounting
+ * document written before the `policy` field existed carries only a `policyHash`; if that hash matches
+ * one of these known-old policies exactly, a strictly wider current policy can still migrate it.
+ *
+ * Every entry is a DEFAULT_BUDGET that shipped, in order, so a host that sat on ANY intermediate build
+ * during the 2026-09-16 post-launch sequence still migrates its open window rather than refusing every
+ * reservation for the rest of the UTC day with 'accounting policy differs from the durable window
+ * policy'. That refusal is not hypothetical: the rehearsal host opened its 2026-09-16 window under the
+ * pre-#198 policy and had to migrate twice in one day.
+ *   1. pre-#198:  30 attempts, $5.00/day  - the ceiling before #198
+ *   2. post-#198: 30 attempts, $20.00/day - the ceiling between #198 and the 300-attempt window
+ * Token ceilings and maxConcurrency are unchanged across both; only the field named moved.
  */
-const LEGACY_POLICIES: readonly { hash: string; policy: AccountingPolicy }[] = [
-  {
-    policy: {
-      maxConcurrency: 2,
-      globalBudget: { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
-    },
-    hash: digest({
-      maxConcurrency: 2,
-      globalBudget: { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
-    }),
-  },
+const LEGACY_POLICY_BUDGETS: readonly ExecutionBudget[] = [
+  { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
+  { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 20_000_000 },
 ];
+
+const LEGACY_POLICIES: readonly { hash: string; policy: AccountingPolicy }[] = LEGACY_POLICY_BUDGETS.map((globalBudget) => {
+  const policy: AccountingPolicy = { maxConcurrency: 2, globalBudget };
+  return { policy, hash: digest(policy) };
+});
 
 export interface FileAccountingAdapterOptions {
   stateRoot: string;
