@@ -85,7 +85,7 @@ function coerceScalar(raw: string): CardFieldValue {
   }
 
   // inline mapping: {} or {a: b, c: "d"} -- the flow style `yaml.safe_dump` emits for the one
-  // mapping-valued key governance/card-schema.md declares (`parameters`, written by
+  // mapping-valued key schemas/cards/v1.schema.json declares (`parameters`, written by
   // scripts/cards.py's schedule-occurrence claim for every workflow-owner schedule). Without this
   // branch the value fell through to stripQuotes() and came back as the STRING '{}', which
   // schemas/cards/v1.schema.json ("parameters": {"type": "object"}) then rejected -- the platform
