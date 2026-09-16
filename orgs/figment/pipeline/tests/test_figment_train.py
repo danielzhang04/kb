@@ -3111,6 +3111,68 @@ def test_caption_manifest_carries_only_pinned_safetensors_and_no_pickle(command)
     assert manifest["training"]["start_script_file"] == "start-qwen3vl-caption.sh.template"
 
 
+def test_caption_manifest_carries_the_diagnostics_enabling_field(command):
+    """M4 pod-log fix (2026-09-16): pod/runpod_run.py only sets `training_diagnostics_dir`
+    (and therefore only ever fetches `_training.log`/`_training.heartbeat`) when the
+    manifest's own `artifacts` list is non-empty -- the same field `_train_manifest`
+    relies on. Pin that `_caption_manifest` sets it too, so a future refactor can't
+    silently drop the harness's ability to fetch this pod's diagnostics."""
+    pins = command._read_json(command.PINS_PATH)
+    manifest = command._caption_manifest(pins, "creator-002", "creator002krea2", ["01.png"])
+    assert isinstance(manifest.get("artifacts"), list) and manifest["artifacts"]
+
+
+def test_caption_manifest_requires_pinned_pip_specs(command):
+    """The template installs `pins.pins.caption.pip` before running its python block
+    (transformers/accelerate -- neither is in ComfyUI's own requirements, which is what
+    starved the first live pod of a usable transformers). A caption pin missing that
+    list must fail fast in `_caption_manifest`, not render a template with an empty
+    install command."""
+    pins = command._read_json(command.PINS_PATH)
+    import copy
+    broken = copy.deepcopy(pins)
+    del broken["pins"]["caption"]["pip"]
+    with pytest.raises(command.FigmentTrainError, match="pip"):
+        command._caption_manifest(broken, "creator-002", "creator002krea2", ["01.png"])
+
+
+def test_caption_manifest_pip_specs_render_into_the_start_script(command, tmp_path):
+    """End-to-end (offline) regression for the 2026-09-16 live failure: the rendered
+    start script actually installs both pinned specs before the python block runs, and
+    writes/fetches under the name the harness's own diagnostic poll looks for
+    (pod/runpod_run.py TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat",
+    "_training.log")), with the python traceback captured into that same log instead of
+    escaping to wherever the pod's own stdout/stderr goes."""
+    runpod_run = load_module("runpod_run_caption_pip_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    pins = command._read_json(command.PINS_PATH)
+    pip_specs = pins["pins"]["caption"]["pip"]
+    assert pip_specs, "fixture pins must carry at least one caption pip spec"
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    pip_install_pos = rendered.index("python -m pip install --no-cache-dir $caption_pip_specs")
+    images_marker_pos = rendered.index("images marker observed")
+    pycap_pos = rendered.index("<<'PYCAP'")
+    assert images_marker_pos < pip_install_pos < pycap_pos, (
+        "caption deps must install after the images marker and before the python block"
+    )
+    for spec in pip_specs:
+        assert spec in rendered, f"pinned spec {spec!r} must reach the rendered script"
+
+    assert '"${output_dir}/_training.log"' in rendered
+    assert "_training.heartbeat" in rendered
+    assert "import traceback" in rendered
+    assert "traceback.print_exc()" in rendered
+
+
 def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess(
     command, tmp_path, monkeypatch,
 ):

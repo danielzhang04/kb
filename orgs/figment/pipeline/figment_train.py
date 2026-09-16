@@ -2404,6 +2404,10 @@ def _caption_manifest(
     for field in ("repo_id", "revision", "destination_dir"):
         if not isinstance(model_pin.get(field), str) or not model_pin[field].strip():
             raise FigmentTrainError(f"pins.pins.caption model pin is missing {field!r}")
+    pip_specs = caption_pin.get("pip")
+    if (not isinstance(pip_specs, list) or not pip_specs
+            or not all(isinstance(spec, str) and spec.strip() for spec in pip_specs)):
+        raise FigmentTrainError("pins.pins.caption.pip must be a non-empty list of strings")
     settings = _build_set_module().QWEN3VL_CAPTION_SETTINGS
     return {
         **_pod_base(pins, pod_class, "caption"),
@@ -2426,6 +2430,7 @@ def _caption_manifest(
             "caption_model_dtype": settings["dtype"],
             "caption_max_resolution": settings["max_resolution"],
             "caption_max_new_tokens": settings["max_new_tokens"],
+            "caption_pip_specs": " ".join(pip_specs),
             "hf_home": "/workspace/hf",
             "complete_marker": "/workspace/output/_caption.complete",
             "failed_marker": "/workspace/output/_caption.failed",

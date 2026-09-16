@@ -545,6 +545,14 @@ defects below for where these two sources disagree past 09-04.
   (sentinel now carries real JSON content; the caption start-script template is now also
   staged beside the manifest, a second preflight gap the same fix's regression test
   surfaced); still not live-proven — no pod has actually run this template yet.
+- **qwen3vl caption pod: second live attempt bootstrapped, uploaded, then failed 14s
+  into its python block with the reason stranded on the pod** (`creator-001/live-20260916b`,
+  2026-09-16, template installed no python deps for its `transformers`/`accelerate`
+  imports and logged only to `_caption.log`, a filename `pod/runpod_run.py`'s diagnostic
+  fetch never looks for) — fixed offline (pinned `transformers==4.57.1`/`accelerate==1.10.1`
+  install before the python block, log renamed to `_training.log` with a `_caption.log`
+  symlink kept, a `_training.heartbeat` toucher, and a traceback-to-log wrapper); the pip
+  pins themselves are UNVERIFIED against PyPI from this machine and still not live-proven.
 
 ## How to iterate
 

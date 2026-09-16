@@ -107,6 +107,14 @@ klein-multiref's fixed reference-lock-only prompts later as a scored A/B against
 training-stage question is answered, rather than gambling the training run on an unvalidated prompt
 fix.
 
+**Rollout note (2026-09-16, M4 caption pod):** the first live qwen3vl caption pod
+(`creator-001/live-20260916b`, 08:41) bootstrapped and uploaded cleanly but died 14s into its
+python block with no missing pip deps (`transformers`/`accelerate`) and no diagnostic reaching
+the harness (it logged only to `_caption.log`, a name `pod/runpod_run.py` never fetches); fixed
+offline by pinning those specs in `tensor-pins.yaml`, installing them before the python block,
+renaming the log to `_training.log`, and adding a heartbeat, but this is still UNVERIFIED against
+a live pod.
+
 **Yield arithmetic:** the qwen-edit dataset produces 30 base cells per replicate — 15 face (`close`,
 600px floor) + 10 half-body (`half`, 300px floor) + 5 full-body (`full`; `persona.yaml`
 `identity.floor.min_face_px.by_framing` only overrides `"half"`, so `"full"` falls back to the

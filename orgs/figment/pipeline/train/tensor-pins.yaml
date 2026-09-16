@@ -230,7 +230,9 @@
       ],
       "custom_nodes": [],
       "licence": "apache-2.0",
-      "licence_verified": "2026-09-15 (M4): api/models/Qwen/Qwen3-VL-8B-Instruct tags include license:apache-2.0 -- matches; sha256/revision HEAD-verified live against huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/<filename> (x-repo-commit/x-linked-etag) for all 4 shards. Small companion files (config/tokenizer/index, ~15MB total) are fetched live at this SAME pinned revision by start-qwen3vl-caption.sh.template -- same precedent as start-training-aitoolkit.sh.template's own Qwen3-VL-4B-Instruct/Qwen-Image companion prewarm -- and are deliberately not pinned here: HF's x-linked-etag for a non-LFS file is a 40-char git blob SHA-1, not a content sha256, so it cannot be verified through verify_model_pin's sha256 comparison the way every other pin in this file is."
+      "licence_verified": "2026-09-15 (M4): api/models/Qwen/Qwen3-VL-8B-Instruct tags include license:apache-2.0 -- matches; sha256/revision HEAD-verified live against huggingface.co/Qwen/Qwen3-VL-8B-Instruct/resolve/0c351dd01ed87e9c1b53cbc748cba10e6187ff3b/<filename> (x-repo-commit/x-linked-etag) for all 4 shards. Small companion files (config/tokenizer/index, ~15MB total) are fetched live at this SAME pinned revision by start-qwen3vl-caption.sh.template -- same precedent as start-training-aitoolkit.sh.template's own Qwen3-VL-4B-Instruct/Qwen-Image companion prewarm -- and are deliberately not pinned here: HF's x-linked-etag for a non-LFS file is a 40-char git blob SHA-1, not a content sha256, so it cannot be verified through verify_model_pin's sha256 comparison the way every other pin in this file is.",
+      "pip": ["transformers==4.57.1", "accelerate==1.10.1"],
+      "_pip_note": "versions chosen offline 2026-09-16 as the transformers line that added Qwen3-VL support and a compatible accelerate; unverified against PyPI from this machine -- if the pod's pip refuses them, the log now says so"
     },
     "style_loras": {
       "inline-skin": {
