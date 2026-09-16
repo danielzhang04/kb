@@ -2723,10 +2723,14 @@ def plan_qwen3vl_caption(
             )
         prior_failures = list(run_out.parent.glob(f"{run_out.name}.failed-*"))
         never_created_count, real_count = _count_prior_retry_attempts(prior_failures)
-        if real_count >= MAX_RUN_RETRIES:
+        # P6.1: the operator-flagged path (a recorded reason the cause is fixed) is
+        # bounded by the wider MAX_RETRY_AFTER_FIX instead of the tight MAX_RUN_RETRIES
+        # every other, unflagged retry shares -- see MAX_RETRY_AFTER_FIX's own comment.
+        real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
+        if real_count >= real_retry_limit:
             raise FigmentTrainError(
                 f"caption manifest {manifest_path} out dir {run_out} has already been "
-                f"retried {real_count} time(s) (limit {MAX_RUN_RETRIES}); "
+                f"retried {real_count} time(s) (limit {real_retry_limit}); "
                 "create a reviewed new plan to retry further"
             )
         if never_created_count >= MAX_NEVER_CREATED_RETRIES:
@@ -4177,6 +4181,14 @@ MAX_RUN_RETRIES = 2
 # ceiling instead; a real (spend-eligible) failure still requires a fresh plan after
 # `MAX_RUN_RETRIES`.
 MAX_NEVER_CREATED_RETRIES = 8
+# P6.1 (2026-09-16, `--retry-caption-after-fix`): the flag is an operator statement
+# with a recorded reason (not an automatic `--retry-failed`), so it gets its own,
+# wider real-retry cap instead of sharing the tight `MAX_RUN_RETRIES` -- counts only
+# REAL prior attempts (a pod was created), same `_count_prior_retry_attempts` count
+# `MAX_RUN_RETRIES` uses, just compared against a larger limit when the flag is
+# present. Automatic `--retry-failed`/`plan_qwen3vl_caption` without the flag keeps
+# `MAX_RUN_RETRIES` unchanged.
+MAX_RETRY_AFTER_FIX = 4
 
 
 def _is_retry_bookkeeping_file(path: Path) -> bool:

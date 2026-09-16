@@ -552,7 +552,17 @@ defects below for where these two sources disagree past 09-04.
   fetch never looks for) — fixed offline (pinned `transformers==4.57.1`/`accelerate==1.10.1`
   install before the python block, log renamed to `_training.log` with a `_caption.log`
   symlink kept, a `_training.heartbeat` toucher, and a traceback-to-log wrapper); the pip
-  pins themselves are UNVERIFIED against PyPI from this machine and still not live-proven.
+  pins install cleanly (live-verified by the third attempt below).
+- **qwen3vl caption pod: third live attempt installed the pinned deps fine, then failed
+  loading the model** (`creator-001/live-20260916b`, second caption pod
+  `8bi3qae4icrz3t`, 2026-09-16, $0.15) — module 11's `float8` is ai-toolkit's own
+  quantize-time setting, not a `from_pretrained(dtype=...)` value; passing
+  `torch.float8_e4m3fn` there hits `TypeError: couldn't find storage object
+  Float8_e4m3fnStorage`. Fixed offline (the template's dtype map now loads `bfloat16`
+  for both `"float8"` and `"bfloat16"`, with a log line noting the substitution); the
+  8B model in bf16 is ~16 GB, fits the L40S's 48 GB. Still not fully live-proven end to
+  end (dependency install and this dtype fix are each live-verified separately, but no
+  single pod run has produced `captions.json` yet).
 
 ## How to iterate
 

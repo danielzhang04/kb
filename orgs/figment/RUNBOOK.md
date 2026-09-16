@@ -270,8 +270,9 @@ time, which never places a pod at all — also regenerates (the dead out dir ren
 you've fixed the actual cause, rerun `apply-rulings --stage dataset` with
 `--retry-caption-after-fix "<what you fixed>"` to admit it explicitly. The
 regenerated manifest records the reason, the renamed prior out dir, the
-caption-template sha256, and the current git HEAD, and this retry still counts
-against and is bounded by the same real-retry limit as every other retry.
+caption-template sha256, and the current git HEAD, and this retry still counts as a
+real retry, but against the flag's own wider cap (`MAX_RETRY_AFTER_FIX` = 4), not the
+tighter `MAX_RUN_RETRIES` (2) every unflagged retry shares.
 
 ## Resume/recovery: `--retry-failed` for a verified transport/placement failure
 

@@ -3173,6 +3173,36 @@ def test_caption_manifest_pip_specs_render_into_the_start_script(command, tmp_pa
     assert "traceback.print_exc()" in rendered
 
 
+def test_caption_dtype_float8_loads_bfloat16_not_a_float8_storage(command, tmp_path):
+    """LIVE FAILURE 2026-09-16 (second caption pod, 8bi3qae4icrz3t): module 11's
+    `float8` is ai-toolkit's own quantize-time setting (qfloat8 via its quantizer),
+    never a `from_pretrained(dtype=...)` value -- `torch.set_default_dtype(float8)`
+    has no storage object and raises `TypeError`. The rendered script must map
+    `float8` to `bfloat16` for the LOAD dtype, log that it did, and never pass
+    `torch.float8_e4m3fn` to `from_pretrained`. `QWEN3VL_CAPTION_SETTINGS["dtype"]`
+    itself stays `"float8"` (module 11's recorded setting, pinned by
+    `test_qwen3vl_caption_prompt_and_settings_match_module_11`)."""
+    runpod_run = load_module("runpod_run_caption_dtype_test_module", POD_RUNNER)
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    manifest = load_json(manifest_path)
+    assert manifest["training"]["caption_model_dtype"] == "float8"
+
+    _remote_path, rendered = runpod_run.rendered_training_start_script(manifest, manifest_path)
+
+    assert "torch.float8_e4m3fn" not in rendered
+    assert (
+        "float8 is a quantize-time setting (module 11 / ai-toolkit); loading bf16 "
+        "weights, no quantizer on this pod"
+    ) in rendered
+    assert '{"float8": torch.bfloat16, "bfloat16": torch.bfloat16}' in rendered
+
+
 def test_plan_qwen3vl_caption_writes_a_dry_manifest_and_never_touches_subprocess(
     command, tmp_path, monkeypatch,
 ):
@@ -3651,18 +3681,19 @@ def test_plan_qwen3vl_caption_retry_after_fix_refuses_unverified_teardown(
         )
 
 
-def test_plan_qwen3vl_caption_retry_after_fix_refuses_past_the_real_retry_limit(
+def test_plan_qwen3vl_caption_retry_after_fix_regenerates_past_the_ordinary_limit(
     command, tmp_path,
 ):
-    """The flag admits the failure CLASS, never the retry-count cap -- a 3rd job-class
-    failure with the flag set still requires a fresh, reviewed plan, same as any other
-    real retry."""
+    """The flag's own, wider cap (`MAX_RETRY_AFTER_FIX` = 4) is what applies while the
+    flag is present -- two real job-class failures (equal to the ordinary
+    `MAX_RUN_RETRIES` = 2) still regenerate here, unlike the unflagged path."""
     plan_root = tmp_path / "plan"
     images = _plan_qwen3vl_caption_images(tmp_path)
     planned = command.plan_qwen3vl_caption(
         "creator-002", "creator002krea2", images, plan_root,
         skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
     )
+    manifest_path = plan_root / planned["manifest"]
     run_out = plan_root / planned["out"]
     for index in (1, 2):
         _write_verified_teardown_job_failure_caption_run(
@@ -3670,9 +3701,38 @@ def test_plan_qwen3vl_caption_retry_after_fix_refuses_past_the_real_retry_limit(
         )
     _write_verified_teardown_job_failure_caption_run(run_out)
 
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        retry_after_fix_reason="fixed",
+    )
+    assert (plan_root / second["manifest"]) == manifest_path
+    renamed = run_out.with_name(f"{run_out.name}.failed-3")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_past_max_retry_after_fix(
+    command, tmp_path,
+):
+    """`MAX_RETRY_AFTER_FIX` (4) still bounds the flagged path -- a 5th job-class
+    failure with the flag set requires a fresh, reviewed plan."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in (1, 2, 3, 4):
+        _write_verified_teardown_job_failure_caption_run(
+            run_out.with_name(f"{run_out.name}.failed-{index}"),
+        )
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
     with pytest.raises(
         command.FigmentTrainError,
-        match=r"already been retried 2 time\(s\) \(limit 2\)",
+        match=r"already been retried 4 time\(s\) \(limit 4\)",
     ):
         command.plan_qwen3vl_caption(
             "creator-002", "creator002krea2", images, plan_root,

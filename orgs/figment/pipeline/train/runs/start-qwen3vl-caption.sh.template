@@ -135,7 +135,19 @@ try:
         except Exception as exc:  # a handful of these are optional across revisions
             print(f"companion file {filename} unavailable: {exc}", file=sys.stderr)
 
-    dtype = {"float8": torch.float8_e4m3fn, "bfloat16": torch.bfloat16}.get(dtype_name)
+    # LIVE FAILURE 2026-09-16 (second caption pod, 8bi3qae4icrz3t, $0.15): module 11's
+    # "float8" is ai-toolkit's own quantize-time setting (qfloat8 via its quantizer at
+    # train time), never a `from_pretrained(dtype=...)` LOAD dtype -- passing that
+    # 8-bit float torch dtype here reaches transformers' `_set_default_dtype` ->
+    # `torch.set_default_dtype(...)` -> `TypeError: couldn't find storage object
+    # Float8_e4m3fnStorage`. There is no quantizer on this pod, so both settings load
+    # bf16 weights; the 8B model in bf16 is ~16 GB, well inside the L40S's 48 GB.
+    dtype_map = {"float8": torch.bfloat16, "bfloat16": torch.bfloat16}
+    if dtype_name == "float8":
+        print(
+            "float8 is a quantize-time setting (module 11 / ai-toolkit); loading bf16 weights, no quantizer on this pod"
+        )
+    dtype = dtype_map.get(dtype_name)
     if dtype is None:
         raise SystemExit(f"unknown caption model dtype: {dtype_name}")
 
