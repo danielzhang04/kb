@@ -1213,6 +1213,10 @@ def test_pipeline_dry_run_retry_failed_previews_without_renaming(
         skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
     )
     assert result["status"] == f"dry-run:retry {flaky_manifest}"
+    # P6: the preview reports both the real-retry count and the never-created-retry
+    # count, not a single shared number.
+    assert "real retries 0/2" in result["message"]
+    assert "never-created retries 0/8" in result["message"]
 
     assert original_out_dir.is_dir()
     assert not original_out_dir.with_name(f"{original_out_dir.name}.failed-1").exists()
@@ -1533,11 +1537,13 @@ def test_retry_failed_refuses_a_never_created_shape_with_a_real_pod_id(
         command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
 
 
-def test_retry_failed_refuses_past_the_retry_limit_for_never_created_failures(
+def test_retry_failed_refuses_past_the_never_created_retry_limit(
     command, tmp_path, monkeypatch,
 ):
-    """The never-created eligibility path shares the same `MAX_RUN_RETRIES` bound as
-    the verified-teardown path -- the 3rd failure always requires a fresh plan."""
+    """P6 (2026-09-16): a never-created RunPod capacity failure spends nothing (no pod
+    was ever created), so it does NOT share `MAX_RUN_RETRIES` (2) with real failures --
+    it gets its own, much larger `MAX_NEVER_CREATED_RETRIES` (8) bound instead. The 9th
+    never-created failure still always requires a fresh plan."""
     monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
     plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
         command, tmp_path, monkeypatch,
@@ -1552,11 +1558,166 @@ def test_retry_failed_refuses_past_the_retry_limit_for_never_created_failures(
     with pytest.raises(command.FigmentTrainError, match="exit code 1"):
         command.run_planned_stage("creator-002", "dataset", plan_path)
 
-    for expected_attempts in (1, 2):
+    for expected_attempts in range(1, command.MAX_NEVER_CREATED_RETRIES + 1):
         with pytest.raises(command.FigmentTrainError, match="exit code 1"):
             command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
         state = load_json(plan_path.parent / "stage.json")
         assert len(state["runs"][flaky_manifest]["attempts"]) == expected_attempts
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 8 never-created time\(s\) \(limit 8\)",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def _write_real_transport_attempt_dir(path: Path) -> None:
+    """A prior attempt's own `.failed-N` out dir shaped as a real (spend-eligible)
+    verified-teardown transport failure -- `_prior_attempt_never_created` must refuse
+    this (it records `pod_id`), so `_count_prior_retry_attempts` counts it as real."""
+    path.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": "pod-old",
+        "termination_verified": True,
+        "placement_attempts": [
+            {"pod_id": "pod-old", "termination_verified": True, "estimated_actual_usd": 0.01},
+        ],
+        "jobs": [], "artifacts": [], "error": _NAME_RESOLUTION_ERROR,
+    }
+    (path / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def _write_never_created_attempt_dir(path: Path, *, pod_name: str) -> None:
+    """A prior attempt's own `.failed-N` out dir shaped as a never-created RunPod
+    capacity failure (the exact `_NEVER_CREATED_*` shape above) -- `_count_prior_retry_
+    attempts` counts this as never-created, never real."""
+    path.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": None,
+        "termination_verified": False, "placement_attempts": [], "jobs": [],
+        "artifacts": [], "error": _NEVER_CREATED_ERROR,
+    }
+    (path / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    journal = json.loads(_NEVER_CREATED_JOURNAL)
+    journal["pod_name"] = pod_name
+    journal["attempt_id"] = pod_name
+    (path / f"recovery-{pod_name}.json").write_text(json.dumps(journal), encoding="utf-8")
+
+
+def _seed_prior_attempts(command, plan_path: Path, flaky_manifest: str, attempt_dirs: list[Path]):
+    """Directly overwrites `state["runs"][flaky_manifest]["attempts"]` with synthetic
+    entries pointing at pre-built `.failed-N`-shaped dirs (built by
+    `_write_real_transport_attempt_dir`/`_write_never_created_attempt_dir` above) --
+    lets a test assert the retry-cap split (`_count_prior_retry_attempts`) against an
+    exact, controlled mix of real/never-created prior attempts without driving that
+    many real failure/retry cycles through the harness."""
+    root = plan_path.parent
+    state = load_json(root / "stage.json")
+    prior = state["runs"][flaky_manifest]
+    state["runs"][flaky_manifest] = {
+        **prior,
+        "attempts": [
+            {"status": "failed", "returncode": 1, "out_renamed": str(attempt_dir)}
+            for attempt_dir in attempt_dirs
+        ],
+    }
+    command._write_stage_state(root / "stage.json", state)
+
+
+def test_retry_failed_two_never_created_prior_attempts_still_allowed(
+    command, tmp_path, monkeypatch,
+):
+    """P6: two never-created prior attempts recorded on the manifest do NOT trip
+    `MAX_RUN_RETRIES` (2) -- they're never-created, so only the much larger
+    `MAX_NEVER_CREATED_RETRIES` (8) bounds them, and the current (real transport)
+    failure is still free to retry."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    attempt_a = original_out_dir.with_name(f"{original_out_dir.name}.synthetic-a")
+    attempt_b = original_out_dir.with_name(f"{original_out_dir.name}.synthetic-b")
+    _write_never_created_attempt_dir(attempt_a, pod_name="pod-synthetic-a")
+    _write_never_created_attempt_dir(attempt_b, pod_name="pod-synthetic-b")
+    _seed_prior_attempts(command, plan_path, flaky_manifest, [attempt_a, attempt_b])
+
+    result = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    assert result["status"] == "complete"
+    assert result["runs"][flaky_manifest]["status"] == "complete"
+    assert len(result["runs"][flaky_manifest]["attempts"]) == 3
+
+
+def test_retry_failed_mixed_real_and_never_created_prior_attempts_still_allowed(
+    command, tmp_path, monkeypatch,
+):
+    """P6: one real prior attempt (1/2) plus one never-created prior attempt (1/8) is
+    under both caps -- the current failure is still eligible for a retry."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    real_attempt = original_out_dir.with_name(f"{original_out_dir.name}.synthetic-real")
+    never_created_attempt = original_out_dir.with_name(
+        f"{original_out_dir.name}.synthetic-never-created"
+    )
+    _write_real_transport_attempt_dir(real_attempt)
+    _write_never_created_attempt_dir(never_created_attempt, pod_name="pod-synthetic-mixed")
+    _seed_prior_attempts(command, plan_path, flaky_manifest, [real_attempt, never_created_attempt])
+
+    result = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    assert result["status"] == "complete"
+    assert result["runs"][flaky_manifest]["status"] == "complete"
+    assert len(result["runs"][flaky_manifest]["attempts"]) == 3
+
+
+def test_retry_failed_unreadable_prior_attempt_dir_counts_as_real(
+    command, tmp_path, monkeypatch,
+):
+    """P6 fail-closed: `_count_prior_retry_attempts` can't prove an unreadable attempt
+    dir's `run.json` was a never-created failure, so it counts it as REAL -- two such
+    unreadable prior attempts trip the tighter `MAX_RUN_RETRIES` (2), not the looser
+    `MAX_NEVER_CREATED_RETRIES` (8)."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    unreadable_a = original_out_dir.with_name(f"{original_out_dir.name}.synthetic-unreadable-a")
+    unreadable_b = original_out_dir.with_name(f"{original_out_dir.name}.synthetic-unreadable-b")
+    for unreadable in (unreadable_a, unreadable_b):
+        unreadable.mkdir(parents=True, exist_ok=True)
+        (unreadable / "run.json").write_text("{not valid json", encoding="utf-8")
+    _seed_prior_attempts(command, plan_path, flaky_manifest, [unreadable_a, unreadable_b])
 
     with pytest.raises(
         command.FigmentTrainError,

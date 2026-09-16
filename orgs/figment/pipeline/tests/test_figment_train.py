@@ -3331,6 +3331,108 @@ def test_plan_qwen3vl_caption_refuses_when_live_scan_finds_a_pod(
         )
 
 
+def _write_real_transport_caption_run(run_out: Path) -> None:
+    """A `.failed-N` (or current) out dir shaped as a real (spend-eligible),
+    verified-teardown transport failure -- distinct from the never-created shape above:
+    `pod_id` is set, so `_prior_attempt_never_created` refuses it and
+    `_count_prior_retry_attempts` counts it as real."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": "pod-real",
+        "termination_verified": True,
+        "placement_attempts": [
+            {"pod_id": "pod-real", "termination_verified": True, "estimated_actual_usd": 0.01},
+        ],
+        "jobs": [], "artifacts": [],
+        "error": "ConnectionError: transient blip talking to the pod provider",
+    }
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+
+
+def test_plan_qwen3vl_caption_regenerates_through_two_never_created_failures(
+    command, tmp_path, monkeypatch,
+):
+    """P6 (2026-09-16): a RunPod capacity 500 at qwen3vl caption pod-create time spends
+    nothing, so two of them recorded as `.failed-*` siblings do NOT trip
+    `MAX_RUN_RETRIES` (2) -- only the much larger `MAX_NEVER_CREATED_RETRIES` (8) bounds
+    never-created failures, and the manifest still regenerates."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_never_created_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_never_created_caption_run(run_out)
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+    renamed = run_out.with_name(f"{run_out.name}.failed-3")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_refuses_past_the_never_created_retry_limit(
+    command, tmp_path, monkeypatch,
+):
+    """P6: the 9th never-created capacity failure still requires a fresh, reviewed
+    plan -- `MAX_NEVER_CREATED_RETRIES` (8) is a real ceiling, not an unbounded pass."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in range(1, command.MAX_NEVER_CREATED_RETRIES + 1):
+        _write_never_created_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_never_created_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 8 never-created time\(s\) \(limit 8\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_refuses_past_the_real_retry_limit(command, tmp_path):
+    """P6: real (spend-eligible) verified-teardown failures still share the tighter
+    `MAX_RUN_RETRIES` (2), unaffected by the separate, larger never-created cap --
+    unchanged behavior, now expressed through the shared classifier."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_real_transport_caption_run(run_out.with_name(f"{run_out.name}.failed-{index}"))
+    _write_real_transport_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 2 time\(s\) \(limit 2\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
 def test_plan_qwen3vl_caption_images_ready_sentinel_is_non_empty_and_parses(
     command, tmp_path,
 ):

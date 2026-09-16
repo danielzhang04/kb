@@ -294,8 +294,10 @@ plan.
   `CreateCallError`, and a fresh live scan finding no pod named in the out dir's own
   `recovery-*.json` journal(s) — a RunPod capacity 500 at create time never placed a
   pod at all, so there was never anything to terminate;
-- fewer than 2 prior retries already recorded for that exact manifest key
-  (`state["runs"][key]["attempts"]`) — the 3rd failure always requires a fresh plan.
+- fewer than 2 prior REAL retries already recorded for that exact manifest key
+  (`state["runs"][key]["attempts"]`) — the 3rd real failure always requires a fresh
+  plan; never-created capacity failures (above) don't count toward that 2, since
+  nothing was spent — they're bounded separately, at 8.
 
 When it retries, the prior attempt's `stage.json` record moves into that run's `attempts`
 list (never deleted, and tagged with `out_renamed` naming where it went) and its `out` dir

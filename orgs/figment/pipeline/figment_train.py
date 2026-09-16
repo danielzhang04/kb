@@ -2668,7 +2668,12 @@ def plan_qwen3vl_caption(
     # (`_out_dir_retry_eligibility_reason`: verified teardown with zero output, or --
     # routine for RunPod capacity -- `_prior_attempt_never_created`), rename the prior
     # out dir to `.failed-N` (the same helper `--retry-failed` uses) and regenerate
-    # rather than refusing forever.
+    # rather than refusing forever. P6 (2026-09-16): prior `.failed-*` dirs are
+    # classified (`_count_prior_retry_attempts`) into never-created (spent nothing,
+    # bounded by the much larger `MAX_NEVER_CREATED_RETRIES`) vs real (bounded by
+    # `MAX_RUN_RETRIES`) -- capacity 500s at create time are routine and free, so they
+    # must not lock this manifest at the same tight bound a real spend-eligible
+    # failure does.
     if manifest_path.exists() and (run_out / "run.json").is_file():
         reason = _out_dir_retry_eligibility_reason(run_out)
         if reason is not None:
@@ -2677,11 +2682,19 @@ def plan_qwen3vl_caption(
                 f"{manifest_path} ({reason})"
             )
         prior_failures = list(run_out.parent.glob(f"{run_out.name}.failed-*"))
-        if len(prior_failures) >= MAX_RUN_RETRIES:
+        never_created_count, real_count = _count_prior_retry_attempts(prior_failures)
+        if real_count >= MAX_RUN_RETRIES:
             raise FigmentTrainError(
                 f"caption manifest {manifest_path} out dir {run_out} has already been "
-                f"retried {len(prior_failures)} time(s) (limit {MAX_RUN_RETRIES}); "
+                f"retried {real_count} time(s) (limit {MAX_RUN_RETRIES}); "
                 "create a reviewed new plan to retry further"
+            )
+        if never_created_count >= MAX_NEVER_CREATED_RETRIES:
+            raise FigmentTrainError(
+                f"caption manifest {manifest_path} out dir {run_out} has already been "
+                f"retried {never_created_count} never-created time(s) "
+                f"(limit {MAX_NEVER_CREATED_RETRIES}); create a reviewed new plan to "
+                "retry further"
             )
         renamed = _first_free_retry_rename_path(run_out, len(prior_failures) + 1)
         run_out.rename(renamed)
@@ -4102,7 +4115,19 @@ RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
 NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING = "CreateCallError"
 # At most this many `--retry-failed` retries per manifest key, counted from
 # `state["runs"][key]["attempts"]`; the (N+1)th failure always requires a fresh plan.
+# P6 (2026-09-16): this bound exists to cap SPEND on repeated real failures -- it never
+# applied to never-created attempts (`_prior_attempt_never_created`), which spend
+# nothing (no pod was ever created), so those are counted separately against
+# `MAX_NEVER_CREATED_RETRIES` below instead of sharing this cap.
 MAX_RUN_RETRIES = 2
+# P6 (2026-09-16, qwen3vl caption capacity 500s): a RunPod capacity 500 at pod-create
+# time is routine and free -- two of them used to permanently lock a manifest even
+# though nothing was spent, because `plan_qwen3vl_caption` and `run_planned_stage`/
+# `_dry_run_retry_preview` both counted every prior attempt (never-created or not)
+# against `MAX_RUN_RETRIES`. Never-created attempts get this much larger, separate
+# ceiling instead; a real (spend-eligible) failure still requires a fresh plan after
+# `MAX_RUN_RETRIES`.
+MAX_NEVER_CREATED_RETRIES = 8
 
 
 def _is_retry_bookkeeping_file(path: Path) -> bool:
@@ -4263,6 +4288,31 @@ def _prior_attempt_never_created(run_out: Path) -> str | None:
     return None
 
 
+def _count_prior_retry_attempts(
+    attempt_dirs: list[Path | str | None],
+) -> tuple[int, int]:
+    """P6 (2026-09-16): the one shared classifier `plan_qwen3vl_caption` and
+    `run_planned_stage`/`_dry_run_retry_preview` all consult to split prior retry
+    attempts into `(never_created_count, real_count)` -- never-created RunPod capacity
+    failures (`_prior_attempt_never_created`) are bounded by `MAX_NEVER_CREATED_RETRIES`
+    instead of sharing `MAX_RUN_RETRIES` with real, spend-eligible attempts.
+
+    Each entry in `attempt_dirs` is a prior attempt's own out dir (already renamed to
+    `.failed-N`) -- `None` when the caller has no directory to check for that attempt.
+    Fail-closed: `None`, a directory `_prior_attempt_never_created` can't read, or one
+    whose `run.json` doesn't prove a never-created failure all count as REAL, so an
+    attempt this classifier can't positively clear still bounds the tighter
+    `MAX_RUN_RETRIES`, never the looser `MAX_NEVER_CREATED_RETRIES`."""
+    never_created = 0
+    real = 0
+    for attempt_dir in attempt_dirs:
+        if attempt_dir is not None and _prior_attempt_never_created(Path(attempt_dir)) is None:
+            never_created += 1
+        else:
+            real += 1
+    return never_created, real
+
+
 def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 1000) -> Path:
     """LOW-3: the `.failed-N` rename target for a retried run's prior out dir -- the
     first suffix from `start` that is not already taken, rather than a bare
@@ -4380,8 +4430,10 @@ def run_planned_stage(
 ) -> dict[str, Any]:
     """Run one stage (or the bounded chain), recording progress and never retrying --
     unless `retry_failed` (`--retry-failed`) is set, in which case a `failed` prior run
-    is retried exactly when `_retry_ineligibility_reason` clears it and fewer than
-    `MAX_RUN_RETRIES` retries have already been recorded for that manifest key."""
+    is retried exactly when `_retry_ineligibility_reason` clears it and the recorded
+    prior attempts (`_count_prior_retry_attempts`) are still under both caps: fewer than
+    `MAX_RUN_RETRIES` REAL retries, and fewer than `MAX_NEVER_CREATED_RETRIES`
+    never-created (RunPod capacity, spent nothing) retries, for that manifest key."""
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
@@ -4436,10 +4488,19 @@ def run_planned_stage(
                     raise FigmentTrainError(
                         f"planned run {key} {verb}; create a reviewed new plan to retry"
                     )
-                if len(attempts) >= MAX_RUN_RETRIES:
+                never_created_count, real_count = _count_prior_retry_attempts(
+                    [a.get("out_renamed") for a in attempts]
+                )
+                if real_count >= MAX_RUN_RETRIES:
                     raise FigmentTrainError(
-                        f"planned run {key} has already been retried {len(attempts)} time(s) "
+                        f"planned run {key} has already been retried {real_count} time(s) "
                         f"(limit {MAX_RUN_RETRIES}); create a reviewed new plan to retry further"
+                    )
+                if never_created_count >= MAX_NEVER_CREATED_RETRIES:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been retried {never_created_count} "
+                        f"never-created time(s) (limit {MAX_NEVER_CREATED_RETRIES}); create a "
+                        "reviewed new plan to retry further"
                     )
                 out_dir = root / run["out"]
                 if prior_status == "failed":
@@ -6610,9 +6671,12 @@ def _dry_run_retry_preview(
     would actually attempt for this stage: the same manifest a live invocation would hit
     first (in plan order), only when it is `failed` or `retrying` (MEDIUM-1: a `retrying`
     record left by an interrupted earlier retry is guarded exactly like `failed`) and
-    `_retry_ineligibility_reason` clears it. Read-only -- never renames a dir or invokes
-    the harness. Returns `None` when there is nothing eligible to retry here, so the
-    caller falls back to the ordinary `dry-run:<stage>` preview."""
+    `_retry_ineligibility_reason` clears it, and both retry caps (`MAX_RUN_RETRIES` for
+    real attempts, `MAX_NEVER_CREATED_RETRIES` for never-created ones,
+    `_count_prior_retry_attempts`) still have room. Read-only -- never renames a dir or
+    invokes the harness. The preview message reports both counts. Returns `None` when
+    there is nothing eligible to retry here, so the caller falls back to the ordinary
+    `dry-run:<stage>` preview."""
     for run in plan["stages"][stage]["runs"]:
         key = run["manifest"]
         prior = state["runs"].get(key)
@@ -6622,7 +6686,10 @@ def _dry_run_retry_preview(
         if status not in ("failed", "retrying"):
             return None
         attempts = list(prior.get("attempts") or [])
-        if len(attempts) >= MAX_RUN_RETRIES:
+        never_created_count, real_count = _count_prior_retry_attempts(
+            [a.get("out_renamed") for a in attempts]
+        )
+        if real_count >= MAX_RUN_RETRIES or never_created_count >= MAX_NEVER_CREATED_RETRIES:
             return None
         reason = _retry_ineligibility_reason(
             root, run, attempts=attempts if status == "retrying" else None,
@@ -6632,9 +6699,10 @@ def _dry_run_retry_preview(
         return {
             "status": f"dry-run:retry {key}",
             "message": (
-                f"would retry {key} (attempt {len(attempts) + 1}/{MAX_RUN_RETRIES}): prior "
-                "attempt's run.json showed verified termination, zero job outputs, and a "
-                "transport/placement-class error"
+                f"would retry {key} (real retries {real_count}/{MAX_RUN_RETRIES}, "
+                f"never-created retries {never_created_count}/{MAX_NEVER_CREATED_RETRIES}): "
+                "prior attempt's run.json showed a retry-eligible transport/placement or "
+                "never-created capacity failure"
             ),
         }
     return None
@@ -7038,10 +7106,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--retry-failed", action="store_true",
         help="retry a `failed` planned run ONLY when its own run.json shows verified "
              "termination, zero job outputs, and a transport/placement-class error "
-             "(NameResolutionError/ConnectionError/MaxRetryError/ReadTimeout/placement); "
-             f"at most {MAX_RUN_RETRIES} retries per manifest key. Off by default -- "
-             "without it, a failed run always requires a fresh, reviewed plan. See "
-             "RUNBOOK.md Resume/recovery.",
+             "(NameResolutionError/ConnectionError/MaxRetryError/ReadTimeout/placement), "
+             "or a never-created RunPod capacity failure at pod-create time; at most "
+             f"{MAX_RUN_RETRIES} real retries and {MAX_NEVER_CREATED_RETRIES} "
+             "never-created retries per manifest key. Off by default -- without it, a "
+             "failed run always requires a fresh, reviewed plan. See RUNBOOK.md "
+             "Resume/recovery.",
     )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
