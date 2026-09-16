@@ -16,8 +16,8 @@ from datetime import datetime, timezone
 from pathlib import Path, PurePosixPath
 
 
-COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$")
-INSTRUCTION = re.compile(r"^(?:queue|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$")
+COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
+INSTRUCTION = re.compile(r"^(?:queue|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
 SAFE_HOST = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")

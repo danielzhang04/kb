@@ -453,6 +453,65 @@ def test_reconciliation_accepts_a_model_routing_only_range(tmp_path, monkeypatch
     assert "claude-fable-5" in (vm / "governance" / "model-routing.yaml").read_text(encoding="utf-8")
 
 
+def test_reconciled_allowlist_accepts_org_goal_md():
+    """PR #182 (merged 09-11) added orgs/<project>/GOAL.md on ops; RECONCILED and COORDINATION must
+    accept it exactly like the neighbouring STATE.md entry, or the drain aborts after pushing the
+    chain and writing VM receipts but before reset --hard/spool cleanup (drain-v2 README BLOCKER)."""
+    assert RECONCILED.fullmatch("orgs/kb-ops/GOAL.md") is not None
+    assert COORDINATION.fullmatch("orgs/kb-ops/GOAL.md") is not None
+    assert RECONCILED.fullmatch("orgs/kb-ops/contract.md") is None
+    assert COORDINATION.fullmatch("orgs/kb-ops/contract.md") is None
+
+
+def test_reconciliation_accepts_a_range_containing_org_goal_md(tmp_path, monkeypatch):
+    """A real reconciled range whose only non-STATE.md coordination change is orgs/kb-ops/GOAL.md
+    must land -- the regex-level assertion above plus the actual git plumbing this hotfix touches."""
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    commit_identity(monkeypatch)
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+
+    def write_goal(work: Path) -> None:
+        path = work / "orgs" / "kb-ops" / "GOAL.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# kb-ops goal\n", encoding="utf-8")
+
+    target, _work = desktop_ops_commit(tmp_path, origin, "kb-ops-goal-md", write_goal)
+    assert apply_reconciliation(
+        vm, spool, return_bundle(tmp_path, origin, target), returned_receipt_dir(tmp_path, spool, manifest),
+        source, target,
+        readiness=lambda: {"quiescent": True, "blockers": []},
+        run=make_git_runner(git_user=None),
+    ) == target
+    assert (vm / "orgs" / "kb-ops" / "GOAL.md").is_file()
+
+
+def test_reconciliation_still_refuses_an_unrelated_org_path(tmp_path, monkeypatch):
+    """orgs/<project>/GOAL.md joining the allowlist must not open the rest of orgs/<project>/."""
+    origin, operator, vm, spool, trusted, source, manifest = integration_fixture(tmp_path)
+    commit_identity(monkeypatch)
+    assert promote_pending(spool, operator, tmp_path / "promotion-work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+
+    def write_contract(work: Path) -> None:
+        path = work / "orgs" / "kb-ops" / "contract.md"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("# kb-ops contract, rewritten by a compromised promotion\n", encoding="utf-8")
+
+    target, _work = desktop_ops_commit(tmp_path, origin, "kb-ops-contract-md", write_contract)
+    with pytest.raises(RuntimeError, match="non-coordination path"):
+        apply_reconciliation(
+            vm, spool, return_bundle(tmp_path, origin, target), returned_receipt_dir(tmp_path, spool, manifest),
+            source, target,
+            readiness=lambda: {"quiescent": True, "blockers": []},
+            run=make_git_runner(git_user=None),
+        )
+    assert git(vm, "rev-parse", "HEAD").stdout.strip() == source
+    assert not (vm / "orgs" / "kb-ops" / "contract.md").exists()
+
+
 def test_reconciliation_refuses_the_rest_of_governance(tmp_path, monkeypatch):
     """Admitting one daemon-read registry file must not admit the governance/ tree.
 

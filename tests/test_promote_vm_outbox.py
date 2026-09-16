@@ -925,3 +925,13 @@ def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
     ):
         assert promote_module.COORDINATION.fullmatch(relpath) is None, relpath
         assert reconcile_module.RECONCILED.fullmatch(relpath) is not None, relpath
+
+
+def test_instruction_and_coordination_allowlists_accept_org_goal_md():
+    """PR #182 (merged 09-11) added orgs/<project>/GOAL.md on ops; INSTRUCTION and COORDINATION
+    must accept it exactly like the neighbouring STATE.md entry (drain-v2 README BLOCKER) -- an
+    unrelated orgs/<project>/ path stays refused."""
+    assert promote_module.COORDINATION.fullmatch("orgs/kb-ops/GOAL.md") is not None
+    assert promote_module.INSTRUCTION.fullmatch("orgs/kb-ops/GOAL.md") is not None
+    assert promote_module.COORDINATION.fullmatch("orgs/kb-ops/contract.md") is None
+    assert promote_module.INSTRUCTION.fullmatch("orgs/kb-ops/contract.md") is None
