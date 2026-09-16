@@ -952,3 +952,260 @@ def test_pipeline_dry_run_never_calls_the_harness_or_writes_grade_state(
     # never wrote the deliverable.
     assert dry_result["status"] == "stopped:video-out-of-tree"
     assert not deliverable_manifest.exists()
+
+
+# ---------------------------------------------------------------------------------
+# P4 retry: `--retry-failed` (2026-09-16, creator-001 live-20260916 dataset shard-04
+# NameResolutionError). These reuse `_install_fake_harness`'s exact receipt shape --
+# `_install_flaky_fake_harness` below wraps it so one named manifest fails first
+# (writing the zero-output, verified-termination, transport-error `run.json` the live
+# run actually recorded, `rc=1`) before falling back to the same real fixture.
+# ---------------------------------------------------------------------------------
+
+_NAME_RESOLUTION_ERROR = (
+    "ConnectionError: HTTPSConnectionPool(host='rest.runpod.io', port=443): Max retries "
+    "exceeded with url: /v1/pods/ab8qas95zt7158?includeMachine=true (Caused by "
+    "NameResolutionError(\"HTTPSConnection(host='rest.runpod.io', port=443): Failed to "
+    "resolve 'rest.runpod.io' ([Errno 11001] getaddrinfo failed)\"))"
+)
+
+
+def _install_flaky_fake_harness(
+    command,
+    monkeypatch,
+    ledger_dir: Path,
+    *,
+    flaky_manifest: str,
+    error: str = _NAME_RESOLUTION_ERROR,
+    fail_returncode: int = 1,
+    jobs=None,
+    artifacts=None,
+    extra_receipt_fields: dict | None = None,
+    fails_every_time: bool = False,
+):
+    """Every manifest runs through `_install_fake_harness`'s real (offline) fixture,
+    except `flaky_manifest`, which instead writes a zero-output receipt carrying `error`
+    and returns `fail_returncode` -- exactly the shape creator-001's live
+    `live-20260916/expand/runs/out/creator-001-tensor-dataset-shard-04/run.json` recorded
+    (`termination_verified: true`, `jobs: []`, a `NameResolutionError` string, `rc=1`).
+    By default the flaky manifest fails only on its FIRST invocation, so a
+    `--retry-failed` re-launch of the same key falls through to the real fixture and
+    succeeds; `fails_every_time=True` keeps failing it, for the ineligibility/refusal/
+    retry-limit tests."""
+    calls = _install_fake_harness(command, monkeypatch, ledger_dir)
+    good_harness = command.subprocess.run
+    state = {"failed_once": False}
+
+    def flaky_harness(argv, cwd=None, **kwargs):
+        if len(argv) >= 2 and Path(str(argv[1])).name == command.POD_RUNNER.name:
+            manifest_path = Path(argv[argv.index("--manifest") + 1])
+            if manifest_path.name == flaky_manifest and (
+                fails_every_time or not state["failed_once"]
+            ):
+                run_out = Path(argv[argv.index("--out") + 1])
+                run_out.mkdir(parents=True, exist_ok=True)
+                receipt = {
+                    "schema": "figment/runpod-run@1",
+                    "dry_run": False,
+                    "pod_id": "pod-flaky",
+                    "termination_verified": True,
+                    "placement_attempts": [{
+                        "pod_id": "pod-flaky", "termination_verified": True,
+                        "estimated_actual_usd": 0.01,
+                    }],
+                    "jobs": jobs if jobs is not None else [],
+                    "artifacts": artifacts if artifacts is not None else [],
+                    "error": error,
+                }
+                if extra_receipt_fields:
+                    receipt.update(extra_receipt_fields)
+                (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+                state["failed_once"] = True
+                return type("Result", (), {"returncode": fail_returncode})()
+        return good_harness(argv, cwd=cwd, **kwargs)
+
+    monkeypatch.setattr(command.subprocess, "run", flaky_harness)
+    return calls
+
+
+def _build_flaky_dataset_plan(command, tmp_path, monkeypatch, **harness_kwargs):
+    """Builds the plan FIRST (pure planning, no harness involved), then installs the
+    flaky harness against the exact `run["manifest"]` key (`expand/runs/<name>.yaml`,
+    not the bare basename) so state/plan lookups in tests use the same key
+    `run_planned_stage` itself keys `state["runs"]` by."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = tmp_path / "ledger"
+    out = tmp_path / "primary"
+    plan = command.build_plan(
+        "creator-002", "dataset", out, personas_root=personas, skip_pin_verify=True,
+        ledger_dir=ledger_dir,
+    )
+    flaky_manifest = next(
+        run["manifest"] for run in plan["stages"]["dataset"]["runs"]
+        if Path(run["manifest"]).name == "creator-002-tensor-dataset-fullbody.yaml"
+    )
+    _install_flaky_fake_harness(
+        command, monkeypatch, ledger_dir,
+        flaky_manifest=Path(flaky_manifest).name, **harness_kwargs,
+    )
+    return plan, out / "plan.json", flaky_manifest, ledger_dir
+
+
+def test_retry_failed_off_by_default_refuses_byte_for_byte(command, tmp_path, monkeypatch):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = load_json(plan_path.parent / "stage.json")
+    assert state["runs"][flaky_manifest] == {"status": "failed", "returncode": 1}
+
+    # Today's exact refusal, unchanged: no --retry-failed, no eligibility check, no
+    # rename, no attempts bookkeeping.
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"planned run .*fullbody\.yaml already failed; create a reviewed new plan to retry",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state_after = load_json(plan_path.parent / "stage.json")
+    assert state_after["runs"][flaky_manifest] == {"status": "failed", "returncode": 1}
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    assert (plan_path.parent / fullbody_run["out"]).is_dir()
+
+
+def test_retry_failed_retries_a_verified_zero_output_transport_failure(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    assert state["status"] == "complete"
+    assert state["completed_stages"] == ["dataset"]
+    assert state["runs"][flaky_manifest]["status"] == "complete"
+    assert state["runs"][flaky_manifest]["attempts"] == [
+        {"status": "failed", "returncode": 1},
+    ]
+
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
+    assert renamed.is_dir()
+    assert (renamed / "run.json").is_file()
+    assert original_out_dir.is_dir()
+    retried_receipt = load_json(original_out_dir / "run.json")
+    assert not retried_receipt.get("error")
+
+
+def test_retry_failed_refuses_when_prior_termination_not_verified(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_receipt_fields={"termination_verified": False},
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*verified pod termination",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_when_prior_attempt_recorded_outputs(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        jobs=[{"job": 1, "output_name": "x", "files": [{"path": "x.png", "bytes": 12}]}],
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*recorded job outputs",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_when_error_is_not_transport_class(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        error="ValidationError: job output count disagrees with manifest",
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*not a recognized transport/placement failure",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_past_the_retry_limit(command, tmp_path, monkeypatch):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, fails_every_time=True,
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    for expected_attempts in (1, 2):
+        with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+            command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+        state = load_json(plan_path.parent / "stage.json")
+        assert len(state["runs"][flaky_manifest]["attempts"]) == expected_attempts
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 2 time\(s\) \(limit 2\)",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_pipeline_dry_run_retry_failed_previews_without_renaming(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    result = command.command_pipeline(
+        "creator-002", plan_path=plan_path, dry_run=True, retry_failed=True,
+        skip_pin_verify=True, skip_judge=True, ledger_dir=ledger_dir,
+    )
+    assert result["status"] == f"dry-run:retry {flaky_manifest}"
+
+    assert original_out_dir.is_dir()
+    assert not original_out_dir.with_name(f"{original_out_dir.name}.failed-1").exists()
+    state_after = load_json(root / "stage.json")
+    assert state_after["runs"][flaky_manifest] == {"status": "failed", "returncode": 1}

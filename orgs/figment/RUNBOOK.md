@@ -260,6 +260,40 @@ launch, or never got dispatched at all, does not leave a permanent block behind.
 applies — the manifest will not be silently regenerated out from under a completed
 receipt.
 
+## Resume/recovery: `--retry-failed` for a verified transport/placement failure
+
+A `failed` planned run normally requires a fresh, reviewed plan — see "never a file edit"
+above. `pipeline`/`run --retry-failed` (2026-09-16, P4) is a narrow, second exception for
+exactly one shape of failure: a pod that placed, ran briefly, then lost the transport
+connection to the provider itself (a DNS blip, a dropped `ConnectionError`,
+`MaxRetryError`, `ReadTimeout`, or a placement failure) before it ever produced a job or
+uploaded an artifact — never a job or validation failure, which still needs a reviewed
+plan.
+
+`--retry-failed` re-launches a `failed` run ONLY when its own harness receipt
+(`<out>/run.json`, not `stage.json`) shows ALL of:
+
+- `termination_verified: true` — the pod's teardown was itself confirmed;
+- zero verified job outputs — no `run.json["jobs"]` entries with files, no artifact bytes,
+  and no image files already sitting in its `out` dir;
+- an `error` string naming a transport/placement failure (substring match against
+  `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`);
+- fewer than 2 prior retries already recorded for that exact manifest key
+  (`state["runs"][key]["attempts"]`) — the 3rd failure always requires a fresh plan.
+
+When it retries, the prior attempt's `stage.json` record moves into that run's `attempts`
+list (never deleted) and its `out` dir is renamed to `<out>.failed-<n>` (also never
+deleted) BEFORE the harness is invoked again, so the retry writes a clean `run.json`. The
+exact same harness invocation, ceilings, and budget/arc-cap checks apply — this is not a
+weaker run, only a permitted second launch for the same manifest. Without `--retry-failed`
+(the default), behavior is unchanged: `failed` always refuses, byte for byte.
+
+`pipeline --dry-run --retry-failed` previews the one retry it would attempt (status
+`dry-run:retry <key>`) without renaming anything or invoking the harness. If the failed
+run is not eligible (any of the checks above fails), dry-run falls back to its ordinary
+`dry-run:<stage>` preview — the live invocation is what raises the specific refusal
+reason.
+
 ## Command-shape evidence
 
 Every command above was checked against `figment_train.py --help`, `pipeline --help`,

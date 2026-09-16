@@ -4036,8 +4036,58 @@ def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path, *, 
             )
 
 
-def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str, Any]:
-    """Run one stage (or the bounded chain), recording progress and never retrying."""
+# `--retry-failed` (P4 retry): a failed planned run is only ever eligible for a live
+# retry when its own harness receipt (`run.json`, not `stage.json`) proves the failure
+# was transport/placement-class -- a blip talking to the pod provider itself, never a
+# job or validation failure a fresh, reviewed plan should judge instead. This allow-list
+# is deliberately small and literal (substring match against the recorded `error`); widen
+# it only against a real observed receipt, never speculatively.
+RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
+    "NameResolutionError", "ConnectionError", "MaxRetryError", "ReadTimeout", "placement",
+)
+# At most this many `--retry-failed` retries per manifest key, counted from
+# `state["runs"][key]["attempts"]`; the (N+1)th failure always requires a fresh plan.
+MAX_RUN_RETRIES = 2
+
+
+def _retry_ineligibility_reason(root: Path, run: dict[str, Any]) -> str | None:
+    """`None` when a failed planned `run` is safe for `--retry-failed` to re-launch, else
+    the human-readable reason it refuses. Reads only the prior attempt's own harness
+    receipt (`<out>/run.json`) -- `state["runs"][key]`'s "failed"/"returncode" bookkeeping
+    in `stage.json` never carries enough to tell a transport blip from a job failure."""
+    out_dir = root / run["out"]
+    run_json_path = out_dir / "run.json"
+    if not run_json_path.is_file():
+        return f"no run.json found at {run_json_path} to verify the failure was transport-class"
+    try:
+        data = _read_json(run_json_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+        return f"prior run.json could not be read: {exc}"
+    if not isinstance(data, dict):
+        return "prior run.json is not an object"
+    if data.get("termination_verified") is not True:
+        return "prior run.json does not show verified pod termination"
+    if any((job.get("files") or []) for job in data.get("jobs") or []):
+        return "prior run.json recorded job outputs; this is not a clean zero-output failure"
+    if any((artifact.get("bytes") or 0) > 0 for artifact in data.get("artifacts") or []):
+        return "prior run.json recorded artifact outputs; this is not a clean zero-output failure"
+    if any(True for suffix in IMAGE_EXTENSIONS for _ in out_dir.glob(f"*{suffix}")):
+        return "prior attempt's out dir already contains image outputs"
+    error = data.get("error")
+    if not isinstance(error, str) or not error:
+        return "prior run.json has no error recorded; refusing to guess the failure class"
+    if not any(marker in error for marker in RETRY_ELIGIBLE_ERROR_SUBSTRINGS):
+        return f"prior error is not a recognized transport/placement failure: {error!r}"
+    return None
+
+
+def run_planned_stage(
+    creator_id: str, stage: str, plan_path: Path, *, retry_failed: bool = False,
+) -> dict[str, Any]:
+    """Run one stage (or the bounded chain), recording progress and never retrying --
+    unless `retry_failed` (`--retry-failed`) is set, in which case a `failed` prior run
+    is retried exactly when `_retry_ineligibility_reason` clears it and fewer than
+    `MAX_RUN_RETRIES` retries have already been recorded for that manifest key."""
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
@@ -4081,10 +4131,31 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             prior = state["runs"].get(key)
             if prior and prior.get("status") == "complete":
                 continue
+            attempts = list((prior or {}).get("attempts") or [])
             if prior and prior.get("status") == "failed":
-                raise FigmentTrainError(
-                    f"planned run {key} already failed; create a reviewed new plan to retry"
-                )
+                if not retry_failed:
+                    raise FigmentTrainError(
+                        f"planned run {key} already failed; create a reviewed new plan to retry"
+                    )
+                if len(attempts) >= MAX_RUN_RETRIES:
+                    raise FigmentTrainError(
+                        f"planned run {key} has already been retried {len(attempts)} time(s) "
+                        f"(limit {MAX_RUN_RETRIES}); create a reviewed new plan to retry further"
+                    )
+                reason = _retry_ineligibility_reason(root, run)
+                if reason:
+                    raise FigmentTrainError(
+                        f"planned run {key} already failed and --retry-failed refuses to "
+                        f"re-launch it: {reason}"
+                    )
+                out_dir = root / run["out"]
+                if out_dir.is_dir():
+                    renamed = out_dir.with_name(f"{out_dir.name}.failed-{len(attempts) + 1}")
+                    out_dir.rename(renamed)
+                attempts.append({k: v for k, v in prior.items() if k != "attempts"})
+                state["runs"][key] = {"attempts": attempts}
+                _write_stage_state(state_path, state)
+                prior = None
             if prior and prior.get("status") == "running":
                 # n12: this is the recovery message a SECOND concurrent `pipeline`/`run`
                 # invocation on the SAME plan actually hits (stage.json's own "running"
@@ -4134,17 +4205,25 @@ def run_planned_stage(creator_id: str, stage: str, plan_path: Path) -> dict[str,
             }
             if tester_inputs is not None:
                 attempt["checkpoint_inputs"] = tester_inputs
+            if attempts:
+                attempt["attempts"] = attempts
             state["runs"][key] = attempt
             _write_stage_state(state_path, state)
             try:
                 result = subprocess.run(run["argv"], cwd=ROOT)
             except OSError as exc:
-                state["runs"][key] = {"status": "failed", "error": type(exc).__name__}
+                failed = {"status": "failed", "error": type(exc).__name__}
+                if attempts:
+                    failed["attempts"] = attempts
+                state["runs"][key] = failed
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
                 raise FigmentTrainError(f"could not launch the planned harness command: {exc}") from exc
             if result.returncode != 0:
-                state["runs"][key] = {"status": "failed", "returncode": result.returncode}
+                failed = {"status": "failed", "returncode": result.returncode}
+                if attempts:
+                    failed["attempts"] = attempts
+                state["runs"][key] = failed
                 state["status"] = f"stopped:{current}"
                 _write_stage_state(state_path, state)
                 raise FigmentTrainError(
@@ -6170,6 +6249,39 @@ def _build_deliverable(
     return manifest
 
 
+def _dry_run_retry_preview(
+    root: Path, plan: dict[str, Any], stage: str, state: dict[str, Any],
+) -> dict[str, Any] | None:
+    """`pipeline --dry-run --retry-failed`'s preview of the one retry `run_planned_stage`
+    would actually attempt for this stage: the same manifest a live invocation would hit
+    first (in plan order), only when it is `failed` and `_retry_ineligibility_reason`
+    clears it. Read-only -- never renames a dir or invokes the harness. Returns `None`
+    when there is nothing eligible to retry here, so the caller falls back to the
+    ordinary `dry-run:<stage>` preview."""
+    for run in plan["stages"][stage]["runs"]:
+        key = run["manifest"]
+        prior = state["runs"].get(key)
+        if prior and prior.get("status") == "complete":
+            continue
+        if not prior or prior.get("status") != "failed":
+            return None
+        attempts = list(prior.get("attempts") or [])
+        if len(attempts) >= MAX_RUN_RETRIES:
+            return None
+        reason = _retry_ineligibility_reason(root, run)
+        if reason:
+            return None
+        return {
+            "status": f"dry-run:retry {key}",
+            "message": (
+                f"would retry {key} (attempt {len(attempts) + 1}/{MAX_RUN_RETRIES}): prior "
+                "attempt's run.json showed verified termination, zero job outputs, and a "
+                "transport/placement-class error"
+            ),
+        }
+    return None
+
+
 def command_pipeline(
     creator_id: str,
     *,
@@ -6186,6 +6298,7 @@ def command_pipeline(
     style_lora_strength: float | None = None,
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
+    retry_failed: bool = False,
 ) -> dict[str, Any]:
     """One resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -6373,11 +6486,15 @@ def command_pipeline(
         state = _stage_state(active_root / "stage.json", creator_id, active_plan_path)
         if stage not in state.get("completed_stages", []):
             if dry_run:
+                if retry_failed:
+                    preview = _dry_run_retry_preview(active_root, active_plan, stage, state)
+                    if preview is not None:
+                        return preview
                 return {
                     "status": f"dry-run:{stage}",
                     "message": f"would run stage {stage!r} for plan {active_plan_path}",
                 }
-            run_planned_stage(creator_id, stage, active_plan_path)
+            run_planned_stage(creator_id, stage, active_plan_path, retry_failed=retry_failed)
 
         if stage in GRADEABLE_STAGES:
             grade_dir = active_root / "grade" / stage
@@ -6559,11 +6676,24 @@ def build_parser() -> argparse.ArgumentParser:
         "--import-training-config", default=None, type=Path,
         help="only meaningful with --import-checkpoints; see `plan --import-training-config`",
     )
+    pipeline.add_argument(
+        "--retry-failed", action="store_true",
+        help="retry a `failed` planned run ONLY when its own run.json shows verified "
+             "termination, zero job outputs, and a transport/placement-class error "
+             "(NameResolutionError/ConnectionError/MaxRetryError/ReadTimeout/placement); "
+             f"at most {MAX_RUN_RETRIES} retries per manifest key. Off by default -- "
+             "without it, a failed run always requires a fresh, reviewed plan. See "
+             "RUNBOOK.md Resume/recovery.",
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
     run.add_argument("--stage", choices=(*STAGES, "all"), required=True)
     run.add_argument("--plan", required=True, type=Path)
+    run.add_argument(
+        "--retry-failed", action="store_true",
+        help="see `pipeline --retry-failed`",
+    )
 
     grade = commands.add_parser("grade", help="build a full-resolution grading board")
     grade.add_argument("--creator", required=True)
@@ -6694,10 +6824,13 @@ def main(argv: list[str] | None = None) -> int:
                 style_lora=args.style_lora, style_lora_strength=args.style_lora_strength,
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
+                retry_failed=args.retry_failed,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
-            result = run_planned_stage(args.creator, args.stage, args.plan)
+            result = run_planned_stage(
+                args.creator, args.stage, args.plan, retry_failed=args.retry_failed,
+            )
             print(f"stage state: {result['status']}")
         elif args.command == "grade":
             result = build_grade(

@@ -536,6 +536,10 @@ defects below for where these two sources disagree past 09-04.
   `calibrate/runs/grid-01-README.md`), so the fixture was left as-is rather than bumped —
   a magic-number patch on dead code would just re-drift the next time the harness rule
   changes, with nothing live to catch it.
+- **`--retry-failed`'s transport-error allow-list is a small, literal substring match**
+  (`RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, P4 2026-09-16) — a real transport/placement blip whose
+  `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
+  and needs a reviewed widening, not another live retry to discover the gap.
 
 ## How to iterate
 
