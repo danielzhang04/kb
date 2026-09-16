@@ -599,6 +599,52 @@ describe('file accounting adapter', () => {
   });
 
   /**
+   * Prod defect 2026-09-16 (canary run-efad83df): researcher-a was parked on a budget intervention at
+   * launch. Every attempt that day was subscription-billed (`ANTHROPIC_API_KEY` stripped from the child
+   * env for every fleet worker), yet the CLI's own non-zero `total_cost_usd` estimate was settling into
+   * this window's cost dimension. Eight settled subscription attempts at ~$0.12-0.23 each (~$1.8 total)
+   * plus two concurrently HELD subscription attempts (2 x DEFAULT_ATTEMPT_BUDGET.maxCostUsdMicros =
+   * $3.20) landed the projected sum over the $5.00 daily ceiling, even though $0.00 of real API money was
+   * ever spent. The fix (claudeWorkerAdapter.ts `extractUsage`) settles `costUsdMicros` as 0 for a
+   * subscription attempt (CLI init event `apiKeySource:"none"`) regardless of that notional estimate;
+   * this is the accounting-side half of the regression: settled AT the correct (zeroed) cost, the same
+   * eight-settled-plus-two-held shape must stay admissible under the real production window/attempt
+   * budgets, not just under a shrunk test budget.
+   */
+  it('keeps two concurrently held subscription attempts admissible after eight subscription attempts already settled at $0 cost', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: 'window-subscription-canary',
+      maxConcurrency: 2,
+      globalBudget: DEFAULT_BUDGET,
+      newId: () => `id-${++ids}`,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    // Eight settled subscription attempts, each settling correctly at costUsdMicros 0 (tokens still
+    // settle as measured — only the cost dimension is subscription-zeroed).
+    for (let attempt = 1; attempt <= 8; attempt += 1) {
+      const reservation = await reserveAttempt(attempt);
+      expect(reservation.ok).toBe(true);
+      if (!reservation.ok) throw new Error(reservation.reason);
+      await adapter.settle({
+        operationKey: `settle:attempt-${attempt}`, reservationRef: reservation.value.reservationRef,
+        usage: { inputTokens: 30_000, outputTokens: 1_024, costUsdMicros: 0 },
+      });
+    }
+    // Two parallel researchers launch concurrently, each holding the full per-attempt cost ceiling
+    // ($1.60) while active — exactly today's canary shape.
+    const researcherA = await reserveAttempt(9);
+    const researcherB = await reserveAttempt(10);
+    expect(researcherA).toEqual({ ok: true, value: { reservationRef: 'reservation-window-subscription-canary:id-9', replayed: false } });
+    expect(researcherB).toEqual({ ok: true, value: { reservationRef: 'reservation-window-subscription-canary:id-10', replayed: false } });
+  });
+
+  /**
    * W67 wall 1, the live Gate 4b refusal. Two workers run concurrently (`maxConcurrency: 2`) and a
    * prior stage has already settled. With the pre-W67 1,000,000-input attempt budget the second of the
    * two concurrent reservations was refused - 180,177 settled + 1,000,000 + 1,000,000 > 2,000,000 - and

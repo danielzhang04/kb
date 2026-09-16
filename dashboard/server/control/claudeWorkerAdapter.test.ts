@@ -23,6 +23,7 @@ import {
   DEFAULT_TIMEOUT_MS,
   END_INERT_CONTEXT,
   INERT_CONTEXT_BOUNDARY,
+  parseWorkerStream,
   relativeWorktreeCwd,
 } from './claudeWorkerAdapter.ts';
 
@@ -696,5 +697,52 @@ describe('buildWorkerPrompt dependency results', () => {
     });
     expect(prompt).not.toContain('\0');
     expect(prompt).toContain('beforeafter');
+  });
+});
+
+/**
+ * Prod defect 2026-09-16 (canary run-efad83df): every fleet attempt runs with `ANTHROPIC_API_KEY`
+ * stripped from its child env (childEnv.ts's unconditional denylist), so it is subscription-billed —
+ * but the CLI's own `total_cost_usd` in the terminal `result` event is a non-zero notional estimate
+ * regardless, and that estimate used to settle straight into the global/attempt cost budget
+ * (governance/budget.yaml's `daily_usd_limit` is documented as an API-spend ceiling; subscription
+ * steps must log 0.0). `parseWorkerStream` must settle `costUsdMicros` as 0 whenever the attempt's OWN
+ * `type:"system",subtype:"init"` event reports `apiKeySource:"none"`, while tokens keep settling as
+ * measured, and must leave cost alone whenever that signal says otherwise (or is absent).
+ */
+describe('parseWorkerStream cost settlement by billing kind', () => {
+  const initLine = (apiKeySource: string) => JSON.stringify({ type: 'system', subtype: 'init', apiKeySource, session_id: 's1' });
+  const resultLine = (overrides: Record<string, unknown> = {}) => JSON.stringify({
+    type: 'result', subtype: 'success', is_error: false, result: 'done', total_cost_usd: 0.1834,
+    usage: { input_tokens: 100, output_tokens: 50, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 },
+    ...overrides,
+  });
+
+  it('settles a subscription attempt (apiKeySource none) at costUsdMicros 0 while tokens settle as measured', () => {
+    const stdout = `${initLine('none')}\n${resultLine()}\n`;
+    const result = parseWorkerStream(stdout, '', 0);
+    expect(result.state).toBe('succeeded');
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50, costUsdMicros: 0 });
+  });
+
+  it('settles an API-billed attempt (apiKeySource user) at its real reported cost', () => {
+    const stdout = `${initLine('user')}\n${resultLine()}\n`;
+    const result = parseWorkerStream(stdout, '', 0);
+    expect(result.state).toBe('succeeded');
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50, costUsdMicros: 183_400 });
+  });
+
+  it('leaves cost unchanged when no init event is present at all (unknown billing kind, not asserted subscription)', () => {
+    const stdout = `${resultLine()}\n`;
+    const result = parseWorkerStream(stdout, '', 0);
+    expect(result.state).toBe('succeeded');
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50, costUsdMicros: 183_400 });
+  });
+
+  it('zeroes cost for a subscription attempt on the failed/nonzero-exit path too', () => {
+    const stdout = `${initLine('none')}\n${resultLine({ subtype: 'error', is_error: true, result: 'boom' })}\n`;
+    const result = parseWorkerStream(stdout, 'stderr tail', 1);
+    expect(result.state).toBe('failed');
+    expect(result.usage).toEqual({ inputTokens: 100, outputTokens: 50, costUsdMicros: 0 });
   });
 });
