@@ -540,6 +540,11 @@ defects below for where these two sources disagree past 09-04.
   (`RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, P4 2026-09-16) — a real transport/placement blip whose
   `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
   and needs a reviewed widening, not another live retry to discover the gap.
+- **qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
+  sentinel** (`_images.ready`, live run `creator-001/live-20260916b`, 2026-09-16) — fixed
+  (sentinel now carries real JSON content; the caption start-script template is now also
+  staged beside the manifest, a second preflight gap the same fix's regression test
+  surfaced); still not live-proven — no pod has actually run this template yet.
 
 ## How to iterate
 

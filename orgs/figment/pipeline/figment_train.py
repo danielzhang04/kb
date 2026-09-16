@@ -2624,9 +2624,32 @@ def plan_qwen3vl_caption(
             raise FigmentTrainError("pin verification failed:\n" + "\n".join(lines))
     names = _copy_detail_images(plan_root, {"id": creator_id}, image_paths)
     upload_dir = plan_root / "train" / "runs" / "_uploads" / creator_id
-    (upload_dir / "_images.ready").write_text("", encoding="utf-8")
+    # LIVE FAILURE 2026-09-16 (run creator-001/live-20260916b): a zero-byte sentinel
+    # here got rejected by pod/runpod_run.py's own upload preflight -- it only
+    # exempts the exact name `_dataset.ready` (the train path's sentinel) from its
+    # "positive byte count" check, so `_images.ready` needs real content. The
+    # pod-side consumer (start-qwen3vl-caption.sh.template) only tests `-f`
+    # existence, so the content itself is free -- but it must be non-empty.
+    ready_payload = json.dumps({
+        "schema": "figment/images-ready@1",
+        "images": len(names),
+        "trigger": trigger,
+    }) + "\n"
+    (upload_dir / "_images.ready").write_text(ready_payload, encoding="utf-8")
     manifest = _caption_manifest(pins, creator_id, trigger, names, pod_class=pod_class)
-    manifest_path = plan_root / "train" / "runs" / f"{trigger}-tensor-caption.yaml"
+    train_runs = plan_root / "train" / "runs"
+    manifest_path = train_runs / f"{trigger}-tensor-caption.yaml"
+    # pod/runpod_run.py resolves `training.start_script_file` relative to the
+    # manifest's own directory (`_manifest_local_path`) -- unlike `_copy_support_files`
+    # (called once, at `build_plan` time, for the train/tester scripts), this caption
+    # job is planned fresh here (also standalone from `build_training_set.py
+    # --plan-root`, which never runs `_copy_support_files` at all), so the template
+    # must be staged beside the manifest every time, not assumed already present.
+    # Found alongside the live upload-preflight failure this fixes: the manifest
+    # would otherwise have failed the very next preflight check, still before any pod
+    # was created.
+    train_runs.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(QWEN3VL_CAPTION_START_PATH, train_runs / QWEN3VL_CAPTION_START_PATH.name)
     run_out = plan_root / "train" / "runs" / "out" / manifest_path.stem
     # MEDIUM-1 (adversarial review): a bare `manifest_path.exists()` check permanently
     # blocked every future `apply-rulings --stage dataset` retry after a single failed

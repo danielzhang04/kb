@@ -3190,6 +3190,58 @@ def test_plan_qwen3vl_caption_refuses_to_overwrite_a_manifest_with_a_recorded_ru
         )
 
 
+def test_plan_qwen3vl_caption_images_ready_sentinel_is_non_empty_and_parses(
+    command, tmp_path,
+):
+    """LIVE FAILURE 2026-09-16 (run creator-001/live-20260916b): `_images.ready` was
+    written as a zero-byte file. `pod/runpod_run.py`'s upload preflight rejects any
+    zero-byte upload except the exact name `_dataset.ready` (the train path's own
+    sentinel) -- so the very first live qwen3vl caption pod never got past upload
+    verification. The sentinel's content is free (the pod-side consumer only tests
+    `-f` existence), so it must carry real, parseable, non-empty content."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    sentinel = plan_root / "train" / "runs" / "_uploads" / "creator-002" / "_images.ready"
+    assert sentinel.is_file()
+    raw = sentinel.read_text(encoding="utf-8")
+    assert raw.strip() != ""
+    payload = json.loads(raw)
+    assert payload == {
+        "schema": "figment/images-ready@1",
+        "images": len(images),
+        "trigger": "creator002krea2",
+    }
+
+
+def test_plan_qwen3vl_caption_manifest_passes_the_real_upload_preflight(
+    command, tmp_path,
+):
+    """The regression this bug needed: a bare unit assertion that a file exists is not
+    enough -- the fake test harness never ran the REAL `pod/runpod_run.py` upload
+    validator, which is exactly what rejected the zero-byte `_images.ready` sentinel
+    live (`upload file verification failed: expected a positive byte count`, first
+    live qwen3vl caption pod, 2026-09-16). Drive the actual emitted caption manifest
+    through the real harness's own `--dry-run` preflight, the same way
+    `test_build_plan_generates_every_stage...` and
+    `test_dop_train_plan_carries_its_own_step_derived_budget` already do for the other
+    stages."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    result = subprocess.run(
+        planned["argv"] + ["--dry-run"], cwd=ROOT, capture_output=True, text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "upload preflight" in result.stderr
+
+
 def test_live_qwen3vl_job_runner_rejects_a_pod_that_never_produced_captions(
     command, tmp_path, monkeypatch,
 ):
