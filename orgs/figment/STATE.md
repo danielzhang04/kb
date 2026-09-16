@@ -1,6 +1,6 @@
 # figment — STATE
 
-_Updated: 2026-09-15_
+_Updated: 2026-09-16_
 
 ## Now
 
@@ -52,11 +52,23 @@ _Updated: 2026-09-15_
   deviation from module 11's own recipe), matching `train/TENSOR-TRAINING.md`'s current
   ruling; the checkpoint ladder is 12 (11 intermediates + final), screened by the tester,
   never defaulted to the final step.
-- Qwen3-VL auto-captioning (F4) is implemented as a pinned pod job
-  (`build_training_set.py`'s `qwen3vl_caption_job`) rather than the earlier
-  `NotImplementedError` stub. The skin-texture style LoRA (F3) is wired as a per-plan
+- Qwen3-VL auto-captioning (F4) is now live-proven, not just implemented: 09-16 pod
+  `symlq3jynb83a8` ($0.12) produced `captions.json` (32 captions) in <2 min after three
+  earlier live failures were each found and fixed in order (zero-byte `_images.ready`
+  sentinel rejected by upload preflight; pod had no python deps and no fetchable log;
+  `dtype=float8` passed to `from_pretrained` — module 11's setting is quantize-time only,
+  fixed to load bf16). The skin-texture style LoRA (F3) is wired as a per-plan
   `--style-lora`/`--style-lora-strength` flag on `gen` (M3 — not a persona fork), so an A/B
   is two `gen` plans on the same persona.
+- New driver capabilities (2026-09-16, RUNBOOK): `--retry-failed` (verified-teardown
+  zero-output transport/placement failures; never-created capacity 500s bounded separately
+  at 8 attempts), `--retry-caption-after-fix <reason>` (job-class caption failures after a
+  committed fix, cap 4), a `refused` state for pre-launch budget/arc refusals (never consumes
+  an attempt), and the harness diagnostics dir allow-listed as bookkeeping (`_harness/`,
+  `_training.log`, heartbeat).
+
+- Spend as of 2026-09-16: today's work ≈ $8.1 of the operator's $20 session approval; arc
+  total ≈ $44.2 of the $60 `ARC_CAP_USD`.
 
 ## Next
 
@@ -68,27 +80,36 @@ _Updated: 2026-09-15_
    recorded argv — stays deferred behind the four preconditions
    `2026-09-12-overall-plan-review.md` names (owned host/environment, spend bound,
    sole-launcher operation, real passkey admission).
-2. Run creator-001 through a live `pipeline --creator creator-001` end to end at least once
-   with real operator rulings at each gate, to prove the eight-stage chain (not just its
-   fixture tests) against the current 3000-step/DOP train profile.
-3. Resolve the three placeholder `gate.yaml` thresholds (`identity_gate.age_delta_max_years`
+2. Operator raises `governance/budget.yaml`'s daily limit (≥ 22 today) so the ceiled 3000-step
+   train ($15.73, $6.20 already spent today) can launch against `live-20260916b`'s 32-cell
+   accepted dataset — the preflight refused it (recorded as `refused`, no attempt consumed).
+   Once trained: smoke-train precedent (pod `bwdhqfvt72a0d9`, $0.27, 50-step checkpoint +
+   final) already proves the launch path; then tester → gen → detail → video completes the
+   first live end-to-end chain against the 3000-step/DOP profile.
+3. Rule the `full`-framing face-px floor (`identity.floor.min_face_px.by_framing` has no
+   `full` entry today; 10 `live-20260916` full cells failed only the 600px default floor).
+4. Resolve the three placeholder `gate.yaml` thresholds (`identity_gate.age_delta_max_years`
    / `gloss_max`; `judge.skin_realism_min` / `gloss_max` / `artifacts_max`) — calibration
    already ran and reported honestly that these do not separate any evidence set.
 
 ## Blocked / open gaps
 
-- **No accepted checkpoint yet for creator-001.** Every historical tester candidate (Track-1
-  2000-step run, train-first 1250-step run) was culled or superseded before this arc's
-  3000-step/DOP profile landed; `grade/tester/accepted-checkpoint.json` does not exist for
-  the current profile, so `gen`/`detail`/`video`/the deliverable have never run against it.
-  Live evidence: an imported-ladder tester ran 2026-09-15 (run root
-  `orgs/figment/runs/creator-001/live-20260915`), 5 candidates, gate 0/5 (none passed),
-  $0.3346 (`ledgers/cost/figment-2026-09-15.tsv` on the OPS worktree).
+- **No trained checkpoint yet for creator-001's current dataset.** A 32-cell accepted
+  training set now exists (`live-20260916b`, gate 32/60, captioned via the live qwen3vl pod)
+  and a 50-step smoke train completed clean (pod `bwdhqfvt72a0d9`, $0.27), but the full
+  3000-step train was REFUSED at the plan-time budget preflight (ceiling $15.73 vs $6.20
+  already spent + $10.00 daily limit) — see "Next" item 2. Earlier candidates all superseded:
+  Track-1 2000-step, train-first 1250-step, and two 2026-09-15/16 dataset attempts —
+  `live-20260915` imported-ladder tester (5 candidates, gate 0/5, $0.3346); `live-20260915b`
+  klein-multiref dataset (30 cells, gate 0/30, identity_own median 0.61 vs floor 0.7907 —
+  root cause was the composer's text description overriding the reference latents, fixed but
+  not re-run live); `live-20260916` first qwen-edit dataset pass (60 cells, gate 18/60, all
+  16 close-framing misses and all 10 full-framing misses were face-px floor issues, not
+  identity) — superseded by `live-20260916b` above after tightening the loose face-framing
+  prompt rows.
 - **Studio still cannot launch a run or record a ruling** (`docs/figment/
   AUDIT-2026-09-15.md` §G) — it prepares plans and reads evidence, nothing more. See "Next"
   item 1.
-- **The qwen3vl caption pod job has never run live** — implemented and unit-tested, no pod
-  receipt exists yet.
 - **Video has never run live** — `video_manifest.py`/`frame_assemble.py`/`frame_extract.py`
   are wired into `pipeline` and fixture-tested, but no real Wan 2.2 pod has rendered a
   candidate for creator-001 yet.

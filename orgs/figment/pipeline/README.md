@@ -468,6 +468,12 @@ guarantee, and the `HF_TOKEN` secret-reference mechanism are documented once, in
 | **09-04 day total** | — | — | $6.32 (STATE 23:55); $6.3161 summed live (`ledgers/cost/figment-2026-09-04.tsv`) | consistent |
 | 09-06 | Track-2 anchor stage, 12 passport + 6 edits | — | $0.61 (STATE) | operator: "absolutely not even close" — passport path SHELVED |
 | 09-07 | bake-off m1, 18-cell ablation | jm67txnsqfj662 | $1.99 + $0.23 = $2.22 (STATE 00:40) | arm B (no skin LoRA) best, facenet 0.87-0.93; skin LoRA HURTS identity |
+| 09-15 23:00-00:29 | dataset: klein-multiref, 30 cells, 2048x2560 | 8j29mc7vhpii6v + 3ot6ph140rvp8n | $0.80 + $0.82 = $1.62 | gate 0/30 — identity_own median 0.61 vs floor 0.7907; root cause was the composer's text description overriding the reference latents (fixed, not re-run live). Run root `creator-001/live-20260915b` |
+| 09-16 01:13-04:50 | dataset: qwen-edit, replicates=2, 60 cells | 8 pods | ~$2.9 (1 retry via `--retry-failed`, shard-04, $0.15, never rendered) | gate 18/60 — identity_own median 0.898; all 16 close-framing and all 10 full-framing misses were the face-px floor, not identity. Run root `live-20260916` |
+| 09-16 05:11-07:46 | dataset: qwen-edit (9 face rows tightened), 60 cells | 8 pods | ~$3.1 | gate **32/60** (close 21/30 @ 570-1103px, half 10/20, full 1/10) — THE TRAINING SET. Run root `live-20260916b` |
+| 09-16 | qwen3-VL caption (4th attempt; 1st-3rd each found a distinct live-only defect, see Open defects) | symlq3jynb83a8 | $0.12 | 32 captions in <2 min, `captions.json` 18KB, dataset assembled + approval lineage written — first live success |
+| 09-16 | smoke train, 50-step checkpoint + final | bwdhqfvt72a0d9 | $0.27 | complete |
+| 09-16 | train, 3000 steps (ceiling $15.73) | — | $0 | REFUSED at plan-time budget preflight ($6.20 already spent today + $15.73 > $10.00 daily limit) — recorded as `refused`, no attempt consumed; waiting on operator's `governance/budget.yaml` raise (>= 22) |
 
 Sources: `orgs/figment/STATE.md` 2026-09-03 23:50 through 2026-09-07 00:40, cross-checked
 against `ledgers/cost/figment-2026-09-0{3,4,6,7}.tsv` where a row is identifiable. See Open
@@ -540,29 +546,31 @@ defects below for where these two sources disagree past 09-04.
   (`RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, P4 2026-09-16) — a real transport/placement blip whose
   `run.json["error"]` doesn't happen to contain one of those exact substrings still refuses
   and needs a reviewed widening, not another live retry to discover the gap.
-- **qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
-  sentinel** (`_images.ready`, live run `creator-001/live-20260916b`, 2026-09-16) — fixed
-  (sentinel now carries real JSON content; the caption start-script template is now also
+- ~~**qwen3vl caption pod: first live attempt failed at upload preflight on a zero-byte
+  sentinel**~~ — RESOLVED 2026-09-16 (`_images.ready`, live run `creator-001/live-20260916b`):
+  sentinel now carries real JSON content; the caption start-script template is now also
   staged beside the manifest, a second preflight gap the same fix's regression test
-  surfaced); still not live-proven — no pod has actually run this template yet.
-- **qwen3vl caption pod: second live attempt bootstrapped, uploaded, then failed 14s
-  into its python block with the reason stranded on the pod** (`creator-001/live-20260916b`,
-  2026-09-16, template installed no python deps for its `transformers`/`accelerate`
-  imports and logged only to `_caption.log`, a filename `pod/runpod_run.py`'s diagnostic
-  fetch never looks for) — fixed offline (pinned `transformers==4.57.1`/`accelerate==1.10.1`
-  install before the python block, log renamed to `_training.log` with a `_caption.log`
-  symlink kept, a `_training.heartbeat` toucher, and a traceback-to-log wrapper); the pip
-  pins install cleanly (live-verified by the third attempt below).
-- **qwen3vl caption pod: third live attempt installed the pinned deps fine, then failed
-  loading the model** (`creator-001/live-20260916b`, second caption pod
-  `8bi3qae4icrz3t`, 2026-09-16, $0.15) — module 11's `float8` is ai-toolkit's own
-  quantize-time setting, not a `from_pretrained(dtype=...)` value; passing
-  `torch.float8_e4m3fn` there hits `TypeError: couldn't find storage object
-  Float8_e4m3fnStorage`. Fixed offline (the template's dtype map now loads `bfloat16`
-  for both `"float8"` and `"bfloat16"`, with a log line noting the substitution); the
-  8B model in bf16 is ~16 GB, fits the L40S's 48 GB. Still not fully live-proven end to
-  end (dependency install and this dtype fix are each live-verified separately, but no
-  single pod run has produced `captions.json` yet).
+  surfaced.
+- ~~**qwen3vl caption pod: second live attempt bootstrapped, uploaded, then failed 14s
+  into its python block with the reason stranded on the pod**~~ — RESOLVED 2026-09-16
+  (`creator-001/live-20260916b`, template installed no python deps for its
+  `transformers`/`accelerate` imports and logged only to `_caption.log`, a filename
+  `pod/runpod_run.py`'s diagnostic fetch never looks for): pinned
+  `transformers==4.57.1`/`accelerate==1.10.1` install before the python block, log renamed
+  to `_training.log` with a `_caption.log` symlink kept, a `_training.heartbeat` toucher,
+  and a traceback-to-log wrapper.
+- ~~**qwen3vl caption pod: third live attempt installed the pinned deps fine, then failed
+  loading the model**~~ — RESOLVED 2026-09-16 (`creator-001/live-20260916b`, second caption
+  pod `8bi3qae4icrz3t`, $0.15): module 11's `float8` is ai-toolkit's own quantize-time
+  setting, not a `from_pretrained(dtype=...)` value; passing `torch.float8_e4m3fn` there hit
+  `TypeError: couldn't find storage object Float8_e4m3fnStorage`. The template's dtype map
+  now loads `bfloat16` for both `"float8"` and `"bfloat16"` (8B model in bf16 is ~16 GB, fits
+  the L40S's 48 GB). Fourth attempt (pod `symlq3jynb83a8`, $0.12) proved the full chain live:
+  32 captions in <2 min, `captions.json` 18 KB, dataset assembled, approval lineage written.
+- **`identity.floor.min_face_px.by_framing` has no `full` entry** — `live-20260916`'s 10
+  full-framing dataset cells all failed only the plain 600px default floor (identity itself
+  was fine); operator ruling on a `full` floor value is open, same as the existing `half:
+  300` ruling (2026-09-15).
 
 ## How to iterate
 
