@@ -99,11 +99,24 @@ const PRE = '^(?:' + CD_PRE + '|' + ENV_PRE + ')*';
 const PS = 'powershell(?:\\.exe)?\\s+-noprofile\\s+-executionpolicy\\s+bypass\\s+';
 const PATHARG = '("[^"]*"|\'[^\']*\'|\\S+)';
 
+// Optionally quoted paths under the tooling tree (SAFE_T), under the tooling tree's `rehearsal`
+// subtree (SAFE_T_REHEARSAL), or under either the tooling tree or kb-backups
+// (SAFE_T_OR_BACKUPS) — each with a `..` traversal veto, the same discipline P() uses for fixed
+// filenames.
+const NO_TRAVERSAL = '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+';
+const SAFE_T = '["\']?' + T + B + NO_TRAVERSAL + '["\']?';
+const SAFE_T_REHEARSAL = '["\']?' + T + B + 'rehearsal' + B + NO_TRAVERSAL + '["\']?';
+const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B + NO_TRAVERSAL + '["\']?';
+
 /* --------------------------------------------------------- allowlist shapes */
 
-// C1 — preflight
+// C1 — preflight. `-SignersFile` belongs to the explicit-only `-Step approver-signers` action
+// (install the PUBLIC human-approver allowed-signers file + the unit's Environment= line, which a
+// release deploy does NOT reinstall). It defaults to the prod public file, so prod needs no
+// argument at all; the parameter exists so the rehearsal host can be handed a throwaway public
+// key instead, and is therefore constrained to a non-traversing path under the tooling tree.
 const C1 = new RegExp(PRE + PS + '-file\\s+' + P('vm-preflight-prod.ps1')
-  + '(?:\\s+-step\\s+[a-z0-9_-]+)?$');
+  + '(?:\\s+-step\\s+[a-z0-9_-]+(?:\\s+-signersfile\\s+' + SAFE_T + ')?)?$');
 
 // C2 — the deploy, pinned sha + broker digest, NO other parameters
 const C2 = new RegExp(PRE + PS + '-file\\s+' + P('kb-deploy.ps1')
@@ -164,25 +177,30 @@ const CRON_ARG = '("[0-9*/,\\s-]{9,40}"|\'[0-9*/,\\s-]{9,40}\')';
 const O3_CREATE = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
   + '\\s+-createworkflowschedule\\s+self-lint-report\\s+-cron\\s+' + CRON_ARG + '$');
 
-// A quoted "<METHOD> /api/..." route template, and an optionally quoted path under the tooling
-// tree or kb-backups with a `..` traversal veto. Shared by the two signed-channel helpers below.
+// A quoted "<METHOD> /api/..." route template, shared by the two signed-channel helpers below.
 const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
-const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B
-  + '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+["\']?';
 
 // C13 — prod-sign-approval.ps1, WINDOWED class (it drives the human-approval signing key).
 // The shape is the one the SCRIPT takes: -Key and -Out are [Parameter(Mandatory = $true)] and the
 // TTL parameter is -ExpiresMinutes. The earlier shape here named -TtlMinutes/-SigningKey and made
 // -Key/-Out optional, so the only invocations it allowed were ones PowerShell would refuse before
 // the script ran, and the only invocation that works was refused by this hook.
-const C13 = new RegExp(PRE + PS + '-file\\s+' + P('prod-sign-approval.ps1')
-  + '\\s+-route\\s+' + ROUTE_ARG
-  + '\\s+-entity\\s+([a-z0-9._:-]{1,120})'
-  + '(?:\\s+-actor\\s+daniel)?'
-  + '(?:\\s+-expiresminutes\\s+([0-9]{1,2}))?'
-  + '\\s+-key\\s+' + PATHARG
-  + '\\s+-out\\s+' + SAFE_T_OR_BACKUPS
-  + '(?:\\s+-dryrun)?$');
+function signApprovalShape(keyArg, outArg) {
+  return new RegExp(PRE + PS + '-file\\s+' + P('prod-sign-approval.ps1')
+    + '\\s+-route\\s+' + ROUTE_ARG
+    + '\\s+-entity\\s+([a-z0-9._:-]{1,120})'
+    + '(?:\\s+-actor\\s+daniel)?'
+    + '(?:\\s+-expiresminutes\\s+([0-9]{1,2}))?'
+    + '\\s+-key\\s+' + keyArg
+    + '\\s+-out\\s+' + outArg
+    + '(?:\\s+-dryrun)?$');
+}
+const C13 = signApprovalShape(PATHARG, SAFE_T_OR_BACKUPS);
+
+// The same shape with the key pinned to the tooling tree's `rehearsal` subtree: the rehearsal
+// exemption in isRehearsal() below. It is anchored to the WHOLE command on purpose — a rehearsal
+// key must not be able to carry an unrelated prod command past the classifier on the same line.
+const REHEARSAL_SIGN = signApprovalShape(SAFE_T_REHEARSAL, SAFE_T);
 
 // C15 — prod-signed-call.ps1, WINDOWED class. It is the one script that actually PLACES a signed,
 // consequential call at the prod-defaulted URL, so its shape is anchored like the deploy's:
@@ -262,6 +280,13 @@ function isRehearsal(n) {
   if (n.indexOf(PROD_HOST_IP) !== -1) return false;
   if (n.indexOf(PROD_URL) !== -1) return false;
   if (/-vm\s+["']?root@localhost["']?/.test(n)) return true;
+  // prod-sign-approval.ps1 never touches a network, so it carries neither -VM nor -URL and the two
+  // clauses around this one cannot see its rehearsal form. Its ONLY hazard is the key it drives: a
+  // -Key under the tooling tree's `rehearsal` subtree is a committed throwaway key that prod's
+  // allowed-signers file does not list, so a signature made with it cannot authorise anything on
+  // prod. REHEARSAL_SIGN is anchored to the whole command, so nothing can be chained onto it, and
+  // the two vetoes at the top of this function still apply.
+  if (REHEARSAL_SIGN.test(n)) return true;
   // HTTP-only scripts (prod-run-workflow.ps1, prod-schedules.ps1) carry no -VM; their rehearsal
   // shape is a -URL pointing at the rehearsal daemon (127.0.0.1:4317) or its Windows-side proxy
   // (127.0.0.1:4417), never at prod's.

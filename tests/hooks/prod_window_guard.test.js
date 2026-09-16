@@ -87,6 +87,16 @@ const CASES = [
   ['C1 preflight, forward slashes', 'open', 'Bash', `${PS} -File "C:/Users/danie/kb-rehearsal/tooling/vm-preflight-prod.ps1"`, 0],
   ['C1 preflight, cd prefix', 'open', 'Bash', `cd C:\\Users\\danie\\kb && ${PS} -File "${T}\\vm-preflight-prod.ps1"`, 0],
   ['C1 preflight, KB_PROD_WINDOW prefix', 'open', 'PowerShell', `${ENVPRE}${PS} -File "${T}\\vm-preflight-prod.ps1"`, 0],
+  // T9: the approver-signers step installs the PUBLIC allowed-signers file and the unit's
+  // Environment= line before a release deploy (a release deploy does not reinstall units), and
+  // takes -SignersFile so the rehearsal host can be given a throwaway public key instead.
+  ['C1 preflight, -Step approver-signers', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers`, 0],
+  ['C1 preflight, -Step approver-signers -SignersFile under T', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile ${T}\\rehearsal\\p2\\approver\\allowed_signers`, 0],
+  ['C1 preflight, -SignersFile quoted', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile "${T}\\rehearsal\\p2\\approver\\allowed_signers"`, 0],
+  ['C1 -SignersFile traversal blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile ${T}\\..\\..\\.ssh\\kb-ops-approver`, 2],
+  ['C1 -SignersFile outside T blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile C:\\Users\\danie\\.ssh\\kb-ops-approver`, 2],
+  ['C1 -SignersFile without -Step blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -SignersFile ${T}\\rehearsal\\p2\\approver\\allowed_signers`, 2],
+  ['C1 -Step approver-signers still blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Step approver-signers -SignersFile ${T}\\rehearsal\\p2\\approver\\allowed_signers`, 2],
   ['C1 preflight + stray -Force blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -Force`, 2],
   ['C1 preflight + stray -VM blocked', 'open', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1" -VM root@100.89.73.118`, 2],
 
@@ -228,6 +238,15 @@ const CASES = [
   ['C13 old -TtlMinutes/-SigningKey spelling refused (the script has no such params)', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/control/budget/override" -Entity 2026-09-16 -TtlMinutes 10 -SigningKey C:\\keys\\kb-ops-approver`, 2],
   ['C13 without the mandatory -Key/-Out refused', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7`, 2],
   ['C13 -Out outside T/kb-backups refused', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out C:\\tmp\\approval.json`, 2],
+
+  // T9: prod-sign-approval.ps1 carries no -VM/-URL (it never touches a network), so isRehearsal()'s
+  // two existing clauses cannot see its rehearsal form. A -Key under the rehearsal tooling subtree
+  // is a throwaway key that prod's allowed-signers file does not list, so it is rehearsal, not prod.
+  ['rehearsal signing key, window closed, allowed', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key ${T}\\rehearsal\\p2\\approver\\kb-ops-approver -Out ${T}\\rehearsal\\p11\\approval.json`, 0],
+  ['rehearsal signing key traversal is not rehearsal', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key ${T}\\rehearsal\\..\\..\\.ssh\\kb-ops-approver -Out ${T}\\rehearsal\\p11\\approval.json`, 2],
+  ['rehearsal signing key cannot carry a second prod command', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key ${T}\\rehearsal\\p2\\approver\\kb-ops-approver -Out ${T}\\rehearsal\\p11\\approval.json; ${PS} -File "${T}\\prod-stop-run.ps1"`, 2],
+  ['real signing key, window closed, still blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out ${T}\\approval.json`, 2],
+  ['rehearsal signing key naming the prod host is still prod', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key ${T}\\rehearsal\\p2\\approver\\kb-ops-approver -Out ${T}\\approval.json # https://kb.tail82dd4f.ts.net`, 2],
   ['C14 human-approval signature blocked when window closed', 'closed', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 2],
   ['C14 human-approval signature allowed when window open', 'open', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 0],
 
