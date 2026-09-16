@@ -658,6 +658,58 @@ describe('parseIterationOutcome', () => {
       }), reworkIteration)).toMatchObject({ ok: true, value: { verdict: 'rework' } });
     });
 
+    /**
+     * THE EXACT REHEARSAL PAYLOAD, byte for byte, from the real Claude CLI on the kb-rehearsal host
+     * 2026-09-16: run-13f347bc-7fbd-4a29-91fd-4176797f5a7a, attempt-903f356c-413a-4220-8fe8-85ee244be264,
+     * the producer's rework turn of v1-acceptance-demo. The JSON is bare, well-formed, and correct in
+     * substance - it really had written the sourced successor - but it ALSO graded the criterion it was
+     * repairing and listed the judge's finding as resolved.
+     *
+     * Both refusals are RIGHT and this test pins them: a producer does not grade itself, and recording a
+     * finding as resolved is the judge's decision, not the party that repaired it. The fix for this
+     * defect is in the CONTRACT the worker is handed (claudeWorkerAdapter.ts verdict-specific rules),
+     * never here. If a future change makes this payload parse, the producer has quietly been given the
+     * judge's authority.
+     */
+    it('refuses the live rework payload that self-graded and self-resolved (rehearsal 2026-09-16)', () => {
+      const iteration = iterationContract('contributor', ['fulfilled'], [], {
+        kind: 'rework', unresolvedFindingRefs: ['missing-sources'],
+      });
+      const request = iteration.request;
+      const payload = JSON.stringify({
+        schema: 'kb.iteration-outcome/v1',
+        requestRef: request.requestRef,
+        iterationLoopRef: request.iterationLoopRef,
+        participantId: request.recipientParticipantId,
+        cycle: request.cycle,
+        verdict: 'fulfilled',
+        inputGenerationRefs: request.inputGenerationRefs,
+        criteria: [{ criterionId: 'safety', verdict: 'pass', findingIds: [] }],
+        findings: [],
+        resolvedFindingRefs: ['missing-sources'],
+        positions: [],
+        recordedDissent: [],
+        summary: 'Reworked brief.json: sourcesListed set to true, revision bumped to 2, sources array added citing both research-a and research-b findings.md by path; topic and summary preserved unchanged.',
+      });
+      // resolvedFindingRefs is checked first, so that is the detail the operator sees.
+      expect(parseIterationOutcome(payload, iteration)).toMatchObject({
+        ok: false,
+        detail: 'invalid iteration outcome: resolvedFindingRefs are allowed only for complete and consensus',
+      });
+      // ...and the self-grading half is refused on its own too, with resolvedFindingRefs dropped.
+      const selfGraded = JSON.parse(payload) as Record<string, unknown>;
+      delete selfGraded.resolvedFindingRefs;
+      expect(parseIterationOutcome(JSON.stringify(selfGraded), iteration)).toMatchObject({
+        ok: false,
+        detail: 'invalid iteration outcome: fulfilled must carry no criteria verdicts',
+      });
+      // The same turn with BOTH corrected - exactly what the hardened contract now asks for - parses.
+      const corrected = { ...selfGraded, criteria: [] };
+      expect(parseIterationOutcome(JSON.stringify(corrected), iteration)).toMatchObject({
+        ok: true, value: { verdict: 'fulfilled' },
+      });
+    });
+
     it('still rejects a non-empty resolvedFindingRefs on fail with the existing message', () => {
       const iteration = iterationContract('judge', ['fail']);
       expect(parseIterationOutcome(iterationOutcome(iteration, 'fail', {
