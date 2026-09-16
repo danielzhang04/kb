@@ -41,6 +41,7 @@ import type {
   SessionHost,
 } from '../pty/contracts.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createCuratedContextResolver, createFileAccountingAdapter } from './adapters.ts';
+import type { BudgetOverrideStore } from './budgetOverride.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { createAttemptToolPolicyIdResolver } from './claudeLaunchPolicy.ts';
@@ -421,6 +422,13 @@ export interface BuildActivatedExecutionOptions {
   coordinationPublication?: CoordinationPublication;
   /** Durable local spool root used only when {@link coordinationPublication} is `outbox`. */
   outboxRoot?: string;
+  /**
+   * The signed budget-override store (T6, `control/budgetOverride.ts`), already constructed by the
+   * surface over the same `stateRoot`. Absent ⇒ no `windowBudgetFor` resolver is bound and the
+   * accounting adapter's window ceiling stays exactly `budget` — production always supplies it; only a
+   * hermetic test omits it.
+   */
+  budgetOverrides?: BudgetOverrideStore;
   deps?: Partial<ActivationDeps>;
 }
 
@@ -566,6 +574,13 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     windowId: (at: Date) => at.toISOString().slice(0, 10),
     maxConcurrency,
     globalBudget: budget,
+    // T6: a signed override (POST /api/control/budget/override) ADDS to the window's cost ceiling
+    // only, resolved fresh on every reserve. Omitted entirely (rather than a resolver that always
+    // returns `budget`) when no store is supplied, so the pre-T6 code path is exercised bit for bit.
+    ...(options.budgetOverrides ? { windowBudgetFor: (windowId: string) => ({
+      ...budget,
+      maxCostUsdMicros: budget.maxCostUsdMicros + options.budgetOverrides!.additionalUsdMicros(windowId),
+    }) } : {}),
   });
   const results = deps.createResults({
     repoRoot,

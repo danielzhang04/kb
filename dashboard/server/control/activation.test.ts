@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   ActivationError,
   isExecutionActivated,
@@ -344,6 +347,93 @@ describe('buildActivatedExecution — gate ON', () => {
     const engineOptions = (deps.createEngine as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(engineOptions.budget).toEqual(DEFAULT_BUDGET);
     expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
+  });
+
+  /**
+   * T6: `options.budgetOverrides` absent (the pre-T6 shape, and every case above) must not add a
+   * `windowBudgetFor` key at all — not even one that happens to resolve back to `globalBudget` — so
+   * `adapters.ts`'s own `options.windowBudgetFor?.(...) ?? options.globalBudget` fallback is reached
+   * bit for bit, exactly as it was before this task.
+   */
+  it('omits windowBudgetFor entirely when no budgetOverrides store is supplied', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const call = (deps.createAccounting as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect('windowBudgetFor' in call).toBe(false);
+  });
+
+  /**
+   * T6: with a store supplied, `windowBudgetFor` widens ONLY `maxCostUsdMicros`, by exactly that
+   * window's granted total — the shape production binds (spec §4.6): `budget.maxCostUsdMicros +
+   * store.additionalUsdMicros(windowId)`, every other field passed through unchanged.
+   */
+  it('binds windowBudgetFor to the supplied budgetOverrides store, widening only maxCostUsdMicros', () => {
+    const deps = spyDeps();
+    const additionalUsdMicros = vi.fn().mockReturnValue(7_500_000);
+    buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      budgetOverrides: { additionalUsdMicros, grant: vi.fn() },
+    });
+    const call = (deps.createAccounting as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(typeof call.windowBudgetFor).toBe('function');
+    const resolved = call.windowBudgetFor('2026-09-16');
+    expect(additionalUsdMicros).toHaveBeenCalledWith('2026-09-16');
+    expect(resolved).toEqual({ ...DEFAULT_BUDGET, maxCostUsdMicros: DEFAULT_BUDGET.maxCostUsdMicros + 7_500_000 });
+  });
+
+  /**
+   * T6 end-to-end, shaped after the same prod fixture as `adapters.test.ts`'s 2026-09-16 canary
+   * regression test: several settled attempts near the window's cost ceiling, then 2 held researchers
+   * at the $1.60 per-attempt ceiling push it over — the live 'global token or cost budget exhausted'
+   * parking defect — until a granted override widens the SAME window's ceiling (through the wiring this
+   * task adds: `activation.ts` -> `windowBudgetFor` -> `adapters.ts`'s reserve path, never a second
+   * resume path) and a retried reservation then fits. Uses the shipped `DEFAULT_BUDGET`/
+   * `DEFAULT_ATTEMPT_BUDGET` pairing (construction-valid at the default concurrency of 2) rather than an
+   * artificially narrowed window, so `assertAttemptBudgetFitsWindow` is never in tension with the
+   * scenario.
+   */
+  it('lifts a parked two-researcher reservation after a budget override widens the window', async () => {
+    const deps = spyDeps();
+    // A real accounting adapter this time (not the mock `spyDeps()` default) — the point of this test is
+    // the wiring reaching the real `reserve` arithmetic.
+    const { createFileAccountingAdapter } = await import('./adapters.ts');
+    deps.createAccounting = vi.fn(createFileAccountingAdapter) as never;
+    const stateRoot = mkdtempSync(join(tmpdir(), 'activation-budget-override-'));
+    let granted = 0;
+    const budgetOverrides = { additionalUsdMicros: () => granted, grant: vi.fn() };
+    buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      stateRoot,
+      budgetOverrides,
+    });
+    const accountingOptions = (deps.createAccounting as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const accounting = createFileAccountingAdapter(accountingOptions);
+    const reserveAttempt = (attempt: number) => accounting.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    // 11 settled attempts at the full per-attempt cost ceiling: 11 x 1,600,000 = 17,600,000.
+    for (let attempt = 1; attempt <= 11; attempt += 1) {
+      const reservation = await reserveAttempt(attempt);
+      if (!reservation.ok) throw new Error(reservation.reason);
+      await accounting.settle({
+        operationKey: `settle:attempt-${attempt}`, reservationRef: reservation.value.reservationRef,
+        usage: { inputTokens: 1_024, outputTokens: 1_024, costUsdMicros: DEFAULT_ATTEMPT_BUDGET.maxCostUsdMicros },
+      });
+    }
+    // Two concurrent researchers, each holding the full $1.60 ceiling: 17,600,000 + 1,600,000 = held.
+    const researcherA = await reserveAttempt(12);
+    expect(researcherA.ok).toBe(true);
+    // The live defect: 17,600,000 settled + 1,600,000 (A, held) + 1,600,000 (B) = 20,800,000 > 20,000,000.
+    expect(await reserveAttempt(13)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+    // A signed override grants — production wires this through the route's `store.grant(...)`; here the
+    // store fake stands in for it, which is exactly the seam `windowBudgetFor` closes over.
+    granted = 2_000_000;
+    // The parked reservation's retry: its own attempt never persisted (a refusal writes nothing), so the
+    // SAME operationKey re-evaluates fresh rather than replaying — exactly what the open respond route's
+    // retry produces against a parked budget intervention.
+    const retried = await reserveAttempt(13);
+    expect(retried.ok).toBe(true);
   });
 
   it.each([

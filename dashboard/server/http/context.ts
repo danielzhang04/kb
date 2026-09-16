@@ -46,6 +46,7 @@ import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
 import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
 import type { SpendGrant } from '../control/spendGrant.ts';
+import type { BudgetOverrideStore } from '../control/budgetOverride.ts';
 import type { SessionHost } from '../pty/contracts.ts';
 import type { AttemptSessionPublicRow } from '../control/p2Contracts.ts';
 import type { DeploymentSessionCloser, SessionRecordRegistry } from '../pty/sessionRecord.ts';
@@ -206,6 +207,11 @@ export interface SurfaceContext {
   /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
    *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
   spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
+  /** T6: the signed budget-override store, built once over this context's `stateRoot` (unlike
+   *  {@link paidActionService}/{@link spendGrantStore} above, present whether or not the execution
+   *  latch is unlocked — a human can raise tomorrow's ceiling before the daemon ever arms). Absent only
+   *  when a test deliberately omits it, in which case the override route fails closed 503. */
+  budgetOverrides?: BudgetOverrideStore;
   /** The one platform PTY host for `/api/pty` (Windows `node-pty`, Linux broker client), already wrapped
    *  in the fleet-preamble gate. Absent when the runtime reports no PTY capability. */
   ptySessionHost?: SessionHost;

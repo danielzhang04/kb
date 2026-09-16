@@ -20,6 +20,21 @@ function record(value: unknown): Record<string, unknown> {
     ? value as Record<string, unknown> : {};
 }
 
+/**
+ * The verified approval's nonce, for the rare signed route (currently only the T6 budget override)
+ * that needs to tie its OWN durable record to the approval that authorized it. Keyed by request
+ * identity in a module-private `WeakMap` rather than a body key — `body.approval` is deleted below
+ * precisely so a signed route's ordinary exact-key body wall never has to carry a T3-only concern, and
+ * adding a second key (e.g. `body.approvedNonce`) would reopen exactly that. A route with no reason to
+ * know the nonce never calls this and the entry is dropped with the request.
+ */
+const verifiedApprovalNonces = new WeakMap<FastifyRequest, string>();
+
+/** `null` for an open/none-class request, or a signed one this preHandler has not (yet) verified. */
+export function approvedNonceFor(req: FastifyRequest): string | null {
+  return verifiedApprovalNonces.get(req) ?? null;
+}
+
 /** Appends the refusal audit row BEFORE the reply (spec §4.2: "every refusal appends one audit row"),
  *  swallowing an audit failure so the refusal itself always lands, and never puts `payload`/`signature`
  *  — or anything else off the request body — into the row. */
@@ -74,6 +89,21 @@ export function requireAuthority(ctx: SurfaceContext): preHandlerHookHandler {
       now: () => (ctx.now?.() ?? new Date()).getTime(),
     });
     if (!result.ok) { await refuse(ctx, req, reply, result.status, result.error, url, entityRef); return; }
+    // T6: stash the verified nonce BEFORE stripping `approval` below — `verifyApproval` already
+    // confirmed `body.approval.payload` parses to a well-shaped nonce (check #4), so this second parse
+    // is not re-validating trust, only recovering a value the ok:true result does not otherwise carry.
+    // Never reachable as `null` in practice; treated as a refusal rather than trusted blindly, matching
+    // "fail closed everywhere" for a malformed value at any point in this path.
+    const approvalRecord = body.approval as { payload: string };
+    let nonce: string | null = null;
+    try {
+      const parsedPayload = JSON.parse(approvalRecord.payload) as { nonce?: unknown };
+      nonce = typeof parsedPayload.nonce === 'string' ? parsedPayload.nonce : null;
+    } catch {
+      nonce = null;
+    }
+    if (nonce === null) { await refuse(ctx, req, reply, 403, 'approval-invalid', url, entityRef); return; }
+    verifiedApprovalNonces.set(req, nonce);
     // The route's OWN handler still validates its body against its ordinary, pre-T3 shape (most use
     // exact-key walls, e.g. `services/scheduleService.ts#deleteBody`) — `approval` was never one of their
     // keys and must not become a required or even a tolerated one everywhere a signed route exists. Strip

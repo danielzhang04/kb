@@ -44,8 +44,10 @@ import {
   AuthorizedFailedRunPublishedUncommittedError,
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
-import { isOperatorUnlockSource } from './activation.ts';
+import { DEFAULT_BUDGET, isOperatorUnlockSource } from './activation.ts';
 import type { ActivatedExecution, ExecutionUnlockSource } from './activation.ts';
+import { approvedNonceFor } from '../authority/gate.ts';
+import { APPROVAL_PRINCIPAL } from '../authority/approval.ts';
 import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
@@ -2346,6 +2348,52 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const restored = ctx.controlStore.restoreRun(sub, runRef, runScope);
     if (!restored.ok) return sendResult(reply, restored);
     return sendResult(reply, { ...restored, value: runDto(restored.value) });
+  });
+
+  /**
+   * T6 [design:4.6]: signed budget override. `preHandler` (`requireAuthority`, T3) already enforced the
+   * ssh-signed approval for this `signed`-class route and stripped it from `req.body` — this handler
+   * only validates the override body, records the audit row BEFORE the grant, and appends it to the
+   * durable store `windowBudgetFor` (adapters.ts, threaded via activation.ts) reads at RESERVE time.
+   * Raises `maxCostUsdMicros` for exactly one window; never attempts, tokens, or any other window.
+   */
+  scope.post('/api/control/budget/override', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    if (!hasExactKeys(body, ['windowDay', 'additionalUsdMicros', 'idempotencyKey'])) {
+      return reply.code(400).send({ error: 'invalid-budget-override' });
+    }
+    const store = ctx.budgetOverrides;
+    if (!store) return reply.code(503).send({ error: 'budget-override-unavailable' });
+    const windowDay = string(body.windowDay);
+    const additionalUsdMicros = integer(body.additionalUsdMicros);
+    // The gate already verified the approval; this is its payload's nonce, recovered off the request
+    // rather than the (now-stripped) body — see `authority/gate.ts#approvedNonceFor`.
+    const nonce = approvedNonceFor(req);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(windowDay) || additionalUsdMicros <= 0 || nonce === null) {
+      return reply.code(400).send({ error: 'invalid-budget-override' });
+    }
+    const resulting = DEFAULT_BUDGET.maxCostUsdMicros + store.additionalUsdMicros(windowDay) + additionalUsdMicros;
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-budget-override-authorize', owner: sub, target: windowDay, riskTier: 'T3',
+        result: `authorized:${additionalUsdMicros}`,
+        detail: { windowDay, additionalUsdMicros, resultingCeilingUsdMicros: resulting, approvalPrincipal: APPROVAL_PRINCIPAL },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'budget-override-audit-required' });
+    }
+    // `grant` is idempotent on `nonce`: a retried request (the gate's own nonce store already refuses a
+    // genuine replay of the SIGNED request with 409 approval-replayed before this handler ever runs, so
+    // this branch covers only a client retry of an already-succeeded call within the same TTL window)
+    // returns 'replayed' rather than double-granting.
+    const outcome = store.grant({
+      windowDay, additionalUsdMicros, grantedAt: (ctx.now?.() ?? new Date()).toISOString(),
+      actor: 'daniel', nonce,
+    });
+    if (outcome === 'refused') return reply.code(409).send({ error: 'budget-override-ceiling-reached' });
+    return reply.send({ ok: true, windowDay, additionalUsdMicros, resultingCeilingUsdMicros: resulting, replayed: outcome === 'replayed' });
   });
 }
 

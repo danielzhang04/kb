@@ -75,6 +75,7 @@ import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capa
 import { resolveSessionRoot } from '../trace/routes.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
 import { requireAuthority } from '../authority/gate.ts';
+import { createBudgetOverrideStore } from '../control/budgetOverride.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -371,6 +372,9 @@ export function makeSurfaceContext(
         : status);
     }),
     stateRoot,
+    // T6: built once, over the same `stateRoot` every other durable store in this context uses.
+    // Present regardless of the execution latch's state — see the field's doc comment in context.ts.
+    budgetOverrides: overrides.budgetOverrides ?? createBudgetOverrideStore(stateRoot, overrides.now),
     traceRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();
@@ -529,6 +533,10 @@ export function makeSurfaceContext(
         // The attempt port is built from the SAME probed host and v3 document the browser PTY routes
         // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
         sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
+        // T6: the SAME store instance `ctx.budgetOverrides` above, so a grant the override route just
+        // wrote is visible to the very next `reserve` call — `activation.ts` binds it to
+        // `windowBudgetFor` only when this is present.
+        budgetOverrides: ctx.budgetOverrides,
         // The ONE reconciliation publisher composed above, threaded to the canonical result integrator so
         // its coordination phase publishes serial `card-transition` intents (P4 §3.4) rather than running
         // its own cards.py mutation + git commit/push.

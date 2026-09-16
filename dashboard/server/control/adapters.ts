@@ -807,6 +807,15 @@ export interface FileAccountingAdapterOptions {
   windowId: string | ((now: Date) => string);
   maxConcurrency: number;
   globalBudget: ExecutionBudget;
+  /**
+   * Resolved at RESERVE time, per window — a signed budget-override grant (T6,
+   * `control/budgetOverride.ts`) reaches a running daemon without a restart. Absent ⇒ today's
+   * behaviour, bit for bit: every check below falls back to `globalBudget`. A FUNCTION is never
+   * serializable, so it is deliberately excluded from the policy digest below (`policyHash`,
+   * `currentPolicy`, `LEGACY_POLICIES`, `requirePolicy`) — an override must never invalidate a day's
+   * already-open accounting document.
+   */
+  windowBudgetFor?: (windowId: string) => ExecutionBudget;
   now?: () => Date;
   newId?: () => string;
   lockTimeoutMs?: number;
@@ -976,11 +985,15 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
           if (prior.fingerprint !== fingerprint) throw new ExecutionAdapterError('reservation operationKey was reused with different content');
           return { ok: true as const, value: { reservationRef: prior.reservationRef, replayed: true } };
         }
-        if (state.reservations.length >= options.globalBudget.maxAttempts) return { ok: false as const, reason: 'global attempt budget exhausted' };
+        // Resolved once per reservation, INSIDE the mutate callback so a concurrent override grant is
+        // always read fresh. `options.globalBudget` is the fallback — never touched when a resolver is
+        // supplied, so the pre-T6 behaviour is bit-for-bit unchanged when it is absent.
+        const windowBudget = options.windowBudgetFor?.(windowId) ?? options.globalBudget;
+        if (state.reservations.length >= windowBudget.maxAttempts) return { ok: false as const, reason: 'global attempt budget exhausted' };
         if (state.reservations.filter((item) => item.state === 'active').length + carried.activeCount >= options.maxConcurrency) {
           return { ok: false as const, reason: 'global concurrency limit reached' };
         }
-        if (input.limits.maxAttempts > options.globalBudget.maxAttempts) {
+        if (input.limits.maxAttempts > windowBudget.maxAttempts) {
           return { ok: false as const, reason: 'reservation exceeds the global attempt budget' };
         }
         // Seeded with the prior window's live holds. Its SETTLED usage is deliberately NOT carried:
@@ -989,7 +1002,7 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
           plusUsage(sum, item.state === 'settled' ? item.usage as ExecutionUsage : budgetAsUsage(item.limits)),
         carried.held);
         const projected = plusUsage(committedOrHeld, budgetAsUsage(input.limits));
-        if (!withinBudget(projected, options.globalBudget)) return { ok: false as const, reason: 'global token or cost budget exhausted' };
+        if (!withinBudget(projected, windowBudget)) return { ok: false as const, reason: 'global token or cost budget exhausted' };
         const reservationRef = `reservation-${windowId}${RESERVATION_WINDOW_SEPARATOR}${newId()}`;
         if (!SAFE_REF.test(reservationRef)) throw new ExecutionAdapterError('generated reservation reference is invalid');
         state.reservations.push({

@@ -5659,6 +5659,116 @@ function runSessionApp(
   return { ...built, registry, runRef };
 }
 
+describe('control budget override route (T6)', () => {
+  const WINDOW_DAY = '2026-09-16';
+  const ROUTE = '/api/control/budget/override';
+
+  /** Isolated `stateRoot` per app — this route durably writes `authority/budget-overrides.json`, and
+   *  `buildApp`'s own default (unset `stateRoot`) resolves to the REAL local dashboard state root (see
+   *  the identical note on `buildApp`/`surface()` above); a signed grant here must never land there. */
+  function budgetApp(overrides: Record<string, unknown> = {}) {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'control-routes-budget-override-'));
+    const built = buildApp({ stateRoot, ...overrides });
+    return { ...built, stateRoot };
+  }
+
+  it('refuses without an approval: 403 approval-required, and grants nothing', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: { windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'approval-required' });
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(0);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('accepts with a valid signed approval: 200, and the grant durably persists', async () => {
+    const { app, stateRoot, token, audit } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; windowDay: string; additionalUsdMicros: number; resultingCeilingUsdMicros: number; replayed: boolean };
+    expect(body).toEqual({
+      ok: true, windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000,
+      resultingCeilingUsdMicros: 25_000_000, replayed: false,
+    });
+    // Audit row lands, carries the actor + the fixed approval principal, and precedes the grant.
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      action: 'control-budget-override-authorize', riskTier: 'T3', result: 'authorized:5000000',
+      detail: { windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, resultingCeilingUsdMicros: 25_000_000, approvalPrincipal: 'kb-ops-approver' },
+    });
+    // Durable: a FRESH store instance over the same stateRoot reads the grant back — proves it survives
+    // the request rather than living only in this process's memory.
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(5_000_000);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('refuses an unknown body key: 400 invalid-budget-override', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1', extra: 'nope',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid-budget-override' });
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('refuses when the audit append fails: 500 budget-override-audit-required, and grants nothing', async () => {
+    const { app, stateRoot, token } = budgetApp({
+      appendAudit: () => { throw new Error('audit sink unavailable'); },
+    });
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: 'budget-override-audit-required' });
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(0);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('refuses once the per-day ceiling is reached: 409 budget-override-ceiling-reached', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const grantOnce = (additionalUsdMicros: number) => app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros, idempotencyKey: `k-${additionalUsdMicros}`,
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    const fourth = await grantOnce(1);
+    expect(fourth.statusCode).toBe(409);
+    expect(fourth.json()).toEqual({ error: 'budget-override-ceiling-reached' });
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+});
+
 describe('run attempt controller claim route', () => {
   it('refuses an unauthenticated claim with 401 before it touches the registry', async () => {
     const { app, registry, runRef } = runSessionApp('claim-unauth');

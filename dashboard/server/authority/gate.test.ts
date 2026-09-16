@@ -25,7 +25,7 @@ vi.mock('./policy.ts', () => ({
 // vitest hoists `vi.mock` calls above every import in this file, so `gate.ts`'s own
 // `import { classifyRoute, routeKey } from './policy.ts'` resolves to the stub table above, not the
 // real ~60-row production table.
-import { requireAuthority } from './gate.ts';
+import { approvedNonceFor, requireAuthority } from './gate.ts';
 
 function goodApproval(route: string, entityRef: string, over: Record<string, unknown> = {}) {
   return {
@@ -75,7 +75,7 @@ describe('requireAuthority', () => {
     app.addHook('preHandler', requireAuthority(ctx));
     app.get('/t/open', async () => ({ ok: true }));
     app.post('/t/open', async () => ({ ok: true }));
-    app.post('/t/signed/:id', async () => ({ ok: true }));
+    app.post('/t/signed/:id', async (req) => ({ ok: true, nonce: approvedNonceFor(req) }));
     app.post('/t/none', async () => ({ ok: true }));
     app.post('/t/mystery', async () => ({ ok: true })); // not in TABLE at all
   }
@@ -139,6 +139,18 @@ describe('requireAuthority', () => {
     });
     expect(res.statusCode).toBe(200);
     expect(auditRows).toEqual([]);
+  });
+
+  it('exposes the verified approval nonce to the route handler via approvedNonceFor, keyed off the request', async () => {
+    const { ctx } = makeHarness();
+    mount(ctx);
+    const res = await app.inject({
+      method: 'POST',
+      url: '/t/signed/entity-1',
+      payload: { approval: goodApproval('POST /t/signed/:id', 'entity-1') },
+    });
+    expect(res.statusCode).toBe(200);
+    expect(res.json()).toEqual({ ok: true, nonce: 'a'.repeat(32) });
   });
 
   it('refuses a signed route whose approval names a different route, and never logs payload/signature', async () => {
