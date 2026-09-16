@@ -58,8 +58,35 @@ export const WORKFLOW_EXECUTION_PROFILES: readonly WorkflowExecutionProfile[] = 
     allowedTools: ['Read', 'Glob', 'Grep'],
   },
   {
+    // 2026-09-16 post-launch fix #2 — `Write` was missing and the profile was unusable for the job it
+    // names. Every shipped definition that declares `research` tells its worker to WRITE one file:
+    // `orgs/kb-ops/workflows/research-brief.md` says "You write exactly one output file", and the
+    // v1-acceptance-demo researcher stages say "Write your findings to .../research-a/findings.md".
+    // The prod canary (run-1328b419, 2026-09-16 08:57Z) is what proved the gap: both researchers died
+    // on `Error: No such tool available: Write. Write is disabled for this session`, the downstream
+    // writer found no findings, correctly refused to fabricate, and the run stalled on
+    // `intervention: seed canonical result does not contain the exact activation artifact set`. Every
+    // rehearsal missed it because the stub `claude` wrote its files directly and never went through
+    // the `--tools` cap.
+    //
+    // The write is bounded by the engine, not by this list, which is why granting it is safe. The
+    // worker runs in a throwaway per-attempt worktree (`planAttemptWorktreePath`, control/execution.ts),
+    // and `resultIsSafe` (control/execution.ts:556-580) re-derives what changed from `git status` over
+    // the WHOLE worktree and requires every changed path to sit under `stage.scope.write`, which
+    // compile.ts:473 sets to exactly `[stage.target]`. A research worker that writes one byte outside
+    // its own target fails the attempt outright and integrates nothing. So `Write` here buys the
+    // worker its declared output file and no reach whatsoever beyond it, and it does not widen the
+    // profile's EXTERNAL reach at all — WebSearch/WebFetch were already the network half.
+    //
+    // CONSEQUENCE, stated because it is not obvious: `codexSandboxMode` derives from
+    // WRITE_CAPABLE_TOOLS, so a CODEX worker on `research` now launches `workspace-write` instead of
+    // `read-only`. That is the intended meaning of the change (a codex research worker could not write
+    // its brief either), and it is not a network+write grant: every codex launch is pinned with
+    // `sandbox_workspace_write.network_access=false` and `web_search="disabled"`
+    // (CODEX_CONFIGURATION_PINS, pty/launcherProfiles.ts), so codex on this profile gains a
+    // worktree-scoped write and no network at all.
     id: 'research',
-    allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep'],
+    allowedTools: ['WebSearch', 'WebFetch', 'Read', 'Glob', 'Grep', 'Write'],
   },
   {
     id: 'gmail-triage',
