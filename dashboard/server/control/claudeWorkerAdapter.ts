@@ -351,16 +351,52 @@ export function buildAgentBindingPrompt(declaration: string): string {
 }
 
 
-function extractUsage(resultEvent: Record<string, unknown>): ExecutionUsage {
+/**
+ * Scan a full stream-json transcript for the CLI's own `type:"system", subtype:"init"` event and
+ * return its `apiKeySource` verbatim (`"none"` | `"user"` | `"project"` | `"org"`), or `null` when no
+ * such event parses. This is the CLI's own live signal for how THIS attempt is authenticated — `"none"`
+ * means no `ANTHROPIC_API_KEY`/OAuth API credential was resolved, so the turn ran under subscription
+ * auth (matching childEnv.ts's unconditional `ANTHROPIC_API_KEY` denylist for every fleet-launched
+ * worker) and cannot have spent metered API dollars, whatever the CLI's own `total_cost_usd` estimate
+ * says. Scanning independently of the result-event loop below keeps this function testable in
+ * isolation and correct even if the init event and the result event are not adjacent lines.
+ */
+function extractApiKeySource(stdout: string): string | null {
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(trimmed);
+    } catch {
+      continue;
+    }
+    if (parsed && typeof parsed === 'object') {
+      const event = parsed as Record<string, unknown>;
+      if (event.type === 'system' && event.subtype === 'init' && typeof event.apiKeySource === 'string') {
+        return event.apiKeySource;
+      }
+    }
+  }
+  return null;
+}
+
+function extractUsage(resultEvent: Record<string, unknown>, subscriptionBilled: boolean): ExecutionUsage {
   const usage = (resultEvent.usage ?? {}) as Record<string, unknown>;
   const inputTokens = safeCount(usage.input_tokens)
     + safeCount(usage.cache_creation_input_tokens)
     + safeCount(usage.cache_read_input_tokens);
   const outputTokens = safeCount(usage.output_tokens);
-  // Subscription billing reports $0; still map faithfully as integer micro-dollars, never a float. Convert
-  // dollars→micros BEFORE flooring: `safeCount` would otherwise floor $0.0234 to $0 and lose sub-dollar cost.
+  // Subscription billing reports $0 in governance terms (governance/budget.yaml `daily_usd_limit` is the
+  // "USD ceiling for API-billed steps per day; subscription steps log 0.0"), but the CLI's own
+  // `total_cost_usd` is a notional dollar-equivalent that is NON-ZERO even for a subscription turn. Settle
+  // real spend only: when this attempt's own init event reported `apiKeySource:"none"` (subscription),
+  // costUsdMicros settles as 0 regardless of what the CLI estimated; tokens still settle as measured
+  // either way. Convert dollars→micros BEFORE flooring: `safeCount` would otherwise floor $0.0234 to $0
+  // and lose sub-dollar cost.
   const rawCost = Number(resultEvent.total_cost_usd);
-  const costUsdMicros = Number.isFinite(rawCost) ? safeCount(Math.round(rawCost * 1_000_000)) : 0;
+  const reportedCostUsdMicros = Number.isFinite(rawCost) ? safeCount(Math.round(rawCost * 1_000_000)) : 0;
+  const costUsdMicros = subscriptionBilled ? 0 : reportedCostUsdMicros;
   return {
     inputTokens: Math.min(inputTokens, Number.MAX_SAFE_INTEGER),
     outputTokens,
@@ -434,18 +470,22 @@ export function parseWorkerStream(
       resultEvent = parsed as Record<string, unknown>;
     }
   }
+  // "none" is the CLI's own confirmation that no API credential resolved for THIS attempt (subscription
+  // auth). Anything else reported (`user`/`project`/`org`) or no init event at all leaves cost settlement
+  // unchanged — only a positive subscription signal ever zeroes reported cost.
+  const subscriptionBilled = extractApiKeySource(stdout) === 'none';
 
   // Fail-closed for an UNOBSERVED nonzero/null exit only. Once a result event was already observed live
   // (Bug A), a backstop kill's exit code is an artifact of forcing a wedged CLI closed, not a signal about
   // the turn's outcome — the result event parsed below (independently re-derived from `stdout`) is
   // authoritative instead.
   if (code !== 0 && !options.resultObserved) {
-    return failedResult(`claude worker exited with code ${code ?? 'null'}. ${tail}`, resultEvent ? extractUsage(resultEvent) : ZERO_USAGE, maxChars);
+    return failedResult(`claude worker exited with code ${code ?? 'null'}. ${tail}`, resultEvent ? extractUsage(resultEvent, subscriptionBilled) : ZERO_USAGE, maxChars);
   }
   if (!resultEvent) {
     return failedResult(`claude worker produced no stream-json result event. ${tail}`, ZERO_USAGE, maxChars);
   }
-  const usage = extractUsage(resultEvent);
+  const usage = extractUsage(resultEvent, subscriptionBilled);
   // Fail-closed: success requires BOTH the explicit success subtype and a non-error flag. A clean-exit
   // result event missing either field is treated as failed, never masqueraded into a success.
   const isSuccess = resultEvent.subtype === 'success' && resultEvent.is_error !== true;
