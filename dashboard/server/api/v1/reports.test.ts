@@ -31,7 +31,7 @@ describe('POST /api/v1/runs/:runRef/reports', () => {
   });
 
   it('gate-opened returns the opened requestRef', async () => {
-    const res = await nodeApp(nodeCtx({ v1: { reportStore: store() } })).inject({ method: 'POST', url: '/api/v1/runs/run-1/reports', headers: nodeHeaders(), payload: body({ kind: 'gate-opened' }) });
+    const res = await nodeApp(nodeCtx({ v1: { reportStore: store() } })).inject({ method: 'POST', url: '/api/v1/runs/run-1/reports', headers: nodeHeaders(), payload: body({ kind: 'gate-opened', payload: { prompt: 'may I write?' } }) });
     expect(res.statusCode).toBe(200);
     expect(JSON.parse(res.body).data.requestRef).toBe('hr-1');
   });

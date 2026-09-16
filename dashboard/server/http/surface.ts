@@ -74,6 +74,11 @@ import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
 import { resolveSessionRoot } from '../trace/routes.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
+import {
+  NODE_PROXY_UID_ENV,
+  resolveNodeExecutionWiring,
+  type NodeExecutionWiring,
+} from '../api/v1/nodeWiring.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -188,6 +193,24 @@ export function makeSurfaceContext(
         renderScheduleClaim: createPythonScheduleClaimRenderer(repoRoot),
       })
     : (() => { throw new Error('makeSurfaceContext requires controlStore or fileControlAccess'); })());
+  // v1 desktop-execution seam, unit 2: node identity + the v1 store ports, resolved from the unit env
+  // and the root-owned host-node map. THREE outcomes, all in `api/v1/nodeWiring.ts`: unconfigured leaves
+  // every field `undefined` so `registerV1NodeRoutes` registers nothing (today's production VM, which
+  // must keep booting); a map that is present but untrustworthy THROWS here, before any route exists; a
+  // valid configuration returns the attested uid, a live map loader, and the placement store adapters
+  // bound to THIS `controlStore` instance. Skipped entirely when a caller injects its own node identity
+  // — a test's explicit wiring is never second-guessed by ambient env.
+  const nodeExecution: NodeExecutionWiring = (overrides.nodeProxyUid === undefined
+    && overrides.loadHostNodeMap === undefined
+    && overrides.v1 === undefined)
+    ? resolveNodeExecutionWiring({ store: controlStore })
+    : { nodeProxyUid: undefined, loadHostNodeMap: undefined, v1: undefined, armed: false, bootLine: '' };
+  // One line, only when somebody actually configured node execution: an unconfigured daemon (every test,
+  // and production today) stays silent rather than printing a decision nobody asked for.
+  if (nodeExecution.bootLine !== '' && (nodeExecution.armed || process.env[NODE_PROXY_UID_ENV] !== undefined)) {
+    console.info(nodeExecution.bootLine);
+  }
+
   // Wave-A executor activation (env-gated, default OFF). When any of the three executor fields is already
   // supplied as an override (tests, or a future explicit injection), activation is skipped entirely so no
   // construction is attempted. Otherwise `buildActivatedExecution` returns `null` unless the gate is on —
@@ -439,9 +462,9 @@ export function makeSurfaceContext(
     // Node identity + the injectable v1 ports. Absent leaves the whole v1 surface unregistered
     // (fail-closed); production binds these to the attested node uid, the root-owned map, and the
     // extracted W2 services + placement store adapters.
-    nodeProxyUid: overrides.nodeProxyUid,
-    loadHostNodeMap: overrides.loadHostNodeMap,
-    v1: overrides.v1,
+    nodeProxyUid: overrides.nodeProxyUid ?? nodeExecution.nodeProxyUid,
+    loadHostNodeMap: overrides.loadHostNodeMap ?? nodeExecution.loadHostNodeMap,
+    v1: overrides.v1 ?? nodeExecution.v1,
     // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
     // (which the origin guard has already blocked when the allowlist is empty), never at registration.
     webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),

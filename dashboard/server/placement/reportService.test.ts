@@ -156,7 +156,7 @@ describe('submitReport gate-opened (§3.5, §3.6 T3 host ban)', () => {
     const port = fakePort();
     const result = await submitReport(port, {
       runRef: 'run-1', hostId: 'desktop', nowIso: NOW,
-      body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload: { title: 'Review this' } },
+      body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload: { title: 'Review this', prompt: 'may I write?' } },
     });
     expect(result).toEqual({ ok: true, requestRef: 'req-1' });
     expect(port.humanRequestsOpened).toBe(1);
@@ -172,6 +172,24 @@ describe('submitReport gate-opened (§3.5, §3.6 T3 host ban)', () => {
       body: { expectedLeaseRevision: 1, sequence: 1, kind: 'event', payload: {} },
     });
     expect(port.humanRequestsOpened).toBe(0);
+  });
+
+  it.each([
+    ['absent', {}],
+    ['empty', { prompt: '' }],
+    ['whitespace-only', { prompt: '   ' }],
+  ])('rejects a gate-opened whose prompt is %s as a clean 400 with NO port write', async (_label, payload) => {
+    const port = fakePort();
+    const result = await submitReport(port, {
+      runRef: 'run-1', hostId: 'desktop', nowIso: NOW,
+      body: { expectedLeaseRevision: 1, sequence: 1, kind: 'gate-opened', payload },
+    });
+    // The store refuses an empty prompt and `openHumanRequest` is the LAST write this branch makes, so
+    // an unrefused report would leave the event appended and the sequence consumed against no gate.
+    expect(result).toEqual({ ok: false, status: 400, code: 'unknown-key', field: 'payload.prompt' });
+    expect(port.events).toEqual([]);
+    expect(port.humanRequestsOpened).toBe(0);
+    expect(port.terminalCalls).toBe(0);
   });
 
   it('rejects a defined-but-invalid gateRequestKind as a clean 400 with NO port write (W5b fix #2)', async () => {
