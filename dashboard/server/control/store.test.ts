@@ -4017,6 +4017,30 @@ describe('Human Requests and operational events', () => {
     expect(store.reviseHumanRequest('alice', request.value.requestRef, 2, 'Again', 'No')).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
+  it('T4 [design:4.3]: persists resolvedBy when supplied, and defaults it to null when omitted', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const run = createRun(store);
+    const withResolvedBy = store.createHumanRequest('alice', run.run.runRef, {
+      stageRef: run.stages[0].stageRef, kind: 'input', title: 'Pick one', prompt: 'A or B',
+    });
+    if (!withResolvedBy.ok) throw new Error(withResolvedBy.detail);
+    const resolvedBy = { actor: 'boss', tailnetIdentity: null, at: '2026-09-16T00:00:00.000Z', reason: 'chose A' };
+    const responded = store.respondHumanRequest('alice', withResolvedBy.value.requestRef, {
+      expectedRevision: 1, decision: 'responded', idempotencyKey: 'resp-with-resolvedby', response: 'A',
+      resolvedBy,
+    });
+    expect(responded).toMatchObject({ ok: true, value: { response: { resolvedBy } } });
+
+    const withoutResolvedBy = store.createHumanRequest('alice', run.run.runRef, {
+      stageRef: run.stages[0].stageRef, kind: 'input', title: 'Pick another', prompt: 'C or D',
+    });
+    if (!withoutResolvedBy.ok) throw new Error(withoutResolvedBy.detail);
+    const legacyShaped = store.respondHumanRequest('alice', withoutResolvedBy.value.requestRef, {
+      expectedRevision: 1, decision: 'responded', idempotencyKey: 'resp-no-resolvedby', response: 'C',
+    });
+    expect(legacyShaped).toMatchObject({ ok: true, value: { response: { resolvedBy: null } } });
+  });
+
   it('appends sanitized allowlisted events under globally monotonic cursors and replays by cursor', () => {
     const store = createInMemoryControlPlaneStore({ ...deterministicOptions(), maxEventsPerRun: 2 });
     const alice = createRun(store, 'alice');

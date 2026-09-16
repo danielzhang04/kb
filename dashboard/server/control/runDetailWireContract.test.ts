@@ -42,9 +42,11 @@ const STAGE_CHECKER_KEYS = [
 ] as const;
 /** The generation-lineage fields the live VM emits on every attempt row. */
 const ATTEMPT_LINEAGE_KEYS = ['logicalGeneration', 'baseGenerationRef', 'baseCommit'] as const;
-/** Every field of the server's `HumanResponse`, as it reaches the browser on a RESOLVED request. */
+/** Every field of the server's `HumanResponse`, as it reaches the browser on a RESOLVED request. T4
+ *  [design:4.3] adds `resolvedBy`; `store.ts#recordHumanResponse` stamps it (to `null` when the caller
+ *  supplies none) on every write, so it is always present on the wire from here on. */
 const HUMAN_RESPONSE_KEYS = [
-  'requestRevision', 'decision', 'respondedBy', 'idempotencyKey', 'response', 'respondedAt',
+  'requestRevision', 'decision', 'respondedBy', 'idempotencyKey', 'response', 'respondedAt', 'resolvedBy',
 ] as const;
 /**
  * Required keys on the iteration rows the older guard never produced. `participantAttemptRef` is the
@@ -424,7 +426,9 @@ describe('[W51/W53] the run-detail wire contract holds across both tiers', () =>
       const { [key]: _dropped, ...withoutKey } = attempts[0] as Record<string, unknown>;
       expect(decodeRunDetail({ ...value, attempts: [withoutKey, ...attempts.slice(1)] }), key).toBeNull();
     }
-    for (const key of HUMAN_RESPONSE_KEYS) {
+    // `resolvedBy` [design:4.3] is deliberately OPTIONAL on the decoder — a row written before it existed
+    // omits the key entirely and must still decode — so it is excluded from this "every key required" loop.
+    for (const key of HUMAN_RESPONSE_KEYS.filter((k) => k !== 'resolvedBy')) {
       const dropped = withResolvedResponse(value, (response) => {
         const { [key]: _gone, ...rest } = response;
         return rest;

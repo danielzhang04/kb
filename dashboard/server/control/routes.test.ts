@@ -927,6 +927,7 @@ describe('control proposal routes', () => {
     expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, {
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
       decision: 'approved', operationKey: exact.idempotencyKey, response: exact.response,
+      resolvedBy: { actor: 'unknown', tailnetIdentity: null, at: expect.any(String), reason: '' },
     }, 'all-subjects');
   });
 
@@ -4033,6 +4034,43 @@ describe('operator cross-subject authority', () => {
       expect(owned.value.run.version).toBe(version);
       expect(store.transitionRun('dashboard-engine', engineRun, owned.value.run.version, 'running'))
         .toMatchObject({ ok: true });
+    } finally { await app.close(); }
+  });
+
+  it('T4 [design:4.3/4.5]: a boss/worker respond requires a reason and records resolvedBy in the run DTO', async () => {
+    const { app, store, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'resolved-by', 'daily-news');
+      const { requestRef } = parkEngineRunWithGate(store, engineRun);
+
+      // No reason from a CLI actor ⇒ refused, before any mutation.
+      const refused = await app.inject({
+        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
+        headers: { ...headers(token), 'x-kb-actor': 'boss' },
+        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`, response: 'ship it' },
+      });
+      expect(refused.statusCode, refused.body).toBe(400);
+      expect(refused.json()).toEqual({ error: 'reason-required' });
+      expect(store.getHumanRequest('dashboard-engine', requestRef)).toMatchObject({ ok: true, value: { state: 'open' } });
+
+      const answered = await app.inject({
+        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
+        headers: { ...headers(token), 'x-kb-actor': 'boss' },
+        payload: {
+          expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`,
+          response: 'ship it', reason: 'matches the plan',
+        },
+      });
+      expect(answered.statusCode, answered.body).toBe(200);
+
+      const owned = store.getRun('dashboard-engine', engineRun);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.humanRequests).toEqual([expect.objectContaining({
+        requestRef,
+        response: expect.objectContaining({
+          resolvedBy: { actor: 'boss', tailnetIdentity: null, at: expect.any(String), reason: 'matches the plan' },
+        }),
+      })]);
     } finally { await app.close(); }
   });
 

@@ -8,6 +8,8 @@ import {
   type RespondPort, type RunReadPort,
 } from './runReadService.ts';
 
+const UNKNOWN_ACTOR = 'unknown' as const;
+
 function readPort(over: Partial<RunReadPort> = {}): RunReadPort {
   return {
     listRuns: () => [{ runRef: 'r1', lifecycle: 'running' }, { runRef: 'r2', lifecycle: 'archived' }],
@@ -29,7 +31,7 @@ describe('runReadService reads', () => {
     expect(listRuns(readPort(), null, {})).toEqual({ status: 401, body: { error: 'unauthenticated' } });
     expect(getRunDetail(readPort(), null, 'r1')).toEqual({ status: 401, body: { error: 'unauthenticated' } });
     expect(await replayRunEvents(readPort(), null, 'r1', {}, undefined)).toEqual({ status: 401, body: { error: 'unauthenticated' } });
-    expect(await respondHumanRequestRoute({ respond: vi.fn() } as unknown as RespondPort, null, 'q1', {}, 'o')).toEqual({ status: 401, body: { error: 'unauthenticated' } });
+    expect(await respondHumanRequestRoute({ respond: vi.fn() } as unknown as RespondPort, null, 'q1', {}, 'o', UNKNOWN_ACTOR)).toEqual({ status: 401, body: { error: 'unauthenticated' } });
   });
 
   it('lists runs with archived hidden by default and shown on includeArchived=1', () => {
@@ -79,22 +81,37 @@ describe('runReadService respond gate', () => {
 
   it('refuses 400 invalid-human-response on a bad decision/revision/key', async () => {
     const port = respondPort({ ok: true, status: 200, value: {}, replayed: false });
-    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'nope', expectedRevision: 2, idempotencyKey: 'k' }, 'o')).status).toBe(400);
-    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'approved', expectedRevision: 0, idempotencyKey: 'k' }, 'o')).body).toEqual({ error: 'invalid-human-response' });
-    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'approved', expectedRevision: 2, idempotencyKey: '' }, 'o')).status).toBe(400);
+    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'nope', expectedRevision: 2, idempotencyKey: 'k' }, 'o', UNKNOWN_ACTOR)).status).toBe(400);
+    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'approved', expectedRevision: 0, idempotencyKey: 'k' }, 'o', UNKNOWN_ACTOR)).body).toEqual({ error: 'invalid-human-response' });
+    expect((await respondHumanRequestRoute(port, 'operator', 'q1', { decision: 'approved', expectedRevision: 2, idempotencyKey: '' }, 'o', UNKNOWN_ACTOR)).status).toBe(400);
     expect(port.respond).not.toHaveBeenCalled();
   });
 
   it('passes a valid response to the gate service and returns ok', async () => {
     const port = respondPort({ ok: true, status: 200, value: { resolved: true }, replayed: false });
-    const out = await respondHumanRequestRoute(port, 'operator', 'q1', goodBody, 'https://x');
+    const out = await respondHumanRequestRoute(port, 'operator', 'q1', goodBody, 'https://x', UNKNOWN_ACTOR);
     expect(out).toEqual({ status: 200, body: { ok: true, value: { resolved: true }, replayed: false } });
   });
 
   it('maps a not-ok gate result, using not-found for 404 and passing gateKind/resolveUrl', async () => {
-    const notFound = await respondHumanRequestRoute(respondPort({ ok: false, status: 404, error: 'x' }), 'operator', 'q1', goodBody, 'o');
+    const notFound = await respondHumanRequestRoute(respondPort({ ok: false, status: 404, error: 'x' }), 'operator', 'q1', goodBody, 'o', UNKNOWN_ACTOR);
     expect(notFound).toEqual({ status: 404, body: { error: 'not-found' } });
-    const conflict = await respondHumanRequestRoute(respondPort({ ok: false, status: 409, error: 'expected-revision-mismatch', gateKind: 'approval', resolveUrl: '/x' }), 'operator', 'q1', goodBody, 'o');
+    const conflict = await respondHumanRequestRoute(respondPort({ ok: false, status: 409, error: 'expected-revision-mismatch', gateKind: 'approval', resolveUrl: '/x' }), 'operator', 'q1', goodBody, 'o', UNKNOWN_ACTOR);
     expect(conflict).toEqual({ status: 409, body: { error: 'expected-revision-mismatch', gateKind: 'approval', resolveUrl: '/x' } });
+  });
+
+  it('T4 [design:4.5]: refuses a boss/worker actor with no reason, before calling the port', async () => {
+    const port = respondPort({ ok: true, status: 200, value: {}, replayed: false });
+    for (const actorLabel of ['boss', 'worker:sonnet-01'] as const) {
+      const out = await respondHumanRequestRoute(port, 'operator', 'q1', goodBody, 'o', actorLabel);
+      expect(out).toEqual({ status: 400, body: { error: 'reason-required' } });
+    }
+    expect(port.respond).not.toHaveBeenCalled();
+  });
+
+  it('T4 [design:4.5]: a boss/worker actor with a reason passes it through, trimmed', async () => {
+    const port = respondPort({ ok: true, status: 200, value: {}, replayed: false });
+    await respondHumanRequestRoute(port, 'operator', 'q1', { ...goodBody, reason: '  because  ' }, 'o', 'boss');
+    expect(port.respond).toHaveBeenCalledWith(expect.objectContaining({ reason: 'because', actorLabel: 'boss' }));
   });
 });

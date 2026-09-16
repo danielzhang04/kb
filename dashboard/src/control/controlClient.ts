@@ -279,6 +279,13 @@ export interface HumanRequestDto {
     idempotencyKey: string;
     response: string | null;
     respondedAt: string;
+    /**
+     * T4 [design:4.3] — WHO (self-asserted `X-KB-Actor` claim), over what tailnet identity, and why this
+     * request was resolved. Absent on a row written before this field existed, and `null` on a
+     * system-driven resolution (auto-close, archive sweep) — neither is a human decision behind an actor
+     * claim. See `server/control/types.ts` `HumanResponse.resolvedBy`.
+     */
+    resolvedBy?: { actor: string; tailnetIdentity: string | null; at: string; reason: string } | null;
   } | null;
   createdAt: string;
   updatedAt: string;
@@ -1171,10 +1178,19 @@ const managedSessionDto: WireValidator = (value) => exactDto(value, {
  * on the wire never omits them. Omitting them here is exactly what broke the Run view the moment
  * Daniel approved his first gate.
  */
+/**
+ * T4 [design:4.3] — mirrors `server/control/types.ts` `HumanResponse.resolvedBy` key-for-key. Optional
+ * (not merely nullable) on the wire: a row written before this field existed omits the key entirely,
+ * while every response resolved from here on always carries it, as either the real record or `null`
+ * (a system-driven resolution — auto-close, archive sweep — never a human decision behind an actor claim).
+ */
+const resolvedByDto: WireValidator = (value) => exactDto(value, {
+  actor: wireString, tailnetIdentity: nullable(wireString), at: wireString, reason: wireString,
+});
 const humanResponseDto: WireValidator = (value) => exactDto(value, {
   requestRevision: wireNumber, decision: wireString, respondedBy: wireString, idempotencyKey: wireString,
   response: nullable(wireString), respondedAt: wireString,
-});
+}, { resolvedBy: nullable(resolvedByDto) });
 const humanRequestDto: WireValidator = (value) => exactDto(value, {
   requestRef: wireString, runRef: wireString, displayName: wireString, shortRef: wireNumber,
   stageRef: nullable(wireString), kind: wireString, revision: wireNumber, state: wireString, title: wireString,

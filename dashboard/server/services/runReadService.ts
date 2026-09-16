@@ -8,6 +8,7 @@
 
 import { readScopeForSubject } from '../control/readScope.ts';
 import type { ServiceReply } from './scheduleService.ts';
+import type { Actor } from '../authority/actor.ts';
 
 
 
@@ -116,6 +117,8 @@ export interface RespondPort {
     origin: string;
     ceremonyAssertion: { ceremonyId: string; response: unknown } | undefined;
     challengeExpiresAt: string | undefined;
+    reason: string;
+    actorLabel: Actor;
   }): Promise<RespondResult>;
 }
 
@@ -124,6 +127,16 @@ function intOf(value: unknown): number { return typeof value === 'number' && Num
 
 const RESPOND_DECISIONS = ['responded', 'approved', 'rejected', 'changes-requested'];
 
+/** T4 [design:4.3/global constraints] — the `reason` body-field bound, mirrored in `humanResponse.ts`. */
+const MAX_REASON_LENGTH = 2000;
+
+/** A CLI actor (`boss`, `worker:<id>`) is operating the daemon unattended, so `reason` is required from
+ *  it; `daniel`/`unknown` may omit one. See `humanResponse.ts#reasonRequiredFor` (same rule, kept in sync
+ *  rather than shared, since the two modules must not import from each other's private surface). */
+function reasonRequiredFor(actorLabel: Actor): boolean {
+  return actorLabel === 'boss' || actorLabel.startsWith('worker:');
+}
+
 /** POST /api/control/human-requests/:requestRef/respond — the closed body wall then the gate service. */
 export async function respondHumanRequestRoute(
   port: RespondPort,
@@ -131,6 +144,7 @@ export async function respondHumanRequestRoute(
   requestRef: string,
   body: unknown,
   origin: unknown,
+  actorLabel: Actor,
 ): Promise<ServiceReply> {
   if (!subject) return { status: 401, body: { error: 'unauthenticated' } };
   const input = body !== null && typeof body === 'object' && !Array.isArray(body) ? body as Record<string, unknown> : {};
@@ -138,6 +152,12 @@ export async function respondHumanRequestRoute(
   if (!RESPOND_DECISIONS.includes(decision) || intOf(input.expectedRevision) < 1 || !str(input.idempotencyKey)) {
     return { status: 400, body: { error: 'invalid-human-response' } };
   }
+  const rawReason = input.reason;
+  if (reasonRequiredFor(actorLabel) && (typeof rawReason !== 'string'
+    || rawReason.length > MAX_REASON_LENGTH || rawReason.trim().length === 0)) {
+    return { status: 400, body: { error: 'reason-required' } };
+  }
+  const reason = typeof rawReason === 'string' ? rawReason.trim().slice(0, MAX_REASON_LENGTH) : '';
   const result = await port.respond({
     actor: { kind: 'operator', subject },
     requestRef,
@@ -148,6 +168,8 @@ export async function respondHumanRequestRoute(
     origin: str(origin),
     ceremonyAssertion: input.ceremonyId == null || input.assertion == null ? undefined : { ceremonyId: str(input.ceremonyId), response: input.assertion },
     challengeExpiresAt: input.challengeExpiresAt == null ? undefined : str(input.challengeExpiresAt),
+    reason,
+    actorLabel,
   });
   if (!result.ok) {
     return {

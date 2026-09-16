@@ -13,6 +13,7 @@
  * and it cannot race: each request handler runs in its own async context.
  */
 import { AsyncLocalStorage } from 'node:async_hooks';
+import type { Actor } from '../authority/actor.ts';
 
 /** Who a request is attributable to. NEVER an authentication input — the transport proof is. */
 export interface OperatorAttribution {
@@ -21,6 +22,18 @@ export interface OperatorAttribution {
   /** Display name, when the proxy supplies one. */
   name?: string;
 }
+
+/**
+ * T4 [design:4.3] — what is actually bound into the request-scoped attribution store. Either a real
+ * {@link OperatorAttribution} (tailnet mode) with the request's `X-KB-Actor` claim attached, or the
+ * minimal record `middleware.ts#resolveSession` binds on the `win32-desktop` bearer branch, which has no
+ * tailnet login to attach one to. Both carry `actor` so `audit/log.ts#attributed` can stamp it in either
+ * mode; the `login`-bearing branch is the only one `attributionLabel` accepts, because only it has a label
+ * to render. `actor` is NEVER an authority input — see `authority/actor.ts`'s docstring.
+ */
+export type BoundAttribution =
+  | (OperatorAttribution & { actor: Actor })
+  | { actor: Actor; tailnetIdentity: null };
 
 export type OperatorAuthResult =
   | { ok: true; subject: string; attribution: OperatorAttribution }
@@ -47,7 +60,7 @@ export interface OperatorAuth {
 /** Re-exported so callers need one import for "the operator identity" concept. */
 export { OPERATOR_SUBJECT } from './mode.ts';
 
-const attribution = new AsyncLocalStorage<OperatorAttribution | undefined>();
+const attribution = new AsyncLocalStorage<BoundAttribution | undefined>();
 
 /**
  * Bind `value` as the attribution for the remainder of this request's async context. `enterWith` is used
@@ -61,7 +74,7 @@ const attribution = new AsyncLocalStorage<OperatorAttribution | undefined>();
  * path rebinds. There is therefore no request that both writes an audit row and inherits a prior request's
  * attribution — which is the invariant the audit stamp relies on.
  */
-export function bindAttribution(value: OperatorAttribution): void {
+export function bindAttribution(value: BoundAttribution): void {
   attribution.enterWith(value);
 }
 
@@ -70,8 +83,9 @@ export function resetAttribution(): void {
   attribution.enterWith(undefined);
 }
 
-/** The attribution bound for the current request, or `undefined` (always so in `win32-desktop` mode). */
-export function currentAttribution(): OperatorAttribution | undefined {
+/** The attribution bound for the current request, or `undefined` (only when no request has bound one
+ *  yet — every governed request now binds one in both auth modes; see `middleware.ts#resolveSession`). */
+export function currentAttribution(): BoundAttribution | undefined {
   return attribution.getStore();
 }
 

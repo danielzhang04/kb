@@ -502,6 +502,8 @@ export interface ResolveIterationGateInput {
   decision: 'approved' | 'declined' | 'rejected' | 'changes-requested';
   operationKey: string;
   response?: string | null;
+  /** See `HumanResponse.resolvedBy` [design:4.3]. Absent on a caller that predates T4. */
+  resolvedBy?: NonNullable<HumanResponse['resolvedBy']>;
 }
 
 export interface IterationGateResult extends IterationParkResult {
@@ -562,6 +564,20 @@ export interface HumanResponse {
   idempotencyKey: string;
   response: string | null;
   respondedAt: string;
+  /**
+   * T4 [design:4.3] — WHO, over what channel, and why this request was resolved. `null` on rows written
+   * before this field existed (the only tolerated absence — legacy rows are never backfilled) and on
+   * system-driven resolutions (an engine auto-close, or an `archiveRun`/auto-close sweep, neither of which
+   * is a human decision behind an actor claim). Set on every `respondHumanRequest`/`resolveIterationGate`
+   * call that IS a human decision. `actor` is self-asserted (see `authority/actor.ts`) and therefore a
+   * RECORD, never an authority input.
+   */
+  resolvedBy?: {
+    actor: string;
+    tailnetIdentity: string | null;
+    at: string;
+    reason: string;
+  } | null;
 }
 
 export interface HumanRequest {

@@ -49,6 +49,13 @@ export interface AuditEvent {
   riskTier?: string;
   result?: string;
   detail?: Record<string, unknown>;
+  /**
+   * T4 [design:4.3] — the `X-KB-Actor` claim bound to this request (`daniel` | `boss` | `worker:<id>` |
+   * `unknown`), at the TOP level rather than in `detail` because it is queried. Self-asserted, so it is a
+   * RECORD of who claimed to act, never an authority input. Left unset here, `attributed()` below fills
+   * it from the bound attribution; a caller that sets it explicitly wins.
+   */
+  actor?: string;
 }
 
 /** An {@link AuditEvent} as written to the ledger: always carries a server-assigned timestamp. */
@@ -101,14 +108,23 @@ export function appendAuditRowLocal(
  * own context, and a future writer would be just as easy to miss. Putting it here means no caller has to
  * know a mode exists.
  *
- * In `win32-desktop` mode nothing is ever attributed and the event is returned by IDENTITY, so rows are
- * byte-identical to before this existed. Attribution is recorded ONLY: `owner` (the session subject) still
- * decides authority, and the tailnet identity is never read back as an authentication input.
+ * When nothing is bound (no request has traversed `middleware.ts#resolveSession` yet — the direct
+ * unit-test path this module's own tests exercise) the event is returned by IDENTITY, so rows stay
+ * byte-identical to before attribution existed. Otherwise (T4 [design:4.3]): `actor` is stamped at the top
+ * level from the bound `X-KB-Actor` claim, in BOTH auth modes now — `win32-desktop` binds one too (see
+ * `middleware.ts#resolveSession`'s bearer branch). `detail.tailnetIdentity` is UNCHANGED: it is populated
+ * only for a `login`-bearing (tailnet-mode) attribution, exactly as before. Attribution is recorded ONLY:
+ * `owner` (the session subject) still decides authority, and neither the actor nor the tailnet identity is
+ * ever read back as an authentication input.
  */
 function attributed(event: AuditEvent): AuditEvent {
   const attribution = currentAttribution();
   if (!attribution) return event;
-  return { ...event, detail: { ...event.detail, tailnetIdentity: attributionLabel(attribution) } };
+  const actor = event.actor ?? attribution.actor;
+  if ('login' in attribution) {
+    return { ...event, actor, detail: { ...event.detail, tailnetIdentity: attributionLabel(attribution) } };
+  }
+  return { ...event, actor };
 }
 
 export interface CommitAuditOptions {

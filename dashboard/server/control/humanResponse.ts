@@ -4,6 +4,8 @@ import type { RespondHumanRequestInput } from './store.ts';
 import type { HumanRequest, HumanRequestDecision } from './types.ts';
 import { deployT3Preimage } from '../deploy/contracts.ts';
 import type { DeployT3Preimage, T3RefusalCode } from '../deploy/contracts.ts';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
+import type { Actor } from '../authority/actor.ts';
 
 type Awaitable<T> = T | Promise<T>;
 type OperatorDecision = Exclude<HumanRequestDecision, 'auto-closed'>;
@@ -11,6 +13,21 @@ type OperatorDecision = Exclude<HumanRequestDecision, 'auto-closed'>;
 export interface HumanResponseActor {
   kind: 'operator' | 'host';
   subject: string;
+}
+
+/** `reason` bound length [design:4.3/global constraints]. */
+const MAX_REASON_LENGTH = 2000;
+
+/**
+ * A `worker:<id>` or `boss` claim is a CLI actor — one operating the daemon unattended, on Daniel's
+ * behalf but without him watching this specific decision. `reason` is required from them so a resolved
+ * gate always carries a human-legible justification when no human was directly at the keyboard; `daniel`
+ * and `unknown` may still supply one, but an absent/blank reason from either is not refused. Never an
+ * authority check — `actorLabel` is self-asserted (see `authority/actor.ts`) and this only decides which
+ * validation error a malformed body gets, not whether the decision is allowed.
+ */
+function reasonRequiredFor(actorLabel: Actor): boolean {
+  return actorLabel === 'boss' || actorLabel.startsWith('worker:');
 }
 
 export interface HumanResponseInput {
@@ -23,6 +40,11 @@ export interface HumanResponseInput {
   origin: string;
   ceremonyAssertion?: unknown;
   challengeExpiresAt?: string;
+  /** Free text explaining the decision. Required (non-empty after trim) from a `boss`/`worker:<id>`
+   *  actor; optional from `daniel`/`unknown`. See {@link reasonRequiredFor}. */
+  reason: string;
+  /** The `X-KB-Actor` claim for this request — self-asserted, never an authority input. */
+  actorLabel: Actor;
 }
 
 export interface HumanResponseRequestContext {
@@ -63,7 +85,7 @@ export interface HumanResponseCeremonyPort {
 
 export type HumanResponseResult =
   | { ok: true; status: 200; value: HumanRequest; replayed: boolean }
-  | { ok: false; status: 403 | 404 | 409 | 500; error: string; gateKind?: string; resolveUrl?: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; gateKind?: string; resolveUrl?: string };
 
 export interface HumanResponseService {
   respond(input: HumanResponseInput): Promise<HumanResponseResult>;
@@ -119,6 +141,17 @@ export function createHumanResponseService(options: {
   return {
     async respond(input) {
       if (input.actor.kind === 'host') return { ok: false, status: 403, error: 'host-human-response-refused' };
+      // T4 [design:4.3/4.5]: `reason` is validated here (not only at the route body wall) so every caller
+      // of this service — including a route we forget to wire, and every direct unit test — gets the same
+      // rule. A `boss`/`worker:<id>` actor is operating the daemon unattended, so a blank reason is
+      // refused; `daniel`/`unknown` may omit one, in which case it is coerced (never a 400) to '' capped
+      // at the bound.
+      const reasonInput = input.reason;
+      if (reasonRequiredFor(input.actorLabel) && (typeof reasonInput !== 'string'
+        || reasonInput.length > MAX_REASON_LENGTH || reasonInput.trim().length === 0)) {
+        return { ok: false, status: 400, error: 'reason-required' };
+      }
+      const reasonTrimmed = typeof reasonInput === 'string' ? reasonInput.trim().slice(0, MAX_REASON_LENGTH) : '';
       const context = await options.store.getHumanRequest(input.actor.subject, input.requestRef);
       if (!context) return { ok: false, status: 404, error: 'human-request-not-found' };
       const { request, runOwnerSubject } = context;
@@ -166,6 +199,16 @@ export function createHumanResponseService(options: {
         if (!verified) return { ok: false, status: 403, error: 'ceremony-invalid' };
       }
 
+      // T4 [design:4.3] — WHO resolved this, over what channel, and why. `attribution` reflects the SAME
+      // bound identity `audit/log.ts#attributed` stamps onto the row above; `tailnetIdentity` is `null`
+      // whenever there is none to attach (win32-desktop, or no request has bound one — see
+      // `auth/operator.ts#BoundAttribution`).
+      const attribution = currentAttribution();
+      const tailnetIdentity = attribution && 'login' in attribution ? attributionLabel(attribution) : null;
+      const resolvedBy = {
+        actor: input.actorLabel, tailnetIdentity, at: new Date(now()).toISOString(), reason: reasonTrimmed,
+      };
+
       try {
         await options.audit.append({
           action: 'control-human-response-authorize',
@@ -179,6 +222,8 @@ export function createHumanResponseService(options: {
             runOwnerSubject,
             requestRevision: request.revision,
             decision: input.decision,
+            reason: reasonTrimmed,
+            actor: input.actorLabel,
             ...(t3 ? { responseDigest: humanResponseDigest(input), origin: input.origin } : {}),
           },
         });
@@ -191,6 +236,7 @@ export function createHumanResponseService(options: {
         decision: input.decision,
         idempotencyKey: input.idempotencyKey,
         response: input.response ?? null,
+        resolvedBy,
       });
       await reconcile(input.actor.subject, response.request);
       return { ok: true, status: 200, value: response.request, replayed: response.replayed };

@@ -116,6 +116,7 @@ import type {
   HumanRequest,
   HumanRequestDecision,
   HumanRequestKind,
+  HumanResponse,
   IterationLoop,
   IterationReceipt,
   IterationRequest,
@@ -910,7 +911,10 @@ function archiveResponseKey(archiveKey: string, requestRef: string): string {
 function recordHumanResponse(
   request: StoredHumanRequest,
   subject: string,
-  input: { decision: HumanRequestDecision; idempotencyKey: string; response: string | null },
+  input: {
+    decision: HumanRequestDecision; idempotencyKey: string; response: string | null;
+    resolvedBy?: NonNullable<HumanResponse['resolvedBy']>;
+  },
   at: string,
 ): void {
   request.response = {
@@ -920,6 +924,9 @@ function recordHumanResponse(
     idempotencyKey: input.idempotencyKey,
     response: input.response,
     respondedAt: at,
+    // Only a real human decision behind an actor claim carries one; the engine-driven auto-close and the
+    // bulk archiveRun sweep never pass it, so they resolve to `null` — never a fabricated actor [design:4.3].
+    resolvedBy: input.resolvedBy ?? null,
   };
   request.state = 'resolved';
   request.updatedAt = at;
@@ -4664,7 +4671,8 @@ function makeStore(
         if (!parkGate && !currentReceipt) return fail('conflict', 'iteration gate linkage is incomplete');
         const responseDecision: HumanRequestDecision = approved ? 'approved' : 'rejected';
         gate.response = { requestRevision: gate.revision, decision: responseDecision, respondedBy: subject,
-          idempotencyKey: input.operationKey, response, respondedAt: createdAt };
+          idempotencyKey: input.operationKey, response, respondedAt: createdAt,
+          resolvedBy: input.resolvedBy ?? null };
         gate.resolutionOperationFingerprint = fingerprint;
         gate.state = 'resolved';
         gate.updatedAt = createdAt;
@@ -5749,6 +5757,7 @@ function makeStore(
       // resolution is a fact about the run's ask, not a transfer of it.
       recordHumanResponse(request, subject, {
         decision: input.decision, idempotencyKey: input.idempotencyKey, response,
+        resolvedBy: input.resolvedBy,
       }, stamp());
       commit(document);
       return ok(publicRequest(request));

@@ -57,6 +57,7 @@ import type {
   HumanRequest,
   HumanRequestDecision,
   HumanRequestKind,
+  HumanResponse,
   IterationLoop,
   IterationGateResult,
   IterationParkResult,
@@ -543,6 +544,10 @@ export interface RespondHumanRequestInput {
   decision: HumanRequestDecision;
   idempotencyKey: string;
   response?: string | null;
+  /** WHO resolved this and why [design:4.3]. When present it is always a full record — never `null` — so
+   *  a caller either supplies the real value or omits the key; omitted (every pre-T4 call site) resolves
+   *  to `null` on the stored response, exactly like a legacy row. */
+  resolvedBy?: NonNullable<HumanResponse['resolvedBy']>;
 }
 
 export interface ArchiveRunInput {

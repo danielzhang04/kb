@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { AuditEvent } from '../audit/log.ts';
 import { createHumanResponseService, type HumanResponseStorePort } from './humanResponse.ts';
 import type { HumanRequest } from './types.ts';
+import type { RespondHumanRequestInput } from './store.ts';
 import {
   createDeployCeremonyService, deployChallenge, deployDigest,
   type DeployCeremonyContext, type DeployCeremonyRequest,
@@ -35,6 +36,7 @@ function harness(
   let appendFaults = faults.append ?? 0;
   let resumeFaults = faults.resume ?? 0;
   const audits: AuditEvent[] = [];
+  let lastRespondInput: RespondHumanRequestInput | undefined;
   const store: HumanResponseStorePort = {
     getHumanRequest: async (_actor, requestRef) => {
       const found = requests.get(requestRef);
@@ -42,6 +44,7 @@ function harness(
     },
     isReservedIterationGate: async (_actor, requestRef) => reserved.has(requestRef),
     respondHumanRequest: async (actor, requestRef, input) => {
+      lastRespondInput = input;
       const current = requests.get(requestRef)!;
       if (current.response) return { request: current, replayed: current.response.idempotencyKey === input.idempotencyKey };
       const responded = {
@@ -50,6 +53,7 @@ function harness(
           requestRevision: current.revision, decision: input.decision, respondedBy: actor,
           idempotencyKey: input.idempotencyKey, response: input.response ?? null,
           respondedAt: '2026-08-21T00:01:00.000Z',
+          resolvedBy: input.resolvedBy ?? null,
         },
       };
       requests.set(requestRef, responded);
@@ -81,6 +85,7 @@ function harness(
   return {
     requests, events, resumes, audits, store,
     audit: { append: async (row: AuditEvent) => { audits.push(row); } },
+    get lastRespondInput() { return lastRespondInput; },
   };
 }
 
@@ -88,6 +93,7 @@ const ordinaryInput = {
   actor: { kind: 'operator' as const, subject: 'operator' }, requestRef: 'ask-1',
   expectedRevision: 1, decision: 'responded' as const, idempotencyKey: 'respond-1',
   response: 'continue', origin: 'https://dashboard.test',
+  reason: 'looks correct', actorLabel: 'daniel' as const,
 };
 
 describe('gate-kind-aware human response service', () => {
@@ -265,6 +271,53 @@ describe('gate-kind-aware human response service', () => {
     expect(result).toEqual({ ok: false, status: 500, error: 'human-response-audit-required' });
     expect(h.requests.get('ask-1')?.state).toBe('open');
     expect(h.events).toEqual([]);
+  });
+});
+
+// =====================================================================================================
+// T4 [design:4.3/4.5] — `reason` + `resolvedBy`. `reason` is required (non-empty after trim) from a
+// `boss`/`worker:<id>` actor (operating the daemon unattended); optional from `daniel`/`unknown`.
+// =====================================================================================================
+describe('reason + resolvedBy (T4)', () => {
+  it('refuses a CLI-actor response with no reason', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const result = await service.respond({ ...ordinaryInput, actorLabel: 'boss', reason: '   ' });
+    expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
+    expect(h.audits).toEqual([]);
+  });
+
+  it('refuses a worker actor with an absent reason', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const result = await service.respond({ ...ordinaryInput, actorLabel: 'worker:sonnet-01', reason: '' });
+    expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
+  });
+
+  it('does NOT require a reason from daniel or an unknown actor', async () => {
+    for (const actorLabel of ['daniel', 'unknown'] as const) {
+      const h = harness([request()]);
+      const service = createHumanResponseService({ store: h.store, audit: h.audit });
+      const result = await service.respond({ ...ordinaryInput, actorLabel, reason: '' });
+      expect(result).toMatchObject({ ok: true });
+    }
+  });
+
+  it('records resolvedBy on the resolved request', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const result = await service.respond({ ...ordinaryInput, reason: 'sources look right', actorLabel: 'boss' });
+    expect(result.ok).toBe(true);
+    expect(h.lastRespondInput?.resolvedBy).toEqual({
+      actor: 'boss', tailnetIdentity: null, at: expect.any(String), reason: 'sources look right',
+    });
+  });
+
+  it('stamps reason + actor onto the audit row detail', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    await service.respond({ ...ordinaryInput, reason: 'sources look right', actorLabel: 'boss' });
+    expect(h.audits[0]).toMatchObject({ detail: { reason: 'sources look right', actor: 'boss' } });
   });
 });
 

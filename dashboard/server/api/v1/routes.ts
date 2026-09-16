@@ -41,6 +41,7 @@ import type { EntityListPort, AgentDetailPort, WorkflowDetailPort, SubmitBuilder
 import { readEntityList, readAgentDetail, readWorkflowDetail, createAgent, updateAgent, createWorkflow, updateWorkflowBuilder } from '../../services/entityService.ts';
 import type { RunReadPort } from '../../services/runReadService.ts';
 import { listRuns, replayRunEvents, respondHumanRequestRoute, type RespondPort } from '../../services/runReadService.ts';
+import { parseActor, ACTOR_HEADER } from '../../authority/actor.ts';
 import type { ScheduleServicePort } from '../../services/scheduleService.ts';
 import { listSchedules, createSchedule, setScheduleArmed, deleteSchedule } from '../../services/scheduleService.ts';
 import type { InboxServicePort } from '../../services/inboxService.ts';
@@ -688,7 +689,10 @@ export function registerV1OperatorMutationRoutes(scope: FastifyInstance, ctx: Su
     if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'human-response unavailable', true);
     const requestRef = (req.params as { requestRef: string }).requestRef;
     const origin = headerValue(req, 'origin') ?? '';
-    sendServiceReply(reply, 'human-response', await respondHumanRequestRoute(port, subject, requestRef, req.body, origin), null);
+    // T4 [design:4.3] — self-asserted, never an authority input.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+    sendServiceReply(reply, 'human-response',
+      await respondHumanRequestRoute(port, subject, requestRef, req.body, origin, actorLabel), null);
   });
 
   // Deployment T3 arm — confirm/deploy/abort/close-ptys are T3: fail-closed 403 ceremony-unavailable

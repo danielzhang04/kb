@@ -4,6 +4,8 @@ import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { registerArtifactFileRoute } from './artifactFilesRoute.ts';
 import { readScopeForSubject } from './readScope.ts';
+import { parseActor, ACTOR_HEADER } from '../authority/actor.ts';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
 import { projectRunOutputs } from './runOutputs.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
@@ -1986,8 +1988,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const respondPort: RespondPort = {
       respond: (input) => responseService(req).respond(input as unknown as HumanResponseInput) as unknown as ReturnType<RespondPort['respond']>,
     };
+    // T4 [design:4.3] — self-asserted, never an authority input; see `authority/actor.ts`'s docstring.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
     const result = await respondHumanRequestRoute(
       respondPort, subject(req), (req.params as { requestRef: string }).requestRef, req.body, req.headers.origin,
+      actorLabel,
     );
     return reply.code(result.status).send(result.body);
   });
@@ -2144,6 +2149,16 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
+    // T4 [design:4.3/4.5] — same `reason` rule as `/human-requests/:requestRef/respond`: required
+    // (non-empty after trim, ≤2000 chars) from a `boss`/`worker:<id>` actor, optional from
+    // `daniel`/`unknown`. Self-asserted, never an authority input.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+    const cliActor = actorLabel === 'boss' || actorLabel.startsWith('worker:');
+    const rawReason = body.reason;
+    if (cliActor && (typeof rawReason !== 'string' || rawReason.length > 2000 || rawReason.trim().length === 0)) {
+      return reply.code(400).send({ error: 'reason-required' });
+    }
+    const reason = typeof rawReason === 'string' ? rawReason.trim().slice(0, 2000) : '';
     const requestRef = (req.params as { requestRef: string }).requestRef;
     const binding = iterationGateBinding(sub, requestRef, req, reply);
     if (binding === null) return reply;
@@ -2199,6 +2214,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return reply.code(500).send({ error: 'iteration-gate-audit-required' });
       }
     }
+    const resolveAttribution = currentAttribution();
+    const resolveTailnetIdentity = resolveAttribution && 'login' in resolveAttribution
+      ? attributionLabel(resolveAttribution) : null;
     const resolved = ctx.controlStore.resolveIterationGate(sub, requestRef, {
       expectedRequestRevision: gateRequest.revision,
       expectedReceiptVersion,
@@ -2206,6 +2224,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision,
       operationKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
+      resolvedBy: {
+        actor: actorLabel, tailnetIdentity: resolveTailnetIdentity,
+        at: (ctx.now?.() ?? new Date()).toISOString(), reason,
+      },
     }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
