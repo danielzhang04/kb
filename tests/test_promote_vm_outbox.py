@@ -797,12 +797,18 @@ def test_empty_spool_main_exits_zero_with_nothing_to_promote(tmp_path, monkeypat
     assert capsys.readouterr().out.strip() == "nothing to promote"
 
 
-def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
+def test_receipted_spool_auto_detects_and_resumes_reconciliation(
     tmp_path, monkeypatch, capsys,
 ):
+    """B2: previously a spool where every outbox bundle already had a promotion receipt
+    printed "nothing to promote" and exited 0 without ever reconciling -- a silent wedge,
+    because receipts are written mid promote_pending and the RECONCILED-superset check only
+    runs later, on the VM, in apply_ops_reconciliation.py. main() must now auto-detect this
+    state (every chain item receipted, ready/ non-empty) and resume straight into
+    create_return_bundle + upload_and_apply_reconciliation instead of re-promoting."""
     operator = tmp_path / "operator"
     operator.mkdir()
-    bundle = b"bundle"
+    bundle_bytes = b"bundle"
     manifest = {
         "schema": "kb.ops-outbox/v1",
         "id": COMMIT,
@@ -810,7 +816,7 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
         "commit": COMMIT,
         "paths": ["ledgers/already.jsonl"],
         "createdAt": "2026-08-11T12:00:00.000Z",
-        "bundleSha256": hashlib.sha256(bundle).hexdigest(),
+        "bundleSha256": hashlib.sha256(bundle_bytes).hexdigest(),
     }
     receipt = {
         "schema": "kb.ops-promotion/v1",
@@ -823,19 +829,40 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
     def fetch_receipted(_vm_host: str, snapshot: Path) -> Path:
         (snapshot / "ready").mkdir(parents=True)
         (snapshot / "receipts").mkdir()
-        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle)
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle_bytes)
         (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
         (snapshot / "receipts" / f"{COMMIT}.json").write_bytes(canonical(receipt))
         (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
         return snapshot
 
     def must_not_run(*_args, **_kwargs):
-        raise AssertionError("receipted spool continued into promotion or reconciliation")
+        raise AssertionError("auto-resume re-promoted an already-receipted spool")
+
+    calls: dict = {}
+    target = "d" * 40
+
+    def fake_return_bundle(operator_repo, work_root, expected_target):
+        calls["return_bundle"] = expected_target
+        return tmp_path / "return.bundle", tmp_path / "return-repo"
+
+    def fake_run_git(_repo, args, check=True):
+        # Widened for HIGH-1/HIGH-2: main() now also calls require_reconcilable_range against
+        # `return_repo` before upload, which issues its own diff --name-only/--raw calls.
+        if args[:2] == ["diff", "--name-only"]:
+            return completed(args, b"")
+        if args[:2] == ["diff", "--raw"]:
+            return completed(args, b"")
+        assert args == ["rev-parse", "refs/kb-reconciled/ops^{commit}"]
+        return completed(args, target + "\n")
+
+    def fake_upload(vm_host, bundle, receipts, source_head, target_head):
+        calls["upload"] = (vm_host, source_head, target_head)
 
     monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_receipted)
     monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
-    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
-    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", fake_return_bundle)
+    monkeypatch.setattr(promote_module, "run_git", fake_run_git)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", fake_upload)
     monkeypatch.setattr(
         promote_module.sys,
         "argv",
@@ -850,7 +877,68 @@ def test_fully_receipted_spool_main_exits_zero_with_nothing_to_promote(
     )
 
     assert promote_module.main() == 0
-    assert capsys.readouterr().out.strip() == "nothing to promote"
+    out = capsys.readouterr().out
+    assert "resuming reconciliation" in out
+    # MEDIUM-3/LOW-7/LOW-9: the banner states which branch reason triggered this leg (here,
+    # auto-detect -- the flag was not passed) and that the signed-approval gate is skipped.
+    assert "already receipted on the VM" in out
+    assert "signed-approval gate is not consulted" in out
+    assert '"reconciled": 1' in out
+    assert calls["return_bundle"] == "c" * 40
+    assert calls["upload"] == ("vm.example.test", COMMIT, target)
+
+
+def test_reconcile_only_flag_refuses_when_spool_is_not_fully_receipted(
+    tmp_path, monkeypatch,
+):
+    """The --reconcile-only flag exists to resume a receipted-but-unreconciled spool. Asking
+    for it on a spool that still has unreceipted bundles is a distinct user error from the
+    silent-wedge auto-detect above and must fail closed with a clear message, never silently
+    skip real pending promotion work."""
+    operator = tmp_path / "operator"
+    operator.mkdir()
+    bundle_bytes = b"bundle"
+    manifest = {
+        "schema": "kb.ops-outbox/v1",
+        "id": COMMIT,
+        "parent": BASE,
+        "commit": COMMIT,
+        "paths": ["ledgers/pending.jsonl"],
+        "createdAt": "2026-08-11T12:00:00.000Z",
+        "bundleSha256": hashlib.sha256(bundle_bytes).hexdigest(),
+    }
+
+    def fetch_unreceipted(_vm_host: str, snapshot: Path) -> Path:
+        (snapshot / "ready").mkdir(parents=True)
+        (snapshot / "receipts").mkdir()
+        (snapshot / "ready" / f"{COMMIT}.bundle").write_bytes(bundle_bytes)
+        (snapshot / "ready" / f"{COMMIT}.json").write_bytes(canonical(manifest))
+        (snapshot / "SOURCE_HEAD").write_text(COMMIT + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("--reconcile-only guard let an unreceipted spool through")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_unreceipted)
+    monkeypatch.setattr(promote_module, "promote_pending", must_not_run)
+    monkeypatch.setattr(promote_module, "create_return_bundle", must_not_run)
+    monkeypatch.setattr(promote_module, "upload_and_apply_reconciliation", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys,
+        "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", BASE,
+            "--reconcile-only",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="already be receipted"):
+        promote_module.main()
 
 
 def test_pull_only_flag_fast_forwards_local_ops_without_writing_upstream(
@@ -905,6 +993,72 @@ def test_pull_only_flag_fails_closed_on_diverged_local_ops(tmp_path, monkeypatch
     assert upstream_state(origin) == before
 
 
+def test_reconciled_allowlist_matches_the_vm_side_verbatim():
+    """B2 (PR #188 review): promote_vm_outbox now carries its own RECONCILED superset --
+    built by the same string-append-to-COORDINATION construction as the VM side
+    (deploy/apply_ops_reconciliation.py RECONCILED) -- so require_reconcilable_range can
+    fail fast on the desktop, before any push, on exactly the range the VM's reconciler
+    (apply_ops_reconciliation.py's RECONCILED.fullmatch check) would refuse only after
+    receipts are already written."""
+    assert promote_module.RECONCILED.pattern == reconcile_module.RECONCILED.pattern
+    for relpath in (
+        "governance/model-routing.yaml",
+        "agents/grader.md",
+        "orgs/faceless-youtube/workflows/segments/segment-a.workflow.js",
+        "orgs/atlas/output/transcripts/2026-08-21-abc.jsonl",
+        "queue/inbox/card.md",
+        "orgs/kb-ops/GOAL.md",
+    ):
+        assert promote_module.RECONCILED.fullmatch(relpath) is not None, relpath
+    assert promote_module.RECONCILED.fullmatch("orgs/x/notes.md") is None
+
+
+def test_reconcilable_range_check_fails_fast_before_any_push_or_receipt(tmp_path):
+    """B2: a prior desktop-originated write already sitting on origin/ops ahead of the
+    trusted head (e.g. an ops write outside the daemon-read mirror) is exactly the shape
+    of content the VM's RECONCILED check refuses -- but only AFTER promote_vm_outbox has
+    already pushed the pending chain and written its receipts (validate_quarantine_chain
+    only checks each bundle's OWN diff against the narrower COORDINATION, never the
+    pre-existing trusted_ops_head..origin/ops range). Without this guard the run would push,
+    receipt, then the VM's reconciler would refuse and the NEXT promote_vm_outbox run would
+    see an all-receipted spool and exit 0 with "nothing to promote" -- the silent wedge B2
+    describes. This must instead fail before any push."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    advance_origin_ops(
+        tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n",
+    )
+    before = upstream_state(origin)
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_pending(spool, operator, tmp_path / "work", trusted, max_attempts=1)
+
+    assert upstream_state(origin) == before
+    assert not (spool / "receipts" / f"{manifests[0]['id']}.json").exists()
+
+
+def test_reconcilable_range_check_allows_goal_md_only_desktop_range(tmp_path):
+    """The counterpart to the failing case above: a desktop write that IS inside RECONCILED
+    (orgs/*/GOAL.md, itself inside the narrower COORDINATION) must not trip the new guard,
+    and promotion proceeds exactly as it did before this check existed."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    advanced = advance_origin_ops(
+        tmp_path, origin, "orgs/kb-ops/GOAL.md", "goal only\n",
+    )
+
+    assert promote_pending(spool, operator, tmp_path / "work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    promoted = git(origin, "rev-parse", "refs/heads/ops").stdout.strip()
+    assert git(origin, "rev-parse", f"{promoted}^").stdout.strip() == advanced
+    assert f"KB-Outbox-ID: {manifests[0]['id']}" in git(
+        origin, "show", "-s", "--format=%B", promoted,
+    ).stdout
+
+
 def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
     """W61: the desktop's VM-source allowlist and the VM's must stay the SAME regex.
 
@@ -925,6 +1079,207 @@ def test_outbound_coordination_allowlist_matches_the_vm_side_verbatim():
     ):
         assert promote_module.COORDINATION.fullmatch(relpath) is None, relpath
         assert reconcile_module.RECONCILED.fullmatch(relpath) is not None, relpath
+
+
+def test_reconcilable_range_check_wraps_called_process_error_as_runtime_error():
+    """LOW-6: a CalledProcessError from the range check's own git calls (e.g. the trusted head
+    is unreachable in this clone) must surface as a clear RuntimeError instead of being
+    swallowed by promote_pending's bare `except subprocess.CalledProcessError` clone-retry
+    loop, mirroring the wrapper validate_quarantine_chain's caller already uses."""
+    def failing_run(_repo, args, check=True):
+        raise subprocess.CalledProcessError(128, ["git", *args])
+
+    with pytest.raises(RuntimeError, match="not a transport fault"):
+        promote_module._verify_reconcilable_range(
+            Path("unused"), BASE, COMMIT, [], run=failing_run,
+        )
+
+
+def test_reconcile_only_path_refuses_when_ops_advanced_with_an_offending_path(tmp_path, monkeypatch):
+    """HIGH-1/HIGH-2: the reconcile-only / auto-detect resume leg must run the identical
+    trusted_ops_head..origin/ops range check the VM enforces (apply_ops_reconciliation.py's
+    RECONCILED.fullmatch), using the tip create_return_bundle actually re-fetches, BEFORE
+    re-uploading. A path outside RECONCILED landing on origin/ops between promotion and this
+    resume must refuse before any ssh/upload is attempted."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "hotfix2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "hotfix2-test@example.invalid")
+    assert promote_pending(spool, operator, tmp_path / "work", trusted) == {
+        "promoted": 1, "pending": 0, "failed": 0,
+    }
+    advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    calls = []
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(
+        promote_module, "upload_and_apply_reconciliation",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+            "--reconcile-only",
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+    assert calls == []
+
+
+def test_normal_path_refuses_when_ops_advances_between_promote_clone_and_return_bundle_fetch(
+    tmp_path, monkeypatch,
+):
+    """HIGH-1/HIGH-2: promote_pending's clone reads origin/ops once, early; create_return_bundle
+    clones and re-fetches origin/ops again, later. An offending path landing on origin/ops in
+    that gap must be caught by the post-return-bundle re-check before upload -- the earlier,
+    now-stale promote-time read must not be treated as authoritative."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    for name in ("AUTHOR", "COMMITTER"):
+        monkeypatch.setenv(f"GIT_{name}_NAME", "hotfix2-test")
+        monkeypatch.setenv(f"GIT_{name}_EMAIL", "hotfix2-test@example.invalid")
+
+    real_create_return_bundle = promote_module.create_return_bundle
+
+    def create_return_bundle_after_ops_advances(operator_repo, work_root, expected_target):
+        advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+        return real_create_return_bundle(operator_repo, work_root, expected_target)
+
+    monkeypatch.setattr(promote_module, "create_return_bundle", create_return_bundle_after_ops_advances)
+    calls = []
+    monkeypatch.setattr(
+        promote_module, "upload_and_apply_reconciliation",
+        lambda *a, **k: calls.append((a, k)),
+    )
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+    assert calls == []
+
+
+def test_reconcilable_range_check_refuses_unsafe_object_mode_in_allowlisted_path(tmp_path):
+    """MEDIUM-4: mirror apply_ops_reconciliation.py's two-call cross-check (--name-only vs
+    --raw) plus SAFE_CHANGED_MODES enforcement. An exec-bit flip landing on origin/ops inside
+    an otherwise-allowlisted coordination path must still be refused on the desktop, before
+    any push -- --name-only alone would let it through silently."""
+    origin, operator, _vm, spool, trusted, _manifests = real_fixture(
+        tmp_path, [("ledgers/vm-card.jsonl", "from vm\n")],
+    )
+    desktop = tmp_path / "desktop-unsafe"
+    git(tmp_path, "clone", str(origin), str(desktop))
+    configure_repo(desktop)
+    (desktop / "ledgers" / "exec.jsonl").write_text("exec\n", encoding="utf-8")
+    git(desktop, "add", "ledgers/exec.jsonl")
+    git(desktop, "update-index", "--chmod=+x", "ledgers/exec.jsonl")
+    git(desktop, "commit", "-m", "desktop exec bit")
+    git(desktop, "push", "origin", "ops")
+    before = upstream_state(origin)
+
+    with pytest.raises(RuntimeError, match="unsafe object mode"):
+        promote_pending(spool, operator, tmp_path / "work", trusted, max_attempts=1)
+
+    assert upstream_state(origin) == before
+
+
+def test_approval_request_path_refuses_before_signing_when_range_not_reconcilable(
+    tmp_path, monkeypatch,
+):
+    """LOW-8: the exit-3 approval-request path must run the same range pre-check too, using its
+    own inspection clone, so the operator learns the range is bad before ever being asked to
+    sign an approval for it."""
+    origin, operator, _vm, spool, trusted, manifests = real_fixture(
+        tmp_path, [("queue/inbox/vm-card.md", "from vm\n")],
+    )
+    advance_origin_ops(tmp_path, origin, "orgs/x/notes.md", "not reconcilable\n")
+    source_head = manifests[-1]["commit"]
+
+    def fetch_from_spool(_vm_host, snapshot):
+        shutil.copytree(spool / "ready", snapshot / "ready")
+        shutil.copytree(spool / "receipts", snapshot / "receipts")
+        (snapshot / "SOURCE_HEAD").write_text(source_head + "\n", encoding="ascii")
+        return snapshot
+
+    def must_not_run(*_args, **_kwargs):
+        raise AssertionError("approval-request path continued past the range check")
+
+    monkeypatch.setattr(promote_module, "fetch_vm_outbox", fetch_from_spool)
+    monkeypatch.setattr(promote_module, "write_instruction_approval_request", must_not_run)
+    monkeypatch.setattr(
+        promote_module.sys, "argv",
+        [
+            "promote_vm_outbox.py",
+            "--spool", str(tmp_path / "snapshots"),
+            "--repo", str(operator),
+            "--work-root", str(tmp_path / "work-main"),
+            "--vm-host", "vm.example.test",
+            "--trusted-ops-head", trusted,
+        ],
+    )
+
+    with pytest.raises(RuntimeError, match="orgs/x/notes.md"):
+        promote_module.main()
+
+
+def test_reconcilable_range_error_labels_existing_and_pending_paths_separately(tmp_path):
+    """LOW-7/LOW-9: the fail-fast error must tell "already on ops" apart from "in incoming
+    bundles" as two labelled lists, so the operator does not have to cross-reference the
+    outbox by hand to know which side of the range the offending path came from."""
+    existing_path = "orgs/x/already-on-ops.md"
+    pending_path = "orgs/y/in-a-bundle.md"
+
+    def fake_run(_repo, args, check=True):
+        if args[:2] == ["diff", "--name-only"]:
+            return completed(args, existing_path.encode() + b"\0")
+        if args[:2] == ["diff", "--raw"]:
+            return completed(args, raw_row(existing_path))
+        raise AssertionError(f"unexpected git call: {args}")
+
+    pending = [{"paths": [pending_path]}]
+    with pytest.raises(RuntimeError) as excinfo:
+        promote_module.require_reconcilable_range(
+            Path("unused"), BASE, COMMIT, pending, run=fake_run,
+        )
+    message = str(excinfo.value)
+    assert f"already on ops: {existing_path}" in message
+    assert f"in incoming bundles: {pending_path}" in message
 
 
 def test_instruction_and_coordination_allowlists_accept_org_goal_md():

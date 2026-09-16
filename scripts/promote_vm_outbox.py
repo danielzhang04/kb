@@ -18,6 +18,19 @@ from pathlib import Path, PurePosixPath
 
 COORDINATION = re.compile(r"^(?:queue|ledgers|traces|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
 INSTRUCTION = re.compile(r"^(?:queue|memory|dashboards|handoffs)/.+$|^orgs/[^/]+/STATE\.md$|^orgs/[^/]+/GOAL\.md$")
+# The VM reconciler's allowlist (deploy/apply_ops_reconciliation.py RECONCILED), mirrored here so this
+# script can fail fast, on the desktop, before any push -- instead of pushing + receipting a chain the
+# VM will refuse only later, after receipts already make the spool look all-clear ("nothing to
+# promote" on the next run: a silent wedge). Built by the SAME string-append-to-COORDINATION
+# construction as the VM side so the superset relation holds by construction, and pinned equal to it
+# by test_reconciled_allowlist_matches_the_vm_side_verbatim.
+RECONCILED = re.compile(
+    COORDINATION.pattern
+    + r"|^agents/.+$"
+    + r"|^orgs/[^/]+/workflows/.+$"
+    + r"|^orgs/atlas/output/transcripts/[^/]+\.jsonl$"
+    + r"|^governance/model-routing\.yaml$"
+)
 SAFE_HOST = re.compile(r"^(?:[A-Za-z0-9._-]+@)?[A-Za-z0-9._-]+$")
 COMMIT_RE = re.compile(r"[0-9a-f]{40}")
 DIGEST_RE = re.compile(r"[0-9a-f]{64}")
@@ -200,6 +213,89 @@ def parse_raw_diff(raw: str | bytes) -> tuple[list[tuple[str, str]], list[str]]:
         modes.append((match.group(1).decode("ascii"), match.group(2).decode("ascii")))
         paths.append(path)
     return modes, sorted(paths)
+
+
+def _nul_paths(raw: str | bytes) -> list[str]:
+    data = _bytes(raw)
+    if not data:
+        return []
+    fields = data.split(b"\0")
+    if fields[-1] != b"":
+        raise RuntimeError("NUL-delimited Git paths are malformed")
+    paths = [_validate_repo_path(item) for item in fields[:-1]]
+    if len(paths) != len(set(paths)):
+        raise RuntimeError("Git path list contains a duplicate")
+    return sorted(paths)
+
+
+def require_reconcilable_range(
+    repo: Path,
+    trusted_ops_head: str,
+    remote_head: str,
+    pending: list[dict],
+    run=run_git,
+) -> None:
+    """Fail fast, before any push or receipt, on any path the VM reconciler's RECONCILED
+    allowlist would refuse once this range reaches origin/ops (apply_ops_reconciliation.py,
+    the `RECONCILED.fullmatch` check just before its `reset --hard`).
+
+    Every pending bundle's own paths already pass COORDINATION (validate_quarantine_chain
+    checks that per bundle), and RECONCILED is a strict superset, so the real gap this closes
+    is content ALREADY on origin/ops ahead of the trusted head that the outgoing chain would
+    otherwise ride along with -- a desktop write outside the daemon-read mirror, or a chain
+    stuck mid-promotion from an earlier interrupted run. Checked from a fresh clone so it sees
+    exactly the origin/ops this run is about to push onto.
+    """
+    existing = _nul_paths(
+        run(repo, ["diff", "--name-only", "--no-renames", "-z", trusted_ops_head, remote_head]).stdout
+    )
+    # MEDIUM-4: mirror apply_ops_reconciliation.py's own two-call form (its comment above the
+    # equivalent check explains why `--no-renames` is on BOTH calls). `--name-only` alone would
+    # let a rename or a mode flip (exec bit, symlink, gitlink) inside an otherwise-allowlisted
+    # path through unnoticed; cross-checking against `--raw` and SAFE_CHANGED_MODES here means
+    # the desktop refuses exactly what the VM would refuse, not a narrower approximation of it.
+    modes, raw_existing = parse_raw_diff(
+        run(repo, ["diff", "--raw", "--no-abbrev", "--no-renames", "-z", trusted_ops_head, remote_head]).stdout
+    )
+    if raw_existing != existing:
+        raise RuntimeError("outbox range diff is inconsistent between --name-only and --raw")
+    if any(old not in SAFE_CHANGED_MODES or new not in SAFE_CHANGED_MODES for old, new in modes):
+        raise RuntimeError("outbox range contains an unsafe object mode")
+    # LOW-7/LOW-9: label offending paths by origin so the operator can tell "this was already
+    # on ops before I touched anything" from "one of the bundles I'm about to push carries this"
+    # without cross-referencing the outbox manually.
+    pending_paths = {path for manifest in pending for path in manifest["paths"]}
+    offending_existing = sorted(path for path in existing if RECONCILED.fullmatch(path) is None)
+    offending_pending = sorted(path for path in pending_paths if RECONCILED.fullmatch(path) is None)
+    if offending_existing or offending_pending:
+        labelled = []
+        if offending_existing:
+            labelled.append("already on ops: " + ", ".join(offending_existing))
+        if offending_pending:
+            labelled.append("in incoming bundles: " + ", ".join(offending_pending))
+        raise RuntimeError(
+            "outbox range contains paths the VM reconciler would refuse (" + "; ".join(labelled) + ")"
+        )
+
+
+def _verify_reconcilable_range(
+    repo: Path,
+    trusted_ops_head: str,
+    remote_head: str,
+    pending: list[dict],
+    run=run_git,
+) -> None:
+    """LOW-6: wrap require_reconcilable_range so a CalledProcessError from its own git calls
+    (e.g. the trusted head is unreachable in this clone) surfaces as a clear RuntimeError instead
+    of being silently swallowed by promote_pending's bare `except subprocess.CalledProcessError`
+    clone-retry loop -- mirroring the wrapper validate_quarantine_chain's caller already uses."""
+    try:
+        require_reconcilable_range(repo, trusted_ops_head, remote_head, pending, run)
+    except subprocess.CalledProcessError as error:
+        raise RuntimeError(
+            "reconcilable-range check failed on untrusted outbox contents "
+            f"(not a transport fault): {error}"
+        ) from error
 
 
 def fetch_vm_outbox(vm_host: str, snapshot_root: Path, run=subprocess.run) -> Path:
@@ -722,6 +818,7 @@ def promote_pending(
             ).strip()
             if COMMIT_RE.fullmatch(remote_head) is None:
                 raise RuntimeError("origin/ops head is invalid")
+            _verify_reconcilable_range(repo, trusted_ops_head, remote_head, initial_pending, run_git)
             quarantine_prefix = f"refs/kb-quarantine/{secrets.token_hex(6)}"
             try:
                 validated = validate_quarantine_chain(
@@ -886,6 +983,13 @@ def main() -> int:
         "--pull-only", action="store_true",
         help="fetch and fast-forward the local ops checkout without promoting or pushing",
     )
+    parser.add_argument(
+        "--reconcile-only", action="store_true",
+        help=(
+            "skip promotion and resume reconciliation for a spool that is already fully "
+            "receipted (also auto-detected without this flag)"
+        ),
+    )
     parser.add_argument("--approval", type=Path)
     parser.add_argument("--approval-signature", type=Path)
     parser.add_argument("--approval-allowed-signers", type=Path)
@@ -920,14 +1024,63 @@ def main() -> int:
         raise RuntimeError("VM source head does not equal the closed outbox chain")
 
     all_receipted = all(read_matching_receipt(snapshot, item) is not None for item in chain)
-    if all_receipted:
-        print("nothing to promote")
+    if args.reconcile_only or all_receipted:
+        # B2: every chain item already carries a promotion receipt (or the operator asked to
+        # resume explicitly) -- the earlier "nothing to promote" here was the silent wedge:
+        # receipts get written mid promote_pending, but the VM only checks RECONCILED (a
+        # superset of COORDINATION) later, in apply_ops_reconciliation.py, so a range that
+        # fails that check leaves the spool looking fully promoted with reconciliation never
+        # having run. Resume straight into the return-bundle + VM-apply leg instead of
+        # re-promoting (there is nothing left to promote) or silently exiting.
+        if not all_receipted:
+            raise RuntimeError(
+                "--reconcile-only requires every outbox bundle in the spool to already be receipted"
+            )
+        # MEDIUM-3/LOW-7/LOW-9: name which branch reason triggered this leg (an explicit
+        # operator flag reads very differently from an auto-detected all-receipted resume), and
+        # be explicit that the signed-approval gate below is not consulted here -- this leg never
+        # calls require_instruction_approval, because every instruction-bearing bundle in the
+        # chain was already approved (or exempt) on the promotion run that wrote its receipt.
+        reason = (
+            "operator requested --reconcile-only"
+            if args.reconcile_only
+            else f"all {len(chain)} bundle(s) already receipted on the VM; ready/ non-empty"
+        )
+        print(
+            f"reconcile-only: {reason}; resuming reconciliation without re-promoting "
+            "(the signed-approval gate is not consulted on this path)"
+        )
+        promotion_target = _last_promoted_target(snapshot, chain)
+        bundle, return_repo = create_return_bundle(args.repo, args.work_root, promotion_target)
+        target = _text(
+            run_git(return_repo, ["rev-parse", "refs/kb-reconciled/ops^{commit}"]).stdout
+        ).strip()
+        if COMMIT_RE.fullmatch(target) is None:
+            raise RuntimeError("return-bundle target is invalid")
+        # HIGH-1/HIGH-2: check the identical trusted_ops_head..target range the VM is about to
+        # check, using the SAME tip create_return_bundle just re-fetched -- not the promote
+        # clone's now-stale read of origin/ops.
+        _verify_reconcilable_range(return_repo, args.trusted_ops_head, target, [], run_git)
+        upload_and_apply_reconciliation(args.vm_host, bundle, snapshot / "receipts", source_head, target)
+        print(
+            json.dumps(
+                {"promoted": 0, "pending": 0, "failed": 0, "reconciled": len(chain)}, sort_keys=True,
+            )
+        )
         return 0
     if (
         any(any(INSTRUCTION.fullmatch(path) for path in item["paths"]) for item in chain)
         and args.approval_signature is None
     ):
         inspection_repo = clone_fresh(args.repo, args.work_root / f"approval-{secrets.token_hex(4)}")
+        remote_head = _text(
+            run_git(inspection_repo, ["rev-parse", "refs/remotes/origin/ops^{commit}"]).stdout
+        ).strip()
+        if COMMIT_RE.fullmatch(remote_head) is None:
+            raise RuntimeError("origin/ops head is invalid")
+        # LOW-8: run the same range pre-check here too, so the operator learns the range is bad
+        # before ever being asked to sign an approval for it.
+        _verify_reconcilable_range(inspection_repo, args.trusted_ops_head, remote_head, chain, run_git)
         prefix = f"refs/kb-quarantine/{secrets.token_hex(6)}"
         validated = validate_quarantine_chain(snapshot, inspection_repo, args.trusted_ops_head, prefix)
         approval = args.approval or snapshot / "instruction-approval.json"
@@ -955,6 +1108,10 @@ def main() -> int:
     ).strip()
     if COMMIT_RE.fullmatch(target) is None:
         raise RuntimeError("return-bundle target is invalid")
+    # HIGH-1/HIGH-2: same identical-range re-check as the reconcile-only leg above, against the
+    # tip create_return_bundle just re-fetched -- origin/ops can have advanced with an offending
+    # path in the gap between promote_pending's clone and this return-bundle fetch.
+    _verify_reconcilable_range(return_repo, args.trusted_ops_head, target, [], run_git)
     upload_and_apply_reconciliation(
         args.vm_host, bundle, snapshot / "receipts", source_head, target,
     )
