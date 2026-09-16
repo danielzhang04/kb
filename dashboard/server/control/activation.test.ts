@@ -299,12 +299,12 @@ describe('buildActivatedExecution — gate ON', () => {
    * The ceilings are a claim about MEASURED usage, so the test states the measurement. Sources: every
    * settled reservation in the VM's control/execution-accounting/*.json - max input 1,223,899, max
    * output 22,106, max cost 1,214,264 micro-USD (all attempt-ad7b42c6, 2026-07-24); and
-   * governance/budget.yaml `daily_usd_limit: 5.00`. The 400,000-input ceiling this replaces was refuted
+   * governance/budget.yaml `daily_usd_limit: 20.00`. The 400,000-input ceiling this replaces was refuted
    * by three of those settled attempts outright.
    */
   it('sizes the attempt ceilings above the measured ledger maxima and the window under the human cap', () => {
     const ledgerMax = { input: 1_223_899, output: 22_106, costUsdMicros: 1_214_264 };
-    const governanceDailyCapMicros = 5_000_000;
+    const governanceDailyCapMicros = 20_000_000;
     expect(DEFAULT_ATTEMPT_BUDGET.maxInputTokens).toBeGreaterThan(ledgerMax.input);
     expect(DEFAULT_ATTEMPT_BUDGET.maxOutputTokens).toBeGreaterThanOrEqual(Math.ceil(ledgerMax.output * 1.5));
     expect(DEFAULT_ATTEMPT_BUDGET.maxCostUsdMicros).toBeGreaterThan(ledgerMax.costUsdMicros);

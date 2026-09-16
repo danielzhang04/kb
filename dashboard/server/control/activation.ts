@@ -130,7 +130,7 @@ export const DEFAULT_BUDGET: ExecutionBudget = {
   maxAttempts: 30,
   maxInputTokens: 6_000_000,
   maxOutputTokens: 400_000,
-  maxCostUsdMicros: 5_000_000,
+  maxCostUsdMicros: 20_000_000,
 };
 
 /**
@@ -160,7 +160,7 @@ export const DEFAULT_BUDGET: ExecutionBudget = {
  *   cost   1,600,000 = 1.32x the 1,214,264 max; window 5,000,000 (3 x 1.6M = 4,800,000 <= cap)
  *
  * The COST headroom is bounded by the human daily cap, not by the ledger: governance/budget.yaml
- * `daily_usd_limit: 5.00` is 5,000,000 micro-USD, and the window ceiling is held AT that number rather
+ * `daily_usd_limit: 20.00` is 20,000,000 micro-USD, and the window ceiling is held AT that number rather
  * than derived from the maximum. 1.5x the largest settled cost would need a 5,460,000 window, so the
  * attempt cost ceiling is 1.32x rather than 1.5x. That is the deliberate trade: the governance cap
  * outranks the sizing rule, and it is the window that gets capped, never `maxConcurrency` - lowering
