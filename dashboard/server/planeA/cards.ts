@@ -15,7 +15,7 @@
 import { assertCardSchema, assertCardSchemaTolerant, assertSupportedVersion, readCompatibility } from '../schema/versions.ts';
 import { defaultPlatformRoot } from '../runtime/python.ts';
 
-export type CardFieldValue = string | number | boolean | null | string[];
+export type CardFieldValue = string | number | boolean | null | string[] | Record<string, string>;
 
 export interface CardMeta {
   id: string;
@@ -82,6 +82,33 @@ function coerceScalar(raw: string): CardFieldValue {
     const inner = v.slice(1, -1).trim();
     if (inner === '') return [];
     return inner.split(',').map((item) => stripQuotes(item.trim())).filter((item) => item !== '');
+  }
+
+  // inline mapping: {} or {a: b, c: "d"} -- the flow style `yaml.safe_dump` emits for the one
+  // mapping-valued key governance/card-schema.md declares (`parameters`, written by
+  // scripts/cards.py's schedule-occurrence claim for every workflow-owner schedule). Without this
+  // branch the value fell through to stripQuotes() and came back as the STRING '{}', which
+  // schemas/cards/v1.schema.json ("parameters": {"type": "object"}) then rejected -- the platform
+  // skipping, at every boot, a card it had itself just written. Values are strings only, matching
+  // the schema's `additionalProperties: {type: string}`; any nested collection or bare key is a
+  // parse error rather than a silently mangled value, exactly as a block list under an
+  // undeclared key is.
+  if (v.startsWith('{') && v.endsWith('}')) {
+    const inner = v.slice(1, -1).trim();
+    if (inner === '') return {};
+    const mapping: Record<string, string> = {};
+    for (const entry of inner.split(',')) {
+      const text = entry.trim();
+      if (text === '') continue;
+      const colon = text.indexOf(':');
+      if (colon === -1) throw new Error('card frontmatter inline mapping entry is missing a colon');
+      const key = stripQuotes(text.slice(0, colon).trim());
+      const value = text.slice(colon + 1).trim();
+      if (key === '') throw new Error('card frontmatter inline mapping has an empty key');
+      if (/^[[{]/.test(value)) throw new Error('card frontmatter inline mapping values must be scalars');
+      mapping[key] = stripQuotes(value);
+    }
+    return mapping;
   }
 
   return stripQuotes(v);

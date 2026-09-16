@@ -47,6 +47,37 @@ describe('parseCardFrontmatter / groupByState', () => {
     });
   });
 
+  // hotfix-5: `scripts/cards.py` renders a workflow-owner schedule-occurrence claim with
+  // `parameters: {}` (yaml.safe_dump's flow style for an empty mapping). Before this fix
+  // `coerceScalar` had no mapping branch, so the value came back as the STRING '{}' and
+  // schemas/cards/v1.schema.json (`parameters: {type: object}`) rejected the card the platform
+  // had just written: "card schema validation failed: /parameters must be object", at every boot.
+  it('parses an inline mapping value into an object (parameters: {})', () => {
+    const card = MINIMAL_CARD.replace(
+      'owner: null',
+      'owner: null\nworkflow-def: self-lint-report\nparameters: {}',
+    );
+    expect(parseCardFrontmatter(card).meta.parameters).toEqual({});
+    expect(parseValidatedCard(card).meta.parameters).toEqual({});
+  });
+
+  it('parses a non-empty inline mapping into string values', () => {
+    const card = MINIMAL_CARD.replace(
+      'owner: null',
+      "owner: null\nworkflow-def: v1-acceptance-demo\nparameters: {topic: overnight, mode: 'fast run'}",
+    );
+    expect(parseValidatedCard(card).meta.parameters).toEqual({ topic: 'overnight', mode: 'fast run' });
+  });
+
+  it.each([
+    'parameters: {topic}',
+    'parameters: {topic: {nested: 1}}',
+    'parameters: {topic: [a, b]}',
+  ])('rejects an inline mapping shape the card parser does not support: %s', (line) => {
+    expect(() => parseCardFrontmatter(MINIMAL_CARD.replace('owner: null', `owner: null\n${line}`)))
+      .toThrow(/inline mapping/);
+  });
+
   it.each(['schema-version: 2', 'schema-version: one'])('rejects %s', (line) => {
     expect(() => parseValidatedCard(MINIMAL_CARD.replace('---\n', `---\n${line}\n`))).toThrow(/schema-version/);
   });
