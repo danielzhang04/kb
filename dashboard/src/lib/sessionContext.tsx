@@ -1,17 +1,17 @@
 /**
- * The dashboard's ONE authentication boundary: desktop holds the WebAuthn bearer minted by
- * `authClient.signIn`, while tailnet supplies an ambient sentinel because the transport authenticates
- * every request. Governed surfaces call `useSession().requireSession()` instead of owning auth flows.
+ * The dashboard's ONE authentication boundary. In `tailnet` mode the transport itself authenticates
+ * every request, so `requireSession()` returns an ambient sentinel with no network round trip. In
+ * `win32-desktop` mode there is no sign-in ceremony left to run — T2 removed it end to end along with
+ * the ceremony routes it depended on — so `requireSession()` there fails closed to `null`
+ * (locked) until a replacement session-minting path exists. Governed surfaces call
+ * `useSession().requireSession()` instead of owning auth flows directly.
  *
- *   - The token lives here (memory) + tab-scoped `sessionStorage` via authClient — nowhere else. This
- *     module does not touch the network or the WebAuthn API itself; authClient stays the only minter.
- *   - ONE in-flight ceremony: concurrent `requireSession()` calls from different components share a
- *     single `signIn` promise, so six surfaces can never mint six sessions (or stack six prompts).
- *   - Fail-closed: a refused/cancelled/failed ceremony resolves `null` (never throws, never fabricates),
- *     the stored copy is cleared, and every consumer re-locks together — on expiry and on the
+ *   - The token lives here (memory) + tab-scoped `sessionStorage` via authClient — nowhere else.
+ *   - Fail-closed: a failed/absent session resolves `null` (never throws, never fabricates), the
+ *     stored copy is cleared, and every consumer re-locks together — on expiry and on the
  *     `SESSION_INVALIDATED_EVENT` a governed 401 raises.
  *
- * Mode discovery and `signIn` are injected so this is testable with no network or real passkey.
+ * Mode discovery is injected so this is testable with no network.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX, ReactNode } from 'react';
@@ -19,10 +19,8 @@ import {
   clearStoredSession,
   fetchAuthContext as realFetchAuthContext,
   isSessionFresh,
-  persistSession,
   readStoredSession,
   SESSION_INVALIDATED_EVENT,
-  signIn as realSignIn,
   type AuthContext,
   type AuthMode,
   type Session,
@@ -37,23 +35,15 @@ export const TAILNET_AMBIENT_SESSION: Session = Object.freeze({
 export interface SessionContextValue {
   /** Server-selected auth mode, or null while the one boot-time discovery request is pending. */
   mode: AuthMode | null;
-  /**
-   * W47: the server's own answer to "can a T3 passkey ceremony run right now" (`/api/auth/context`).
-   * Fail-closed `false` while discovery is pending and on any discovery failure, so a T3 gate is never
-   * offered an Approve button the routes would refuse.
-   */
-  ceremonyAvailable: boolean;
   /** The live bearer, or null when locked. */
   session: Session | null;
   /** Tailnet is always unlocked; desktop remains bearer-derived; loading is fail-closed. */
   locked: boolean;
-  /** Tailnet returns the ambient sentinel; desktop runs (or joins) the passkey ceremony when needed. */
+  /** Tailnet returns the ambient sentinel; desktop has no sign-in path left and resolves `null`. */
   requireSession(): Promise<Session | null>;
 }
 
 export interface SessionProviderDeps {
-  /** The passkey ceremony. Tests inject a fake; production uses `authClient.signIn`. */
-  signIn?: () => Promise<Session>;
   /** The one boot-time auth-mode request. Tests inject a fake; production uses `fetchAuthContext`. */
   fetchAuthContext?: () => Promise<AuthContext>;
 }
@@ -72,14 +62,9 @@ export function SessionProvider({
   // `isSessionFresh` so a not-yet-fired timer can never render an expired session as unlocked.
   const [storedSession, setStoredSession] = useState<Session | null>(() => readStoredSession());
   const [mode, setMode] = useState<AuthMode | null>(null);
-  const [ceremonyAvailable, setCeremonyAvailable] = useState(false);
   const sessionRef = useRef<Session | null>(storedSession);
   const modeRef = useRef<AuthMode | null>(null);
-  const inFlight = useRef<Promise<Session | null> | null>(null);
   const modeRequest = useRef<Promise<AuthContext> | null>(null);
-  const signInImpl = deps?.signIn ?? realSignIn;
-  const signInRef = useRef(signInImpl);
-  signInRef.current = signInImpl;
   const fetchAuthContextImpl = deps?.fetchAuthContext ?? realFetchAuthContext;
   const fetchAuthContextRef = useRef(fetchAuthContextImpl);
   fetchAuthContextRef.current = fetchAuthContextImpl;
@@ -90,7 +75,7 @@ export function SessionProvider({
   }, []);
 
   // StrictMode replays effects in development. Keep the request in a ref so one provider mount still
-  // performs exactly one discovery call; any failure selects desktop, the fail-closed passkey path.
+  // performs exactly one discovery call; any failure selects desktop, the fail-closed no-session path.
   useEffect(() => {
     let alive = true;
     const request = modeRequest.current
@@ -101,14 +86,11 @@ export function SessionProvider({
         if (!alive) return;
         modeRef.current = context.mode;
         setMode(context.mode);
-        setCeremonyAvailable(context.ceremonyAvailable === true);
       })
       .catch(() => {
         if (!alive) return;
         modeRef.current = 'win32-desktop';
         setMode('win32-desktop');
-        // Fail-closed: an unreadable discovery says nothing about provisioning, so no ceremony.
-        setCeremonyAvailable(false);
       });
     return () => { alive = false; };
   }, []);
@@ -127,31 +109,17 @@ export function SessionProvider({
     return () => clearTimeout(timer);
   }, [mode, storedSession, applySession]);
 
+  // T2 removed the sign-in ceremony this used to run (join) for a locked win32-desktop session. There
+  // is no session-minting path left in that mode, so a locked desktop session now fails closed to
+  // `null` rather than prompting anything — the same outward result a refused/cancelled ceremony
+  // always produced, just reached without a network round trip.
   const requireSession = useCallback(async (): Promise<Session | null> => {
     if (modeRef.current === null) return null;
     if (modeRef.current === 'tailnet') return TAILNET_AMBIENT_SESSION;
     if (isSessionFresh(sessionRef.current)) return sessionRef.current;
-    if (inFlight.current) return inFlight.current;
-
     clearStoredSession();
     applySession(null);
-    const attempt = signInRef
-      .current()
-      .then((next): Session | null => {
-        persistSession(next);
-        applySession(next);
-        return next;
-      })
-      .catch((): null => {
-        clearStoredSession();
-        applySession(null);
-        return null;
-      })
-      .finally(() => {
-        inFlight.current = null;
-      });
-    inFlight.current = attempt;
-    return attempt;
+    return null;
   }, [applySession]);
 
   const session = mode === 'tailnet'
@@ -166,8 +134,8 @@ export function SessionProvider({
       : !isSessionFresh(storedSession);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ mode, ceremonyAvailable, session, locked, requireSession }),
-    [mode, ceremonyAvailable, session, locked, requireSession],
+    () => ({ mode, session, locked, requireSession }),
+    [mode, session, locked, requireSession],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

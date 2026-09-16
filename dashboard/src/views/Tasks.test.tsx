@@ -277,7 +277,7 @@ describe('Inbox card approvals — governed gate', () => {
     render(unlocked(<CardApprovals data={data} initialSelectedId="card-300" />));
 
     expect(screen.getByTestId('card-gate')).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Verify evidence \(signed\)/i })).toBeTruthy();
     expect(screen.getByRole('note').textContent)
       .toBe("Verifying evidence only records your check — it doesn't start or finish the work.");
     // T3-novel: possession is unavailable and is ABSENT, not a disabled ghost.
@@ -295,12 +295,12 @@ describe('Inbox card approvals — governed gate', () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true, reason: 'verified' }));
     await renderUnlocked(<CardApprovals data={{ approvals: [decisionCard] }} initialSelectedId="card-300" fetchImpl={fetchImpl as unknown as typeof fetch} />);
 
-    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(WebAuthn\)/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Verify evidence \(signed\)/i }));
     await waitFor(() => {
       const call = fetchImpl.mock.calls.find((c) => c[0] === '/api/approvals/verify');
       expect(call).toBeTruthy();
       expect((call![1]!.headers as Record<string, string>).authorization).toBe('Bearer sess-tok');
-      expect(JSON.parse(String(call![1]!.body))).toEqual({ cardId: 'card-300', channel: 'webauthn' });
+      expect(JSON.parse(String(call![1]!.body))).toEqual({ cardId: 'card-300', channel: 'signed' });
     });
     expect((await screen.findByRole('status')).textContent).toMatch(/push-remote/);
   });
@@ -328,36 +328,34 @@ describe('Inbox card approvals — governed gate', () => {
     expect(status.textContent).toMatch(/No runner is online for `worker-desktop`/);
   });
 
-  it('replaces an invalidated bearer once on a 401 and retries the same write', async () => {
+  it('T2: a 401 invalidates the bearer and reports the failure — there is no sign-in path left to retry with', async () => {
     let calls = 0;
     const fetchImpl = vi.fn(async (url: string, _init?: RequestInit) => {
       if (url !== '/api/write/card-respond') return jsonResponse({});
       calls += 1;
-      return calls === 1 ? jsonResponse({ error: 'unauthenticated' }, false, 401) : jsonResponse({ ok: true, state: 'inbox' });
+      return jsonResponse({ error: 'unauthenticated' }, false, 401);
     });
-    const signIn = vi.fn(async () => ({ token: 'fresh', expiresAt: Date.now() + 60_000 }));
     persistSession({ token: 'stale', expiresAt: Date.now() + 60_000 });
     await renderWithTestSession(
       <CardApprovals data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />,
-      { signIn },
     );
 
     fireEvent.change(screen.getByTestId('respond-message'), { target: { value: 'retry me' } });
     fireEvent.click(screen.getByTestId('respond-submit'));
 
-    expect((await screen.findByRole('status')).textContent).toMatch(/recorded and committed/i);
+    // The failed write is reported, not silently retried: with no sign-in path left, a 401 just
+    // invalidates the stored bearer and there is nothing to replace it with.
+    expect((await screen.findByRole('alert')).textContent).toMatch(/unauthenticated/i);
     const respondCalls = fetchImpl.mock.calls.filter((c) => c[0] === '/api/write/card-respond');
-    expect(respondCalls).toHaveLength(2);
-    // Exactly ONE replacement ceremony, and the retry carries the fresh bearer.
-    expect(signIn).toHaveBeenCalledTimes(1);
-    expect((respondCalls[1]![1]!.headers as Record<string, string>).authorization).toBe('Bearer fresh');
+    expect(respondCalls).toHaveLength(1);
+    expect(calls).toBe(1);
   });
 
   it('sends nothing from a locked tab and says why', async () => {
     clearStoredSession();
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
     render(
-      <SessionProvider deps={{ signIn: async () => { throw new Error('refused'); } }}>
+      <SessionProvider>
         <CardApprovals data={{ inbox: [inputCard] }} initialSelectedId="question-1" fetchImpl={fetchImpl as unknown as typeof fetch} />
       </SessionProvider>,
     );

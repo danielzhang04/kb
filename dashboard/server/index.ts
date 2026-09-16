@@ -140,7 +140,7 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
  * Every other matched data route — repository/state reads, hub streams, PTY,
  * and writes — is in an Origin/Host- + rate-limit-guarded scope with a session pre-handler. It is
  * fail-closed by default: with no `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every governed
- * route 403s; with an RP origin but no provisioned passkey, no session can be minted and every governed
+ * route 403s; with no session bearer, no session can be minted and every governed
  * route 401s.
  */
 export interface BuildAppOptions {

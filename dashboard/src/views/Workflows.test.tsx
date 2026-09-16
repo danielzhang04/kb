@@ -4,9 +4,10 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { EntityDetail, EntityList } from '../../server/entities/contracts.ts';
 import type { EntitySummary } from '../../server/control/p2Contracts.ts';
 import { renderWithTestSession } from '../test/session';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 import { Workflows } from './Workflows';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); clearStoredSession(); });
 
 const summary: EntitySummary = {
   ref: { type: 'workflow', id: 'research-brief', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/research-brief.md' },
@@ -81,7 +82,8 @@ describe('Workflows P2 roster', () => {
       return new Response(JSON.stringify(String(input).endsWith('/research-brief') ? detail : list), { status: 200 });
     });
     vi.stubGlobal('fetch', fetchMock);
-    await renderWithTestSession(<Workflows onNavigate={navigate} />, { signIn: async () => ({ token: 'session-token', expiresAt: Date.now() + 60_000 }) });
+    persistSession({ token: 'session-token', expiresAt: Date.now() + 60_000 });
+    await renderWithTestSession(<Workflows onNavigate={navigate} />);
     fireEvent.click(await screen.findByTestId('entity-card'));
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
     await waitFor(() => expect(navigate).toHaveBeenCalledWith({ view: 'workflows', focus: { kind: 'run', id: 'run-9' } }));

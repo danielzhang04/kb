@@ -1,16 +1,11 @@
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { AuditEvent } from '../audit/log.ts';
-import { createHumanResponseService, type HumanResponseStorePort } from './humanResponse.ts';
+import {
+  createHumanResponseService, deployDigest, iterationGateDigest, iterationGateT3Preimage,
+  type HumanResponseStorePort, type IterationGateT3Preimage,
+} from './humanResponse.ts';
 import type { HumanRequest } from './types.ts';
 import type { RespondHumanRequestInput } from './store.ts';
-import {
-  createDeployCeremonyService, deployChallenge, deployDigest,
-  type DeployCeremonyContext, type DeployCeremonyRequest,
-} from './humanResponse.ts';
-import {
-  createIterationGateCeremonyService, iterationGateChallenge, iterationGateDigest,
-  type IterationGateCeremonyContext, type IterationGateT3Preimage,
-} from './humanResponse.ts';
 import { deployT3Digest } from '../deploy/contracts.ts';
 import type { DeployT3Preimage } from '../deploy/contracts.ts';
 
@@ -113,102 +108,38 @@ describe('gate-kind-aware human response service', () => {
     expect(h.events).toEqual(['ask-1']);
   });
 
-  it('refuses T3 with ceremony-unavailable and never downgrades to the ordinary channel', async () => {
+  // T2 removed the ceremony that used to gate a T3-kind (approval/review/governance-refusal)
+  // request here. `t3` still drives the audit's riskTier/detail, but no verification runs — the service
+  // authorizes the same way for every kind now. A later task moves the signed-approval channel's
+  // escalation into this gap (see humanResponse.ts's comment at the `t3` computation).
+  it('authorizes a T3-kind request without a ceremony, and still stamps riskTier T3 on the audit row', async () => {
     const h = harness([request({ kind: 'approval' })]);
-    const result = await createHumanResponseService({ store: h.store, audit: h.audit }).respond({
-      ...ordinaryInput, decision: 'approved',
-    });
-    expect(result).toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
-    expect(h.audits).toEqual([]);
-    expect(h.events).toEqual([]);
-  });
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    const input = { ...ordinaryInput, decision: 'approved' as const };
 
-  it('pins a fresh T3 assertion, audits once, emits exactly one event, and resumes exactly once', async () => {
-    const h = harness([request({ kind: 'approval' })]);
-    const verify = vi.fn().mockResolvedValue(true);
-    const service = createHumanResponseService({
-      store: h.store, audit: h.audit,
-      ceremony: { verify },
-    });
-    const input = {
-      ...ordinaryInput,
-      decision: 'approved' as const,
-      ceremonyAssertion: { id: 'assertion' },
-      challengeExpiresAt: '2099-08-21T00:05:00.000Z',
-    };
     const first = await service.respond(input);
     const replay = await service.respond(input);
 
     expect(first).toMatchObject({ ok: true, replayed: false });
     expect(replay).toMatchObject({ ok: true, replayed: true });
-    expect(verify).toHaveBeenCalledWith(expect.objectContaining({
-      requestRef: 'ask-1', requestRevision: 1, action: 'approved', origin: 'https://dashboard.test',
-      challengeExpiresAt: '2099-08-21T00:05:00.000Z',
-      responseDigest: expect.stringMatching(/^[a-f0-9]{64}$/),
-    }));
     expect(h.audits).toHaveLength(1);
     expect(h.audits[0]).toMatchObject({
       action: 'control-human-response-authorize',
       riskTier: 'T3',
-      detail: { runOwnerSubject: 'owner:run-1' },
+      detail: { runOwnerSubject: 'owner:run-1', responseDigest: expect.stringMatching(/^[a-f0-9]{64}$/), origin: 'https://dashboard.test' },
     });
     expect(h.events).toEqual(['ask-1']);
     expect(h.resumes).toEqual(['run-1']);
   });
 
-  it('rejects an expired T3 challenge in the service before verification', async () => {
-    const h = harness([request({ kind: 'approval' })]);
-    const verify = vi.fn().mockResolvedValue(true);
-    const result = await createHumanResponseService({
-      store: h.store,
-      audit: h.audit,
-      ceremony: { verify },
-      now: () => Date.parse('2026-08-21T00:05:00.000Z'),
-    }).respond({
-      ...ordinaryInput,
-      decision: 'approved',
-      ceremonyAssertion: { id: 'assertion' },
-      challengeExpiresAt: '2026-08-21T00:04:59.999Z',
-    });
-    expect(result).toEqual({ ok: false, status: 403, error: 'ceremony-expired' });
-    expect(verify).not.toHaveBeenCalled();
-    expect(h.audits).toEqual([]);
-  });
-
-  it('rejects a missing T3 assertion locally before verification', async () => {
-    const h = harness([request({ kind: 'review' })]);
-    const verify = vi.fn().mockResolvedValue(true);
-    const result = await createHumanResponseService({
-      store: h.store,
-      audit: h.audit,
-      ceremony: { verify },
-    }).respond({
-      ...ordinaryInput,
-      decision: 'changes-requested',
-      challengeExpiresAt: '2099-08-21T00:05:00.000Z',
-    });
-    expect(result).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-    expect(verify).not.toHaveBeenCalled();
-    expect(h.audits).toEqual([]);
-  });
-
-  it('maps a T3 verifier exception to ceremony-invalid without audit or mutation', async () => {
-    const h = harness([request({ kind: 'governance-refusal' })]);
-    const verify = vi.fn().mockRejectedValue(new Error('verifier unavailable'));
-    const result = await createHumanResponseService({
-      store: h.store,
-      audit: h.audit,
-      ceremony: { verify },
-    }).respond({
-      ...ordinaryInput,
-      decision: 'rejected',
-      ceremonyAssertion: { id: 'assertion' },
-      challengeExpiresAt: '2099-08-21T00:05:00.000Z',
-    });
-    expect(result).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-    expect(verify).toHaveBeenCalledOnce();
-    expect(h.audits).toEqual([]);
-    expect(h.requests.get('ask-1')?.state).toBe('open');
+  it('a non-T3 (input) kind stamps riskTier T2 and carries no responseDigest/origin in the detail', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({ store: h.store, audit: h.audit });
+    await service.respond(ordinaryInput);
+    expect(h.audits).toHaveLength(1);
+    expect(h.audits[0]).toMatchObject({ riskTier: 'T2' });
+    expect(h.audits[0]!.detail).not.toHaveProperty('responseDigest');
+    expect(h.audits[0]!.detail).not.toHaveProperty('origin');
   });
 
   it('emits once per fresh response but resumes only after the last of two requests', async () => {
@@ -322,8 +253,8 @@ describe('reason + resolvedBy (T4)', () => {
 });
 
 // =====================================================================================================
-// P5 W2 — deploy-purpose T3 binding [P5-C20, §3.3]. Exercises the ADDED deploy path only; the shipped
-// human-response suite above is unchanged.
+// P5 W2 — deploy-purpose digest [P5-C20, §3.3]. T2 removed the ceremony that used to verify an
+// assertion over this binding; the digest itself remains a canonical, still-used audit primitive.
 // =====================================================================================================
 
 const PREIMAGE: DeployT3Preimage = {
@@ -334,141 +265,40 @@ const PREIMAGE: DeployT3Preimage = {
   digest: 'cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc',
 };
 
-function ceremonyContext(overrides: Partial<DeployCeremonyContext> = {}): DeployCeremonyContext {
-  return {
-    ceremony: { verify: async () => true },
-    credentials: () => ['registered-credential'],
-    consume: async (_grantKey: string): Promise<'fresh'> => 'fresh',
-    now: () => Date.parse('2026-08-24T10:00:00.000Z'),
-    ...overrides,
-  };
-}
-
-function ceremonyRequest(overrides: Partial<DeployCeremonyRequest> = {}): DeployCeremonyRequest {
-  return {
-    preimage: PREIMAGE,
-    assertion: { id: 'assertion' },
-    origin: 'https://kb.command.ts.net',
-    challengeExpiresAt: '2026-08-24T10:01:00.000Z',
-    grantKey: 'deploy-grant-1',
-    ...overrides,
-  };
-}
-
-describe('deploy-purpose T3 binding', () => {
+describe('deploy-purpose digest', () => {
   it('digest is the server-side sha256 of the closed binding preimage', () => {
     expect(deployDigest(PREIMAGE)).toBe(deployT3Digest(PREIMAGE));
   });
 
-  it('challenge is base64url of the recomputed preimage — never a client-supplied string', () => {
-    const challenge = deployChallenge(PREIMAGE);
-    expect(challenge.startsWith('kb.deploy-t3.v1.')).toBe(true);
-    const encoded = challenge.slice('kb.deploy-t3.v1.'.length);
-    const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
-    expect(decoded.startsWith('kb.deploy-t3/v1\u0000deployment\u0000')).toBe(true);
-    expect(decoded.endsWith(PREIMAGE.digest)).toBe(true);
-  });
-
-  it('accepts a verified single-use assertion and returns the recomputed digest', async () => {
-    const service = createDeployCeremonyService(ceremonyContext());
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: true, status: 200, digest: deployDigest(PREIMAGE) });
-  });
-
-  it('refuses 403 ceremony-unavailable with no ceremony port', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({ ceremony: undefined }));
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
-  });
-
-  it('refuses 403 ceremony-unavailable with zero registered credentials — never downgrades', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({ credentials: () => [] }));
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
-  });
-
-  it('refuses 403 ceremony-invalid on a missing assertion', async () => {
-    const service = createDeployCeremonyService(ceremonyContext());
-    expect(await service.verify(ceremonyRequest({ assertion: null }))).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('refuses 403 ceremony-invalid on a wrong revision/digest — mints no new code', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({
-      ceremony: { verify: async ({ challenge }) => challenge === deployChallenge(PREIMAGE) },
-    }));
-    const tampered = ceremonyRequest({
-      preimage: { ...PREIMAGE, digest: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' },
-    });
-    expect(await service.verify(tampered)).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('refuses 403 ceremony-invalid when verification throws', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({
-      ceremony: { verify: async () => { throw new Error('verifier blew up'); } },
-    }));
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('refuses 403 ceremony-expired past the window', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }));
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-expired' });
-  });
-
-  it('refuses 409 on a replayed single-use grant', async () => {
-    const service = createDeployCeremonyService(ceremonyContext({ consume: async (_grantKey: string): Promise<'replayed'> => 'replayed' }));
-    expect(await service.verify(ceremonyRequest())).toEqual({ ok: false, status: 409, error: 'ceremony-replayed' });
-  });
-
-  it('no refusal body carries key, signer, or challenge bytes', async () => {
-    const contexts: DeployCeremonyContext[] = [
-      ceremonyContext({ ceremony: undefined }),
-      ceremonyContext({ credentials: () => [] }),
-      ceremonyContext({ ceremony: { verify: async () => false } }),
-      ceremonyContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }),
-      ceremonyContext({ consume: async (_grantKey: string): Promise<'replayed'> => 'replayed' }),
+  it('digest changes when any field of the preimage changes', () => {
+    const base = deployDigest(PREIMAGE);
+    const mutations: DeployT3Preimage[] = [
+      { ...PREIMAGE, ref: 'deploy-ready:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' },
+      { ...PREIMAGE, revision: 'deployment:1' },
+      { ...PREIMAGE, decision: 'confirm' },
+      { ...PREIMAGE, digest: 'dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd' },
     ];
-    for (const context of contexts) {
-      const outcome = await createDeployCeremonyService(context).verify(ceremonyRequest());
-      expect(outcome.ok).toBe(false);
-      const serialized = JSON.stringify(outcome);
-      expect(serialized).not.toContain('assertion');
-      expect(serialized).not.toContain('challenge');
-      expect(serialized).not.toContain('kb.deploy-t3');
-      expect(serialized).not.toContain('credential');
-      expect(Object.keys(outcome).sort()).toEqual(['error', 'ok', 'status']);
-    }
+    for (const mutated of mutations) expect(deployDigest(mutated)).not.toBe(base);
   });
 });
 
 /**
- * F3 [baseline-A §3, item 4b] — the iteration-gate purpose. `resolveIterationGateRoute` shipped with a
- * `riskTier: 'T3'` audit row and NO WebAuthn call, while the generic route reserves those gates to it,
- * so a session bearer alone could clear any iteration completion/park gate. These cases pin the ladder
- * (the shipped one, unextended) and — the load-bearing part — that the challenge is bound to EVERY field
- * of the tuple the route CASes, so an assertion cannot be carried from one displayed state to another.
+ * F3 [baseline-A §3, item 4b] — the iteration-gate purpose's digest. T2 removed the ceremony
+ * that used to verify a signature over this binding (`resolveIterationGateRoute` still writes the
+ * `riskTier: 'T3'` audit row); the preimage/digest remain the canonical, order-stable encoding of the
+ * exact tuple the route CASes.
  */
-describe('F3 iteration-gate T3 ceremony', () => {
+describe('F3 iteration-gate T3 digest', () => {
   const PREIMAGE: IterationGateT3Preimage = {
     requestRef: 'gate-1', requestRevision: 3, gateRef: 'gate-1', gateKind: 'iteration-park',
     parkReason: 'no-progress', iterationLoopRef: 'loop-1', loopVersion: 7, receiptRef: 'receipt-1',
     receiptVersion: 2, generationRefs: ['generation-a', 'generation-b'], decision: 'approved',
     origin: 'http://localhost:5317', challengeExpiresAt: '2026-08-24T10:05:00.000Z',
   };
-  const NOW = Date.parse('2026-08-24T10:00:00.000Z');
 
-  function gateContext(overrides: Partial<IterationGateCeremonyContext> = {}): IterationGateCeremonyContext {
-    return {
-      ceremony: { verify: async () => true },
-      credentials: () => [{ id: 'cred-1' }],
-      now: () => NOW,
-      ...overrides,
-    };
-  }
-  const gateRequest = (overrides: Partial<{ preimage: IterationGateT3Preimage; assertion: unknown }> = {}) => ({
-    preimage: PREIMAGE, assertion: { ceremonyId: 'ceremony-1', response: { id: 'cred-1' } }, ...overrides,
-  });
-
-  it('binds the challenge to the purpose and to every field of the CASed tuple', async () => {
-    const challenge = iterationGateChallenge(PREIMAGE);
-    expect(challenge.startsWith('kb.iteration-gate-t3.v1.')).toBe(true);
-    expect(challenge).toEqual(iterationGateChallenge({ ...PREIMAGE }));
+  it('is order-stable and binds every field of the CASed tuple', () => {
+    const digest = iterationGateDigest(PREIMAGE);
+    expect(digest).toEqual(iterationGateDigest({ ...PREIMAGE }));
     const mutations: IterationGateT3Preimage[] = [
       { ...PREIMAGE, requestRef: 'gate-2' },
       { ...PREIMAGE, requestRevision: 4 },
@@ -486,75 +316,10 @@ describe('F3 iteration-gate T3 ceremony', () => {
       { ...PREIMAGE, origin: 'http://evil.localhost:5317' },
       { ...PREIMAGE, challengeExpiresAt: '2026-08-24T10:06:00.000Z' },
     ];
-    for (const mutated of mutations) {
-      expect(iterationGateChallenge(mutated)).not.toEqual(challenge);
-      expect(iterationGateDigest(mutated)).not.toEqual(iterationGateDigest(PREIMAGE));
-    }
+    for (const mutated of mutations) expect(iterationGateDigest(mutated)).not.toEqual(digest);
   });
 
-  it('verifies against the server-recomputed challenge and returns the decision digest', async () => {
-    const service = createIterationGateCeremonyService(gateContext({
-      ceremony: {
-        verify: async ({ challenge, origin }) =>
-          challenge === iterationGateChallenge(PREIMAGE) && origin === PREIMAGE.origin,
-      },
-    }));
-    expect(await service.verify(gateRequest()))
-      .toEqual({ ok: true, status: 200, digest: iterationGateDigest(PREIMAGE) });
-  });
-
-  it('refuses 403 ceremony-unavailable with no port or zero credentials — never a downgrade', async () => {
-    for (const context of [gateContext({ ceremony: undefined }), gateContext({ credentials: () => [] })]) {
-      expect(await createIterationGateCeremonyService(context).verify(gateRequest()))
-        .toEqual({ ok: false, status: 403, error: 'ceremony-unavailable' });
-    }
-  });
-
-  it('refuses 403 ceremony-invalid on a missing assertion, a thrown verifier, and a false verdict', async () => {
-    const service = createIterationGateCeremonyService(gateContext());
-    expect(await service.verify(gateRequest({ assertion: null })))
-      .toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-    const threw = createIterationGateCeremonyService(gateContext({
-      ceremony: { verify: async () => { throw new Error('verifier blew up'); } },
-    }));
-    expect(await threw.verify(gateRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-    const refused = createIterationGateCeremonyService(gateContext({ ceremony: { verify: async () => false } }));
-    expect(await refused.verify(gateRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('refuses an assertion bound to a different generation set as ceremony-invalid', async () => {
-    const service = createIterationGateCeremonyService(gateContext({
-      // The port only ever accepts the challenge minted for the ORIGINAL set.
-      ceremony: { verify: async ({ challenge }) => challenge === iterationGateChallenge(PREIMAGE) },
-    }));
-    const replayed = gateRequest({ preimage: { ...PREIMAGE, generationRefs: ['generation-c'] } });
-    expect(await service.verify(replayed)).toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('refuses 403 ceremony-expired past the window and ceremony-invalid on an unparseable expiry', async () => {
-    const expired = createIterationGateCeremonyService(
-      gateContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }),
-    );
-    expect(await expired.verify(gateRequest())).toEqual({ ok: false, status: 403, error: 'ceremony-expired' });
-    const service = createIterationGateCeremonyService(gateContext());
-    expect(await service.verify(gateRequest({ preimage: { ...PREIMAGE, challengeExpiresAt: 'never' } })))
-      .toEqual({ ok: false, status: 403, error: 'ceremony-invalid' });
-  });
-
-  it('leaks no assertion, challenge, or credential material in any refusal', async () => {
-    const contexts = [
-      gateContext({ ceremony: undefined }),
-      gateContext({ ceremony: { verify: async () => false } }),
-      gateContext({ now: () => Date.parse('2026-08-24T10:05:00.000Z') }),
-    ];
-    for (const context of contexts) {
-      const outcome = await createIterationGateCeremonyService(context).verify(gateRequest());
-      expect(outcome.ok).toBe(false);
-      const serialized = JSON.stringify(outcome);
-      expect(serialized).not.toContain('assertion');
-      expect(serialized).not.toContain('kb.iteration-gate-t3');
-      expect(serialized).not.toContain('cred-1');
-      expect(Object.keys(outcome).sort()).toEqual(['error', 'ok', 'status']);
-    }
+  it('the preimage encoding is deterministic JSON, not dependent on caller key order', () => {
+    expect(iterationGateT3Preimage(PREIMAGE)).toEqual(iterationGateT3Preimage({ ...PREIMAGE }));
   });
 });

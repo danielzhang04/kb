@@ -67,23 +67,8 @@ import { createRunEventService, type RunEventSource } from './runEventService.ts
 import { createRunEventStream } from './runEventStream.ts';
 import {
   createHumanResponseService,
-  createIterationGateCeremonyService,
-  deployChallenge,
-  humanResponseChallenge,
-  humanResponseDigest,
-  iterationGateChallenge,
-  type CeremonyVerificationInput,
   type HumanResponseInput,
-  type IterationGateT3Preimage,
 } from './humanResponse.ts';
-import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
-import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
-import { ceremonyModeAdmits } from '../auth/mode.ts';
-import {
-  parseDeploymentRef, quiescenceDigest,
-} from '../inbox/deploymentContracts.ts';
-import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
-import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
 import {
   listRuns as runReadServiceListRuns, getRunDetail, replayRunEvents, respondHumanRequestRoute,
   type RunReadPort, type ControlReadResult, type EventPage, type RespondPort,
@@ -99,13 +84,6 @@ import {
 const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
   connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [],
 };
-
-/**
- * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony. W47 MOVED the
- * definition to `auth/mode.ts` (unchanged in behaviour) so `auth/routes.ts` can report it on
- * `/api/auth/context` without importing this module; re-exported here for the existing importers.
- */
-export { ceremonyModeAdmits };
 
 export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -315,7 +293,7 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
   if (!ctx.executionLatch || ctx.executionLatch.snapshot().state !== 'locked') return null;
   return {
     error: 'execution-locked',
-    detail: 'execution is locked; unlock it with your passkey before launching a run',
+    detail: 'execution is locked; unlock it before launching a run',
     execution: executionPosture(ctx),
   };
 }
@@ -328,7 +306,7 @@ function hasExactKeys(value: Record<string, unknown>, expected: string[]): boole
 }
 
 /** Exact operator grant + in-place wiring identity required by the one authorized historical repair.
- *  Accepts EITHER operator auth mode (passkey or tailnet), never a headless env-override arm. */
+ *  Requires the tailnet operator unlock source, never a headless env-override arm. */
 function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): ActivatedExecution | null {
   const latch = ctx.executionLatch;
   const snapshot = latch?.snapshot();
@@ -343,7 +321,7 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
   return current;
 }
 
-/** The one settlement needs an active passkey grant and proves the captured wiring is inert for this run. */
+/** The one settlement needs an active operator-unlock grant and proves the captured wiring is inert for this run. */
 export type AuthorizedFailedRunReconciliationGrant = {
   latch: NonNullable<SurfaceContext['executionLatch']>;
   wiring: ActivatedExecution;
@@ -707,18 +685,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. Construction is authorized by the
-  // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
-  // action — verified by the scope's `requireSession` preHandler before this handler runs.
-  //
-  // This route used to run a SECOND, purpose-bound WebAuthn ceremony of its own. That was removed
-  // deliberately: the platform's binding requirement is ONE dashboard unlock for the whole platform, and
-  // the second biometric prompt made an operator who had already signed in unlock twice to arm the
-  // executor. Nothing else was relaxed — origin guard, session verification, and the T3 audit row all
-  // still gate this route, and the audit still happens BEFORE anything is constructed. The latch records
-  // `source: 'passkey'` truthfully: the authorization chain still roots in a passkey assertion, just the
-  // sign-in one. Arming stays an EXPLICIT act — signing in never unlocks execution on its own; the
-  // operator must still call this route. Lock remains the fail-safe direction and is unchanged.
+  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. In `tailnet` mode the latch
+  // is actually armed AT BOOT with `source: 'tailnet'` — the only proof that exists is the tailnet
+  // operator transport, verified by the scope's `requireSession` preHandler before this handler runs, so
+  // there is nothing left to unlock; this route is the explicit RE-ARM after a `lock`. Origin guard,
+  // session verification, and the T3 audit row all still gate this route, and the audit still happens
+  // BEFORE anything is constructed. Arming stays an EXPLICIT act — a session never unlocks execution on
+  // its own; the operator must still call this route. Lock remains the fail-safe direction and is
+  // unchanged.
   scope.get('/api/control/execution', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -736,7 +710,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'session-bearer' },
+        result: 'authorized:unlock', detail: { method: 'tailnet-operator' },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'execution-unlock-audit-required' });
@@ -790,7 +764,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return reply.send({ ok: true, value: preflight.value.result, replayed: true });
       }
       const beforeAudit = authorizedLegacyRecoveryExecution(ctx, sub);
-      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-passkey-bound' });
+      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-operator-bound' });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-legacy-execution-lock-reclassify-authorize',
@@ -852,7 +826,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       withOpsTransaction(async () => {
         const grant = authorizedFailedRunReconciliationGrant(ctx, sub);
         if (!grant) {
-          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-not-passkey-bound' });
+          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-not-operator-bound' });
         }
         const stored = ctx.controlStore.getProposalRevision(sub, AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF, 1);
         if (!stored.ok || !exactAuthorized20260801ProposalRevision(stored.value)) {
@@ -878,11 +852,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             artifactPaths: proposal.value.stages.flatMap((stage) => stage.artifacts.map((artifact) => artifact.path)),
             store: ctx.controlStore,
             // This is re-run around every filesystem/git boundary by the core.  It binds the same
-            // passkey grant (including its latch and in-place wiring identity).  It only reads the
-            // fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise drives it.
+            // operator-unlock grant (including its latch and in-place wiring identity).  It only reads
+            // the fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise
+            // drives it.
             assertAuthorized: () => {
               if (!authorizedFailedRunReconciliationGrant(ctx, sub, grant)) {
-                throw new Error('authorized reconciliation passkey latch changed');
+                throw new Error('authorized reconciliation operator-unlock latch changed');
               }
             },
             runGit: ctx.opsGit ?? defaultGitRunner,
@@ -1856,132 +1831,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
         },
       },
-      ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
-        ceremony: {
-          async verify(input: CeremonyVerificationInput) {
-            const assertion = record(input.assertion);
-            const expectedChallenge = consumeChallenge(
-              string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
-            );
-            if (!expectedChallenge) return false;
-            const bound = humanResponseChallenge({
-              requestRef: input.requestRef,
-              requestRevision: input.requestRevision,
-              responseDigest: input.responseDigest,
-              action: input.action,
-              origin: input.origin,
-              challengeExpiresAt: input.challengeExpiresAt,
-            });
-            if (expectedChallenge !== Buffer.from(bound, 'utf8').toString('base64url')) return false;
-            const response = record(assertion.response);
-            const credential = findCredential(ctx.credentials(), string(response.id));
-            if (!credential) return false;
-            const verified = await verifyAssertion(assertion.response as never, {
-              expectedChallenge, credential, config: ctx.webAuthnConfig(),
-            });
-            return verified.verified;
-          },
-        },
-      } : {}),
       now: () => (ctx.now?.() ?? new Date()).getTime(),
     });
   };
-
-  scope.post('/api/control/human-requests/:requestRef/respond/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    const requestRef = (req.params as { requestRef: string }).requestRef;
-    const body = record(req.body);
-    const request = ctx.controlStore.getHumanRequest(sub, requestRef, readScope(req));
-    if (!request.ok) return sendResult(reply, request);
-    if (request.value.kind !== 'approval' && request.value.kind !== 'review' && request.value.kind !== 'governance-refusal') {
-      return reply.code(409).send({ error: 'ceremony-not-required' });
-    }
-    const expectedRevision = integer(body.expectedRevision);
-    const decision = string(body.decision) as HumanResponseInput['decision'];
-    if (request.value.revision !== expectedRevision || !['approved', 'rejected', 'changes-requested'].includes(decision)) {
-      return reply.code(409).send({ error: 'request-revision-changed' });
-    }
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const response = body.response == null ? null : string(body.response);
-    const responseDigest = humanResponseDigest({ decision, response });
-    const challenge = humanResponseChallenge({
-      requestRef, requestRevision: expectedRevision, responseDigest, action: decision,
-      origin: config.origin, challengeExpiresAt,
-    });
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
-  });
-
-  // P5 W6.3 [P5-C20, P5-C23, P5-C45]: the deploy-purpose T3 challenge on the SHIPPED verifier — registered
-  // beside the human-requests challenge, on the SAME guarded scope, minting through the SAME `credentialStore`
-  // pending map and binding through the SAME deterministic-preimage path (`deployChallenge`, humanResponse.ts).
-  // It mints ONLY the four T3 decisions, each over the ref spelling its decision requires; the assertion is
-  // verified by the deploy action endpoint against a preimage RE-READ server-side (a client-carried
-  // revision/digest is only a mint-time nonce — an acknowledged oracle/DoS surface, never an authz change,
-  // since verification still needs the provisioned key). No new refusal code is minted: an unreachable
-  // ceremony is `403 ceremony-unavailable`, exactly as the shipped ladder — never a downgrade [P5-C45].
-  scope.post('/api/inbox/deployment/:ref/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    let parsedRef: { kind: 'deploy-ready' | 'deployment'; ref: string };
-    try { parsedRef = parseDeploymentRef((req.params as { ref: string }).ref); }
-    catch { return reply.code(400).send({ error: 'invalid-ref' }); }
-    const body = record(req.body);
-    const decisionRaw = string(body.decision);
-    if (!(DEPLOY_T3_DECISIONS as readonly string[]).includes(decisionRaw)) {
-      return reply.code(400).send({ error: 'invalid-decision' });
-    }
-    const decision = decisionRaw as DeployT3Decision;
-    // Ref spelling each decision requires [P5-C49, P5-C58]: deploy ⇐ deploy-ready:<sha>; confirm ⇐ either
-    // member of the two-spelling union; abort/close-ptys-and-continue ⇐ deployment:<n> only.
-    const refOk =
-      decision === 'deploy' ? parsedRef.kind === 'deploy-ready'
-        : decision === 'confirm' ? true
-          : parsedRef.kind === 'deployment';
-    if (!refOk) return reply.code(400).send({ error: 'invalid-revision' });
-    const subjectKind: DeployT3Subject = decision === 'close-ptys-and-continue' ? 'pty-quiescence' : 'deployment';
-    const revision = string(body.revision);
-    if (revision.length === 0) return reply.code(400).send({ error: 'invalid-revision' });
-    // Binding digest: close-ptys-and-continue pins sha256(sorted session ids); every other decision carries
-    // the candidate/record attestation digest, re-read and re-bound at the action endpoint [§3.3].
-    let digest: string;
-    if (decision === 'close-ptys-and-continue') {
-      const rawIds = body.sessionIds;
-      if (!Array.isArray(rawIds) || rawIds.length === 0 || !rawIds.every((id) => typeof id === 'string')) {
-        return reply.code(400).send({ error: 'invalid-session-ids' });
-      }
-      digest = quiescenceDigest(rawIds as string[]);
-    } else {
-      digest = string(body.digest);
-      if (digest.length === 0) return reply.code(400).send({ error: 'invalid-digest' });
-    }
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const preimage: DeployT3Preimage = { subject: subjectKind, ref: parsedRef.ref, revision, decision, digest };
-    let challenge: string;
-    try { challenge = deployChallenge(preimage); }
-    catch { return reply.code(400).send({ error: 'invalid-revision' }); }
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
-  });
 
   // P6 W6.2 [design:435]: THIN caller of `services/runReadService.ts#respondHumanRequestRoute` — the
   // closed body wall and the gate-service result mapping are the service's. No byte of the
@@ -2059,91 +1911,6 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return decision;
   };
 
-  /** The signed tuple, recomputed server-side from the store record on BOTH legs [baseline-A §3]. */
-  const iterationGatePreimage = (
-    binding: NonNullable<ReturnType<typeof iterationGateBinding>>,
-    decision: string,
-    origin: string,
-    challengeExpiresAt: string,
-  ): IterationGateT3Preimage => ({
-    requestRef: binding.gateRequest.requestRef,
-    requestRevision: binding.gateRequest.revision,
-    gateRef: binding.gateRequest.requestRef,
-    gateKind: binding.gateKind,
-    parkReason: binding.loop.parkReason ?? null,
-    iterationLoopRef: binding.loop.iterationLoopRef,
-    loopVersion: binding.expectedLoopVersion,
-    receiptRef: binding.receipt?.receiptRef ?? null,
-    receiptVersion: binding.expectedReceiptVersion,
-    generationRefs: [...binding.loop.activeGenerationRefs],
-    decision,
-    origin,
-    challengeExpiresAt,
-  });
-
-  /**
-   * The iteration-gate ceremony, composed exactly like the shipped human-response one: the port exists
-   * only when the mode admits a ceremony AND a credential is provisioned, so an unprovisioned daemon
-   * fails CLOSED at `ceremony-unavailable` instead of degrading to the T2-strength authorization this
-   * route shipped with. Single use lives in the pending-challenge store: `consumeChallenge` spends the
-   * minted ceremony id once, so a replayed id can never re-verify.
-   */
-  const iterationGateCeremony = () => createIterationGateCeremonyService({
-    credentials: ctx.credentials,
-    now: () => (ctx.now?.() ?? new Date()).getTime(),
-    ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
-      ceremony: {
-        async verify(input: { assertion: unknown; challenge: string; origin: string }) {
-          const assertion = record(input.assertion);
-          const expectedChallenge = consumeChallenge(
-            string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
-          );
-          if (!expectedChallenge) return false;
-          if (expectedChallenge !== Buffer.from(input.challenge, 'utf8').toString('base64url')) return false;
-          let config;
-          try { config = ctx.webAuthnConfig(); } catch { return false; }
-          if (input.origin !== config.origin) return false;
-          const response = record(assertion.response);
-          const credential = findCredential(ctx.credentials(), string(response.id));
-          if (!credential) return false;
-          const verified = await verifyAssertion(assertion.response as never, {
-            expectedChallenge, credential, config,
-          });
-          return verified.verified;
-        },
-      },
-    } : {}),
-  });
-
-  // F3 [baseline-A §3]: the iteration-gate T3 challenge — registered on the SAME guarded scope and
-  // `preHandler` as the resolve route, minting through the SAME `credentialStore` pending map with the
-  // same 5-minute window, and binding through the SAME deterministic preimage the resolve recomputes.
-  // The tuple is derived from the STORE, never from the body: the caller chooses only the decision.
-  scope.post('/api/control/iteration-gates/:requestRef/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    const requestRef = (req.params as { requestRef: string }).requestRef;
-    const binding = iterationGateBinding(sub, requestRef, req, reply);
-    if (binding === null) return reply;
-    const decision = iterationGateDecision(record(req.body), binding.parkGate, reply);
-    if (decision === null) return reply;
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const challenge = iterationGateChallenge(
-      iterationGatePreimage(binding, decision, config.origin, challengeExpiresAt),
-    );
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
-  });
-
   const resolveIterationGateRoute = async (
     req: FastifyRequest,
     reply: FastifyReply,
@@ -2188,18 +1955,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'iteration-gate-cas-mismatch', detail: 'The displayed gate or artifact set changed; reload before deciding.' });
     }
     if (gateRequest.state === 'open') {
-      // F3 [baseline-A §3, item 4b]: T3 means a passkey assertion over the SAME tuple the CAS just
-      // checked — verified BEFORE the audit append, so a refused ceremony leaves no `authorized:` row
-      // and mutates nothing. A replay (state already `resolved`) is idempotent and re-verifies nothing,
-      // exactly as the shipped human-response path short-circuits its replay above its own ceremony.
-      const ceremony = await iterationGateCeremony().verify({
-        preimage: iterationGatePreimage(
-          binding, decision, string(req.headers.origin), string(body.challengeExpiresAt),
-        ),
-        assertion: body.ceremonyId == null || body.assertion == null
-          ? null : { ceremonyId: body.ceremonyId, response: body.assertion },
-      });
-      if (!ceremony.ok) return reply.code(ceremony.status).send({ error: ceremony.error });
+      // T2 removed the ceremony that used to verify an assertion over this tuple here, before
+      // the audit append. The riskTier: 'T3' audit row (still the SAME tuple the CAS above just
+      // checked) stays; authorization moves to the ssh-signed channel via T1's requireAuthority gate,
+      // not a route-local verify. A replay (state already `resolved`) skips this block entirely.
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-iteration-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',

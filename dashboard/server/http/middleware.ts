@@ -4,7 +4,7 @@
  *
  *   1. Origin/Host guard      — `security/origin.ts#originHook` (DNS-rebinding defence, ordering law 4).
  *   2. Rate-limit + lockout   — `security/ratelimit.ts#rateLimitHook` (sliding window + escalation).
- *   3. WebAuthn session gate   — `requireSession` here, verifying the bearer via `auth/session.ts`.
+ *   3. session gate   — `requireSession` here, verifying the bearer via `auth/session.ts`.
  *   4. The module's own gate   — governedSave/launch/floor/spawnVibe re-verify the session and enforce
  *                                path confinement / preamble / rate-limit themselves; this middleware
  *                                NEVER replaces those — it is an earlier, coarser fail-closed layer.
@@ -60,7 +60,7 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
 }
 
 /**
- * A `preHandler` enforcing a valid WebAuthn-minted session bearer or same-origin cookie. Rejects with a calm 401 JSON error
+ * A `preHandler` enforcing a valid session bearer or same-origin cookie. Rejects with a calm 401 JSON error
  * for a missing/malformed/expired/bad-signature token (mirroring `verifySession`'s own reasons), BEFORE
  * any handler or gate runs. On success stashes `{ token, claims }` for the handler to pass down to the
  * gate module (which independently re-verifies — defence in depth, never trusted-by-proxy).

@@ -13,11 +13,11 @@
  * 2. STEER MUST NEVER LAUNDER A RISK-TIER BUMP PAST APPROVAL. A `steer` may propose new card fields.
  *    If it RAISES the card's risk-tier (T1<T2<T3), it is NOT applied — it returns `needs-reapproval`
  *    and the steer text is never dispatched to the session. The re-approval BINDS via the dashboard
- *    `content_hash` preimage (`dashboard/server/auth/challenge.ts`), which INCLUDES `risk-tier`: this
+ *    `content_hash` preimage (`dashboard/server/auth/cardHash.ts`), which INCLUDES `risk-tier`: this
  *    verb recomputes `contentHash(canonicalCardPayload(proposedCard, body))`, and because the tier is
  *    in the preimage the proposed hash necessarily differs from the approved one, so no
- *    already-collected WebAuthn signature can cover the higher-tier card — a fresh D2.2/D2.3 approval
- *    over the new hash is required.
+ *    already-collected approval can cover the higher-tier card — a fresh signed approval over the new
+ *    hash is required.
  *
  *    WHY A TIER COMPARISON AND NOT JUST HASH-BINDING (plan §D3.3 note): the FLEET channel's
  *    `approvals.payload_hash` deliberately binds a NARROWER set (`action`+`target`+work-order, NO
@@ -26,11 +26,11 @@
  *    dashboard content-hash is what the resulting re-approval then binds to. Lowering or keeping the
  *    tier is allowed and applies normally (de-escalation never needs a fresh approval).
  *
- * `canonicalCardPayload` + `contentHash` are IMPORTED (read-only) from the frozen dashboard challenge
+ * `canonicalCardPayload` + `contentHash` are IMPORTED (read-only) from the frozen dashboard card-hash
  * module — never reimplemented — so the Broker hashes a proposed card with byte-identical semantics to
  * the approval channel that will verify the re-approval.
  */
-import { canonicalCardPayload, contentHash } from '../dashboard/server/auth/challenge.ts';
+import { canonicalCardPayload, contentHash } from '../dashboard/server/auth/cardHash.ts';
 import { isBrokerSpawned } from './index.ts';
 import type { ControlRequest } from './socket.ts';
 import type {
@@ -152,7 +152,7 @@ export function steer(owner: SessionOwner, id: string, patch: SteerPatch): Steer
         reason: 'needs-reapproval',
         priorContentHash: hashCard(currentCard),
         newContentHash: hashCard(proposed),
-        detail: `steer raises risk-tier ${currentCard['risk-tier']} -> ${proposed['risk-tier']}; a fresh WebAuthn approval over the new content hash is required`,
+        detail: `steer raises risk-tier ${currentCard['risk-tier']} -> ${proposed['risk-tier']}; a fresh signed approval over the new content hash is required`,
       };
     }
     // De-escalation or a non-tier change: dispatch the steer and report the (bound) content hash.

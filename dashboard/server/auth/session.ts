@@ -1,6 +1,6 @@
 /**
- * D2.1 — short-TTL session token minted at a successful WebAuthn assertion, never at registration
- * and never speculatively (`mintSessionFromVerifiedAssertion` throws if `verified !== true`).
+ * D2.1 — short-TTL session token minted by `mintSession`, most commonly in `tailnet` mode where
+ * `requireSession` mints one for a request whose transport the operator gate already proved.
  *
  * The token is a signed (HMAC-SHA256) bearer: `base64url(JSON(claims)) + '.' + base64url(hmac)`.
  * It is deliberately stateless (no server-side session map) so verification needs only the shared
@@ -41,7 +41,7 @@ export interface SessionConfig {
   now?: () => number;
   /**
    * The deployment auth-mode seam (see `auth/mode.ts`). ABSENT in `win32-desktop` mode, which is the
-   * default — `requireSession` then verifies a passkey-minted bearer exactly as it always has.
+   * default — `requireSession` then verifies a plain session bearer exactly as it always has.
    *
    * PRESENT in `tailnet` mode, where the request's transport is the credential: `requireSession` asks
    * this authenticator instead, and mints a session for the operator it proves. It lives on this object
@@ -63,10 +63,10 @@ export type SessionCheck =
 export const INTERNAL_SERVICE_CALLER_KIND = 'internal-service-caller';
 
 /**
- * A sanctioned internal service caller — an in-process principal, NOT a bearer token. Where a WebAuthn
- * session token is minted only after a human passkey assertion and is replayable by anyone who holds the
- * string, this is a branded object that never crosses a wire, is never persisted or logged, and cannot be
- * forged by an HTTP client. It authorizes a governed launch as `subject` in lieu of a token. It is ONLY
+ * A sanctioned internal service caller — an in-process principal, NOT a bearer token. Where a session
+ * token is minted from `mintSession` and is replayable by anyone who holds the string, this is a
+ * branded object that never crosses a wire, is never persisted or logged, and cannot be forged by an
+ * HTTP client. It authorizes a governed launch as `subject` in lieu of a token. It is ONLY
  * constructed by the authorized activation path (`control/activation.ts#createInternalServiceCaller`,
  * which requires the env override or a fresh latch unlock grant); no HTTP route ever constructs or forwards one.
  */
@@ -141,9 +141,7 @@ export function resolveSessionTtlMs(env: Record<string, string | undefined> = pr
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_TTL_MS;
 }
 
-/** Mint a signed short-TTL session token for `userId`. Prefer `mintSessionFromVerifiedAssertion` at
- *  the call site that follows a WebAuthn assertion — this raw form exists for that wrapper and for
- *  tests. */
+/** Mint a signed short-TTL session token for `userId`. */
 export function mintSession(
   userId: string,
   config: SessionConfig,
@@ -304,20 +302,4 @@ export async function resolveBrowserPrincipal(
     // A store fault is not a credential: it refuses closed and never propagates into the request path.
     return null;
   }
-}
-
-/**
- * Mint a session strictly from a positively-verified WebAuthn assertion result (see
- * `webauthn.ts#verifyAssertion`). Throws — never silently mints — when `verification.verified` is
- * not `true`, so a caller cannot accidentally wire an unchecked/failed assertion into a session.
- */
-export function mintSessionFromVerifiedAssertion(
-  verification: { verified: boolean },
-  userId: string,
-  config: SessionConfig,
-): { token: string; claims: SessionClaims } {
-  if (!verification.verified) {
-    throw new Error('refusing to mint a session from an unverified WebAuthn assertion');
-  }
-  return mintSession(userId, config);
 }

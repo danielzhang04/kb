@@ -43,6 +43,13 @@ export const AUTHORIZED_20260731_EXECUTION_LOCK_RUN_REF = 'run-0aa72053-b9d7-41f
 export const AUTHORIZED_20260731_EXECUTION_LOCK_REQUEST_REF = 'request-86d0fc5f-797b-483c-a706-96a45e6f4d6e';
 export const AUTHORIZED_20260731_EXECUTION_LOCK_TITLE = 'Automatic execution activation is gated';
 export const AUTHORIZED_20260731_EXECUTION_LOCK_OLD_PROMPT = 'Canonical cards are published, but the daemon Broker/execution adapters are not activated. Complete the separate runtime approval before release.';
+/**
+ * FROZEN — never edit for wording, including the T2 WebAuthn/passkey removal. This is the literal
+ * `prompt` text Daniel's real 2026-07-31 incident-recovery response already persisted, and it feeds
+ * {@link authorized20260731RecoveryFingerprint}'s hash input; changing even one byte here changes the
+ * fingerprint every already-recovered historical document was validated against, so a real prior
+ * recovery would stop validating. "Passkey" here names a real historical fact, not a live code path.
+ */
 export const AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT = 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.';
 
 const AUTHORIZED_20260731_STAGE_STATES = new Map<string, StageState>([

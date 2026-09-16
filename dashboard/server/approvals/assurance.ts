@@ -21,7 +21,6 @@ const POSSESSION_ADMISSIBLE = new Set(['possession-eligible', 'T3-established'])
 
 export interface ApprovalButtons {
   signed: boolean;
-  webauthn: boolean;
   possession: boolean;
 }
 
@@ -29,20 +28,19 @@ export interface ApprovalButtons {
  * Which approval buttons a pending card offers, decided PURELY from the fleet-emitted
  * `card.meta.assurance_class` frontmatter — dashboard-read-only, never recomputed.
  *
- * - `"T3-novel"` -> signed/WebAuthn ONLY, no possession button (possession is never admissible for a
+ * - `"T3-novel"` -> signed ONLY, no possession button (possession is never admissible for a
  *   novel/first-time T3 — O9/D0, and `scripts/approvals.verify_telegram_approval`'s own F4 check
  *   enforces the identical rule dispatcher-side as defense-in-depth).
- * - `"possession-eligible"` (the T1/T2 case) or `"T3-established"` -> all three buttons, including
+ * - `"possession-eligible"` (the T1/T2 case) or `"T3-established"` -> both buttons, including
  *   possession.
  * - Anything else — missing, `"signed-only"`, `"acts-alone"`, or an unrecognized future class — fails
- *   closed to signed+WebAuthn only, the same cutline as `"T3-novel"`.
+ *   closed to signed only, the same cutline as `"T3-novel"`.
  */
 export function buttonsFor(card: ParsedCard): ApprovalButtons {
   const raw = card.meta['assurance_class'];
   const assuranceClass = typeof raw === 'string' ? raw : null;
   return {
     signed: true,
-    webauthn: true,
     possession: assuranceClass !== null && POSSESSION_ADMISSIBLE.has(assuranceClass),
   };
 }

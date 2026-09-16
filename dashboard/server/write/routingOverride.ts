@@ -2,7 +2,7 @@
  * R2.2 — governed per-agent / per-scope routing OVERRIDE write. Sets or clears an entry in
  * `queue/routing-override.yaml` (a COORDINATION artifact — proposal §2 — NOT governance). Every mutation,
  * in order:
- *   1. WebAuthn short-TTL session gate (`auth/session.ts#verifySession`) — 401 otherwise.
+ *   1. Short-TTL session gate (`auth/session.ts#verifySession`) — 401 otherwise.
  *   2. Registry validation BEFORE any write: `scope ∈ {agent, card}`, `runtime ∈ policy.runtimes`,
  *      `model ∈ that runtime's known_models` (a CONCRETE id, never an alias), and `expires` is a valid
  *      ISO-8601 timestamp OR null — 400 otherwise.

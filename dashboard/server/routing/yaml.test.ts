@@ -67,7 +67,7 @@ overrides:
     runtime: claude
     model: claude-opus-4-8
     expires: 2026-07-18T00:00:00Z
-    set-by: daniel@webauthn
+    set-by: daniel@session
     set-at: 2026-07-17T14:03:00Z
   - scope: card
     key: 6a5950ae-19654711
@@ -88,7 +88,7 @@ describe('parseYaml — override shape (block sequence of maps)', () => {
       runtime: 'claude',
       model: 'claude-opus-4-8',
       expires: '2026-07-18T00:00:00Z',
-      'set-by': 'daniel@webauthn',
+      'set-by': 'daniel@session',
       'set-at': '2026-07-17T14:03:00Z',
     });
   });
@@ -143,7 +143,7 @@ describe('serializeOverride — round-trips through parseYaml', () => {
           runtime: 'claude',
           model: 'claude-opus-4-8',
           expires: '2026-07-18T00:00:00Z',
-          'set-by': 'daniel@webauthn',
+          'set-by': 'daniel@session',
           'set-at': '2026-07-17T14:03:00Z',
         },
       ],
@@ -207,11 +207,11 @@ describe('serializeOverride — allowlist quoting (LOW-2/LOW-3)', () => {
   it('still emits safe ids bare and quotes YAML-special "*"', () => {
     const text = serializeOverride({
       version: 1,
-      overrides: [{ scope: 'agent', key: 'worker-desktop', model: 'claude-opus-4-8', 'set-by': 'daniel@webauthn' }],
+      overrides: [{ scope: 'agent', key: 'worker-desktop', model: 'claude-opus-4-8', 'set-by': 'daniel@session' }],
     });
     expect(text).toContain('key: worker-desktop');
     expect(text).toContain('model: claude-opus-4-8');
-    expect(text).toContain('set-by: daniel@webauthn');
+    expect(text).toContain('set-by: daniel@session');
     expect(serializeOverride({ version: 1, overrides: [{ scope: 'agent', key: '*' }] })).toContain('key: "*"');
   });
 });

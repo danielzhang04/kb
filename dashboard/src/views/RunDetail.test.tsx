@@ -8,11 +8,11 @@ import { SessionProvider } from '../lib/sessionContext.tsx';
 import { clearStoredSession, persistSession } from '../lib/authClient.ts';
 import { RunDetail } from './RunDetail.tsx';
 
-// Only the ceremony helper is mocked - everything else (getRun, respond, etc.) stays real, exactly as
-// the other RunDetail tests exercise it through a stubbed fetchImpl.
+// Only the iteration-gate resolve call is mocked - everything else (getRun, respond, etc.) stays real,
+// exactly as the other RunDetail tests exercise it through a stubbed fetchImpl.
 vi.mock('../control/controlClient.ts', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../control/controlClient.ts')>();
-  return { ...actual, resolveIterationGateWithCeremony: vi.fn() };
+  return { ...actual, resolveIterationGate: vi.fn() };
 });
 
 // The pane itself is exercised by `ConsolePane.test.tsx`; here the mock records WHICH mount the Run
@@ -36,7 +36,7 @@ afterEach(() => {
 
 function unlocked(ui: React.ReactElement): React.ReactElement {
   persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
-  return <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' as const, ceremonyAvailable: true }) }}>{ui}</SessionProvider>;
+  return <SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'win32-desktop' as const }) }}>{ui}</SessionProvider>;
 }
 
 function detail(overrides: Partial<RunDetailDto> = {}): RunDetailDto {
@@ -170,42 +170,35 @@ describe('Dashboard v3 Run view', () => {
     expect(screen.getByRole('button', { name: 'Details' }).getAttribute('aria-expanded')).toBe('false');
   });
 
-  // W47: the T3 Approve control follows the SERVER's `ceremonyAvailable` (from /api/auth/context), not
-  // the auth mode. RED ON REVERT: put back `ceremonyAvailable={session.mode === 'win32-desktop'}` in
-  // RunDetail.tsx and the tailnet+available case below fails - Approve stays disabled and the
-  // "Passkey ceremony unavailable" notice stays rendered, which is exactly what parked the first VM
-  // acceptance run at an approval gate nobody could clear.
-  it.each([
-    { mode: 'tailnet' as const, ceremonyAvailable: true, enabled: true },
-    { mode: 'tailnet' as const, ceremonyAvailable: false, enabled: false },
-    { mode: 'win32-desktop' as const, ceremonyAvailable: true, enabled: true },
-    { mode: 'win32-desktop' as const, ceremonyAvailable: false, enabled: false },
-  ])('W47: the T3 Approve control follows server ceremonyAvailable ($mode/$ceremonyAvailable)', async (probe) => {
-    const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
-    vi.stubGlobal('EventSource', class {
-      addEventListener(): void { /* no-op */ }
-      close(): void { /* no-op */ }
-    });
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).includes('/events?')) return new Response(JSON.stringify({
-        revision: 'a'.repeat(64), items: events, nextCursor: null,
-      }), { status: 200, headers: { 'content-type': 'application/json' } });
-      return new Response(JSON.stringify({ ok: true, value: detail({ humanRequests: [t3] }) }), {
-        status: 200, headers: { 'content-type': 'application/json' },
+  // T2 removed the ceremony that used to additionally gate a T3 Approve control on the
+  // server's `ceremonyAvailable` (from /api/auth/context). It is now respondable exactly like any
+  // other open gate, in every auth mode.
+  it.each(['tailnet' as const, 'win32-desktop' as const])(
+    'T2: the T3 Approve control is enabled with no ceremony left to gate it (%s)', async (mode) => {
+      const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
+      vi.stubGlobal('EventSource', class {
+        addEventListener(): void { /* no-op */ }
+        close(): void { /* no-op */ }
+      });
+      const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes('/events?')) return new Response(JSON.stringify({
+          revision: 'a'.repeat(64), items: events, nextCursor: null,
+        }), { status: 200, headers: { 'content-type': 'application/json' } });
+        return new Response(JSON.stringify({ ok: true, value: detail({ humanRequests: [t3] }) }), {
+          status: 200, headers: { 'content-type': 'application/json' },
+        });
+      });
+
+      persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
+      render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode }) }}>
+        <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
+      </SessionProvider>);
+      expect(await screen.findByText('Deployment approval')).toBeTruthy();
+      await waitFor(() => {
+        const approve = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
+        expect(approve.disabled).toBe(false);
       });
     });
-
-    persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
-    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: probe.mode, ceremonyAvailable: probe.ceremonyAvailable }) }}>
-      <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
-    </SessionProvider>);
-    expect(await screen.findByText('Deployment approval')).toBeTruthy();
-    await waitFor(() => {
-      const approve = screen.getByRole('button', { name: 'Approve' }) as HTMLButtonElement;
-      expect(approve.disabled).toBe(!probe.enabled);
-    });
-    expect(Boolean(screen.queryByText('Passkey ceremony unavailable'))).toBe(!probe.enabled);
-  });
 
   it('lists two open gates in server order and leaves one run attention after resolving the ordinary gate', async () => {
     const t3 = humanRequest('request-t3', 'approval', 'Deployment approval');
@@ -236,16 +229,16 @@ describe('Dashboard v3 Run view', () => {
     });
 
     persistSession({ token: 'run-token', expiresAt: Date.now() + 60_000 });
-    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' as const, ceremonyAvailable: false }) }}>
+    render(<SessionProvider deps={{ fetchAuthContext: async () => ({ mode: 'tailnet' as const }) }}>
       <RunDetail runRef="run-1" fetchImpl={fetchImpl} />
     </SessionProvider>);
     expect(await screen.findByText('Deployment approval')).toBeTruthy();
     expect(screen.getByText('Operator input')).toBeTruthy();
     const controls = screen.getAllByRole('textbox', { name: 'Response' });
     expect(controls).toHaveLength(2);
-    expect((controls[0] as HTMLTextAreaElement).disabled).toBe(true);
+    // T2: no ceremony gates a T3 gate's control any more — both are equally open/respondable.
+    expect((controls[0] as HTMLTextAreaElement).disabled).toBe(false);
     expect((controls[1] as HTMLTextAreaElement).disabled).toBe(false);
-    expect(screen.getByText('Passkey ceremony unavailable')).toBeTruthy();
     expect(Number(controls.length > 0)).toBe(1);
 
     fireEvent.change(controls[1], { target: { value: 'Continue.' } });
@@ -508,7 +501,7 @@ describe('Dashboard v3 Run view', () => {
 
   describe('Iteration gates', () => {
     afterEach(() => {
-      vi.mocked(controlClient.resolveIterationGateWithCeremony).mockClear();
+      vi.mocked(controlClient.resolveIterationGate).mockClear();
     });
 
     // RED ON REVERT: drop the "Iteration gates" section (or its buttons) from RunDetail.tsx and this
@@ -552,10 +545,10 @@ describe('Dashboard v3 Run view', () => {
       expect(screen.queryByRole('button', { name: 'Request changes' })).toBeNull();
     });
 
-    it('resolves a completion gate through the ceremony helper with the exact CAS tuple from the DTO', async () => {
+    it('resolves a completion gate through the plain resolve call with the exact CAS tuple from the DTO', async () => {
       const gate = iterationGateRequest('gate-1', 'Draft completion');
       const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1', version: 7, activeGenerationRefs: ['generation-1'] });
-      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
+      const resolved = vi.mocked(controlClient.resolveIterationGate);
       resolved.mockResolvedValueOnce({
         loop: { ...loop, state: 'passed' }, receipt: null, receiptVersion: null,
         gate: { ...gate, state: 'resolved' }, interventionRequest: null,
@@ -578,13 +571,13 @@ describe('Dashboard v3 Run view', () => {
       await screen.findByText('Resolved');
     });
 
-    it('resolves a park gate through the ceremony helper with the park CAS tuple, including park reason', async () => {
+    it('resolves a park gate through the plain resolve call with the park CAS tuple, including park reason', async () => {
       const gate = iterationGateRequest('gate-2', 'Iteration parked', 'iteration-park');
       const loop = iterationLoop({
         state: 'awaiting-park-gate', completionGateRef: undefined, interventionRef: 'gate-2',
         parkReason: 'exhausted', version: 4, activeGenerationRefs: ['generation-2', 'generation-3'],
       });
-      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
+      const resolved = vi.mocked(controlClient.resolveIterationGate);
       resolved.mockResolvedValueOnce({
         loop: { ...loop, state: 'declined' }, receipt: null, receiptVersion: null,
         gate: { ...gate, state: 'resolved' }, interventionRequest: null,
@@ -604,11 +597,11 @@ describe('Dashboard v3 Run view', () => {
       });
     });
 
-    it('renders the server refusal code verbatim on a ceremony failure', async () => {
+    it('renders the server refusal code verbatim on a resolve failure', async () => {
       const gate = iterationGateRequest('gate-1', 'Draft completion');
       const loop = iterationLoop({ state: 'awaiting-completion-gate', completionGateRef: 'gate-1' });
-      const resolved = vi.mocked(controlClient.resolveIterationGateWithCeremony);
-      resolved.mockRejectedValueOnce(new controlClient.ControlApiError(403, 'ceremony expired', 'ceremony-expired'));
+      const resolved = vi.mocked(controlClient.resolveIterationGate);
+      resolved.mockRejectedValueOnce(new controlClient.ControlApiError(409, 'gate CAS mismatch', 'iteration-gate-cas-mismatch'));
       render(unlocked(<RunDetail
         runRef="run-1"
         detail={detail({ iterationLoops: [loop], humanRequests: [gate] })}
@@ -617,7 +610,7 @@ describe('Dashboard v3 Run view', () => {
       await screen.findByText('Draft completion'); // let the SessionProvider's async mode fetch settle first
       fireEvent.click(screen.getByRole('button', { name: 'Approve' }));
       await screen.findByRole('alert');
-      expect(screen.getByRole('alert').textContent).toBe('Ceremony refused: ceremony-expired');
+      expect(screen.getByRole('alert').textContent).toBe('Resolve failed: iteration-gate-cas-mismatch');
       // Not left disabled/stuck - the operator can retry after reloading.
       expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(false);
     });

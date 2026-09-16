@@ -317,7 +317,7 @@ role_default: { runtime: claude, model: sonnet }
     expect(runPy).not.toHaveBeenCalled();
   });
 
-  // --- launch caller authentication: the WebAuthn token gate (HTTP) vs. the internal service caller (bridge) ---
+  // --- launch caller authentication: the session token gate (HTTP) vs. the internal service caller (bridge) ---
 
   // A runPy that publishes the two-stage DAG successfully — used to prove a call reaches PAST the auth gate.
   const okDagRunPy: PyRunner = () => ({
@@ -335,7 +335,7 @@ role_default: { runtime: claude, model: sonnet }
   it('rejects a launch with no session token and no internal caller (the HTTP-equivalent unauthenticated path, unchanged)', async () => {
     const runPy = vi.fn(okDagRunPy);
     const outcome = await launchWorkflowRun(request, { token: undefined, config: CONFIG }, deps(runPy));
-    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no session token supplied' });
     expect(runPy).not.toHaveBeenCalled();
   });
 
@@ -378,7 +378,7 @@ role_default: { runtime: claude, model: sonnet }
       { token: undefined, config: CONFIG, internalService: { kind: 'internal-service-caller', subject: 'dashboard-engine' } as never },
       deps(runPy),
     );
-    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no session token supplied' });
     expect(runPy).not.toHaveBeenCalled();
   });
 
@@ -390,7 +390,7 @@ role_default: { runtime: claude, model: sonnet }
       { token: undefined, config: CONFIG, internalService: { kind: 'not-the-kind', subject: 'x' } as never },
       deps(runPy),
     );
-    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    expect(outcome).toEqual({ ok: false, reason: 'unauthenticated', detail: 'no session token supplied' });
     expect(runPy).not.toHaveBeenCalled();
   });
 

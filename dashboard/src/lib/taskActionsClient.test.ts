@@ -11,13 +11,13 @@ function jsonResponse(body: unknown, ok = true, status = 200): Response {
 describe('verifyApproval', () => {
   it('POSTs cardId+channel with the session bearer', async () => {
     const fake = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true, reason: 'verified' }));
-    const res = await verifyApproval('card-77', 'webauthn', { token: 'sess-tok', fetchImpl: fake as unknown as typeof fetch });
+    const res = await verifyApproval('card-77', 'signed', { token: 'sess-tok', fetchImpl: fake as unknown as typeof fetch });
     expect(res).toMatchObject({ ok: true, status: 200 });
     const [url, init] = fake.mock.calls[0];
     expect(url).toBe('/api/approvals/verify');
     expect(init!.method).toBe('POST');
     expect((init!.headers as Record<string, string>).authorization).toBe('Bearer sess-tok');
-    expect(JSON.parse(init!.body as string)).toEqual({ cardId: 'card-77', channel: 'webauthn' });
+    expect(JSON.parse(init!.body as string)).toEqual({ cardId: 'card-77', channel: 'signed' });
   });
 
   it('surfaces a 401 (no session) as ok:false rather than throwing', async () => {

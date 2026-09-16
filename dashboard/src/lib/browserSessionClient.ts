@@ -4,8 +4,8 @@
  * `/api/pty` and `/api/pty/sessions` resolve a BROWSER principal — the operator session AND a live
  * `kb_browser_session` ref cookie — and refuse with 428 `browser-session-required` when the cookie is
  * missing. `POST /api/auth/browser-session` is the only route that ever mints that cookie, and on the
- * always-on tailnet deployment it is the only one that CAN: tailnet auth is ambient, so no assertion is
- * ever verified and the WebAuthn sign-in mint path never runs. Nothing in the client called it, so no
+ * always-on tailnet deployment it is the only one that CAN: tailnet auth is ambient, so there is no
+ * sign-in mint path to run at all. Nothing in the client called it, so no
  * browser on that deployment could open a terminal at all — every upgrade 428'd and the operator read
  * "Disconnected — the connection failed. Reattach to continue." forever.
  *

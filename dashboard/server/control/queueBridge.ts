@@ -579,7 +579,7 @@ export interface DispatchCardDeps {
   runPreamble?: PreambleRunner;
   /**
    * Construct the sanctioned internal service caller presented to `executeApprovedLaunch` in lieu of a
-   * WebAuthn session token (the bridge is a daemon-internal dispatcher with no human session). Default: the
+   * session token (the bridge is a daemon-internal dispatcher with no human session). Default: the
    * `createInternalServiceCaller`, which requires either the headless env override or a fresh latch unlock
    * grant — so a bridge ever driven outside an armed window fails closed instead of launching
    * unauthenticated. Tests inject a stub to drive dispatch hermetically.
@@ -940,9 +940,9 @@ export async function dispatchClaimedCard(
     revision,
     storedHash: contentHash,
     snapshot,
-    // The bridge has no human WebAuthn session. It authorizes the launch of the run it just imported and
+    // The bridge has no human session. It authorizes the launch of the run it just imported and
     // approved under its OWN subject with a gated internal service caller (constructible only when the
-    // activation gate is on), NOT a token. The HTTP launch surfaces still require a WebAuthn token.
+    // activation gate is on), NOT a token. The HTTP launch surfaces still require a session token.
     sessionToken: undefined,
     internalService: serviceCaller,
     idempotencyKey,

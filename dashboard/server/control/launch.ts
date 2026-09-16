@@ -21,6 +21,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { validateServerCompiledPlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import type { CompiledStagePolicy } from './compiler.ts';
+import { AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT } from './authorizedIncidentRecovery.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
@@ -514,11 +515,14 @@ export async function executeApprovedLaunch(
         if (!waiting.ok) throw new Error(waiting.detail);
         ctx.controlStore.createHumanRequest(sub, runRef, {
           // Runtime wiring is an operationally recoverable boundary, not a verdict that the approved
-          // plan violates governance. The passkey latch still independently prevents `/activate` while
+          // plan violates governance. The operator-unlock latch still independently prevents `/activate` while
           // locked; resolving this intervention only records that the operator is ready to retry the
           // already-published run after execution has been unlocked.
           kind: 'intervention', title: 'Automatic execution activation is gated',
-          prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+          // This is the SAME text as the 2026-07-31 incident-recovery reclassification's new prompt —
+          // imported by name (not hand-copied) so it can never drift from the frozen constant a real
+          // historical recovery's fingerprint was already validated against.
+          prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
         });
         ctx.controlStore.appendEvent(sub, runRef, {
           kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',

@@ -3,8 +3,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from 'vitest';
 import Fastify from 'fastify';
 import type { FastifyInstance } from 'fastify';
 import {
-  ROUTE_AUTHORITY, classifyRoute, routeKey, FORBIDDEN_ROUTE_PREFIXES, PENDING_DELETION,
-  TRANSITIONAL_CEREMONY_ROUTES,
+  ROUTE_AUTHORITY, classifyRoute, routeKey, FORBIDDEN_ROUTE_PREFIXES,
 } from './policy.ts';
 import { buildApp, registeredRoutesOf } from '../index.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
@@ -44,27 +43,6 @@ describe('route authority table', () => {
       for (const prefix of FORBIDDEN_ROUTE_PREFIXES) {
         expect(entry.path.startsWith(prefix)).toBe(false);
       }
-    }
-  });
-
-  it('lists exactly the four ceremony routes as pending deletion', () => {
-    expect([...PENDING_DELETION].sort()).toEqual([
-      'POST /api/auth/assert/options',
-      'POST /api/auth/assert/verify',
-      'POST /api/auth/register/options',
-      'POST /api/auth/register/verify',
-    ]);
-  });
-
-  it('lists exactly the three ceremony BYPRODUCT routes as a T2 sequencing bridge, and classifies each open', () => {
-    expect([...TRANSITIONAL_CEREMONY_ROUTES].sort()).toEqual([
-      'POST /api/control/human-requests/:requestRef/respond/challenge',
-      'POST /api/control/iteration-gates/:requestRef/challenge',
-      'POST /api/inbox/deployment/:ref/challenge',
-    ]);
-    for (const key of TRANSITIONAL_CEREMONY_ROUTES) {
-      const [method, path] = [key.slice(0, key.indexOf(' ')), key.slice(key.indexOf(' ') + 1)];
-      expect(classifyRoute(method, path)?.cls).toBe('open');
     }
   });
 });
@@ -130,12 +108,11 @@ describe('the table covers the real app', () => {
     const app = buildRealApp();
     await app.ready();
     const registered = registeredRoutesOf(app).filter((r) => MUTATING.has(r.method));
-    // T3 note: `TRANSITIONAL_CEREMONY_ROUTES` need no filter here — `classifyRoute` now resolves them
-    // (as `open`) directly, so they never appear in `unclassified` at all; see policy.ts's own doc comment
-    // on why, and the `TRANSITIONAL_CEREMONY_ROUTES` test above for the classification itself.
+    // T2 removed the credential-ceremony auth mechanism end to end, so the ceremony routes
+    // `PENDING_DELETION` and `TRANSITIONAL_CEREMONY_ROUTES` used to carve out no longer exist on
+    // the real daemon at all — no filter is needed for them any more.
     const unclassified = registered
       .map((r) => `${r.method} ${r.url}`)
-      .filter((key) => !PENDING_DELETION.includes(key))
       .filter((key) => !key.startsWith('POST /api/v1/hosts/'))         // node scope, spec §2
       .filter((key) => !key.startsWith('POST /api/v1/runs/') || key.includes('human-requests'))
       .filter((key) => !key.startsWith('POST /api/control/paid-action')) // grant class, spec §2

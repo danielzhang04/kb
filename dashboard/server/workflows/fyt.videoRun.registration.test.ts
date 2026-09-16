@@ -119,7 +119,6 @@ function makeApp() {
     stateRoot,
     sessionConfig: { secret: SESSION_SECRET, ttlMs: 60_000 },
     allowedOrigins: [],
-    credentials: () => [],
     definitionAmendmentStore: createInMemoryAssignmentAmendmentStore(),
     controlStore: createInMemoryControlPlaneStore(),
     composerStore: createInMemoryComposerStore({ protector: createProviderIdProtector(SESSION_SECRET) }),

@@ -22,7 +22,7 @@ const common = {
 
 describe('RunInspector', () => {
   it('shows plan, milestones, outputs, active gate, and one closed Details disclosure', () => {
-    render(<RunInspector {...common} gate={gate()} ceremonyAvailable={false} onRespond={vi.fn()} />);
+    render(<RunInspector {...common} gate={gate()} onRespond={vi.fn()} />);
     expect(screen.getByText('Ship W3')).toBeTruthy();
     expect(screen.getByText('Tests green')).toBeTruthy();
     expect(screen.getByText('Choose a direction')).toBeTruthy();
@@ -36,18 +36,17 @@ describe('RunInspector', () => {
 
   it('submits an ordinary gate once and stays disabled after the accepted revision', () => {
     const onRespond = vi.fn();
-    const { rerender } = render(<RunInspector {...common} gate={gate()} ceremonyAvailable={false} onRespond={onRespond} />);
+    const { rerender } = render(<RunInspector {...common} gate={gate()} onRespond={onRespond} />);
     fireEvent.change(screen.getByLabelText('Response'), { target: { value: 'continue' } });
     fireEvent.click(screen.getByRole('button', { name: 'Respond' }));
     expect(onRespond).toHaveBeenCalledWith(expect.objectContaining({ requestRef: 'ask-1', expectedRevision: 1, decision: 'responded', response: 'continue' }));
 
-    rerender(<RunInspector {...common} gate={gate({ state: 'resolved', revision: 2 })} ceremonyAvailable={false} onRespond={onRespond} />);
+    rerender(<RunInspector {...common} gate={gate({ state: 'resolved', revision: 2 })} onRespond={onRespond} />);
     expect(screen.getByRole('button', { name: 'Respond' }).hasAttribute('disabled')).toBe(true);
   });
 
-  it('refuses a T3 gate in the UI when the ceremony is unavailable', () => {
-    render(<RunInspector {...common} gate={gate({ kind: 'approval' })} ceremonyAvailable={false} onRespond={vi.fn()} />);
-    expect(screen.getByText('Passkey ceremony unavailable')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(true);
+  it('T2: a T3 gate is respondable like any other — there is no ceremony left to gate it', () => {
+    render(<RunInspector {...common} gate={gate({ kind: 'approval' })} onRespond={vi.fn()} />);
+    expect(screen.getByRole('button', { name: 'Approve' }).hasAttribute('disabled')).toBe(false);
   });
 });

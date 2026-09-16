@@ -50,7 +50,7 @@ const EVIDENCE_KEYS = new Set(['schema', 'key', 'passed', 'release', 'host', 'co
 const RELEASE_KEYS = new Set(['commit', 'artifactSha256']);
 const HOST_KEYS = new Set(['machineIdSha256', 'bootId']);
 const RAW_OUTPUT_KEYS = new Set(['file', 'sha256']);
-const SECRET_FLAG = /^--?(?:token|secret|password|passkey|credential|api-key|access-key|authorization)(?:=.*)?$/i;
+const SECRET_FLAG = /^--?(?:token|secret|password|credential|api-key|access-key|authorization)(?:=.*)?$/i;
 const SECRET_VALUE = /(?:authorization\s*:|-----BEGIN .*PRIVATE KEY-----|(?:token|secret|password|session)[A-Za-z0-9_]*=)/i;
 const URL_EMBEDDED_CREDENTIAL = /^[a-z][a-z0-9+.-]*:\/\/[^\s\/@:]+:[^\s\/@]+@/i;
 const BARE_BEARER = /^bearer\s+\S+$/i;

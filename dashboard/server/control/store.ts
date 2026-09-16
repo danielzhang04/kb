@@ -191,7 +191,7 @@ const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waitin
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
 
-/** The single human identity the daemon mints WebAuthn sessions for (`server/auth/routes.ts` OPERATOR.id).
+/** The single human identity the daemon mints sessions for (`server/auth/routes.ts` OPERATOR.id).
  *  Every other subject in this document is a machine: the dashboard engine, an executor, a test fixture. */
 export const OPERATOR_SUBJECT = 'operator';
 

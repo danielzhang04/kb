@@ -11,7 +11,7 @@ import type { SubprocessResult } from './resolvers.ts';
 import { getInboxSourceCache, resetInboxSourceCacheForTests } from './sourceCache.ts';
 import {
   registerInboxRoutes, createInboxRoutePorts, readInbox, P5SourceBudget,
-  registerInboxActionRoutes, type InboxRoutePorts, type InboxActionPorts, type DeployCeremonyGate,
+  registerInboxActionRoutes, type InboxRoutePorts, type InboxActionPorts,
 } from './routes.ts';
 import { prHref } from './contracts.ts';
 import { deployReadyRevision } from './deploymentContracts.ts';
@@ -180,7 +180,9 @@ describe('Inbox routes — four-source envelope', () => {
 });
 
 // ===================================================================================================
-// Action endpoints — parsing, session gating, idempotency key, T3 ceremony gate, pre-ceremony 409s.
+// Action endpoints — parsing, session gating, idempotency key, crossed-verb 409s. T2 removed the
+// ceremony gate that used to additionally guard the four T3-named endpoints; they are plain
+// session-gated routes now.
 // ===================================================================================================
 
 function greenCandidate(breaking = false): DeployReadyCandidate {
@@ -192,8 +194,6 @@ interface Recorder { deploy: number; confirm: number; abort: number; acknowledge
 function actionPorts(over: {
   candidate?: DeployReadyCandidate | null;
   liveSha?: string | null;
-  available?: boolean;
-  verify?: DeployCeremonyGate['verify'];
   deploymentState?: string;
   rec?: Recorder;
 } = {}): InboxActionPorts {
@@ -211,10 +211,6 @@ function actionPorts(over: {
   } as unknown as InboxActionPorts['executors']['assetPullService'];
   return {
     executors: { deploymentService: service, assetPullService: assetPull, helperDeploy: () => { rec.helperDeploy += 1; } },
-    ceremony: {
-      available: () => over.available ?? false,
-      verify: over.verify ?? (() => null),
-    },
     deployReady: { latestCandidate: () => (over.candidate === undefined ? greenCandidate() : over.candidate) },
     resolveLiveSha: () => (over.liveSha === undefined ? LIVE : over.liveSha),
     quiescence: {
@@ -275,9 +271,9 @@ describe('Inbox action endpoints', () => {
     await instance.close();
   });
 
-  it('deploy: a breaking candidate refuses 409 confirm-required BEFORE any ceremony work', async () => {
+  it('deploy: a breaking candidate refuses 409 confirm-required', async () => {
     const rec = { deploy: 0, confirm: 0, abort: 0, acknowledge: 0, pull: 0, retry: 0, helperDeploy: 0 };
-    const instance = actionApp(actionPorts({ candidate: greenCandidate(true), available: true, rec }));
+    const instance = actionApp(actionPorts({ candidate: greenCandidate(true), rec }));
     const res = await post(instance, `/api/inbox/deployment/${deployRef}/deploy`, { expectedRevision: deployRevision() });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('confirm-required');
@@ -286,7 +282,7 @@ describe('Inbox action endpoints', () => {
   });
 
   it('confirm: a green candidate refuses 409 deploy-required', async () => {
-    const instance = actionApp(actionPorts({ candidate: greenCandidate(false), available: true }));
+    const instance = actionApp(actionPorts({ candidate: greenCandidate(false) }));
     const res = await post(instance, `/api/inbox/deployment/${deployRef}/confirm`, { expectedRevision: deployRevision() });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('deploy-required');
@@ -294,24 +290,18 @@ describe('Inbox action endpoints', () => {
   });
 
   it('deploy: a stale candidate (sha moved on) refuses 409 revision-changed', async () => {
-    const instance = actionApp(actionPorts({ candidate: { sha: 'f'.repeat(40), attestationDigest: DIGEST, breaking: false }, available: true }));
+    const instance = actionApp(actionPorts({ candidate: { sha: 'f'.repeat(40), attestationDigest: DIGEST, breaking: false } }));
     const res = await post(instance, `/api/inbox/deployment/${deployRef}/deploy`, { expectedRevision: deployRevision() });
     expect(res.statusCode).toBe(409);
     expect(res.json().error).toBe('revision-changed');
     await instance.close();
   });
 
-  it('deploy: without a ceremony refuses 403 ceremony-unavailable (VM default, no provisioned credential)', async () => {
-    const instance = actionApp(actionPorts({ available: false }));
-    const res = await post(instance, `/api/inbox/deployment/${deployRef}/deploy`, { expectedRevision: deployRevision() });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error).toBe('ceremony-unavailable');
-    await instance.close();
-  });
-
-  it('deploy: happy path with ceremony available + verify ok creates the record and invokes the helper', async () => {
+  // T2 removed the ceremony gate; these are plain session-gated writes now — a valid session
+  // and a matching candidate/revision is sufficient.
+  it('deploy: happy path creates the record and invokes the helper (no ceremony gate)', async () => {
     const rec = { deploy: 0, confirm: 0, abort: 0, acknowledge: 0, pull: 0, retry: 0, helperDeploy: 0 };
-    const instance = actionApp(actionPorts({ available: true, verify: () => null, rec }));
+    const instance = actionApp(actionPorts({ rec }));
     const res = await post(instance, `/api/inbox/deployment/${deployRef}/deploy`, { expectedRevision: deployRevision() });
     expect(res.statusCode).toBe(200);
     expect(rec.deploy).toBe(1);
@@ -319,36 +309,27 @@ describe('Inbox action endpoints', () => {
     await instance.close();
   });
 
-  it('deploy: ceremony available but verify fails refuses 403 ceremony-invalid and never writes', async () => {
-    const rec = { deploy: 0, confirm: 0, abort: 0, acknowledge: 0, pull: 0, retry: 0, helperDeploy: 0 };
-    const instance = actionApp(actionPorts({ available: true, verify: () => ({ status: 403, code: 'ceremony-invalid' }), rec }));
-    const res = await post(instance, `/api/inbox/deployment/${deployRef}/deploy`, { expectedRevision: deployRevision() });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error).toBe('ceremony-invalid');
-    expect(rec.deploy).toBe(0);
-    await instance.close();
-  });
-
   it('abort: a deploy-ready ref is refused 400 invalid-revision (deployment:<n> only)', async () => {
-    const instance = actionApp(actionPorts({ available: true }));
+    const instance = actionApp(actionPorts());
     const res = await post(instance, `/api/inbox/deployment/${deployRef}/abort`, { expectedRevision: 'deployment:3' });
     expect(res.statusCode).toBe(400);
     expect(res.json().error).toBe('invalid-revision');
     await instance.close();
   });
 
-  it('abort: without a ceremony refuses 403 ceremony-unavailable', async () => {
-    const instance = actionApp(actionPorts({ available: false }));
+  it('abort: succeeds with no ceremony gate (a plain session-gated write)', async () => {
+    const rec = { deploy: 0, confirm: 0, abort: 0, acknowledge: 0, pull: 0, retry: 0, helperDeploy: 0 };
+    const instance = actionApp(actionPorts({ rec }));
     const res = await post(instance, '/api/inbox/deployment/deployment:3/abort', { expectedRevision: 'deployment:3' });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error).toBe('ceremony-unavailable');
+    expect(res.statusCode).toBe(200);
+    expect(rec.abort).toBe(1);
     await instance.close();
   });
 
   it('acknowledge: NON-T3 terminal record acknowledges with no ceremony', async () => {
     const rec = { deploy: 0, confirm: 0, abort: 0, acknowledge: 0, pull: 0, retry: 0, helperDeploy: 0 };
     const store = { getDeployment: () => ({ ok: true, value: { state: 'succeeded' } }) };
-    const instance = actionApp(actionPorts({ available: false, rec }), store);
+    const instance = actionApp(actionPorts({ rec }), store);
     const res = await post(instance, '/api/inbox/deployment/deployment:3/acknowledge', { expectedRevision: 'deployment:3' });
     expect(res.statusCode).toBe(200);
     expect(rec.acknowledge).toBe(1);
@@ -384,18 +365,21 @@ describe('Inbox action endpoints', () => {
     await instance.close();
   });
 
-  it('close-ptys-and-continue: T3 without a ceremony refuses 403 ceremony-unavailable', async () => {
-    const instance = actionApp(actionPorts({ available: false }));
+  it('close-ptys-and-continue: no ceremony gate — reaches closePtysAndContinue itself', async () => {
+    const instance = actionApp(actionPorts());
     const res = await post(instance, '/api/inbox/deployment/deployment:3/close-ptys-and-continue', {
       expectedRevision: 'deployment:3', sessionIds: [`pty-${'a'.repeat(32)}`],
     });
-    expect(res.statusCode).toBe(403);
-    expect(res.json().error).toBe('ceremony-unavailable');
+    // Never 403/ceremony-unavailable (the gate is gone). The default `actionPorts` fixture has no live
+    // pty sessions, so `closePtysAndContinue` itself refuses `pty-set-changed` — proving the request
+    // reached the real logic rather than being turned away by a ceremony check first.
+    expect(res.statusCode).toBe(409);
+    expect(res.json().error).toBe('pty-set-changed');
     await instance.close();
   });
 
   it('there is NO decline endpoint', async () => {
-    const instance = actionApp(actionPorts({ available: true }));
+    const instance = actionApp(actionPorts());
     const res = await post(instance, '/api/inbox/deployment/deployment:3/decline', { expectedRevision: 'deployment:3' });
     expect(res.statusCode).toBe(404);
     await instance.close();

@@ -235,7 +235,7 @@ def safe_command(command: list[str]) -> list[str]:
         if re.search(r"[\x00-\x1f\x7f]", arg):
             raise RuntimeError("control character in evidence command")
         if re.fullmatch(
-            r"(?i)--?(?:token|secret|password|passkey|credential|api-key|access-key|authorization)(?:=.*)?",
+            r"(?i)--?(?:token|secret|password|credential|api-key|access-key|authorization)(?:=.*)?",
             arg,
         ) or re.search(
             r"(?i)(authorization\s*:|-----BEGIN .*PRIVATE KEY-----|(?:token|secret|password|session)[A-Za-z0-9_]*=)",

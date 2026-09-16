@@ -130,7 +130,7 @@ export interface SpendGrantMintInput {
 }
 
 /**
- * Server-owned spend-grant store. A passkey-approved spendAuthorization gate mints ONE durable grant per
+ * Server-owned spend-grant store. An approved spendAuthorization gate mints ONE durable grant per
  * (runRef, stageRef, operation); the returned opaque token is the stage's capability and authorizes many
  * capped calls until it expires (the images stage draws it down up to eleven times). The store keeps only
  * the token's sha256 hash — the raw token is returned exactly once and is never persisted or logged.

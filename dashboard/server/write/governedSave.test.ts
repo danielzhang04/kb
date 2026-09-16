@@ -93,7 +93,7 @@ describe('save - preamble gate is first', () => {
 });
 
 describe('save — session gate', () => {
-  it('rejects a save without a valid WebAuthn session (401)', async () => {
+  it('rejects a save without a valid session (401)', async () => {
     const repo = await scratch();
     const { runner, calls } = recorder();
 

@@ -156,7 +156,7 @@ describe('T6 gated boot smoke', () => {
     expect(existsSync(windowsRoot)).toBe(false);
   });
 
-  it('PASSKEY LATCH: mints the internal service caller only through the armed latch path', () => {
+  it('OPERATOR-UNLOCK LATCH: mints the internal service caller only through the armed latch path', () => {
     let caller: InternalServiceCaller | null = null;
     const latch = createExecutionLatch({
       env: {},

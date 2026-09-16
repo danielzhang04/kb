@@ -3,7 +3,7 @@
  * channel the audit ledger reads.
  *
  * An {@link OperatorAuth} answers one question: "is this request the operator, and if so, who is it
- * attributable to?" `win32-desktop` mode has no implementation here — its answer is the WebAuthn session
+ * attributable to?" `win32-desktop` mode has no implementation here — its answer is the session
  * bearer that `http/middleware.ts` already verifies. `tailnet` mode supplies
  * `tailnetOperator.ts#createTailnetOperatorAuth`.
  *

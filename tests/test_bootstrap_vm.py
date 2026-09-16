@@ -300,23 +300,24 @@ def test_bootstrap_and_unit_do_not_use_session_secret_files():
     assert "ExecStartPre=/usr/bin/python3 -I" in unit
 
 
-# --- W47: the passkey pair is drop-in-only ---------------------------------------------------------
-def test_w47_rendered_fragment_is_accepted_without_the_passkey_pair():
-    """The rendered fragment never carries the pair; it must still satisfy the validator's closed set."""
+# --- T2: WebAuthn/passkeys removed end to end -------------------------------------------------------
+def test_rendered_fragment_is_accepted_without_the_former_passkey_pair():
+    """The rendered fragment never carried the pair; it must still satisfy the validator's closed set."""
     bootstrap_vm.assert_unit_env_complete(
         bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
     )
 
 
 @pytest.mark.parametrize("name", ["DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"])
-def test_w47_rendered_fragment_refuses_the_passkey_pair(name):
-    """W47 made both names OPTIONAL to validate_vm_runtime, which alone would let converge render them
-    into the fragment it rewrites on every deploy - silently dropping an operator's provisioning, and
-    half-dropping it is a boot refusal (credentials require the origin). They belong in the drop-in.
-    RED ON REVERT: delete the `stray` check in assert_unit_env_complete and this passes silently."""
+def test_rendered_fragment_refuses_the_former_passkey_pair(name):
+    """T2 removed both names from validate_vm_runtime's closed set entirely (they are no longer even
+    OPTIONAL), so a fragment carrying either now fails the plain closed-set comparison in
+    assert_unit_env_complete, the same way any other unsanctioned name would.
+    RED ON REVERT: re-admit either name to EXPECTED_UNIT_ENV | OPTIONAL_UNIT_ENV and this passes
+    silently."""
     rendered = bootstrap_vm.unit_fragment_source(TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN)
     rendered += f"Environment={name}=x\n".encode("utf-8")
-    with pytest.raises(RuntimeError, match="passkey.conf|drop-in"):
+    with pytest.raises(RuntimeError, match="does not match what validate_vm_runtime.py"):
         bootstrap_vm.assert_unit_env_complete(rendered)
 
 

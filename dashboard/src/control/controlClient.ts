@@ -11,8 +11,6 @@ import type {
   OutputRef,
   RunEventPage,
 } from '../../server/control/p2Contracts.ts';
-import type { AuthenticationResponseJSON, PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
-import { performAssertion } from '../lib/webauthnClient.ts';
 export type {
   AttentionEnvelope,
   ArchivedFrom as ArchivedFromDto,
@@ -603,6 +601,8 @@ export function isAuthorizedFailedRunReconciliationCandidate(
     && request.requestRef === AUTHORIZED_FAILED_RUN_RECONCILIATION.requestRef
     && request.runRef === run.runRef && request.stageRef === null && request.kind === 'intervention'
     && request.revision === 2 && request.state === 'resolved' && request.title === 'Automatic execution activation is gated'
+    // FROZEN — never edit for wording (see authorizedIncidentRecovery.ts#AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT):
+    // this is the literal text a real historical incident-recovery response already persisted.
     && request.prompt === 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.'
     && request.response?.requestRevision === 2 && request.response.decision === 'responded'
     && request.response.response === null && request.response.respondedAt === '2026-08-01T03:32:43.921Z'
@@ -748,7 +748,7 @@ export class ControlApiError extends Error {
 /** Mirrors the server's `ExecutionUnlockSource`; `tailnet` is the always-on deployment's arm-at-boot
  *  posture. An unrecognized source makes the parser drop the whole posture, so this must stay in step
  *  with `server/control/activation.ts`. */
-export type ExecutionUnlockSourceDto = 'passkey' | 'env-override' | 'tailnet';
+export type ExecutionUnlockSourceDto = 'env-override' | 'tailnet';
 
 export interface ExecutionPostureDto {
   state: 'locked' | 'unlocked' | 'injected';
@@ -779,7 +779,7 @@ export function parseExecutionPosture(value: unknown): ExecutionPostureDto | nul
     }
     return { state: 'injected', source: null, unlockedAt: null, unlockedBy: null };
   }
-  if (item.source !== 'passkey' && item.source !== 'env-override' && item.source !== 'tailnet') return null;
+  if (item.source !== 'env-override' && item.source !== 'tailnet') return null;
   if (typeof item.unlockedAt !== 'string') return null;
   const unlockedAtMs = Date.parse(item.unlockedAt);
   if (!Number.isFinite(unlockedAtMs) || new Date(unlockedAtMs).toISOString() !== item.unlockedAt) return null;
@@ -801,25 +801,25 @@ export async function getExecutionPosture(token: string, fetchImpl?: FetchLike):
 /**
  * Arm the daemon's execution latch under the operator's EXISTING dashboard session.
  *
- * This used to run a second, purpose-bound WebAuthn ceremony of its own, which meant an operator who
- * had already signed in was prompted for a biometric TWICE. The platform's requirement is one dashboard
- * unlock for the whole platform, so authorization is now the session bearer every other governed
- * mutation carries; the server independently verifies it and writes the same T3 audit row. Arming is
- * still an explicit act — signing in never calls this. A 200 is accepted only when the server confirms
- * a passkey-sourced unlocked posture.
+ * This used to run a second, purpose-bound sign-in ceremony of its own, which meant an operator who
+ * had already signed in was prompted for a biometric TWICE. T2 removed that ceremony entirely:
+ * authorization is the session bearer every other governed mutation carries (in tailnet mode, the
+ * tailnet operator proof behind it); the server independently verifies it and writes the same T3 audit
+ * row. Arming is still an explicit act — signing in never calls this. A 200 is accepted only when the
+ * server confirms a `tailnet`-sourced unlocked posture.
  */
 export async function unlockExecution(token: string, fetchImpl?: FetchLike): Promise<ExecutionPostureDto> {
   const unlockedBody = await write<{ ok?: unknown; execution?: unknown }>(
     '/api/control/execution/unlock', {}, token, fetchImpl,
   );
   const posture = parseExecutionPosture(unlockedBody.execution);
-  if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'passkey') {
-    throw new Error('execution unlock response was not passkey-authorized');
+  if (unlockedBody.ok !== true || posture?.state !== 'unlocked' || posture.source !== 'tailnet') {
+    throw new Error('execution unlock response was not tailnet-authorized');
   }
   return posture;
 }
 
-/** Stable operator copy for the explicit execution ceremony; raw server details never reach the panel. */
+/** Stable operator copy for the explicit execution unlock; raw server details never reach the panel. */
 export function executionUnlockErrorMessage(error: unknown): string {
   const detail = error && typeof error === 'object'
     ? [
@@ -830,17 +830,14 @@ export function executionUnlockErrorMessage(error: unknown): string {
   if (/cancel|abort|notallowederror/i.test(detail)) {
     return 'Execution unlock was cancelled. Execution remains locked.';
   }
-  if (/not supported|webauthn.+unavailable/i.test(detail)) {
-    return 'This browser cannot use the execution passkey. Open this dashboard in a WebAuthn-capable browser.';
-  }
-  if (/not passkey-authorized|response was invalid|options response was invalid/i.test(detail)) {
-    return 'The server did not confirm a passkey-authorized unlock. Execution remains locked.';
+  if (/not tailnet-authorized|response was invalid|options response was invalid/i.test(detail)) {
+    return 'The server did not confirm a tailnet-authorized unlock. Execution remains locked.';
   }
   if (/401|credential|unauthenticated/i.test(detail)) {
-    return 'The execution passkey was refused. Use the enrolled passkey and try again.';
+    return 'The unlock request was refused. Sign in again and retry.';
   }
-  if (/503|unconfigured/i.test(detail)) {
-    return 'Execution passkeys are not configured on this dashboard server.';
+  if (/503/i.test(detail)) {
+    return 'Execution unlock is unavailable on this dashboard server.';
   }
   return 'Execution unlock failed. Execution remains locked; retry or check the dashboard server logs.';
 }
@@ -852,7 +849,7 @@ interface RequestOptions {
 
 /**
  * Every governed 401 on this surface is now a bearer failure: the execution-unlock route no longer
- * verifies a second WebAuthn assertion, so there is no longer a class of 401 that means "your session
+ * verifies a second sign-in assertion, so there is no longer a class of 401 that means "your session
  * is fine, the second factor was refused". The `preserveSessionOnAuthFailure` seam that carved out
  * those assertion-refusal envelopes was removed with it — a 401 here always invalidates the session,
  * and nothing else (notably 429) ever does.
@@ -1673,9 +1670,6 @@ export function respondToHumanRequest(
     decision: HumanRequestDecision;
     idempotencyKey: string;
     response?: string | null;
-    ceremonyId?: string;
-    assertion?: AuthenticationResponseJSON;
-    challengeExpiresAt?: string;
   },
   token: string,
   fetchImpl?: FetchLike,
@@ -1683,46 +1677,6 @@ export function respondToHumanRequest(
   return write<{ ok: true; value: HumanRequestDto }>(
     `/api/control/human-requests/${segment(requestRef)}/respond`, input, token, fetchImpl,
   ).then((body) => body.value);
-}
-
-export interface HumanResponseChallengeDto {
-  ceremonyId: string;
-  options: PublicKeyCredentialRequestOptionsJSON;
-  challengeExpiresAt: string;
-}
-
-export function requestHumanResponseChallenge(
-  requestRef: string,
-  input: { expectedRevision: number; decision: HumanRequestDecision; response?: string | null },
-  token: string,
-  fetchImpl?: FetchLike,
-): Promise<HumanResponseChallengeDto> {
-  return write<HumanResponseChallengeDto>(
-    `/api/control/human-requests/${segment(requestRef)}/respond/challenge`, input, token, fetchImpl,
-  );
-}
-
-/** T3 responses are signed over the exact request revision, decision, response digest, origin, and expiry. */
-export async function respondToHumanRequestWithCeremony(
-  requestRef: string,
-  input: {
-    expectedRevision: number;
-    decision: HumanRequestDecision;
-    idempotencyKey: string;
-    response?: string | null;
-  },
-  token: string,
-  fetchImpl?: FetchLike,
-  perform: (options: PublicKeyCredentialRequestOptionsJSON) => Promise<AuthenticationResponseJSON> = performAssertion,
-): Promise<HumanRequestDto> {
-  const challenge = await requestHumanResponseChallenge(requestRef, input, token, fetchImpl);
-  const assertion = await perform(challenge.options);
-  return respondToHumanRequest(requestRef, {
-    ...input,
-    ceremonyId: challenge.ceremonyId,
-    assertion,
-    challengeExpiresAt: challenge.challengeExpiresAt,
-  }, token, fetchImpl);
 }
 
 /** One-off, server-constrained repair for the authorized 2026-07-31 execution-lock boundary. */
@@ -1743,7 +1697,7 @@ export function recoverAuthorized20260731ExecutionLock(
 
 /**
  * The one fixed-CAS historical settlement. It uses the ordinary bearer/session boundary (including
- * its 401 invalidation behavior), while the server independently requires a current passkey unlock.
+ * its 401 invalidation behavior), while the server independently requires a current tailnet-authorized unlock.
  * It has no run argument and cannot launch, activate, or Retry anything.
  */
 export function reconcileAuthorizedFailedRun(
@@ -1805,46 +1759,6 @@ export function resolveIterationGate(
 ): Promise<IterationGateResultDto> {
   return write<{ ok: true; value: IterationGateResultDto }>(
     `/api/control/iteration-gates/${segment(requestRef)}/resolve`, input, token, fetchImpl,
-  ).then((body) => body.value);
-}
-
-/** The T3 challenge for one iteration gate: the server derives the whole signed tuple from the store. */
-export function requestIterationGateChallenge(
-  requestRef: string,
-  input: { decision: ResolveIterationGateDto['decision'] },
-  token: string,
-  fetchImpl?: FetchLike,
-): Promise<HumanResponseChallengeDto> {
-  return write<HumanResponseChallengeDto>(
-    `/api/control/iteration-gates/${segment(requestRef)}/challenge`, input, token, fetchImpl,
-  );
-}
-
-/**
- * F3 — an iteration gate is T3: resolve it with a passkey assertion over the exact displayed gate,
- * park reason, loop/receipt versions and ordered generation set, exactly as a T3 human response is
- * signed. The ceremony is the SAME one (`performAssertion` over server-issued options); only the
- * purpose differs. Without it the server refuses 403 `ceremony-*` and writes no audit row.
- */
-export async function resolveIterationGateWithCeremony(
-  requestRef: string,
-  input: ResolveIterationGateDto,
-  token: string,
-  fetchImpl?: FetchLike,
-  perform: (options: PublicKeyCredentialRequestOptionsJSON) => Promise<AuthenticationResponseJSON> = performAssertion,
-): Promise<IterationGateResultDto> {
-  const challenge = await requestIterationGateChallenge(requestRef, { decision: input.decision }, token, fetchImpl);
-  const assertion = await perform(challenge.options);
-  return write<{ ok: true; value: IterationGateResultDto }>(
-    `/api/control/iteration-gates/${segment(requestRef)}/resolve`,
-    {
-      ...input,
-      ceremonyId: challenge.ceremonyId,
-      assertion,
-      challengeExpiresAt: challenge.challengeExpiresAt,
-    },
-    token,
-    fetchImpl,
   ).then((body) => body.value);
 }
 

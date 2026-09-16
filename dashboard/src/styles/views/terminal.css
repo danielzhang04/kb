@@ -28,7 +28,7 @@
   padding-inline: var(--content-pad);
 }
 
-/* Point-of-action unlock: one calm line that runs the app's single passkey ceremony on click. */
+/* Point-of-action unlock: one calm line that runs the app's single unlock action on click. */
 .terminal__signin {
   align-self: flex-start;
 }

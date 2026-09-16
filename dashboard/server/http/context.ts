@@ -1,10 +1,10 @@
 /**
  * U2 — the shared context every governed-write route registrar receives. It bundles the resolved
- * security config (session signing, origin allowlist, rate-limit guard, WebAuthn RP config + registered
- * credentials) plus the SAME injectable side-effect runners each gate module already exposes for its
- * own hermetic unit tests. In production every runner field is left `undefined` and each module falls
- * back to its real default (shell git/py/claude); route tests inject recording fakes so no real
- * subprocess, git remote, or `queue/` tree is ever touched — the security chain itself is never faked.
+ * security config (session signing, origin allowlist, rate-limit guard) plus the SAME injectable
+ * side-effect runners each gate module already exposes for its own hermetic unit tests. In production
+ * every runner field is left `undefined` and each module falls back to its real default (shell
+ * git/py/claude); route tests inject recording fakes so no real subprocess, git remote, or `queue/`
+ * tree is ever touched — the security chain itself is never faked.
  */
 import { join, resolve } from 'node:path';
 import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
@@ -16,8 +16,6 @@ import type { LockoutGuard } from '../security/ratelimit.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
 import type { HostNodeMapLoad } from '../auth/hostNodeMap.ts';
 import type { V1SurfaceDeps } from '../api/v1/routes.ts';
-import type { WebAuthnConfig } from '../auth/webauthn.ts';
-import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
@@ -146,12 +144,6 @@ export interface SurfaceContext {
    * governed route does. Absent leaves the v1 surface unregistered (fail-closed).
    */
   v1?: V1SurfaceDeps;
-  /** Lazy — `auth/webauthn.ts#resolveWebAuthnConfig` THROWS when `DASHBOARD_RP_ORIGIN` is unset, so it
-   *  is only ever called inside a handler (which the origin guard already blocked when the allowlist is
-   *  empty), never at registration time. */
-  webAuthnConfig: () => WebAuthnConfig;
-  /** The fail-closed registered-credential store (`[]` until a human provisions a passkey). */
-  credentials: () => WebAuthnCredential[];
   /**
    * T3 signed channel (`authority/gate.ts#requireAuthority`, spec §4.2): the path to the root-owned
    * `ssh-keygen -Y verify` allowed-signers file for the `kb-human-approval` namespace. Resolved ONCE in
@@ -193,7 +185,7 @@ export interface SurfaceContext {
   attemptPort?: AttemptExecutionPort;
   /**
    * The runtime execution unlock latch. The daemon boots LOCKED (no wiring constructed) and the
-   * passkey-gated unlock route asks this to construct it, which rebinds the executor fields below IN
+   * session-gated unlock route asks this to construct it, which rebinds the executor fields below IN
    * PLACE on this same context object — so every route that already checks `ctx.runAutomatic` observes
    * the current posture without a second lookup path. Absent only when a test injects the executor.
    */

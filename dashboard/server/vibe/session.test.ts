@@ -202,8 +202,8 @@ describe('spawnVibe — preamble gate (runs first, spawns nothing on failure)', 
   });
 });
 
-describe('spawnVibe — WebAuthn session gate (checked only after the preamble passes)', async () => {
-  it('refuses to spawn without a WebAuthn session', async () => {
+describe('spawnVibe — session gate (checked only after the preamble passes)', async () => {
+  it('refuses to spawn without a session', async () => {
     const { spawner, calls } = recordingSpawner();
     const deps = baseDeps({ spawn: spawner });
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };
@@ -212,7 +212,7 @@ describe('spawnVibe — WebAuthn session gate (checked only after the preamble p
     expect(result).toEqual({
       ok: false,
       reason: 'unauthenticated',
-      detail: 'no WebAuthn session token supplied',
+      detail: 'no session token supplied',
     });
     expect(calls).toHaveLength(0);
   });

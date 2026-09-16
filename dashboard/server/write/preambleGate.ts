@@ -1,6 +1,6 @@
 /**
  * D2.6 — the preamble gate every governed dashboard write must clear FIRST, before any
- * WebAuthn-session check: CLAUDE.md's shared preamble ("run before ANY loop or task"), mirrored here
+ * session check: CLAUDE.md's shared preamble ("run before ANY loop or task"), mirrored here
  * so a frozen/ungoverned fleet can never be dispatched INTO by the dashboard.
  *
  * `assertFleetRunnable()` is exported under this exact name because D2.7 (the vibe-code chat box —

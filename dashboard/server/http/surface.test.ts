@@ -6,7 +6,7 @@
  * use — no security check is ever faked, and there is no dev-mode/bypass flag to disable one.
  *
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
- * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
+ * and an audit row on the success path.
  */
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1097,13 +1097,13 @@ describe('write surface — FINDING 2: pre-session rate-limit keyed on PEER IP, 
     expect(second.json()).toMatchObject({ error: 'throttled' });
   });
 
-  it('covers the unauthenticated auth ceremony routes too (rotating bearers do not evade it)', async () => {
+  it('covers the unauthenticated auth discovery route too (rotating bearers do not evade it)', async () => {
     const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
-    ({ app } = buildApp({ rateGuard: guard, webAuthnConfig: () => ({ rpID: 'localhost', rpName: 't', origin: GOOD_ORIGIN }), credentials: () => [] }));
-    const first = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x1' }, payload: {} });
+    ({ app } = buildApp({ readRateGuard: guard }));
+    const first = await app.inject({ method: 'GET', url: '/api/auth/context', headers: { ...headers(false), authorization: 'Bearer x1' } });
     expect(first.statusCode).toBe(200);
-    const second = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x2' }, payload: {} });
+    const second = await app.inject({ method: 'GET', url: '/api/auth/context', headers: { ...headers(false), authorization: 'Bearer x2' } });
     expect(second.statusCode).toBe(429);
   });
 });
@@ -1201,49 +1201,14 @@ describe('write surface — LOW: rerun cardId must be filename-safe (no glob met
   });
 });
 
-describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)', () => {
-  const testWebAuthn = () => ({ rpID: 'localhost', rpName: 'test', origin: GOOD_ORIGIN });
-
+describe('auth surface — session-gated reality', () => {
   it.each(['tailnet', 'win32-desktop'] as const)('exposes the guarded public auth context for %s', async (authMode) => {
     ({ app } = buildApp({ authMode }));
 
     const response = await app.inject({ method: 'GET', url: '/api/auth/context', headers: headers(false) });
 
     expect(response.statusCode).toBe(200);
-    // W47: `ceremonyAvailable` is the server's own ceremonyModeAdmits && credentials().length > 0.
-    // This describe is the NO-PASSKEY-PROVISIONED surface, so it is false in both modes.
-    expect(response.json()).toEqual({ mode: authMode, ceremonyAvailable: false });
-  });
-
-  it('assert/verify 401s because the credential store is empty (no session can be minted)', async () => {
-    ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
-
-    // A real assertion ceremony issues a challenge; the store is fail-closed empty.
-    const opts = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(false), payload: {} });
-    expect(opts.statusCode).toBe(200);
-    const { ceremonyId } = opts.json() as { ceremonyId: string };
-    expect(typeof ceremonyId).toBe('string');
-
-    const verify = await app.inject({
-      method: 'POST',
-      url: '/api/auth/assert/verify',
-      headers: headers(false),
-      payload: { ceremonyId, response: { id: 'no-such-credential' } },
-    });
-    expect(verify.statusCode).toBe(401);
-    expect(verify.json()).toMatchObject({ error: 'unauthenticated' });
-  });
-
-  it('assert/verify 400s on an unknown/replayed ceremony id (single-use challenge)', async () => {
-    ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
-    const verify = await app.inject({
-      method: 'POST',
-      url: '/api/auth/assert/verify',
-      headers: headers(false),
-      payload: { ceremonyId: 'never-issued', response: { id: 'x' } },
-    });
-    expect(verify.statusCode).toBe(400);
-    expect(verify.json()).toMatchObject({ error: 'bad-ceremony' });
+    expect(response.json()).toEqual({ mode: authMode });
   });
 
   it('the whole surface is 403-locked when no RP origin is configured (empty allowlist)', async () => {
@@ -1277,11 +1242,11 @@ describe('approvals surface — verify wiring', () => {
       method: 'POST',
       url: '/api/approvals/verify',
       headers: headers(true),
-      payload: { cardId: 'card-77', channel: 'webauthn' },
+      payload: { cardId: 'card-77', channel: 'signed' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, card: { id: 'card-77' } });
-    expect(audit.rows[0]).toMatchObject({ action: 'approve', cardId: 'card-77', target: 'infra/prod.yaml', result: 'verified:webauthn' });
+    expect(audit.rows[0]).toMatchObject({ action: 'approve', cardId: 'card-77', target: 'infra/prod.yaml', result: 'verified:signed' });
   });
 
   it('rejects a path-traversal cardId (400) — never hands an arbitrary path to the verifier', async () => {

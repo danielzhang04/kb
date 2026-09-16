@@ -3,12 +3,11 @@
  * shape `write/launch.ts` uses), fully hermetic — no test here shells a real `py` binary or touches a
  * real `queue/` tree.
  */
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   driveVerify,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
-  WEBAUTHN_VERIFY_SCRIPT,
 } from './cardVerifier.ts';
 import type { DriveVerifyDeps, VerifiedCardView } from './cardVerifier.ts';
 import type { PyRunner, PyRunResult } from '../write/launch.ts';
@@ -77,61 +76,18 @@ describe('driveVerify — fleet signed/possession channels (module interface, ne
   });
 });
 
-describe('driveVerify — WebAuthn channel (D2.3 verifier + pinned-content execute)', () => {
-  it('a WebAuthn-channel card drives scripts/webauthn_verify.py and the pinned-content execute', () => {
-    const pinnedCard: VerifiedCardView = {
-      id: 'card-3',
-      action: 'demo',
-      target: 'docs/x.md',
-      riskTier: 'T3',
-      owner: 'claude-m1',
-      body: '## Work order\n\ndo it\n',
-    };
-    const { runner, calls } = recordingPyRunner({
-      exitCode: 0,
-      stdout: `${JSON.stringify({ ok: true, reason: 'ok', card: pinnedCard })}\n`,
-      stderr: '',
-    });
-    const execute = vi.fn();
-    const deps: DriveVerifyDeps = { repoRoot: '/repo', runPy: runner, execute };
-
-    const outcome = driveVerify('queue/approvals/card-3.md', 'webauthn', deps);
-
-    expect(outcome).toEqual({ ok: true, reason: 'ok', card: pinnedCard });
-    expect(calls[0].code).toBe(WEBAUTHN_VERIFY_SCRIPT);
-    expect(calls[0].code).toContain('import webauthn_verify');
-    expect(calls[0].code).toContain('webauthn_verify.verify_webauthn_approval(');
-
-    // The D2.3 verifier ran (asserted above) AND, on ok, the executor runs against the EXACT pinned
-    // card view the verifier returned — never a re-read of the working tree.
-    expect(execute).toHaveBeenCalledTimes(1);
-    expect(execute).toHaveBeenCalledWith(pinnedCard);
-  });
-
-  it('never triggers the execute on a rejected WebAuthn verify', () => {
-    const { runner } = recordingPyRunner({
-      exitCode: 0,
-      stdout: '{"ok":false,"reason":"signature does not verify against the pinned public key"}\n',
-      stderr: '',
-    });
-    const execute = vi.fn();
-    const outcome = driveVerify('queue/approvals/card-3.md', 'webauthn', { repoRoot: '/repo', runPy: runner, execute });
-
-    expect(outcome).toEqual({ ok: false, reason: 'signature does not verify against the pinned public key' });
-    expect(execute).not.toHaveBeenCalled();
-  });
-
-  it('never triggers execute for the fleet channels, even on an ok result carrying a card', () => {
+describe('driveVerify — the pinned card view (T2: the third channel and its pinned-content execute callback are gone)', () => {
+  it('returns the pinned card view for a successful fleet-channel verify, with no execute callback in the deps shape', () => {
     const pinnedCard: VerifiedCardView = { id: 'x', action: 'a', target: 't', riskTier: 'T1', owner: null, body: '' };
     const { runner } = recordingPyRunner({
       exitCode: 0,
       stdout: `${JSON.stringify({ ok: true, reason: 'ok', card: pinnedCard })}\n`,
       stderr: '',
     });
-    const execute = vi.fn();
-    const outcome = driveVerify('queue/approvals/card-1.md', 'signed', { repoRoot: '/repo', runPy: runner, execute });
+    const deps: DriveVerifyDeps = { repoRoot: '/repo', runPy: runner };
 
-    expect(outcome.ok).toBe(true);
-    expect(execute).not.toHaveBeenCalled();
+    const outcome = driveVerify('queue/approvals/card-1.md', 'signed', deps);
+
+    expect(outcome).toEqual({ ok: true, reason: 'ok', card: pinnedCard });
   });
 });

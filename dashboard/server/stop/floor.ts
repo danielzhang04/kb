@@ -12,7 +12,7 @@ export interface SessionInput {
 export type Unauthenticated = { ok: false; reason: 'unauthenticated'; detail: string };
 
 function checkSession(session: SessionInput): { ok: true; claims: SessionClaims } | Unauthenticated {
-  if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' };
+  if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no session token supplied' };
   const check = verifySession(session.token, session.config);
   return check.ok
     ? { ok: true, claims: check.claims }

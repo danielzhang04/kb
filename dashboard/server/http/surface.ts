@@ -5,7 +5,7 @@
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * It registers the public auth ceremonies, then a nested authenticated scope for write, composer,
+ * It registers the public auth route, then a nested authenticated scope for write, composer,
  * control, and approval routes. That scope is the fail-closed backstop; individual mutating routes keep
  * their own `requireSession` preHandlers and gates. `/healthz`, `/readyz`, static assets, and the
  * read-only data scope are composed elsewhere.
@@ -26,8 +26,6 @@ import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
-import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
-import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
@@ -447,10 +445,6 @@ export function makeSurfaceContext(
     nodeProxyUid: overrides.nodeProxyUid,
     loadHostNodeMap: overrides.loadHostNodeMap,
     v1: overrides.v1,
-    // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
-    // (which the origin guard has already blocked when the allowlist is empty), never at registration.
-    webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
-    credentials: overrides.credentials ?? (() => resolveCredentials()),
     appendAudit: overrides.appendAudit,
     appendAuditLocal: overrides.appendAuditLocal,
     opsGit: overrides.opsGit,
@@ -566,10 +560,10 @@ export function makeSurfaceContext(
             seq: event.entry.seq,
           }));
         }
-        // The queue bridge runs for a deliberately ARMED daemon: a passkey unlock (an operator just
-        // asked for it) or `tailnet` mode (armed at boot by deployment posture). `env-override` is
-        // excluded on purpose — it is the headless/testing arm and must stay inert.
-        if (execution && (state.source === 'passkey' || state.source === 'tailnet') && serviceCaller) {
+        // The queue bridge runs for a deliberately ARMED daemon: `tailnet` mode (armed at boot by
+        // deployment posture). `env-override` is excluded on purpose — it is the headless/testing arm
+        // and must stay inert.
+        if (execution && state.source === 'tailnet' && serviceCaller) {
           const bridge = buildQueueBridge({
             repoRoot: ctx.repoRoot,
             runPy: ctx.runPy,
@@ -662,8 +656,9 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
-    // Session-minting ceremonies stay public (but origin/rate guarded). Every other route in this
-    // surface inherits this scope-level session gate, so a future GET cannot accidentally ship public.
+    // The boot-discovery auth-context route stays public (but origin/rate guarded). Every other route
+    // in this surface inherits this scope-level session gate, so a future GET cannot accidentally ship
+    // public.
     registerAuthRoutes(scope, ctx);
     // Session-less by design: its own preHandler resolves the durable spend grant.
     registerPaidActionRoute(scope, ctx);
@@ -675,10 +670,10 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
       // `app` (agents, schedules, workflows, inbox deployment/asset-pull actions) needs its own hook,
       // installed the same way right after ITS `requireSession`; see that file for why.
       authenticated.addHook('preHandler', requireAuthority(ctx));
-      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public ceremonies:
+      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public auth routes:
       // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
-      // the only proof that exists — no assertion is ever verified there, so the WebAuthn mint path never
-      // runs and this is the sole way the always-on deployment gets a `kb_browser_session` ref at all.
+      // the only proof that exists — this is the sole way the always-on deployment gets a
+      // `kb_browser_session` ref at all.
       registerBrowserSessionRoute(authenticated, ctx);
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);

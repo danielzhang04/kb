@@ -5,9 +5,10 @@ import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { SYSTEM_ENTITY_GROUP_ID, type EntityDetail, type EntityList } from '../../server/entities/contracts.ts';
 import type { EntitySummary } from '../../server/control/p2Contracts.ts';
 import { renderWithTestSession } from '../test/session';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 import { Agents } from './Agents';
 
-afterEach(() => { cleanup(); vi.restoreAllMocks(); });
+afterEach(() => { cleanup(); vi.restoreAllMocks(); clearStoredSession(); });
 
 const summary: EntitySummary = {
   ref: { type: 'agent', id: 'fyt-checker', sourcePath: 'agents/fyt-checker.md' }, humanName: 'FYT Checker', status: 'idle',
@@ -181,7 +182,8 @@ describe('Agents P2 roster', () => {
       return new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? launchableDetail : list), { status: 200 });
     }));
 
-    await renderWithTestSession(<Agents />, { signIn: async () => ({ token: 'session-token', expiresAt: Date.now() + 60_000 }) });
+    persistSession({ token: 'session-token', expiresAt: Date.now() + 60_000 });
+    await renderWithTestSession(<Agents />);
     fireEvent.click(await screen.findByTestId('entity-card'));
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
 
@@ -195,7 +197,8 @@ describe('Agents P2 roster', () => {
       return new Response(JSON.stringify(String(input).endsWith('/fyt-checker') ? launchableDetail : list), { status: 200 });
     }));
 
-    await renderWithTestSession(<Agents />, { signIn: async () => ({ token: 'session-token', expiresAt: Date.now() + 60_000 }) });
+    persistSession({ token: 'session-token', expiresAt: Date.now() + 60_000 });
+    await renderWithTestSession(<Agents />);
     fireEvent.click(await screen.findByTestId('entity-card'));
     fireEvent.click(await screen.findByRole('button', { name: 'Run now' }));
 

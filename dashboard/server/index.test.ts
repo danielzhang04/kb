@@ -601,9 +601,7 @@ describe('server', () => {
   // own "session-less POST is 401, never 404" matrix cannot see them. They are gated by THIS file's
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
   it.each([
-    '/api/schedules', '/api/schedules/example/arm', '/api/control/human-requests/example/respond/challenge',
-    // F3: the iteration-gate T3 mint sits on the same guarded scope as the human-response one.
-    '/api/control/iteration-gates/example/challenge',
+    '/api/schedules', '/api/schedules/example/arm',
   ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
@@ -611,10 +609,23 @@ describe('server', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
+  // T2 removed the credential-ceremony routes end to end. These paths must not exist any more —
+  // 404, never a 401 that would imply a ceremony route is still gated and reachable.
+  it.each([
+    '/api/auth/register/options', '/api/auth/register/verify',
+    '/api/auth/assert/options', '/api/auth/assert/verify',
+    '/api/control/human-requests/example/respond/challenge',
+    '/api/control/iteration-gates/example/challenge',
+    '/api/inbox/deployment/example/challenge',
+  ])('T2: the removed ceremony route %s is gone entirely (404, never 401)', async (url) => {
     app = matrixApp();
-    const method = url.includes('/auth/') ? 'POST' : 'GET';
-    expect((await app.inject({ method, url, headers: matrixHeaders })).statusCode).not.toBe(401);
+    const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it.each(['/healthz', '/readyz', '/', '/api/auth/context'])('keeps bootstrap route %s reachable', async (url) => {
+    app = matrixApp();
+    expect((await app.inject({ method: 'GET', url, headers: matrixHeaders })).statusCode).not.toBe(401);
   });
 
   it.each([

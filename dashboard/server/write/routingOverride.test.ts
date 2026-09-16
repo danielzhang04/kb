@@ -15,7 +15,7 @@ import { loadPolicy, loadOverride } from '../routing/policy.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
-const token = (): string => mintSession('daniel@webauthn', CONFIG).token;
+const token = (): string => mintSession('daniel@session', CONFIG).token;
 
 let repo: string;
 beforeEach(() => {
@@ -71,7 +71,7 @@ function overridesOnDisk(): any[] {
 }
 
 describe('setOverride — session gate', () => {
-  it('rejects a setOverride without a valid WebAuthn session (401), no git, no audit', async () => {
+  it('rejects a setOverride without a valid session (401), no git, no audit', async () => {
     const { runner, calls } = recorder();
     const audit = auditSink();
     const r = await setOverride(
@@ -158,7 +158,7 @@ describe('setOverride — governed coordination write', () => {
     // Entry round-tripped onto disk with provenance stamps.
     const entry = overridesOnDisk()[0];
     expect(entry).toMatchObject({ scope: 'agent', key: 'codex-worker', runtime: 'codex', model: 'gpt-5-codex' });
-    expect(entry['set-by']).toBe('daniel@webauthn');
+    expect(entry['set-by']).toBe('daniel@session');
     expect(typeof entry['set-at']).toBe('string');
   });
 
@@ -199,7 +199,7 @@ describe('audit + clear', () => {
       { runGit: recorder().runner, appendAudit: audit.fn },
     );
     expect(audit.rows).toHaveLength(1);
-    expect(audit.rows[0]).toMatchObject({ action: 'routing-override', owner: 'daniel@webauthn', target: 'agent:codex-worker' });
+    expect(audit.rows[0]).toMatchObject({ action: 'routing-override', owner: 'daniel@session', target: 'agent:codex-worker' });
   });
 
   it('clearOverride removes the matching entry (agent-scope), audits once, and is idempotent', async () => {

@@ -19,6 +19,7 @@ import { workflowCardId } from '../write/workflowRun.ts';
 import type { JsonObject, Run } from './types.ts';
 import type { ExecuteRunInput } from './execution.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT } from './authorizedIncidentRecovery.ts';
 import {
   authorizedFailedRunReconciliationGrant,
   authorizedFailedRunReconciliationRefusal,
@@ -34,52 +35,12 @@ import { normalizedTextSha256 } from './textArtifactHash.ts';
 import { advertiseSelfOnce } from '../placement/selfAdvertise.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
-/**
- * F3 — the WebAuthn SIGNATURE check is the only part of a ceremony a Fastify `inject` cannot produce, so
- * it is the only call stubbed here; every other export passes through untouched. Mint, purpose binding,
- * the single-use `consumeChallenge`, expiry and origin all run REAL against the shipped modules, which is
- * where this fix's security actually lives.
- *
- * R9 — the stub is OFF by default and every other call in this file reaches the REAL `verifyAssertion`.
- * A `vi.mock` factory is hoisted above the imports, so it cannot be moved inside a `describe`; the
- * equivalent narrowing is this `vi.hoisted` latch, which `signIterationGate` raises for the one test that
- * is actually performing a ceremony and the file-wide `afterEach` below drops again. Without it a
- * suite-wide "every signature verifies" would have made this file's pre-existing bad-signature and
- * unprovisioned-daemon cases pass vacuously.
- */
-const ceremonyStub = vi.hoisted(() => ({ signaturesAccepted: false }));
-vi.mock('../auth/webauthn.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../auth/webauthn.ts')>();
-  return {
-    ...actual,
-    verifyAssertion: async (...args: Parameters<typeof actual.verifyAssertion>) =>
-      (ceremonyStub.signaturesAccepted ? { verified: true } : actual.verifyAssertion(...args)),
-  };
-});
-
-/** One provisioned passkey, so the iteration-gate ceremony is REACHABLE in the cases that opt in. */
-const ITERATION_CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
-
-/**
- * R9 — the provisioned-credential fixture, likewise opt-in. The surface reads it through a closure on
- * every request, so a case can raise it after its app is built; it starts EMPTY, which is what makes the
- * "an unprovisioned daemon cannot resolve a T3 gate" path real for every case that does not opt in.
- */
-let ceremonyCredentials: (typeof ITERATION_CRED)[] = [];
-
-afterEach(() => {
-  ceremonyStub.signaturesAccepted = false;
-  ceremonyCredentials = [];
-});
-
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
 /**
  * S3 (review r2): allowlisted at the surface's CSRF origin check (`allowedOrigins`) but distinct from
- * the WebAuthn RP `origin` the iteration-gate ceremony checks at routes.ts:2129 — the only way to reach
- * that SECOND, ceremony-specific origin check at all. A plain foreign origin (e.g. `evil.localhost`) never
- * gets that far: it is refused earlier, by the surface-wide origin allowlist preHandler, with an unrelated
- * `{ error: 'forbidden', reason: 'origin-not-allowed' }` body.
+ * `ORIGIN` — used to prove the surface-wide origin allowlist preHandler refuses a foreign origin with
+ * `{ error: 'forbidden', reason: 'origin-not-allowed' }` before any route-local logic runs.
  */
 const ALT_ALLOWED_ORIGIN = 'http://localhost:5318';
 
@@ -140,7 +101,7 @@ describe('authorized failed-run route grant', () => {
       attemptPort, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
     };
     const executionLatch = {
-      snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
+      snapshot: () => ({ state: 'unlocked', source: 'tailnet', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
       current: () => wiring,
     };
     return {
@@ -149,7 +110,7 @@ describe('authorized failed-run route grant', () => {
     } as unknown as SurfaceContext;
   }
 
-  function withSource(source: 'passkey' | 'tailnet' | 'env-override'): SurfaceContext {
+  function withSource(source: 'tailnet' | 'env-override'): SurfaceContext {
     const ctx = exactContext();
     const wiring = ctx.executionLatch!.current();
     (ctx.executionLatch as unknown as { snapshot: () => unknown }).snapshot = () => ({
@@ -165,16 +126,15 @@ describe('authorized failed-run route grant', () => {
     expect(authorizedFailedRunReconciliationGrant(ctx, 'operator')).toBeNull();
   });
 
-  it('RULING 2: accepts the grant under the tailnet operator identity, not only a passkey unlock', () => {
+  it('RULING 2: accepts the grant under the tailnet operator identity', () => {
     expect(authorizedFailedRunReconciliationGrant(withSource('tailnet'), 'operator')).not.toBeNull();
-    expect(authorizedFailedRunReconciliationGrant(withSource('passkey'), 'operator')).not.toBeNull();
   });
 
   it('RULING 2: still refuses a headless env-override arm — break-glass is operator-only', () => {
     expect(authorizedFailedRunReconciliationGrant(withSource('env-override'), 'operator')).toBeNull();
   });
 
-  it('refuses an otherwise exact passkey grant while any fixed run session is live', () => {
+  it('refuses an otherwise exact tailnet grant while any fixed run session is live', () => {
     expect(authorizedFailedRunReconciliationGrant(exactContext(true), 'operator')).toBeNull();
   });
 
@@ -326,14 +286,9 @@ describe('control proposal routes', () => {
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       stateRoot,
       sessionConfig: SESSION,
-      // S3: a second allowlisted origin, distinct from the WebAuthn RP origin below, so the
-      // ceremony's own origin check (routes.ts:2129) is reachable and separately testable from the
-      // surface-wide CSRF origin allowlist. Every other case here still sends `headers(token)`, which
-      // sends `ORIGIN`, so this is additive and changes no existing behavior.
+      // S3: a second allowlisted origin, distinct from `ORIGIN`, used to prove the surface-wide CSRF
+      // origin allowlist preHandler refuses a foreign origin with `origin-not-allowed`.
       allowedOrigins: [ORIGIN, ALT_ALLOWED_ORIGIN],
-      webAuthnConfig: () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN }),
-      // R9: empty unless the running case opted in via `signIterationGate`.
-      credentials: () => ceremonyCredentials,
       composerStore,
       controlStore,
       // T3: a configured channel so a `signed`-class route in this describe block answers
@@ -664,7 +619,7 @@ describe('control proposal routes', () => {
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
-      credentials: () => [],
+      
       composerStore,
       controlStore,
       attemptPort: fakeAttemptPort(),
@@ -830,32 +785,6 @@ describe('control proposal routes', () => {
     return { runRef: created.value.run.runRef, gate, loop, receipt: detail.value.iterationReceipts[0]! };
   }
 
-  /**
-   * F3 — mint the iteration-gate T3 challenge and return the wire fields a resolve must carry. The
-   * server derives the whole signed tuple from the store record; the caller chooses only the decision.
-   */
-  /**
-   * R9 — opt THIS case into the PROVISIONED-DAEMON half of the fixture and nothing else. A case that
-   * exercises a ceremony REFUSAL (unsigned resolve, wrong decision vocabulary) needs the port attached
-   * but must still face the real `verifyAssertion`. Reverts in the file-wide `afterEach`.
-   */
-  function provisionCeremonyCredential(): void {
-    ceremonyCredentials = [ITERATION_CRED];
-  }
-
-  async function signIterationGate(requestRef: string, decision: string) {
-    // R9: opt into BOTH halves — provision the passkey and accept the signature — for this case only.
-    provisionCeremonyCredential();
-    ceremonyStub.signaturesAccepted = true;
-    const minted = await app.inject({
-      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/challenge`,
-      headers: headers(token), payload: { decision },
-    });
-    if (minted.statusCode !== 200) throw new Error(`challenge refused: ${minted.statusCode} ${minted.body}`);
-    const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
-    return { ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt };
-  }
-
   it('imports only a completed visible assistant proposal and returns a hash-bound diff', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
@@ -949,7 +878,7 @@ describe('control proposal routes', () => {
     }
     const approved = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
-      payload: { ...exact, ...await signIterationGate(request.requestRef, 'approved') },
+      payload: exact,
     });
     expect(approved.statusCode, approved.body).toBe(200);
     expect(approved.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed', acceptedGenerationRefs: loop.activeGenerationRefs } },
@@ -970,7 +899,6 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: receipt?.version ?? null,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', idempotencyKey: 'decline-exhausted',
-        ...await signIterationGate(request.requestRef, 'declined'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1008,7 +936,6 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'parked',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-explicit-park',
-        ...await signIterationGate(request.requestRef, 'approved'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1031,7 +958,6 @@ describe('control proposal routes', () => {
         expectedGateRef: request.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', idempotencyKey: 'completion-still-intervenes',
-        ...await signIterationGate(request.requestRef, 'changes-requested'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1052,7 +978,6 @@ describe('control proposal routes', () => {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-generic-completion-route',
-        ...await signIterationGate(gate.requestRef, 'approved'),
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1074,7 +999,6 @@ describe('control proposal routes', () => {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
         expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', idempotencyKey: 'reject-generic-completion-route',
-        ...await signIterationGate(gate.requestRef, 'rejected'),
       },
     });
     expect(rejected.statusCode, rejected.body).toBe(200);
@@ -1114,7 +1038,7 @@ describe('control proposal routes', () => {
     };
     const first = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
-      payload: { ...base, ...await signIterationGate(gate.requestRef, 'approved') },
+      payload: { ...base },
     });
     expect(first.statusCode, first.body).toBe(200);
     const firstBody = first.json();
@@ -1141,156 +1065,6 @@ describe('control proposal routes', () => {
     expect(differentReason.json()).toMatchObject({ error: 'idempotency-conflict' });
   });
 
-  /**
-   * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so it takes a passkey assertion bound to the
-   * exact tuple the CAS just checked. Before this fix the route carried a `riskTier: 'T3'` audit row with
-   * T2-strength authorization, and the generic route reserves these gates to it (`iteration-gate-reserved`),
-   * so EVERY iteration completion/park gate was resolvable with a session bearer and no assertion at all.
-   */
-  describe('iteration-gate T3 ceremony', () => {
-    const parkPayload = (
-      request: { requestRef: string; revision: number },
-      loop: { version: number; activeGenerationRefs: readonly string[] },
-      decision: string,
-      key: string,
-    ) => ({
-      expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
-      expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
-      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, idempotencyKey: key,
-    });
-    const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
-      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
-    });
-    const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
-
-    it('refuses an unsigned resolve, mutates nothing, and writes NO T3 audit row', async () => {
-      provisionCeremonyCredential();
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('refuses an expired challenge with ceremony-expired and no audit row', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'expired-park'),
-        ...signed, challengeExpiresAt: '2020-01-01T00:00:00.000Z',
-      });
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-expired' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('verifies once and refuses the replayed ceremonyId, writing exactly one T3 audit row', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      const payload = { ...parkPayload(request, loop, 'approved', 'replayed-park'), ...signed };
-      const first = await resolveGate(request.requestRef, payload);
-      expect(first.statusCode, first.body).toBe(200);
-      const second = await resolveGate(request.requestRef, payload);
-      expect(second.statusCode, second.body).toBe(403);
-      expect(second.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).toHaveBeenCalledTimes(1);
-      expect(authorizeRows()).toHaveLength(1);
-      expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
-    });
-
-    it('refuses an assertion minted for generation set A replayed against set B — 403, never a 409', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      loop.activeGenerationRefs = ['generation-set-a-1', 'generation-set-a-2'];
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      loop.activeGenerationRefs = ['generation-set-b-1', 'generation-set-b-2'];
-      // The CAS passes: the caller binds the CURRENT set. Only the signature still covers set A.
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'cross-set-park'), ...signed,
-      });
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    /**
-     * R9 — the lever. The challenge is REAL (minted, purpose-bound, single-use) and the daemon IS
-     * provisioned, but the signature stub stays down, so `verifyAssertion` runs for real against a
-     * fabricated assertion and refuses. Restore the suite-wide "every signature verifies" mock and this
-     * case goes green on a 200 — which is exactly how a bad signature would have passed vacuously.
-     */
-    it('R9: a fabricated assertion is refused by the REAL verifier, not waved through by the fixture', async () => {
-      provisionCeremonyCredential();
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const minted = await app.inject({
-        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: headers(token), payload: { decision: 'approved' },
-      });
-      expect(minted.statusCode, minted.body).toBe(200);
-      const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'fabricated-park'),
-        ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt,
-      });
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('resolves on a signed decision and records the T3 row over the signed tuple', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'signed-park'),
-        ...await signIterationGate(request.requestRef, 'approved'),
-      });
-      expect(response.statusCode, response.body).toBe(200);
-      expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
-      expect(resolve).toHaveBeenCalledTimes(1);
-      expect(authorizeRows()).toHaveLength(1);
-      expect(authorizeRows()[0]).toMatchObject({
-        riskTier: 'T3', result: 'authorized:approved',
-        detail: expect.objectContaining({
-          requestRef: request.requestRef, gateKind: 'iteration-park', parkReason: 'no-progress',
-          loopVersion: loop.version, generationRefs: [...loop.activeGenerationRefs], decision: 'approved',
-        }),
-      });
-    });
-
-    it('mints only for the decision vocabulary the gate kind admits', async () => {
-      provisionCeremonyCredential();
-      const { request } = mockIterationGate('no-progress');
-      const minted = await app.inject({
-        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: headers(token), payload: { decision: 'changes-requested' },
-      });
-      expect(minted.statusCode, minted.body).toBe(400);
-      expect(minted.json()).toMatchObject({ error: 'invalid-iteration-park-decision' });
-    });
-
-    /**
-     * S3 (review r2) — without `provisionCeremonyCredential()` the daemon has no credential, so
-     * routes.ts:2119 refuses with `403 ceremony-unavailable` BEFORE the origin check at routes.ts:2129
-     * ever runs; the case passed vacuously on that unrelated 403. Provision a credential so the request
-     * reaches the origin check, and assert the origin-specific `ceremony-invalid` body — distinct from
-     * `ceremony-unavailable` — so the origin refusal is what is actually being exercised.
-     */
-    it('refuses to mint for a foreign origin', async () => {
-      provisionCeremonyCredential();
-      const { request } = mockIterationGate('no-progress');
-      // ALT_ALLOWED_ORIGIN clears the surface-wide CSRF allowlist (so this request reaches the route
-      // handler at all) but does not match the WebAuthn RP `origin` configured above, so it exercises
-      // the ceremony's OWN origin check at routes.ts:2129.
-      const minted = await app.inject({
-        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: { ...headers(token), origin: ALT_ALLOWED_ORIGIN }, payload: { decision: 'approved' },
-      });
-      expect(minted.statusCode, minted.body).toBe(403);
-      expect(minted.json()).toEqual({ error: 'ceremony-invalid' });
-    });
-  });
 
   it('does not let the generic intervention endpoint bypass the iteration gate contract', async () => {
     const { request, resolve } = mockIterationGate('no-progress');
@@ -1418,7 +1192,7 @@ describe('control proposal routes', () => {
     const launchApp = Fastify();
     registerWriteSurface(launchApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
-      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], composerStore, controlStore,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }), opsGit, runPy,
@@ -1481,7 +1255,7 @@ describe('control proposal routes', () => {
         value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: ready.value.run.version } },
       });
 
-      // Simulate the post-passkey context wiring without touching a daemon or real latch. Activation must
+      // Simulate the post-unlock context wiring without touching a daemon or real latch. Activation must
       // resume this exact published run and these exact cards; it must not call the launch publisher again.
       const wired = await activatedApp();
       try {
@@ -1594,7 +1368,7 @@ describe('control proposal routes', () => {
     const launchApp = Fastify();
     registerWriteSurface(launchApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, opsGit, runPy,
+      allowedOrigins: [ORIGIN], composerStore, controlStore, opsGit, runPy,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -1625,7 +1399,7 @@ describe('control proposal routes', () => {
         .toEqual([['build', true], ['upload', true]]);
       // The ONLY boundary is the post-publication runtime intervention. No gate, no governance refusal
       // for the T3 stage, and — decisively — nothing of kind `approval`: this operational acknowledgement
-      // cannot authorize spend or publication; the separate passkey latch still controls activation.
+      // cannot authorize spend or publication; the separate execution latch still controls activation.
       expect(detail.value.humanRequests.map((request) => [request.kind, request.title])).toEqual([
         ['intervention', 'Automatic execution activation is gated'],
       ]);
@@ -1715,7 +1489,7 @@ describe('control proposal routes', () => {
     const managerApp = Fastify();
     registerWriteSurface(managerApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, attemptPort: liveAttemptPort,
+      allowedOrigins: [ORIGIN], composerStore, controlStore, attemptPort: liveAttemptPort,
       cancelAutomatic: async () => ({ state: 'stopped', stoppedSessionRefs: [running.value.managerSessionRef], interruptedSessionRefs: [], replayed: false }),
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -3134,7 +2908,7 @@ describe('control proposal routes', () => {
     const activationApp = Fastify();
     registerWriteSurface(activationApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      allowedOrigins: [ORIGIN], composerStore, controlStore,
       attemptPort: fakeAttemptPort(),
       runAutomatic: (async () => ({ ok: true })) as never,
       containManagerStart: async () => {},
@@ -3189,7 +2963,7 @@ describe('control proposal routes', () => {
     const auditFailApp = Fastify();
     registerWriteSurface(auditFailApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      allowedOrigins: [ORIGIN], composerStore, controlStore,
       appendAudit: () => { throw new Error('audit unavailable'); },
     }));
     await auditFailApp.ready();
@@ -3217,16 +2991,13 @@ describe('control proposal routes', () => {
 /**
  * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
  * enough for the UI to raise an unlock prompt, and BOTH transitions are authorized by the operator's
- * WebAuthn-minted session bearer plus an audit row — never by a second, purpose-bound ceremony of their
- * own. That second ceremony was removed: the platform's requirement is ONE dashboard unlock, and it made
- * an already-signed-in operator unlock twice to arm the executor.
+ * session bearer plus an audit row.
  */
-const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
 
 function fakeLatch(initial: 'locked' | 'unlocked') {
   let state = initial === 'locked'
     ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
-    : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+    : { state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
   const unlock = vi.fn(() => ({ ok: true as const, state }));
   const lock = vi.fn(() => {
     state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
@@ -3253,8 +3024,6 @@ function buildApp(overrides: Record<string, unknown> = {}) {
     sessionConfig: SESSION,
     allowedOrigins: [ORIGIN],
     controlStore: store,
-    webAuthnConfig: TEST_WEBAUTHN,
-    credentials: () => [],
     // T3: this describe block's `execution-lock` route is `signed`-class. `buildApp` never overrides
     // `stateRoot` either (see the identical note in the retention `surface()` helper below), so the nonce
     // store is stubbed in-memory here too.
@@ -3299,7 +3068,7 @@ describe('control execution latch routes', () => {
   it('requires a session, rejects unknown agents, and returns the activated worker delivery result', async () => {
     const delivery = vi.fn(async () => 'queued' as const);
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => ({ agentMessages: { deliver: delivery } }),
       unlock: vi.fn(), lock: vi.fn(),
     };
@@ -3371,7 +3140,7 @@ describe('control execution latch routes', () => {
     const root = mkdtempSync(join(tmpdir(), 'attempt-io-route-'));
     const io = createAttemptIoStore({ root, flushMs: 0 });
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => ({ attemptIo: io }), unlock: vi.fn(), lock: vi.fn(),
     };
     const { app, token, store } = buildApp({ executionLatch: latch });
@@ -3411,7 +3180,7 @@ describe('control execution latch routes', () => {
 
     const unavailable = buildApp({
       executionLatch: {
-        snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+        snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
         current: () => null, unlock: vi.fn(), lock: vi.fn(),
       },
     });
@@ -3485,7 +3254,7 @@ describe('control execution latch routes', () => {
       const row = audit.find((entry) => entry.action === 'control-execution-unlock-authorize');
       expect(row).toMatchObject({
         owner: 'operator', target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'session-bearer' },
+        result: 'authorized:unlock', detail: { method: 'tailnet-operator' },
       });
     } finally {
       await app.close();
@@ -3574,7 +3343,7 @@ describe('control execution latch routes', () => {
     const { app, token, audit } = buildApp({ executionLatch: latch });
     try {
       const before = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
-      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'passkey', unlockedBy: 'operator' } });
+      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'tailnet', unlockedBy: 'operator' } });
 
       const locked = await app.inject({ method: 'POST', url: '/api/control/execution/lock', headers: headers(token), payload: {} });
       expect(locked.statusCode).toBe(200);
@@ -3617,7 +3386,7 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('audits then invokes only the exact legacy reclassification under same-subject passkey wiring', async () => {
+  it('audits then invokes only the exact legacy reclassification under same-subject tailnet wiring', async () => {
     const order: string[] = [];
     const runAutomatic = vi.fn();
     const cancelAutomatic = vi.fn();
@@ -3632,7 +3401,7 @@ describe('control execution latch routes', () => {
       verifyCanonicalResult,
     };
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-08-01T02:30:00.000Z', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: '2026-08-01T02:30:00.000Z', unlockedBy: 'operator' }),
       current: () => execution,
       unlock: vi.fn(), lock: vi.fn(),
     };
@@ -3653,7 +3422,7 @@ describe('control execution latch routes', () => {
         runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214', stageRef: null,
         kind: 'intervention', revision: 2, state: 'open',
         title: 'Automatic execution activation is gated',
-        prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+        prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
         response: null, createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T02:31:00.000Z',
       },
       event: { cursor: 2 },
@@ -3739,7 +3508,7 @@ describe('control execution latch routes', () => {
       cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
     };
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => execution, unlock: vi.fn(), lock: vi.fn(),
     };
     const mismatched = buildApp({
@@ -4391,18 +4160,15 @@ describe('Dashboard v3 run and gate routes', () => {
     });
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      allowedOrigins: [ORIGIN], controlStore: store,
       hubBus,
       executionLatch: {
-        snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedAt: 'now', unlockedBy: 'operator' }),
+        snapshot: () => ({ state: 'unlocked', source: 'tailnet', unlockedAt: 'now', unlockedBy: 'operator' }),
         current: () => ({ attemptIo }), unlock: vi.fn(), lock: vi.fn(),
       } as never,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      // W47: last, so a case can drop the `credentials: () => []` stub and fall through to the
-      // PRODUCTION default (`() => resolveCredentials()` over process.env) instead of a composition
-      // override. See the W47 describe below.
       ...contextOverrides,
     }));
     return {
@@ -4553,7 +4319,7 @@ describe('Dashboard v3 run and gate routes', () => {
     } finally { await fixture.app.close(); }
   });
 
-  it('registers challenge-bound T3 response and fails closed when the ceremony is unavailable', async () => {
+  it('T2: the removed /respond/challenge route is gone entirely (404, not a ceremony refusal)', async () => {
     const fixture = seededSurface();
     try {
       const challenge = await fixture.app.inject({
@@ -4562,187 +4328,17 @@ describe('Dashboard v3 run and gate routes', () => {
           expectedRevision: fixture.request.revision, decision: 'approved', response: null,
         },
       });
-      expect(challenge.statusCode).toBe(403);
-      expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
+      expect(challenge.statusCode).toBe(404);
 
+      // The plain (now unceremonied) respond route still works.
       const response = await fixture.app.inject({
         method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond`,
         headers: headers(fixture.operatorToken), payload: {
           expectedRevision: fixture.request.revision, decision: 'approved', idempotencyKey: 'approve-result', response: null,
         },
       });
-      expect(response.statusCode).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-unavailable' });
-      expect(fixture.store.getHumanRequest('dashboard-engine', fixture.request.requestRef)).toMatchObject({
-        ok: true, value: { state: 'open', response: null },
-      });
+      expect(response.statusCode, response.body).toBe(200);
     } finally { await fixture.app.close(); }
-  });
-
-  /**
-   * W47 - the T3 ceremony over the REAL credential store, with NO composition override.
-   *
-   * Every prior tailnet ceremony case injected `credentials: () => [CRED]`, so `ceremonyModeAdmits`
-   * was only ever proved against a stub; in production `resolveCredentials()` reads exactly one
-   * variable (auth/credentialStore.ts) that tailnet mode used to refuse to boot with, which is why the
-   * first VM acceptance run parked at a `403 ceremony-unavailable` approval gate nobody could clear.
-   * These two cases drop the stub entirely: `credentials: undefined` falls through to the production
-   * default `() => resolveCredentials()` over `process.env`, and `webAuthnConfig` likewise falls
-   * through to `resolveWebAuthnConfig()`. RED ON REVERT: restore the blanket tailnet retirement (or
-   * re-narrow `ceremonyModeAdmits` to win32-desktop) and the 200 case goes 403.
-   */
-  describe('W47 tailnet T3 ceremony over the real credential store', () => {
-    const REAL_ENV = {
-      DASHBOARD_RP_ORIGIN: ORIGIN,
-      DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
-    };
-    let saved: Record<string, string | undefined> = {};
-
-    function realCredentialSurface(env: Record<string, string | undefined>) {
-      saved = { DASHBOARD_RP_ORIGIN: process.env.DASHBOARD_RP_ORIGIN, DASHBOARD_WEBAUTHN_CREDENTIALS: process.env.DASHBOARD_WEBAUTHN_CREDENTIALS };
-      for (const [name, value] of Object.entries(env)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-      // No `credentials` and no `webAuthnConfig` key survives: both resolve from process.env exactly
-      // as the daemon does.
-      return seededSurface({ authMode: 'tailnet', credentials: undefined, webAuthnConfig: undefined });
-    }
-
-    afterEach(() => {
-      for (const [name, value] of Object.entries(saved)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-    });
-
-    it('tailnet + a provisioned DASHBOARD_WEBAUTHN_CREDENTIALS issues the challenge (200 + ceremonyId)', async () => {
-      const fixture = realCredentialSurface(REAL_ENV);
-      try {
-        const challenge = await fixture.app.inject({
-          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
-          headers: headers(fixture.operatorToken), payload: {
-            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
-          },
-        });
-        expect(challenge.statusCode, challenge.body).toBe(200);
-        const body = challenge.json() as { ceremonyId: string; options: { allowCredentials?: Array<{ id: string }> }; challengeExpiresAt: string };
-        expect(typeof body.ceremonyId).toBe('string');
-        expect(body.ceremonyId.length).toBeGreaterThan(0);
-        expect(typeof body.challengeExpiresAt).toBe('string');
-        // The allowlist came from the env-provisioned store, not from a test double.
-        expect(body.options.allowCredentials?.map((entry) => entry.id)).toEqual(['cred-1']);
-      } finally { await fixture.app.close(); }
-    });
-
-    it('tailnet with NO provisioned credentials still refuses 403 ceremony-unavailable (unchanged)', async () => {
-      const fixture = realCredentialSurface({ ...REAL_ENV, DASHBOARD_WEBAUTHN_CREDENTIALS: undefined });
-      try {
-        const challenge = await fixture.app.inject({
-          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
-          headers: headers(fixture.operatorToken), payload: {
-            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
-          },
-        });
-        expect(challenge.statusCode).toBe(403);
-        expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
-      } finally { await fixture.app.close(); }
-    });
-  });
-});
-
-/**
- * P5 W6.3 — the deploy-purpose T3 challenge on the SHIPPED verifier, and the lifted `ceremonyModeAdmits`
- * gate [P5-C20, P5-C23, P5-C45]. The gate is proved BOTH ways with an injected provisioned test credential:
- * tailnet + one credential issues the challenge; tailnet + zero credentials refuses `403 ceremony-unavailable`
- * with no fallback; and a registration ceremony ALONE (which only reports material for out-of-band
- * provisioning) still leaves the challenge unavailable — the gate never downgrades on credential possession.
- */
-describe('P5 W6.3 deploy-purpose T3 challenge + lifted ceremony gate', () => {
-  const CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
-  const DEPLOY_READY_REF = `deploy-ready:${'b'.repeat(40)}`;
-  const DEPLOY_READY_REVISION = `deploy-ready:${'c'.repeat(64)}`;
-  const ATTEST_DIGEST = 'a'.repeat(64);
-
-  function deployChallengeRequest(app: ReturnType<typeof Fastify>, token: string, over: Record<string, unknown> = {}) {
-    return app.inject({
-      method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
-      headers: headers(token),
-      payload: { decision: 'deploy', revision: DEPLOY_READY_REVISION, digest: ATTEST_DIGEST, ...over },
-    });
-  }
-
-  it('tailnet + one provisioned credential issues the deploy challenge on the shipped verifier', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode, res.body).toBe(200);
-      const body = res.json();
-      expect(typeof body.ceremonyId).toBe('string');
-      expect(typeof body.challengeExpiresAt).toBe('string');
-      // The minted WebAuthn challenge decodes to the purpose-bound `kb.deploy-t3` preimage — never a plain
-      // opaque login nonce, so the generic sign-in route refuses this ceremonyId (see auth/routes.test.ts).
-      const decoded = Buffer.from(String(body.options.challenge), 'base64url').toString('utf8');
-      expect(decoded.startsWith('kb.deploy-t3')).toBe(true);
-    } finally { await app.close(); }
-  });
-
-  it('tailnet + ZERO provisioned credentials refuses 403 ceremony-unavailable with no fallback path', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
-    } finally { await app.close(); }
-  });
-
-  it('win32-desktop + one provisioned credential also issues the challenge (the gate loosened, not narrowed)', async () => {
-    const { app, token } = buildApp({ authMode: 'win32-desktop', credentials: () => [CRED] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode, res.body).toBe(200);
-    } finally { await app.close(); }
-  });
-
-  it('a successful /api/auth/register/options ceremony ALONE still yields 403 — registration grants nothing [P5-C45]', async () => {
-    // credentials() resolves ONLY from DASHBOARD_WEBAUTHN_CREDENTIALS (resolveCredentials); the register
-    // ceremony merely REPORTS material for a human to provision out of band. Driving a registration here
-    // does not populate credentials(), so the deploy challenge stays unavailable — no runtime-registration
-    // path can create deploy authority, and the gate never downgrades on credential possession.
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
-    try {
-      const register = await app.inject({
-        method: 'POST', url: '/api/auth/register/options', headers: headers(token), payload: {},
-      });
-      expect(register.statusCode, register.body).toBe(200);
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
-    } finally { await app.close(); }
-  });
-
-  it('mints ONLY the four T3 decisions, each over the ref spelling it requires', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
-    try {
-      // An unknown decision is refused before any mint.
-      const unknown = await deployChallengeRequest(app, token, { decision: 'purge' });
-      expect(unknown.statusCode).toBe(400);
-      expect(unknown.json()).toEqual({ error: 'invalid-decision' });
-      // `abort` requires `deployment:<n>`, never the `deploy-ready:<sha>` ref.
-      const crossed = await app.inject({
-        method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
-        headers: headers(token), payload: { decision: 'abort', revision: 'deployment:3', digest: ATTEST_DIGEST },
-      });
-      expect(crossed.statusCode).toBe(400);
-      expect(crossed.json()).toEqual({ error: 'invalid-revision' });
-      // `close-ptys-and-continue` binds sha256(sorted session ids) as its digest and mints for pty-quiescence.
-      const quiescence = await app.inject({
-        method: 'POST', url: `/api/inbox/deployment/deployment:7/challenge`,
-        headers: headers(token),
-        payload: { decision: 'close-ptys-and-continue', revision: 'deployment:7', sessionIds: ['s-2', 's-1'] },
-      });
-      expect(quiescence.statusCode, quiescence.body).toBe(200);
-    } finally { await app.close(); }
   });
 });
 
@@ -4782,7 +4378,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     const app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
-      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], controlStore: store,
       composerStore: createInMemoryComposerStore({
         protector: { seal: (value: string) => value, open: (value: string) => value },
         newId: () => `composer-${++composerId}`,

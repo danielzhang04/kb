@@ -3,7 +3,7 @@
  *
  * Never a raw `fs.write` into `queue/`/`ledgers/`/`governance/` — every save goes through, in order:
  *   1. **Preamble gate.** STOP/API-key/budget checks run before session verification or any mutation.
- *   2. **Session gate.** A valid, unexpired WebAuthn-minted session token (`auth/session.ts`) is
+ *   2. **Session gate.** A valid, unexpired session token (`auth/session.ts`) is
  *      required; anything else (missing, malformed, expired, bad signature) is rejected with 401
  *      before any filesystem or git activity.
  *   3. **Path confinement.** `relpath` is resolved and confined to `repoRoot` (traversal/absolute-path

@@ -278,7 +278,7 @@ describe('resolveAllowedOrigins in tailnet mode', () => {
     expect(resolveAllowedOrigins(TAILNET)).toEqual(['https://kb.command.ts.net']);
   });
 
-  it('IGNORES a stale DASHBOARD_RP_ORIGIN — the WebAuthn RP origin leaves the unit in this mode', () => {
+  it('IGNORES a stale DASHBOARD_RP_ORIGIN — an unrelated leftover var leaves the unit in this mode', () => {
     expect(resolveAllowedOrigins({ ...TAILNET, DASHBOARD_RP_ORIGIN: 'https://old.example.ts.net' }))
       .toEqual(['https://kb.command.ts.net']);
   });
