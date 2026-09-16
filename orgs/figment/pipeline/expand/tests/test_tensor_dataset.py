@@ -668,3 +668,24 @@ def test_dataset_fullbody_pin_stage_covers_its_own_readiness_budget(tmp_path):
     stage = pins["pod_classes"]["l40s"]["stages"]["dataset_fullbody"]
     budget = stage["readiness_timeout_seconds"] + stage["job_timeout_seconds"] * 5 + 300
     assert budget <= stage["max_minutes"] * 60
+
+
+TIGHT_FRAMING_PHRASES = (
+    "headshot",
+    "close-up",
+    "looking up at her face",
+)
+
+
+def test_every_face_row_carries_a_tight_framing_clause(templates):
+    """Live 2026-09-16 (run live-20260916, 60 cells): face rows worded as a plain
+    "photograph … view of her face" rendered chest-up at ~400-510 px and failed the
+    600 px `face_px` floor with identity_own 0.82-0.94, while rows worded "headshot" /
+    "close-up" / "low-angle shot, looking up at her face" rendered at 750-970 px and
+    passed. Module 10's face branch is face-dominant by construction (its input is a
+    1680² face crop), so tight framing IS the recipe -- pin it on every face row."""
+    rows = templates["face"]["rows"]
+    assert len(rows) == 15
+    loose = [row for row in rows
+             if not any(phrase in row.lower() for phrase in TIGHT_FRAMING_PHRASES)]
+    assert loose == [], loose

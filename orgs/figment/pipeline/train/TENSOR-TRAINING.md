@@ -64,6 +64,24 @@ creator-001 plan (dry-run clean, `verify_pins.py` clean) and by synthetic-person
 tests in `tests/test_figment_train.py` (dry-run clean, gate-schema-identical to the qwen-edit path
 by direct side-by-side comparison, ceiling-checked).
 
+**Live 18/60 on the qwen-edit replica (2026-09-16, run `orgs/figment/runs/creator-001/live-20260916`,
+`dataset_replicates: 2`, $2.9 actual over 8 pods incl. one DNS-blip retry):** identity_own median 0.898
+(0.64–0.946) — identity is not the problem on this source. Gate losses were structural: 16 `close` cells
+failed ONLY `face_px < 600` (rendered chest-up at ~400–510 px, identity 0.82–0.94), all 10 `full` cells
+failed the 600 floor at 276–374 px (`full` framing has no `by_framing` override — operator ruling pending),
+13 cells failed the judge's `same_person` (55–68 vs 70.2) and 9 `|age_delta|`. Row-level: face rows worded
+"headshot" / "close-up" / "low-angle shot, looking up at her face" (f08, f09, f10, f12, f13, f14) rendered
+at 750–970 px; rows worded "DSLR photograph … view of her face", "profile view of her face", "shot … over
+her shoulder", "shot from behind the right shoulder", "Rembrandt lighting portrait", "portrait … showing the
+face and shoulders" (f01–f07, f11, f15) rendered at ~480 px. Module 10's face branch is face-dominant by
+construction (its input is the 1680² `FaceBoundingBox` crop of the reference). **Edit applied**: those nine
+rows now carry an explicit tight-framing clause in the passing rows' register (angle/gaze/light/background
+content unchanged, row order and seeds unchanged); pinned by
+`expand/tests/test_tensor_dataset.py::test_every_face_row_carries_a_tight_framing_clause`. Expectation:
+close cells ≥ ~750 px → ~26–30 approvals of 60. **Edited after live 18/60, NOT yet live-validated.**
+The 18/60 run is left at its gate (`GATE dataset: awaiting ruling`) as evidence for the pending `full`
+floor ruling; it is not the training set.
+
 **Rollout status — SUPERSEDED 2026-09-16: creator-001's live `training.yaml` flips back to
 `dataset_source: "qwen-edit"`, adding `dataset_replicates: 2`** (`caption_mode: "qwen3vl"`
 unchanged). The klein-multiref live run above (`live-20260915b`) is the reason -- see the
