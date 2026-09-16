@@ -4034,6 +4034,16 @@ def test_has_stray_retry_output_ignores_only_known_bookkeeping_files(command, tm
     )
     assert command._has_stray_retry_output(out_dir) is False
 
+    # LIVE 2026-09-16: the harness's captured diagnostics are bookkeeping, not output.
+    harness_dir = out_dir / "_harness"
+    harness_dir.mkdir()
+    (harness_dir / "_training.log").write_text("pip install ... Traceback ...", encoding="utf-8")
+    (harness_dir / "_training.heartbeat").write_text("2026-09-16T17:15:09Z", encoding="utf-8")
+    assert command._has_stray_retry_output(out_dir) is False
+    (harness_dir / "captions.json").write_text("{}", encoding="utf-8")
+    assert command._has_stray_retry_output(out_dir) is True
+    (harness_dir / "captions.json").unlink()
+
     nested = out_dir / "nested" / "leftover.bin"
     nested.parent.mkdir(parents=True)
     nested.write_bytes(b"x")

@@ -4204,6 +4204,12 @@ def _is_retry_bookkeeping_file(path: Path) -> bool:
         return True
     if name.startswith("recovery-") and name.endswith(".json"):
         return True
+    # LIVE 2026-09-16 (caption pod attempt 3): the harness's own diagnostics capture
+    # (`training_diagnostics_dir` = `<out>/_harness/`, `TRAINING_DIAGNOSTIC_FILENAMES`)
+    # is bookkeeping too -- a failed pod's captured log/heartbeat is evidence, not
+    # a rendered output, and must not disqualify a retry.
+    if path.parent.name == "_harness" and name in ("_training.log", "_training.heartbeat"):
+        return True
     return False
 
 
