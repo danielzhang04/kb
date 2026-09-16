@@ -60,6 +60,9 @@ function setWindow(kind) {
     doc = { openedAt: iso(now - 60000), expiresAt: iso(now + 5 * 60 * 60 * 1000), token: 'c'.repeat(32), step: 'greedy' };
   } else if (kind === 'badtoken') {
     doc = { openedAt: iso(now - 60000), expiresAt: iso(now + 60 * 60 * 1000), token: 'not-hex', step: 'bad' };
+  } else if (kind === 'future') {
+    // HOOK-HIGH-4: a window dated months out, opening only in the future.
+    doc = { openedAt: iso(now + 90 * 24 * 60 * 60 * 1000), expiresAt: iso(now + 90 * 24 * 60 * 60 * 1000 + 60 * 60 * 1000), token: 'd'.repeat(32), step: 'future' };
   } else {
     throw new Error('unknown window kind ' + kind);
   }
@@ -159,6 +162,9 @@ const CASES = [
   ['malformed window: preflight blocked', 'malformed', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1"`, 2],
   ['over-3h window: preflight blocked', 'toolong', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1"`, 2],
   ['non-hex token: preflight blocked', 'badtoken', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1"`, 2],
+  // HOOK-HIGH-4: a future-dated window (openedAt after now) must not read as open.
+  ['future-dated window: preflight blocked', 'future', 'Bash', `${PS} -File "${T}\\vm-preflight-prod.ps1"`, 2],
+  ['future-dated window: kb-deploy blocked', 'future', 'Bash', `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
 
   // ---- Agent ----------------------------------------------------------------
   ['Agent allowed while closed', 'closed', 'Agent', null, 0],
@@ -221,6 +227,63 @@ const CASES = [
   ['O2 unsafe decision value blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision publish -Reason "ok"`, 2],
   ['O2 missing -Reason blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve`, 2],
   ['O2 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run r -Request q -Decision approve -Reason "x" && rm -rf /`, 2],
+
+  // ---- HOOK-BLOCKER-1: isKbReaderRead must match the WHOLE command, not a prefix ------------
+  // Reviewer's exact probes: a 40-char kb-reader prefix used to exempt the entire rest of the
+  // command from classification. Both now fall through to real prod-targeting classification
+  // (A4w / A6) and are refused because the window is closed.
+  ['HOOK-BLOCKER-1: kb-reader prefix cannot smuggle a kb-deploy chain', 'closed', 'Bash',
+    `ssh -o BatchMode=yes kb-reader hostname; ${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
+  ['HOOK-BLOCKER-1: kb-reader prefix cannot smuggle a human-approval signature', 'closed', 'Bash',
+    'ssh -o BatchMode=yes kb-reader hostname; ssh-keygen -Y sign -f C:\\keys\\k -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 2],
+  ['HOOK-BLOCKER-1: kb-reader read command with a semicolon-joined second command blocked', 'closed', 'Bash',
+    'ssh kb-reader hostname; rm -rf /', 2],
+
+  // ---- HOOK-BLOCKER-2: isRehearsal must require a genuine argument token -------------------
+  // Reviewer's exact probes: a bare -URL anywhere (even on a script that does not use -URL for
+  // targeting) or a -VM hidden after a `#` comment used to disarm the classifier wholesale.
+  ['HOOK-BLOCKER-2: kb-deploy.ps1 + trailing -URL (no -VM) is not rehearsal', 'closed', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST} -URL http://127.0.0.1:4317`, 2],
+  ['HOOK-BLOCKER-2: a -VM hidden after a # comment does not exempt a human-approval signature', 'closed', 'Bash',
+    'ssh-keygen -Y sign -f C:\\keys\\k -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json # -VM root@localhost', 2],
+  ['HOOK-BLOCKER-2: a -VM hidden after a # comment does not exempt a real deploy', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} -BrokerDigest ${DIGEST} # -VM root@localhost`, 2],
+
+  // ---- HOOK-BLOCKER-4: PATHARG/SAFE_ARG must reject command substitution -------------------
+  ['HOOK-BLOCKER-4: kb-deploy -SigningKey $(Start-Process calc) blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey "$(Start-Process calc)" -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
+  ['HOOK-BLOCKER-4: kb-deploy -SigningKey unquoted $(whoami) blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey $(whoami) -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
+  ['HOOK-BLOCKER-4: ssh-keygen -f exfiltrating the ops key via $() blocked', 'open', 'Bash',
+    'ssh-keygen -Y sign -f "$(cp C:\\Users\\danie\\.ssh\\kb-ops-approver C:\\tmp\\stolen)" -n kb-ops-instructions "C:\\Users\\danie\\kb-backups\\outbox-approval-current\\instruction-approval.json"', 2],
+  ['HOOK-BLOCKER-4: prod-sign-approval -Key with command substitution blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key "$(whoami)" -Out ${T}\\approval.json`, 2],
+
+  // ---- HOOK-BLOCKER-5: prod-signed-call.ps1 must be WINDOWED (reviewer's exact probe) ------
+  ['HOOK-BLOCKER-5: prod-signed-call blocked window closed (reviewer probe)', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-signed-call.ps1" -Route "POST /api/control/budget/override" -Approval ${T}\\a.json -Body '{"additionalUsdMicros":99000000}'`, 2],
+
+  // ---- HOOK-BLOCKER-6: prod-window.ps1 itself is classified --------------------------------
+  ['HOOK-BLOCKER-6: prod-window.ps1 -Open -Step is a reviewed shape (still legitimately self-service)', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-window.ps1" -Open -Step selfservice`, 0],
+  ['HOOK-BLOCKER-6: prod-window.ps1 -Open -Hours', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-window.ps1" -Open -Hours 2`, 0],
+  ['HOOK-BLOCKER-6: prod-window.ps1 -Open -Minutes -Step', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-window.ps1" -Open -Minutes 30 -Step canary`, 0],
+  ['HOOK-BLOCKER-6: prod-window.ps1 -Close', 'open', 'Bash', `${PS} -File "${T}\\prod-window.ps1" -Close`, 0],
+  ['HOOK-BLOCKER-6: prod-window.ps1 -Status', 'closed', 'Bash', `${PS} -File "${T}\\prod-window.ps1" -Status`, 0],
+  ['HOOK-BLOCKER-6: prod-window.ps1 with an unreviewed extra param blocked', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-window.ps1" -Open -Step ok -Force`, 2],
+  ['HOOK-BLOCKER-6: prod-window.ps1 with no recognised mode blocked', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-window.ps1" -List`, 2],
+  ['HOOK-BLOCKER-6: a bare Set-Content on the window file is blocked (D9)', 'closed', 'Bash',
+    `Set-Content ${T}\\PROD-WINDOW.json '{"openedAt":"2026-01-01T00:00:00Z"}'`, 2],
+  ['HOOK-BLOCKER-6: a bare Set-Content on the window file is blocked (D9), window open', 'open', 'PowerShell',
+    `Set-Content -Path "${T}\\PROD-WINDOW.json" -Value '{}'`, 2],
+  ['HOOK-BLOCKER-6: an Out-File redirect onto the window file is blocked (D9)', 'closed', 'PowerShell',
+    `'{}' | Out-File ${T}\\PROD-WINDOW.json`, 2],
+  ['legitimate window-token read prefix stays allowed (D9 does not over-fire)', 'open', 'PowerShell',
+    `${ENVPRE}${PS} -File "${T}\\vm-preflight-prod.ps1"`, 0],
 
   // ---- unsafe -Workflow ids explicitly blocked (T7 widened O1 grammar) ----------------------
   ['O1 -Workflow with an underscore blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-run-workflow.ps1" -Workflow nightly_digest`, 2],
@@ -400,4 +463,98 @@ test('an unrelated tool is ignored', () => {
   const payload = JSON.stringify({ tool_name: 'Read', tool_input: { file_path: 'C:\\x.txt' } });
   const res = spawnSync(process.execPath, [HOOK], { input: payload, encoding: 'utf8' });
   assert.strictEqual(res.status, 0);
+});
+
+/* ------------------------------------- HOOK-BLOCKER-3: stdin size + parse failures ------- */
+
+test('HOOK-BLOCKER-3: stdin over 1 MiB blocks (fail closed), reviewer probe shape', () => {
+  setWindow('closed');
+  const pad = 'P'.repeat(1200000);
+  const payload = JSON.stringify({
+    hook_event_name: 'PreToolUse',
+    tool_name: 'Bash',
+    tool_input: { command: `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey k -Sha ${SHA} # ${pad}` },
+  });
+  const res = spawnSync(process.execPath, [HOOK], {
+    input: payload, encoding: 'utf8',
+    env: Object.assign({}, process.env, { KB_PROD_WINDOW_AUDIT: AUDIT }),
+  });
+  assert.strictEqual(res.status, 2);
+  assert.match(res.stderr, /^\[prod-window BLOCK\]/);
+});
+
+test('HOOK-BLOCKER-3: stdin over 1 MiB blocks even for content that is not prod-smelling', () => {
+  setWindow('closed');
+  const pad = 'Q'.repeat(1200000);
+  const payload = JSON.stringify({
+    hook_event_name: 'PreToolUse', tool_name: 'Bash', tool_input: { command: `echo ${pad}` },
+  });
+  const res = spawnSync(process.execPath, [HOOK], { input: payload, encoding: 'utf8' });
+  assert.strictEqual(res.status, 2);
+});
+
+test('HOOK-BLOCKER-3: an unparsable payload that smells of prod blocks', () => {
+  const res = spawnSync(process.execPath, [HOOK], {
+    input: `this is not json but names ${T}\\kb-deploy.ps1 -SigningKey k`,
+    encoding: 'utf8',
+  });
+  assert.strictEqual(res.status, 2);
+});
+
+test('HOOK-BLOCKER-3: an unparsable payload with no prod smell is a no-op', () => {
+  const res = spawnSync(process.execPath, [HOOK], { input: 'not json, no prod mentions at all', encoding: 'utf8' });
+  assert.strictEqual(res.status, 0);
+});
+
+test('HOOK-BLOCKER-3: tool_input missing entirely for a gated tool blocks', () => {
+  setWindow('closed');
+  const payload = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'Bash' });
+  const res = spawnSync(process.execPath, [HOOK], { input: payload, encoding: 'utf8' });
+  assert.strictEqual(res.status, 2);
+  assert.match(res.stderr, /^\[prod-window BLOCK\]/);
+});
+
+test('HOOK-BLOCKER-3: tool_input as a non-object for a gated tool blocks', () => {
+  const payload = JSON.stringify({ hook_event_name: 'PreToolUse', tool_name: 'PowerShell', tool_input: 'oops' });
+  const res = spawnSync(process.execPath, [HOOK], { input: payload, encoding: 'utf8' });
+  assert.strictEqual(res.status, 2);
+});
+
+/* ---------------------------------- HOOK-BLOCKER-6: Write/Edit/MultiEdit on the window file - */
+
+test('Write targeting the window file (exact path) is blocked', () => {
+  const res = runHook('Write', { file_path: `${T}\\PROD-WINDOW.json`, content: '{}' });
+  assert.strictEqual(res.code, 2);
+  assert.match(res.stderr, /^\[prod-window BLOCK\]/);
+});
+
+test('Write targeting the window file (forward slashes) is blocked', () => {
+  const res = runHook('Write', { file_path: 'C:/Users/danie/kb-rehearsal/tooling/PROD-WINDOW.json', content: '{}' });
+  assert.strictEqual(res.code, 2);
+});
+
+test('Write targeting the window file (different case) is blocked', () => {
+  const res = runHook('Write', { file_path: 'c:\\users\\danie\\kb-rehearsal\\tooling\\prod-window.json', content: '{}' });
+  assert.strictEqual(res.code, 2);
+});
+
+test('Edit targeting the window file is blocked', () => {
+  const res = runHook('Edit', { file_path: `${T}\\PROD-WINDOW.json`, old_string: 'a', new_string: 'b' });
+  assert.strictEqual(res.code, 2);
+});
+
+test('MultiEdit targeting the window file is blocked', () => {
+  const res = runHook('MultiEdit', { file_path: `${T}\\PROD-WINDOW.json`, edits: [{ old_string: 'a', new_string: 'b' }] });
+  assert.strictEqual(res.code, 2);
+});
+
+test('Write targeting an unrelated file is allowed', () => {
+  const res = runHook('Write', { file_path: 'C:\\Users\\danie\\kb\\README.md', content: 'hi' });
+  assert.strictEqual(res.code, 0);
+  assert.strictEqual(res.stderr.trim(), '');
+});
+
+test('Edit targeting an unrelated file is allowed', () => {
+  const res = runHook('Edit', { file_path: 'C:\\Users\\danie\\kb\\scripts\\hooks\\prod_window_guard.js', old_string: 'a', new_string: 'b' });
+  assert.strictEqual(res.code, 0);
 });

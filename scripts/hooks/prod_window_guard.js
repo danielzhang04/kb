@@ -2,7 +2,12 @@
 /**
  * kb PreToolUse hook — PROD window guard (2026-09-16, authority-and-guardrails T7).
  *
- * Tools: Bash, PowerShell, Agent.
+ * Tools: Bash, PowerShell, Agent, Write, Edit, MultiEdit.
+ *
+ * Settings snippet (PreToolUse matcher — the boss must apply this to
+ * .claude/settings.local.json): matcher "Bash|PowerShell|Agent|Write|Edit".
+ * (MultiEdit is matched too when present; the hook itself checks tool_name
+ * for all three so no matcher change is needed if MultiEdit is added later.)
  *
  * This hook is a fast LOCAL SECOND LAYER, not the authority: the daemon's
  * server-side route policy table (dashboard/server/authority/policy.ts) is what
@@ -31,11 +36,19 @@
  *   C  window OPEN    -> Agent BLOCKED; windowed-class allowed only if it matches
  *                       one of the anchored allowlist shapes below; open-class
  *                       unaffected by window state
- *   D  standing blocks, window or not, any tool
+ *   D  standing blocks, window or not, any tool (includes: direct writes to the
+ *      window file itself, outside prod-window.ps1 — D9)
  *   E  audit line per prod-targeting decision and per Agent decision while open
  *   F  block => exit 2 + reason on stderr (same shape as hard_ceiling_guard.js);
- *      allow => exit 0 silent. FAIL CLOSED: any exception blocks anything that
- *      smells of prod and allows the rest.
+ *      allow => exit 0 silent. FAIL CLOSED: any exception, any unparsable
+ *      payload that smells of prod, and any oversize (>1 MiB) stdin all BLOCK.
+ *   W  Write/Edit/MultiEdit: block only when file_path is the window file
+ *      (any slash form, case-insensitive); every other file_path is allowed —
+ *      this hook does not otherwise gate file edits.
+ *   G  prod-window.ps1 itself is classified: allowed only in its exact
+ *      -Open [-Hours N|-Minutes N] [-Step <word>] / -Close / -Status shapes,
+ *      with no window requirement (it IS the window control); anything else
+ *      targeting that script is blocked.
  *
  * Exit codes: 0 = allow, 2 = block.
  */
@@ -97,7 +110,20 @@ const ENV_PRE = '(?:\\$env:kb_prod_window\\s*=\\s*\\(\\s*get-content\\s+(?:-raw\
 const PRE = '^(?:' + CD_PRE + '|' + ENV_PRE + ')*';
 
 const PS = 'powershell(?:\\.exe)?\\s+-noprofile\\s+-executionpolicy\\s+bypass\\s+';
-const PATHARG = '("[^"]*"|\'[^\']*\'|\\S+)';
+
+// SAFE_ARG — the one shared "no shell/PowerShell metacharacters" discipline for every
+// key/path/free-text argument the allowlist captures (SigningKey, -f key path, -Key, -Reason,
+// and anything else that used to be a bare `\S+`/`"[^"]*"` catch-all). Forbidden EVERYWHERE the
+// class is used, quoted or not: backtick, `$` (blocks `$(...)`, `$env:...`, and bare variable
+// refs alike), `;`, `&`, `|`, `%` (blocks `%VAR%` cmd.exe expansion), and CR/LF. Quoted forms
+// also cannot contain the opposite... no: neither quote character, so a value cannot smuggle a
+// second, differently-quoted argument.
+const SAFE_INNER = '[^`$;&|%\\r\\n"\']';                 // one safe char inside quotes (spaces OK)
+const SAFE_UNQUOTED = '[^\\s`$;&|%\\r\\n"\']';            // one safe char with no quoting (no spaces)
+const SAFE_ARG = '(?:"' + SAFE_INNER + '*"|\'' + SAFE_INNER + '*\'|' + SAFE_UNQUOTED + '+)';
+// PATHARG is SAFE_ARG under its old name — kept as an alias so every existing call site (C2, C4,
+// C13's -Key, C14) picks up the tightened grammar with no other changes.
+const PATHARG = SAFE_ARG;
 
 // Optionally quoted paths under the tooling tree (SAFE_T), under the tooling tree's `rehearsal`
 // subtree (SAFE_T_REHEARSAL), or under either the tooling tree or kb-backups
@@ -149,10 +175,11 @@ const O1 = new RegExp(PRE + PS + '-file\\s+' + P('prod-run-workflow.ps1')
   + '(?:\\s+-topic\\s+([a-z0-9._-]{1,40}))?$');
 
 // O2 — prod-respond.ps1, OPEN class: resolve a gate/intervention with a safe reason.
-// The reason may contain no backtick, `$`, `;`, `&` or `|` — no shell metacharacters at all.
+// Built from the same SAFE_INNER class as SAFE_ARG above (backtick, `$`, `;`, `&`, `|`, `%`,
+// CR/LF all forbidden) but sized for free text (1-300 chars) rather than a single token.
 // -Actor is optional; when present it is recorded verbatim on the audit line (never trusted
 // for authority — same non-authority property as the daemon's X-KB-Actor header, spec §4.3).
-const REASON = '("[^"`$;&|]{1,300}"|\'[^\'`$;&|]{1,300}\')';
+const REASON = '("' + SAFE_INNER + '{1,300}"|\'' + SAFE_INNER + '{1,300}\')';
 const ACTOR_ARG = '(daniel|boss|worker:[a-z0-9][a-z0-9._-]{0,63})';
 const O2 = new RegExp(PRE + PS + '-file\\s+' + P('prod-respond.ps1')
   + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-request\\s+([a-z0-9-]{1,80})'
@@ -222,6 +249,15 @@ const C14 = new RegExp('^ssh-keygen\\s+-y\\s+sign\\s+-f\\s+' + PATHARG
   + '\\s+-n\\s+kb-human-approval\\s+["\']?' + BACKUPS + B
   + 'approval-current' + B + 'payload\\.json["\']?$');
 
+// G — prod-window.ps1 itself (HOOK-BLOCKER-6). It was in neither class list, so any shape at all
+// reached it unexamined. It needs no window (it IS the window control) but is anchored to exactly
+// its three real modes: -Open [-Hours N|-Minutes N] [-Step <word>], -Close, -Status.
+const PW_OPEN = new RegExp(PRE + PS + '-file\\s+' + P('prod-window.ps1')
+  + '\\s+-open(?:\\s+-hours\\s+([0-9]{1,2})|\\s+-minutes\\s+([0-9]{1,3}))?'
+  + '(?:\\s+-step\\s+([a-z][a-z0-9-]{0,40}))?$');
+const PW_CLOSE = new RegExp(PRE + PS + '-file\\s+' + P('prod-window.ps1') + '\\s+-close$');
+const PW_STATUS = new RegExp(PRE + PS + '-file\\s+' + P('prod-window.ps1') + '\\s+-status$');
+
 // C7 — root ssh, read verbs only
 const SSH_ROOT = new RegExp('^ssh\\s+-o\\s+batchmode=yes\\s+root@'
   + PROD_HOST_IP.replace(/\./g, '\\.') + '\\s+(.*)$');
@@ -266,31 +302,62 @@ function isReadVerb(raw) {
 // two authority classes (spec §4.7): OPEN needs no window; WINDOWED still does.
 const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1)/;
 const WINDOWED_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1)/;
+// prod-window.ps1 is its own class (G): no window requirement, but only its three exact shapes.
+const WINDOW_MGMT_SCRIPT = /prod-window\.ps1/;
 
-/** `ssh [-o ...] kb-reader[@ip] ...` — the read-only identity, never prod-targeting. */
+/**
+ * `ssh [-o BatchMode=yes] kb-reader ...` — the read-only identity, never prod-targeting.
+ * Anchored to the WHOLE command (HOOK-BLOCKER-1): the old regex was a prefix test consumed only
+ * up to the first `\s`, so anything chained after `kb-reader hostname` via `;`/`&`/`|` rode along
+ * unexamined. The remote-command argument (quoted or not) is restricted to the same
+ * no-shell-metacharacter set as SAFE_ARG, so nothing after `kb-reader` can itself carry a second
+ * command.
+ */
 function isKbReaderRead(n) {
   if (/root@/.test(n)) return false;
   if (/(curl|invoke-restmethod|invoke-webrequest|iwr\b|irm\b)/.test(n)) return false;
-  return new RegExp('^ssh\\s+(?:-o\\s+\\S+\\s+)*kb-reader(?:@' + PROD_HOST_IP.replace(/\./g, '\\.')
-    + ')?(?:\\s|$)').test(n);
+  return new RegExp('^ssh(?:\\s+-o\\s+batchmode=yes)?\\s+kb-reader(?:@'
+    + PROD_HOST_IP.replace(/\./g, '\\.') + ')?(?:\\s+' + SAFE_ARG + ')?$').test(n);
 }
 
-/** Rehearsal invocations target localhost and are never prod-targeting. */
+// Scripts that reach prod over an SSH -VM target (kb-deploy.ps1 and the drain family): their
+// ONLY rehearsal signal is a genuine `-VM root@localhost` argument. A `-URL` on one of these
+// means nothing about where the SSH leg actually goes, so it must never exempt them
+// (HOOK-BLOCKER-2's kb-deploy.ps1 + trailing `-URL http://127.0.0.1:4317` probe).
+const VM_TARGET_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1)/;
+// HTTP-only scripts: they carry no -VM at all, so their rehearsal signal is a genuine `-URL`
+// pointing at the rehearsal daemon or its Windows-side proxy.
+const URL_TARGET_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-signed-call\.ps1)/;
+const VM_LOCALHOST_ARG = /(?:^|\s)-vm\s+["']?root@localhost["']?(?=\s|$)/;
+const URL_REHEARSAL_ARG = /(?:^|\s)-url\s+["']?https?:\/\/(?:127\.0\.0\.1|localhost):(?:4317|4417)["']?(?=\s|$)/;
+
+/**
+ * Rehearsal invocations target localhost and are never prod-targeting.
+ * HOOK-BLOCKER-2 fix: the old checks were unanchored substring tests, so a `-VM`/`-URL` marker
+ * anywhere in the string — including after a `#` comment, or on a script that does not even use
+ * that flag for targeting — disarmed the classifier wholesale. Now: (1) anything after the first
+ * `#` is stripped before looking for the marker, since a PowerShell/shell comment is never a real
+ * argument; (2) the marker must appear as a genuine, whitespace-bounded argument token; (3) which
+ * marker counts depends on which script the command actually names (VM_TARGET_SCRIPTS vs
+ * URL_TARGET_SCRIPTS) — a command naming neither script gets no exemption from either marker.
+ */
 function isRehearsal(n) {
   if (n.indexOf(PROD_HOST_IP) !== -1) return false;
   if (n.indexOf(PROD_URL) !== -1) return false;
-  if (/-vm\s+["']?root@localhost["']?/.test(n)) return true;
-  // prod-sign-approval.ps1 never touches a network, so it carries neither -VM nor -URL and the two
-  // clauses around this one cannot see its rehearsal form. Its ONLY hazard is the key it drives: a
-  // -Key under the tooling tree's `rehearsal` subtree is a committed throwaway key that prod's
-  // allowed-signers file does not list, so a signature made with it cannot authorise anything on
-  // prod. REHEARSAL_SIGN is anchored to the whole command, so nothing can be chained onto it, and
-  // the two vetoes at the top of this function still apply.
+  // prod-sign-approval.ps1 never touches a network, so it carries neither -VM nor -URL and the
+  // script-scoped checks below cannot see its rehearsal form. Its ONLY hazard is the key it
+  // drives: a -Key under the tooling tree's `rehearsal` subtree is a committed throwaway key that
+  // prod's allowed-signers file does not list, so a signature made with it cannot authorise
+  // anything on prod. REHEARSAL_SIGN is anchored to the whole command, so nothing can be chained
+  // onto it, and the two vetoes above still apply.
   if (REHEARSAL_SIGN.test(n)) return true;
-  // HTTP-only scripts (prod-run-workflow.ps1, prod-schedules.ps1) carry no -VM; their rehearsal
-  // shape is a -URL pointing at the rehearsal daemon (127.0.0.1:4317) or its Windows-side proxy
-  // (127.0.0.1:4417), never at prod's.
-  return /-url\s+["']?https?:\/\/(?:127\.0\.0\.1|localhost):(?:4317|4417)["']?/.test(n);
+
+  const hashIdx = n.indexOf('#');
+  const body = hashIdx === -1 ? n : n.slice(0, hashIdx);
+
+  if (VM_TARGET_SCRIPTS.test(body) && VM_LOCALHOST_ARG.test(body)) return true;
+  if (URL_TARGET_SCRIPTS.test(body) && URL_REHEARSAL_ARG.test(body)) return true;
+  return false;
 }
 
 /** Returns a rule id ('A1'..'A6') when the command targets prod, else null. */
@@ -315,6 +382,7 @@ function isProdTargeting(n) {
     if (mutatingVerb || mutatingRoute) return 'A3';
   }
 
+  if (WINDOW_MGMT_SCRIPT.test(n)) return 'A4pw';
   if (OPEN_SCRIPTS.test(n)) return 'A4o';
   if (WINDOWED_SCRIPTS.test(n)) return 'A4w';
 
@@ -367,6 +435,16 @@ function standingBlock(text, prodTargeting) {
 
   if (/--dangerously-skip-permissions/.test(text)) return ['D8', '--dangerously-skip-permissions'];
 
+  // HOOK-BLOCKER-6 (second half): the window file must only ever be touched by prod-window.ps1
+  // (classified separately above as A4pw). A shell command that writes it directly — Set-Content,
+  // Add-Content, Out-File, New-Item, Copy-Item, Move-Item, Clear-Content, Remove-Item, or a plain
+  // `>`/`>>` redirect into it — is the window's self-service bypass, window state or not.
+  if (/prod-window\.json/.test(text)
+      && (/\b(set-content|add-content|out-file|new-item|copy-item|move-item|clear-content|remove-item)\b/.test(text)
+          || />>?\s*["']?[^\s"']*prod-window\.json/.test(text))) {
+    return ['D9', 'direct write to the prod window file — use prod-window.ps1 -Open/-Close'];
+  }
+
   return null;
 }
 
@@ -401,6 +479,10 @@ function readWindow(now) {
   }
   if (expires - opened > MAX_WINDOW_MS) return { open: false, reason: 'window longer than 3h' };
   if (expires <= opened) return { open: false, reason: 'window expiry precedes its opening' };
+  // HOOK-HIGH-4: a future-dated window (openedAt after now) was treated as open, defeating
+  // MAX_WINDOW_MS entirely — a window dated months out stayed "open" every time it was read.
+  // The full requirement is openedAt <= now < expiresAt.
+  if (now < opened) return { open: false, reason: 'window opens in the future at ' + w.openedAt };
   if (now >= expires) return { open: false, reason: 'window expired at ' + w.expiresAt };
   return {
     open: true,
@@ -472,19 +554,77 @@ function block(reason, tool, ruleId, command, shouldAudit) {
   process.exit(2);
 }
 
-function decide(raw) {
+// Shared "does this unparsed/unreadable payload smell like prod" check — used both when the
+// payload cannot be parsed as JSON at all and by the outer fail-closed catch for a genuine
+// exception. One source of truth so the two paths cannot drift apart.
+const PROD_SMELLS = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|prod-window\.ps1|outbox-approval-current|kb-ops-instructions|kb-human-approval/i;
+function looksProdSmelling(text) {
+  return PROD_SMELLS.test(String(text == null ? '' : text));
+}
+
+const GATED_TOOLS = ['Bash', 'PowerShell', 'Agent', 'Write', 'Edit', 'MultiEdit'];
+const WINDOW_FILE_NORM = norm(WINDOW_FILE).replace(/\//g, '\\');
+
+function decide(raw, oversize) {
+  // HOOK-BLOCKER-3: oversize stdin used to be silently truncated, which usually left the JSON
+  // unparsable, which fell through to `tool = ''` and an ALLOW — fail OPEN on the one input an
+  // attacker fully controls the size of. Now: too big always BLOCKS, unconditionally.
+  if (oversize) {
+    block('stdin exceeds the ' + MAX_STDIN + '-byte cap; refusing to evaluate a possibly-truncated '
+      + 'payload. Failing closed.', 'unknown', 'F-oversize', String(raw).slice(0, 300), true);
+  }
+
   let parsed = null;
+  let parseFailed = false;
   try {
     const trimmed = String(raw || '').trim();
-    if (trimmed.charAt(0) === '{') parsed = JSON.parse(trimmed);
-  } catch (_) { parsed = null; }
+    if (trimmed.charAt(0) === '{') {
+      parsed = JSON.parse(trimmed);
+    } else {
+      parseFailed = true;
+    }
+  } catch (_) {
+    parsed = null;
+    parseFailed = true;
+  }
+
+  // HOOK-BLOCKER-3 (second half): a JSON parse failure used to fall through the same way as
+  // above — silently ALLOW. Now it blocks anything that smells of prod, same as the outer
+  // fail-closed catch, and otherwise lets a payload this hook cannot even read continue as a
+  // no-op for tools it does not gate.
+  if (parseFailed) {
+    if (looksProdSmelling(raw)) {
+      block('the tool_input payload could not be parsed as JSON and it mentions production. '
+        + 'Failing closed.', 'unknown', 'F-parsefail', String(raw).slice(0, 300), true);
+    }
+    process.exit(0);
+  }
 
   const tool = parsed && typeof parsed.tool_name === 'string' ? parsed.tool_name : '';
-  const input = (parsed && parsed.tool_input && typeof parsed.tool_input === 'object')
-    ? parsed.tool_input : {};
-  const command = typeof input.command === 'string' ? input.command : '';
+  if (GATED_TOOLS.indexOf(tool) === -1) process.exit(0);
 
-  if (tool !== 'Bash' && tool !== 'PowerShell' && tool !== 'Agent') process.exit(0);
+  const rawInput = parsed && parsed.tool_input;
+  if (rawInput === undefined || rawInput === null || typeof rawInput !== 'object') {
+    // tool_input could not be read at all for a tool this hook is supposed to gate. Fail closed
+    // rather than silently treat it as "no command" and allow.
+    block('tool_input could not be read for a ' + tool + ' call. Failing closed.',
+      tool, 'F-noinput', JSON.stringify(parsed).slice(0, 300), true);
+  }
+  const input = rawInput;
+
+  // W: Write/Edit/MultiEdit are gated on exactly one thing — is file_path the prod window file,
+  // in any slash form, any case (HOOK-BLOCKER-6). Everything else about these tools is untouched.
+  if (tool === 'Write' || tool === 'Edit' || tool === 'MultiEdit') {
+    const fp = typeof input.file_path === 'string' ? input.file_path : '';
+    const fpNorm = norm(fp).replace(/\//g, '\\');
+    if (fpNorm === WINDOW_FILE_NORM) {
+      block('this ' + tool + ' targets the prod window file directly (' + WINDOW_FILE + '). '
+        + 'Use prod-window.ps1 -Open/-Close, not a raw file edit.', tool, 'W1', fp, true);
+    }
+    process.exit(0);
+  }
+
+  const command = typeof input.command === 'string' ? input.command : '';
 
   const n = norm(command);
   // Rule D also inspects an Agent dispatch's brief: a subagent told to run one of
@@ -498,6 +638,16 @@ function decide(raw) {
   if (d) {
     block('standing block ' + d[0] + ' — ' + d[1] + '. This is refused with or without a prod window.',
       tool, d[0], tool === 'Agent' ? JSON.stringify(input) : command, isProd || tool === 'Agent');
+  }
+
+  if (prodRule === 'A4pw') {
+    if (!(PW_OPEN.test(n) || PW_CLOSE.test(n) || PW_STATUS.test(n))) {
+      block('prod-window.ps1 only runs in its exact -Open [-Hours N|-Minutes N] [-Step <word>] / '
+        + '-Close / -Status shapes. Extra or malformed parameters are refused on purpose.',
+        tool, prodRule, command, true);
+    }
+    audit('ALLOW', tool, 'PW', command);
+    process.exit(0);
   }
 
   if (prodRule === 'A4o') {
@@ -550,19 +700,19 @@ function decide(raw) {
 }
 
 let raw = '';
+let oversize = false;
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', function (chunk) {
+  if (raw.length + chunk.length > MAX_STDIN) oversize = true;
   if (raw.length < MAX_STDIN) raw += chunk.substring(0, MAX_STDIN - raw.length);
 });
 process.stdin.on('end', function () {
   try {
-    decide(raw);
+    decide(raw, oversize);
   } catch (err) {
     // FAIL CLOSED for anything that smells of prod; fail open for the rest, so a
     // guard bug cannot wedge ordinary work.
-    const smells = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|kb-human-approval/i
-      .test(String(raw));
-    if (smells) {
+    if (looksProdSmelling(raw)) {
       try { audit('BLOCK', 'unknown', 'F-failclosed', String(raw).slice(0, 300)); } catch (_) {}
       process.stderr.write('[prod-window BLOCK] the guard itself failed ('
         + (err && err.message ? err.message : 'unknown error')
