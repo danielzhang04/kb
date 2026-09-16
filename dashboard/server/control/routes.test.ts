@@ -1097,6 +1097,51 @@ describe('control proposal routes', () => {
   });
 
   /**
+   * Regression (T4 3289c692): `resolvedBy.at` was stamped fresh on EVERY call, including a replay with
+   * the same `idempotencyKey`, and the store folded that timestamp into the idempotency fingerprint —
+   * so an honest replay of the identical resolve hashed differently each time and 409'd as a reused-key
+   * conflict instead of returning the stored 200. Fixed in store.ts#resolveIterationGate by excluding
+   * `resolvedBy.at` from the fingerprint while keeping actor/tailnetIdentity/reason in it, so a genuinely
+   * different reason under the same key still conflicts.
+   */
+  it('replays an iteration-gate resolve with the original resolvedBy.at, and still conflicts on a different reason', async () => {
+    const { gate, loop } = seedGenericCompletionGate();
+    const base = {
+      expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+      expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved' as const,
+      idempotencyKey: 'replay-generic-completion', reason: 'first pass',
+    };
+    const first = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base, ...await signIterationGate(gate.requestRef, 'approved') },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const firstBody = first.json();
+    expect(firstBody).toMatchObject({ ok: true, replayed: false });
+    const firstAt = firstBody.value.gate.response.resolvedBy.at;
+    expect(typeof firstAt).toBe('string');
+
+    // Same key, same body: replays with the ORIGINAL resolvedBy.at, not a freshly stamped one.
+    const replay = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base },
+    });
+    expect(replay.statusCode, replay.body).toBe(200);
+    const replayBody = replay.json();
+    expect(replayBody).toMatchObject({ ok: true, replayed: true });
+    expect(replayBody.value.gate.response.resolvedBy.at).toBe(firstAt);
+
+    // Same key, different reason: still a genuine idempotency conflict.
+    const differentReason = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base, reason: 'a different reason' },
+    });
+    expect(differentReason.statusCode, differentReason.body).toBe(409);
+    expect(differentReason.json()).toMatchObject({ error: 'idempotency-conflict' });
+  });
+
+  /**
    * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so it takes a passkey assertion bound to the
    * exact tuple the CAS just checked. Before this fix the route carried a `riskTier: 'T3'` audit row with
    * T2-strength authorization, and the generic route reserves these gates to it (`iteration-gate-reserved`),

@@ -4626,7 +4626,17 @@ function makeStore(
         return fail('invalid', 'iteration-park gates cannot add an in-place cycle');
       }
       const response = input.response == null ? null : cleanText(input.response, MAX_LONG_TEXT);
-      const fingerprint = sha256(canonicalJson({ requestRef, ...input, response } as unknown as JsonValue));
+      // `resolvedBy.at` is stamped fresh by the route on EVERY call, including a replay carrying the
+      // same `operationKey` -- so it must never enter the fingerprint, or a legitimate replay of the
+      // identical decision would hash differently each time and be misread as a reused-key conflict.
+      // The rest of `resolvedBy` (actor, tailnetIdentity, reason) is real content: a replay claimed by
+      // a different actor or carrying a different reason is still a genuine idempotency conflict.
+      const fingerprintResolvedBy = input.resolvedBy == null ? null : {
+        actor: input.resolvedBy.actor, tailnetIdentity: input.resolvedBy.tailnetIdentity, reason: input.resolvedBy.reason,
+      };
+      const fingerprint = sha256(canonicalJson(
+        { requestRef, ...input, response, resolvedBy: fingerprintResolvedBy } as unknown as JsonValue,
+      ));
       if (gate.response !== null) {
         if (gate.response.idempotencyKey !== input.operationKey || gate.resolutionOperationFingerprint !== fingerprint) {
           return fail('idempotency-conflict', 'iteration gate response was reused with different content');
