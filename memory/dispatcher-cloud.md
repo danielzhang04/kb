@@ -890,3 +890,20 @@
   yaml in action:); 6a6bc3dd kb-ops iter-smoke-t2 state:halted stranded in queue/working/. Both
   flagged as anomalies + a handover sweep note.
 - Ledgers: 09-15 dispatch row present; cost $0.00 of $30. Logged this run's step to cost ledger.
+
+## 2026-09-16 nightly cloud run
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check exit 0. sync_daemon_dirs.py STILL
+  absent on ops (8th night) — went straight to refs-fallback (git show origin/main:...) per
+  standing lesson; same single-file drift `orgs/kb-ops/workflows/acceptance-run.md`. Wrote
+  wake-daniel-2026-09-16-sync-daemon-dirs-drift. This clone's inbox actually held ALL prior
+  drift cards (08-15, 08-30, 09-10, 09-11, 09-13, 09-14, 09-15) — referenced all 7 as still-open.
+- CARD TRANSITION worked cleanly this time: hand-edited state inbox->working via Edit while file
+  still in queue/inbox/ (harmless), then cards.transition(c,'done','queue') saved to queue/done/
+  AND unlinked the inbox path (card.path was the inbox file). Verified with `find queue -name '<id>*'`
+  → single file in done. Reminder holds: queue_root arg is 'queue' NOT '.'.
+- Two working cards unchanged from prior nights: d126c410 figment replicate (approvals dated
+  2026-09-03, likely >48h stale) and 6a6bc3dd kb-ops iter-smoke state:halted stranded in
+  queue/working/. Flagged both as anomalies + handover sweep note. Neither swept (not my card).
+- Notable non-nightly signal surfaced to Daniel: kb-ops VM dashboard STOPPED since 2026-09-06,
+  fix PR #173 mergeable but unmerged — 10 days down. Put top of executive Action-required + handover.
+- Logged this run's step to cost ledger (opus, $0.0 subscription). Budget $0.00 of $30 today.
