@@ -233,25 +233,95 @@ function duplicateJsonKey(text: string): string | null {
 const FENCE_OPEN_LINE = /^```(?:json)?[ \t]*$/i;
 const FENCE_LINE = /^```[ \t]*$/;
 
+type ExtractionResult = { ok: true; candidate: string } | { ok: false };
+
 /**
- * The server-owned iteration contract instructs the model to return a bare JSON object, but a
- * real judge turn (2026-09-16, canary run-4113b3b2) wrapped its otherwise-correct outcome in a
- * ```json fence and the server's plain `JSON.parse` rejected it outright. If `text` (trimmed) is
- * EXACTLY one fenced code block — an opening ``` or ```json (case-insensitive) alone on the first
- * line, a closing ``` alone on the last line, and no other fence-delimiter line in between — return
- * the inner text. Any other shape (no fence, prose outside the fence, two fenced blocks) is returned
- * unchanged so it still falls through to the existing `JSON.parse` rejection path below, with the
- * same error message as today.
+ * Returns the inner text of every complete fenced code block in `text`, in order. A block opens on
+ * a line that is exactly ``` or ```json (case-insensitive) and nothing else, and closes on the next
+ * line that is exactly ``` and nothing else. An opening fence with no matching close is not a block
+ * and is skipped (the scan keeps looking past it) — it cannot smuggle a second candidate past the
+ * "at most one fence" check below because it never contributes a body.
  */
-function unwrapFencedIterationOutcome(text: string): string {
-  const trimmed = text.trim();
-  const lines = trimmed.split(/\r\n|\r|\n/);
-  if (lines.length < 3) return trimmed;
-  if (!FENCE_OPEN_LINE.test(lines[0])) return trimmed;
-  if (!FENCE_LINE.test(lines[lines.length - 1])) return trimmed;
-  const body = lines.slice(1, -1);
-  if (body.some((line) => FENCE_LINE.test(line) || FENCE_OPEN_LINE.test(line))) return trimmed;
-  return body.join('\n').trim();
+function findFencedBlocks(text: string): string[] {
+  const lines = text.split(/\r\n|\r|\n/);
+  const blocks: string[] = [];
+  let index = 0;
+  while (index < lines.length) {
+    if (!FENCE_OPEN_LINE.test(lines[index])) {
+      index += 1;
+      continue;
+    }
+    let close = -1;
+    for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
+      if (FENCE_LINE.test(lines[cursor])) { close = cursor; break; }
+    }
+    if (close === -1) { index += 1; continue; }
+    blocks.push(lines.slice(index + 1, close).join('\n'));
+    index = close + 1;
+  }
+  return blocks;
+}
+
+/**
+ * Scans forward from `startIndex` (which must hold '{') for the '}' that closes it, treating the
+ * text as JSON lexically: a '"' toggles string mode, a backslash inside a string escapes the next
+ * character, and braces inside a string do not affect depth. Returns the index of the matching '}',
+ * or null if the object is never closed.
+ */
+function findMatchingBrace(text: string, startIndex: number): number | null {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = startIndex; index < text.length; index += 1) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) { escaped = false; continue; }
+      if (char === '\\') { escaped = true; continue; }
+      if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') { inString = true; continue; }
+    if (char === '{') depth += 1;
+    else if (char === '}') {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return null;
+}
+
+/**
+ * The server-owned iteration contract instructs the model to return a bare JSON object with no
+ * prose and no fence, but real judge turns (2026-09-16, canary run-4113b3b2) have wrapped an
+ * otherwise-correct outcome in a ```json fence, preceded a fence with a sentence of prose, and — in
+ * earlier turns — produced a bare object. Assume future turns may add trailing prose too, or wrap a
+ * bare object in prose on both sides. This extracts the single JSON-object candidate and ignores any
+ * prose around it, while still refusing to guess between two candidate objects:
+ *
+ * 1. If `text` contains exactly one complete fenced code block, its inner text is the candidate;
+ *    everything outside the fence (prose before, after, or both) is ignored. Two or more fenced
+ *    blocks is rejected outright — there is no way to know which one is the real outcome.
+ * 2. Otherwise (no fence), the candidate is the substring from the first '{' through its balanced
+ *    matching '}' (string-aware, so a '{' or '}' inside a JSON string does not affect the match).
+ *    Prose before that object is ignored. If a '{' appears anywhere after the matching '}', that is
+ *    treated as a second top-level object and the payload is rejected rather than guessed at. Prose
+ *    with no further '{' after the matched object is ignored.
+ * 3. If neither a fence nor a '{' is found at all, the payload is rejected.
+ *
+ * Every rejection here surfaces as the existing `payload is not JSON` error so parseIterationOutcome's
+ * error messages are unchanged; the caller still runs the duplicate-key guard and `JSON.parse` on
+ * whatever candidate comes back.
+ */
+function extractIterationOutcomeCandidate(text: string): ExtractionResult {
+  const blocks = findFencedBlocks(text);
+  if (blocks.length > 1) return { ok: false };
+  if (blocks.length === 1) return { ok: true, candidate: blocks[0].trim() };
+  const startIndex = text.indexOf('{');
+  if (startIndex === -1) return { ok: false };
+  const endIndex = findMatchingBrace(text, startIndex);
+  if (endIndex === null) return { ok: false };
+  if (text.slice(endIndex + 1).includes('{')) return { ok: false };
+  return { ok: true, candidate: text.slice(startIndex, endIndex + 1) };
 }
 
 const ITERATION_OUTCOME_REQUIRED_FIELDS = [
@@ -294,12 +364,13 @@ function samePosition(left: IterationPosition, right: IterationPosition): boolea
 export function parseIterationOutcome(text: string, contract: IterationOutcomeContract): IterationOutcomeParseResult {
   if (text.length > MAX_ITERATION_OUTCOME_CHARS) return invalidIteration('payload exceeds the iteration outcome bound');
   if (text.includes('\uFFFD')) return invalidIteration('payload is not valid UTF-8');
-  const unwrapped = unwrapFencedIterationOutcome(text);
-  const duplicate = duplicateJsonKey(unwrapped);
+  const extraction = extractIterationOutcomeCandidate(text);
+  if (!extraction.ok) return invalidIteration('payload is not JSON');
+  const duplicate = duplicateJsonKey(extraction.candidate);
   if (duplicate !== null) return invalidIteration(`duplicate JSON object key '${duplicate}'`);
   let raw: unknown;
   try {
-    raw = JSON.parse(unwrapped);
+    raw = JSON.parse(extraction.candidate);
   } catch {
     return invalidIteration('payload is not JSON');
   }

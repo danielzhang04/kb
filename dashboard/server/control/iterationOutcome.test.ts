@@ -428,13 +428,23 @@ describe('parseIterationOutcome', () => {
       expect(parseIterationOutcome(fenced, iteration)).toMatchObject({ ok: true, value: { verdict: 'pass' } });
     });
 
-    it('rejects a fence with leading prose, with the existing not-JSON error', () => {
+    it('unwraps a fence preceded by prose, ignoring the prose outside it', () => {
       const iteration = iterationContract('judge', ['pass'], ['pass']);
       const raw = iterationOutcome(iteration, 'pass');
       const fenced = ['Here is the outcome:', '```json', raw, '```'].join('\n');
       expect(parseIterationOutcome(fenced, iteration)).toMatchObject({
-        ok: false,
-        detail: expect.stringMatching(/payload is not JSON/),
+        ok: true,
+        value: { verdict: 'pass' },
+      });
+    });
+
+    it('unwraps a fence followed by trailing prose, ignoring the prose outside it', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const fenced = ['```json', raw, '```', 'Returning the required pass outcome.'].join('\n');
+      expect(parseIterationOutcome(fenced, iteration)).toMatchObject({
+        ok: true,
+        value: { verdict: 'pass' },
       });
     });
 
@@ -466,11 +476,12 @@ describe('parseIterationOutcome', () => {
       });
     });
 
-    it('parses the real prod judge payload identically whether fenced or raw (attempt-322eb62c)', () => {
+    function briefJudgeFixture(): { contract: IterationOutcomeContract; rawProdPayload: string } {
       // The literal payload the brief-judge participant returned on prod (canary run-4113b3b2,
-      // 2026-09-16 09:51Z), wrapped exactly as the model wrapped it. requestRef/iterationLoopRef/
-      // participantId/generation refs are held byte-for-byte; only the surrounding contract is
-      // built locally so the outcome binds to a declared route and criterion.
+      // 2026-09-16 09:51Z). requestRef/iterationLoopRef/participantId/generation refs are held
+      // byte-for-byte; only the surrounding contract is built locally so the outcome binds to a
+      // declared route and criterion. Shared by the attempt-322eb62c and attempt-9a681cd0 tests below,
+      // which wrap this same payload differently.
       const participantId = 'brief-judge';
       const contract: IterationOutcomeContract = {
         iterationGroup: {
@@ -522,6 +533,11 @@ describe('parseIterationOutcome', () => {
         currentPositions: [],
       };
       const rawProdPayload = '{"schema":"kb.iteration-outcome/v1","requestRef":"iteration-request-bc5427d2-c082-44f2-8d89-4de9dbab0404","iterationLoopRef":"iteration-loop-b6e49863-2d61-4e8d-a948-8ab539726ea9","participantId":"brief-judge","cycle":1,"verdict":"fail","inputGenerationRefs":["generation-fbb841fb-d079-4917-9739-427b83918771"],"criteria":[{"criterionId":"sources-listed","verdict":"fail","findingIds":["missing-sources"]}],"findings":[{"findingId":"missing-sources","criterionId":"sources-listed","severity":"blocking","summary":"brief.json has sourcesListed=false and revision=1; no sources array is present, so the sources-listed criterion is not met on the pinned generation.","evidencePaths":["orgs/kb-ops/output/v1-acceptance-demo/tailscale-tailnet-trust/brief/brief.json"]}],"resolvedFindingRefs":[],"positions":[],"recordedDissent":[],"summary":"Pinned generation generation-fbb841fb-d079-4917-9739-427b83918771 fails sources-listed: sourcesListed is false and revision is 1, not the required true/revision-2 successor."}';
+      return { contract, rawProdPayload };
+    }
+
+    it('parses the real prod judge payload identically whether fenced or raw (attempt-322eb62c)', () => {
+      const { contract, rawProdPayload } = briefJudgeFixture();
       const fencedProdPayload = ['```json', rawProdPayload, '```'].join('\n');
       const rawResult = parseIterationOutcome(rawProdPayload, contract);
       const fencedResult = parseIterationOutcome(fencedProdPayload, contract);
@@ -539,6 +555,81 @@ describe('parseIterationOutcome', () => {
         },
       });
       expect(rawResult.ok && !('resolvedFindingRefs' in rawResult.value)).toBe(true);
+    });
+
+    it('parses the exact prod defect: prose before the fence (attempt-9a681cd0, 2026-09-16 17:50Z)', () => {
+      // attempt-9a681cd0 wrapped this same otherwise-correct outcome in one sentence of prose ahead
+      // of the ```json fence: "The brief has `sourcesListed: false` … Returning the required fail
+      // outcome." unwrapFencedIterationOutcome only unwrapped a fence that was the ENTIRE text, so
+      // that leading sentence sent this attempt down the `payload is not JSON` path and failed the
+      // run with no receipt. The new extraction ignores prose outside a single fence.
+      const { contract, rawProdPayload } = briefJudgeFixture();
+      const prosedProdPayload = [
+        'The brief has `sourcesListed: false` and no sources array on the pinned generation, so the sources-listed criterion is not met. Returning the required fail outcome.',
+        '```json',
+        rawProdPayload,
+        '```',
+      ].join('\n');
+      const rawResult = parseIterationOutcome(rawProdPayload, contract);
+      const prosedResult = parseIterationOutcome(prosedProdPayload, contract);
+      expect(prosedResult).toEqual(rawResult);
+      expect(prosedResult).toMatchObject({ ok: true, value: { verdict: 'fail' } });
+    });
+  });
+
+  describe('a bare object surrounded by prose (no fence)', () => {
+    it('extracts a bare object with prose before and after it', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const prosed = `Here is the outcome:\n${raw}\nReturning the required pass outcome.`;
+      expect(parseIterationOutcome(prosed, iteration)).toMatchObject({
+        ok: true,
+        value: { verdict: 'pass' },
+      });
+    });
+
+    it('accepts an object whose string field contains { and } without breaking the balanced match', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass', {
+        summary: 'The config block reads like {"nested": "braces"} inside a plain string field.',
+      });
+      expect(parseIterationOutcome(raw, iteration)).toMatchObject({
+        ok: true,
+        value: { verdict: 'pass', summary: 'The config block reads like {"nested": "braces"} inside a plain string field.' },
+      });
+      const prosed = `Result:\n${raw}\nDone.`;
+      expect(parseIterationOutcome(prosed, iteration)).toMatchObject({
+        ok: true,
+        value: { verdict: 'pass' },
+      });
+    });
+
+    it('rejects two bare objects, with the existing not-JSON error', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass');
+      const twoObjects = `${raw}\n${raw}`;
+      expect(parseIterationOutcome(twoObjects, iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/payload is not JSON/),
+      });
+    });
+
+    it('rejects text with no JSON object at all', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      expect(parseIterationOutcome('The judge declines to return an outcome.', iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/payload is not JSON/),
+      });
+    });
+
+    it('fires the duplicate-key guard on a prose-wrapped bare object', () => {
+      const iteration = iterationContract('judge', ['pass'], ['pass']);
+      const raw = iterationOutcome(iteration, 'pass').replace('"verdict":"pass"', '"verdict":"pass","verdict":"pass"');
+      const prosed = `Here is the outcome:\n${raw}\nDone.`;
+      expect(parseIterationOutcome(prosed, iteration)).toMatchObject({
+        ok: false,
+        detail: expect.stringMatching(/duplicate JSON object key 'verdict'/),
+      });
     });
   });
 
