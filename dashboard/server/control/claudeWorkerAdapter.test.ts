@@ -529,6 +529,40 @@ describe('buildWorkerPrompt iteration contract emptiness rule', () => {
       'positions and recordedDissent MUST be [] unless the verdict is exactly "consensus" or "continue".',
     );
   });
+
+  /**
+   * The SAME class, found on the rehearsal host 2026-09-16 (run-13f347bc, attempt-903f356c) against the
+   * real Claude CLI. The producer's rework turn returned a well-formed, bare, correct-in-substance
+   * `fulfilled` outcome - and the run failed, because it also filled in
+   * `criteria:[{criterionId:"sources-listed",verdict:"pass",findingIds:[]}]` and
+   * `resolvedFindingRefs:["missing-sources"]`. Both are refused by iterationOutcome.ts, and neither rule
+   * appeared anywhere in the contract the worker was handed: it saw a shape containing a `criteria`
+   * field, a `CRITERIA IDS (immutable)` line naming the criterion, and a request listing
+   * `missing-sources` as unresolved. Filling them in was the reasonable reading of what it was given.
+   *
+   * The refusals are correct and stay: a producer does not grade itself and does not record findings as
+   * resolved. What changes is that the contract now SAYS so, in its own lines, naming the verdict.
+   * RED ON REVERT: delete the three lines and every assertion below fails.
+   */
+  it('states the per-verdict criteria/findings/resolvedFindingRefs rules, naming fulfilled', () => {
+    const prompt = buildWorkerPrompt({
+      workOrder: 'Rework the brief.', readScope: ['dashboard'], writeScope: [],
+      iterationContract: ITERATION_CONTRACT, proposalStage: STAGE,
+    });
+    const lines = prompt.split('\n');
+    const headerIndex = lines.findIndex((line) => line.startsWith('VERDICT-SPECIFIC SHAPE RULES'));
+    expect(headerIndex).toBeGreaterThanOrEqual(0);
+    // Immediately after the positions/recordedDissent rule, before the immutable identity block, so the
+    // per-verdict rules sit with the shape they constrain rather than at the far end of the contract.
+    const shapeIndex = lines.findIndex((line) => line.startsWith('Its exact shape is'));
+    expect(headerIndex).toBe(shapeIndex + 2);
+    const rules = lines.slice(headerIndex + 1, headerIndex + 4);
+    expect(rules[0]).toContain('"fulfilled" asserts ONLY that you produced the successor generation');
+    expect(rules[0]).toContain('criteria MUST be exactly [] and findings MUST be exactly []');
+    expect(rules[1]).toContain('For every verdict other than "fulfilled", criteria MUST contain exactly one entry per id in CRITERIA IDS');
+    expect(rules[2]).toContain('resolvedFindingRefs MUST be omitted or [] for every verdict except "complete" and "consensus"');
+    expect(rules[2]).toContain('Repairing a finding in your artifact does NOT let you list it here');
+  });
 });
 
 /**

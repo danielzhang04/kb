@@ -30,7 +30,23 @@ EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_RO
 # W47: the CONSTRAINED tailnet passkey channel. These two are OPTIONAL, not forbidden - see
 # PASSKEY_UNIT_ENV below and dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel, whose rules
 # this validator mirrors so a bad pair fails one loud ExecStartPre instead of the first T3 gate.
-OPTIONAL_UNIT_ENV: set[str] = {"DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS"}
+# KB_EXECUTION_BUDGET_* : the per-field overrides for the execution accounting WINDOW ceiling
+# (dashboard/server/control/activation.ts#resolveWindowBudget). OPTIONAL, and absent is the normal
+# posture on every host including prod - absent means DEFAULT_BUDGET, and the daemon refuses to boot on
+# a value that is not a positive integer. They are here because the closed-set check above is a closed
+# set: without an entry a VM-runtime host physically cannot set them, so the knob would be dead code on
+# the only kind of host that has ever needed it (the disposable rehearsal host replaying the acceptance
+# demo, which exhausted its 30-attempt window mid-run on 2026-09-16). They carry no credential and grant
+# no authority; the cost ceiling they can move is a fail-closed guard, not a spend authorization, and
+# governance/budget.yaml remains the human cap.
+OPTIONAL_UNIT_ENV: set[str] = {
+    "DASHBOARD_RP_ORIGIN",
+    "DASHBOARD_WEBAUTHN_CREDENTIALS",
+    "KB_EXECUTION_BUDGET_MAX_ATTEMPTS",
+    "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
+    "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
+    "KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS",
+}
 # DASHBOARD_TAILNET_OPERATOR is REQUIRED (Daniel, 2026-08-18), not optional: tailnet membership on this VM
 # is root-equivalent, so the operator identity must be pinned rather than defaulting to "any tailnet
 # principal". DASHBOARD_DEV_ORIGIN is deliberately NOT here at all: it is a win32-desktop-only convenience,
@@ -56,7 +72,18 @@ TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
 # hardware. It is exempted by NAME, and by name only; every other CREDENTIAL_ENV_NAME match, including
 # any future DASHBOARD_*_SECRET/TOKEN, is still forbidden. Its VALUE is never printed by this module.
 PASSKEY_UNIT_ENV = ("DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS")
-CREDENTIAL_ENV_EXEMPT = frozenset({"DASHBOARD_WEBAUTHN_CREDENTIALS"})
+# CREDENTIAL_ENV_NAME exemption #2, stated just as plainly: KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS and
+# KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS match the regex on the word TOKEN, and they hold a COUNT OF
+# LANGUAGE-MODEL TOKENS - a positive integer ceiling - not an authentication token. The daemon parses
+# each with a digits-only regex and refuses to boot on anything else
+# (dashboard/server/control/activation.ts#resolveWindowBudget), so neither can carry a credential-shaped
+# value even by accident. Exempted by NAME and by name only; every other CREDENTIAL_ENV_NAME match,
+# including any future *_TOKEN that really is one, is still forbidden.
+CREDENTIAL_ENV_EXEMPT = frozenset({
+    "DASHBOARD_WEBAUTHN_CREDENTIALS",
+    "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
+    "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
+})
 # systemd drop-in carrying the passkey pair, so the operator installs it without editing the fragment
 # bootstrap re-renders. EXACTLY one path is trusted; any other drop-in is still untrusted drift.
 PASSKEY_DROP_IN = "/etc/systemd/system/kb-dashboard.service.d/passkey.conf"

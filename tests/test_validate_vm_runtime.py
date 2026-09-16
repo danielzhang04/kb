@@ -120,6 +120,49 @@ def test_w47_unit_accepts_the_pair_being_wholly_absent():
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
+# --- the execution-budget window knobs -------------------------------------------------------------
+# RED ON REVERT: drop the four names from OPTIONAL_UNIT_ENV and the accepting case below raises
+# "assignment set is not closed" - which is exactly what the rehearsal deploy hit on 2026-09-16, and the
+# reason the knob was unreachable on the only host that needed it.
+BUDGET_UNIT_TEXT = VALID_UNIT_TEXT + (
+    "Environment=KB_EXECUTION_BUDGET_MAX_ATTEMPTS=100000\n"
+    "Environment=KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS=600000000\n"
+    "Environment=KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS=40000000\n"
+    "Environment=KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS=2000000000\n"
+)
+
+
+def test_unit_accepts_the_execution_budget_window_overrides():
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), BUDGET_UNIT_TEXT)
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "KB_EXECUTION_BUDGET_MAX_ATTEMPTS",
+        "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
+        "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
+        "KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS",
+    ],
+)
+def test_unit_accepts_each_execution_budget_override_on_its_own(name):
+    """Each is independently optional - the daemon merges them field by field over DEFAULT_BUDGET."""
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT + f"Environment={name}=7\n")
+
+
+def test_unit_accepts_the_execution_budget_overrides_being_wholly_absent():
+    """Absent is the normal posture, prod included: absent means DEFAULT_BUDGET."""
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_unit_still_rejects_a_neighbouring_kb_execution_budget_name():
+    """The closed set stays closed: only the four shipped fields, never a KB_EXECUTION_BUDGET_* prefix."""
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(
+            valid_static_unit(), VALID_UNIT_TEXT + "Environment=KB_EXECUTION_BUDGET_MAX_WHATEVER=7\n"
+        )
+
+
 def _without(name):
     return "".join(line + "\n" for line in PASSKEY_UNIT_TEXT.splitlines() if f"Environment={name}=" not in line)
 
@@ -441,13 +484,27 @@ def test_static_phase_rejects_other_credential_named_unit_environment():
             validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-def test_w47_credential_env_exemption_is_exactly_one_name():
-    """DASHBOARD_WEBAUTHN_CREDENTIALS holds WebAuthn PUBLIC keys only, so it is exempt from
-    CREDENTIAL_ENV_NAME BY NAME. Nothing else is: every other match, including a look-alike, still
-    fails. RED ON REVERT: widen CREDENTIAL_ENV_EXEMPT and the second half of this test fails."""
-    validate_vm_runtime.validate_environment({"DASHBOARD_WEBAUTHN_CREDENTIALS": "anything"})
-    assert validate_vm_runtime.CREDENTIAL_ENV_EXEMPT == frozenset({"DASHBOARD_WEBAUTHN_CREDENTIALS"})
-    for name in ("DASHBOARD_WEBAUTHN_CREDENTIALS_PRIVATE", "DASHBOARD_PASSKEY_SECRET", "MY_CREDENTIAL"):
+def test_credential_env_exemption_is_exactly_these_three_names():
+    """Three names are exempt from CREDENTIAL_ENV_NAME, BY NAME, and each for a stated reason:
+    DASHBOARD_WEBAUTHN_CREDENTIALS holds WebAuthn PUBLIC keys only, and the two
+    KB_EXECUTION_BUDGET_MAX_*_TOKENS hold a COUNT of language-model tokens (a digits-only integer the
+    daemon re-validates at boot), not an authentication token. Nothing else is exempt: every other
+    match, including a look-alike built from an exempt name, still fails. RED ON REVERT: widen
+    CREDENTIAL_ENV_EXEMPT and the pinned set below fails; narrow it and the first half fails."""
+    for exempt in sorted(validate_vm_runtime.CREDENTIAL_ENV_EXEMPT):
+        validate_vm_runtime.validate_environment({exempt: "anything"})
+    assert validate_vm_runtime.CREDENTIAL_ENV_EXEMPT == frozenset({
+        "DASHBOARD_WEBAUTHN_CREDENTIALS",
+        "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
+        "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
+    })
+    for name in (
+        "DASHBOARD_WEBAUTHN_CREDENTIALS_PRIVATE",
+        "DASHBOARD_PASSKEY_SECRET",
+        "MY_CREDENTIAL",
+        "KB_EXECUTION_BUDGET_TOKEN",
+        "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS_SECRET",
+    ):
         with pytest.raises(RuntimeError, match=name):
             validate_vm_runtime.validate_environment({name: "present"})
 

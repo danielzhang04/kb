@@ -969,6 +969,69 @@ describe('file accounting adapter', () => {
     expect(onDisk.policyChanges).toEqual([{ at: expect.any(String), fromHash: legacyHash, toHash: currentHash }]);
   });
 
+  /**
+   * The SECOND legacy entry. A host that took #198 (the $20/day ceiling) but not the 300-attempt window
+   * has an open accounting document stamped with the intermediate policy hash and no `policy` field yet.
+   * Without this entry every reservation on that host refuses for the rest of the UTC day with
+   * 'accounting policy differs from the durable window policy' - which is exactly what the 2026-09-16
+   * rehearsal host would have done on its already-open window.
+   */
+  it('migrates a pre-policy-field document stamped with the intermediate post-#198 30-attempt/$20 policy', async () => {
+    const stateRoot = temporaryRoot();
+    const intermediateBudget = { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 20_000_000 };
+    const intermediateHash = documentFingerprint({ maxConcurrency: 2, globalBudget: intermediateBudget });
+    // It really is a DIFFERENT policy from both the pre-#198 one and today's - otherwise the test proves nothing.
+    expect(intermediateHash).not.toBe(documentFingerprint({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET }));
+    const dir = join(stateRoot, 'control', 'execution-accounting');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'window-intermediate.json'), JSON.stringify({
+      schema: 'kb.execution-accounting/v1', revision: 1, policyHash: intermediateHash, windowId: 'window-intermediate',
+      reservations: [],
+    }), 'utf8');
+
+    const adapter = createFileAccountingAdapter({ stateRoot, windowId: 'window-intermediate', maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    const reserved = await adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    expect(reserved.ok).toBe(true);
+
+    const onDisk = JSON.parse(readFileSync(join(dir, 'window-intermediate.json'), 'utf8')) as {
+      policy: { maxConcurrency: number; globalBudget: typeof DEFAULT_BUDGET };
+      policyChanges: { fromHash: string; toHash: string }[];
+    };
+    expect(onDisk.policy).toEqual({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET });
+    expect(onDisk.policyChanges).toEqual([{
+      at: expect.any(String),
+      fromHash: intermediateHash,
+      toHash: documentFingerprint({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET }),
+    }]);
+  });
+
+  /**
+   * The widening is one-directional. A host that somehow runs an OLDER, narrower build against a
+   * document already migrated to the 300-attempt window must still refuse rather than quietly shrink
+   * the ceiling under reservations recorded at the wider one.
+   */
+  it('refuses to narrow a document already recorded under the wider 300-attempt policy', async () => {
+    const stateRoot = temporaryRoot();
+    const dir = join(stateRoot, 'control', 'execution-accounting');
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, 'window-narrowing.json'), JSON.stringify({
+      schema: 'kb.execution-accounting/v1', revision: 1,
+      policyHash: documentFingerprint({ maxConcurrency: 2, globalBudget: DEFAULT_BUDGET }),
+      policy: { maxConcurrency: 2, globalBudget: DEFAULT_BUDGET },
+      windowId: 'window-narrowing', reservations: [],
+    }), 'utf8');
+
+    const narrower = { ...DEFAULT_BUDGET, maxAttempts: 30 };
+    const adapter = createFileAccountingAdapter({ stateRoot, windowId: 'window-narrowing', maxConcurrency: 2, globalBudget: narrower });
+    await expect(adapter.reserve({
+      operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+      limits: DEFAULT_ATTEMPT_BUDGET,
+    })).rejects.toThrow('accounting policy differs');
+  });
+
   it('rejects a pre-policy-field document whose policyHash is unknown (neither current, recorded, nor a legacy policy)', async () => {
     const stateRoot = temporaryRoot();
     const dir = join(stateRoot, 'control', 'execution-accounting');
