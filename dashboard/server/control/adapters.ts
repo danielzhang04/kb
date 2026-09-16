@@ -489,10 +489,30 @@ interface AccountingReservationRecord {
   settledAt: string | null;
 }
 
+/** The server-owned accounting policy values a document's `policyHash` was computed from. */
+interface AccountingPolicy {
+  maxConcurrency: number;
+  globalBudget: ExecutionBudget;
+}
+
+/** One in-place policy migration, appended when a durable window's policy is widened under it. */
+interface AccountingPolicyChange {
+  at: string;
+  fromHash: string;
+  toHash: string;
+}
+
 interface AccountingDocument {
   schema: 'kb.execution-accounting/v1';
   revision: number;
   policyHash: string;
+  /**
+   * The policy `policyHash` was computed from. Optional so a document written before this field
+   * existed still validates; such a document can only migrate via a LEGACY_POLICIES hash match, never
+   * a blanket bypass.
+   */
+  policy?: AccountingPolicy;
+  policyChanges?: AccountingPolicyChange[];
   windowId: string;
   reservations: AccountingReservationRecord[];
 }
@@ -572,10 +592,32 @@ function assertRecord(value: unknown, schema: string): asserts value is Record<s
   }
 }
 
+function assertAccountingPolicy(value: unknown, label: string): asserts value is AccountingPolicy {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new ExecutionAdapterError(`invalid ${label}`);
+  const record = value as Record<string, unknown>;
+  requireSafeInteger(record.maxConcurrency as number, `${label}.maxConcurrency`, 1);
+  if (!record.globalBudget || typeof record.globalBudget !== 'object' || Array.isArray(record.globalBudget)) {
+    throw new ExecutionAdapterError(`invalid ${label}.globalBudget`);
+  }
+  assertBudget(record.globalBudget as ExecutionBudget, `${label}.globalBudget`);
+}
+
 function assertAccountingDocument(value: unknown): asserts value is AccountingDocument {
   assertRecord(value, 'kb.execution-accounting/v1');
   if (!Number.isSafeInteger(value.revision) || !SHA256.test(String(value.policyHash)) || typeof value.windowId !== 'string' || !Array.isArray(value.reservations)) {
     throw new ExecutionAdapterError('invalid accounting state document');
+  }
+  if (value.policy !== undefined) assertAccountingPolicy(value.policy, 'accounting document policy');
+  if (value.policyChanges !== undefined) {
+    if (!Array.isArray(value.policyChanges)) throw new ExecutionAdapterError('invalid accounting document policy changes');
+    for (const change of value.policyChanges) {
+      if (!change || typeof change !== 'object' || Array.isArray(change)) throw new ExecutionAdapterError('invalid accounting policy change record');
+      const record = change as Record<string, unknown>;
+      if (typeof record.at !== 'string' || record.at.length === 0 || record.at.includes('\0')
+        || !SHA256.test(String(record.fromHash)) || !SHA256.test(String(record.toHash))) {
+        throw new ExecutionAdapterError('invalid accounting policy change record');
+      }
+    }
   }
   const operations = new Set<string>();
   const references = new Set<string>();
@@ -717,6 +759,39 @@ function withinBudget(usage: ExecutionUsage, budget: ExecutionBudget): boolean {
     && usage.costUsdMicros <= budget.maxCostUsdMicros;
 }
 
+/**
+ * Whether `candidate` is a safe, no-regret replacement for `floor`: every ExecutionBudget field at
+ * least as generous, and at least as much concurrency. Reservations already recorded under `floor`
+ * remain valid under `candidate` precisely because nothing shrank.
+ */
+function policyAtLeast(candidate: AccountingPolicy, floor: AccountingPolicy): boolean {
+  return candidate.maxConcurrency >= floor.maxConcurrency
+    && candidate.globalBudget.maxAttempts >= floor.globalBudget.maxAttempts
+    && candidate.globalBudget.maxInputTokens >= floor.globalBudget.maxInputTokens
+    && candidate.globalBudget.maxOutputTokens >= floor.globalBudget.maxOutputTokens
+    && candidate.globalBudget.maxCostUsdMicros >= floor.globalBudget.maxCostUsdMicros;
+}
+
+/**
+ * Pre-#198 policies, explicit and testable rather than a blanket bypass. A durable accounting document
+ * written before the `policy` field existed carries only a `policyHash`; if that hash matches one of
+ * these known-old policies exactly, a wider current policy can still migrate it. Today's single entry:
+ * the DEFAULT_BUDGET shipped before #198 raised maxCostUsdMicros 5,000,000 -> 20,000,000 (maxAttempts,
+ * token ceilings, and maxConcurrency unchanged).
+ */
+const LEGACY_POLICIES: readonly { hash: string; policy: AccountingPolicy }[] = [
+  {
+    policy: {
+      maxConcurrency: 2,
+      globalBudget: { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
+    },
+    hash: digest({
+      maxConcurrency: 2,
+      globalBudget: { maxAttempts: 30, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 5_000_000 },
+    }),
+  },
+];
+
 export interface FileAccountingAdapterOptions {
   stateRoot: string;
   /**
@@ -782,11 +857,14 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
   requireSafeInteger(options.maxConcurrency, 'maxConcurrency', 1);
   assertBudget(options.globalBudget, 'globalBudget');
   const policyHash = digest({ maxConcurrency: options.maxConcurrency, globalBudget: options.globalBudget });
+  const currentPolicy: AccountingPolicy = { maxConcurrency: options.maxConcurrency, globalBudget: clone(options.globalBudget) };
   const now = options.now ?? (() => new Date());
   const newId = options.newId ?? randomUUID;
   const openDocument = (windowId: string) => createAtomicJsonDocument<AccountingDocument>({
     path: join(stateRoot, 'control', 'execution-accounting', `${windowId}.json`),
-    empty: () => ({ schema: 'kb.execution-accounting/v1', revision: 0, policyHash, windowId, reservations: [] }),
+    empty: () => ({
+      schema: 'kb.execution-accounting/v1', revision: 0, policyHash, policy: clone(currentPolicy), policyChanges: [], windowId, reservations: [],
+    }),
     validate: assertAccountingDocument,
     error: (message) => new ExecutionAdapterError(message === 'atomic document state exceeds its limit'
       ? 'execution adapter state exceeds its limit'
@@ -809,10 +887,27 @@ export function createFileAccountingAdapter(options: FileAccountingAdapterOption
     documents.set(windowId, created);
     return created;
   };
-  const requirePolicy = (value: AccountingDocument, windowId: string): void => {
-    if (value.policyHash !== policyHash || value.windowId !== windowId) {
+  /**
+   * A strictly WIDER current policy (every ExecutionBudget field and maxConcurrency >= the document's
+   * recorded policy) is safe to adopt for a document already open under an older one: reservations
+   * already recorded remain valid under the wider ceilings. Migrates `state` in place - this always
+   * runs inside a `document.mutate()` callback, so the mutation is persisted by the same durable write
+   * path as every other accounting write. Anything narrower, or a document whose recorded/legacy policy
+   * cannot be established, still refuses (fail-closed, unchanged from before).
+   */
+  const requirePolicy = (state: AccountingDocument, windowId: string): void => {
+    if (state.windowId !== windowId) {
       throw new ExecutionAdapterError('accounting policy differs from the durable window policy');
     }
+    if (state.policyHash === policyHash) return;
+    const recorded = state.policy ?? LEGACY_POLICIES.find((legacy) => legacy.hash === state.policyHash)?.policy ?? null;
+    if (!recorded || !policyAtLeast(currentPolicy, recorded)) {
+      throw new ExecutionAdapterError('accounting policy differs from the durable window policy');
+    }
+    const fromHash = state.policyHash;
+    state.policy = clone(currentPolicy);
+    state.policyHash = policyHash;
+    state.policyChanges = [...(state.policyChanges ?? []), { at: now().toISOString(), fromHash, toHash: policyHash }];
   };
 
   return {
