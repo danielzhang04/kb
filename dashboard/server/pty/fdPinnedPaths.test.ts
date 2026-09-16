@@ -275,7 +275,10 @@ describe('fdPinnedPaths', () => {
     // Every profile, on BOTH the fresh and the resume path, and the two paths never disagree.
     const expected: Record<string, 'read-only' | 'workspace-write'> = {
       'checker-readonly': 'read-only',
-      research: 'read-only',
+      // 2026-09-16: `research` gained `Write` (see control/workflowProfiles.ts), so it derives
+      // workspace-write. Not a network+write grant on the codex side: CODEX_CONFIGURATION_PINS pins
+      // `sandbox_workspace_write.network_access=false` and `web_search="disabled"` on every launch.
+      research: 'workspace-write',
       'gmail-triage': 'workspace-write',
       'drive-author': 'workspace-write',
       producer: 'workspace-write',
