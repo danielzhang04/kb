@@ -83,6 +83,28 @@ const ORIGIN = 'http://localhost:5317';
  */
 const ALT_ALLOWED_ORIGIN = 'http://localhost:5318';
 
+// T3: a stub signed channel, shared by every describe block below that exercises a `signed`-class route
+// (the frozen incident-recovery pair, retention quarantine/restore). See `authority/gate.test.ts` and
+// `authority/approval.test.ts` for the channel's own unit coverage; this file only needs it configured
+// and needs to be able to build one real, verifier-accepted `approval` object per signed call.
+const TEST_ALLOWED_SIGNERS = '/test/kb-ops-approver.allowed-signers';
+const stubSshsigVerifier = { verify: async () => true };
+/** A fresh, random nonce every call (never a fixed one) — reusing one across multiple requests in a test
+ *  would trip T3's OWN nonce-replay refusal before the test's own, unrelated business logic ever ran. */
+function freshNonce(): string {
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+}
+function signedApproval(route: string, entityRef: string, now: number = Date.now()) {
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return {
+    payload: JSON.stringify({
+      schema: 'kb.human-approval/v1', route, entityRef, actor: 'daniel',
+      issuedAt: iso(now), expiresAt: iso(now + 600_000), nonce: freshNonce(),
+    }),
+    signature: 'sig',
+  };
+}
+
 function makeSurfaceContext(
   overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
   activation: Parameters<typeof makeProductionSurfaceContext>[1] = {},
@@ -314,6 +336,11 @@ describe('control proposal routes', () => {
       credentials: () => ceremonyCredentials,
       composerStore,
       controlStore,
+      // T3: a configured channel so a `signed`-class route in this describe block answers
+      // `403 approval-required` (informative) rather than `503 approval-unavailable` (unconfigured) —
+      // and so a case that needs one can build a real `approval` via `signedApproval` below.
+      humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+      sshsigVerifier: stubSshsigVerifier,
       appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       appendAuditLocal: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -398,8 +425,12 @@ describe('control proposal routes', () => {
       { ...base, expectedProposalHash: 'f'.repeat(64) },
       { ...base, idempotencyKey: 'different-key' },
     ]) {
+      // T3: this route is `signed`-class; a FRESH (never reused — see `freshNonce`) approval per call so
+      // the request reaches the route's OWN CAS-mismatch check (what this test is actually about) instead
+      // of refusing earlier, at the gate, for a reason none of these cases mean to exercise.
+      const approval = signedApproval('POST /api/control/recovery/2026-08-01/failed-run-reconciliation', 'run-2026-08-01-failed-run');
       const response = await app.inject({
-        method: 'POST', url: '/api/control/recovery/2026-08-01/failed-run-reconciliation', headers: headers(token), payload: body,
+        method: 'POST', url: '/api/control/recovery/2026-08-01/failed-run-reconciliation', headers: headers(token), payload: { ...body, approval },
       });
       expect(response.statusCode).toBe(409);
       expect(response.json()).toEqual({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
@@ -2969,7 +3000,11 @@ describe('control proposal routes', () => {
         method: 'POST',
         url: `/api/control/runs/${created.value.run.runRef}/reconcile-publication`,
         headers: headers(token),
-        payload: { expectedRunVersion: publishing.value.version },
+        // T3: `reconcile-publication` is `signed`-class — see spec §4.1's "never for a CLI" table.
+        payload: {
+          expectedRunVersion: publishing.value.version,
+          approval: signedApproval('POST /api/control/runs/:runRef/reconcile-publication', created.value.run.runRef),
+        },
       });
       expect(response.statusCode, response.body).toBe(200);
       const current = controlStore.getRun('operator', created.value.run.runRef);
@@ -3022,7 +3057,10 @@ describe('control proposal routes', () => {
     if (!publishing.ok) throw new Error(publishing.detail);
     const reconciled = await app.inject({
       method: 'POST', url: `/api/control/runs/${publishingRun.value.run.runRef}/reconcile-publication`, headers: headers(token),
-      payload: { expectedRunVersion: publishing.value.version },
+      payload: {
+        expectedRunVersion: publishing.value.version,
+        approval: signedApproval('POST /api/control/runs/:runRef/reconcile-publication', publishingRun.value.run.runRef),
+      },
     });
     // The fixture deliberately has no on-disk canonical cards. Reaching that honest recovery error
     // proves the stored compiler snapshot passed semantic validation first.
@@ -3172,6 +3210,12 @@ function buildApp(overrides: Record<string, unknown> = {}) {
     controlStore: store,
     webAuthnConfig: TEST_WEBAUTHN,
     credentials: () => [],
+    // T3: this describe block's `execution-lock` route is `signed`-class. `buildApp` never overrides
+    // `stateRoot` either (see the identical note in the retention `surface()` helper below), so the nonce
+    // store is stubbed in-memory here too.
+    humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+    sshsigVerifier: stubSshsigVerifier,
+    approvalNonces: { claim: () => 'fresh' as const },
     appendAudit: (_root: string, event: Record<string, unknown>) => {
       audit.push(event);
       return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
@@ -3580,17 +3624,22 @@ describe('control execution latch routes', () => {
       recoveredState = true;
       return { ok: true, value: recoveryResult } as never;
     });
+    // T3: `execution-lock` is `signed`-class with a FROZEN entityRef. A FRESH approval per call — never
+    // reused — since this test's OWN business-logic idempotency (same `idempotencyKey`, second call
+    // replays the cached result) is a different concern from T3's nonce-replay refusal, and reusing one
+    // approval object across calls would trip the LATTER before the handler ever saw the former.
+    const executionLockApproval = () => signedApproval('POST /api/control/recovery/2026-07-31/execution-lock', 'run-2026-07-31-execution-lock');
     try {
       const stale = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 5, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'stale-repair' },
+        payload: { expectedRunVersion: 5, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'stale-repair', approval: executionLockApproval() },
       });
       expect(stale.statusCode).toBe(409);
       expect(order).toEqual([]);
       expect(recover).not.toHaveBeenCalled();
       const response = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair', approval: executionLockApproval() },
       });
       expect(response.statusCode, response.body).toBe(200);
       expect(order).toEqual(['audit', 'store']);
@@ -3607,7 +3656,7 @@ describe('control execution latch routes', () => {
       expect(activateManagedRoots).not.toHaveBeenCalled();
       const lostResponseReplay = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair', approval: executionLockApproval() },
       });
       expect(lostResponseReplay.statusCode, lostResponseReplay.body).toBe(200);
       expect(lostResponseReplay.json()).toMatchObject({ ok: true, replayed: true });
@@ -3618,7 +3667,12 @@ describe('control execution latch routes', () => {
   });
 
   it('fails closed before store mutation when latch, wiring, or T3 audit is not exact', async () => {
-    const body = { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' };
+    // T3: `execution-lock` is `signed`-class; the nonce store this describe block wires is a permissive
+    // in-memory stub (always `fresh`), so reusing one approval object across every sub-case below is safe.
+    const body = {
+      expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair',
+      approval: signedApproval('POST /api/control/recovery/2026-07-31/execution-lock', 'run-2026-07-31-execution-lock'),
+    };
     const locked = buildApp();
     vi.spyOn(locked.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
       ok: true, value: { disposition: 'eligible', result: null },
@@ -4689,6 +4743,13 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
         newId: () => `composer-${++composerId}`,
       }),
       appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
+      // T3: this describe block's retention quarantine/restore routes are `signed`-class. This `surface()`
+      // never overrides `stateRoot` (defaults to the REAL local dashboard state root), so the nonce store
+      // is stubbed in-memory too — otherwise every signed call here would durably write a real nonce file
+      // outside the test tree, the exact hazard `audit/log.ts`'s own module doc warns about for its ledger.
+      humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+      sshsigVerifier: stubSshsigVerifier,
+      approvalNonces: { claim: () => 'fresh' as const },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       opsGit: opsGitOverride ?? ((_repoRoot: string, args: string[]) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
@@ -5270,7 +5331,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
 
       const quarantined = await app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
-        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash, approval: signedApproval('POST /api/control/retention/quarantine', plan.planHash) },
       });
       expect(quarantined.statusCode, quarantined.body).toBe(200);
       expect(audit.find((row) => row.action === 'control-retention-quarantine-authorize')).toMatchObject({
@@ -5284,7 +5345,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
 
       const restored = await app.inject({
-        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token),
+        payload: { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) },
       });
       expect(restored.statusCode, restored.body).toBe(200);
       const restoredMetadata = store.listRuns(ENGINE).find((run) => run.runRef === runRef);
@@ -5330,7 +5392,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     try {
       const quarantined = await app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
-        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) },
       });
       expect(quarantined.statusCode, quarantined.body).toBe(500);
       expect(quarantined.json()).toMatchObject({ error: 'quarantine-audit-required' });
@@ -5342,13 +5404,14 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const working = surface(store);
       const ok = await working.app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(working.token),
-        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) },
       });
       expect(ok.statusCode, ok.body).toBe(200);
       await working.app.close();
 
       const restored = await app.inject({
-        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token),
+        payload: { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) },
       });
       expect(restored.statusCode, restored.body).toBe(500);
       expect(restored.json()).toMatchObject({ error: 'restore-audit-required' });
@@ -5386,10 +5449,12 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const planHash = (planned.json().value as { planHash: string }).planHash;
       audit.length = 0;
 
+      // T3: quarantine/restore are `signed`-class — a valid approval alone must NOT bypass the subject
+      // check below (that is exactly what this loop is proving), so each carries one anyway.
       for (const [url, payload] of [
         ['/api/control/retention/dry-run', { runRefs: [runRef] }],
-        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash }],
-        ['/api/control/retention/restore', { runRef }],
+        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) }],
+        ['/api/control/retention/restore', { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) }],
       ] as Array<[string, Record<string, unknown>]>) {
         const response = await app.inject({ method: 'POST', url, headers: headers(otherToken), payload });
         expect(response.statusCode, `${url}: ${response.body}`).toBe(404);

@@ -235,6 +235,18 @@ export function assertAuthModeBoot(options: {
     );
   }
   const { host: tailnetHost, proxyUid: tailnetUid } = resolveTailnetConfig(env);
+  // T3 (spec §4.2): the ssh-signed human-approval channel's allowed-signers file is REQUIRED in tailnet
+  // mode — an absolute path to the root-owned file `sshsig.ts#defaultSshsigVerifier` shells out against.
+  // Absent or relative fails boot loudly here rather than letting every `signed`-class route answer
+  // 503 at the first request. `deploy/validate_vm_runtime.py#_validate_human_approver_signers` mirrors
+  // this same assertion (plus the file's own ownership/mode) against the installed unit.
+  const allowedSigners = env.DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS?.trim() ?? '';
+  if (!allowedSigners || !allowedSigners.startsWith('/')) {
+    throw new AuthModeError(
+      'tailnet auth mode requires DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS to be an absolute path '
+      + '(the root-owned allowed-signers file for the kb-ops-approver human-approval channel)',
+    );
+  }
   // W47: defense in depth beyond the unit's ExecStartPre set, now a CONSTRAINT rather than a
   // retirement. See TAILNET_PASSKEY_ENV: an RP origin pinned to the serve host exactly, so a passkey
   // ceremony can only ever be mounted on the one origin this daemon serves; credentials require it.

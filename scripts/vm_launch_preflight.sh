@@ -67,6 +67,20 @@ for f in /var/lib/kb-shell/home/.claude/.credentials.json /var/lib/kb-shell/home
 done
 
 # ---------------------------------------------------------------------------------------------
+section "T3 human-approval channel (kb-dashboard.service ExecStartPre refuses to boot without this)"
+signers_env=$(systemctl show kb-dashboard.service -p Environment 2>/dev/null | grep -o 'DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=[^ ]*' | cut -d= -f2-)
+if [ -z "$signers_env" ]; then
+  bad "kb-dashboard.service does not set DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS"
+elif [ -s "$signers_env" ]; then
+  read -r u g m < <(stat -c '%U %G %a' "$signers_env" 2>/dev/null)
+  [ "$u" = "root" ] && [ "$m" = "644" ] \
+    && ok "$signers_env present, non-empty, root:$g $m" \
+    || bad "$signers_env is $u:$g $m — needs root-owned 0644"
+else
+  bad "$signers_env MISSING or empty — every signed-class dashboard route will answer 503 approval-unavailable"
+fi
+
+# ---------------------------------------------------------------------------------------------
 section "wrong ownership anywhere under .local (npm/root installs cause this)"
 if [ -d /var/lib/kb-shell/home/.local ]; then
   n=$(find /var/lib/kb-shell/home/.local \( ! -user kb-shell -o ! -group kb-shell \) 2>/dev/null | wc -l)

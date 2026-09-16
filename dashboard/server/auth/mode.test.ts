@@ -7,6 +7,8 @@ const TAILNET = {
   DASHBOARD_TAILNET_OPERATOR: 'daniel.zhang.t1@gmail.com',
   // P6 §3.3: the attested node-proxy uid, distinct from 0 and from the tailnet (root) proxy uid.
   DASHBOARD_NODE_PROXY_UID: '1001',
+  // T3 §4.2: the ssh-signed human-approval channel's allowed-signers file — REQUIRED in tailnet mode.
+  DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS: '/usr/local/lib/kb/kb-ops-approver.allowed-signers',
 };
 
 describe('resolveAuthMode', () => {
@@ -96,6 +98,19 @@ describe('assertAuthModeBoot', () => {
   it('REFUSES to start on an unknown mode in any case', () => {
     expect(() => assertAuthModeBoot({ env: { DASHBOARD_AUTH_MODE: 'x' }, bindHost: '127.0.0.1', platform: 'linux' }))
       .toThrow(AuthModeError);
+  });
+
+  it('SECURITY: REFUSES to start when the human-approver allowed-signers path is unconfigured', () => {
+    const { DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS: _omit, ...noSigners } = TAILNET;
+    expect(() => assertAuthModeBoot({ env: noSigners, bindHost: '127.0.0.1', platform: 'linux' }))
+      .toThrow(/DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS/);
+  });
+
+  it('REFUSES a relative human-approver allowed-signers path', () => {
+    expect(() => assertAuthModeBoot({
+      env: { ...TAILNET, DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS: 'relative/path' },
+      bindHost: '127.0.0.1', platform: 'linux',
+    })).toThrow(/DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS/);
   });
 
   // W47 - the CONSTRAINED tailnet passkey channel replaces the blanket retirement this case used to

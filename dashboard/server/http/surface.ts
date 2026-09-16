@@ -74,6 +74,7 @@ import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
 import { resolveSessionRoot } from '../trace/routes.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
+import { requireAuthority } from '../authority/gate.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -464,6 +465,13 @@ export function makeSurfaceContext(
       createFileComposerStore(stateRoot, {
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
+    // T3 signed channel (spec §4.2): resolved ONCE here, exactly like every other env-sourced field on
+    // this context. Empty/unset means the channel is unconfigured — every signed route then answers
+    // 503 approval-unavailable rather than defaulting to something reachable.
+    humanApproverAllowedSigners: overrides.humanApproverAllowedSigners
+      ?? process.env.DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS ?? '',
+    sshsigVerifier: overrides.sshsigVerifier,
+    approvalNonces: overrides.approvalNonces,
     controlStore,
     ptySessionHost,
     ptySessionRegistry,
@@ -653,6 +661,12 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     registerPaidActionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
+      // T3 (spec §4.1 "the gate"): every mutating route registered inside THIS scope passes through
+      // `requireAuthority` immediately after session verification and before any `register*Routes` call.
+      // This is ONE of two install points — the sibling read/write scope `index.ts` composes directly on
+      // `app` (agents, schedules, workflows, inbox deployment/asset-pull actions) needs its own hook,
+      // installed the same way right after ITS `requireSession`; see that file for why.
+      authenticated.addHook('preHandler', requireAuthority(ctx));
       // The controller-cookie endpoint lives INSIDE the session gate, not beside the public ceremonies:
       // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
       // the only proof that exists — no assertion is ever verified there, so the WebAuthn mint path never

@@ -34,6 +34,7 @@ import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { createRawSessionReplayReader } from './pty/replayReader.ts';
 import { originPlugin } from './security/origin.ts';
+import { requireAuthority } from './authority/gate.ts';
 import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
@@ -176,6 +177,16 @@ export interface BuildAppOptions {
    *  binds it to the pinned `/api/v1` VM origin. When absent in Desktop mode the two proxy routes still
    *  register (the inventory is stable) but answer `503` until a client is configured. */
   desktopReadProxyClient?: DesktopClient;
+  /** T3 signed channel test seams (`authority/gate.ts`); production always resolves
+   *  `humanApproverAllowedSigners` from the real env (see `surface.ts#makeSurfaceContext`), so this exists
+   *  only so a fixture can exercise a `signed`-class route end to end without a real ssh key. */
+  humanApproverAllowedSigners?: SurfaceContext['humanApproverAllowedSigners'];
+  sshsigVerifier?: SurfaceContext['sshsigVerifier'];
+  approvalNonces?: SurfaceContext['approvalNonces'];
+  /** Test seam only: routed straight to `makeSurfaceContext`'s `appendAudit` override so a fixture can
+   *  record (or simply avoid ever really committing) the rows `authority/gate.ts#requireAuthority`
+   *  appends on every refusal, instead of falling through to the real, git-committing default. */
+  appendAudit?: SurfaceContext['appendAudit'];
 }
 
 export type DaemonMode = 'vm' | 'desktop';
@@ -232,6 +243,10 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     ...(options.browserSessionRefs ? { browserSessionRefs: options.browserSessionRefs } : {}),
     controlStore: options.controlStore,
     fileControlAccess: options.fileControlAccess,
+    humanApproverAllowedSigners: options.humanApproverAllowedSigners,
+    sshsigVerifier: options.sshsigVerifier,
+    approvalNonces: options.approvalNonces,
+    appendAudit: options.appendAudit,
   });
 
   app.get('/healthz', async () => {
@@ -280,6 +295,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard));
     scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
+    // T3 (spec §4.1 "the gate"): this scope is named for its reads but ALSO registers mutating routes —
+    // registerAgents, the schedule routes (including the SIGNED `DELETE /api/schedules/:id`), the inbox
+    // deployment/asset-pull actions (also signed), and registerWorkflows' launch/create/update. Those
+    // routes are a SIBLING of `http/surface.ts#registerWriteSurface`'s authenticated scope, not inside
+    // it, so `requireAuthority` needs its OWN install here — installing it only in `surface.ts` left every
+    // route below unreached (see `authority/policy.test.ts`'s "outside the gate's reach" coverage test,
+    // which pinned this exact gap before this hook existed). GETs pass straight through either way.
+    scope.addHook('preHandler', requireAuthority(surfaceCtx));
     scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
     scope.register(kbBrowserRoutes, { repoRoot });
     registerPlaneA(scope, repoRoot);

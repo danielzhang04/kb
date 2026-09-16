@@ -26,7 +26,7 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # (the attested kb-node-proxy). The dashboard refuses to boot unless DASHBOARD_NODE_PROXY_UID ∉ {0,
 # DASHBOARD_TAILNET_PROXY_UID}; this validator runs the SAME pairwise check against the unit env so a bad
 # pair fails one loud ExecStartPre instead of the first node request.
-EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID"}
+EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID", "DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS"}
 # W47: the CONSTRAINED tailnet passkey channel. These two are OPTIONAL, not forbidden - see
 # PASSKEY_UNIT_ENV below and dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel, whose rules
 # this validator mirrors so a bad pair fails one loud ExecStartPre instead of the first T3 gate.
@@ -414,6 +414,50 @@ def _provisioned_credential_count(raw: str) -> int:
     )
 
 
+# T3 (docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md §4.2): the root-owned
+# allowed-signers file for the ssh-signed human-approval channel (`kb-human-approval` namespace,
+# `kb-ops-approver` principal — dashboard/server/authority/sshsig.ts). PUBLIC ssh key material, never a
+# credential: possessing it lets nobody sign an approval, only verify one, since the private key never
+# touches the VM. Confined to these two directories so the unit env cannot point the daemon at an
+# arbitrary, possibly attacker-writable path.
+HUMAN_APPROVER_SIGNERS_DIRS = ("/usr/local/lib/kb/", "/etc/kb/")
+
+
+def _stat_human_approver_signers(path: str) -> tuple[os.stat_result, os.stat_result]:
+    """Real I/O, isolated in its own function so a test can monkeypatch exactly this call rather than
+    needing an actual root-owned file on the runner. Returns (lstat, stat) — lstat is checked FIRST so a
+    symlink is refused before its target's metadata is ever trusted."""
+    return os.lstat(path), os.stat(path)
+
+
+def _validate_human_approver_signers(environment: dict[str, str]) -> None:
+    """DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS is REQUIRED (T3): absent, relative, outside the two
+    trusted directories, or pointing at anything but a root-owned 0644 regular file fails ExecStartPre
+    loudly, rather than letting every signed-class route answer 503 at the first request. Mirrors
+    dashboard/server/auth/mode.ts#assertAuthModeBoot's own absolute-path assertion, plus the file-identity
+    checks that module has no way to make from inside the daemon's own process."""
+    raw = environment.get("DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS", "").strip()
+    if not raw.startswith("/"):
+        raise RuntimeError("dashboard unit DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS must be an absolute path")
+    if not any(raw.startswith(prefix) for prefix in HUMAN_APPROVER_SIGNERS_DIRS):
+        raise RuntimeError(
+            "dashboard unit DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS must be under "
+            + " or ".join(HUMAN_APPROVER_SIGNERS_DIRS)
+        )
+    try:
+        link_info, info = _stat_human_approver_signers(raw)
+    except OSError as error:
+        raise RuntimeError(f"dashboard unit human-approver allowed-signers file is unreadable: {raw}") from error
+    if stat.S_ISLNK(link_info.st_mode):
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must not be a symlink")
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be a regular file")
+    if info.st_uid != 0:
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be owned by root")
+    if stat.S_IMODE(info.st_mode) != 0o644:
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be mode 0644")
+
+
 def validate_environment(env: dict[str, str]) -> None:
     present = sorted(
         name for name in env
@@ -548,6 +592,7 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("dashboard unit tailnet operator is invalid")
     _validate_proxy_uid_pair(environment)
     _validate_passkey_channel(environment)
+    _validate_human_approver_signers(environment)
     unset = set(show["UnsetEnvironment"].split())
     missing = sorted(FORBIDDEN_ENV.difference(unset))
     if missing:

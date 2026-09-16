@@ -23,7 +23,22 @@ Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN=https://kb-desk.command.ts.net
 Environment=DASHBOARD_TAILNET_PROXY_UID=0
 Environment=DASHBOARD_NODE_PROXY_UID=987
+Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers
 """
+
+
+@pytest.fixture(autouse=True)
+def _default_human_approver_signers_stat(monkeypatch):
+    """T3: every unit-validation test implicitly requires DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS to
+    resolve to a root-owned 0644 regular file, and no dev/CI host actually has one at the pinned path.
+    Fake the ONE real I/O call the validator makes (`_stat_human_approver_signers`) rather than the dozens
+    of `validate_static_unit` call sites that reach it; a test asserting the file checks themselves
+    overrides this with its own monkeypatch (see the `test_human_approver_signers_*` cases below)."""
+    import stat as stat_module_default
+    from types import SimpleNamespace as _SimpleNamespace
+
+    good = _SimpleNamespace(st_mode=stat_module_default.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (good, good))
 
 
 @pytest.mark.parametrize(
@@ -117,6 +132,95 @@ def test_w47_unit_accepts_a_correctly_pinned_passkey_pair():
 
 def test_w47_unit_accepts_the_pair_being_wholly_absent():
     """Both absent is the default posture and must stay legal, byte for byte."""
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+# --- T3: the ssh-signed human-approval channel's allowed-signers file -------------------------------
+# RED ON REVERT: drop DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS from EXPECTED_UNIT_ENV, or drop the
+# _validate_human_approver_signers call, and every case below either stops raising or raises for the
+# wrong reason.
+def test_human_approver_allowed_signers_is_a_required_member_of_the_closed_set():
+    assert "DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS" in validate_vm_runtime.EXPECTED_UNIT_ENV
+
+
+def test_effective_unit_requires_the_human_approver_allowed_signers_env():
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        "",
+    )
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["relative/path", "", "kb-ops-approver.allowed-signers"])
+def test_human_approver_signers_rejects_a_non_absolute_path(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        f"Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="absolute path"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["/tmp/kb-ops-approver.allowed-signers", "/root/.ssh/allowed-signers", "/etc/passwd"])
+def test_human_approver_signers_rejects_a_path_outside_the_trusted_directories(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        f"Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="/usr/local/lib/kb/ or /etc/kb/"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_human_approver_signers_accepts_the_other_trusted_directory():
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/etc/kb/allowed-signers\n",
+    )
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_human_approver_signers_rejects_a_missing_file(monkeypatch):
+    def _missing(path):
+        raise FileNotFoundError(path)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", _missing)
+    with pytest.raises(RuntimeError, match="unreadable"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_symlink(monkeypatch):
+    link = SimpleNamespace(st_mode=stat_module.S_IFLNK | 0o777, st_uid=0)
+    target = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (link, target))
+    with pytest.raises(RuntimeError, match="symlink"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_non_regular_file(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFDIR | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="regular file"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_non_root_owner(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=1000)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="owned by root"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o640, 0o664, 0o666])
+def test_human_approver_signers_rejects_a_world_writable_or_otherwise_wrong_mode_file(monkeypatch, mode):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | mode, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="0644"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_accepts_a_correctly_owned_and_moded_file(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 

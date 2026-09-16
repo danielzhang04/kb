@@ -114,6 +114,10 @@ HOST_NODE_MAP_DIR = "/etc/kb-dashboard"
 HOST_NODE_MAP_PATH = "/etc/kb-dashboard/host-nodes.json"
 HOST_NODE_MAP_SCHEMA = "kb.host-node-map/v1"
 NODE_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{5,32}$")
+# T3: the ssh-signed human-approval channel's allowed-signers file. The path is STATIC in the shipped
+# unit fragment (deploy/systemd/kb-dashboard.service), unlike the tailnet host/operator; this script only
+# installs the FILE, never renders the Environment= line.
+HUMAN_APPROVER_SIGNERS_PATH = "/usr/local/lib/kb/kb-ops-approver.allowed-signers"
 
 # The resident root-owned tree. Shared by `bootstrap` and `upgrade`: both must leave byte-identical
 # helper copies behind, so the list lives here once rather than in each caller.
@@ -209,6 +213,21 @@ def install_host_node_map(source: Path, run=subprocess.run, target: str = HOST_N
     validate_host_node_map(json.loads(source.read_text(encoding="utf-8")))
     run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", HOST_NODE_MAP_DIR], check=True)
     run(["install", "-o", "root", "-g", "root", "-m", "0444", str(source), target], check=True)
+
+
+def install_human_approver_allowed_signers(
+    source: Path, run=subprocess.run, target: str = HUMAN_APPROVER_SIGNERS_PATH,
+) -> None:
+    """Install the operator-supplied ssh allowed-signers file for the T3 human-approval channel, root-owned
+    0644 (PUBLIC key material — see validate_vm_runtime.py#_validate_human_approver_signers, which asserts
+    exactly this owner/mode on the installed copy). Refuses a source that does not at least look like an
+    allowed-signers line (`<principal> <key-type> <base64>`) first, since a wrong file here is a silent
+    daemon 503 on every signed route rather than a loud one."""
+    text = source.read_text(encoding="utf-8")
+    if not any(len(line.split()) >= 3 for line in text.splitlines() if line.strip() and not line.startswith("#")):
+        raise ValueError("human-approver allowed-signers source does not look like an allowed_signers file")
+    run(["install", "-d", "-o", "root", "-g", "root", "-m", "0755", str(Path(target).parent)], check=True)
+    run(["install", "-o", "root", "-g", "root", "-m", "0644", str(source), target], check=True)
 
 
 def provision_node_proxy(run=subprocess.run, source_root: Path | None = None, lookup_uid=None) -> None:
@@ -823,6 +842,7 @@ def build_parser() -> argparse.ArgumentParser:
     boot.add_argument("--tailnet-host", required=True, help="the bare `tailscale serve` hostname this VM is published at")
     boot.add_argument("--tailnet-operator", default=DEFAULT_TAILNET_OPERATOR, help="the single tailnet login that IS the operator")
     boot.add_argument("--desktop-helper-origin", required=True, help="the pinned https://<desktop>.ts.net origin of the desktop helper; REQUIRED, never defaulted")
+    boot.add_argument("--human-approver-signers", type=Path, default=None, help="the operator-supplied ssh allowed_signers file for the T3 human-approval channel; installed root:root 0644, skipped (with a loud warning) when omitted")
 
     converge = subparsers.add_parser(
         "upgrade",
@@ -858,6 +878,20 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     bootstrap(args.ops_bundle, args.release_public_key, tailnet_host=args.tailnet_host,
               tailnet_operator=args.tailnet_operator, desktop_helper_origin=args.desktop_helper_origin)
+    # T3: a fresh VM cannot serve a single signed-class request until this file exists (every such route
+    # answers 503 approval-unavailable without it) — but the unit's own ExecStartPre already refuses to
+    # boot at all without it (validate_vm_runtime.py#_validate_human_approver_signers), so an operator who
+    # omits `--human-approver-signers` on a first bootstrap gets a loud, immediate systemd failure rather
+    # than a daemon that silently never accepts a signed request.
+    if args.human_approver_signers is not None:
+        install_human_approver_allowed_signers(args.human_approver_signers)
+    else:
+        print(
+            "warning: --human-approver-signers not given; install "
+            f"{HUMAN_APPROVER_SIGNERS_PATH} (root:root 0644) before starting kb-dashboard.service, "
+            "or ExecStartPre will refuse to boot",
+            file=sys.stderr,
+        )
     return 0
 
 

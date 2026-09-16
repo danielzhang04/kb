@@ -82,7 +82,18 @@ const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
 const subjectHeaders = (subject: string) => ({ ...matrixHeaders, authorization: `Bearer ${mintSession(subject, TEST_SESSION).token}` });
 function buildApp(options: Parameters<typeof buildProductionApp>[0] = {}) {
-  return buildProductionApp({ controlStore: createInMemoryControlPlaneStore(), ...options });
+  return buildProductionApp({
+    controlStore: createInMemoryControlPlaneStore(),
+    // T3: `authority/gate.ts#requireAuthority` appends one audit row on every refusal, through the
+    // SAME `auditFn(ctx)` seam every other governed route already uses. Without a fake here, a route
+    // this matrix intentionally sends unauthorized/unsigned (which is most of it) falls through to the
+    // real, git-committing `appendAudit` — which resolves `repoRoot` to THIS repo (no override below
+    // sets one) and appends a real row to the tracked `ledgers/audit/dashboard-audit.ndjson`, exactly
+    // the incident `audit/log.ts`'s own module doc already warns about. A test file this size runs
+    // that path often enough to be a standing hazard, not a one-off.
+    appendAudit: (_repoRoot, event) => ({ ts: 'test-fixture', ...event }),
+    ...options,
+  });
 }
 function makeSurfaceContext(
   overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
@@ -97,7 +108,26 @@ const AVAILABLE_PTY = {
 };
 // Inject an empty-PR `gh` port so the Inbox route reaches no real `gh` subprocess in the matrix test.
 const emptyInboxGh = async () => ({ ok: true, stdout: '[]' });
-const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh });
+// T3: a stub channel + verifier, so a `signed`-class route in this matrix answers `403 approval-required`
+// (the informative, intended refusal) rather than `503 approval-unavailable` (an unconfigured-channel
+// refusal that would mask whatever the test actually means to prove) — and so a test that DOES want a
+// signed route to succeed can build one real `approval` object against it (`signedApproval` below).
+const TEST_ALLOWED_SIGNERS = '/test/kb-ops-approver.allowed-signers';
+const stubSshsigVerifier = { verify: async () => true };
+function signedApproval(route: string, entityRef: string, now: number) {
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return {
+    payload: JSON.stringify({
+      schema: 'kb.human-approval/v1', route, entityRef, actor: 'daniel',
+      issuedAt: iso(now), expiresAt: iso(now + 600_000), nonce: 'a'.repeat(32),
+    }),
+    signature: 'sig',
+  };
+}
+const matrixApp = () => buildApp({
+  validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh,
+  humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS, sshsigVerifier: stubSshsigVerifier,
+});
 const ptyMatrixApp = () => buildApp({
   validateData: false,
   allowedOrigins: [TEST_ORIGIN],
@@ -481,12 +511,16 @@ describe('server', () => {
       } }),
       app.inject({ method: 'POST', url: `/api/schedules/${id}/arm`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-arm`, armed: true } }),
       app.inject({ method: 'POST', url: `/api/schedules/${id}/disarm`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-disarm`, armed: false } }),
+      // T3: DELETE is now `signed`-class (policy.ts), so this 403 comes from `requireAuthority` refusing
+      // `approval-required` BEFORE the route's own non-operator-subject check ever runs — same status,
+      // different (and now, for the CLI, stricter) reason. `X-KB-Actor`/session subject is never read by
+      // the gate (spec §4.3: authority is never a function of who claims to be asking).
       app.inject({ method: 'DELETE', url: `/api/schedules/${id}`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-delete` } }),
     ];
     expect((await Promise.all(attempts)).map((response) => response.statusCode)).toEqual([403, 403, 403, 403]);
   });
 
-  it('allows the operator bearer to create, arm, disarm, and delete schedules', async () => {
+  it('allows the operator bearer to create, arm, and disarm schedules on the open channel, and blocks an unsigned delete', async () => {
     app = matrixApp();
     const headers = sessionHeaders();
     const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
@@ -501,10 +535,29 @@ describe('server', () => {
     const disarmed = await app.inject({ method: 'POST', url: `/api/schedules/${row.id}/disarm`, headers, payload: {
       expectedVersion: armed.json().schedule.version, idempotencyKey: 'operator-mutation-disarm', armed: false,
     } });
-    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
-      expectedVersion: disarmed.json().schedule.version, idempotencyKey: 'operator-mutation-delete',
+    expect([armed.statusCode, disarmed.statusCode]).toEqual([200, 200]);
+    // T3: DELETE /api/schedules/:id is on the signed "never for a CLI" list — the operator bearer alone,
+    // with no `approval`, is refused exactly like every other actor (spec §5's whole point).
+    const deletedUnsigned = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: disarmed.json().schedule.version, idempotencyKey: 'operator-mutation-delete-unsigned',
     } });
-    expect([armed.statusCode, disarmed.statusCode, deleted.statusCode]).toEqual([200, 200, 200]);
+    expect(deletedUnsigned.statusCode).toBe(403);
+    expect(deletedUnsigned.json()).toEqual({ error: 'approval-required' });
+  });
+
+  it('lets a schedule delete through with a valid signed approval, over the same route the unsigned attempt above refused', async () => {
+    app = matrixApp();
+    const headers = sessionHeaders();
+    const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
+      owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-signed-create',
+    } });
+    const row = created.json().schedule as { id: string; version: number };
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: row.version, idempotencyKey: 'operator-mutation-signed-delete',
+      approval: signedApproval('DELETE /api/schedules/:id', row.id, Date.now()),
+    } });
+    expect(deleted.statusCode).toBe(200);
   });
 
   it.each([

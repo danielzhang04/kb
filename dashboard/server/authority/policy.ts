@@ -121,8 +121,38 @@ export const PENDING_DELETION: readonly string[] = Object.freeze([
   'POST /api/auth/assert/verify',
 ]);
 
+/**
+ * T3/T2 sequencing bridge — WebAuthn ceremony BYPRODUCT routes spec §4.1 also names for deletion
+ * ("Deleted with WebAuthn: ... `/api/control/human-requests/:requestRef/respond/challenge`,
+ * `/api/inbox/deployment/:ref/challenge`, `/api/control/iteration-gates/:requestRef/challenge`"), but
+ * that T2 — not T1 — removes, same as `PENDING_DELETION`'s four. They are deliberately absent from
+ * `PENDING_DELETION` itself (T2's own deletion step reads that constant and must see exactly its four
+ * auth routes, not these three) and deliberately absent from `ROUTE_AUTHORITY` (putting them there would
+ * classify routes this design intends to have zero of).
+ *
+ * Until T2 lands, though, they are still LIVE routes real ceremony tests still call — and `requireAuthority`
+ * (T3, installed on every scope that can reach a mutating route) would otherwise refuse every one of them
+ * with `403 route-unclassified`, breaking passing WebAuthn-ceremony coverage for a UI path spec §5 already
+ * calls dead on prod ("every T3 challenge answers 403 ceremony-unavailable... the T3 path is simply dead").
+ * `classifyRoute` treats them as `open` — a sequencing bridge, not a policy statement: it grants no signed
+ * authority, and T2's deletion removes both this list and the routes it names, so nothing should still be
+ * reading it once that lands.
+ */
+export const TRANSITIONAL_CEREMONY_ROUTES: readonly string[] = Object.freeze([
+  'POST /api/control/human-requests/:requestRef/respond/challenge',
+  'POST /api/inbox/deployment/:ref/challenge',
+  'POST /api/control/iteration-gates/:requestRef/challenge',
+]);
+
 const BY_KEY = new Map(ROUTE_AUTHORITY.map((entry) => [routeKey(entry), entry]));
+const TRANSITIONAL_KEYS = new Set(TRANSITIONAL_CEREMONY_ROUTES);
 
 export function classifyRoute(method: string, path: string): RouteAuthority | null {
-  return BY_KEY.get(`${String(method).toUpperCase()} ${path}`) ?? null;
+  const key = `${String(method).toUpperCase()} ${path}`;
+  const entry = BY_KEY.get(key);
+  if (entry) return entry;
+  if (TRANSITIONAL_KEYS.has(key)) {
+    return { method: method.toUpperCase() as RouteAuthority['method'], path, cls: 'open', entityParam: null };
+  }
+  return null;
 }

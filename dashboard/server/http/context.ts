@@ -60,6 +60,8 @@ import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import type { ActivationReaderPort } from '../home/project.ts';
+import type { SshsigVerifier } from '../authority/sshsig.ts';
+import type { NonceStore } from '../authority/nonceStore.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -149,6 +151,18 @@ export interface SurfaceContext {
   webAuthnConfig: () => WebAuthnConfig;
   /** The fail-closed registered-credential store (`[]` until a human provisions a passkey). */
   credentials: () => WebAuthnCredential[];
+  /**
+   * T3 signed channel (`authority/gate.ts#requireAuthority`, spec §4.2): the path to the root-owned
+   * `ssh-keygen -Y verify` allowed-signers file for the `kb-human-approval` namespace. Resolved ONCE in
+   * `makeSurfaceContext` from `DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS`. Empty/unset means the channel
+   * is not configured on this deployment — every `signed`-class route then answers
+   * `503 approval-unavailable` rather than trusting anything about the request.
+   */
+  humanApproverAllowedSigners?: string;
+  /** Injectable `ssh-keygen -Y verify` runner; production falls back to `sshsig.ts#defaultSshsigVerifier`. */
+  sshsigVerifier?: SshsigVerifier;
+  /** Injectable nonce-replay store; production falls back to `nonceStore.ts#createNonceStore(stateRoot)`. */
+  approvalNonces?: NonceStore;
 
   // --- injectable side-effect runners (undefined => each module's real default) ---
   appendAudit?: AppendAuditFn;
