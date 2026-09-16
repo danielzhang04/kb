@@ -264,6 +264,15 @@ time, which never places a pod at all — also regenerates (the dead out dir ren
 `.failed-N` first), bounded by the same retry limit; anything else with a recorded
 `run.json` still refuses.
 
+**Third exception, operator-invoked only (2026-09-16):** a JOB-class caption failure
+(verified pod teardown, zero output, but the pod-side script itself failed — e.g.
+`HarnessError: training failed marker appeared`) never auto-regenerates, so once
+you've fixed the actual cause, rerun `apply-rulings --stage dataset` with
+`--retry-caption-after-fix "<what you fixed>"` to admit it explicitly. The
+regenerated manifest records the reason, the renamed prior out dir, the
+caption-template sha256, and the current git HEAD, and this retry still counts
+against and is bounded by the same real-retry limit as every other retry.
+
 ## Resume/recovery: `--retry-failed` for a verified transport/placement failure
 
 A `failed` planned run normally requires a fresh, reviewed plan — see "never a file edit"

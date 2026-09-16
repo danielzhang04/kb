@@ -413,6 +413,25 @@ def _sha256(path: Path, *, reads=None) -> str:
     return _gates_module().sha256_file(Path(path))
 
 
+def _git_head_sha() -> str:
+    """Best-effort `git rev-parse HEAD` in ROOT for a receipt's provenance field --
+    never raises; "unknown" when git isn't on PATH, the checkout isn't a git repo, or
+    the command otherwise fails. Used by `--retry-caption-after-fix`'s
+    `training.retry_after_fix.git_head` so the regenerated manifest records which
+    commit the operator believed fixed the underlying cause."""
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "HEAD"], cwd=ROOT,
+            capture_output=True, text=True, check=False,
+        )
+    except OSError:
+        return "unknown"
+    if result.returncode != 0:
+        return "unknown"
+    sha = result.stdout.strip()
+    return sha if sha else "unknown"
+
+
 def _relative(path: Path, root: Path, *, reads=None, walk_up: bool = False) -> str:
     """`walk_up` (3.12+) permits a `../`-prefixed result. Used by exactly one caller --
     `_planned_run` for the `video` stage, whose manifest is required by
@@ -2602,7 +2621,7 @@ def _planned_run(
 def plan_qwen3vl_caption(
     creator_id: str, trigger: str, image_paths: list[Path], plan_root: Path,
     *, pod_class: str = "l40s", ledger_dir: Path | None = None,
-    skip_pin_verify: bool = False,
+    skip_pin_verify: bool = False, retry_after_fix_reason: str | None = None,
 ) -> dict[str, Any]:
     """M4: plan (never run) one qwen3vl captioning pod job -- the exact `_planned_run`
     pattern `build_plan` uses for every other stage. Exposed for
@@ -2681,6 +2700,22 @@ def plan_qwen3vl_caption(
     # failure does.
     if manifest_path.exists() and (run_out / "run.json").is_file():
         reason = _out_dir_retry_eligibility_reason(run_out)
+        # `--retry-caption-after-fix <reason>` (operator path, 2026-09-16): a prior
+        # attempt that fails ONLY the error-class-substring check -- i.e. it proves a
+        # verified pod teardown, every placement/journal verified, and zero
+        # job/artifact output, but its recorded `error` doesn't match
+        # `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` (a JOB-class failure, e.g. "training failed
+        # marker appeared") -- is admitted here ONLY when the operator explicitly
+        # names a reason the underlying cause is fixed. Never widens admission for an
+        # attempt with real output, an unverified teardown, or one already over
+        # MAX_RUN_RETRIES: those still fail `skip_error_class_check=True` the same way
+        # they fail the ordinary check, and the retry-count caps below still apply
+        # unconditionally (this counts as a REAL retry, same as any other).
+        used_retry_after_fix = False
+        if reason is not None and retry_after_fix_reason:
+            if _out_dir_retry_eligibility_reason(run_out, skip_error_class_check=True) is None:
+                reason = None
+                used_retry_after_fix = True
         if reason is not None:
             raise FigmentTrainError(
                 "refusing to overwrite a caption manifest with a recorded run: "
@@ -2703,6 +2738,13 @@ def plan_qwen3vl_caption(
             )
         renamed = _first_free_retry_rename_path(run_out, len(prior_failures) + 1)
         run_out.rename(renamed)
+        if used_retry_after_fix:
+            manifest["training"]["retry_after_fix"] = {
+                "reason": retry_after_fix_reason,
+                "prior_out": renamed.name,
+                "template_sha256": _sha256(QWEN3VL_CAPTION_START_PATH),
+                "git_head": _git_head_sha(),
+            }
     _write_json(manifest_path, manifest)
     resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
     return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
@@ -2711,6 +2753,7 @@ def plan_qwen3vl_caption(
 def _live_qwen3vl_job_runner(
     creator_id: str, trigger: str, plan_root: Path, *, pod_class: str = "l40s",
     ledger_dir: Path | None = None, skip_pin_verify: bool = False,
+    retry_after_fix_reason: str | None = None,
 ):
     """M4: the real dispatcher `build_training_set.py`'s `qwen3vl` caption mode
     requires -- never invoked by build_training_set.py itself (GUARDRAILS:
@@ -2729,6 +2772,7 @@ def _live_qwen3vl_job_runner(
         planned = plan_qwen3vl_caption(
             creator_id, trigger, images, plan_root, pod_class=pod_class,
             ledger_dir=resolved_ledger_dir, skip_pin_verify=skip_pin_verify,
+            retry_after_fix_reason=retry_after_fix_reason,
         )
         manifest_path = plan_root / planned["manifest"]
         run_out = plan_root / planned["out"]
@@ -4333,7 +4377,9 @@ def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 100
     )
 
 
-def _out_dir_retry_eligibility_reason(out_dir: Path) -> str | None:
+def _out_dir_retry_eligibility_reason(
+    out_dir: Path, *, skip_error_class_check: bool = False,
+) -> str | None:
     """Shared eligibility gate for reusing a failed attempt's own `out_dir`: `None`
     when its `run.json` proves EITHER (a) verified pod teardown with zero job/artifact
     output, every `recovery-*.json` journal verified terminated, and a recognized
@@ -4342,7 +4388,17 @@ def _out_dir_retry_eligibility_reason(out_dir: Path) -> str | None:
     refusal reason. `_retry_ineligibility_reason` (`--retry-failed`) and
     `plan_qwen3vl_caption` (which has no plan/`attempts` bookkeeping of its own to fall
     back through) both consult this one function rather than keeping two copies of the
-    same rule."""
+    same rule.
+
+    `skip_error_class_check` (`--retry-caption-after-fix`, 2026-09-16): when set, every
+    check above still applies EXCEPT the final `error` substring match against
+    `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` -- an `error` must still be recorded (a run.json
+    with no error at all still refuses; this never means "guess the failure class"),
+    it just isn't required to name a transport/placement failure. Only
+    `plan_qwen3vl_caption`'s explicit `--retry-caption-after-fix` path passes this;
+    every other caller (including the ordinary, unflagged `plan_qwen3vl_caption` check
+    and `_retry_ineligibility_reason`) leaves it at the default and gets today's
+    behavior byte-for-byte."""
     run_json_path = out_dir / "run.json"
     if not run_json_path.is_file():
         return f"no run.json found at {run_json_path} to verify the failure was transport-class"
@@ -4396,6 +4452,8 @@ def _out_dir_retry_eligibility_reason(out_dir: Path) -> str | None:
     error = data.get("error")
     if not isinstance(error, str) or not error:
         return "prior run.json has no error recorded; refusing to guess the failure class"
+    if skip_error_class_check:
+        return None
     allowed = RETRY_ELIGIBLE_ERROR_SUBSTRINGS
     if never_created:
         allowed = allowed + (NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING,)
@@ -5783,6 +5841,7 @@ def _write_accepted_checkpoint(
 def apply_rulings(
     creator_id: str, stage: str, plan_path: Path, rulings_path: Path,
     checkpoint_step: int | None = None, *, reads=None,
+    retry_caption_after_fix: str | None = None,
 ) -> dict[str, str]:
     """Validate operator rulings, stamp QA, and materialize dataset keeps."""
     if stage not in GRADEABLE_STAGES:
@@ -6020,6 +6079,7 @@ def apply_rulings(
                     trigger=trigger,
                     job_runner=_live_qwen3vl_job_runner(
                         creator_id, trigger, root, ledger_dir=Path(plan["ledger_dir"]),
+                        retry_after_fix_reason=retry_caption_after_fix,
                     ),
                 )
             else:
@@ -7142,6 +7202,13 @@ def build_parser() -> argparse.ArgumentParser:
         help="stage-2 backend; local-research omits external judging and cannot pass the gate",
     )
 
+    def _non_empty_reason_arg(value: str) -> str:
+        if not value.strip():
+            raise argparse.ArgumentTypeError(
+                "--retry-caption-after-fix requires a non-empty reason"
+            )
+        return value
+
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
     apply.add_argument("--stage", choices=GRADEABLE_STAGES, required=True)
@@ -7150,6 +7217,15 @@ def build_parser() -> argparse.ArgumentParser:
     apply.add_argument(
         "--checkpoint-step", type=int, default=None,
         help="tester only: promote this explicitly kept checkpoint candidate",
+    )
+    apply.add_argument(
+        "--retry-caption-after-fix", type=_non_empty_reason_arg, default=None,
+        help=(
+            "dataset qwen3vl only: admit a prior JOB-class (not transport/placement) "
+            "caption pod failure for retry, when its run.json proves a verified "
+            "teardown and zero output. Requires a non-empty reason naming what was "
+            "fixed; recorded on the regenerated manifest's training.retry_after_fix."
+        ),
     )
 
     gate = commands.add_parser("gate", help="print the fail-closed gate's pass/fail table")
@@ -7306,6 +7382,7 @@ def main(argv: list[str] | None = None) -> int:
             result = apply_rulings(
                 args.creator, args.stage, args.plan, args.rulings,
                 checkpoint_step=args.checkpoint_step,
+                retry_caption_after_fix=args.retry_caption_after_fix,
             )
             print(f"applied rulings: {result['rulings']}")
             if "rejection_lineage" in result:

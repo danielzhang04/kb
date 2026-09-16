@@ -3495,6 +3495,203 @@ def test_plan_qwen3vl_caption_refuses_past_the_real_retry_limit(command, tmp_pat
         )
 
 
+_JOB_CLASS_CAPTION_ERROR = (
+    "HarnessError: training failed marker appeared "
+    "(/workspace/output/_caption.failed seen before /workspace/output/_caption.complete)"
+)
+_JOB_CLASS_CAPTION_POD_NAME = "figment-creator001-live20260916b-caption"
+
+
+def _write_verified_teardown_job_failure_caption_run(
+    run_out: Path, *, extra_receipt_fields=None, journal_fields=None,
+) -> None:
+    """`--retry-caption-after-fix` (2026-09-16): the exact shape
+    `creator-001/live-20260916b`'s qwen3vl caption pod recorded -- a real pod was
+    created and verified torn down (`termination_verified: true`, zero job/artifact
+    output, ~$0.14 spent), but the pod-side SCRIPT ITSELF failed
+    (`HarnessError: training failed marker appeared`), not a transport/placement blip.
+    `HarnessError` is not in `RETRY_ELIGIBLE_ERROR_SUBSTRINGS`, so
+    `_out_dir_retry_eligibility_reason` rightly refuses this without the flag."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1", "dry_run": False, "pod_id": "pod-job-failed",
+        "termination_verified": True,
+        "placement_attempts": [{
+            "pod_id": "pod-job-failed", "termination_verified": True,
+            "estimated_actual_usd": 0.14,
+        }],
+        "jobs": [], "artifacts": [],
+        "error": _JOB_CLASS_CAPTION_ERROR,
+        "estimated_actual_usd": 0.14,
+    }
+    if extra_receipt_fields:
+        receipt.update(extra_receipt_fields)
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    journal = {
+        "schema": "figment/pod-recovery@1", "state": "terminated",
+        "attempt_id": _JOB_CLASS_CAPTION_POD_NAME, "pod_name": _JOB_CLASS_CAPTION_POD_NAME,
+        "absence_verified": True, "recovery_status": "terminated",
+    }
+    if journal_fields:
+        journal.update(journal_fields)
+    (run_out / f"recovery-{_JOB_CLASS_CAPTION_POD_NAME}.json").write_text(
+        json.dumps(journal), encoding="utf-8",
+    )
+
+
+def test_plan_qwen3vl_caption_refuses_a_job_class_failure_without_the_flag(
+    command, tmp_path,
+):
+    """The live 2026-09-16 situation this flag exists for: a verified-teardown,
+    zero-output failure whose `error` is JOB-class (`HarnessError`), not
+    transport/placement -- refused byte-for-byte today's behavior without
+    `--retry-caption-after-fix`."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="not a recognized transport/placement failure",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_regenerates_a_job_class_failure(
+    command, tmp_path,
+):
+    """With the flag and a fixed cause, the same job-class failure regenerates the
+    manifest (renaming the dead out dir the same way every other retry path does) and
+    the regenerated manifest records why it was allowed."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    reason = "pod template rewrite (49a7a33e) installs qwen3vl deps and captures the pod log"
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        retry_after_fix_reason=reason,
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    renamed = run_out.with_name(f"{run_out.name}.failed-1")
+    assert renamed.is_dir()
+    assert not run_out.exists()
+    manifest = load_json(manifest_path)
+    retry_after_fix = manifest["training"]["retry_after_fix"]
+    assert retry_after_fix["reason"] == reason
+    assert retry_after_fix["prior_out"] == renamed.name
+    assert retry_after_fix["template_sha256"] == command._sha256(
+        command.QWEN3VL_CAPTION_START_PATH,
+    )
+    assert isinstance(retry_after_fix["git_head"], str) and retry_after_fix["git_head"]
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_with_outputs_present(
+    command, tmp_path,
+):
+    """The flag never admits an attempt that actually produced output -- the
+    job-output check runs before the error-class check either way."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(
+        run_out, extra_receipt_fields={"jobs": [{"files": ["output.png"]}]},
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_unverified_teardown(
+    command, tmp_path,
+):
+    """The flag never admits an attempt whose pod teardown was never verified --
+    caught by the ordinary `termination_verified` check before the error-class check
+    it's meant to relax."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_verified_teardown_job_failure_caption_run(
+        run_out, extra_receipt_fields={"termination_verified": False},
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_plan_qwen3vl_caption_retry_after_fix_refuses_past_the_real_retry_limit(
+    command, tmp_path,
+):
+    """The flag admits the failure CLASS, never the retry-count cap -- a 3rd job-class
+    failure with the flag set still requires a fresh, reviewed plan, same as any other
+    real retry."""
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    for index in (1, 2):
+        _write_verified_teardown_job_failure_caption_run(
+            run_out.with_name(f"{run_out.name}.failed-{index}"),
+        )
+    _write_verified_teardown_job_failure_caption_run(run_out)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 2 time\(s\) \(limit 2\)",
+    ):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+            retry_after_fix_reason="fixed",
+        )
+
+
+def test_apply_rulings_retry_caption_after_fix_rejects_an_empty_reason(command):
+    """`--retry-caption-after-fix` requires a non-empty reason -- argparse itself
+    refuses an empty string before `apply_rulings` ever runs."""
+    parser = command.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "apply-rulings", "--creator", "creator-002", "--stage", "dataset",
+            "--rulings", "rulings.json", "--retry-caption-after-fix", "",
+        ])
+
+
 def test_plan_qwen3vl_caption_images_ready_sentinel_is_non_empty_and_parses(
     command, tmp_path,
 ):
