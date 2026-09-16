@@ -1435,3 +1435,131 @@ def test_retry_failed_refuses_on_unrecognized_prior_status(
         match=r"unrecognized status 'bogus-status'",
     ):
         command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+# ---------------------------------------------------------------------------------
+# P5 (LIVE 2026-09-16, creator-001/live-20260916b qwen3vl caption): a RunPod capacity
+# 500 at `POST /pods` create time never places a pod at all -- `termination_verified`
+# stays `false` forever because there was never a pod to terminate. These reuse the
+# same `_install_flaky_fake_harness` fixture the rest of this section drives, shaped
+# to the exact never-created receipt/journal the live run recorded.
+# ---------------------------------------------------------------------------------
+
+_NEVER_CREATED_ERROR = (
+    'PodStillRunning: create call failed (CreateCallError: RunPod POST /pods returned '
+    'HTTP 500: {"error":"create pod: There are no instances currently available",'
+    '"status":500}\n) and no pod with this name is visible \u2014 most likely never '
+    'created; verify with `status`'
+)
+_NEVER_CREATED_POD_NAME = "figment-bakeoff-20260916-000111-cafefe"
+_NEVER_CREATED_JOURNAL = json.dumps({
+    "schema": "figment/pod-recovery@1",
+    "state": "uncertain",
+    "attempt_id": _NEVER_CREATED_POD_NAME,
+    "pod_name": _NEVER_CREATED_POD_NAME,
+    "manifest_path": "C:/nowhere/manifest.yaml",
+    "manifest_sha256": "0" * 64,
+    "max_minutes": 90,
+    "max_usd": 1.95,
+    "created_utc": "2026-09-16T00:01:11+00:00",
+    "receipt_path": "C:/nowhere/run.json",
+    "pod_id": None,
+    "absence_verified": False,
+    "recovery_status": "run-termination-unverified",
+    "intent_sha256": "irrelevant-for-this-fixture",
+})
+
+
+def test_retry_failed_retries_a_never_created_create_call_failure(
+    command, tmp_path, monkeypatch,
+):
+    """LIVE 2026-09-16: a RunPod capacity 500 at create time is routine, not a one-off
+    hand fix. `--retry-failed` must accept this shape even though `termination_verified`
+    is `false` (there was never a pod to terminate) once a live scan proves no pod named
+    in the recovery journal actually exists."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_receipt_fields={
+            "pod_id": None, "termination_verified": False, "placement_attempts": [],
+        },
+        error=_NEVER_CREATED_ERROR,
+        extra_files={f"recovery-{_NEVER_CREATED_POD_NAME}.json": _NEVER_CREATED_JOURNAL},
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    state = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_failed=True,
+    )
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
+    assert state["status"] == "complete"
+    assert state["runs"][flaky_manifest]["status"] == "complete"
+    assert renamed.is_dir()
+    assert original_out_dir.is_dir()
+    retried_receipt = load_json(original_out_dir / "run.json")
+    assert not retried_receipt.get("error")
+
+
+def test_retry_failed_refuses_a_never_created_shape_with_a_real_pod_id(
+    command, tmp_path, monkeypatch,
+):
+    """A recorded `pod_id` proves a pod WAS created -- even with the rest of the
+    never-created receipt/journal shape (and the live scan never finding anything),
+    `_prior_attempt_never_created` must refuse, so the ordinary
+    `termination_verified: false` refusal still applies."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_receipt_fields={
+            "pod_id": "pod-real", "termination_verified": False, "placement_attempts": [],
+        },
+        error=_NEVER_CREATED_ERROR,
+        extra_files={f"recovery-{_NEVER_CREATED_POD_NAME}.json": _NEVER_CREATED_JOURNAL},
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*verified pod termination",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_failed_refuses_past_the_retry_limit_for_never_created_failures(
+    command, tmp_path, monkeypatch,
+):
+    """The never-created eligibility path shares the same `MAX_RUN_RETRIES` bound as
+    the verified-teardown path -- the 3rd failure always requires a fresh plan."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch,
+        extra_receipt_fields={
+            "pod_id": None, "termination_verified": False, "placement_attempts": [],
+        },
+        error=_NEVER_CREATED_ERROR,
+        extra_files={f"recovery-{_NEVER_CREATED_POD_NAME}.json": _NEVER_CREATED_JOURNAL},
+        fails_every_time=True,
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    for expected_attempts in (1, 2):
+        with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+            command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+        state = load_json(plan_path.parent / "stage.json")
+        assert len(state["runs"][flaky_manifest]["attempts"]) == expected_attempts
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 2 time\(s\) \(limit 2\)",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)

@@ -258,7 +258,11 @@ long as no `run.json` has been recorded for it yet — a caption pod that crashe
 launch, or never got dispatched at all, does not leave a permanent block behind. Once a
 `run.json` for that manifest exists, it IS a recorded run and the ordinary refusal above
 applies — the manifest will not be silently regenerated out from under a completed
-receipt.
+receipt. **Second exception (2026-09-16, P5):** a `run.json` whose own eligibility
+matches `--retry-failed`'s rule below — including a RunPod capacity 500 at pod-create
+time, which never places a pod at all — also regenerates (the dead out dir renamed to
+`.failed-N` first), bounded by the same retry limit; anything else with a recorded
+`run.json` still refuses.
 
 ## Resume/recovery: `--retry-failed` for a verified transport/placement failure
 
@@ -285,6 +289,11 @@ plan.
   journal refuses the retry even if the receipt itself looks clean;
 - an `error` string naming a transport/placement failure (substring match against
   `NameResolutionError`, `ConnectionError`, `MaxRetryError`, `ReadTimeout`, `placement`);
+  **or (2026-09-16, P5)** `termination_verified: false` with `pod_id: null`,
+  `placement_attempts`/`jobs`/`artifacts` all empty, an `error` naming
+  `CreateCallError`, and a fresh live scan finding no pod named in the out dir's own
+  `recovery-*.json` journal(s) — a RunPod capacity 500 at create time never placed a
+  pod at all, so there was never anything to terminate;
 - fewer than 2 prior retries already recorded for that exact manifest key
   (`state["runs"][key]["attempts"]`) — the 3rd failure always requires a fresh plan.
 

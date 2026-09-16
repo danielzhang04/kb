@@ -2659,10 +2659,32 @@ def plan_qwen3vl_caption(
     # now would sever that receipt's lineage. No run record yet means the previous
     # attempt never got as far as a pod completing (or never launched), so
     # regenerating it is safe.
+    #
+    # P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at
+    # create time DOES leave a run.json behind (fail-closed), so the bare-existence
+    # check above would otherwise jam this manifest forever even though no pod was
+    # ever created and no money was ever at risk. When the recorded run is eligible
+    # under the same rule `--retry-failed` uses
+    # (`_out_dir_retry_eligibility_reason`: verified teardown with zero output, or --
+    # routine for RunPod capacity -- `_prior_attempt_never_created`), rename the prior
+    # out dir to `.failed-N` (the same helper `--retry-failed` uses) and regenerate
+    # rather than refusing forever.
     if manifest_path.exists() and (run_out / "run.json").is_file():
-        raise FigmentTrainError(
-            f"refusing to overwrite a caption manifest with a recorded run: {manifest_path}"
-        )
+        reason = _out_dir_retry_eligibility_reason(run_out)
+        if reason is not None:
+            raise FigmentTrainError(
+                "refusing to overwrite a caption manifest with a recorded run: "
+                f"{manifest_path} ({reason})"
+            )
+        prior_failures = list(run_out.parent.glob(f"{run_out.name}.failed-*"))
+        if len(prior_failures) >= MAX_RUN_RETRIES:
+            raise FigmentTrainError(
+                f"caption manifest {manifest_path} out dir {run_out} has already been "
+                f"retried {len(prior_failures)} time(s) (limit {MAX_RUN_RETRIES}); "
+                "create a reviewed new plan to retry further"
+            )
+        renamed = _first_free_retry_rename_path(run_out, len(prior_failures) + 1)
+        run_out.rename(renamed)
     _write_json(manifest_path, manifest)
     resolved_ledger_dir = _resolved_ledger_dir(ledger_dir)
     return _planned_run(plan_root, manifest_path, run_out, ledger_dir=resolved_ledger_dir)
@@ -4068,6 +4090,16 @@ def _verify_tester_receipt_evidence(manifest: dict[str, Any], out_dir: Path, *, 
 RETRY_ELIGIBLE_ERROR_SUBSTRINGS = (
     "NameResolutionError", "ConnectionError", "MaxRetryError", "ReadTimeout", "placement",
 )
+# P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at `POST
+# /pods` create time ("There are no instances currently available") is exactly as
+# routine as the transport blips above, but its `error` never gets to prove a verified
+# teardown -- there was never a pod to tear down. This substring is layered onto
+# `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` ONLY inside `_out_dir_retry_eligibility_reason`'s
+# `never_created` branch (`_prior_attempt_never_created` already proved no pod_id, no
+# placements/jobs/artifacts, and a live scan finding nothing) -- never added to the
+# base tuple every retry check consults regardless of pod placement, so a
+# `CreateCallError` against a run that DID get a real pod_id is still refused.
+NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING = "CreateCallError"
 # At most this many `--retry-failed` retries per manifest key, counted from
 # `state["runs"][key]["attempts"]`; the (N+1)th failure always requires a fresh plan.
 MAX_RUN_RETRIES = 2
@@ -4101,6 +4133,136 @@ def _has_stray_retry_output(out_dir: Path) -> bool:
     return False
 
 
+def _default_pod_name_scan(pod_name: str) -> list[dict[str, Any]]:
+    """Real live-absence scan for `_prior_attempt_never_created`: reuses the exact
+    scan behind `pod/runpod_run.py`'s own CRITICAL "no pod with this name is visible"
+    banner (`PodLease._named_matches`, consulted by `PodLease._create_failure_banner`)
+    when that module's live-session helpers are importable, else shells out to
+    `runpod_run.py status` (this same file's own subcommand, always available) and
+    filters its printed JSON pod list by name. Tests never hit either branch of this
+    function: `_prior_attempt_never_created` resolves this name from module globals at
+    call time, so a test monkeypatches `_default_pod_name_scan` on the loaded module
+    instead of exercising a real RunPod call."""
+    pod_module = _pod_runner_module()
+    build_session = getattr(pod_module, "build_authenticated_session", None)
+    api_cls = getattr(pod_module, "RunPodAPI", None)
+    lease_cls = getattr(pod_module, "PodLease", None)
+    build_logger_fn = getattr(pod_module, "build_logger", None)
+    if build_session and api_cls and lease_cls and build_logger_fn:
+        session, redactor = build_session()
+        try:
+            set_redactor = getattr(pod_module, "set_active_redactor", None)
+            if set_redactor:
+                set_redactor(redactor)
+            api = api_cls(session)
+            logger = build_logger_fn(redactor)
+            lease = lease_cls(api, {"name": pod_name}, logger)
+            return lease._named_matches()
+        finally:
+            session.close()
+    # Fallback: the harness's own `status` subcommand prints "arc total: ..." then its
+    # live pod list as JSON -- ask it and filter by name ourselves rather than
+    # requiring the live-session helpers above to be importable from this process.
+    result = subprocess.run(
+        [sys.executable, str(POD_RUNNER), "status"], cwd=ROOT,
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise FigmentTrainError(
+            f"runpod_run.py status exited {result.returncode} while checking for pod "
+            f"{pod_name!r}: {result.stderr.strip()}"
+        )
+    try:
+        pods = json.loads(result.stdout[result.stdout.index("["):])
+    except (ValueError, json.JSONDecodeError) as exc:
+        raise FigmentTrainError(
+            f"could not parse runpod_run.py status output while checking for pod "
+            f"{pod_name!r}: {exc}"
+        ) from exc
+    return [pod for pod in pods if isinstance(pod, dict) and pod.get("name") == pod_name]
+
+
+def _prior_attempt_never_created(run_out: Path) -> str | None:
+    """`None` exactly when a prior planned attempt at `run_out` provably never created
+    a pod at all -- safe to reuse (a caption-manifest regenerate, or a
+    `--retry-failed` relaunch) even though its harness receipt fails the ordinary
+    `termination_verified is True` bar those paths otherwise require. Else the
+    human-readable refusal reason.
+
+    LIVE FAILURE 2026-09-16 (creator-001/live-20260916b qwen3vl caption job): RunPod's
+    `POST /pods` returned HTTP 500 "no instances currently available" and the harness
+    recorded fail-closed -- `pod_id: null`, `placement_attempts: []`, `jobs: []`,
+    `artifacts: []`, an `error` naming `CreateCallError`, and a `recovery-*.json`
+    journal stuck at `state: "uncertain"` (`absence_verified: false`) -- exactly what a
+    failed create call leaves behind, never `state: "terminated"`. Capacity 500s at
+    create time are routine on RunPod, so this needs to be an honest, ongoing case,
+    not a one-off hand fix.
+
+    A journal `state` of `"uncertain"` is accepted HERE ONLY -- this function never
+    relaxes the ordinary verified-teardown journal rule (`state: "terminated"` +
+    `absence_verified: true`) that `_out_dir_retry_eligibility_reason` still enforces
+    on its other path. In place of that journal verification, this performs a fresh
+    LIVE scan (`_default_pod_name_scan`, monkeypatched by tests) for every pod name a
+    recovery journal in `run_out` ever recorded, and refuses unless every scan comes
+    back empty.
+    """
+    run_out = Path(run_out)
+    run_json_path = run_out / "run.json"
+    if not run_json_path.is_file():
+        return f"no run.json found at {run_json_path}"
+    try:
+        data = _read_json(run_json_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+        return f"prior run.json could not be read: {exc}"
+    if not isinstance(data, dict):
+        return "prior run.json is not an object"
+    if data.get("pod_id"):
+        return "prior run.json records a pod_id; this is not a never-created failure"
+    if data.get("placement_attempts"):
+        return "prior run.json records placement attempts; this is not a never-created failure"
+    if data.get("jobs"):
+        return "prior run.json records jobs; this is not a never-created failure"
+    if data.get("artifacts"):
+        return "prior run.json records artifacts; this is not a never-created failure"
+    error = data.get("error")
+    if not isinstance(error, str) or "CreateCallError" not in error:
+        return (
+            "prior run.json error does not name a CreateCallError; this is not a "
+            "never-created failure"
+        )
+    if _has_stray_retry_output(run_out):
+        return "prior attempt's out dir already contains unexpected output files"
+    journals = sorted(run_out.glob("recovery-*.json"))
+    if not journals:
+        return (
+            "no recovery journal found in the out dir to identify a pod name for a "
+            "live absence check"
+        )
+    pod_names: set[str] = set()
+    for journal_path in journals:
+        try:
+            journal = _read_json(journal_path)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+            return f"prior recovery journal {journal_path.name} could not be read: {exc}"
+        if not isinstance(journal, dict):
+            return f"prior recovery journal {journal_path.name} is not an object"
+        name = journal.get("pod_name")
+        if not isinstance(name, str) or not name:
+            return f"prior recovery journal {journal_path.name} has no pod_name"
+        pod_names.add(name)
+    for pod_name in sorted(pod_names):
+        try:
+            matches = _default_pod_name_scan(pod_name)
+        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+            return f"live pod-name scan for {pod_name!r} could not be completed: {exc}"
+        if matches:
+            return (
+                f"live scan finds a pod named {pod_name!r}; the prior attempt may have "
+                "created one after all"
+            )
+    return None
+
+
 def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 1000) -> Path:
     """LOW-3: the `.failed-N` rename target for a retried run's prior out dir -- the
     first suffix from `start` that is not already taken, rather than a bare
@@ -4116,6 +4278,77 @@ def _first_free_retry_rename_path(out_dir: Path, start: int, *, limit: int = 100
     )
 
 
+def _out_dir_retry_eligibility_reason(out_dir: Path) -> str | None:
+    """Shared eligibility gate for reusing a failed attempt's own `out_dir`: `None`
+    when its `run.json` proves EITHER (a) verified pod teardown with zero job/artifact
+    output, every `recovery-*.json` journal verified terminated, and a recognized
+    transport/placement error, OR (b) the pod was never created at all
+    (`_prior_attempt_never_created`, P5/LIVE 2026-09-16) -- else the human-readable
+    refusal reason. `_retry_ineligibility_reason` (`--retry-failed`) and
+    `plan_qwen3vl_caption` (which has no plan/`attempts` bookkeeping of its own to fall
+    back through) both consult this one function rather than keeping two copies of the
+    same rule."""
+    run_json_path = out_dir / "run.json"
+    if not run_json_path.is_file():
+        return f"no run.json found at {run_json_path} to verify the failure was transport-class"
+    try:
+        data = _read_json(run_json_path)
+    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+        return f"prior run.json could not be read: {exc}"
+    if not isinstance(data, dict):
+        return "prior run.json is not an object"
+    # P5: a never-created create-call failure never reaches verified pod termination --
+    # there was never a pod to terminate. `_prior_attempt_never_created` is the one
+    # place that proves this (including a live re-scan); admit it here and skip
+    # straight to the shared zero-output/error checks below, rather than duplicating
+    # its checks or relaxing the ordinary verified-teardown branch for everyone.
+    never_created = (
+        data.get("termination_verified") is not True
+        and _prior_attempt_never_created(out_dir) is None
+    )
+    if not never_created:
+        if data.get("termination_verified") is not True:
+            return "prior run.json does not show verified pod termination"
+        if any(
+            placement.get("termination_verified") is not True
+            for placement in data.get("placement_attempts") or []
+        ):
+            return "prior run.json has a placement without verified termination"
+    if any((job.get("files") or []) for job in data.get("jobs") or []):
+        return "prior run.json recorded job outputs; this is not a clean zero-output failure"
+    if any((artifact.get("bytes") or 0) > 0 for artifact in data.get("artifacts") or []):
+        return "prior run.json recorded artifact outputs; this is not a clean zero-output failure"
+    if _has_stray_retry_output(out_dir):
+        return "prior attempt's out dir already contains unexpected output files"
+    if not never_created:
+        # The never-created path's own journal(s) are exactly the `state: "uncertain"`
+        # evidence a failed create call leaves behind (see `_prior_attempt_never_created`)
+        # -- NOT relaxed here, for this (the ordinary verified-teardown) path.
+        for journal_path in sorted(out_dir.glob("recovery-*.json")):
+            try:
+                journal = _read_json(journal_path)
+            except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
+                return f"prior recovery journal {journal_path.name} could not be read: {exc}"
+            if (
+                not isinstance(journal, dict)
+                or journal.get("state") != "terminated"
+                or journal.get("absence_verified") is not True
+            ):
+                return (
+                    f"prior recovery journal {journal_path.name} does not show a verified "
+                    "terminated pod"
+                )
+    error = data.get("error")
+    if not isinstance(error, str) or not error:
+        return "prior run.json has no error recorded; refusing to guess the failure class"
+    allowed = RETRY_ELIGIBLE_ERROR_SUBSTRINGS
+    if never_created:
+        allowed = allowed + (NEVER_CREATED_RETRY_ELIGIBLE_ERROR_SUBSTRING,)
+    if not any(marker in error for marker in allowed):
+        return f"prior error is not a recognized transport/placement failure: {error!r}"
+    return None
+
+
 def _retry_ineligibility_reason(
     root: Path, run: dict[str, Any], *, attempts: list[dict[str, Any]] | None = None,
 ) -> str | None:
@@ -4123,6 +4356,8 @@ def _retry_ineligibility_reason(
     the human-readable reason it refuses. Reads only the prior attempt's own harness
     receipt (`<out>/run.json`) -- `state["runs"][key]`'s "failed"/"returncode" bookkeeping
     in `stage.json` never carries enough to tell a transport blip from a job failure.
+    The actual eligibility rule lives in `_out_dir_retry_eligibility_reason`, shared with
+    `plan_qwen3vl_caption`; this wrapper only resolves which `out_dir` to check.
 
     `attempts` (MEDIUM-1/MEDIUM-2): when the prior attempt's out dir has ALREADY been
     renamed to `.failed-N` -- because this is re-checking a `status: "retrying"` record
@@ -4137,48 +4372,7 @@ def _retry_ineligibility_reason(
             candidate_dir = Path(renamed)
             if (candidate_dir / "run.json").is_file():
                 out_dir = candidate_dir
-                run_json_path = out_dir / "run.json"
-    if not run_json_path.is_file():
-        return f"no run.json found at {run_json_path} to verify the failure was transport-class"
-    try:
-        data = _read_json(run_json_path)
-    except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
-        return f"prior run.json could not be read: {exc}"
-    if not isinstance(data, dict):
-        return "prior run.json is not an object"
-    if data.get("termination_verified") is not True:
-        return "prior run.json does not show verified pod termination"
-    if any(
-        placement.get("termination_verified") is not True
-        for placement in data.get("placement_attempts") or []
-    ):
-        return "prior run.json has a placement without verified termination"
-    if any((job.get("files") or []) for job in data.get("jobs") or []):
-        return "prior run.json recorded job outputs; this is not a clean zero-output failure"
-    if any((artifact.get("bytes") or 0) > 0 for artifact in data.get("artifacts") or []):
-        return "prior run.json recorded artifact outputs; this is not a clean zero-output failure"
-    if _has_stray_retry_output(out_dir):
-        return "prior attempt's out dir already contains unexpected output files"
-    for journal_path in sorted(out_dir.glob("recovery-*.json")):
-        try:
-            journal = _read_json(journal_path)
-        except Exception as exc:  # noqa: BLE001 - surfaced as a refusal reason, not raised
-            return f"prior recovery journal {journal_path.name} could not be read: {exc}"
-        if (
-            not isinstance(journal, dict)
-            or journal.get("state") != "terminated"
-            or journal.get("absence_verified") is not True
-        ):
-            return (
-                f"prior recovery journal {journal_path.name} does not show a verified "
-                "terminated pod"
-            )
-    error = data.get("error")
-    if not isinstance(error, str) or not error:
-        return "prior run.json has no error recorded; refusing to guess the failure class"
-    if not any(marker in error for marker in RETRY_ELIGIBLE_ERROR_SUBSTRINGS):
-        return f"prior error is not a recognized transport/placement failure: {error!r}"
-    return None
+    return _out_dir_retry_eligibility_reason(out_dir)
 
 
 def run_planned_stage(

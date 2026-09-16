@@ -3190,6 +3190,147 @@ def test_plan_qwen3vl_caption_refuses_to_overwrite_a_manifest_with_a_recorded_ru
         )
 
 
+# ---------------------------------------------------------------------------------
+# P5 (LIVE 2026-09-16, creator-001/live-20260916b): a RunPod capacity 500 at
+# `POST /pods` create time never places a pod at all. The harness records this
+# fail-closed -- `pod_id: null`, `placement_attempts: []`, `jobs: []`, `artifacts: []`,
+# `error` naming `CreateCallError`, and a `recovery-*.json` journal stuck at
+# `state: "uncertain"` -- which used to permanently block every future
+# `apply-rulings --stage dataset` retry (MEDIUM-1's bare `run.json` existence check).
+# ---------------------------------------------------------------------------------
+
+_NEVER_CREATED_CAPTION_ERROR = (
+    'PodStillRunning: create call failed (CreateCallError: RunPod POST /pods returned '
+    'HTTP 500: {"error":"create pod: There are no instances currently available",'
+    '"status":500}\n) and no pod with this name is visible \u2014 most likely never '
+    'created; verify with `status`'
+)
+_NEVER_CREATED_CAPTION_POD_NAME = "figment-bakeoff-20260916-115914-a88add"
+
+
+def _write_never_created_caption_run(run_out: Path, *, extra_receipt_fields=None) -> None:
+    """The exact receipt/journal shape
+    `creator-001/live-20260916b/train/runs/out/creator001krea2-tensor-caption/`
+    recorded, reproduced as a fixture (never reading that live run dir itself, which
+    this branch does not touch)."""
+    run_out.mkdir(parents=True, exist_ok=True)
+    receipt = {
+        "schema": "figment/runpod-run@1",
+        "dry_run": False,
+        "pod_id": None,
+        "gpu": {"type": "NVIDIA L40S", "count": 1, "cloud": "SECURE"},
+        "jobs": [],
+        "artifacts": [],
+        "placement_attempts": [],
+        "termination_verified": False,
+        "error": _NEVER_CREATED_CAPTION_ERROR,
+        "create_error": _NEVER_CREATED_CAPTION_ERROR,
+    }
+    if extra_receipt_fields:
+        receipt.update(extra_receipt_fields)
+    (run_out / "run.json").write_text(json.dumps(receipt), encoding="utf-8")
+    journal = {
+        "schema": "figment/pod-recovery@1",
+        "state": "uncertain",
+        "attempt_id": _NEVER_CREATED_CAPTION_POD_NAME,
+        "pod_name": _NEVER_CREATED_CAPTION_POD_NAME,
+        "manifest_path": "C:/nowhere/manifest.yaml",
+        "manifest_sha256": "0" * 64,
+        "max_minutes": 90,
+        "max_usd": 1.95,
+        "created_utc": "2026-09-16T11:59:14+00:00",
+        "receipt_path": str(run_out / "run.json"),
+        "pod_id": None,
+        "absence_verified": False,
+        "recovery_status": "run-termination-unverified",
+        "intent_sha256": "irrelevant-for-this-fixture",
+    }
+    (run_out / f"recovery-{_NEVER_CREATED_CAPTION_POD_NAME}.json").write_text(
+        json.dumps(journal), encoding="utf-8",
+    )
+
+
+def test_plan_qwen3vl_caption_regenerates_a_never_created_capacity_failure(
+    command, tmp_path, monkeypatch,
+):
+    """LIVE 2026-09-16: a RunPod capacity 500 on create is routine, not a one-off hand
+    fix -- `plan_qwen3vl_caption` must regenerate the manifest (renaming the dead out
+    dir to `.failed-1`, the same helper `--retry-failed` uses) once a live scan proves
+    no pod was ever actually created."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    manifest_path = plan_root / planned["manifest"]
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out)
+
+    second = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+
+    assert (plan_root / second["manifest"]) == manifest_path
+    assert manifest_path.is_file()
+    renamed = run_out.with_name(f"{run_out.name}.failed-1")
+    assert renamed.is_dir()
+    assert (renamed / "run.json").is_file()
+    assert not run_out.exists()
+
+
+def test_plan_qwen3vl_caption_refuses_a_never_created_fixture_with_a_pod_id(
+    command, tmp_path, monkeypatch,
+):
+    """A recorded `pod_id` proves a pod WAS created -- `_prior_attempt_never_created`
+    must refuse this even though every other field matches the never-created shape, so
+    the ordinary "refusing to overwrite" rule still applies."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out, extra_receipt_fields={"pod_id": "pod-real"})
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
+def test_plan_qwen3vl_caption_refuses_when_live_scan_finds_a_pod(
+    command, tmp_path, monkeypatch,
+):
+    """The live absence check is load-bearing, not decorative: even though the run.json
+    and journal both look exactly like a never-created capacity failure, a scan that
+    finds a pod with this name means the create may have actually succeeded, so the
+    manifest is not safe to regenerate."""
+    monkeypatch.setattr(
+        command, "_default_pod_name_scan",
+        lambda pod_name: [{"id": "surprise-pod", "name": pod_name}],
+    )
+    plan_root = tmp_path / "plan"
+    images = _plan_qwen3vl_caption_images(tmp_path)
+    planned = command.plan_qwen3vl_caption(
+        "creator-002", "creator002krea2", images, plan_root,
+        skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+    )
+    run_out = plan_root / planned["out"]
+    _write_never_created_caption_run(run_out)
+
+    with pytest.raises(command.FigmentTrainError, match="refusing to overwrite"):
+        command.plan_qwen3vl_caption(
+            "creator-002", "creator002krea2", images, plan_root,
+            skip_pin_verify=True, ledger_dir=tmp_path / "ledger",
+        )
+
+
 def test_plan_qwen3vl_caption_images_ready_sentinel_is_non_empty_and_parses(
     command, tmp_path,
 ):
@@ -3476,3 +3617,77 @@ def test_has_stray_retry_output_ignores_only_known_bookkeeping_files(command, tm
     nested.parent.mkdir(parents=True)
     nested.write_bytes(b"x")
     assert command._has_stray_retry_output(out_dir) is True
+
+
+# ---------------------------------------------------------------------------------
+# `_prior_attempt_never_created` (P5, LIVE 2026-09-16 RunPod capacity 500 at create):
+# unit coverage independent of `plan_qwen3vl_caption`'s own regenerate/refuse tests
+# above and `test_pipeline_command.py -k retry`'s `--retry-failed` integration tests.
+# ---------------------------------------------------------------------------------
+
+
+def test_prior_attempt_never_created_accepts_the_live_capacity_failure_shape(
+    command, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out)
+
+    assert command._prior_attempt_never_created(run_out) is None
+
+
+def test_prior_attempt_never_created_refuses_a_recorded_pod_id(command, tmp_path, monkeypatch):
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out, extra_receipt_fields={"pod_id": "pod-real"})
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "pod_id" in reason
+
+
+def test_prior_attempt_never_created_refuses_when_the_live_scan_finds_a_pod(
+    command, tmp_path, monkeypatch,
+):
+    monkeypatch.setattr(
+        command, "_default_pod_name_scan", lambda pod_name: [{"id": "p1", "name": pod_name}],
+    )
+    run_out = tmp_path / "run-out"
+    _write_never_created_caption_run(run_out)
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "live scan finds a pod" in reason
+
+
+def test_prior_attempt_never_created_refuses_without_a_recovery_journal(
+    command, tmp_path, monkeypatch,
+):
+    """`error` naming `CreateCallError` claims a create call was actually attempted --
+    `pod/runpod_run.py` always writes its recovery journal immediately before that
+    POST, so a missing journal here means the pod name (needed for the live scan)
+    cannot be identified; refuse rather than skip the live check."""
+    monkeypatch.setattr(command, "_default_pod_name_scan", lambda pod_name: [])
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    (run_out / "run.json").write_text(json.dumps({
+        "pod_id": None, "placement_attempts": [], "jobs": [], "artifacts": [],
+        "error": "PodStillRunning: create call failed (CreateCallError: ...)",
+    }), encoding="utf-8")
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "recovery journal" in reason
+
+
+def test_prior_attempt_never_created_refuses_a_non_create_call_error(command, tmp_path):
+    run_out = tmp_path / "run-out"
+    run_out.mkdir(parents=True)
+    (run_out / "run.json").write_text(json.dumps({
+        "pod_id": None, "placement_attempts": [], "jobs": [], "artifacts": [],
+        "error": "NameResolutionError: could not resolve host",
+    }), encoding="utf-8")
+
+    reason = command._prior_attempt_never_created(run_out)
+    assert reason is not None
+    assert "CreateCallError" in reason
