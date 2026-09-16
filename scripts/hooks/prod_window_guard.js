@@ -69,6 +69,8 @@ function norm(s) {
 function maskSecrets(s) {
   let out = String(s == null ? '' : s);
   out = out.replace(/(-signingkey\s+)("[^"]*"|'[^']*'|\S+)/gi, '$1<key>');
+  // prod-sign-approval.ps1's signing key arrives as -Key, not -SigningKey.
+  out = out.replace(/(-key\s+)("[^"]*"|'[^']*'|\S+)/gi, '$1<key>');
   out = out.replace(/(ssh-keygen\b[^\n]*?\s-f\s+)("[^"]*"|'[^']*'|\S+)/gi, '$1<key>');
   return out;
 }
@@ -162,11 +164,25 @@ const CRON_ARG = '("[0-9*/,\\s-]{9,40}"|\'[0-9*/,\\s-]{9,40}\')';
 const O3_CREATE = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
   + '\\s+-createworkflowschedule\\s+self-lint-report\\s+-cron\\s+' + CRON_ARG + '$');
 
+// A quoted "<METHOD> /api/..." route template, and an optionally quoted path under the tooling
+// tree or kb-backups with a `..` traversal veto. Shared by the two signed-channel helpers below.
+const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
+const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B
+  + '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+["\']?';
+
 // C13 — prod-sign-approval.ps1, WINDOWED class (it drives the human-approval signing key).
+// The shape is the one the SCRIPT takes: -Key and -Out are [Parameter(Mandatory = $true)] and the
+// TTL parameter is -ExpiresMinutes. The earlier shape here named -TtlMinutes/-SigningKey and made
+// -Key/-Out optional, so the only invocations it allowed were ones PowerShell would refuse before
+// the script ran, and the only invocation that works was refused by this hook.
 const C13 = new RegExp(PRE + PS + '-file\\s+' + P('prod-sign-approval.ps1')
-  + '\\s+-route\\s+("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')'
+  + '\\s+-route\\s+' + ROUTE_ARG
   + '\\s+-entity\\s+([a-z0-9._:-]{1,120})'
-  + '(?:\\s+-ttlminutes\\s+([0-9]{1,2}))?(?:\\s+-signingkey\\s+' + PATHARG + ')?$');
+  + '(?:\\s+-actor\\s+daniel)?'
+  + '(?:\\s+-expiresminutes\\s+([0-9]{1,2}))?'
+  + '\\s+-key\\s+' + PATHARG
+  + '\\s+-out\\s+' + SAFE_T_OR_BACKUPS
+  + '(?:\\s+-dryrun)?$');
 
 // C15 — prod-signed-call.ps1, WINDOWED class. It is the one script that actually PLACES a signed,
 // consequential call at the prod-defaulted URL, so its shape is anchored like the deploy's:
@@ -175,10 +191,6 @@ const C13 = new RegExp(PRE + PS + '-file\\s+' + P('prod-sign-approval.ps1')
 // -Body is deliberately refused — its JSON carries quotes and braces that the `powershell -File`
 // argument parser mangles (documented in the script's own header), so the reviewed prod shape is
 // -BodyFile only. Argument ORDER is pinned, same discipline as every other C-shape.
-const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
-// An optionally quoted path under the tooling tree or kb-backups, with a `..` traversal veto.
-const SAFE_T_OR_BACKUPS = '["\']?(?:' + T + '|' + BACKUPS + ')' + B
-  + '(?!.*\\.\\.)[a-z0-9_.\\\\/-]+["\']?';
 const C15 = new RegExp(PRE + PS + '-file\\s+' + P('prod-signed-call.ps1')
   + '\\s+-route\\s+' + ROUTE_ARG
   + '\\s+-approval\\s+' + SAFE_T_OR_BACKUPS

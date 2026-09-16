@@ -218,9 +218,16 @@ const CASES = [
   ['O1 -Workflow traversal blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-run-workflow.ps1" -Workflow ../evil`, 2],
 
   // ---- C13/C14 — new signed-class helpers, WINDOWED (T7) --------------------------------
-  ['C13 prod-sign-approval blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7`, 2],
-  ['C13 prod-sign-approval allowed when window open', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7`, 0],
-  ['C13 prod-sign-approval with -TtlMinutes and -SigningKey, window open', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/control/budget/override" -Entity 2026-09-16 -TtlMinutes 10 -SigningKey C:\\keys\\kb-ops-approver`, 0],
+  // C13's shape is the shape the SCRIPT actually takes: -Key and -Out are Mandatory on
+  // prod-sign-approval.ps1, and its TTL parameter is -ExpiresMinutes (there is no -TtlMinutes
+  // and no -SigningKey). A shape that cannot run is not a reviewed shape.
+  ['C13 prod-sign-approval blocked when window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out ${T}\\approval.json`, 2],
+  ['C13 prod-sign-approval allowed when window open', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out ${T}\\approval.json`, 0],
+  ['C13 prod-sign-approval with -Actor and -ExpiresMinutes, window open', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/control/budget/override" -Entity 2026-09-16 -Actor daniel -ExpiresMinutes 10 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out C:\\Users\\danie\\kb-backups\\approval-current\\approval.json`, 0],
+  ['C13 prod-sign-approval -DryRun, window open', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "DELETE /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out ${T}\\approval.json -DryRun`, 0],
+  ['C13 old -TtlMinutes/-SigningKey spelling refused (the script has no such params)', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/control/budget/override" -Entity 2026-09-16 -TtlMinutes 10 -SigningKey C:\\keys\\kb-ops-approver`, 2],
+  ['C13 without the mandatory -Key/-Out refused', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7`, 2],
+  ['C13 -Out outside T/kb-backups refused', 'open', 'Bash', `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key C:\\Users\\danie\\.ssh\\kb-ops-approver -Out C:\\tmp\\approval.json`, 2],
   ['C14 human-approval signature blocked when window closed', 'closed', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 2],
   ['C14 human-approval signature allowed when window open', 'open', 'Bash', 'ssh-keygen -Y sign -f C:\\Users\\danie\\.ssh\\kb-ops-approver -n kb-human-approval C:\\Users\\danie\\kb-backups\\approval-current\\payload.json', 0],
 
@@ -344,6 +351,20 @@ test('a sign command never leaks the private key path into the log', () => {
   const log = fs.readFileSync(AUDIT, 'utf8');
   assert.ok(!log.includes('kb-ops-approver-private'), 'the signing key path must be masked');
   assert.match(log, /-f <key>/);
+});
+
+test('T9: prod-sign-approval.ps1 -Key is masked in the audit log', () => {
+  fs.rmSync(AUDIT, { force: true });
+  setWindow('open');
+  const res = runHook('Bash', {
+    command: `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" `
+      + `-Entity sched-7 -Key C:\\keys\\kb-ops-approver-private -Out ${T}\\approval.json`,
+  });
+  assert.strictEqual(res.code, 0);
+  const log = fs.readFileSync(AUDIT, 'utf8');
+  assert.match(log, / ALLOW Bash C13 /);
+  assert.ok(!log.includes('kb-ops-approver-private'), 'the signing key path must be masked');
+  assert.match(log, /-Key <key>/);
 });
 
 test('an Agent block while the window is open is audited', () => {
