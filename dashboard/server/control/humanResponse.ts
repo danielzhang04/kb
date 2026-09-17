@@ -18,18 +18,6 @@ export interface HumanResponseActor {
 /** `reason` bound length [design:4.3/global constraints]. */
 const MAX_REASON_LENGTH = 2000;
 
-/**
- * A `worker:<id>` or `boss` claim is a CLI actor — one operating the daemon unattended, on Daniel's
- * behalf but without him watching this specific decision. `reason` is required from them so a resolved
- * gate always carries a human-legible justification when no human was directly at the keyboard; `daniel`
- * and `unknown` may still supply one, but an absent/blank reason from either is not refused. Never an
- * authority check — `actorLabel` is self-asserted (see `authority/actor.ts`) and this only decides which
- * validation error a malformed body gets, not whether the decision is allowed.
- */
-function reasonRequiredFor(actorLabel: Actor): boolean {
-  return actorLabel === 'boss' || actorLabel.startsWith('worker:');
-}
-
 export interface HumanResponseInput {
   actor: HumanResponseActor;
   requestRef: string;
@@ -38,8 +26,8 @@ export interface HumanResponseInput {
   idempotencyKey: string;
   response?: string | null;
   origin: string;
-  /** Free text explaining the decision. Required (non-empty after trim) from a `boss`/`worker:<id>`
-   *  actor; optional from `daniel`/`unknown`. See {@link reasonRequiredFor}. */
+  /** Free text explaining the decision. Required (non-empty after trim, <=2000 chars) from EVERY actor,
+   *  including `daniel` and a request that sends no `X-KB-Actor` header at all. */
   reason: string;
   /** The `X-KB-Actor` claim for this request — self-asserted, never an authority input. */
   actorLabel: Actor;
@@ -126,15 +114,21 @@ export function createHumanResponseService(options: {
       if (input.actor.kind === 'host') return { ok: false, status: 403, error: 'host-human-response-refused' };
       // T4 [design:4.3/4.5]: `reason` is validated here (not only at the route body wall) so every caller
       // of this service — including a route we forget to wire, and every direct unit test — gets the same
-      // rule. A `boss`/`worker:<id>` actor is operating the daemon unattended, so a blank reason is
-      // refused; `daniel`/`unknown` may omit one, in which case it is coerced (never a 400) to '' capped
-      // at the bound.
+      // rule.
+      //
+      // REQUIRED FROM EVERY ACTOR, unconditionally (security review 2026-09-16, HIGH-1). The predecessor
+      // asked only `boss`/`worker:<id>` for one, which made the rule opt-in by the party it constrains:
+      // omit the header, misspell it, or send it twice and `parseActor` returns `unknown`, the reason
+      // wall disappears, and any gate resolves with no justification recorded at all. A self-asserted
+      // header must never change what a request is allowed to do (spec 4.3/5) — not what it is allowed
+      // to omit either. If a browser exemption is ever wanted it must key on something unforgeable
+      // (session subject, auth mode), never on a request header.
       const reasonInput = input.reason;
-      if (reasonRequiredFor(input.actorLabel) && (typeof reasonInput !== 'string'
-        || reasonInput.length > MAX_REASON_LENGTH || reasonInput.trim().length === 0)) {
+      if (typeof reasonInput !== 'string'
+        || reasonInput.length > MAX_REASON_LENGTH || reasonInput.trim().length === 0) {
         return { ok: false, status: 400, error: 'reason-required' };
       }
-      const reasonTrimmed = typeof reasonInput === 'string' ? reasonInput.trim().slice(0, MAX_REASON_LENGTH) : '';
+      const reasonTrimmed = reasonInput.trim().slice(0, MAX_REASON_LENGTH);
       const context = await options.store.getHumanRequest(input.actor.subject, input.requestRef);
       if (!context) return { ok: false, status: 404, error: 'human-request-not-found' };
       const { request, runOwnerSubject } = context;

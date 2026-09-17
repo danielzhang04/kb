@@ -819,7 +819,7 @@ describe('control proposal routes', () => {
   it('returns not found for the removed review completion gate endpoint', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/review-completion-gates/request-removed/resolve', headers: headers(token),
-      payload: { expectedRequestRevision: 1, decision: 'approved', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
+      payload: { expectedRequestRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
     });
     expect(response.statusCode, response.body).toBe(404);
   });
@@ -830,7 +830,7 @@ describe('control proposal routes', () => {
     const { gate: request } = seedGenericCompletionGate();
     const response = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: 'generic-bypass' },
+      payload: { expectedRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'generic-bypass' },
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved' });
@@ -876,7 +876,8 @@ describe('control proposal routes', () => {
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
       expectedReceiptVersion: receipt?.version ?? null, expectedGenerationRefs: [...loop.activeGenerationRefs],
-      decision: 'approved', idempotencyKey: 'approve-exact-no-progress', response: 'Approve this displayed set.',
+      decision: 'approved', reason: 'the displayed set is the one I approved',
+      idempotencyKey: 'approve-exact-no-progress', response: 'Approve this displayed set.',
     };
     for (const stale of [
       { ...exact, expectedGateKind: 'completion' },
@@ -905,7 +906,12 @@ describe('control proposal routes', () => {
     expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, {
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
       decision: 'approved', operationKey: exact.idempotencyKey, response: exact.response,
-      resolvedBy: { actor: 'unknown', tailnetIdentity: null, at: expect.any(String), reason: '' },
+      // HIGH-1: a reason is required from every actor, so even a header-less (`unknown`) resolve now
+      // carries one on the record instead of the empty string the conditional rule left behind.
+      resolvedBy: {
+        actor: 'unknown', tailnetIdentity: null, at: expect.any(String),
+        reason: 'the displayed set is the one I approved',
+      },
     }, 'all-subjects');
   });
 
@@ -916,7 +922,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: receipt?.version ?? null,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', idempotencyKey: 'decline-exhausted',
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', reason: 'reviewed the gate and decided', idempotencyKey: 'decline-exhausted',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -931,7 +937,7 @@ describe('control proposal routes', () => {
     const base = {
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
-      expectedGenerationRefs: [...loop.activeGenerationRefs], idempotencyKey: 'invalid-park-decision',
+      expectedGenerationRefs: [...loop.activeGenerationRefs], reason: 'reviewed the gate and decided', idempotencyKey: 'invalid-park-decision',
     };
     const changes = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
@@ -953,7 +959,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'parked',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-explicit-park',
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-explicit-park',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -975,7 +981,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', idempotencyKey: 'completion-still-intervenes',
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', reason: 'reviewed the gate and decided', idempotencyKey: 'completion-still-intervenes',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -995,7 +1001,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-generic-completion-route',
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-generic-completion-route',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1016,7 +1022,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', idempotencyKey: 'reject-generic-completion-route',
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', reason: 'reviewed the gate and decided', idempotencyKey: 'reject-generic-completion-route',
       },
     });
     expect(rejected.statusCode, rejected.body).toBe(200);
@@ -1024,7 +1030,7 @@ describe('control proposal routes', () => {
     expect(intervention).toMatchObject({ kind: 'intervention', state: 'open' });
     const answered = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${intervention.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: intervention.revision, decision: 'approved', idempotencyKey: 'answer-generic-completion-intervention' },
+      payload: { expectedRevision: intervention.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'answer-generic-completion-intervention' },
     });
     expect(answered.statusCode, answered.body).toBe(200);
     expect(answered.json()).toMatchObject({ ok: true, value: { requestRef: intervention.requestRef, state: 'resolved', response: { decision: 'approved' } } });
@@ -1101,7 +1107,7 @@ describe('control proposal routes', () => {
     ) => ({
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
-      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, idempotencyKey: key,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, reason: 'reviewed the gate and decided', idempotencyKey: key,
     });
     const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
@@ -1188,7 +1194,7 @@ describe('control proposal routes', () => {
     const { request, resolve } = mockIterationGate('no-progress');
     const response = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'generic-iteration-bypass' },
+      payload: { expectedRevision: request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'generic-iteration-bypass' },
     });
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved', gateKind: 'iteration-park' });
@@ -1343,6 +1349,7 @@ describe('control proposal routes', () => {
         payload: {
           expectedRevision: boundary.revision,
           decision: 'responded',
+          reason: 'answering the boundary so the run can resume',
           idempotencyKey: `respond:${boundary.requestRef}:${boundary.revision}`,
           response: 'Execution unlock will be completed separately.',
         },
@@ -1555,7 +1562,7 @@ describe('control proposal routes', () => {
       const request = detail.value.humanRequests[0];
       await launchApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-refusal' },
+        payload: { expectedRevision: request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'accept-refusal' },
       });
       const replayed = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
       expect(replayed.statusCode, replayed.body).toBe(200);
@@ -2101,6 +2108,9 @@ describe('control proposal routes', () => {
       decision,
       idempotencyKey: `human:${request.requestRef}:${request.revision}:${decision}`,
       response: null,
+      // HIGH-1: `reason` is now required from EVERY actor, including a request that sends no
+      // `X-KB-Actor` header at all, so the ordinary payload every test here posts carries one.
+      reason: 'reviewed the gate and decided',
     };
   }
 
@@ -3102,7 +3112,7 @@ describe('control proposal routes', () => {
       });
       const response = await auditFailApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.value.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: 'response-audit-must-land' },
+        payload: { expectedRevision: 1, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: 'response-audit-must-land' },
       });
       expect(response.statusCode, response.body).toBe(500);
       expect(controlStore.getHumanRequest('operator', request.value.requestRef)).toMatchObject({
@@ -3999,7 +4009,7 @@ describe('operator cross-subject authority', () => {
       // The exact P0 symptom: the Inbox lists this gate (via the widened read) and the SPA submits here.
       const answered = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
+        payload: { expectedRevision: 1, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
       });
       expect(answered.statusCode, answered.body).toBe(200);
 
@@ -4032,21 +4042,29 @@ describe('operator cross-subject authority', () => {
     } finally { await app.close(); }
   });
 
-  it('T4 [design:4.3/4.5]: a boss/worker respond requires a reason and records resolvedBy in the run DTO', async () => {
+  it('T4 [design:4.3/4.5]: EVERY actor\'s respond requires a reason, and resolvedBy lands in the run DTO', async () => {
     const { app, store, token } = buildApp();
     try {
       const engineRun = seedRunFor(store, 'dashboard-engine', 'resolved-by', 'daily-news');
       const { requestRef } = parkEngineRunWithGate(store, engineRun);
 
-      // No reason from a CLI actor ⇒ refused, before any mutation.
-      const refused = await app.inject({
-        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
-        headers: { ...headers(token), 'x-kb-actor': 'boss' },
-        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`, response: 'ship it' },
-      });
-      expect(refused.statusCode, refused.body).toBe(400);
-      expect(refused.json()).toEqual({ error: 'reason-required' });
-      expect(store.getHumanRequest('dashboard-engine', requestRef)).toMatchObject({ ok: true, value: { state: 'open' } });
+      // HIGH-1 (security review 2026-09-16): the requirement used to be conditional on the SELF-ASSERTED
+      // `X-KB-Actor` header — `boss`/`worker:<id>` owed a reason, `daniel`/`unknown` did not. So a worker
+      // that simply omitted the header resolved any gate with no justification at all. Every one of these
+      // must now be refused, before any mutation.
+      for (const actorHeader of [
+        { 'x-kb-actor': 'boss' }, { 'x-kb-actor': 'worker:sonnet-01' },
+        { 'x-kb-actor': 'daniel' }, { 'x-kb-actor': 'DANIEL' }, {},
+      ]) {
+        const refused = await app.inject({
+          method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
+          headers: { ...headers(token), ...actorHeader },
+          payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`, response: 'ship it' },
+        });
+        expect(refused.statusCode, `${JSON.stringify(actorHeader)} -> ${refused.body}`).toBe(400);
+        expect(refused.json()).toEqual({ error: 'reason-required' });
+        expect(store.getHumanRequest('dashboard-engine', requestRef)).toMatchObject({ ok: true, value: { state: 'open' } });
+      }
 
       const answered = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
@@ -4076,7 +4094,7 @@ describe('operator cross-subject authority', () => {
       const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
       const response = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 2, decision: 'responded', idempotencyKey: `stale:${requestRef}`, response: 'ship it' },
+        payload: { expectedRevision: 2, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: `stale:${requestRef}`, response: 'ship it' },
       });
       expect(response.statusCode, response.body).toBe(409);
       expect(response.json()).toEqual({ error: 'request-revision-changed' });
@@ -4198,7 +4216,7 @@ describe('operator cross-subject authority', () => {
 
       for (const [url, payload] of [
         [`/api/control/human-requests/${requestRef}/respond`,
-          { expectedRevision: 1, decision: 'approved', idempotencyKey: 'k', response: null }],
+          { expectedRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'k', response: null }],
         [`/api/control/runs/${engineRun}/manager/messages`, { ...cas, idempotencyKey: 'k', message: 'hi' }],
         [`/api/control/runs/${engineRun}/manager/steer`, { ...cas, idempotencyKey: 'k', checkpoint: 'c', instruction: 'i' }],
         [`/api/control/runs/${engineRun}/manager/stop`, { ...cas, idempotencyKey: 'k' }],
@@ -4467,7 +4485,7 @@ describe('Dashboard v3 run and gate routes', () => {
       const response = await fixture.app.inject({
         method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond`,
         headers: headers(fixture.operatorToken), payload: {
-          expectedRevision: fixture.request.revision, decision: 'approved', idempotencyKey: 'approve-result', response: null,
+          expectedRevision: fixture.request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-result', response: null,
         },
       });
       expect(response.statusCode).toBe(403);

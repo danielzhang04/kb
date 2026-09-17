@@ -134,13 +134,6 @@ const RESPOND_DECISIONS = ['responded', 'approved', 'rejected', 'changes-request
 /** T4 [design:4.3/global constraints] — the `reason` body-field bound, mirrored in `humanResponse.ts`. */
 const MAX_REASON_LENGTH = 2000;
 
-/** A CLI actor (`boss`, `worker:<id>`) is operating the daemon unattended, so `reason` is required from
- *  it; `daniel`/`unknown` may omit one. See `humanResponse.ts#reasonRequiredFor` (same rule, kept in sync
- *  rather than shared, since the two modules must not import from each other's private surface). */
-function reasonRequiredFor(actorLabel: Actor): boolean {
-  return actorLabel === 'boss' || actorLabel.startsWith('worker:');
-}
-
 /** POST /api/control/human-requests/:requestRef/respond — the closed body wall then the gate service. */
 export async function respondHumanRequestRoute(
   port: RespondPort,
@@ -156,12 +149,16 @@ export async function respondHumanRequestRoute(
   if (!RESPOND_DECISIONS.includes(decision) || intOf(input.expectedRevision) < 1 || !str(input.idempotencyKey)) {
     return { status: 400, body: { error: 'invalid-human-response' } };
   }
+  // Required from EVERY actor, unconditionally (security review 2026-09-16, HIGH-1): the self-asserted
+  // `X-KB-Actor` header must not decide whether a justification is owed, or omitting it (or malforming
+  // it into `unknown`) removes the wall. `humanResponse.ts` enforces the identical rule for every other
+  // caller of the service; this wall exists so the route refuses before the port is even entered.
   const rawReason = input.reason;
-  if (reasonRequiredFor(actorLabel) && (typeof rawReason !== 'string'
-    || rawReason.length > MAX_REASON_LENGTH || rawReason.trim().length === 0)) {
+  if (typeof rawReason !== 'string'
+    || rawReason.length > MAX_REASON_LENGTH || rawReason.trim().length === 0) {
     return { status: 400, body: { error: 'reason-required' } };
   }
-  const reason = typeof rawReason === 'string' ? rawReason.trim().slice(0, MAX_REASON_LENGTH) : '';
+  const reason = rawReason.trim().slice(0, MAX_REASON_LENGTH);
   const result = await port.respond({
     actor: { kind: 'operator', subject },
     requestRef,

@@ -74,7 +74,9 @@ describe('runReadService reads', () => {
 });
 
 describe('runReadService respond gate', () => {
-  const goodBody = { decision: 'approved', expectedRevision: 2, idempotencyKey: 'k' };
+  // HIGH-1: `reason` is required from EVERY actor, `unknown` (no `X-KB-Actor` header) included, so the
+  // body that is supposed to be ACCEPTED has to carry one.
+  const goodBody = { decision: 'approved', expectedRevision: 2, idempotencyKey: 'k', reason: 'looks correct' };
   function respondPort(result: unknown): RespondPort {
     return { respond: vi.fn(async () => result) } as unknown as RespondPort;
   }
@@ -100,11 +102,18 @@ describe('runReadService respond gate', () => {
     expect(conflict).toEqual({ status: 409, body: { error: 'expected-revision-mismatch', gateKind: 'approval', resolveUrl: '/x' } });
   });
 
-  it('T4 [design:4.5]: refuses a boss/worker actor with no reason, before calling the port', async () => {
+  it('T4 [design:4.5]: refuses EVERY actor with no reason, before calling the port', async () => {
+    // HIGH-1 (security review 2026-09-16): this wall used to fire only for `boss`/`worker:<id>`, so a
+    // caller that omitted the self-asserted `X-KB-Actor` header (or sent it twice, or in the wrong case
+    // — all `unknown`) resolved any gate with no justification recorded. A self-asserted header must not
+    // change what a request is allowed to do, nor what it is allowed to omit.
     const port = respondPort({ ok: true, status: 200, value: {}, replayed: false });
-    for (const actorLabel of ['boss', 'worker:sonnet-01'] as const) {
-      const out = await respondHumanRequestRoute(port, 'operator', 'q1', goodBody, 'o', actorLabel);
-      expect(out).toEqual({ status: 400, body: { error: 'reason-required' } });
+    const { reason: _dropped, ...noReason } = goodBody;
+    for (const actorLabel of ['boss', 'worker:sonnet-01', 'daniel', UNKNOWN_ACTOR] as const) {
+      for (const body of [noReason, { ...noReason, reason: '   ' }, { ...noReason, reason: 42 }]) {
+        const out = await respondHumanRequestRoute(port, 'operator', 'q1', body, 'o', actorLabel);
+        expect(out).toEqual({ status: 400, body: { error: 'reason-required' } });
+      }
     }
     expect(port.respond).not.toHaveBeenCalled();
   });

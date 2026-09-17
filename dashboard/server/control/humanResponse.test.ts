@@ -95,6 +95,9 @@ const ordinaryInput = {
  *  every run governs no tags, so `respond()` never reaches the signed-approval check. */
 const NO_TAGS = () => new Set<string>();
 
+/** A reason made only of whitespace: non-empty as a string, empty after trim. */
+const WHITESPACE_ONLY = '\t \n ';
+
 describe('gate-kind-aware human response service', () => {
   it('returns direct generic 409 iteration-gate-reserved before audit or mutation', async () => {
     const h = harness([request({ gateKind: 'iteration-park' })], new Set(['ask-1']));
@@ -277,7 +280,19 @@ describe('workflow-tag escalation (T5)', () => {
     expect(h.audits).toEqual([]);
   });
 
-  it('ignores the actor label when deciding — daniel included', async () => {
+  it('ignores the actor label when deciding — daniel included, with NO reason in the body', async () => {
+    // HIGH-2: the predecessor passed `ordinaryInput`, which already carries `reason: 'looks correct'`,
+    // so the reason rule never fired inside the loop and the test could not have caught HIGH-1. With no
+    // reason at all, every actor must now get the SAME status — and it is the reason refusal, because
+    // that wall runs before the escalation check.
+    for (const actorLabel of ['daniel', 'boss', 'worker:x', 'unknown'] as const) {
+      const h = harness([request()]);
+      const result = await createHumanResponseService({
+        store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']),
+      }).respond({ ...ordinaryInput, actorLabel, reason: '' });
+      expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
+    }
+    // And with a reason supplied, every actor still gets the same (escalation) status.
     for (const actorLabel of ['daniel', 'boss', 'worker:x', 'unknown'] as const) {
       const h = harness([request()]);
       const result = await createHumanResponseService({
@@ -301,8 +316,10 @@ describe('workflow-tag escalation (T5)', () => {
 });
 
 // =====================================================================================================
-// T4 [design:4.3/4.5] — `reason` + `resolvedBy`. `reason` is required (non-empty after trim) from a
-// `boss`/`worker:<id>` actor (operating the daemon unattended); optional from `daniel`/`unknown`.
+// T4 [design:4.3/4.5] — `reason` + `resolvedBy`. `reason` is required (non-empty after trim, <=2000
+// chars) from EVERY actor: `boss`, `worker:<id>`, `daniel`, and `unknown` (which is what an absent,
+// misspelled, or duplicated `X-KB-Actor` header parses to). Security review HIGH-1: making the rule
+// conditional on a self-asserted header made it opt-in by the party it constrains.
 // =====================================================================================================
 describe('reason + resolvedBy (T4)', () => {
   it('refuses a CLI-actor response with no reason', async () => {
@@ -320,12 +337,30 @@ describe('reason + resolvedBy (T4)', () => {
     expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
   });
 
-  it('does NOT require a reason from daniel or an unknown actor', async () => {
+  it('requires a reason from daniel and from an unknown actor too — the header cannot buy an exemption', async () => {
+    // HIGH-1. This test PINNED THE DEVIATION before: it asserted `{ok: true}` for an empty reason from
+    // `daniel`/`unknown`, so a worker that simply omitted `X-KB-Actor` (parsing to `unknown`) resolved
+    // any gate with no justification at all. The one field the design added for unattended
+    // accountability was opt-in by the party it constrains.
     for (const actorLabel of ['daniel', 'unknown'] as const) {
-      const h = harness([request()]);
-      const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
-      const result = await service.respond({ ...ordinaryInput, actorLabel, reason: '' });
-      expect(result).toMatchObject({ ok: true });
+      for (const reason of ['', '   ', WHITESPACE_ONLY] as const) {
+        const h = harness([request()]);
+        const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
+        const result = await service.respond({ ...ordinaryInput, actorLabel, reason });
+        expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
+        expect(h.audits).toEqual([]);
+      }
+    }
+  });
+
+  it('refuses a reason that is not a string, or one over the 2000-char bound, from any actor', async () => {
+    for (const actorLabel of ['daniel', 'boss', 'worker:x', 'unknown'] as const) {
+      for (const reason of [undefined, null, 42, { text: 'ok' }, 'x'.repeat(2001)] as unknown[]) {
+        const h = harness([request()]);
+        const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: NO_TAGS });
+        const result = await service.respond({ ...ordinaryInput, actorLabel, reason: reason as string });
+        expect(result).toMatchObject({ ok: false, status: 400, error: 'reason-required' });
+      }
     }
   });
 

@@ -579,6 +579,8 @@ function gateBinding(demo: DemoHarness) {
       expectedReceiptVersion: receipt?.version ?? null,
       expectedGenerationRefs: [...loop.activeGenerationRefs],
       decision: 'approved',
+      // HIGH-1: required from every actor, including this header-less (`unknown`) caller.
+      reason: 'the demo gate is the one I reviewed',
     } as Record<string, unknown>,
   };
 }
@@ -639,7 +641,7 @@ describe('v1 acceptance demo — the human completion gate resolves on the open 
     // (a) The generic human-response route still refuses a reserved iteration gate — unaffected by T5.
     const generic = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${gate.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: gate.revision, decision: 'approved', idempotencyKey: 'generic-bypass' },
+      payload: { expectedRevision: gate.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'generic-bypass' },
     });
     expect(generic.statusCode, generic.body).toBe(409);
     expect(generic.json()).toMatchObject({ error: 'iteration-gate-reserved' });

@@ -2007,15 +2007,15 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
     // T4 [design:4.3/4.5] — same `reason` rule as `/human-requests/:requestRef/respond`: required
-    // (non-empty after trim, ≤2000 chars) from a `boss`/`worker:<id>` actor, optional from
-    // `daniel`/`unknown`. Self-asserted, never an authority input.
+    // (non-empty after trim, ≤2000 chars) from EVERY actor, including `daniel` and a request that sends
+    // no `X-KB-Actor` header at all (security review 2026-09-16, HIGH-1). The label is self-asserted, so
+    // it never decides anything — including whether a justification is owed.
     const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
-    const cliActor = actorLabel === 'boss' || actorLabel.startsWith('worker:');
     const rawReason = body.reason;
-    if (cliActor && (typeof rawReason !== 'string' || rawReason.length > 2000 || rawReason.trim().length === 0)) {
+    if (typeof rawReason !== 'string' || rawReason.length > 2000 || rawReason.trim().length === 0) {
       return reply.code(400).send({ error: 'reason-required' });
     }
-    const reason = typeof rawReason === 'string' ? rawReason.trim().slice(0, 2000) : '';
+    const reason = rawReason.trim().slice(0, 2000);
     const requestRef = (req.params as { requestRef: string }).requestRef;
     const binding = iterationGateBinding(sub, requestRef, req, reply);
     if (binding === null) return reply;
