@@ -44,7 +44,7 @@ import {
   AuthorizedFailedRunPublishedUncommittedError,
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
-import { DEFAULT_BUDGET, isOperatorUnlockSource } from './activation.ts';
+import { isOperatorUnlockSource, resolveWindowBudget } from './activation.ts';
 import type { ActivatedExecution, ExecutionUnlockSource } from './activation.ts';
 import { approvedNonceFor } from '../authority/gate.ts';
 import { APPROVAL_PRINCIPAL } from '../authority/approval.ts';
@@ -228,9 +228,16 @@ function resolveRunWorkflowTags(
  * escalation is a per-request, RUN-tag-conditioned decision the generic route-classification gate cannot
  * make on its own — it has no run to look up.
  */
-function bindVerifyApproval(ctx: SurfaceContext, method: 'POST', url: string, entityRef: string) {
+/** The route key an escalation is bound to — the registered template when the table knows it, the raw
+ *  url otherwise. Shared by {@link bindVerifyApproval} and the escalation's refusal audit row, so the
+ *  approval a caller must produce and the route the refusal names can never be two different strings. */
+function escalationRouteKey(method: 'POST', url: string): string {
   const entry = classifyRoute(method, url);
-  const expectedRoute = entry ? routeKey(entry) : `${method} ${url}`;
+  return entry ? routeKey(entry) : `${method} ${url}`;
+}
+
+function bindVerifyApproval(ctx: SurfaceContext, method: 'POST', url: string, entityRef: string) {
+  const expectedRoute = escalationRouteKey(method, url);
   return (approval: unknown) => verifySignedApproval({
     approval,
     expectedRoute,
@@ -776,7 +783,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'tailnet-operator' },
+        // MEDIUM-7: this row used to say `tailnet-operator` in every auth mode, matching the
+        // unconditional `'tailnet'` the latch stamped on itself. Both now derive from the mode the
+        // daemon is actually running under, from the same fact, so the ledger and the latch snapshot
+        // cannot disagree about how an unlock was authorized.
+        result: 'authorized:unlock',
+        detail: { method: ctx.authMode === 'tailnet' ? 'tailnet-operator' : 'operator-session' },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'execution-unlock-audit-required' });
@@ -1906,6 +1918,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       verifyApproval: bindVerifyApproval(
         ctx, 'POST', req.routeOptions?.url ?? req.url, (req.params as { requestRef?: string }).requestRef ?? '',
       ),
+      // The SAME route+entity pair `verifyApproval` is bound to above, so the escalation's refusal row
+      // names exactly the approval the caller was asked for.
+      escalationBinding: {
+        route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url),
+        entityRef: (req.params as { requestRef?: string }).requestRef ?? '',
+      },
       now: () => (ctx.now?.() ?? new Date()).getTime(),
     });
   };
@@ -1997,6 +2015,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   const iterationGateAuthority = (req: FastifyRequest, requestRef: string) => createIterationGateAuthorityService({
     workflowTags: (actorSubject, runRef) => resolveRunWorkflowTags(ctx, actorSubject, runRef, readScope(req)),
     verifyApproval: bindVerifyApproval(ctx, 'POST', req.routeOptions?.url ?? req.url, requestRef),
+    audit: {
+      async append(event) {
+        await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
+      },
+    },
+    escalationBinding: { route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url), entityRef: requestRef },
   });
 
   const resolveIterationGateRoute = async (
@@ -2048,7 +2072,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       // idempotent and re-verifies nothing, exactly as the shipped human-response path short-circuits
       // its replay above its own check.
       const authority = await iterationGateAuthority(req, requestRef).verify({
-        actorSubject: sub, runRef: gateRequest.runRef, approval: body.approval,
+        actorSubject: sub, runRef: gateRequest.runRef, approval: body.approval, actorLabel,
       });
       if (!authority.ok) return reply.code(authority.status).send({ error: authority.error });
       try {
@@ -2225,7 +2249,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     if (!/^\d{4}-\d{2}-\d{2}$/.test(windowDay) || additionalUsdMicros <= 0 || nonce === null) {
       return reply.code(400).send({ error: 'invalid-budget-override' });
     }
-    const resulting = DEFAULT_BUDGET.maxCostUsdMicros + store.additionalUsdMicros(windowDay) + additionalUsdMicros;
+    // LOW-5 (security review 2026-09-16): this read the compiled-in DEFAULT_BUDGET, ignoring the
+    // KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS override that `resolveWindowBudget` honours and that
+    // `windowBudgetFor` actually reserves against — so on any daemon carrying that override the ceiling
+    // this row reported was simply wrong. Read the resolver, the same one the reserve path reads.
+    const resulting = resolveWindowBudget().maxCostUsdMicros + store.additionalUsdMicros(windowDay) + additionalUsdMicros;
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-budget-override-authorize', owner: sub, target: windowDay, riskTier: 'T3',

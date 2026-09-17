@@ -746,9 +746,10 @@ export class ControlApiError extends Error {
 }
 
 /** Mirrors the server's `ExecutionUnlockSource`; `tailnet` is the always-on deployment's arm-at-boot
- *  posture. An unrecognized source makes the parser drop the whole posture, so this must stay in step
- *  with `server/control/activation.ts`. */
-export type ExecutionUnlockSourceDto = 'env-override' | 'tailnet';
+ *  posture, `operator-session` an explicit unlock by a verified operator under any other auth mode, and
+ *  `env-override` the headless/testing arm. An unrecognized source makes the parser drop the whole
+ *  posture, so this must stay in step with `server/control/activation.ts`. */
+export type ExecutionUnlockSourceDto = 'env-override' | 'tailnet' | 'operator-session';
 
 export interface ExecutionPostureDto {
   state: 'locked' | 'unlocked' | 'injected';
@@ -779,7 +780,7 @@ export function parseExecutionPosture(value: unknown): ExecutionPostureDto | nul
     }
     return { state: 'injected', source: null, unlockedAt: null, unlockedBy: null };
   }
-  if (item.source !== 'env-override' && item.source !== 'tailnet') return null;
+  if (item.source !== 'env-override' && item.source !== 'tailnet' && item.source !== 'operator-session') return null;
   if (typeof item.unlockedAt !== 'string') return null;
   const unlockedAtMs = Date.parse(item.unlockedAt);
   if (!Number.isFinite(unlockedAtMs) || new Date(unlockedAtMs).toISOString() !== item.unlockedAt) return null;

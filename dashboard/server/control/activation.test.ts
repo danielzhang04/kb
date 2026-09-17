@@ -13,6 +13,7 @@ import {
   DASHBOARD_EXECUTOR_SUBJECT,
   DEFAULT_ATTEMPT_BUDGET,
   DEFAULT_BUDGET,
+  isOperatorUnlockSource,
   resolveWindowBudget,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
@@ -753,11 +754,14 @@ describe('createExecutionLatch (runtime unlock)', () => {
   });
 
   it('unlock constructs the wiring, is idempotent, and reports who unlocked it', () => {
+    // The harness env names no auth mode, so this daemon is NOT in tailnet mode and the honest source is
+    // `operator-session` (security review 2026-09-16, MEDIUM-7). The test right below pins the tailnet
+    // arm, and the one after it pins that the two cannot be confused.
     const { deps, latch, changes } = latchHarness();
     const first = latch.unlock({ subject: 'operator' });
     expect(first.ok).toBe(true);
     expect(latch.snapshot()).toEqual({
-      state: 'unlocked', source: 'tailnet',
+      state: 'unlocked', source: 'operator-session',
       unlockedAt: new Date(1_700_000_000_000).toISOString(), unlockedBy: 'operator',
     });
     expect(latch.current()).not.toBeNull();
@@ -798,6 +802,36 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(latch.snapshot()).toMatchObject({ state: 'unlocked', source: 'tailnet', unlockedBy: DASHBOARD_EXECUTOR_SUBJECT });
     expect(latch.current()).not.toBeNull();
     expect(deps.createEngine).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * MEDIUM-7 (security review 2026-09-16). `unlock` returned `construct(input.subject, 'tailnet')`
+   * UNCONDITIONALLY — the latch did not know the auth mode — so an unlock in ANY mode recorded a
+   * tailnet-operator provenance it had not earned, and `isOperatorUnlockSource` (which gates the two
+   * break-glass recovery routes in `control/routes.ts`) read that fabricated value. It is unreachable
+   * today only because win32-desktop has no session-minting path; it becomes live the moment one returns.
+   */
+  it('an explicit unlock records the mode it ACTUALLY ran under, never a fabricated tailnet provenance', () => {
+    for (const [env, expected] of [
+      [{}, 'operator-session'],                                    // win32-desktop (the absent default)
+      [{ DASHBOARD_AUTH_MODE: 'win32-desktop' }, 'operator-session'],
+      [{ DASHBOARD_AUTH_MODE: 'tailnet' }, 'tailnet'],
+    ] as Array<[Record<string, string>, string]>) {
+      const { latch } = latchHarness(env);
+      // In tailnet mode the latch is already armed at boot, so `unlock` is the idempotent no-op there;
+      // in every other mode this is the first construction. Either way the recorded source must match.
+      latch.unlock({ subject: 'operator' });
+      expect(latch.snapshot().source, JSON.stringify(env)).toBe(expected);
+    }
+  });
+
+  it('isOperatorUnlockSource admits both operator arms and never the headless one', () => {
+    // Both arms are a verified operator (`requireSession` ran before either could happen), which is what
+    // the 2026-08-18 ruling requires the break-glass paths to keep working under; `env-override` is not.
+    expect(isOperatorUnlockSource('tailnet')).toBe(true);
+    expect(isOperatorUnlockSource('operator-session')).toBe(true);
+    expect(isOperatorUnlockSource('env-override')).toBe(false);
+    expect(isOperatorUnlockSource(null)).toBe(false);
   });
 
   it('tailnet mode arms without DASHBOARD_EXECUTION_ACTIVATED, and outranks it when both are set', () => {

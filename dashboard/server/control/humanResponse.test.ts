@@ -226,16 +226,55 @@ describe('workflow-tag escalation (T5)', () => {
     expect(result).toMatchObject({ ok: true });
   });
 
-  it('refuses a publish-tagged run with no approval', async () => {
+  it('refuses a publish-tagged run with no approval, and LEAVES A REFUSAL ROW', async () => {
     const h = harness([request()]);
     const service = createHumanResponseService({
       store: h.store, audit: h.audit,
       workflowTags: () => new Set(['publish']),
       verifyApproval: async () => ({ ok: false, status: 403, error: 'approval-invalid' }),
+      escalationBinding: { route: 'POST /api/control/human-requests/:requestRef/respond', entityRef: 'ask-1' },
     });
     const result = await service.respond(ordinaryInput);
     expect(result).toMatchObject({ ok: false, status: 403, error: 'approval-required' });
-    expect(h.audits).toEqual([]);
+    // Rehearsal finding (2026-09-16): this refusal used to write NOTHING, while every `signed`-CLASS
+    // route's refusal wrote an `authority-approval-refused` row. The one channel the design exists to
+    // protect was the one channel with no refusal trail.
+    expect(h.audits.filter((row) => row.action === 'control-human-response-authorize')).toEqual([]);
+    expect(h.audits).toHaveLength(1);
+    expect(h.audits[0]).toMatchObject({
+      action: 'authority-approval-refused', result: 'approval-required', riskTier: 'T3',
+      owner: 'operator', target: 'ask-1', actor: 'daniel',
+      detail: {
+        route: 'POST /api/control/human-requests/:requestRef/respond', entityRef: 'ask-1',
+        runRef: 'run-1', workflowTags: ['publish'], reason: 'signed-approval-required',
+      },
+    });
+  });
+
+  it('records the actor and the STORED tags on the refusal row, whatever the actor claims', async () => {
+    for (const actorLabel of ['daniel', 'boss', 'worker:x', 'unknown'] as const) {
+      const h = harness([request()]);
+      await createHumanResponseService({
+        store: h.store, audit: h.audit, workflowTags: () => new Set(['publish', 'spend']),
+        escalationBinding: { route: 'POST /api/control/human-requests/:requestRef/respond', entityRef: 'ask-1' },
+      }).respond({ ...ordinaryInput, actorLabel });
+      expect(h.audits).toHaveLength(1);
+      expect(h.audits[0]).toMatchObject({
+        action: 'authority-approval-refused', result: 'approval-unavailable', actor: actorLabel,
+        detail: { workflowTags: ['publish', 'spend'], reason: 'signed-approval-required' },
+      });
+    }
+  });
+
+  it('still refuses when the refusal row itself cannot be written — an audit fault never admits', async () => {
+    const h = harness([request()]);
+    const service = createHumanResponseService({
+      store: h.store,
+      audit: { append: async () => { throw new Error('audit unavailable'); } },
+      workflowTags: () => new Set(['publish']),
+    });
+    const result = await service.respond(ordinaryInput);
+    expect(result).toMatchObject({ ok: false, status: 503, error: 'approval-unavailable' });
   });
 
   it('refuses a spend-tagged run with no approval', async () => {
@@ -254,7 +293,7 @@ describe('workflow-tag escalation (T5)', () => {
     const service = createHumanResponseService({ store: h.store, audit: h.audit, workflowTags: () => new Set(['publish']) });
     const result = await service.respond(ordinaryInput);
     expect(result).toMatchObject({ ok: false, status: 503, error: 'approval-unavailable' });
-    expect(h.audits).toEqual([]);
+    expect(h.audits.map((row) => row.action)).toEqual(['authority-approval-refused']);
   });
 
   it('accepts a tagged run with a valid approval', async () => {
@@ -277,7 +316,10 @@ describe('workflow-tag escalation (T5)', () => {
     });
     const result = await service.respond({ ...ordinaryInput, approval: {} });
     expect(result).toMatchObject({ ok: false, status: 409, error: 'approval-replayed' });
-    expect(h.audits).toEqual([]);
+    // The verifier's own refusal code rides the row verbatim, so a replayed approval is distinguishable
+    // from a missing one in the ledger.
+    expect(h.audits.map((row) => [row.action, row.result]))
+      .toEqual([['authority-approval-refused', 'approval-replayed']]);
   });
 
   it('ignores the actor label when deciding — daniel included, with NO reason in the body', async () => {

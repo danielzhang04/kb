@@ -99,6 +99,9 @@ export function createHumanResponseService(options: {
   /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller.
    *  Absent ⇒ any run whose tags actually require signing is refused `503 approval-unavailable`. */
   verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
+  /** The route + entity this escalation is bound to, for the refusal audit row. Same pair the caller
+   *  already bound `verifyApproval` to; absent only in unit tests that assert the refusal STATUS. */
+  escalationBinding?: { route: string; entityRef: string };
   now?: () => number;
 }): HumanResponseService {
   const now = options.now ?? Date.now;
@@ -157,21 +160,51 @@ export function createHumanResponseService(options: {
       // T3-kind decision on an untagged run now proceeds on the open class, exactly like an ordinary one.
       const t3 = T3_KINDS.has(request.kind);
 
-      const tags = await options.workflowTags(input.actor.subject, request.runRef);
-      const signedRequired = tags.has('publish') || tags.has('spend');
-      if (signedRequired) {
-        if (!options.verifyApproval) return { ok: false, status: 503, error: 'approval-unavailable' };
-        if (input.approval == null) return { ok: false, status: 403, error: 'approval-required' };
-        const checked = await options.verifyApproval(input.approval);
-        if (!checked.ok) return { ok: false, status: checked.status, error: checked.error };
-      }
-
       // T4 [design:4.3] — WHO resolved this, over what channel, and why. `attribution` reflects the SAME
-      // bound identity `audit/log.ts#attributed` stamps onto the row above; `tailnetIdentity` is `null`
+      // bound identity `audit/log.ts#attributed` stamps onto the row below; `tailnetIdentity` is `null`
       // whenever there is none to attach (win32-desktop, or no request has bound one — see
       // `auth/operator.ts#BoundAttribution`).
       const attribution = currentAttribution();
       const tailnetIdentity = attribution && 'login' in attribution ? attributionLabel(attribution) : null;
+
+      const tags = await options.workflowTags(input.actor.subject, request.runRef);
+      const signedRequired = tags.has('publish') || tags.has('spend');
+      if (signedRequired) {
+        const refuse = async (
+          status: 403 | 409 | 503, error: string,
+        ): Promise<HumanResponseResult> => {
+          // EVERY refusal appends one audit row (spec §4.2) — the property `authority/gate.ts#refuse`
+          // already held for a `signed`-CLASS route, and that this per-request ESCALATION did not: a
+          // tagged run's gate resolution refused for want of a signature left NO trace at all, so the
+          // one channel the design exists to protect was the one channel with no refusal trail.
+          // Best-effort by the same rule the gate uses: an audit failure must never convert a refusal
+          // into an admission.
+          try {
+            await options.audit.append({
+              action: 'authority-approval-refused',
+              owner: input.actor.subject,
+              target: request.requestRef,
+              riskTier: 'T3',
+              result: error,
+              actor: input.actorLabel,
+              detail: {
+                route: options.escalationBinding?.route ?? null,
+                entityRef: options.escalationBinding?.entityRef ?? request.requestRef,
+                runRef: request.runRef,
+                tailnetIdentity,
+                workflowTags: [...tags],
+                reason: 'signed-approval-required',
+              },
+            });
+          } catch { /* the refusal must land even when the row could not be written */ }
+          return { ok: false, status, error };
+        };
+        if (!options.verifyApproval) return await refuse(503, 'approval-unavailable');
+        if (input.approval == null) return await refuse(403, 'approval-required');
+        const checked = await options.verifyApproval(input.approval);
+        if (!checked.ok) return await refuse(checked.status, checked.error);
+      }
+
       const resolvedBy = {
         actor: input.actorLabel, tailnetIdentity, at: new Date(now()).toISOString(), reason: reasonTrimmed,
       };
@@ -290,6 +323,11 @@ export interface IterationGateAuthorityContext {
   workflowTags: (actorSubject: string, runRef: string) => Awaitable<ReadonlySet<string>>;
   /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller. */
   verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
+  /** Appends the escalation's refusal row. Same port and same rule as `createHumanResponseService`:
+   *  every refusal on the signed channel leaves exactly one row. */
+  audit?: HumanResponseAuditPort;
+  /** The route + entity this escalation is bound to, for that row. */
+  escalationBinding?: { route: string; entityRef: string };
 }
 
 export interface IterationGateAuthorityRequest {
@@ -297,6 +335,8 @@ export interface IterationGateAuthorityRequest {
   runRef: string;
   /** The request body's `approval` key, unvalidated — mirrors `HumanResponseInput.approval`. */
   approval: unknown;
+  /** The `X-KB-Actor` claim, recorded on the refusal row. Self-asserted, never an authority input. */
+  actorLabel?: Actor;
 }
 
 export type IterationGateAuthorityResult =
@@ -314,10 +354,33 @@ export function createIterationGateAuthorityService(
     async verify(request) {
       const tags = await context.workflowTags(request.actorSubject, request.runRef);
       if (!(tags.has('publish') || tags.has('spend'))) return { ok: true, status: 200 };
-      if (!context.verifyApproval) return { ok: false, status: 503, error: 'approval-unavailable' };
-      if (request.approval == null) return { ok: false, status: 403, error: 'approval-required' };
+      // Same refusal-row rule as `createHumanResponseService`: a tagged run's gate resolution refused
+      // for want of a signature used to leave no trace at all, while every `signed`-CLASS route's
+      // refusal wrote one. Best-effort — an audit failure never converts a refusal into an admission.
+      const refuse = async (status: 403 | 409 | 503, error: string): Promise<IterationGateAuthorityResult> => {
+        try {
+          await context.audit?.append({
+            action: 'authority-approval-refused',
+            owner: request.actorSubject,
+            target: context.escalationBinding?.entityRef ?? request.runRef,
+            riskTier: 'T3',
+            result: error,
+            actor: request.actorLabel ?? 'unknown',
+            detail: {
+              route: context.escalationBinding?.route ?? null,
+              entityRef: context.escalationBinding?.entityRef ?? null,
+              runRef: request.runRef,
+              workflowTags: [...tags],
+              reason: 'signed-approval-required',
+            },
+          });
+        } catch { /* the refusal must land even when the row could not be written */ }
+        return { ok: false, status, error };
+      };
+      if (!context.verifyApproval) return await refuse(503, 'approval-unavailable');
+      if (request.approval == null) return await refuse(403, 'approval-required');
       const checked = await context.verifyApproval(request.approval);
-      if (!checked.ok) return { ok: false, status: checked.status, error: checked.error };
+      if (!checked.ok) return await refuse(checked.status, checked.error);
       return { ok: true, status: 200 };
     },
   };

@@ -307,6 +307,19 @@ describe('the governing tag set is pinned on the run at launch, not re-read at r
       ok: true, value: { state: 'open', response: null },
     });
     expect(audit.filter((row) => row.action === 'control-human-response-authorize')).toEqual([]);
+    // ...and the refusal DOES leave a row of its own (rehearsal finding, 2026-09-16: this escalation
+    // used to refuse silently while every `signed`-CLASS route's refusal wrote one), carrying the tags
+    // the run was PINNED with rather than what the rewritten file now says.
+    const refusals = audit.filter((row) => row.action === 'authority-approval-refused');
+    expect(refusals).toHaveLength(1);
+    expect(refusals[0]).toMatchObject({
+      result: 'approval-required', riskTier: 'T3', target: request.value.requestRef,
+      detail: {
+        route: 'POST /api/control/human-requests/:requestRef/respond',
+        entityRef: request.value.requestRef, runRef, workflowTags: ['publish'],
+        reason: 'signed-approval-required',
+      },
+    });
     // The run still carries what it was launched with; the rewrite reached nothing.
     const after = store.getRun('operator', runRef);
     expect(after.ok && after.value.run.workflowTags).toEqual(['publish']);

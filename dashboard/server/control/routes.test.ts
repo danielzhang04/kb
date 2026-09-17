@@ -1125,13 +1125,25 @@ describe('control proposal routes', () => {
       expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
     });
 
-    it('refuses a tagged run\'s resolve with no approval, mutates nothing, and writes NO T3 audit row', async () => {
+    it('refuses a tagged run\'s resolve with no approval, mutates nothing, and writes a REFUSAL row (not an authorize one)', async () => {
       const { request, loop, resolve } = mockIterationGate('no-progress', true);
       const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
       expect(response.statusCode, response.body).toBe(403);
       expect(response.json()).toEqual({ error: 'approval-required' });
       expect(resolve).not.toHaveBeenCalled();
       expect(authorizeRows()).toEqual([]);
+      // Rehearsal finding (2026-09-16): this refusal used to leave NO row at all, while every
+      // `signed`-CLASS route's refusal wrote `authority-approval-refused`. It carries the route and
+      // entity the approval was owed for, and the tags the RUN was pinned with.
+      const refusals = auditRows.filter((row) => row.action === 'authority-approval-refused');
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatchObject({
+        result: 'approval-required', riskTier: 'T3', target: request.requestRef,
+        detail: {
+          route: RESOLVE_ROUTE, entityRef: request.requestRef, runRef: request.runRef,
+          workflowTags: ['publish'], reason: 'signed-approval-required',
+        },
+      });
     });
 
     it('refuses a tagged run\'s resolve with an approval bound to the wrong entityRef — 403 approval-invalid', async () => {
@@ -3388,9 +3400,12 @@ describe('control execution latch routes', () => {
       // The bearer's own subject authorizes it — no assertion, no ceremonyId, no second biometric.
       expect(unlock).toHaveBeenCalledWith({ subject: 'operator' });
       const row = audit.find((entry) => entry.action === 'control-execution-unlock-authorize');
+      // MEDIUM-7: this row used to say `tailnet-operator` regardless of the mode the daemon was in.
+      // This surface is built with no `DASHBOARD_AUTH_MODE`, so it is NOT tailnet, and the row now says
+      // so. `activation.test.ts` pins the latch's matching half (the `source` it records).
       expect(row).toMatchObject({
         owner: 'operator', target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'tailnet-operator' },
+        result: 'authorized:unlock', detail: { method: 'operator-session' },
       });
     } finally {
       await app.close();
@@ -5466,6 +5481,34 @@ describe('control budget override route (T6)', () => {
     expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(5_000_000);
     await app.close();
     rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('reports the ceiling the RESERVE path actually uses, honouring the window-budget env override', async () => {
+    // LOW-5, second half (security review 2026-09-16): `resultingCeilingUsdMicros` was computed from the
+    // compiled-in DEFAULT_BUDGET, ignoring KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS — which
+    // `resolveWindowBudget` honours and `windowBudgetFor` reserves against. On any daemon carrying that
+    // override, both the response and the T3 audit row stated a ceiling that was simply not the one in
+    // force. It now reads the same resolver the reserve path reads.
+    vi.stubEnv('KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS', '40000000');
+    try {
+      const { app, stateRoot, token, audit } = budgetApp();
+      const res = await app.inject({
+        method: 'POST', url: ROUTE, headers: headers(token),
+        payload: {
+          windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-env',
+          approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+        },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      // 40_000_000 (overridden window ceiling) + 0 already granted + 5_000_000 — NOT
+      // DEFAULT_BUDGET.maxCostUsdMicros (20_000_000) + 5_000_000.
+      expect(res.json()).toMatchObject({ resultingCeilingUsdMicros: 45_000_000 });
+      expect(audit[0]).toMatchObject({ detail: { resultingCeilingUsdMicros: 45_000_000 } });
+      await app.close();
+      rmSync(stateRoot, { recursive: true, force: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it('refuses an unknown body key: 400 invalid-budget-override', async () => {

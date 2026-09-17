@@ -760,19 +760,33 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   };
 }
 
-/** How an armed latch came to be armed. Distinct values because they mean different things: `tailnet` is
- *  the deployment's arm-at-boot (or explicit-re-arm) operator posture, and `env-override` is the
- *  headless/testing arm. */
-export type ExecutionUnlockSource = 'env-override' | 'tailnet';
+/**
+ * How an armed latch came to be armed. Distinct values because they mean different things:
+ *   - `tailnet`          — the deployment's arm-at-boot (or explicit re-arm) under the pinned tailnet
+ *                          operator transport.
+ *   - `operator-session` — an explicit `POST /api/control/execution/unlock` by a verified operator
+ *                          session in a NON-tailnet auth mode.
+ *   - `env-override`     — the headless/testing arm.
+ *
+ * `operator-session` exists because the record used to lie (security review 2026-09-16, MEDIUM-7):
+ * `unlock` returned `construct(input.subject, 'tailnet')` UNCONDITIONALLY, so an unlock in any mode
+ * stamped a tailnet-operator provenance onto the latch and onto the audit row. The latch now takes the
+ * auth mode and names the source honestly.
+ */
+export type ExecutionUnlockSource = 'env-override' | 'tailnet' | 'operator-session';
 
 /**
- * True when the latch's source represents a genuine, present OPERATOR authorization — the pinned
- * tailnet operator identity. Excludes `env-override`, the headless/testing arm. The two break-glass
- * recovery paths in `control/routes.ts` gate on this: they must stay usable under the operator auth
- * mode (Daniel, 2026-08-18) but must never be reachable under a headless arm.
+ * True when the latch's source represents a genuine, present OPERATOR authorization. Both operator arms
+ * qualify — `requireSession` verified a real operator before either could happen — and `env-override`,
+ * the headless/testing arm, does not. The two break-glass recovery paths in `control/routes.ts` gate on
+ * this: they must stay usable under the operator auth mode (Daniel, 2026-08-18) but must never be
+ * reachable under a headless arm.
+ *
+ * The honest source is what the AUDIT row now carries, so an auditor can still tell the two operator
+ * arms apart — which is the part MEDIUM-7 was actually about.
  */
 export function isOperatorUnlockSource(source: ExecutionUnlockSource | null): boolean {
-  return source === 'tailnet';
+  return source === 'tailnet' || source === 'operator-session';
 }
 
 /** What the lock/unlock routes and the UI see. Never carries the grant or any wiring reference. */
@@ -866,6 +880,10 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
   if (resolveAuthMode(env) === 'tailnet') construct(DASHBOARD_EXECUTOR_SUBJECT, 'tailnet');
   else if (isExecutionActivated(env)) construct(DASHBOARD_EXECUTOR_SUBJECT, 'env-override');
 
+  /** What an explicit `unlock` HAS earned, given the mode this latch is actually running under. */
+  const operatorUnlockSource = (): ExecutionUnlockSource =>
+    (resolveAuthMode(env) === 'tailnet' ? 'tailnet' : 'operator-session');
+
   return {
     snapshot: () => state,
     current: () => execution,
@@ -873,7 +891,11 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
       if (execution) return { ok: true, state };
       if (!SAFE_PROJECT.test(input.subject)) return { ok: false, reason: 'unsafe-unlock-subject' };
       try {
-        return construct(input.subject, 'tailnet');
+        // MEDIUM-7: `'tailnet'` used to be hard-coded here, so an unlock in ANY auth mode recorded a
+        // tailnet-operator provenance the request had not earned. The source is derived from the mode
+        // the latch is actually running under; `control/routes.ts` derives the audit row's `method`
+        // from the same value so the two cannot disagree.
+        return construct(input.subject, operatorUnlockSource());
       } catch (error) {
         // A construction failure must leave the daemon LOCKED, never half-wired.
         apply(null, LOCKED_STATE, null);

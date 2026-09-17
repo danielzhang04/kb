@@ -27,8 +27,15 @@ describe('webauthn is gone', () => {
   it('appears in no dashboard, deploy or scripts source file', () => {
     let out = '';
     try {
+      // `dashboard/pm2.config.cjs` is named explicitly (security review 2026-09-16, MEDIUM-6): it sits
+      // ABOVE every prefix this scan used to list, so the committed launcher for the always-on local
+      // daemon went on setting `DASHBOARD_WEBAUTHN_CREDENTIALS` -- live config for a deleted mechanism,
+      // whose reader `auth/credentialStore.ts` no longer exists -- while this guard stayed green.
+      // Widening to the whole `dashboard` prefix instead would pull in ALWAYS-ON.md and docs/, which are
+      // prose about a past design and are a separate cleanup.
       out = execFileSync('git', ['grep', '-ril', '-e', 'webauthn', '-e', 'passkey', '--',
-        'dashboard/server', 'dashboard/src', 'deploy', 'scripts', ...EXEMPT], { cwd: ROOT, encoding: 'utf8' });
+        'dashboard/server', 'dashboard/src', 'dashboard/pm2.config.cjs', 'deploy', 'scripts',
+        ...EXEMPT], { cwd: ROOT, encoding: 'utf8' });
     } catch (err: unknown) {
       // git grep exits 1 with no output when there are no matches — that is the pass.
       out = (err as { stdout?: string }).stdout ?? '';
