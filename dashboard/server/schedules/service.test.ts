@@ -178,6 +178,17 @@ describe('ScheduleService', () => {
     expect(normalizeCadenceInput({ kind: 'cron', minute: '*/15', hour: '*', dayOfMonth: '*', month: '*', dayOfWeek: '*' })).toEqual({
       source: '*/15 * * * *', words: 'Every 15 minutes',
     });
+    // HEARTBEAT.md declares its weekly cadences numerically (`15 3 * * 0`, `45 2 * * 1`), and those
+    // rendered as a bare digit ('0 · 3:15 AM') on every schedule card before this fix.
+    expect(normalizeCadenceInput({ kind: 'cron', minute: '15', hour: '3', dayOfMonth: '*', month: '*', dayOfWeek: '0' })).toEqual({
+      source: '15 3 * * 0', words: 'Sun · 3:15 AM',
+    });
+    expect(normalizeCadenceInput({ kind: 'cron', minute: '45', hour: '2', dayOfMonth: '*', month: '*', dayOfWeek: '1' })).toEqual({
+      source: '45 2 * * 1', words: 'Mon · 2:45 AM',
+    });
+    expect(normalizeCadenceInput({ kind: 'cron', minute: '15', hour: '3', dayOfMonth: '*', month: '*', dayOfWeek: 'sun' })).toEqual({
+      source: '15 3 * * sun', words: 'Sun · 3:15 AM',
+    });
     const store = new MemoryScheduleStore();
     await expect(service(store).create({
       ...CREATE,

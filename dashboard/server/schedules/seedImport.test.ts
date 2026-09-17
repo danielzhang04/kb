@@ -68,6 +68,15 @@ describe('importHeartbeatScheduleSeedsV1', () => {
       armed: false, disarmedReason: 'seed-cadence-unsupported',
     });
     expect(result.plan.seeds.filter((seed) => seed.name !== 'research-draft-gate').every((seed) => seed.armed)).toBe(true);
+    // HEARTBEAT.md declares these two weekly cadences with a numeric day-of-week; before the
+    // cronDayLabel fix they seeded words of '1 · 2:45 AM' / '0 · 3:15 AM', which is what
+    // every schedule card rendered on prod. Arming must be unchanged by the label fix.
+    expect(result.plan.seeds.find((seed) => seed.name === 'model-audit')).toMatchObject({
+      cadence: { source: '45 2 * * 1', words: 'Mon · 2:45 AM' }, armed: true, disarmedReason: null,
+    });
+    expect(result.plan.seeds.find((seed) => seed.name === 'hygiene')).toMatchObject({
+      cadence: { source: '15 3 * * 0', words: 'Sun · 3:15 AM' }, armed: true, disarmedReason: null,
+    });
     expect(commit).toHaveBeenCalledTimes(1);
   });
 

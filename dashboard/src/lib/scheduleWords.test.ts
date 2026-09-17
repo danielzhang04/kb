@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
-import { describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow, validateScheduleCadence } from './scheduleWords';
+import { cronDayLabel, describeSchedule, localTimestampLabel, nextScheduleWindow, presetSchedule, relativeScheduleWindow, validateScheduleCadence } from './scheduleWords';
 
 interface ClockVector {
   id: string;
@@ -56,6 +56,21 @@ describe('scheduleWords', () => {
     expect(relativeScheduleWindow(nextScheduleWindow('0 9 * * mon-fri', now), now)).toBe('in 2m');
     expect(relativeScheduleWindow(nextScheduleWindow('*/5 * * * *', now), now)).toBe('in 2m');
     expect(relativeScheduleWindow(nextScheduleWindow('weekly:sat', now), now)).toBe('in 3d 1m');
+  });
+
+  it('names a single cron day-of-week field whether it is written as a word or a number', () => {
+    expect(cronDayLabel('0')).toBe('Sun');
+    expect(cronDayLabel('7')).toBe('Sun');
+    expect(cronDayLabel('1')).toBe('Mon');
+    expect(cronDayLabel('6')).toBe('Sat');
+    expect(cronDayLabel('sun')).toBe('Sun');
+    expect(cronDayLabel('MON')).toBe('Mon');
+    expect(cronDayLabel('monday')).toBe('Mon');
+    expect(cronDayLabel('*')).toBeNull();
+    expect(cronDayLabel('mon-fri')).toBeNull();
+    expect(cronDayLabel('1,3')).toBeNull();
+    expect(cronDayLabel('8')).toBeNull();
+    expect(cronDayLabel('')).toBeNull();
   });
 
   it.each(vectors)('matches shared Eastern clock vector $id', (vector) => {
