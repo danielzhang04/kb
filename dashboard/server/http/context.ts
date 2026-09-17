@@ -11,6 +11,7 @@ import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts';
 import type { AuthMode } from '../auth/mode.ts';
+import type { RunnableRef } from '../control/p2Contracts.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
@@ -105,6 +106,16 @@ export interface SurfaceContext {
   sessionConfig: SessionConfig;
   /** Deployment authentication mode resolved once at the HTTP composition root. */
   authMode: AuthMode;
+  /**
+   * The governing `publish`/`spend` tag set for a runnable, derived AT LAUNCH and persisted on the run
+   * (`control/ownerTags.ts#deriveOwnerTags`; see BLOCKER-1 in that module's header for why it is not a
+   * resolve-time read). Bound in `makeSurfaceContext`, where the workflow scanner and the agent roster
+   * are both reachable — `control/launch.ts` cannot import the scanner itself without a module cycle.
+   *
+   * Optional so the many hand-built test contexts need not supply one; `control/launch.ts` falls back to
+   * the maximal fail-closed set when it is absent, never to "untagged".
+   */
+  ownerTags?: (owner: RunnableRef) => string[];
   /**
    * P5 W6.1 [P5-C30]: the ONE shared installed-release activation reader, constructed exactly once in
    * `makeSurfaceContext` and threaded through this context. Home (D13 chip), Health (ReleaseRow), and the

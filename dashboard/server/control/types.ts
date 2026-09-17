@@ -210,6 +210,18 @@ export interface AgentWorkspaceLaunchProvenance {
 }
 
 export interface Run extends RunIdentityFields {
+  /**
+   * The governing `publish`/`spend` tag set, DERIVED ONCE AT LAUNCH from this run's owner
+   * (`control/ownerTags.ts#deriveOwnerTags`) and immutable thereafter. The boss-intervention rule
+   * (spec §4.5) reads ONLY this field.
+   *
+   * OPTIONAL because a run persisted before the field existed does not carry it. Absent is NOT "no
+   * tags": `control/routes.ts#resolveRunWorkflowTags` treats an absent field as the maximal
+   * `{publish, spend}` set, so a legacy run costs a signed approval rather than silently escaping the
+   * rule. Nothing writes it after `createRun` — that is the whole point (security review BLOCKER-1: a
+   * resolve-time re-scan of the definition was rewritable through the open `POST /api/write/save`).
+   */
+  workflowTags?: string[];
   runRef: string;
   predecessorRunRef: string | null;
   title: string;

@@ -219,6 +219,7 @@ function expectExactWireRun(
 it('pins the failed-run reconciliation success wire shape', () => {
   const run: Run = {
     owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    workflowTags: [],
     executionHost: 'desktop', terminalOutcome: 'failed',
     completedAt: '2026-08-01T01:00:00.000Z', archivedFrom: null,
     runRef: 'run-reconciled', predecessorRunRef: null, title: 'Reconciled run',
@@ -468,11 +469,15 @@ describe('control proposal routes', () => {
     const owner = tagged
       ? { type: 'workflow' as const, id: 'no-such-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/no-such-workflow.md' as const }
       : { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const };
+    // BLOCKER-1: the governing tag set is what the RUN carries, derived at launch — not what a disk
+    // re-scan says now. An untagged run states `[]` explicitly; a tagged one states its tag. Absent
+    // would mean "legacy run", which the rule fails closed on.
+    const workflowTags = tagged ? ['publish'] : [];
     const detail = {
       ownerSubject: 'operator',
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
         proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
-        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner },
+        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner, workflowTags },
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
     };
@@ -510,6 +515,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun(owner, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title,
       proposalRef: stored.value.proposalRef,
@@ -693,6 +699,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: 'Generic completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: proposal.value.revision,
       expectedProposalHash: proposal.value.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
@@ -1571,6 +1578,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -1660,6 +1668,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -1788,6 +1797,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -2904,6 +2914,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime,
@@ -2975,6 +2986,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const create = (idempotencyKey: string) => controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: assigned.title, proposalRef: stored.value.proposalRef, proposalRevision: 1, expectedProposalHash: stored.value.hash,
       managerRuntime: assigned.manager.runtime, managerModel: assigned.manager.model, managerAssignment, idempotencyKey,
@@ -3055,6 +3067,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const run = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: revision.revision,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -3164,6 +3177,7 @@ function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key:
   }).ok) throw new Error('approval failed');
   const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
     title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -3199,6 +3213,7 @@ describe('control execution latch routes', () => {
     }).ok) throw new Error('approval failed');
     const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: assignedProposal.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: assignedProposal.manager.runtime, managerModel: assignedProposal.manager.model,
@@ -3879,6 +3894,7 @@ describe('operator cross-subject authority', () => {
     }).ok) throw new Error('approval failed');
     const run = store.createRun(subject, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -4217,6 +4233,9 @@ describe('Dashboard v3 run and gate routes', () => {
       expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'dv3-approve',
     });
     if (!approved.ok) throw new Error(approved.detail);
+    // Deliberately states NO `workflowTags`: this is the LEGACY run shape (persisted before the field
+    // existed), which the boss-intervention rule reads as unknown and fails closed on. The
+    // `/respond/challenge` test below is that fail-closed proof.
     const run = store.createRun('dashboard-engine', {
       owner: { type: 'workflow', id: 'daily-news', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/daily-news.md' },
       executionHost: 'desktop', title: proposal.title, proposalRef: created.value.proposalRef,
@@ -4253,6 +4272,7 @@ describe('Dashboard v3 run and gate routes', () => {
     if (!ownApproval.ok) throw new Error(ownApproval.detail);
     const ownRun = store.createRun('other-agent', {
       owner: { type: 'workflow', id: 'own-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/own-workflow.md' },
+      workflowTags: [],
       executionHost: 'desktop', title: 'Own run', proposalRef: ownProposal.value.proposalRef,
       proposalRevision: 1, expectedProposalHash: ownProposal.value.hash,
       managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -4430,10 +4450,10 @@ describe('Dashboard v3 run and gate routes', () => {
     } finally { await fixture.app.close(); }
   });
 
-  it('T2 removed the /respond/challenge mint route entirely (404); T5 fails closed on the resolve route '
-    + 'via the workflow-tag rule instead: `daily-news` names no real definition on this fixture repo root, '
-    + 'so the run\'s workflow cannot be resolved and the unresolvable-fail-closed default (spec §4.5) '
-    + 'demands a signed approval nobody sent', async () => {
+  it('T2 removed the /respond/challenge mint route entirely (404); the workflow-tag rule fails closed on '
+    + 'the respond route instead: this run carries NO stored `workflowTags` — the LEGACY shape, persisted '
+    + 'before the field existed — which is unknown rather than untagged, so the fail-closed default '
+    + '(spec §4.5) demands a signed approval nobody sent', async () => {
     const fixture = seededSurface();
     try {
       const challenge = await fixture.app.inject({
@@ -4570,6 +4590,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   ) {
     const run = store.createRun(ENGINE, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost,
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -4766,6 +4787,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       // run, because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
       const replay = store.createRun(ENGINE, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
         title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
         expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,

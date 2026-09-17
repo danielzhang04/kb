@@ -14,8 +14,16 @@ const RUN_KEYS = [
   'publicationState', 'lifecycle', 'version', 'managerSessionRef', 'managerGeneration',
   'managerAssignment', 'agentWorkspaceLaunch', 'createdAt', 'updatedAt',
 ] as const;
+/**
+ * `workflowTags` is OPTIONAL on BOTH decoders, and deliberately so: every run created since the field
+ * exists carries it (`createRun` always writes an array, possibly empty), and a run persisted before it
+ * does not. Absent therefore MEANS "legacy", which `control/routes.ts#resolveRunWorkflowTags` reads as
+ * the fail-closed maximal set. Making it required would refuse to load an existing store document.
+ */
+const RUN_OPTIONAL_KEYS = ['workflowTags'] as const;
 const STORED_RUN_REQUIRED_KEYS = [...RUN_KEYS, 'subject'] as const;
 const STORED_RUN_OPTIONAL_KEYS = [
+  ...RUN_OPTIONAL_KEYS,
   'launchOperationKey', 'launchOperationFingerprint', 'archiveOperationKey', 'archiveOperationFingerprint',
   'activationReceipts', 'authorizedFailedRunReconciliation',
 ] as const;
@@ -102,7 +110,18 @@ function validRunValues(item: Record<string, unknown>): boolean {
     && safeId(item.managerSessionRef) && Number.isSafeInteger(item.managerGeneration) && Number(item.managerGeneration) >= 0
     && decodeAssignment(item.managerAssignment) !== undefined
     && decodeWorkspaceLaunch(item.agentWorkspaceLaunch) !== undefined
-    && iso(item.createdAt) && iso(item.updatedAt);
+    && iso(item.createdAt) && iso(item.updatedAt)
+    && validWorkflowTags(item);
+}
+
+/** Absent is legal (legacy run); present must be an array of the two known, non-duplicated tag names.
+ *  Anything else is a corrupt row, not a silently-untagged one. */
+const KNOWN_RUN_TAGS = new Set(['publish', 'spend']);
+function validWorkflowTags(item: Record<string, unknown>): boolean {
+  if (!Object.hasOwn(item, 'workflowTags')) return true;
+  const value = item.workflowTags;
+  return Array.isArray(value) && value.every((tag) => typeof tag === 'string' && KNOWN_RUN_TAGS.has(tag))
+    && new Set(value as string[]).size === value.length;
 }
 
 function validActivationReceipts(value: unknown): boolean {
@@ -180,7 +199,9 @@ export function identityFieldsFromRun(value: unknown): RunIdentityFields | null 
 /** Closed persisted/internal Run decoder. Unknown top-level keys are never tolerated. */
 export function decodeRun(value: unknown): Run | null {
   const item = record(value);
-  if (!item || !exactKeys(item, RUN_KEYS) || !validRunValues(item)) return null;
+  const allowed = new Set<string>([...RUN_KEYS, ...RUN_OPTIONAL_KEYS]);
+  if (!item || !RUN_KEYS.every((key) => Object.hasOwn(item, key))
+    || Object.keys(item).some((key) => !allowed.has(key)) || !validRunValues(item)) return null;
   return structuredClone(item) as unknown as Run;
 }
 

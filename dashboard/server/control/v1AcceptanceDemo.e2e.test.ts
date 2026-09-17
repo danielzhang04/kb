@@ -130,6 +130,7 @@ function launchRun(store: ControlPlaneStore, plan: PlanProposal): { runRef: stri
   if (!approved.ok) throw new Error(approved.detail);
   const run = store.createRun('operator', {
     owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    workflowTags: [],
     executionHost: 'desktop',
     title: plan.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash,

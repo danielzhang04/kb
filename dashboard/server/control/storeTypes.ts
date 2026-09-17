@@ -467,6 +467,16 @@ export interface CreateRunInput {
   owner: RunnableRef;
   /** Boot-verified daemon host, never a client field. */
   executionHost: HostKind;
+  /**
+   * The governing `publish`/`spend` tag set for this run, derived from `owner` by the CALLER at launch
+   * (`control/ownerTags.ts#deriveOwnerTags`, bound in `http/surface.ts#makeSurfaceContext`). Persisted
+   * verbatim and never rewritten.
+   *
+   * Optional only so a fixture that does not care need not state it — and omitting it is NOT the same as
+   * `[]`: an omitted value stores no field at all, which the resolve rule reads as a legacy run and fails
+   * closed on (`{publish, spend}`). Every production launch path states it explicitly.
+   */
+  workflowTags?: readonly string[];
   /** Must exactly match the approved compiler snapshot for the Manager. */
   managerAssignment?: ResolvedAgentAssignment | null;
   idempotencyKey: string;

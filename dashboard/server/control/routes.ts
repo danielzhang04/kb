@@ -56,7 +56,7 @@ import { classifyRoute, routeKey } from '../authority/policy.ts';
 import { verifyApproval as verifySignedApproval } from '../authority/approval.ts';
 import { defaultSshsigVerifier } from '../authority/sshsig.ts';
 import { createNonceStore } from '../authority/nonceStore.ts';
-import { effectiveWorkflowTags } from '../workflows/defs.ts';
+import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import { acceptsBoundary, compiledPolicyUnchanged, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import { selectPlacementHost } from '../placement/select.ts';
 import type { CapabilityRequirement } from '../placement/contracts.ts';
@@ -184,34 +184,40 @@ function workflowRefIndex(ctx: SurfaceContext, sub: string, scope: ReadScope): M
 
 /**
  * T5 [design:4.4/4.5] — the boss-intervention rule's `workflowTags` port, bound to `humanResponse.ts`'s
- * `createHumanResponseService`/`createIterationGateAuthorityService`. Resolved FRESH on every call (never
- * cached across requests) via the SAME `scanWorkflowDefs` + owner-match the predecessor-launch route
- * already uses (`:664`-ish, `owner.type === 'workflow'`).
+ * `createHumanResponseService`/`createIterationGateAuthorityService`.
  *
- * FAIL CLOSED exactly as spec §4.5 requires: a run this cannot pin to one valid, still-parseable
- * workflow-owned definition returns the maximal `{'publish','spend'}` — an unreadable run, or a
- * definition since deleted/renamed/made invalid, is refused, never silently exempted. An AGENT-owned run
- * has no *workflow* to govern it — the rule's antecedent ("the run's workflow's effectiveWorkflowTags")
- * never applies to one, so it stays untagged: every ordinary agent-run gate resolution keeps behaving
- * exactly as it did before this design existed.
+ * Reads ONLY the tag set the run itself carries — `run.workflowTags`, derived from the run's owner at
+ * LAUNCH by `control/ownerTags.ts#deriveOwnerTags` and never rewritten. It deliberately touches NO file
+ * on disk.
+ *
+ * WHY (security review 2026-09-16, BLOCKER-1): the predecessor re-scanned the owning workflow definition
+ * from disk on every call. `POST /api/write/save` is `open` class and writes into the same tree the
+ * scanner reads, so the complete escalation was: launch the publish-tagged workflow, `save` the
+ * definition with its publish marker removed (it still parses, keeps its id/project/path, and stays
+ * `valid`, so the fail-closed arm never fired), resolve the parked gate with no approval, then `save` the
+ * original back. Worse than a silent bypass — the audit row recorded `workflowTags: []` and
+ * `signedRequired: false`, affirmatively stating this had never been a publish gate.
+ *
+ * FAIL CLOSED, in three places, exactly as spec §4.5 requires:
+ *   1. a run that cannot be read at all → `{publish, spend}`;
+ *   2. a run with no `owner` → `{publish, spend}`;
+ *   3. MIGRATION: a run persisted BEFORE `workflowTags` existed carries no such field. Absent is NOT
+ *      "untagged" — it is unknown, so it reads as `{publish, spend}` and its gates cost a signed
+ *      approval. There is no back-fill and deliberately so: the value a back-fill would write is the
+ *      same disk re-scan this finding is about.
+ * The owner TYPE is no longer consulted here at all: an agent-owned run's tags are derived from its
+ * declaration at launch like any other (MEDIUM-4), so this function has one code path for both.
  */
-const WORKFLOW_TAGS_UNRESOLVABLE: ReadonlySet<string> = Object.freeze(new Set(['publish', 'spend']));
-const WORKFLOW_TAGS_NONE: ReadonlySet<string> = Object.freeze(new Set<string>());
+const WORKFLOW_TAGS_UNRESOLVABLE: ReadonlySet<string> = Object.freeze(new Set(FAIL_CLOSED_RUN_TAGS));
 
 function resolveRunWorkflowTags(
   ctx: SurfaceContext, actorSubject: string, runRef: string, scope: ReadScope,
 ): ReadonlySet<string> {
   const run = ctx.controlStore.getRun(actorSubject, runRef, scope);
   if (!run.ok) return WORKFLOW_TAGS_UNRESOLVABLE;
-  const owner = run.value.run.owner;
-  // A run somehow missing its owner entirely is an anomaly, not an ordinary agent-owned run — fail
-  // closed, exactly like an unresolvable definition below, rather than reading a property of `undefined`.
-  if (!owner) return WORKFLOW_TAGS_UNRESOLVABLE;
-  if (owner.type !== 'workflow') return WORKFLOW_TAGS_NONE;
-  const definition = scanWorkflowDefs(ctx.repoRoot).find((item) => item.def?.id === owner.id
-    && item.def.project === owner.project && item.entry.path === owner.sourcePath && item.entry.valid);
-  if (!definition?.def) return WORKFLOW_TAGS_UNRESOLVABLE;
-  return effectiveWorkflowTags(definition.def);
+  const stored = run.value.run.workflowTags;
+  if (!stored) return WORKFLOW_TAGS_UNRESOLVABLE;
+  return Object.freeze(new Set(stored));
 }
 
 /**

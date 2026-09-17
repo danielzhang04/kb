@@ -1350,12 +1350,15 @@ export function parseWorkflowDef(source: string, options: ParseWorkflowOptions =
  * `spend` are DERIVED, not merely declared, so a definition cannot escape the boss-intervention rule
  * (spec §4.5) by omitting a label: a `publish:` stage action or a `publicationAuthorization` human gate
  * always tags `publish`; a `spendAuthorization` human gate always tags `spend`. This mirrors the exact
- * signals `parseWorkflowDef`'s `validation-slice` check above already treats as the publish/T3 markers.
+ * signals `parseWorkflowDef`'s `validation-slice` check above already treats as the publish/T3 markers —
+ * BOTH of them: `stage.riskTier === 'T3'` is the second half of that precedent, and deriving only from
+ * the action left a stage declared `riskTier: T3` with a non-`publish:` action untagged, resolving its
+ * gate on the open channel (security review 2026-09-16, MEDIUM-3).
  */
 export function effectiveWorkflowTags(def: WorkflowDef): ReadonlySet<string> {
   const tags = new Set(def.tags);
   for (const stage of def.stages) {
-    if (stage.action.startsWith('publish:')) tags.add('publish');
+    if (stage.action.startsWith('publish:') || stage.riskTier === 'T3') tags.add('publish');
     for (const gate of stage.humanGates ?? []) {
       if (gate.publicationAuthorization === true) tags.add('publish');
       if (gate.spendAuthorization === true) tags.add('spend');

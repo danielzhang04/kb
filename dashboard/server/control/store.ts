@@ -30,6 +30,7 @@ import {
   CONTROL_PLANE_SCHEMA_VERSION,
 } from './generated/controlPlaneSchema.ts';
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
+import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import type {
   RunnableRef,
   Schedule,
@@ -640,6 +641,20 @@ function normalizeAgentWorkspaceLaunch(value: unknown): AgentWorkspaceLaunchProv
     || declarationPath !== `agents/${agentId}.md`
     || typeof declarationHash !== 'string' || !HASH_RE.test(declarationHash)) return undefined;
   return { composerRef, agentId, declarationPath, declarationHash };
+}
+
+/**
+ * `null` = the caller stated NO tag set (store no field: a legacy-shaped run the resolve rule fails
+ * closed on), a sorted unique array = the stated set, `undefined` = invalid input (refused).
+ * Only the two governing tags exist; anything else is a caller bug, not a tag to persist.
+ */
+function normalizeWorkflowTags(value: unknown): readonly string[] | null | undefined {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return undefined;
+  if (value.some((tag) => typeof tag !== 'string' || !FAIL_CLOSED_RUN_TAGS.includes(tag))) return undefined;
+  const unique = [...new Set(value as string[])].sort();
+  if (unique.length !== value.length) return undefined;
+  return unique;
 }
 
 interface CheckerContractProvenance {
@@ -3201,6 +3216,8 @@ function makeStore(
       if (!executionHost) return fail('invalid', 'execution host is invalid');
       const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(input.agentWorkspaceLaunch);
       if (agentWorkspaceLaunch === undefined) return fail('invalid', 'agent workspace launch provenance is invalid');
+      const workflowTags = normalizeWorkflowTags(input.workflowTags);
+      if (workflowTags === undefined) return fail('invalid', 'run workflow tags are invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
         return fail('limit', `run must contain 1-${MAX_STAGES_PER_RUN} stages`);
       }
@@ -3256,6 +3273,10 @@ function makeStore(
         managerAssignment,
         owner,
         executionHost,
+        // Part of the launch fingerprint: an idempotency key replayed with a DIFFERENT governing tag set
+        // is an idempotency conflict, never a silent re-tag of the replayed run. `undefined` drops out of
+        // `JSON.stringify`, so a caller that states no tags fingerprints exactly as it did before.
+        workflowTags,
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
@@ -3343,6 +3364,12 @@ function makeStore(
           || predecessor.executionHost !== executionHost) {
           return fail('conflict', 'Retry successor must preserve immutable runnable owner and execution host');
         }
+        // A Retry successor may never carry FEWER escalations than the run it succeeds: the definition
+        // could have been edited between the two launches, and a retry is not a laundering channel.
+        if (workflowTags !== null && (predecessor.workflowTags ?? [...FAIL_CLOSED_RUN_TAGS])
+          .some((tag) => !workflowTags.includes(tag))) {
+          return fail('conflict', 'Retry successor must not drop a governing workflow tag');
+        }
         if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
           || input.stages.some((stage) => {
             const predecessorStage = document.stages.find((item) =>
@@ -3377,6 +3404,9 @@ function makeStore(
         lifecycle: lifecycleForKind('planned', null),
         owner: clone(owner),
         executionHost,
+        // Written ONCE, here, and by nothing else. A run launched without a stated tag set stores no
+        // field at all, which the resolve rule reads as legacy and fails closed on.
+        ...(workflowTags === null ? {} : { workflowTags: [...workflowTags] }),
         terminalOutcome: null,
         completedAt: null,
         archivedFrom: null,

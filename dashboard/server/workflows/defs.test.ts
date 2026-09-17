@@ -1106,6 +1106,24 @@ describe('iteration group definitions', () => {
       expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['nightly', 'publish']));
     });
 
+    /**
+     * Security review 2026-09-16, MEDIUM-3. `parseWorkflowDef`'s `validation-slice` refusal — the
+     * precedent spec §4.4 cites — treats `action.startsWith('publish:') || riskTier === 'T3'` as ONE
+     * publish/T3 marker. Deriving only from the action left the second half of that precedent
+     * underived, so a stage declared `riskTier: T3` with an ordinary action carried no tag and
+     * resolved its gate on the open channel.
+     */
+    it('derives publish from riskTier: T3 alone, with a non-publish action and no gate', () => {
+      const fm = SINGLE.replace('riskTier: T2', 'riskTier: T3');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stages[0].action).toBe('research:web-brief');
+      expect(result.value.stages[0]).not.toHaveProperty('humanGates');
+      expect(result.value.tags).toEqual([]);
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['publish']));
+    });
+
     it('leaves an ordinary definition untagged', () => {
       const result = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
       expect(result.ok).toBe(true);

@@ -24,6 +24,10 @@ import type { FastifyInstance } from 'fastify';
 import { BROKER_SOCKET_PATH } from '../pty/fdPinnedPaths.ts';
 import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
+import { scanWorkflowDefs } from '../workflows/routes.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { deriveOwnerTags } from '../control/ownerTags.ts';
+import { WORKFLOW_EXECUTION_PROFILES } from '../control/workflowProfiles.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
@@ -427,6 +431,16 @@ export function makeSurfaceContext(
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
     authMode: overrides.authMode ?? authMode,
+    // BLOCKER-1: the composition root is the only place that can see BOTH the workflow scanner
+    // (`workflows/routes.ts`, which itself imports `control/launch.ts`) and the agent roster, so the
+    // derivation is bound here and handed down. `control/launch.ts` calls it once, at launch, and the
+    // result is persisted on the run; nothing re-derives it afterwards.
+    ownerTags: overrides.ownerTags ?? ((owner) => deriveOwnerTags(owner, {
+      workflowDefs: () => scanWorkflowDefs(repoRoot),
+      agentDeclarations: () => readDeclaredAgentDetails(repoRoot),
+      profileTools: (profileId) => WORKFLOW_EXECUTION_PROFILES
+        .find((profile) => profile.id === profileId)?.allowedTools ?? [],
+    })),
     // P5 W6.1 [P5-C30]: the ONE shared activation reader. Constructed exactly once here and threaded
     // through the context to Home, Health, and the Inbox deploy-ready gate. `index.test.ts` asserts a
     // single construction; deleting the `createHomeRoutePorts` default (home/routes.ts:73) makes a
