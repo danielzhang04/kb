@@ -1,25 +1,27 @@
 # System Handover
-_Generated: 2026-09-16 06:13 UTC_
+_Generated: 2026-09-17T06:08:37Z_
 
-Overnight the cloud nightly dispatcher ran cleanly: preamble, pyyaml, and the
-sync_skills check all passed, and one `nightly-review` cadence card was dispatched and
-executed (these dashboards are its output). No API money was spent today; yesterday cost
-$0.33 (a runpod pod-create), well under the $30/day ceiling.
+**What happened.** The nightly cloud dispatcher ran cleanly: preamble passed, skills are in
+sync, and one `nightly-review` card was dispatched and executed to regenerate these dashboards.
+Yesterday the fleet spent $6.20 (all RunPod L40S pods for figment's Track-1 replication),
+well under the $30/day ceiling; today is $0 so far.
 
-**Waiting on you:**
-1. **PR #173** (`claude/provenance-fix`) — the kb-ops VM dashboard has been down since
-   2026-09-06 (a hydrate-time validator bug). The fix is reviewed and mergeable but still
-   open; the dashboard stays down and recovery can't run until you merge it. This is the
-   most impactful item.
-2. **figment GATE A eye-gate** (approvals card `65d8f246`) — a T3 operator ruling on the
-   creator-001 blind board; curation to 40 is blocked until you rule.
-3. **sync_daemon_dirs desktop fix** — the nightly drift-check script is missing from the
-   `ops` branch and has been flagged 8 nights running. From the dashboard-ops worktree,
-   restore the script and decide the one-file drift (`orgs/kb-ops/workflows/acceptance-run.md`:
-   reconcile to main, or `--sync --prune`). The gate reports but never blocks dispatch.
+**One thing to know:** the nightly routine expects `scripts/sync_daemon_dirs.py`, but that file
+is absent on `ops`, so the daemon-mirror drift check could not run this time. It doesn't block
+dispatch, and a wake-me card is waiting in the queue explaining it — but the daemon-read mirror
+(agents/, workflows/, model-routing.yaml) went unverified tonight.
 
-**What the system will do unattended:** the nightly dispatcher keeps running each night —
-dispatching cadence cards, regenerating these dashboards, and re-filing the sync_daemon_dirs
-wake card until the desktop fix lands. It will not merge PRs or rule gates; those are yours.
-Two cards sit in `working/` (one figment track-1 replication in flight since ~09-03, one
-halted codex smoke card not yet swept) — worth a glance but neither blocks the fleet.
+**What is waiting on you.**
+1. **figment GATE A eye-gate** (`65d8f246-8a461521`, T3): a blind seven-axis board needs your
+   ruling before curation to 40 can continue.
+2. **kb-ops dashboard is still down** — the VM service has been stopped since 2026-09-06 over a
+   hydrate crash. The fix, PR #173, is reviewed and mergeable but still open; nothing recovers
+   until it's merged and recovery is run.
+3. **Restore the missing `sync_daemon_dirs.py`** (or the desktop `--sync` it points to) so the
+   nightly mirror check works again.
+
+**What the system will do next unattended.** The single dispatcher keeps firing its scheduled
+cadences; the next nightly-review beat will regenerate these dashboards again. No agent will
+merge PR #173, run the kb-ops recovery, or rule the figment gate for you — those stay human.
+figment's replication card remains in flight under its standing daily $10 approval. One halted
+codex card is parked in `working/` awaiting the archiver.

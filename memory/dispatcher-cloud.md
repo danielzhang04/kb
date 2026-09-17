@@ -907,3 +907,24 @@
 - Notable non-nightly signal surfaced to Daniel: kb-ops VM dashboard STOPPED since 2026-09-06,
   fix PR #173 mergeable but unmerged — 10 days down. Put top of executive Action-required + handover.
 - Logged this run's step to cost ledger (opus, $0.0 subscription). Budget $0.00 of $30 today.
+
+## 2026-09-17 nightly (dispatcher-cloud, ran on claude-opus-4-8)
+- Ran clean: preamble OK, pyyaml OK, sync_skills --check exit 0 (in sync). Dispatched 1 card
+  (nightly-review 6aab838e-d35a481b, cloud tier); dependent-release pass touched 2 wf- cards.
+- sync_daemon_dirs.py STILL absent on ops (9th night). Went straight to refs-fallback
+  (git show origin/main:scripts/sync_daemon_dirs.py > tmp; python tmp --check) per standing
+  lesson — same single-file drift `orgs/kb-ops/workflows/acceptance-run.md` (ops-only, EXIT 1).
+  Filed wake-daniel-2026-09-17-sync-daemon-dirs-drift referencing all EIGHT open priors
+  (08-15, 08-30, 09-10, 09-11, 09-13, 09-14, 09-15, 09-16) → nine open now. Reconfirmed:
+  routine step 2b literally says file-a-card each night, and every prior night did, so I keep
+  filing the dated card rather than unilaterally deduping; dedup remains a proposed step-2b amend.
+- Regenerated dashboards/executive.md + handover.md via dashboard-generator skill. Queue snapshot:
+  inbox 80, working 2, approvals 1, done 1585. Yesterday cost $6.20 (all runpod:l40s figment
+  Track-1 pods), today $0.00 of $30 budget.
+- Anomalies flagged (unchanged from priors, none mine to sweep): 6a6bc3dd kb-ops iter-smoke
+  state:halted stranded in queue/working/; d126c410 figment replicate still working (approval
+  dated 2026-09-03). figment T3 GATE A eye-gate 65d8f246 top of executive Action-required.
+  kb-ops VM dashboard STOPPED since 2026-09-06, PR #173 mergeable-but-unmerged (11 days down)
+  — kept top of handover.
+- Clone mtimes all clone-time (06:06), so no filesystem age signal for working/ staleness —
+  judged from card content, noted in dashboard.

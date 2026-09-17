@@ -1,33 +1,50 @@
 # Executive Dashboard
-_Generated: 2026-09-16 06:13 UTC by dispatcher-cloud_
+_Generated: 2026-09-17T06:08:37Z by dispatcher-cloud_
 
 ## Action required
-- **queue/approvals/65d8f246-8a461521.md** — project `figment`, action `GATE A eye-gate — operator rules creator-001 expansion-02 blind board (seven axes) so curation to 40 can proceed`, risk-tier **T3**. Awaits operator ruling.
-- **PR #173 (`claude/provenance-fix`)** — kb-ops dashboard recovery. Root-caused + reviewed MERGEABLE, still OPEN/unmerged; the VM dashboard service has been STOPPED since 2026-09-06 and recovery cannot run until this merges. Human merge owed.
-- **sync_daemon_dirs desktop fix** — 8 open wake cards (2026-08-15 → 2026-09-16). Script missing from `ops`; single-file drift on `orgs/kb-ops/workflows/acceptance-run.md`. Desktop reconciliation from dashboard-ops worktree owed.
+- **figment · T3 · `65d8f246-8a461521`** — GATE A eye-gate: operator must rule
+  creator-001 expansion-02 blind board (seven axes) before curation to 40 can proceed.
+  Awaiting human ruling in `queue/approvals/`.
 
 ## Queue
 | state | count |
 |-------|-------|
-| inbox | 74 |
+| inbox | 80 |
 | working | 2 |
 | approvals | 1 |
-| done | 1582 |
+| done | 1585 |
+
+_(working = 1 genuinely in flight + 1 `halted`-terminal card still parked in `working/`; see Anomalies.)_
 
 ## Last 24h
-- Cadences run: `nightly-review` dispatched 1 card today (2026-09-16); this run.
-- Cost: today **$0.0000** of $30.00 daily limit (no API-billed steps yet). Yesterday $0.3346 (runpod:l40s pod-create; nightly-review logged $0.0 subscription).
-- Notable: nightly dispatch healthy; sync_skills check clean; sync_daemon_dirs gate ran in cloud refs-fallback mode (script absent on ops).
+- **Cadences run:** nightly-review (2026-09-17, card `6aab838e-d35a481b`, dispatcher-cloud) —
+  this run. Prior beat 2026-09-16 (`6aaa3347-14a77965`).
+- **Cost:** today $0.00 spent; yesterday (2026-09-16) $6.20, all `runpod:l40s`
+  pod-create steps (figment Track-1 replication). Budget $30.00/day → ~$30.00 remaining today.
+- **Notable results:** dispatcher released 1 nightly-review card; dependent-release pass
+  touched 2 workflow cards. preamble + sync_skills `--check` both clean (in sync).
 
 ## Projects
-- **atlas** — Omni-interface foundation + adversarial remediation complete locally on `codex/atlas-enhancements-20260820`; remote push blocked pending Daniel's approval of origin. V1 "Hands" wave merged (PR #44) and live; V2 planning is Daniel's go/no-go.
-- **faceless-youtube** — PARKED, no work in flight. STATE.md stale (2026-07-19); real last activity is Bricks Variant-D arc in external clone `claude/bricks-variant-vd` (pushed).
-- **figment** — One resumable `pipeline` command drives anchor→…→video with per-stage gates; `detail`/`video` now real gradeable stages; single gate-writer + single prompt-composer consolidations landed. Track-1 replication card `d126c410` in flight; GATE A eye-gate awaiting operator (see Action required).
-- **kb-ops** — VM dashboard service STOPPED since 2026-09-06 (hydrate validator bug on release 39197cf5). Fix PR #173 MERGEABLE but unmerged; recovery not yet run.
-- **prospecting** — P1–P8 built across worktrees, all branches UNPUSHED. P8 affinity gate 953/953 at HEAD 52067386; live-tested against real desktop store, all Gate P8-B criteria green.
+- **atlas** — Omni-interface foundation complete locally on `codex/atlas-enhancements-20260820`;
+  adversarial remediation diff (>400 lines) awaiting Daniel review before commit/push.
+- **faceless-youtube** — PARKED, no active work; STATE stale (last real activity was the
+  Bricks Variant-D arc in an out-of-tree clone).
+- **figment** — Single resumable `pipeline` command drives anchor→…→video with per-stage gates;
+  `detail`/`video` now first-class gradeable stages; one canonical gate writer. Track-1
+  replication card in flight; GATE A eye-gate awaiting operator (see Action required).
+- **kb-ops** — VM dashboard service (`kb-dashboard.service`) STOPPED since 2026-09-06 (hydrate
+  validator crash on release 39197cf5); recovery fix is PR #173 (`claude/provenance-fix`,
+  reviewed mergeable) — still OPEN/unmerged, recovery not yet run.
+- **prospecting** — P1-P8 built across worktrees, all branches UNPUSHED; P8 affinity gate
+  953/953 green, live-tested against real desktop store.
 
 ## Anomalies
-- **sync_daemon_dirs.py absent from `ops`** for the 8th consecutive night; gate runs only via `main`'s copy in refs-fallback mode. Single-file drift: `orgs/kb-ops/workflows/acceptance-run.md` (ops-only). Wake card written 2026-09-16.
-- **kb-ops dashboard down 10 days** — service STOPPED since 2026-09-06, recovery blocked on unmerged PR #173.
-- **working/6a6bc3dd-5494006b** sits in `queue/working/` with terminal `state: halted` (codex-worker iter-smoke-t2) — not swept.
-- **working/d126c410-9bc54280** (figment track1 replicate) carries approvals dated 2026-09-03; likely long-running — verify liveness.
+- **Missing script `scripts/sync_daemon_dirs.py`** on ops — the nightly routine's step-2b
+  daemon-mirror `--check` could not run (file not found). Wake-me card filed to `queue/inbox/`.
+  Gate reports only; dispatch was not blocked.
+- **Halted card in `working/`** — `6a6bc3dd-5494006b` (kb-ops, `iter-smoke-t2`, codex-worker)
+  is `state: halted` (terminal) but still parked in `queue/working/`; not yet archived.
+- **kb-ops dashboard down** — service failed since 2026-09-06; PR #173 open/unmerged, recovery
+  not run (surfaced under Projects; human merge required).
+- Card filesystem mtimes are all clone-time (fresh cloud checkout), so no reliable in-`working/`
+  age signal; staleness judged from card content, not mtime.
