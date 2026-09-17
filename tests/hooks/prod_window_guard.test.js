@@ -228,6 +228,32 @@ const CASES = [
   ['O2 missing -Reason blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve`, 2],
   ['O2 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run r -Request q -Decision approve -Reason "x" && rm -rf /`, 2],
 
+  // ---- C16: prod-respond.ps1 CARRYING -Approval is WINDOWED (T11). Plain O2 above is unaffected. ---
+  ['C16 -Approval blocked when window closed', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-cc508ddb -Request req-1 -Decision approve -Reason "sources added, brief is correct" -Approval ${T}\\approval.json`, 2],
+  ['C16 -Approval allowed when window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-cc508ddb -Request req-1 -Decision approve -Reason "sources added, brief is correct" -Approval ${T}\\approval.json`, 0],
+  ['C16 -Approval under kb-backups, window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision retry -Reason "needs another pass" -Actor boss -Approval C:\\Users\\danie\\kb-backups\\approval-current\\approval.json`, 0],
+  ['C16 -Approval with -DryRun, window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision abandon -Reason "stale, superseded" -Approval ${T}\\approval.json -DryRun`, 0],
+  ['C16 -Approval traversal blocked, window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval ${T}\\..\\..\\secrets\\approval.json`, 2],
+  ['C16 -Approval outside T/kb-backups blocked, window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval C:\\tmp\\approval.json`, 2],
+  ['C16 -Approval blocked when window closed even with -DryRun (windowed regardless of -DryRun, same as C13/C15)', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval ${T}\\approval.json -DryRun`, 2],
+  ['C16 rehearsal URL always allowed, window closed', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval ${T}\\rehearsal\\p11\\approval.json -URL http://127.0.0.1:4417`, 0],
+  // Plain O2 (no -Approval) MUST stay open-class, unaffected by C16 — regression check right next
+  // to the new windowed shape.
+  ['O2 (no -Approval) still open-class after C16, window closed', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "sources added, brief is correct"`, 0],
+  // A near-miss -Approval shape (bad path) must still be refused as windowed-and-unmatched, not
+  // silently fall through to the open-class O2 allowlist.
+  ['C16 malformed -Approval shape does not fall through to open-class O2, window open', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok" -Approval "$(whoami)"`, 2],
+
   // ---- HOOK-BLOCKER-1: isKbReaderRead must match the WHOLE command, not a prefix ------------
   // Reviewer's exact probes: a 40-char kb-reader prefix used to exempt the entire rest of the
   // command from classification. Both now fall through to real prod-targeting classification

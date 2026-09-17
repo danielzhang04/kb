@@ -24,8 +24,10 @@
  *   WINDOWED class — deploy, drain, canary, stop, preflight, anything that drives a
  *                   signing key (prod-sign-approval.ps1, the kb-human-approval
  *                   ssh-keygen sign command), and anything that PLACES a signed call
- *                   (prod-signed-call.ps1). Refused outside an explicitly opened prod
- *                   window; anchored shapes only inside one.
+ *                   (prod-signed-call.ps1, and prod-respond.ps1 ONLY when it carries
+ *                   -Approval — C16; the plain no-Approval shape is OPEN class, O2).
+ *                   Refused outside an explicitly opened prod window; anchored shapes
+ *                   only inside one.
  *   (Standing blocks and the Agent-tool rule apply to every class identically.)
  *
  * Rules
@@ -254,6 +256,28 @@ const C14 = new RegExp('^ssh-keygen\\s+-y\\s+sign\\s+-f\\s+' + PATHARG
   + '\\s+-n\\s+kb-human-approval\\s+["\']?' + BACKUPS + B
   + 'approval-current' + B + 'payload\\.json["\']?$');
 
+// C16 — prod-respond.ps1 CARRYING -Approval, WINDOWED class. Plain O2 (no -Approval) stays OPEN
+// class — this is the narrower, windowed variant that carries a signed human/iteration-gate
+// approval, same belt-and-braces posture as C13/C15/C14. -Approval must resolve to a path under
+// the tooling tree or kb-backups (no traversal), matching C13's -Out / C15's -Approval. Argument
+// order is pinned like every other C-shape: -Run -Request -Decision -Reason [-Actor] -Approval
+// [-DryRun].
+const C16 = new RegExp(PRE + PS + '-file\\s+' + P('prod-respond.ps1')
+  + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-request\\s+([a-z0-9-]{1,80})'
+  + '\\s+-decision\\s+(approve|retry|abandon)\\s+-reason\\s+' + REASON
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?'
+  + '\\s+-approval\\s+' + SAFE_T_OR_BACKUPS
+  + '(?:\\s+-dryrun)?$');
+
+// The classifier signal for C16: prod-respond.ps1 named ALONGSIDE a genuine `-Approval` argument
+// token. Checked BEFORE OPEN_SCRIPTS in isProdTargeting so a `-Approval`-carrying invocation is
+// NEVER treated as the open-class O2 shape, whether or not it matches C16's exact grammar (an
+// almost-right -Approval invocation must still be refused as a malformed WINDOWED command, not
+// silently fall through to open-class and be waved through unmatched). Whitespace-bounded, so a
+// `-Reason` value that merely CONTAINS the substring "-approval" also trips this — a conservative
+// (more-restrictive, never less-restrictive) false positive, not a hole.
+const PROD_RESPOND_APPROVAL_SCRIPT = /prod-respond\.ps1\b[\s\S]*(?:^|\s)-approval(?:\s|$)/;
+
 // G — prod-window.ps1 itself (HOOK-BLOCKER-6). It was in neither class list, so any shape at all
 // reached it unexamined. It needs no window (it IS the window control) but is anchored to exactly
 // its three real modes: -Open [-Hours N|-Minutes N] [-Step <word>], -Close, -Status.
@@ -388,6 +412,9 @@ function isProdTargeting(n) {
   }
 
   if (WINDOW_MGMT_SCRIPT.test(n)) return 'A4pw';
+  // C16: prod-respond.ps1 carrying -Approval is windowed — checked before OPEN_SCRIPTS so it is
+  // never classified A4o (OPEN_SCRIPTS' own prod-respond.ps1 arm would otherwise match first).
+  if (PROD_RESPOND_APPROVAL_SCRIPT.test(n)) return 'A4w';
   if (OPEN_SCRIPTS.test(n)) return 'A4o';
   if (WINDOWED_SCRIPTS.test(n)) return 'A4w';
 
@@ -530,6 +557,7 @@ function allowlistMatch(n) {
   if (C13.test(n)) return 'C13';
   if (C14.test(n)) return 'C14';
   if (C15.test(n)) return 'C15';
+  if (C16.test(n)) return 'C16';
   const ssh = n.match(SSH_ROOT);
   if (ssh && isReadVerb(ssh[1])) return 'C7';
   return null;
