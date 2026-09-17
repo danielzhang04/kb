@@ -2822,6 +2822,59 @@ describe('run graph, attempts, and managed sessions', () => {
       ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
+  it('replays a legacy (pre-workflowTags) launch fingerprint byte-identically, and still conflicts on a retagged reuse (N1)', () => {
+    // `96337de728d7...` is the REAL launch fingerprint commit 920f4780's store.ts (the branch base,
+    // before `workflowTags` entered the fingerprint at all in cd1955b3) computed for this exact
+    // proposal/run/idempotencyKey shape -- captured by running that historical store.ts directly. If a
+    // caller states no tags today, the fix must reproduce this value bit-for-bit, or every pre-existing
+    // idempotency key in prod fingerprints differently after deploy and never replays again (security
+    // review 2, N1).
+    const ANCIENT_FINGERPRINT = '96337de728d74cf3b0a0c08002e82d40c2ee88f878aa8a0d516427f75c32215e';
+    const root = mkdtempSync(join(tmpdir(), 'control-n1-legacy-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const proposalCreated = store.createProposalRevision('alice', {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'n1-probe', title: 'N1 probe workflow',
+      snapshot: {
+        schema: 'kb.plan-proposal/v1', title: 'N1 probe workflow', manager: {},
+        stages: [{ id: 'build', title: 'Build', dependsOn: [] }],
+      },
+    });
+    if (!proposalCreated.ok) throw new Error(proposalCreated.detail);
+    const approved = store.decideProposal('alice', proposalCreated.value.proposalRef, proposalCreated.value.revision, {
+      expectedHash: proposalCreated.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'n1-probe-approve',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const launchInput = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
+      title: 'N1 probe workflow', proposalRef: proposalCreated.value.proposalRef,
+      proposalRevision: proposalCreated.value.revision, expectedProposalHash: proposalCreated.value.hash,
+      managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'n1-legacy-fingerprint-probe',
+      stages: [{ stageId: 'build', title: 'Build', dependsOn: [] }],
+    };
+    const launched = store.createRun('alice', launchInput);
+    if (!launched.ok) throw new Error(launched.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = (JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> })
+      .runs.find((item) => item.runRef === launched.value.run.runRef);
+    expect(persisted).not.toHaveProperty('workflowTags');
+    expect(persisted?.launchOperationFingerprint).toBe(ANCIENT_FINGERPRINT);
+
+    // Restart the daemon (fresh store instance over the same root) and replay the SAME idempotencyKey
+    // with the SAME no-tags input: this is the exact shape of a pre-deploy card the queue bridge is
+    // still trying to reconcile. Must be a 200 replay, not idempotency-conflict.
+    const restarted = fileStores.restart(root);
+    const replay = restarted.createRun('alice', launchInput);
+    expect(replay).toMatchObject({ ok: true, replayed: true, value: { run: { runRef: launched.value.run.runRef } } });
+
+    // The SAME key reused with a DIFFERENT, non-empty governing tag set must still conflict -- the tag
+    // set is part of the fingerprint whenever the caller actually states one.
+    const retagged = restarted.createRun('alice', { ...launchInput, workflowTags: ['publish'] });
+    expect(retagged).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+  });
+
   it('copies only the exact approved assignment snapshot into a run and its stages', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const inputAssignments = {

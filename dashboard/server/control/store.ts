@@ -3274,9 +3274,11 @@ function makeStore(
         owner,
         executionHost,
         // Part of the launch fingerprint: an idempotency key replayed with a DIFFERENT governing tag set
-        // is an idempotency conflict, never a silent re-tag of the replayed run. `undefined` drops out of
-        // `JSON.stringify`, so a caller that states no tags fingerprints exactly as it did before.
-        workflowTags,
+        // is an idempotency conflict, never a silent re-tag of the replayed run. A caller that states no
+        // tags normalizes to `null` (not `undefined`, which alone would drop out of `JSON.stringify`), so
+        // the key is omitted outright — a legacy-shaped replay (no field, computed before this key
+        // existed) fingerprints byte-identically to before (security review 2, N1).
+        ...(workflowTags === null ? {} : { workflowTags }),
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
