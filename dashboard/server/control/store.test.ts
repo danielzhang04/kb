@@ -3185,6 +3185,55 @@ describe('run graph, attempts, and managed sessions', () => {
     })).toMatchObject({ ok: false, reason: 'conflict' });
   });
 
+  it('retries a legacy (no-stored-tags) predecessor without the tag-drop refusal, and stores the successor\'s own derived tags (N2)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    // `createRun` (the default factory) states no `workflowTags`, so this predecessor is LEGACY-shaped
+    // -- exactly the shape of every run in prod today, per security review 2.
+    const first = settleRetryPredecessor(store);
+    expect(first.run).not.toHaveProperty('workflowTags');
+    const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Retry of a legacy run', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
+      expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'retry-legacy-predecessor',
+      workflowTags: ['publish'], // freshly derived from the OWNER at this launch, independent of the predecessor
+      predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
+      stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    expect(successor.ok && successor.value.run).toMatchObject({
+      predecessorRunRef: first.run.runRef, workflowTags: ['publish'],
+    });
+  });
+
+  it('still refuses a Retry successor that drops a tag the predecessor actually had stored (N2 control)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const taggedProposal = createApprovedProposal(store, 'alice');
+    const taggedCreated = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Synthetic run', proposalRef: taggedProposal.proposalRef, proposalRevision: taggedProposal.revision,
+      expectedProposalHash: taggedProposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'launch-tagged', workflowTags: ['publish'],
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    });
+    if (!taggedCreated.ok) throw new Error(taggedCreated.detail);
+    const first = settleRetryPredecessor(store, 'alice', () => taggedCreated.value);
+    expect(first.run).toMatchObject({ workflowTags: ['publish'] });
+    expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Untagged retry', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
+      expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'retry-drops-tag', workflowTags: [],
+      predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
+      stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
+    })).toMatchObject({ ok: false, reason: 'conflict', detail: 'Retry successor must not drop a governing workflow tag' });
+  });
+
   it('treats fully quiescent interrupted descendants as settled for Retry', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const created = createRun(store);

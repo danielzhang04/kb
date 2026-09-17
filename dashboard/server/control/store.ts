@@ -3367,9 +3367,14 @@ function makeStore(
           return fail('conflict', 'Retry successor must preserve immutable runnable owner and execution host');
         }
         // A Retry successor may never carry FEWER escalations than the run it succeeds: the definition
-        // could have been edited between the two launches, and a retry is not a laundering channel.
-        if (workflowTags !== null && (predecessor.workflowTags ?? [...FAIL_CLOSED_RUN_TAGS])
-          .some((tag) => !workflowTags.includes(tag))) {
+        // could have been edited between the two launches, and a retry is not a laundering channel. This
+        // only applies when the PREDECESSOR actually stored a tag set -- a legacy predecessor (persisted
+        // before the field existed) has no set to compare against, so every retry of it would otherwise
+        // be refused forever (security review 2, N2). The predecessor's own gates already fail closed on
+        // its absent tags (`resolveRunWorkflowTags`); this successor is governed by its OWN freshly
+        // derived and stored set either way.
+        if (workflowTags !== null && predecessor.workflowTags !== undefined
+          && predecessor.workflowTags.some((tag) => !workflowTags.includes(tag))) {
           return fail('conflict', 'Retry successor must not drop a governing workflow tag');
         }
         if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
