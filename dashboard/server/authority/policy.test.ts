@@ -9,6 +9,7 @@ import { buildApp, registeredRoutesOf } from '../index.ts';
 import { makeSurfaceContext, registerWriteSurface } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
 import { mintSession, type SessionConfig } from '../auth/session.ts';
+import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
 describe('route authority table', () => {
   it('has no duplicate route keys', () => {
@@ -48,6 +49,11 @@ describe('route authority table', () => {
 });
 
 const MUTATING = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
+/** What a successful composition-time PTY host probe publishes; nothing registers a PTY without it. */
+const AVAILABLE_PTY = {
+  pty: true as const, host: 'desktop' as const, launchers: ['shell' as const],
+  roots: ['repo' as const], checkedAt: '2026-09-16T09:00:00.000Z',
+};
 const REPO_A = fileURLToPath(new URL('../__fixtures__/repo-a/', import.meta.url));
 const TEST_SESSION_CONFIG = { secret: Buffer.from('authority-policy-test-secret-01'), ttlMs: 60_000 };
 const TEST_ORIGINS = ['http://localhost'];
@@ -103,6 +109,35 @@ function buildGatedScopeApp(): { app: FastifyInstance; keys: Set<string> } {
   return { app, keys };
 }
 
+/**
+ * The mutating routes the completeness check below is allowed to skip, NAMED ONE BY ONE.
+ *
+ * MEDIUM-2 (security review 2026-09-16): these used to be PREFIX filters —
+ * `!key.startsWith('POST /api/v1/hosts/')` and `!key.startsWith('POST /api/v1/runs/') ||
+ * key.includes('human-requests')`. The second exempted EVERY future `POST /api/v1/runs/:runRef/<anything>`
+ * from the check, not just the two node routes it meant. A new operator-scope route under that prefix
+ * would be unclassified, would `403 route-unclassified` at runtime (fail closed — good), and the test
+ * that exists to catch exactly that would have stayed green. Literal keys cannot drift that way: a
+ * genuinely new route has to be classified or named here on purpose.
+ *
+ * MEDIUM-1's other half is the second assertion below: with `runtimeCapabilities.pty` false (this
+ * fixture's default) the PTY routes are never registered, so this check could not see them at all.
+ */
+/** The four node-identity routes (`registerV1NodeRoutes`) — out of scope per spec §2, on a sibling
+ *  scope with no gate. */
+const NODE_SCOPE_KEYS: readonly string[] = Object.freeze([
+  'PUT /api/v1/hosts/:hostId',
+  'POST /api/v1/hosts/:hostId/leases/claim',
+  'POST /api/v1/runs/:runRef/leases/renew',
+  'POST /api/v1/runs/:runRef/reports',
+]);
+const EXEMPT_FROM_COMPLETENESS: readonly string[] = Object.freeze([
+  ...NODE_SCOPE_KEYS,
+  // The durable paid-action grant — deliberately outside the gate (spec §2, INFO-3): headless workers
+  // have no session, and the route resolves its grant in its own preHandler.
+  'POST /api/control/paid-action',
+]);
+
 describe('the table covers the real app', () => {
   it('classifies every mutating route the real daemon registers', async () => {
     const app = buildRealApp();
@@ -113,12 +148,52 @@ describe('the table covers the real app', () => {
     // the real daemon at all — no filter is needed for them any more.
     const unclassified = registered
       .map((r) => `${r.method} ${r.url}`)
-      .filter((key) => !key.startsWith('POST /api/v1/hosts/'))         // node scope, spec §2
-      .filter((key) => !key.startsWith('POST /api/v1/runs/') || key.includes('human-requests'))
-      .filter((key) => !key.startsWith('POST /api/control/paid-action')) // grant class, spec §2
+      .filter((key) => !EXEMPT_FROM_COMPLETENESS.includes(key))
       .filter((key) => classifyRoute(key.split(' ')[0], key.slice(key.indexOf(' ') + 1)) === null);
     expect(unclassified).toEqual([]);
   });
+
+  it('states exactly which carve-outs are LIVE and which are dead in this fixture', async () => {
+    // MEDIUM-1's second half, made visible rather than left implicit. `POST /api/control/paid-action`
+    // really is registered here, so its carve-out is load-bearing. The four node routes are NOT:
+    // `registerV1NodeRoutes` returns immediately without `ctx.nodeProxyUid` + `ctx.loadHostNodeMap`, and
+    // `BuildAppOptions` exposes neither, so no fixture built through `buildApp` can enumerate that
+    // scope. Their carve-out is therefore DEAD HERE — pinned as such, so the fact is stated instead of
+    // being discovered again by the next reviewer. If a node route ever becomes reachable through
+    // `buildApp`, this goes red and the carve-out has to be justified against a scope that now exists.
+    const app = buildRealApp();
+    await app.ready();
+    const registered = new Set(registeredRoutesOf(app).map((r) => `${r.method} ${r.url}`));
+    expect(registered.has('POST /api/control/paid-action')).toBe(true);
+    expect(EXEMPT_FROM_COMPLETENESS.filter((key) => !registered.has(key))).toEqual([...NODE_SCOPE_KEYS]);
+  });
+
+  it('classifies the PTY scope too, which the default fixture never registers (MEDIUM-1)', async () => {
+    // Built a SECOND time with the PTY capability on and a platform host injected, so the PTY scope is
+    // actually composed. `authority/ptyScope.test.ts` proves the gate reaches it; this proves the TABLE
+    // covers it, which the fixture above structurally could not.
+    const withPty = buildApp({
+      repoRoot: REPO_A,
+      sessionConfig: TEST_SESSION_CONFIG,
+      allowedOrigins: TEST_ORIGINS,
+      validateData: false,
+      controlStore: createInMemoryControlPlaneStore(),
+      runtimeCapabilities: runtimeCapabilities('win32', AVAILABLE_PTY),
+      ptySessionHost: { probe: async () => ({ ok: true, value: AVAILABLE_PTY }), listEpoch: async () => [] } as never,
+    });
+    openApps.push(withPty);
+    await withPty.ready();
+    const ptyRoutes = registeredRoutesOf(withPty)
+      .map((r) => `${r.method} ${r.url}`)
+      .filter((key) => key.includes('/api/pty'));
+    expect(ptyRoutes).toContain('DELETE /api/pty/sessions/:sessionId');
+    const unclassified = registeredRoutesOf(withPty)
+      .filter((r) => MUTATING.has(r.method))
+      .map((r) => `${r.method} ${r.url}`)
+      .filter((key) => !EXEMPT_FROM_COMPLETENESS.includes(key))
+      .filter((key) => classifyRoute(key.split(' ')[0], key.slice(key.indexOf(' ') + 1)) === null);
+    expect(unclassified).toEqual([]);
+  }, 30_000);
 
   it('registers no route under a forbidden prefix', async () => {
     const app = buildRealApp();

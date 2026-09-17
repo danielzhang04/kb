@@ -382,8 +382,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         ...(surfaceCtx.browserSessionRefs ? { browserSessionRefs: surfaceCtx.browserSessionRefs } : {}),
       });
       // `registerPtyRoute` installs this scope's own hooks in the pinned order
-      // (origin -> rate limit -> session -> browser principal), so nothing else is added here.
+      // (origin -> rate limit -> session -> browser principal).
+      //
+      // T3's gate needs its OWN install here too (security review 2026-09-16, MEDIUM-1): this is a
+      // THIRD scope, a sibling of the two `requireAuthority` already sits on, and `DELETE
+      // /api/pty/sessions/:sessionId` IS in `ROUTE_AUTHORITY` (as `open`) while never reaching the gate
+      // that is supposed to enforce the table. No security loss today — it is `open` either way — but
+      // the table asserted a coverage it did not have, and the fail-closed property that makes the
+      // whole design work (a NEW mutating route nobody classified answers `403 route-unclassified`
+      // instead of shipping ungated and silent) was absent in this scope.
+      //
+      // A `preHandler`, deliberately, so it runs AFTER the route's own `preValidation` session +
+      // browser-principal checks — the same order the other two install points have (`requireSession`
+      // first, then `requireAuthority`). Installing it earlier would answer an unauthenticated request
+      // with a route classification and append an audit row for it. GETs and the WS upgrade pass
+      // straight through (`gate.ts`'s PASS_THROUGH_METHODS).
       app.register(async (scope) => {
+        scope.addHook('preHandler', requireAuthority(surfaceCtx));
         await registerPtyRoute(scope, ptyCtx);
       });
     }
