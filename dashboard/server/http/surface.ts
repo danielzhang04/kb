@@ -52,7 +52,7 @@ import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { readScopeForSubject, registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
-import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
+import { buildActivatedExecution, createExecutionLatch, isOperatorUnlockSource } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
@@ -587,10 +587,11 @@ export function makeSurfaceContext(
             seq: event.entry.seq,
           }));
         }
-        // The queue bridge runs for a deliberately ARMED daemon: `tailnet` mode (armed at boot by
-        // deployment posture). `env-override` is excluded on purpose — it is the headless/testing arm
-        // and must stay inert.
-        if (execution && state.source === 'tailnet' && serviceCaller) {
+        // The queue bridge runs for a deliberately ARMED daemon: an honest operator unlock source
+        // (`tailnet`, armed at boot by deployment posture, or `operator-session`, an explicit
+        // win32-desktop operator unlock — security review 2, N0). `env-override` is excluded on
+        // purpose — it is the headless/testing arm and must stay inert.
+        if (execution && isOperatorUnlockSource(state.source) && serviceCaller) {
           const bridge = buildQueueBridge({
             repoRoot: ctx.repoRoot,
             runPy: ctx.runPy,
