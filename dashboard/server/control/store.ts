@@ -3273,12 +3273,15 @@ function makeStore(
         managerAssignment,
         owner,
         executionHost,
-        // Part of the launch fingerprint: an idempotency key replayed with a DIFFERENT governing tag set
-        // is an idempotency conflict, never a silent re-tag of the replayed run. A caller that states no
-        // tags normalizes to `null` (not `undefined`, which alone would drop out of `JSON.stringify`), so
-        // the key is omitted outright — a legacy-shaped replay (no field, computed before this key
-        // existed) fingerprints byte-identically to before (security review 2, N1).
-        ...(workflowTags === null ? {} : { workflowTags }),
+        // workflowTags is intentionally NOT part of the launch fingerprint. The tag set is DERIVED at
+        // launch from `owner` (already fingerprinted above), and a replay writes nothing and cannot
+        // re-tag the stored run — so a "different tag set on replay" can only mean a different owner
+        // (already a conflict via the `owner` key) or a changed derivation function, which is not an
+        // idempotency concern. Keeping the key added no protection while permanently breaking replay of
+        // every run persisted before this field existed: the canonical launch path (launch.ts) always
+        // passes an array, so legacy runs (fingerprinted before the field existed, thus with no key at
+        // all) could never match again and would 409 idempotency-conflict forever (security review 2 N1;
+        // live-proven 2026-09-17 rehearsal p12 against run-0d56794b).
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,

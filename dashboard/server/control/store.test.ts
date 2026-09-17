@@ -2869,10 +2869,12 @@ describe('run graph, attempts, and managed sessions', () => {
     const replay = restarted.createRun('alice', launchInput);
     expect(replay).toMatchObject({ ok: true, replayed: true, value: { run: { runRef: launched.value.run.runRef } } });
 
-    // The SAME key reused with a DIFFERENT, non-empty governing tag set must still conflict -- the tag
-    // set is part of the fingerprint whenever the caller actually states one.
+    // The SAME key reused with a DIFFERENT, non-empty governing tag set must ALSO replay, never conflict:
+    // workflowTags is intentionally not part of the fingerprint (boss ruling 2026-09-17) -- the tag set is
+    // derived from `owner`, which IS fingerprinted, and a replay writes nothing so it cannot re-tag the
+    // stored run.
     const retagged = restarted.createRun('alice', { ...launchInput, workflowTags: ['publish'] });
-    expect(retagged).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
+    expect(retagged).toMatchObject({ ok: true, replayed: true, value: { run: { runRef: launched.value.run.runRef } } });
   });
 
   it('copies only the exact approved assignment snapshot into a run and its stages', () => {

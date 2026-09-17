@@ -4537,6 +4537,10 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
     /** A git seam that RACES — the concurrent-ops-writer shape the launch push must survive. */
     opsGitOverride?: (repoRoot: string, args: string[]) => string,
+    /** N1: a controllable owner-tag derivation, so a test can drive TWO otherwise-identical contexts that
+     *  derive DIFFERENT governing tag sets for the same owner (the shape of a redeploy that changes
+     *  `deriveOwnerTags`, or a legacy pre-`workflowTags` replay) without needing real workflow/agent scans. */
+    ownerTagsOverride?: SurfaceContext['ownerTags'],
   ) {
     const audit: Array<Record<string, unknown>> = [];
     const routingWrites: Array<Record<string, unknown>> = [];
@@ -4549,6 +4553,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       sessionConfig: SESSION, allowedOrigins: [ORIGIN], controlStore: store,
+      ...(ownerTagsOverride ? { ownerTags: ownerTagsOverride } : {}),
       composerStore: createInMemoryComposerStore({
         protector: { seal: (value: string) => value, open: (value: string) => value },
         newId: () => `composer-${++composerId}`,
@@ -4986,6 +4991,71 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
         owner: 'operator', detail: expect.objectContaining({ runOwnerSubject: 'operator' }),
       });
     } finally { await app.close(); }
+  });
+
+  /**
+   * N1 (security review 2, live-proven 2026-09-17 rehearsal p12 against run-0d56794b): `workflowTags` is
+   * DERIVED at launch (`ctx.ownerTags(owner)`) and is intentionally NOT part of the launch fingerprint.
+   * Drives the REAL production launch route end to end (not `store.createRun` directly) with two
+   * otherwise-identical contexts that derive DIFFERENT governing tag sets for the same owner — the exact
+   * shape of a redeploy that changes `deriveOwnerTags`, or a legacy (pre-`workflowTags`) key replayed
+   * after the field existed. Both must still replay the SAME run. A genuinely different launch (a second,
+   * differently-titled approved revision) reusing the same key must still 409 — unrelated fingerprint
+   * fields are untouched by this fix.
+   */
+  it('replays the SAME run when the derived owner tag set changes, but still conflicts on genuinely different launch content (N1 production path)', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `n1-prod-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'n1-prod-path');
+    const idempotencyKey = `launch:${revision.hash}`;
+
+    // First launch: owner-tag derivation returns EMPTY (the legacy no-tags shape).
+    const first = surface(store, undefined, undefined, () => []);
+    try {
+      const launched = await first.app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`,
+        headers: headers(first.token), payload: { expectedHash: revision.hash, idempotencyKey },
+      });
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+
+      // Replay the SAME idempotency key through a FRESH context whose derivation now returns a DIFFERENT,
+      // non-empty tag set. Because workflowTags is no longer part of the fingerprint, this is still a 200
+      // replay of the SAME run — before this fix it would 409 idempotency-conflict.
+      const second = surface(store, undefined, undefined, () => ['publish', 'spend']);
+      try {
+        const replayed = await second.app.inject({
+          method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`,
+          headers: headers(second.token), payload: { expectedHash: revision.hash, idempotencyKey },
+        });
+        expect(replayed.statusCode, replayed.body).toBe(200);
+        expect(replayed.json()).toMatchObject({ runRef, replayed: true });
+      } finally { await second.app.close(); }
+
+      // A genuinely different launch — a second, differently-titled revision of the SAME proposal —
+      // reusing the SAME key is still refused: the fingerprint's other fields (title, proposalRevision)
+      // are untouched by dropping workflowTags.
+      const retitledSnapshot = { ...proposal, title: 'A retitled control route' };
+      const retitled = store.createProposalRevision('operator', {
+        proposalRef: revision.proposalRef, expectedPreviousHash: revision.hash,
+        sourceComposerRef: 'workflow-registry', sourceTurnId: 'self-lint-report',
+        title: retitledSnapshot.title, snapshot: retitledSnapshot as unknown as JsonObject,
+      });
+      if (!retitled.ok) throw new Error(retitled.detail);
+      const retitledApproved = store.decideProposal('operator', revision.proposalRef, retitled.value.revision, {
+        expectedHash: retitled.value.hash, expectedApprovalRevision: 0, decision: 'approved',
+        idempotencyKey: 'n1-prod-path-retitle-approve',
+      });
+      if (!retitledApproved.ok) throw new Error(retitledApproved.detail);
+      const third = surface(store, undefined, undefined, () => []);
+      try {
+        const conflicted = await third.app.inject({
+          method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/${retitled.value.revision}/launch`,
+          headers: headers(third.token), payload: { expectedHash: retitled.value.hash, idempotencyKey },
+        });
+        expect(conflicted.statusCode, conflicted.body).toBe(409);
+        expect(conflicted.json()).toMatchObject({ error: 'idempotency-conflict' });
+      } finally { await third.app.close(); }
+    } finally { await first.app.close(); }
   });
 
   it('refuses a third subject the launch of a foreign revision, with zero side effects', async () => {
