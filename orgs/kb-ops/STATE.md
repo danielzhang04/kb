@@ -1,64 +1,61 @@
 # kb-ops — STATE
-## 2026-09-15 15:30 - merged (#173, #185 -> main bce8a7a3); prod deploy ON HOLD behind a hotfix
-Resume from `handoffs/2026-09-15-kb-v1-launch-deploy-hold.md`. Release bce8a7a3 built; a rehearsal on a copy of PROD's
-control-plane document found two blockers before touching prod: B1 `manager/stop` on the stale run persists an invalid
-document (crash-loop on hydrate); B2 the VM reconciler allowlist lacks orgs/*/GOAL.md so the drain would wedge. Hotfix
-branch `claude/v1-hotfix-1` in flight (both fixes + tests) -> PR -> re-rehearse deploy->stop->drain on prod's data ->
-Daniel deploys. Read-only prod access for terminals is live (`ssh kb-reader`). Tooling persisted at
-C:/Users/danie/kb-rehearsal/tooling/.
-_Updated: 2026-09-15 15:30_
+
 ## Now
-VM dashboard (`kb-dashboard.service`) was STOPPED (failed, 6 restarts) since 2026-09-06 19:04:55Z
-— every boot on release 39197cf5 died at hydrate (`invalid control-plane creator attempt
-generation provenance`, store.ts:1715: a validator join not keyed by run). Fix is PR #173
-(`claude/provenance-fix`, opus root-caused + reviewed MERGEABLE) — **confirmed still OPEN,
-unmerged** as of this file's writing (2026-09-11, `gh pr view 173`). Recovery has NOT been run.
+
+The production VM (`kb`, tailnet `100.89.73.118`) is LIVE on release `7e09fd4f`.
+Today’s deployed chain is `29dc9887`, `d0634b75`, `f5b32044`, `5bfef3ad`,
+`1da163a5`, `6b17b248`, `7e09fd4f`. The outbox drained to `origin/ops`
+`4b189177`; ops is linear, with backup ref
+`refs/backup/ops-pre-linearize-2026-09-15`. Stale run `run-971d5ba4` is stopped,
+the real `self-lint-report` run succeeded, and both UI and Terminal are proven.
+Nine agent-owner cadences are disarmed (rehearsal tooling p8 snapshot).
+
+PR #202 (`claude/authority-guardrails`, tip `d36209be` or newer) is merge pending.
+It implements the approved authority and guardrails design and has two Opus
+security reviews plus rehearsal proofs p11/p12.
 
 ## Current gate
-Daniel must merge PR #173; then the boss runs the scripted recovery (`morning-rebuild.ps1` ->
-`recover-deploy.ps1`) and interrupts stale run `run-971d5ba4` before Gate 4b can resume.
+
+Daniel merges PR #202; then the boss deploys it to production.
 
 ## Next
-1. Daniel: apply the proposed CLAUDE.md/BOSS.md diff (Navigation reads GOAL.md; findings -> STATE.md ## Findings;
-   grades cite the model-audit row) - text in memory/claude-boss.md 2026-09-11 section / PR #182 body.
-2. Reshape orgs/atlas/STATE.md to the project-frame shape (scripts/project_frame_lint.py fails on it today).
-3. Daniel merges PR #173.
-4. Boss: `morning-rebuild.ps1` (guard e8bf8d35) -> `recover-deploy.ps1 -SigningKey <path>`
-   (daemon-down path: no API lock, parks `current`, reset-failed, pre-installs validator).
-5. Verify hydrate clean (`journalctl -u kb-dashboard`), then `POST .../manager/stop` to interrupt
-   run 971d5ba4.
-6. Preflight (routing hash, admission 404-or-drain) -> decide on Gate 4b run 5.
-7. Phase B once recovery lands: post-deploy canary, drain automation, wire guards (P15d), P21/P23,
-   retire 15 stale `wf-*` cards, P11 work-product route, P14 ruling, webauthn re-pin, P18 n8n
-   comparative analysis.
+
+1. On prod, run preflight step `approver-signers` to install the public
+   allowed-signers file and unit environment line, then run
+   `remove-passkey-dropin`.
+2. Deploy the merged release.
+3. Resolve canary run `run-cc508ddb-98c5-4c65-a0a6-4e6c09650ea5`’s completion
+   gate through the respond tooling using a signed approval. Legacy runs store
+   no tags, so the read must fail closed and the signature is required.
+4. Daniel rules on the D2.13 amendment in `governance/risk-tiers.md`, schedule
+   tick source, agent-cadence execution profile, `sshd` SFTP deny for
+   `kb-reader`, linear-history ruleset on ops, and the dashboard-ops worktree
+   reset.
 
 ## Blocked
-Gate 4b run 5 and all Phase B work blocked on Daniel merging #173 (his merge authority; no
-branch-tip deploys).
+
+The authority-and-guardrails production completion is blocked only on Daniel’s
+merge authority for PR #202, then the boss’s deploy. The remaining governance
+and operations items await Daniel’s rulings.
 
 ## Decisions
-- 2026-09-11 — Token discipline: measure only (no warn/freeze); boss resets at the next task boundary past 150k; MCP access unchanged; Codex boss stays astra — Daniel's rulings for the token-discipline PR
-- 2026-09-11 — Project frame: GOAL.md + STATE.md per project on ops, U7/U8/U9 hooks armed (#182) — every session grounded without re-reading the repo
+
+- 2026-09-16 — Daniel ruled: no passkeys on production.
+- 2026-09-16 — Daniel approved authority and guardrails Approach 1, specified
+  in `docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md` and
+  planned in `docs/superpowers/plans/2026-09-16-authority-and-guardrails-plan.md`.
 
 ## Findings
-- PR ledger #157-#173 (2026-09-03 to 09-06) shipped 17 PRs fixing the broker/launch/drain chain
-  one real-VM defect at a time (attempt-key format, PTY fd hygiene, codex ELF pin, UMask, outbox
-  durability, tool cap, T3 passkey channel, run-detail wire drift x3, replay-pane retry, queue-
-  bridge untracked cards, model-routing drift, codex `--cd`/stdin fixes, ledger budget window,
-  broker UMask, hydrate cross-run join).
-- Gate 4a (claude launch, `acceptance-run`) PASSED per 2026-09-06 memory note (not independently
-  re-verified in this pass).
-- A release changing a frozen unit contract must pre-install its resident validator BEFORE
-  activation, or the old validator refuses it — deploy script step A3 now does this.
-- PowerShell mangles quoted remote ssh commands (use `cmd /c "ssh host bash -s < file"`); Git Bash
-  mangles `/mnt/c` and `$(`; `git worktree remove` follows a node_modules junction (delete it
-  first); WSL idles between commands (harmless); opus can 529 mid-agent (resume, verify by diff).
 
-## Infra
-- VM release at outage: 39197cf5 (broker 610230c7); forensic snapshot
-  `/root/forensics-20260906T190455Z/` on the VM.
-- Recovery scripts (boss scratchpad, session 4dd42e67): `morning-rebuild.ps1`,
-  `recover-deploy.ps1`, `deploy-pty-fix.ps1`, `drain-step1/2.ps1`, `passkey-enrol.ps1`.
-- Stale run to interrupt: `run-971d5ba4-16e5-4010-895f-33e69122984a` (slug gate4b-20260906,
-  attempt 713a22a2 / session 77047d3c, stale-live).
-- PR #173: https://github.com/danielzhang04/kb/pull/173 (base main, head claude/provenance-fix).
+- Seven production demo canaries each failed at one distinct layer and were
+  fixed and deployed in PRs #194, #195, #197, #198, #199, #200, and #201:
+  research profile Write permission; fenced-judge JSON; empty
+  `resolvedFindingRefs`; $5 cap counting subscription usage; accounting-window
+  policy hash; prose-wrapped JSON; and budget-window handling.
+- Canary `run-cc508ddb-98c5-4c65-a0a6-4e6c09650ea5` reached the real completion
+  gate. Daniel has no passkey registered on production.
+- PR #202 gates open/signed/none route classes on every scope, uses the
+  `kb-ops-approver` SSH signing key and `kb-human-approval` namespace, audits
+  `X-KB-Actor`, requires a reason, pins publish/spend tags at launch, supports a
+  signed budget override, adds loopback peer-owner proof for win32-desktop, and
+  hardens the session hook (228 tests).
