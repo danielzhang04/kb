@@ -115,11 +115,16 @@ const PS = 'powershell(?:\\.exe)?\\s+-noprofile\\s+-executionpolicy\\s+bypass\\s
 // key/path/free-text argument the allowlist captures (SigningKey, -f key path, -Key, -Reason,
 // and anything else that used to be a bare `\S+`/`"[^"]*"` catch-all). Forbidden EVERYWHERE the
 // class is used, quoted or not: backtick, `$` (blocks `$(...)`, `$env:...`, and bare variable
-// refs alike), `;`, `&`, `|`, `%` (blocks `%VAR%` cmd.exe expansion), and CR/LF. Quoted forms
+// refs alike), `;`, `&`, `|`, `%` (blocks `%VAR%` cmd.exe expansion), CR/LF, and — N3 — the
+// parenthesis/angle-bracket/brace family: `(`/`)` (PowerShell EVALUATES a bare or quoted
+// sub-expression like `-SigningKey (hostname)` before the script ever sees it — no `$` needed),
+// `<`/`>` (bash process substitution `<(cmd)`/`>(cmd)` runs the command with no `$` either), and
+// `{`/`}` for good measure (script-block/grouping syntax). A real key path, reason, or route
+// template contains none of these, so the tightening costs nothing legitimate. Quoted forms
 // also cannot contain the opposite... no: neither quote character, so a value cannot smuggle a
 // second, differently-quoted argument.
-const SAFE_INNER = '[^`$;&|%\\r\\n"\']';                 // one safe char inside quotes (spaces OK)
-const SAFE_UNQUOTED = '[^\\s`$;&|%\\r\\n"\']';            // one safe char with no quoting (no spaces)
+const SAFE_INNER = '[^`$;&|%()<>{}\\r\\n"\']';            // one safe char inside quotes (spaces OK)
+const SAFE_UNQUOTED = '[^\\s`$;&|%()<>{}\\r\\n"\']';       // one safe char with no quoting (no spaces)
 const SAFE_ARG = '(?:"' + SAFE_INNER + '*"|\'' + SAFE_INNER + '*\'|' + SAFE_UNQUOTED + '+)';
 // PATHARG is SAFE_ARG under its old name — kept as an alias so every existing call site (C2, C4,
 // C13's -Key, C14) picks up the tightened grammar with no other changes.
@@ -437,11 +442,18 @@ function standingBlock(text, prodTargeting) {
 
   // HOOK-BLOCKER-6 (second half): the window file must only ever be touched by prod-window.ps1
   // (classified separately above as A4pw). A shell command that writes it directly — Set-Content,
-  // Add-Content, Out-File, New-Item, Copy-Item, Move-Item, Clear-Content, Remove-Item, or a plain
-  // `>`/`>>` redirect into it — is the window's self-service bypass, window state or not.
+  // Add-Content, Out-File, New-Item, Copy-Item, Move-Item, Clear-Content, Remove-Item, a plain
+  // `>`/`>>` redirect into it, a raw .NET file-write ([IO.File]::WriteAllText/WriteAllBytes/
+  // AppendAllText), or an inline `node -e`/`python(3) -c` one-liner that reaches for the
+  // filesystem — is the window's self-service bypass, window state or not. D9 does not try to
+  // enumerate every possible writer; it catches the reviewer's three probed shapes on top of the
+  // cmdlet/redirect list above.
   if (/prod-window\.json/.test(text)
       && (/\b(set-content|add-content|out-file|new-item|copy-item|move-item|clear-content|remove-item)\b/.test(text)
-          || />>?\s*["']?[^\s"']*prod-window\.json/.test(text))) {
+          || />>?\s*["']?[^\s"']*prod-window\.json/.test(text)
+          || /\[io\.file\]::(writealltext|writeallbytes|appendalltext)\b/.test(text)
+          || /\bnode(?:\.exe)?\s+-e\b/.test(text)
+          || /\bpython3?(?:\.exe)?\s+-c\b/.test(text))) {
     return ['D9', 'direct write to the prod window file — use prod-window.ps1 -Open/-Close'];
   }
 

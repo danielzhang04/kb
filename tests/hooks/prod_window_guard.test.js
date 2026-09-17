@@ -259,6 +259,30 @@ const CASES = [
   ['HOOK-BLOCKER-4: prod-sign-approval -Key with command substitution blocked', 'open', 'Bash',
     `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key "$(whoami)" -Out ${T}\\approval.json`, 2],
 
+  // ---- N3: HOOK-BLOCKER-4 was only partly closed — SAFE_ARG still admitted `( ) < >`, and
+  // neither PowerShell nor bash needs `$` to EVALUATE an argument (a bare/quoted parenthesized
+  // sub-expression, or bash process substitution). Reviewer's exact probes, both window open.
+  ['N3: kb-deploy -SigningKey (hostname) — PowerShell evaluates the sub-expression, no $ needed', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey (hostname) -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
+  ['N3: kb-deploy -SigningKey "(hostname)" quoted still blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey "(hostname)" -Sha ${SHA} -BrokerDigest ${DIGEST}`, 2],
+  ['N3: C14 ssh-keygen -f <(id) — bash process substitution runs the command, no $ needed', 'open', 'Bash',
+    'ssh-keygen -Y sign -f <(id) -n kb-human-approval "C:\\Users\\danie\\kb-backups\\approval-current\\payload.json"', 2],
+  ['N3: C4 ssh-keygen -f <(cat /etc/passwd) blocked', 'open', 'Bash',
+    'ssh-keygen -Y sign -f <(cat /etc/passwd) -n kb-ops-instructions "C:\\Users\\danie\\kb-backups\\outbox-approval-current\\instruction-approval.json"', 2],
+  ['N3: prod-sign-approval -Key with a bare parenthesized sub-expression blocked', 'open', 'Bash',
+    `${PS} -File "${T}\\prod-sign-approval.ps1" -Route "POST /api/schedules/:id" -Entity sched-7 -Key (whoami) -Out ${T}\\approval.json`, 2],
+  ['N3: a clean key path with no metacharacters still allowed (control, no regression)', 'open', 'Bash',
+    `${PS} -File "${T}\\kb-deploy.ps1" -SigningKey C:\\keys\\release.pem -Sha ${SHA} -BrokerDigest ${DIGEST}`, 0],
+
+  // ---- N3: -Reason must also forbid parentheses — documented, not merely incidental. -------
+  ['N3: O2 -Reason containing parentheses is blocked ("parentheses are not allowed in reasons")', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "ok (fine)"`, 2],
+  ['N3: O2 -Reason containing angle brackets is blocked', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "see <link>"`, 2],
+  ['N3: O2 -Reason with no metacharacters still allowed (control, no regression)', 'closed', 'Bash',
+    `${PS} -File "${T}\\prod-respond.ps1" -Run run-1 -Request req-1 -Decision approve -Reason "sources added, brief is correct"`, 0],
+
   // ---- HOOK-BLOCKER-5: prod-signed-call.ps1 must be WINDOWED (reviewer's exact probe) ------
   ['HOOK-BLOCKER-5: prod-signed-call blocked window closed (reviewer probe)', 'closed', 'Bash',
     `${PS} -File "${T}\\prod-signed-call.ps1" -Route "POST /api/control/budget/override" -Approval ${T}\\a.json -Body '{"additionalUsdMicros":99000000}'`, 2],
@@ -284,6 +308,23 @@ const CASES = [
     `'{}' | Out-File ${T}\\PROD-WINDOW.json`, 2],
   ['legitimate window-token read prefix stays allowed (D9 does not over-fire)', 'open', 'PowerShell',
     `${ENVPRE}${PS} -File "${T}\\vm-preflight-prod.ps1"`, 0],
+
+  // ---- D9: the standing block only caught cmdlets and redirects, not every writer. Reviewer's
+  // three probed shapes, window closed (D9 fires window-or-not, same as the cmdlet/redirect arm).
+  ['D9: [IO.File]::WriteAllText onto the window file is blocked', 'closed', 'PowerShell',
+    `${PS} -Command "[IO.File]::WriteAllText('${T}\\PROD-WINDOW.json','{}')"`, 2],
+  ['D9: [IO.File]::WriteAllBytes onto the window file is blocked', 'closed', 'PowerShell',
+    `${PS} -Command "[IO.File]::WriteAllBytes('${T}\\PROD-WINDOW.json',[byte[]](0x7b,0x7d))"`, 2],
+  ['D9: node -e writing the window file is blocked', 'closed', 'Bash',
+    `node -e "require('fs').writeFileSync('${T.replace(/\\/g, '/')}/PROD-WINDOW.json','{}')"`, 2],
+  ['D9: python -c writing the window file is blocked', 'closed', 'Bash',
+    `python -c "open(r'${T}\\PROD-WINDOW.json','w').write('{}')"`, 2],
+  ['D9: python3 -c writing the window file is blocked', 'closed', 'Bash',
+    `python3 -c "open(r'${T}\\PROD-WINDOW.json','w').write('{}')"`, 2],
+  ['D9 does not over-fire: node -e mentioning an unrelated file is allowed', 'closed', 'Bash',
+    `node -e "console.log(1)"`, 0],
+  ['D9 does not over-fire: python -c with no window-file mention is allowed', 'closed', 'Bash',
+    `python -c "print(1)"`, 0],
 
   // ---- unsafe -Workflow ids explicitly blocked (T7 widened O1 grammar) ----------------------
   ['O1 -Workflow with an underscore blocked', 'closed', 'Bash', `${PS} -File "${T}\\prod-run-workflow.ps1" -Workflow nightly_digest`, 2],
