@@ -1,17 +1,18 @@
 /**
- * The dashboard's ONE authentication boundary: desktop holds the WebAuthn bearer minted by
- * `authClient.signIn`, while tailnet supplies an ambient sentinel because the transport authenticates
- * every request. Governed surfaces call `useSession().requireSession()` instead of owning auth flows.
+ * The dashboard's ONE authentication boundary. In BOTH modes the TRANSPORT authenticates, and only the
+ * proof differs. In `tailnet` mode every request arrives through the attested proxy, so
+ * `requireSession()` returns an ambient sentinel with no network round trip. In `win32-desktop` mode it
+ * POSTs the one mint route, which the daemon answers only for a loopback peer owned by the same Windows
+ * account it runs as (BLOCKER-2; server side in `server/auth/win32DesktopPeer.ts`) — no ceremony, no
+ * credential collected here, and nothing to prompt for. Governed surfaces call
+ * `useSession().requireSession()` instead of owning auth flows directly.
  *
- *   - The token lives here (memory) + tab-scoped `sessionStorage` via authClient — nowhere else. This
- *     module does not touch the network or the WebAuthn API itself; authClient stays the only minter.
- *   - ONE in-flight ceremony: concurrent `requireSession()` calls from different components share a
- *     single `signIn` promise, so six surfaces can never mint six sessions (or stack six prompts).
- *   - Fail-closed: a refused/cancelled/failed ceremony resolves `null` (never throws, never fabricates),
- *     the stored copy is cleared, and every consumer re-locks together — on expiry and on the
+ *   - The token lives here (memory) + tab-scoped `sessionStorage` via authClient — nowhere else.
+ *   - Fail-closed: a failed/absent session resolves `null` (never throws, never fabricates), the
+ *     stored copy is cleared, and every consumer re-locks together — on expiry and on the
  *     `SESSION_INVALIDATED_EVENT` a governed 401 raises.
  *
- * Mode discovery and `signIn` are injected so this is testable with no network or real passkey.
+ * Mode discovery is injected so this is testable with no network.
  */
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import type { JSX, ReactNode } from 'react';
@@ -19,10 +20,10 @@ import {
   clearStoredSession,
   fetchAuthContext as realFetchAuthContext,
   isSessionFresh,
+  mintDesktopSession as realMintDesktopSession,
   persistSession,
   readStoredSession,
   SESSION_INVALIDATED_EVENT,
-  signIn as realSignIn,
   type AuthContext,
   type AuthMode,
   type Session,
@@ -37,25 +38,20 @@ export const TAILNET_AMBIENT_SESSION: Session = Object.freeze({
 export interface SessionContextValue {
   /** Server-selected auth mode, or null while the one boot-time discovery request is pending. */
   mode: AuthMode | null;
-  /**
-   * W47: the server's own answer to "can a T3 passkey ceremony run right now" (`/api/auth/context`).
-   * Fail-closed `false` while discovery is pending and on any discovery failure, so a T3 gate is never
-   * offered an Approve button the routes would refuse.
-   */
-  ceremonyAvailable: boolean;
   /** The live bearer, or null when locked. */
   session: Session | null;
   /** Tailnet is always unlocked; desktop remains bearer-derived; loading is fail-closed. */
   locked: boolean;
-  /** Tailnet returns the ambient sentinel; desktop runs (or joins) the passkey ceremony when needed. */
+  /** Tailnet returns the ambient sentinel; desktop mints one against the daemon's peer proof. Either
+   *  way a refusal resolves `null` — this is the boundary, so it never invents a session. */
   requireSession(): Promise<Session | null>;
 }
 
 export interface SessionProviderDeps {
-  /** The passkey ceremony. Tests inject a fake; production uses `authClient.signIn`. */
-  signIn?: () => Promise<Session>;
   /** The one boot-time auth-mode request. Tests inject a fake; production uses `fetchAuthContext`. */
   fetchAuthContext?: () => Promise<AuthContext>;
+  /** The `win32-desktop` mint call. Tests inject a fake; production uses `mintDesktopSession`. */
+  mintDesktopSession?: () => Promise<Session | null>;
 }
 
 const SessionContext = createContext<SessionContextValue | null>(null);
@@ -72,17 +68,19 @@ export function SessionProvider({
   // `isSessionFresh` so a not-yet-fired timer can never render an expired session as unlocked.
   const [storedSession, setStoredSession] = useState<Session | null>(() => readStoredSession());
   const [mode, setMode] = useState<AuthMode | null>(null);
-  const [ceremonyAvailable, setCeremonyAvailable] = useState(false);
   const sessionRef = useRef<Session | null>(storedSession);
   const modeRef = useRef<AuthMode | null>(null);
-  const inFlight = useRef<Promise<Session | null> | null>(null);
   const modeRequest = useRef<Promise<AuthContext> | null>(null);
-  const signInImpl = deps?.signIn ?? realSignIn;
-  const signInRef = useRef(signInImpl);
-  signInRef.current = signInImpl;
   const fetchAuthContextImpl = deps?.fetchAuthContext ?? realFetchAuthContext;
   const fetchAuthContextRef = useRef(fetchAuthContextImpl);
   fetchAuthContextRef.current = fetchAuthContextImpl;
+  const mintImpl = deps?.mintDesktopSession ?? (() => realMintDesktopSession());
+  const mintRef = useRef(mintImpl);
+  mintRef.current = mintImpl;
+  // Concurrent unlockers (the session chip plus every governed surface that acts on load) join ONE mint
+  // request; it is cleared when it settles, so a later caller asks again — a refused mint must never
+  // latch the tab shut, and a daemon restart must be noticed at the next attempt.
+  const mintRequest = useRef<Promise<Session | null> | null>(null);
 
   const applySession = useCallback((next: Session | null): void => {
     sessionRef.current = next;
@@ -90,7 +88,7 @@ export function SessionProvider({
   }, []);
 
   // StrictMode replays effects in development. Keep the request in a ref so one provider mount still
-  // performs exactly one discovery call; any failure selects desktop, the fail-closed passkey path.
+  // performs exactly one discovery call; any failure selects desktop, the fail-closed no-session path.
   useEffect(() => {
     let alive = true;
     const request = modeRequest.current
@@ -101,14 +99,11 @@ export function SessionProvider({
         if (!alive) return;
         modeRef.current = context.mode;
         setMode(context.mode);
-        setCeremonyAvailable(context.ceremonyAvailable === true);
       })
       .catch(() => {
         if (!alive) return;
         modeRef.current = 'win32-desktop';
         setMode('win32-desktop');
-        // Fail-closed: an unreadable discovery says nothing about provisioning, so no ceremony.
-        setCeremonyAvailable(false);
       });
     return () => { alive = false; };
   }, []);
@@ -127,31 +122,26 @@ export function SessionProvider({
     return () => clearTimeout(timer);
   }, [mode, storedSession, applySession]);
 
+  // BLOCKER-2 — the replacement for the ceremony T2 removed. A locked `win32-desktop` session asks the
+  // daemon to mint one; the daemon proves the caller from the SOCKET (loopback + the same Windows
+  // account it runs as), so there is no credential to collect and no prompt to show. A refusal is the
+  // same outward result a refused/cancelled ceremony always produced: `null`, stored copy dropped,
+  // every consumer re-locked. Nothing here can produce a session the daemon did not sign.
   const requireSession = useCallback(async (): Promise<Session | null> => {
     if (modeRef.current === null) return null;
     if (modeRef.current === 'tailnet') return TAILNET_AMBIENT_SESSION;
     if (isSessionFresh(sessionRef.current)) return sessionRef.current;
-    if (inFlight.current) return inFlight.current;
-
     clearStoredSession();
     applySession(null);
-    const attempt = signInRef
-      .current()
-      .then((next): Session | null => {
-        persistSession(next);
-        applySession(next);
-        return next;
-      })
-      .catch((): null => {
-        clearStoredSession();
-        applySession(null);
-        return null;
-      })
-      .finally(() => {
-        inFlight.current = null;
-      });
-    inFlight.current = attempt;
-    return attempt;
+    const attempt = mintRequest.current
+      ?? mintRef.current().finally(() => { mintRequest.current = null; });
+    mintRequest.current = attempt;
+    const minted = await attempt;
+    // `isSessionFresh` again on the way in: an expired or malformed mint is a refusal, never a session.
+    if (!isSessionFresh(minted)) return null;
+    persistSession(minted);
+    applySession(minted);
+    return minted;
   }, [applySession]);
 
   const session = mode === 'tailnet'
@@ -166,8 +156,8 @@ export function SessionProvider({
       : !isSessionFresh(storedSession);
 
   const value = useMemo<SessionContextValue>(
-    () => ({ mode, ceremonyAvailable, session, locked, requireSession }),
-    [mode, ceremonyAvailable, session, locked, requireSession],
+    () => ({ mode, session, locked, requireSession }),
+    [mode, session, locked, requireSession],
   );
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

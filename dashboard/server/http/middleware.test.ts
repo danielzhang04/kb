@@ -109,9 +109,10 @@ describe('requireSession in tailnet operator mode', () => {
 
   it('SECURITY: resolveSession clears a keep-alive-inherited attribution before a win32 request', () => {
     // Simulate bleed: a prior tailnet request bound an identity into the shared async context.
-    bindAttribution({ login: 'prior-operator@example.com' });
-    // A subsequent win32-mode request (no operatorAuth) must see a CLEARED store, not the stale identity.
+    bindAttribution({ login: 'prior-operator@example.com', actor: 'daniel' });
+    // A subsequent win32-mode request (no operatorAuth) must see the CLEARED store rebound to ITS OWN
+    // (actor-only, no tailnet identity) attribution — never the stale prior identity.
     resolveSession({ headers: {} } as unknown as FastifyRequest, SESSION, mintSession('operator', SESSION).token);
-    expect(currentAttribution()).toBeUndefined();
+    expect(currentAttribution()).toEqual({ actor: 'unknown', tailnetIdentity: null });
   });
 });

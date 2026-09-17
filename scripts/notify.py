@@ -123,7 +123,7 @@ def confirm_approval_executed(
 
     ``verified_view`` MUST be the dispatcher's OWN post-verification view of
     the card -- e.g. the fields D2.3's pinned-hash TOCTOU-safe execute path
-    re-derives after checking the WebAuthn assertion against the on-disk card
+    re-derives after checking the signed approval against the on-disk card
     at execute time (the ``content_hash`` preimage: ``action`` + ``risk-tier``
     + ``owner`` + ``target``, per D1.2). ``card`` is accepted separately (the
     plan's fixed signature) purely for identification/logging by the caller;

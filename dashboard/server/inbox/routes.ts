@@ -42,7 +42,7 @@ import {
   parseDeploymentRef, parseDeploymentRevision, isDeployReadyRevision,
   deployReadyRevision,
 } from './deploymentContracts.ts';
-import type { DeployReadyPort, DeployReadyCandidate, DeployT3Decision } from '../deploy/contracts.ts';
+import type { DeployReadyPort, DeployReadyCandidate } from '../deploy/contracts.ts';
 import { createDeployReadyReader } from '../deploy/deployReady.ts';
 import { DeploymentService, DeploymentServiceError } from '../deploy/deploymentService.ts';
 import { AssetPullService, AssetPullServiceError } from '../deploy/assetPullService.ts';
@@ -312,44 +312,21 @@ export function registerInboxRoutes(scope: FastifyInstance, ctx: SurfaceContext,
 // P5 W6.1 — the SIX deployment endpoints + the TWO asset-pull endpoints (§3.1, §3.7) [P5-C21, P5-C47,
 // P5-C58]. Every endpoint is session-gated, requires an idempotency key, and parses `:ref` /
 // `expectedRevision` with the per-endpoint CLOSED parser, refusing `400 invalid-ref` / `400
-// invalid-revision` BEFORE any store read, ceremony verification, or helper call. The FOUR T3 endpoints
-// (`deploy`, `confirm`, `abort`, `close-ptys-and-continue`) additionally require a ceremony and refuse
-// `403 ceremony-unavailable` without one; and BEFORE any ceremony work the crossed-verb `409`s fire
-// (`confirm-required` / `deploy-required` / `revision-changed`). There is NO `decline` endpoint [P5-C49].
-// The actual verifier + helper transport are wired by W6.3; here they are injected ports so the gates,
-// parsers, and pre-ceremony `409`s are all provable in isolation.
+// invalid-revision` BEFORE any store read or helper call. T2 removed the ceremony that used to
+// additionally gate the FOUR `deploy`/`confirm`/`abort`/`close-ptys-and-continue` endpoints; they are
+// plain session-gated routes now (a later task moves them onto the ssh-signed channel). The crossed-verb
+// `409`s still fire (`confirm-required` / `deploy-required` / `revision-changed`). There is NO `decline`
+// endpoint [P5-C49]. The actual helper transport is wired by W6.3; here it is an injected port so the
+// parsers and pre-write `409`s are all provable in isolation.
 // ===================================================================================================
 
 const ASSET_PULL_INTENT_REF = /^assetpull-[0-9a-f]{32}$/;
-
-/** A refusal the ceremony gate produces before any write. */
-export type CeremonyRefusal =
-  | { readonly status: 403; readonly code: 'ceremony-unavailable' | 'ceremony-invalid' | 'ceremony-expired' };
-
-export interface DeployCeremonyInput {
-  readonly decision: DeployT3Decision;
-  readonly subject: 'deployment' | 'pty-quiescence';
-  readonly ref: string;
-  readonly revision: string;
-  readonly digest: string;
-  /** The client-supplied WebAuthn assertion; the server recomputes the preimage and never trusts it. */
-  readonly assertion: unknown;
-}
-
-/** The T3 ceremony gate. `available()` is the reachability gate of §3.3/§3.4 (auth mode + ≥1 provisioned
- *  credential); `verify()` is the shipped-verifier deploy path W6.3 wires. A missing/failed verify fails
- *  closed. */
-export interface DeployCeremonyGate {
-  available(): boolean;
-  verify(input: DeployCeremonyInput): CeremonyRefusal | null;
-}
 
 /** The record-write + helper executors. W6.3 wires the real helper transport; W6.1 tests inject fakes.
  *  Each may throw a `DeploymentServiceError` / `AssetPullServiceError` the route maps to a status. */
 export interface InboxActionExecutors {
   readonly deploymentService: DeploymentService;
-  /** The `deploy` helper invocation after a create (W6.3 transport). Default no-op (never reached in
-   *  production, since the ceremony gate refuses first without a provisioned credential). */
+  /** The `deploy` helper invocation after a create (W6.3 transport). Default no-op. */
   readonly helperDeploy?: (candidate: DeployReadyCandidate, previousCommit: string, idempotencyKey: string) => Promise<void> | void;
   /** The `deployment:<n>` confirm arm CAS `waiting-confirmation → requested`. P5 ships no writer that
    *  can produce `waiting-confirmation`, so the default refuses `409 conflict`; W6.3 may wire the CAS. */
@@ -360,7 +337,6 @@ export interface InboxActionExecutors {
 
 export interface InboxActionPorts {
   readonly executors: InboxActionExecutors;
-  readonly ceremony: DeployCeremonyGate;
   readonly deployReady: DeployReadyPort;
   readonly resolveLiveSha: () => string | null | Promise<string | null>;
   readonly quiescence: Omit<CloseAndContinuePorts, 'store'> & { store: CloseAndContinuePorts['store'] };
@@ -407,8 +383,6 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
     if (revision === null) return reply;
     const key = idempotencyKey(request);
     if (key === null) return reply.code(400).send({ error: 'idempotency-key-required' });
-    const refusal = gateCeremony(ports, { decision: 'confirm', subject: 'deployment', ref: parsed.ref, revision: `deployment:${revision}`, digest: '', request });
-    if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
     try {
       (ports.executors.confirmExisting ?? defaultConfirmExisting)(parsed.ref, revision, key);
       return reply.code(200).send({ ok: true });
@@ -425,8 +399,6 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
     if (key === null) return reply.code(400).send({ error: 'idempotency-key-required' });
     const current = store.getDeployment(ref);
     if (!current.ok) return reply.code(404).send({ error: 'not-found' });
-    const refusal = gateCeremony(ports, { decision: 'abort', subject: 'deployment', ref, revision: `deployment:${revision}`, digest: '', request });
-    if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
     try {
       const deployment = ports.executors.deploymentService.abort(ref, revision, current.value.state);
       return reply.code(200).send({ deployment });
@@ -453,7 +425,7 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
     } catch (error) { return mapServiceError(reply, error); }
   });
 
-  // --- POST /api/inbox/deployment/:ref/close-ptys-and-continue — T3, digest pins the exact ids. ------
+  // --- POST /api/inbox/deployment/:ref/close-ptys-and-continue --- the store CAS pins the exact ids. ---
   scope.post('/api/inbox/deployment/:ref/close-ptys-and-continue', guard, async (request, reply) => {
     const ref = parseStoredRef(reply, request);
     if (ref === null) return reply;
@@ -467,9 +439,6 @@ export function registerInboxActionRoutes(scope: FastifyInstance, ctx: SurfaceCo
       return reply.code(400).send({ error: 'invalid-session-ids' });
     }
     const sessionIds = rawIds as string[];
-    const digest = sha256Hex([...sessionIds].sort().join('\u0000'));
-    const refusal = gateCeremony(ports, { decision: 'close-ptys-and-continue', subject: 'pty-quiescence', ref, revision: `deployment:${revision}`, digest, request });
-    if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
     const result = await closePtysAndContinue(ports.quiescence, { deploymentRef: ref, expectedRevision: revision, sessionIds });
     if (!result.ok) {
       // Every refusal this path can return maps to 409 (both former ternary arms were 409).
@@ -538,8 +507,8 @@ function parseDeploymentRevisionBody(reply: FastifyReply, request: FastifyReques
 }
 
 /** The green/breaking candidate entry (`deploy` or the `deploy-ready:` arm of `confirm`). Parses the
- *  `deploy-ready:` ref+revision, runs the crossed-verb `409`s and the stale-candidate `409` BEFORE any
- *  ceremony work, gates T3, then creates the record and invokes the helper [P5-C58]. */
+ *  `deploy-ready:` ref+revision, runs the crossed-verb `409`s and the stale-candidate `409`, then creates
+ *  the record and invokes the helper [P5-C58]. */
 async function handleCandidateEntry(
   request: FastifyRequest, reply: FastifyReply, ports: InboxActionPorts,
   verb: 'deploy' | 'confirm',
@@ -556,7 +525,7 @@ async function handleCandidateEntry(
   const key = idempotencyKey(request);
   if (key === null) return reply.code(400).send({ error: 'idempotency-key-required' });
 
-  // Pre-ceremony `409`s: candidate turnover, then crossed verb/candidate agreement [P5-C58].
+  // Candidate turnover, then crossed verb/candidate agreement [P5-C58].
   const candidate = ports.deployReady.latestCandidate();
   const liveSha = await ports.resolveLiveSha();
   if (candidate === null || liveSha === null || candidate.sha !== targetSha
@@ -565,10 +534,6 @@ async function handleCandidateEntry(
   }
   if (verb === 'deploy' && candidate.breaking) return reply.code(409).send({ error: 'confirm-required' });
   if (verb === 'confirm' && !candidate.breaking) return reply.code(409).send({ error: 'deploy-required' });
-
-  // T3 ceremony (unavailable/invalid/expired). The digest pins the candidate's re-read attestation.
-  const refusal = gateCeremony(ports, { decision: verb, subject: 'deployment', ref: parsed.ref, revision, digest: candidate.attestationDigest, request });
-  if (refusal) return reply.code(refusal.status).send({ error: refusal.code });
 
   try {
     const created = verb === 'deploy'
@@ -579,29 +544,14 @@ async function handleCandidateEntry(
   } catch (error) { return mapServiceError(reply, error); }
 }
 
-function gateCeremony(
-  ports: InboxActionPorts,
-  input: { decision: DeployT3Decision; subject: 'deployment' | 'pty-quiescence'; ref: string; revision: string; digest: string; request: FastifyRequest },
-): CeremonyRefusal | null {
-  if (!ports.ceremony.available()) return { status: 403, code: 'ceremony-unavailable' };
-  const assertion = bodyRecord(input.request)['assertion'];
-  return ports.ceremony.verify({
-    decision: input.decision, subject: input.subject, ref: input.ref,
-    revision: input.revision, digest: input.digest, assertion,
-  });
-}
-
 /**
- * Build the production action ports over `SurfaceContext`. The ceremony gate's `available()` is the
- * §3.3/§3.4 reachability gate (auth mode `tailnet`|`win32-desktop` AND ≥1 provisioned credential); its
- * `verify()` is wired by W6.3 and, until then, fails closed (`ceremony-invalid`). Because `available()`
- * is `false` on the VM until a credential is provisioned, the T3 endpoints refuse `ceremony-unavailable`
- * and never reach the (W6.3-owned) helper transport.
+ * Build the production action ports over `SurfaceContext`. T2 removed the ceremony gate that
+ * used to sit in front of the four deployment-mutating endpoints (deploy/confirm/abort/close-ptys); they
+ * are plain session-gated routes now, exactly like every other write on this scope.
  */
 export function createInboxActionPorts(
   ctx: SurfaceContext,
   opts: {
-    ceremony?: DeployCeremonyGate;
     executors?: Partial<InboxActionExecutors>;
     deployReady?: DeployReadyPort;
     activation?: ActivationReaderPort;
@@ -615,11 +565,6 @@ export function createInboxActionPorts(
   const deploymentService = opts.executors?.deploymentService ?? new DeploymentService({ store: ctx.controlStore, now });
   const assetPullService = opts.executors?.assetPullService ?? new AssetPullService({ store: ctx.controlStore, now });
   const activation = opts.activation;
-  const ceremony: DeployCeremonyGate = opts.ceremony ?? {
-    available: () => (ctx.authMode === 'tailnet' || ctx.authMode === 'win32-desktop') && ctx.credentials().length > 0,
-    // W6.3 wires the shipped deploy verifier here; until then the gate fails closed once reachable.
-    verify: () => ({ status: 403, code: 'ceremony-invalid' }),
-  };
   const closeSessions: CloseAndContinuePorts['closeSessions'] = opts.closeSessions ?? ctx.closeDeploymentPtySessions
     ?? (() => { throw new Error('no deployment session closer wired'); });
   const livePtySessions = opts.livePtySessions ?? { listLiveSessionIds: () => [] };
@@ -631,7 +576,6 @@ export function createInboxActionPorts(
       ...(opts.executors?.confirmExisting ? { confirmExisting: opts.executors.confirmExisting } : {}),
       ...(opts.executors?.helperPull ? { helperPull: opts.executors.helperPull } : {}),
     },
-    ceremony,
     deployReady: opts.deployReady ?? createDeployReadyReader(),
     resolveLiveSha: async () => {
       if (!activation) return null;

@@ -52,6 +52,7 @@ function def(overrides: Partial<WorkflowDef> = {}): WorkflowDef {
     title: 'Demo run',
     profile: 'producer',
     readScope: [],
+    tags: [],
     parameters: [],
     description: 'demo',
     stages: [stage({ id: 's1' })],

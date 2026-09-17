@@ -37,7 +37,7 @@ describe('writeStop', () => {
   it('refuses missing and expired sessions without writing', async () => {
     const repo = await scratch();
     expect(writeStop({ token: null, config: SESSION_CONFIG }, { repoRoot: repo })).toEqual({
-      ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied',
+      ok: false, reason: 'unauthenticated', detail: 'no session token supplied',
     });
     const expiredConfig: SessionConfig = { secret: SECRET, now: () => 0, ttlMs: 1 };
     const { token } = mintSession('operator-1', expiredConfig);

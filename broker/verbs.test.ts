@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { SessionOwner } from './index.ts';
 import type { SessionCard, SessionHandle, SessionKind, SpawnSpec } from './index.ts';
 import { list, inspect, stop, steer, rerun } from './verbs.ts';
-import { canonicalCardPayload, contentHash } from '../dashboard/server/auth/challenge.ts';
+import { canonicalCardPayload, contentHash } from '../dashboard/server/auth/cardHash.ts';
 
 const T2_CARD: SessionCard = {
   action: 'refactor',

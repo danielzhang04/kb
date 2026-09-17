@@ -4,7 +4,7 @@
  *
  *   1. Origin/Host guard      — `security/origin.ts#originHook` (DNS-rebinding defence, ordering law 4).
  *   2. Rate-limit + lockout   — `security/ratelimit.ts#rateLimitHook` (sliding window + escalation).
- *   3. WebAuthn session gate   — `requireSession` here, verifying the bearer via `auth/session.ts`.
+ *   3. session gate   — `requireSession` here, verifying the bearer via `auth/session.ts`.
  *   4. The module's own gate   — governedSave/launch/floor/spawnVibe re-verify the session and enforce
  *                                path confinement / preamble / rate-limit themselves; this middleware
  *                                NEVER replaces those — it is an earlier, coarser fail-closed layer.
@@ -21,6 +21,7 @@ import { mintSession, verifySession } from '../auth/session.ts';
 import type { SessionClaims, SessionConfig } from '../auth/session.ts';
 import { bindAttribution, resetAttribution } from '../auth/operator.ts';
 import type { OperatorRequestLike } from '../auth/operator.ts';
+import { parseActor, ACTOR_HEADER } from '../authority/actor.ts';
 import { rateLimit, lockout, rateLimitHook } from '../security/ratelimit.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 
@@ -59,7 +60,7 @@ export function verifiedSession(req: FastifyRequest): { token: string; claims: S
 }
 
 /**
- * A `preHandler` enforcing a valid WebAuthn-minted session bearer or same-origin cookie. Rejects with a calm 401 JSON error
+ * A `preHandler` enforcing a valid session bearer or same-origin cookie. Rejects with a calm 401 JSON error
  * for a missing/malformed/expired/bad-signature token (mirroring `verifySession`'s own reasons), BEFORE
  * any handler or gate runs. On success stashes `{ token, claims }` for the handler to pass down to the
  * gate module (which independently re-verifies — defence in depth, never trusted-by-proxy).
@@ -108,20 +109,28 @@ export function resolveSession(
   sessionConfig: SessionConfig,
   presentedToken?: string,
 ): ResolvedSession {
-  // Clear any attribution a keep-alive-shared async context may carry from a prior request BEFORE the
-  // operator path (maybe) rebinds it. This is the single point every governed, audit-writing request
-  // passes through, so it guarantees no request inherits a stale identity. See operator.ts#bindAttribution.
+  // Clear any attribution a keep-alive-shared async context may carry from a prior request BEFORE either
+  // branch (maybe) rebinds it. This is the single point every governed, audit-writing request passes
+  // through, so it guarantees no request inherits a stale identity. See operator.ts#bindAttribution.
   resetAttribution();
+  // T4 [design:4.3] — self-asserted and NEVER an authority input: parsed once here so both branches (and
+  // therefore both auth modes) record it identically. See `authority/actor.ts`'s docstring and its
+  // authority-invariance test: the same request under four different `X-KB-Actor` values gets the same
+  // status, on both a tagged and an untagged run.
+  const actor = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
   const operatorAuth = sessionConfig.operatorAuth;
   if (operatorAuth) {
     const result = operatorAuth.authenticate(req as unknown as OperatorRequestLike);
     // 403, not 401: no credential the client could supply would change this answer.
     if (!result.ok) return { ok: false, status: 403, error: 'forbidden', reason: result.reason };
-    bindAttribution(result.attribution);
+    bindAttribution({ ...result.attribution, actor });
     // Mint a REAL signed session so every gate module that independently re-verifies the token it is
     // handed keeps working untouched.
     return { ok: true, ...mintSession(result.subject, sessionConfig) };
   }
+  // `win32-desktop` has no tailnet identity to attach the actor to, but it still binds one — see
+  // BoundAttribution's docstring — so `audit/log.ts#attributed` stamps `actor` in this mode too.
+  bindAttribution({ actor, tailnetIdentity: null });
   const token = presentedToken ?? sessionToken(req);
   if (!token) return { ok: false, status: 401, error: 'unauthenticated', reason: 'missing session token' };
   const check = verifySession(token, sessionConfig);

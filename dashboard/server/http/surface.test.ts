@@ -6,7 +6,7 @@
  * use — no security check is ever faked, and there is no dev-mode/bypass flag to disable one.
  *
  * Covered per the brief: route-exists (not 404), 403 bad Origin, 401 no session, 429 rate-limit breach,
- * an audit row on the success path, and the fail-closed WebAuthn reality (no passkey => no session).
+ * and an audit row on the success path.
  */
 import { copyFileSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -1097,13 +1097,13 @@ describe('write surface — FINDING 2: pre-session rate-limit keyed on PEER IP, 
     expect(second.json()).toMatchObject({ error: 'throttled' });
   });
 
-  it('covers the unauthenticated auth ceremony routes too (rotating bearers do not evade it)', async () => {
+  it('covers the unauthenticated auth discovery route too (rotating bearers do not evade it)', async () => {
     const { lockout, rateLimit } = await import('../security/ratelimit.ts');
     const guard = lockout(rateLimit({ limit: 1, windowMs: 60_000 }), { threshold: 10, lockoutMs: 60_000 });
-    ({ app } = buildApp({ rateGuard: guard, webAuthnConfig: () => ({ rpID: 'localhost', rpName: 't', origin: GOOD_ORIGIN }), credentials: () => [] }));
-    const first = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x1' }, payload: {} });
+    ({ app } = buildApp({ readRateGuard: guard }));
+    const first = await app.inject({ method: 'GET', url: '/api/auth/context', headers: { ...headers(false), authorization: 'Bearer x1' } });
     expect(first.statusCode).toBe(200);
-    const second = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: { ...headers(false), authorization: 'Bearer x2' }, payload: {} });
+    const second = await app.inject({ method: 'GET', url: '/api/auth/context', headers: { ...headers(false), authorization: 'Bearer x2' } });
     expect(second.statusCode).toBe(429);
   });
 });
@@ -1201,49 +1201,14 @@ describe('write surface — LOW: rerun cardId must be filename-safe (no glob met
   });
 });
 
-describe('auth surface — fail-closed WebAuthn reality (no passkey provisioned)', () => {
-  const testWebAuthn = () => ({ rpID: 'localhost', rpName: 'test', origin: GOOD_ORIGIN });
-
+describe('auth surface — session-gated reality', () => {
   it.each(['tailnet', 'win32-desktop'] as const)('exposes the guarded public auth context for %s', async (authMode) => {
     ({ app } = buildApp({ authMode }));
 
     const response = await app.inject({ method: 'GET', url: '/api/auth/context', headers: headers(false) });
 
     expect(response.statusCode).toBe(200);
-    // W47: `ceremonyAvailable` is the server's own ceremonyModeAdmits && credentials().length > 0.
-    // This describe is the NO-PASSKEY-PROVISIONED surface, so it is false in both modes.
-    expect(response.json()).toEqual({ mode: authMode, ceremonyAvailable: false });
-  });
-
-  it('assert/verify 401s because the credential store is empty (no session can be minted)', async () => {
-    ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
-
-    // A real assertion ceremony issues a challenge; the store is fail-closed empty.
-    const opts = await app.inject({ method: 'POST', url: '/api/auth/assert/options', headers: headers(false), payload: {} });
-    expect(opts.statusCode).toBe(200);
-    const { ceremonyId } = opts.json() as { ceremonyId: string };
-    expect(typeof ceremonyId).toBe('string');
-
-    const verify = await app.inject({
-      method: 'POST',
-      url: '/api/auth/assert/verify',
-      headers: headers(false),
-      payload: { ceremonyId, response: { id: 'no-such-credential' } },
-    });
-    expect(verify.statusCode).toBe(401);
-    expect(verify.json()).toMatchObject({ error: 'unauthenticated' });
-  });
-
-  it('assert/verify 400s on an unknown/replayed ceremony id (single-use challenge)', async () => {
-    ({ app } = buildApp({ webAuthnConfig: testWebAuthn, credentials: () => [] }));
-    const verify = await app.inject({
-      method: 'POST',
-      url: '/api/auth/assert/verify',
-      headers: headers(false),
-      payload: { ceremonyId: 'never-issued', response: { id: 'x' } },
-    });
-    expect(verify.statusCode).toBe(400);
-    expect(verify.json()).toMatchObject({ error: 'bad-ceremony' });
+    expect(response.json()).toEqual({ mode: authMode });
   });
 
   it('the whole surface is 403-locked when no RP origin is configured (empty allowlist)', async () => {
@@ -1277,11 +1242,11 @@ describe('approvals surface — verify wiring', () => {
       method: 'POST',
       url: '/api/approvals/verify',
       headers: headers(true),
-      payload: { cardId: 'card-77', channel: 'webauthn' },
+      payload: { cardId: 'card-77', channel: 'signed' },
     });
     expect(res.statusCode).toBe(200);
     expect(res.json()).toMatchObject({ ok: true, card: { id: 'card-77' } });
-    expect(audit.rows[0]).toMatchObject({ action: 'approve', cardId: 'card-77', target: 'infra/prod.yaml', result: 'verified:webauthn' });
+    expect(audit.rows[0]).toMatchObject({ action: 'approve', cardId: 'card-77', target: 'infra/prod.yaml', result: 'verified:signed' });
   });
 
   it('rejects a path-traversal cardId (400) — never hands an arbitrary path to the verifier', async () => {
@@ -1781,7 +1746,10 @@ describe('write surface — PTY persistence + browser-session ref composition', 
 
 describe('write surface — POST /api/auth/browser-session is Origin + operator gated', () => {
   it('403s a foreign Origin, 401s a session-less caller, and mints for an authenticated operator', async () => {
-    ({ app } = buildApp());
+    // The SESSION-GATED placement, i.e. every mode that is not `win32-desktop`. Desktop registers this
+    // same path outside the gate because there it is the route that mints the session (BLOCKER-2); that
+    // placement has its own describe below.
+    ({ app } = buildApp({ authMode: 'tailnet' }));
 
     const foreign = await app.inject({
       method: 'POST', url: '/api/auth/browser-session',
@@ -1807,5 +1775,88 @@ describe('write surface — POST /api/auth/browser-session is Origin + operator 
     expect(cookies[0]).toMatch(
       /^kb_browser_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/,
     );
+  });
+});
+
+/**
+ * BLOCKER-2 — WHERE the mint route sits, per mode. This is the half `auth/routes.test.ts` cannot see:
+ * that in `win32-desktop` the route is registered OUTSIDE `requireSession` (so it is reachable with no
+ * bearer, which is the entire point) while still inside the Origin guard, and that `tailnet` mode is
+ * untouched — there the same path stays inside the session gate and no desktop minting exists at all.
+ */
+describe('write surface — the win32-desktop session mint path is outside the session gate', () => {
+  const desktopHeaders = (over: Record<string, string> = {}) =>
+    ({ origin: GOOD_ORIGIN, host: GOOD_HOST, 'content-type': 'application/json', ...over });
+
+  it('mints a usable session for a same-user loopback peer with NO bearer presented', async () => {
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: () => ({ ok: true, user: 'danie' }) }));
+
+    const minted = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    expect(minted.statusCode).toBe(200);
+    const { token: bearer } = minted.json() as { token: string };
+    // End to end: the minted bearer satisfies the very gate that 401'd everything before this fix.
+    const governed = await app.inject({
+      method: 'GET', url: '/api/control/execution', headers: desktopHeaders({ authorization: `Bearer ${bearer}` }),
+    });
+    expect(governed.statusCode).not.toBe(401);
+  });
+
+  it('refuses a peer the proof cannot vouch for, and a foreign Origin never reaches the proof at all', async () => {
+    const peer = vi.fn(() => ({ ok: false as const, reason: 'peer-not-same-user' as const }));
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: peer }));
+
+    const foreign = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: desktopHeaders({ origin: 'https://evil.example' }), payload: {},
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(peer).not.toHaveBeenCalled();
+
+    const refused = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(refused.json()).toEqual({ error: 'unauthenticated', reason: 'peer-not-same-user' });
+  });
+
+  it('a win32-desktop daemon whose proof cannot run mints NOTHING — it does not fall open', async () => {
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: undefined }));
+
+    const response = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).not.toContain('token');
+  });
+
+  it('tailnet mode is UNCHANGED: the route stays session-gated and no desktop mint path exists', async () => {
+    const peer = vi.fn(() => ({ ok: true as const, user: 'danie' }));
+    ({ app } = buildApp({
+      authMode: 'tailnet',
+      // Even if a desktop proof were somehow installed, tailnet must never route through it.
+      desktopPeer: peer,
+      sessionConfig: { ...sessionConfig, operatorAuth: { authenticate: () => ({ ok: false as const, reason: 'untrusted-peer' as const }) } },
+    }));
+
+    const response = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    // 403 from the tailnet operator gate — never a 200 carrying a token.
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'forbidden', reason: 'untrusted-peer' });
+    expect(peer).not.toHaveBeenCalled();
+  });
+
+  it('installs the real peer proof in win32-desktop mode only', () => {
+    expect(makeSurfaceContext({ repoRoot: REPO_A }).desktopPeer).toBeDefined();
+    expect(makeSurfaceContext(
+      { repoRoot: REPO_A },
+      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' } },
+    ).desktopPeer).toBeUndefined();
   });
 });

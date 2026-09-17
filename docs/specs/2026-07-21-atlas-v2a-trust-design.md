@@ -1,5 +1,15 @@
 # Atlas V2a "Trust" — design (voice-stages / passkey-completes approval loop)
 
+> **BLOCKED ON A RE-CUT (2026-09-16, `claude/authority-guardrails`).** This design's entire
+> completing half — `scripts/webauthn_verify.py` behind Daniel's passkey, the SHA-anchored
+> credential store, `driveVerify`'s WebAuthn dispatch — no longer exists. The T3 channel is now
+> the ssh-signed human-approval channel (`kb.human-approval/v1`, namespace `kb-human-approval`,
+> principal `kb-ops-approver`, verified with `ssh-keygen -Y verify`;
+> `docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md` §4.2). The voice-stages
+> half stands as written. Before the §11 build wave is authorized, the "passkey completes" half has
+> to be re-cut onto that channel; the text below is left unedited so the re-cut has the original
+> argument to work from.
+
 **Status:** DESIGN GATE PASSED (Daniel, 2026-07-21, boss session — the same conversation gate V0
 and V1 used). Two decisions were settled at the gate and are folded in below (§8 records them);
 the earlier open-questions list is closed. **The build wave itself is NOT yet authorized** — per

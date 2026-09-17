@@ -1503,12 +1503,12 @@ describe('dispatchClaimedCard — launch-drive orchestration', () => {
     expect(launch.mock.calls[0]![2].proposalRef).toBe(own[0]!.proposalRef);
   });
 
-  it('dispatches with NO ambient WebAuthn session: passes an internal service caller, sessionToken undefined (the check-3 fix)', async () => {
+  it('dispatches with NO ambient session: passes an internal service caller, sessionToken undefined (the check-3 fix)', async () => {
     // This is the exact previously-failing acceptance path: the bridge is a daemon-internal dispatcher with
     // no human session. It must authorize the launch with a gated internal service caller in lieu of a
-    // WebAuthn token — never by supplying a token — so launchWorkflowRun's auth gate is satisfied without
+    // session token — never by supplying a token — so launchWorkflowRun's auth gate is satisfied without
     // one. Before the fix the bridge passed sessionToken: undefined and NO caller, so the launch returned
-    // 500 unauthenticated / "no WebAuthn session token supplied".
+    // 500 unauthenticated / "no session token supplied".
     const { ctx } = fakeCtx();
     const launch = vi.fn().mockResolvedValue({ status: 201, body: { runRef: 'run-1', cards: [] } });
     const res = await dispatchClaimedCard(ctx, owned, commonDeps({ launch: launch as never, reconcile: vi.fn() }));

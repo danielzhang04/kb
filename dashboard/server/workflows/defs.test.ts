@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instantiateWorkflowDef, parseWorkflowDef, workflowIterationVerdictVocabulary } from './defs.ts';
+import { effectiveWorkflowTags, instantiateWorkflowDef, parseWorkflowDef, workflowIterationVerdictVocabulary } from './defs.ts';
 
 const KNOWN = new Set(['research', 'gmail-triage', 'drive-author', 'producer', 'checker-readonly']);
 
@@ -1031,5 +1031,104 @@ describe('iteration group definitions', () => {
     const maxCycles = Number.MAX_SAFE_INTEGER;
     const result = parseWorkflowDef(iterationWorkflow([iterationGroupLines({ maxCycles })]), { knownProfiles: KNOWN });
     expect(result).toMatchObject({ ok: true, value: { iterationGroups: [{ maxCycles }] } });
+  });
+
+  describe('workflow tags', () => {
+    it('parses a bounded declared tags list', () => {
+      const fm = SINGLE.replace('profile: research', 'profile: research\ntags: [publish, nightly]');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { tags: ['publish', 'nightly'] } });
+    });
+
+    it('defaults tags to the empty list when the frontmatter omits it', () => {
+      const result = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(result).toMatchObject({ ok: true, value: { tags: [] } });
+    });
+
+    it('refuses a malformed tags list: bad case, too long, duplicate, too many, wrong shape, or non-string', () => {
+      const cases = [
+        'tags: [Publish]',
+        `tags: [${'a'.repeat(33)}]`,
+        'tags: [x, x]',
+        `tags: [${new Array(9).fill('a').join(', ')}]`,
+        'tags: publish',
+        'tags: [1]',
+      ];
+      for (const line of cases) {
+        const fm = SINGLE.replace('profile: research', `profile: research\n${line}`);
+        expect(parseWorkflowDef(md(fm), { knownProfiles: KNOWN })).toMatchObject({ ok: false });
+      }
+    });
+
+    it('derives publish from a publish: stage action, whatever the declared tags say', () => {
+      const fm = SINGLE
+        .replace('action: research:web-brief', 'action: publish:private-upload')
+        .replace('riskTier: T2', 'riskTier: T3');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.tags).toEqual([]);
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['publish']));
+    });
+
+    it('derives publish from a publicationAuthorization human gate', () => {
+      const gatedFm = SINGLE.replace('    riskTier: T2', [
+        '    riskTier: T2',
+        '    humanGates:', '      - id: g-pub', '        kind: approval',
+        '        prompt: Approve the publish.', '        publicationAuthorization: true',
+      ].join('\n'));
+      const result = parseWorkflowDef(md(gatedFm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['publish']));
+    });
+
+    it('derives spend from a spendAuthorization human gate', () => {
+      const gatedFm = SINGLE.replace('    riskTier: T2', [
+        '    riskTier: T2',
+        '    humanGates:', '      - id: g-spend', '        kind: approval',
+        '        prompt: Approve the spend.', '        spendAuthorization: true',
+      ].join('\n'));
+      const result = parseWorkflowDef(md(gatedFm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['spend']));
+    });
+
+    it('unions declared tags with derived ones instead of replacing them', () => {
+      const fm = SINGLE
+        .replace('profile: research', 'profile: research\ntags: [nightly]')
+        .replace('action: research:web-brief', 'action: publish:private-upload')
+        .replace('riskTier: T2', 'riskTier: T3');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['nightly', 'publish']));
+    });
+
+    /**
+     * Security review 2026-09-16, MEDIUM-3. `parseWorkflowDef`'s `validation-slice` refusal — the
+     * precedent spec §4.4 cites — treats `action.startsWith('publish:') || riskTier === 'T3'` as ONE
+     * publish/T3 marker. Deriving only from the action left the second half of that precedent
+     * underived, so a stage declared `riskTier: T3` with an ordinary action carried no tag and
+     * resolved its gate on the open channel.
+     */
+    it('derives publish from riskTier: T3 alone, with a non-publish action and no gate', () => {
+      const fm = SINGLE.replace('riskTier: T2', 'riskTier: T3');
+      const result = parseWorkflowDef(md(fm), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect(result.value.stages[0].action).toBe('research:web-brief');
+      expect(result.value.stages[0]).not.toHaveProperty('humanGates');
+      expect(result.value.tags).toEqual([]);
+      expect(effectiveWorkflowTags(result.value)).toEqual(new Set(['publish']));
+    });
+
+    it('leaves an ordinary definition untagged', () => {
+      const result = parseWorkflowDef(md(SINGLE), { knownProfiles: KNOWN });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      expect([...effectiveWorkflowTags(result.value)]).toEqual([]);
+    });
   });
 });

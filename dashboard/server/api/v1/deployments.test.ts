@@ -1,6 +1,6 @@
-// P6 W6.1 §6 — /api/v1/deployments. The T3 arm (confirm/deploy/abort/close-ptys) is fail-closed 403
-// ceremony-unavailable WITHOUT a passkey ceremony assertion (the shipped ceremonyId+assertion vocabulary,
-// no new vocabulary); acknowledge is a non-T3 transition; inspect is a read.
+// P6 W6.1 §6 — /api/v1/deployments. T2 removed the ceremony assertion the mutating arm
+// (confirm/deploy/abort/close-ptys) used to require in the body; they are plain operator-session-gated
+// transitions now, same as acknowledge; inspect is a read.
 import { describe, expect, it } from 'vitest';
 import { opCtx, operatorApp, opHeaders, HOST, operatorBearer } from './_nodeHarness.ts';
 import type { DeploymentActionPort } from './routes.ts';
@@ -13,18 +13,10 @@ function port(over: Partial<DeploymentActionPort> = {}): DeploymentActionPort {
   };
 }
 
-const assertion = { ceremonyId: 'cer-1', assertion: { id: 'x' } };
-
-describe('deployment T3 arm — fail-closed ceremony', () => {
+describe('deployment mutating arm', () => {
   for (const action of ['confirm', 'deploy', 'abort', 'close-ptys-and-continue']) {
-    it(`${action} WITHOUT an assertion -> 403 ceremony-unavailable`, async () => {
+    it(`${action} -> 200 kind:deployment`, async () => {
       const res = await operatorApp(opCtx({ deploymentPort: port() }), 'mutations').inject({ method: 'POST', url: `/api/v1/deployments/d-1/${action}`, headers: opHeaders(), payload: { note: 'x' } });
-      expect(res.statusCode).toBe(403);
-      expect(JSON.parse(res.body).error.code).toBe('ceremony-unavailable');
-    });
-
-    it(`${action} WITH an assertion -> 200 kind:deployment`, async () => {
-      const res = await operatorApp(opCtx({ deploymentPort: port() }), 'mutations').inject({ method: 'POST', url: `/api/v1/deployments/d-1/${action}`, headers: opHeaders(), payload: assertion });
       expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body).kind).toBe('deployment');
     });
@@ -32,7 +24,7 @@ describe('deployment T3 arm — fail-closed ceremony', () => {
 });
 
 describe('deployment acknowledge + inspect', () => {
-  it('acknowledge is a non-T3 transition -> 200 without an assertion', async () => {
+  it('acknowledge -> 200', async () => {
     const res = await operatorApp(opCtx({ deploymentPort: port() }), 'mutations').inject({ method: 'POST', url: '/api/v1/deployments/d-1/acknowledge', headers: opHeaders(), payload: {} });
     expect(res.statusCode).toBe(200);
   });
@@ -44,7 +36,7 @@ describe('deployment acknowledge + inspect', () => {
   });
 
   it('confirm 400 idempotency-key-required without the header', async () => {
-    const res = await operatorApp(opCtx({ deploymentPort: port() }), 'mutations').inject({ method: 'POST', url: '/api/v1/deployments/d-1/confirm', headers: { host: HOST, authorization: operatorBearer() }, payload: assertion });
+    const res = await operatorApp(opCtx({ deploymentPort: port() }), 'mutations').inject({ method: 'POST', url: '/api/v1/deployments/d-1/confirm', headers: { host: HOST, authorization: operatorBearer() }, payload: {} });
     expect(res.statusCode).toBe(400);
   });
 });

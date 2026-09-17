@@ -362,11 +362,6 @@ export function CardGate({
                 Verify evidence (possession)
               </button>
             ) : null}
-            {item.buttons.webauthn ? (
-              <button type="button" className="mc-btn mc-btn--primary" disabled={busy} onClick={() => onVerify('webauthn')}>
-                Verify evidence (WebAuthn)
-              </button>
-            ) : null}
           </div>
         </>
       ) : null}
@@ -580,8 +575,8 @@ export function CardApprovals({
   const gateItem = selectedPresentation?.gate ?? null;
 
   /**
-   * One governed click on a card gate: reuse the live bearer, else run the app's ONE passkey ceremony,
-   * and replace a bearer the server invalidated (401) exactly ONCE before retrying. Never a loop, never
+   * One governed click on a card gate: reuse the live bearer, else request a fresh session, and
+   * replace a bearer the server invalidated (401) exactly ONCE before retrying. Never a loop, never
    * a silent downgrade — the same rule the Inbox container used to carry for these two writes.
    */
   const governCard = async (

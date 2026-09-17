@@ -1,4 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   ActivationError,
   isExecutionActivated,
@@ -10,6 +13,7 @@ import {
   DASHBOARD_EXECUTOR_SUBJECT,
   DEFAULT_ATTEMPT_BUDGET,
   DEFAULT_BUDGET,
+  isOperatorUnlockSource,
   resolveWindowBudget,
   type ActivationDeps,
   type BuildActivatedExecutionOptions,
@@ -346,6 +350,93 @@ describe('buildActivatedExecution — gate ON', () => {
     expect(deps.createAccounting).toHaveBeenCalledWith(expect.objectContaining({ globalBudget: DEFAULT_BUDGET }));
   });
 
+  /**
+   * T6: `options.budgetOverrides` absent (the pre-T6 shape, and every case above) must not add a
+   * `windowBudgetFor` key at all — not even one that happens to resolve back to `globalBudget` — so
+   * `adapters.ts`'s own `options.windowBudgetFor?.(...) ?? options.globalBudget` fallback is reached
+   * bit for bit, exactly as it was before this task.
+   */
+  it('omits windowBudgetFor entirely when no budgetOverrides store is supplied', () => {
+    const deps = spyDeps();
+    buildActivatedExecution(baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }));
+    const call = (deps.createAccounting as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect('windowBudgetFor' in call).toBe(false);
+  });
+
+  /**
+   * T6: with a store supplied, `windowBudgetFor` widens ONLY `maxCostUsdMicros`, by exactly that
+   * window's granted total — the shape production binds (spec §4.6): `budget.maxCostUsdMicros +
+   * store.additionalUsdMicros(windowId)`, every other field passed through unchanged.
+   */
+  it('binds windowBudgetFor to the supplied budgetOverrides store, widening only maxCostUsdMicros', () => {
+    const deps = spyDeps();
+    const additionalUsdMicros = vi.fn().mockReturnValue(7_500_000);
+    buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      budgetOverrides: { additionalUsdMicros, grant: vi.fn() },
+    });
+    const call = (deps.createAccounting as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(typeof call.windowBudgetFor).toBe('function');
+    const resolved = call.windowBudgetFor('2026-09-16');
+    expect(additionalUsdMicros).toHaveBeenCalledWith('2026-09-16');
+    expect(resolved).toEqual({ ...DEFAULT_BUDGET, maxCostUsdMicros: DEFAULT_BUDGET.maxCostUsdMicros + 7_500_000 });
+  });
+
+  /**
+   * T6 end-to-end, shaped after the same prod fixture as `adapters.test.ts`'s 2026-09-16 canary
+   * regression test: several settled attempts near the window's cost ceiling, then 2 held researchers
+   * at the $1.60 per-attempt ceiling push it over — the live 'global token or cost budget exhausted'
+   * parking defect — until a granted override widens the SAME window's ceiling (through the wiring this
+   * task adds: `activation.ts` -> `windowBudgetFor` -> `adapters.ts`'s reserve path, never a second
+   * resume path) and a retried reservation then fits. Uses the shipped `DEFAULT_BUDGET`/
+   * `DEFAULT_ATTEMPT_BUDGET` pairing (construction-valid at the default concurrency of 2) rather than an
+   * artificially narrowed window, so `assertAttemptBudgetFitsWindow` is never in tension with the
+   * scenario.
+   */
+  it('lifts a parked two-researcher reservation after a budget override widens the window', async () => {
+    const deps = spyDeps();
+    // A real accounting adapter this time (not the mock `spyDeps()` default) — the point of this test is
+    // the wiring reaching the real `reserve` arithmetic.
+    const { createFileAccountingAdapter } = await import('./adapters.ts');
+    deps.createAccounting = vi.fn(createFileAccountingAdapter) as never;
+    const stateRoot = mkdtempSync(join(tmpdir(), 'activation-budget-override-'));
+    let granted = 0;
+    const budgetOverrides = { additionalUsdMicros: () => granted, grant: vi.fn() };
+    buildActivatedExecution({
+      ...baseOptions(deps, { DASHBOARD_EXECUTION_ACTIVATED: '1' }),
+      stateRoot,
+      budgetOverrides,
+    });
+    const accountingOptions = (deps.createAccounting as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    const accounting = createFileAccountingAdapter(accountingOptions);
+    const reserveAttempt = (attempt: number) => accounting.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    // 11 settled attempts at the full per-attempt cost ceiling: 11 x 1,600,000 = 17,600,000.
+    for (let attempt = 1; attempt <= 11; attempt += 1) {
+      const reservation = await reserveAttempt(attempt);
+      if (!reservation.ok) throw new Error(reservation.reason);
+      await accounting.settle({
+        operationKey: `settle:attempt-${attempt}`, reservationRef: reservation.value.reservationRef,
+        usage: { inputTokens: 1_024, outputTokens: 1_024, costUsdMicros: DEFAULT_ATTEMPT_BUDGET.maxCostUsdMicros },
+      });
+    }
+    // Two concurrent researchers, each holding the full $1.60 ceiling: 17,600,000 + 1,600,000 = held.
+    const researcherA = await reserveAttempt(12);
+    expect(researcherA.ok).toBe(true);
+    // The live defect: 17,600,000 settled + 1,600,000 (A, held) + 1,600,000 (B) = 20,800,000 > 20,000,000.
+    expect(await reserveAttempt(13)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+    // A signed override grants — production wires this through the route's `store.grant(...)`; here the
+    // store fake stands in for it, which is exactly the seam `windowBudgetFor` closes over.
+    granted = 2_000_000;
+    // The parked reservation's retry: its own attempt never persisted (a refusal writes nothing), so the
+    // SAME operationKey re-evaluates fresh rather than replaying — exactly what the open respond route's
+    // retry produces against a parked budget intervention.
+    const retried = await reserveAttempt(13);
+    expect(retried.ok).toBe(true);
+  });
+
   it.each([
     ['KB_EXECUTION_BUDGET_MAX_ATTEMPTS', 'maxAttempts', '10000', 10_000],
     ['KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS', 'maxInputTokens', '900000000', 900_000_000],
@@ -630,8 +721,8 @@ describe('buildActivatedExecution — gate ON', () => {
 });
 
 /**
- * The runtime unlock latch. Boot posture is LOCKED: nothing is constructed until a verified passkey
- * assertion asks for it, or the headless/testing env override is set.
+ * The runtime unlock latch. Boot posture is LOCKED: nothing is constructed until the session-gated
+ * unlock route asks for it, or the headless/testing env override is set.
  */
 describe('createExecutionLatch (runtime unlock)', () => {
   function latchHarness(env: Record<string, string | undefined> = {}) {
@@ -663,11 +754,14 @@ describe('createExecutionLatch (runtime unlock)', () => {
   });
 
   it('unlock constructs the wiring, is idempotent, and reports who unlocked it', () => {
+    // The harness env names no auth mode, so this daemon is NOT in tailnet mode and the honest source is
+    // `operator-session` (security review 2026-09-16, MEDIUM-7). The test right below pins the tailnet
+    // arm, and the one after it pins that the two cannot be confused.
     const { deps, latch, changes } = latchHarness();
     const first = latch.unlock({ subject: 'operator' });
     expect(first.ok).toBe(true);
     expect(latch.snapshot()).toEqual({
-      state: 'unlocked', source: 'passkey',
+      state: 'unlocked', source: 'operator-session',
       unlockedAt: new Date(1_700_000_000_000).toISOString(), unlockedBy: 'operator',
     });
     expect(latch.current()).not.toBeNull();
@@ -710,44 +804,40 @@ describe('createExecutionLatch (runtime unlock)', () => {
     expect(deps.createEngine).toHaveBeenCalledTimes(1);
   });
 
+  /**
+   * MEDIUM-7 (security review 2026-09-16). `unlock` returned `construct(input.subject, 'tailnet')`
+   * UNCONDITIONALLY — the latch did not know the auth mode — so an unlock in ANY mode recorded a
+   * tailnet-operator provenance it had not earned, and `isOperatorUnlockSource` (which gates the two
+   * break-glass recovery routes in `control/routes.ts`) read that fabricated value. It is unreachable
+   * today only because win32-desktop has no session-minting path; it becomes live the moment one returns.
+   */
+  it('an explicit unlock records the mode it ACTUALLY ran under, never a fabricated tailnet provenance', () => {
+    for (const [env, expected] of [
+      [{}, 'operator-session'],                                    // win32-desktop (the absent default)
+      [{ DASHBOARD_AUTH_MODE: 'win32-desktop' }, 'operator-session'],
+      [{ DASHBOARD_AUTH_MODE: 'tailnet' }, 'tailnet'],
+    ] as Array<[Record<string, string>, string]>) {
+      const { latch } = latchHarness(env);
+      // In tailnet mode the latch is already armed at boot, so `unlock` is the idempotent no-op there;
+      // in every other mode this is the first construction. Either way the recorded source must match.
+      latch.unlock({ subject: 'operator' });
+      expect(latch.snapshot().source, JSON.stringify(env)).toBe(expected);
+    }
+  });
+
+  it('isOperatorUnlockSource admits both operator arms and never the headless one', () => {
+    // Both arms are a verified operator (`requireSession` ran before either could happen), which is what
+    // the 2026-08-18 ruling requires the break-glass paths to keep working under; `env-override` is not.
+    expect(isOperatorUnlockSource('tailnet')).toBe(true);
+    expect(isOperatorUnlockSource('operator-session')).toBe(true);
+    expect(isOperatorUnlockSource('env-override')).toBe(false);
+    expect(isOperatorUnlockSource(null)).toBe(false);
+  });
+
   it('tailnet mode arms without DASHBOARD_EXECUTION_ACTIVATED, and outranks it when both are set', () => {
     expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' }).latch.snapshot().source).toBe('tailnet');
     expect(latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_EXECUTION_ACTIVATED: '1' }).latch.snapshot().source)
       .toBe('tailnet');
-  });
-
-  it('W47 SECURITY: the re-admitted passkey env changes NOTHING about the tailnet latch', () => {
-    // The cutover retired DASHBOARD_RP_ORIGIN + DASHBOARD_WEBAUTHN_CREDENTIALS in tailnet mode because
-    // "a passkey unlock could flip the latch source tailnet->passkey and re-open the two historical
-    // passkey-only repair paths" (auth/mode.ts, pre-W47). W47 re-admits the pair for the T3 signing
-    // ceremony ONLY, so that claim now has to be PROVEN rather than enforced by absence. It holds by
-    // construction: tailnet arms at boot (activation.ts, `construct(..., 'tailnet')`) and `unlock()`
-    // short-circuits on an already-constructed execution, so the source can never be re-sourced.
-    // RED ON REVERT: make `unlock` re-construct (or drop the `if (execution)` guard) and the source
-    // flips to 'passkey' here.
-    const PASSKEY_ENV = {
-      DASHBOARD_AUTH_MODE: 'tailnet',
-      DASHBOARD_RP_ORIGIN: 'https://kb.command.ts.net',
-      DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
-    };
-    const bare = latchHarness({ DASHBOARD_AUTH_MODE: 'tailnet' });
-    const armed = latchHarness(PASSKEY_ENV);
-    expect(armed.latch.snapshot()).toEqual(bare.latch.snapshot());
-    expect(armed.build).toHaveBeenCalledTimes(bare.build.mock.calls.length);
-
-    // An operator unlock call against either daemon is a no-op that preserves `source: 'tailnet'`.
-    const bareUnlock = bare.latch.unlock({ subject: 'operator' });
-    const armedUnlock = armed.latch.unlock({ subject: 'operator' });
-    expect(armedUnlock).toEqual(bareUnlock);
-    expect(armed.latch.snapshot()).toEqual(bare.latch.snapshot());
-    expect(armed.latch.snapshot().source).toBe('tailnet');
-    expect(armed.build).toHaveBeenCalledTimes(bare.build.mock.calls.length);
-
-    // Lock is identical too, and a post-lock unlock is the only path that mints 'passkey' - the same
-    // in both, so the env pair adds no reachable state the bare tailnet daemon does not already have.
-    expect(armed.latch.lock({ subject: 'operator' })).toEqual(bare.latch.lock({ subject: 'operator' }));
-    expect(armed.latch.unlock({ subject: 'operator' })).toEqual(bare.latch.unlock({ subject: 'operator' }));
-    expect(armed.changes.map((c) => c.state)).toEqual(bare.changes.map((c) => c.state));
   });
 
   it('lock remains the fail-safe direction in tailnet mode', () => {

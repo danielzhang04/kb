@@ -57,7 +57,7 @@ overrides:
     key: worker-desktop
     model: claude-opus-4-8
     expires: 2000-01-01T00:00:00Z
-    set-by: daniel@webauthn
+    set-by: daniel@session
     set-at: 1999-12-31T00:00:00Z
   - scope: card
     key: card-9
@@ -71,7 +71,7 @@ overrides:
     const expiredEntry = audit.overrides.find((o) => o.key === 'worker-desktop')!;
     expect(expiredEntry.expired).toBe(true);
     expect(expiredEntry.expiringSoon).toBe(true);
-    expect(expiredEntry.setBy).toBe('daniel@webauthn');
+    expect(expiredEntry.setBy).toBe('daniel@session');
     const liveEntry = audit.overrides.find((o) => o.key === 'card-9')!;
     expect(liveEntry.expired).toBe(false);
     expect(liveEntry.expires).toBeNull();

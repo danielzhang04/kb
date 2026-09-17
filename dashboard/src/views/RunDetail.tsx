@@ -7,14 +7,13 @@ import {
   getRun,
   listRunEvents,
   readRunSessionReplay,
-  resolveIterationGateWithCeremony,
+  resolveIterationGate,
   type AttemptSessionPublicRow,
   type HumanRequestDto,
   type IterationLoopDto,
   type ResolveIterationGateDto,
   type RunSessionReplayRefusal,
   respondToHumanRequest,
-  respondToHumanRequestWithCeremony,
   stopManager,
   type FetchLike,
   type OperationalEventDto,
@@ -261,18 +260,14 @@ function IterationGateRow(props: IterationGateRowProps): React.JSX.Element {
     >{decisionLabel(decision)}</button>)}
     {status === 'pending' ? <p role="status">Signing…</p> : null}
     {status === 'success' ? <p role="status">Resolved</p> : null}
-    {status === 'refused' ? <p role="alert">Ceremony refused: {refusalCode}</p> : null}
+    {status === 'refused' ? <p role="alert">Resolve failed: {refusalCode}</p> : null}
   </li>;
 }
 
 /** Dashboard v3 Run: one redacted stream, one inspector, and no second execution canvas. */
 export function RunDetail(props: RunDetailProps): React.JSX.Element {
-  // W47: T3 gate ceremony reachability comes from the SERVER (`/api/auth/context` reports
-  // `ceremonyModeAdmits(mode) && credentials().length > 0`), not from the auth mode. The old
-  // `session.mode === 'win32-desktop'` test disabled Approve on every T3 gate on the tailnet VM even
-  // with a passkey provisioned, which is what parked the first acceptance run at an unapprovable
-  // approval gate. win32-desktop behaviour is unchanged in practice: that mode cannot mint the session
-  // this view already holds without a provisioned credential.
+  // T2 removed the ceremony that used to additionally gate a T3 respond/resolve here. Every gate
+  // (T1/T2/T3 alike) now goes through the plain session-gated respond/resolve routes below.
   const session = useSession();
   const [loadedDetail, setLoadedDetail] = useState<RunDetailDto | null>(props.detail ?? null);
   const [replay, setReplay] = useState<OperationalEventDto[]>(props.events ?? []);
@@ -342,7 +337,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
   );
   const visibleEvents = graph?.eventsFor(selectedStageRef) as OperationalEventDto[] | undefined;
   // Mirrors the server's `isIterationGateRequest`: a completion or iteration-park gate is fingerprint-
-  // bound to its loop/receipt CAS tuple and resolved ONLY through `resolveIterationGateWithCeremony`
+  // bound to its loop/receipt CAS tuple and resolved ONLY through `resolveIterationGate`
   // (see the "Iteration gates" section below) - the generic responder refuses it ('invalid'). A
   // rejection-minted `intervention` request stays generically answerable even when a loop still links it.
   const iterationGateRefs = new Set(
@@ -403,17 +398,12 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
       response: input.response,
       idempotencyKey: `human-response:${input.requestRef}:${input.expectedRevision}:${input.decision}`,
     };
-    const gate = openGates.find((request) => request.requestRef === input.requestRef);
-    const t3 = gate !== undefined && ['approval', 'review', 'governance-refusal'].includes(gate.kind);
-    await (t3 ? respondToHumanRequestWithCeremony : respondToHumanRequest)(
-      input.requestRef, body, active.token, props.fetchImpl,
-    );
+    await respondToHumanRequest(input.requestRef, body, active.token, props.fetchImpl);
     if (props.detail === undefined) setLoadVersion((value) => value + 1);
   };
 
   /**
-   * F3 — an iteration gate is resolved with the exact displayed gate/park-reason and loop/generation CAS,
-   * signed by the SAME passkey ceremony a T3 human response uses (`resolveIterationGateWithCeremony`).
+   * F3 — an iteration gate is resolved with the exact displayed gate/park-reason and loop/generation CAS.
    * `expectedParkReason`/`expectedGateKind` are typed as a discriminated pair on `ResolveIterationGateDto`,
    * so the decision is narrowed against `parkGate` before either branch is built — never cast.
    */
@@ -441,7 +431,7 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
     } else {
       throw new Error(`decision "${decision}" is not valid for this gate`);
     }
-    await resolveIterationGateWithCeremony(gate.requestRef, input, active.token, props.fetchImpl);
+    await resolveIterationGate(gate.requestRef, input, active.token, props.fetchImpl);
     if (props.detail === undefined) setLoadVersion((value) => value + 1);
   };
 
@@ -527,7 +517,6 @@ export function RunDetail(props: RunDetailProps): React.JSX.Element {
             outputs={outputs}
             gate={openGates[0] ?? null}
             additionalGates={openGates.slice(1)}
-            ceremonyAvailable={session.ceremonyAvailable}
             details={{
               stepSkeleton,
               envelope: `${detail.run.owner.type} · ${detail.run.executionHost}`,

@@ -170,7 +170,7 @@ function buildPaidActionRequest(
 
 /**
  * Derive the run's current attempt for the grant's stage from execution state — never from the worker. The
- * run is keyed by the grant's subject (the operator whose passkey approved the spend gate, which is the same
+ * run is keyed by the grant's subject (the operator who approved the spend gate, which is the same
  * subject the run is stored under). A missing run/stage/attempt is a retryable 409, not an authorization
  * failure: the attempt worktree is prepared at the same launch that mints the grant, so a well-timed worker
  * always finds one.

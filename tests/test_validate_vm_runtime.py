@@ -23,7 +23,22 @@ Environment=DASHBOARD_TAILNET_OPERATOR=daniel.zhang.t1@gmail.com
 Environment=DASHBOARD_DESKTOP_HELPER_ORIGIN=https://kb-desk.command.ts.net
 Environment=DASHBOARD_TAILNET_PROXY_UID=0
 Environment=DASHBOARD_NODE_PROXY_UID=987
+Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers
 """
+
+
+@pytest.fixture(autouse=True)
+def _default_human_approver_signers_stat(monkeypatch):
+    """T3: every unit-validation test implicitly requires DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS to
+    resolve to a root-owned 0644 regular file, and no dev/CI host actually has one at the pinned path.
+    Fake the ONE real I/O call the validator makes (`_stat_human_approver_signers`) rather than the dozens
+    of `validate_static_unit` call sites that reach it; a test asserting the file checks themselves
+    overrides this with its own monkeypatch (see the `test_human_approver_signers_*` cases below)."""
+    import stat as stat_module_default
+    from types import SimpleNamespace as _SimpleNamespace
+
+    good = _SimpleNamespace(st_mode=stat_module_default.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (good, good))
 
 
 @pytest.mark.parametrize(
@@ -100,23 +115,92 @@ def test_effective_unit_rejects_an_invalid_operator(value):
         validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-# --- W47: the CONSTRAINED tailnet passkey channel --------------------------------------------------
-# These replace test_effective_unit_rejects_retired_webauthn_environment, which asserted the blanket
-# retirement that made a T3 `ceremony: webauthn` gate unapprovable on the VM. RED ON REVERT: put both
-# names back outside EXPECTED_UNIT_ENV | OPTIONAL_UNIT_ENV and the accepting case below fails; drop
-# _validate_passkey_channel and the mismatched-origin / lone-var / zero-credential cases fail.
-PASSKEY_UNIT_TEXT = VALID_UNIT_TEXT + (
-    "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n"
-    'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID","counter":0}]\'\n'
-)
+# --- T3: the ssh-signed human-approval channel's allowed-signers file -------------------------------
+# RED ON REVERT: drop DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS from EXPECTED_UNIT_ENV, or drop the
+# _validate_human_approver_signers call, and every case below either stops raising or raises for the
+# wrong reason.
+def test_human_approver_allowed_signers_is_a_required_member_of_the_closed_set():
+    assert "DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS" in validate_vm_runtime.EXPECTED_UNIT_ENV
 
 
-def test_w47_unit_accepts_a_correctly_pinned_passkey_pair():
-    validate_vm_runtime.validate_static_unit(valid_static_unit(), PASSKEY_UNIT_TEXT)
+def test_effective_unit_requires_the_human_approver_allowed_signers_env():
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        "",
+    )
+    with pytest.raises(RuntimeError, match="assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-def test_w47_unit_accepts_the_pair_being_wholly_absent():
-    """Both absent is the default posture and must stay legal, byte for byte."""
+@pytest.mark.parametrize("value", ["relative/path", "", "kb-ops-approver.allowed-signers"])
+def test_human_approver_signers_rejects_a_non_absolute_path(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        f"Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="absolute path"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+@pytest.mark.parametrize("value", ["/tmp/kb-ops-approver.allowed-signers", "/root/.ssh/allowed-signers", "/etc/passwd"])
+def test_human_approver_signers_rejects_a_path_outside_the_trusted_directories(value):
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        f"Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS={value}\n",
+    )
+    with pytest.raises(RuntimeError, match="/usr/local/lib/kb/ or /etc/kb/"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_human_approver_signers_accepts_the_other_trusted_directory():
+    text = VALID_UNIT_TEXT.replace(
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers\n",
+        "Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/etc/kb/allowed-signers\n",
+    )
+    validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+
+
+def test_human_approver_signers_rejects_a_missing_file(monkeypatch):
+    def _missing(path):
+        raise FileNotFoundError(path)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", _missing)
+    with pytest.raises(RuntimeError, match="unreadable"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_symlink(monkeypatch):
+    link = SimpleNamespace(st_mode=stat_module.S_IFLNK | 0o777, st_uid=0)
+    target = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (link, target))
+    with pytest.raises(RuntimeError, match="symlink"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_non_regular_file(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFDIR | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="regular file"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_rejects_a_non_root_owner(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=1000)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="owned by root"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+@pytest.mark.parametrize("mode", [0o600, 0o640, 0o664, 0o666])
+def test_human_approver_signers_rejects_a_world_writable_or_otherwise_wrong_mode_file(monkeypatch, mode):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | mode, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
+    with pytest.raises(RuntimeError, match="0644"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
+
+
+def test_human_approver_signers_accepts_a_correctly_owned_and_moded_file(monkeypatch):
+    info = SimpleNamespace(st_mode=stat_module.S_IFREG | 0o644, st_uid=0)
+    monkeypatch.setattr(validate_vm_runtime, "_stat_human_approver_signers", lambda path: (info, info))
     validate_vm_runtime.validate_static_unit(valid_static_unit(), VALID_UNIT_TEXT)
 
 
@@ -163,110 +247,39 @@ def test_unit_still_rejects_a_neighbouring_kb_execution_budget_name():
         )
 
 
-def _without(name):
-    return "".join(line + "\n" for line in PASSKEY_UNIT_TEXT.splitlines() if f"Environment={name}=" not in line)
+# --- T2: WebAuthn/passkeys removed end to end --------------------------------------------------------
+# DASHBOARD_RP_ORIGIN and DASHBOARD_WEBAUTHN_CREDENTIALS are no longer part of the closed unit-env set at
+# all (neither EXPECTED_UNIT_ENV nor OPTIONAL_UNIT_ENV), and no drop-in is trusted any more — the W47
+# passkey drop-in was the only one that ever was. RED ON REVERT: put either name back into
+# EXPECTED_UNIT_ENV | OPTIONAL_UNIT_ENV and the first two cases below fail; re-admit any DropInPaths
+# entry and the third fails.
+def _valid_unit_env():
+    return validate_vm_runtime._unit_environment(VALID_UNIT_TEXT)
 
 
-def test_w47_unit_accepts_an_rp_origin_with_no_credentials_yet():
-    """The ENROLMENT posture: the register ceremony needs an RP origin and is the only way to obtain
-    a credential. It grants nothing - the empty store keeps every T3 challenge at 403."""
-    validate_vm_runtime.validate_static_unit(valid_static_unit(), _without("DASHBOARD_WEBAUTHN_CREDENTIALS"))
+def _unit_text(env):
+    return "[Service]\n" + "".join(f"Environment={key}={value}\n" for key, value in env.items())
 
 
-def test_w47_unit_rejects_credentials_without_an_rp_origin():
-    """A store with no RP origin can pin no RP-ID, so nothing could ever verify against it."""
-    with pytest.raises(RuntimeError, match="whenever DASHBOARD_WEBAUTHN_CREDENTIALS is set"):
-        validate_vm_runtime.validate_static_unit(valid_static_unit(), _without("DASHBOARD_RP_ORIGIN"))
+def test_unit_carrying_rp_origin_is_refused(tmp_path):
+    env = _valid_unit_env() | {"DASHBOARD_RP_ORIGIN": "https://kb.example.ts.net"}
+    with pytest.raises(RuntimeError, match="environment assignment set is not closed"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), _unit_text(env))
 
 
-@pytest.mark.parametrize(
-    "origin",
-    [
-        "https://evil.ts.net",
-        "http://kb.command.ts.net",
-        "https://kb.command.ts.net/",
-        "https://kb.command.ts.net:443",
-    ],
-)
-def test_w47_unit_rejects_an_rp_origin_that_is_not_the_serve_host(origin):
-    text = PASSKEY_UNIT_TEXT.replace(
-        "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n",
-        f"Environment=DASHBOARD_RP_ORIGIN={origin}\n",
-    )
-    with pytest.raises(RuntimeError, match="must equal https://kb.command.ts.net exactly"):
-        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
+def test_unit_carrying_webauthn_credentials_is_refused(tmp_path):
+    # DASHBOARD_WEBAUTHN_CREDENTIALS is no longer CREDENTIAL_ENV_EXEMPT (T2 dropped the exemption along
+    # with the channel it named), so it is caught by the earlier forbidden-credential-name check, not
+    # the closed-set check — a strictly earlier, more specific refusal.
+    env = _valid_unit_env() | {"DASHBOARD_WEBAUTHN_CREDENTIALS": "[]"}
+    with pytest.raises(RuntimeError, match="forbidden credential name"):
+        validate_vm_runtime.validate_static_unit(valid_static_unit(), _unit_text(env))
 
 
-@pytest.mark.parametrize("value", ["[]", "not-json", '\'{"id":"a","publicKey":"b"}\'', '\'[{"id":"a"}]\'', "\'[null]\'"])
-def test_w47_unit_rejects_credentials_that_resolve_to_zero(value):
-    """Exactly the values resolveCredentials() maps to []: the channel would be unusable."""
-    text = PASSKEY_UNIT_TEXT.replace(
-        'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID","counter":0}]\'\n',
-        f"Environment=DASHBOARD_WEBAUTHN_CREDENTIALS={value}\n",
-    )
-    with pytest.raises(RuntimeError, match="at least one"):
-        validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
-
-
-def test_w47_static_unit_reads_the_named_dropin_when_present(monkeypatch):
-    """Only the passkey drop-in path is admitted, and its CONTENT is validated too - not just its
-    name. RED ON REVERT: delete the _validate_passkey_drop_in call in validate_static_unit and this
-    fails (nothing would read the file), along with every directive case below."""
-    show = valid_static_unit()
-    show["DropInPaths"] = validate_vm_runtime.PASSKEY_DROP_IN
-    seen = []
-    monkeypatch.setattr(validate_vm_runtime, "_validate_passkey_drop_in", lambda path: seen.append(path))
-    validate_vm_runtime.validate_static_unit(show, PASSKEY_UNIT_TEXT)
-    assert seen == [Path(validate_vm_runtime.PASSKEY_DROP_IN)]
-
-
-CLEAN_DROP_IN = (
-    "[Service]\n"
-    "# W47 T3 passkey channel. PUBLIC keys only.\n"
-    "Environment=DASHBOARD_RP_ORIGIN=https://kb.command.ts.net\n"
-    'Environment=DASHBOARD_WEBAUTHN_CREDENTIALS=\'[{"id":"cred-1","publicKey":"AQID"}]\'\n'
-)
-
-
-def test_w47_dropin_accepts_a_service_header_and_passkey_environment_only(tmp_path):
-    path = tmp_path / "passkey.conf"
-    path.write_text(CLEAN_DROP_IN, encoding="utf-8")
-    validate_vm_runtime._validate_passkey_drop_in(path)
-
-
-@pytest.mark.parametrize(
-    "extra",
-    [
-        "ExecStartPre=/bin/sh -c whoami\n",
-        "NoNewPrivileges=no\n",
-        "SupplementaryGroups=root\n",
-        "BindPaths=/etc:/etc\n",
-        "CapabilityBoundingSet=CAP_SYS_ADMIN\n",
-        "User=root\n",
-        "Environment=DASHBOARD_EXECUTION_ACTIVATED=1\n",
-        "[Install]\n",
-    ],
-)
-def test_w47_dropin_refuses_any_other_directive_or_section(tmp_path, extra):
-    """Admitting a drop-in path widened the unit trust boundary, so the FILE is pinned too. A
-    drop-in can set ANY [Service] directive, which would let passkey.conf quietly undo the sandbox
-    the rest of this validator spends its length proving."""
-    path = tmp_path / "passkey.conf"
-    path.write_text(CLEAN_DROP_IN + extra, encoding="utf-8")
-    with pytest.raises(RuntimeError, match="passkey drop-in"):
-        validate_vm_runtime._validate_passkey_drop_in(path)
-
-
-def test_w47_dropin_refuses_a_directive_before_its_service_header(tmp_path):
-    path = tmp_path / "passkey.conf"
-    path.write_text("Environment=DASHBOARD_RP_ORIGIN=https://x\n[Service]\n", encoding="utf-8")
-    with pytest.raises(RuntimeError, match="before its"):
-        validate_vm_runtime._validate_passkey_drop_in(path)
-
-
-def test_w47_dropin_refuses_an_unreadable_file(tmp_path):
-    with pytest.raises(RuntimeError, match="unreadable"):
-        validate_vm_runtime._validate_passkey_drop_in(tmp_path / "absent.conf")
+def test_any_drop_in_is_refused():
+    show = valid_static_unit() | {"DropInPaths": "/etc/systemd/system/kb-dashboard.service.d/passkey.conf"}
+    with pytest.raises(RuntimeError, match="drop-ins are untrusted"):
+        validate_vm_runtime.validate_static_unit(show, _unit_text(_valid_unit_env()))
 
 
 def valid_static_unit():
@@ -484,23 +497,21 @@ def test_static_phase_rejects_other_credential_named_unit_environment():
             validate_vm_runtime.validate_static_unit(valid_static_unit(), text)
 
 
-def test_credential_env_exemption_is_exactly_these_three_names():
-    """Three names are exempt from CREDENTIAL_ENV_NAME, BY NAME, and each for a stated reason:
-    DASHBOARD_WEBAUTHN_CREDENTIALS holds WebAuthn PUBLIC keys only, and the two
+def test_credential_env_exemption_is_exactly_these_two_names():
+    """Two names are exempt from CREDENTIAL_ENV_NAME, BY NAME, and each for a stated reason: the two
     KB_EXECUTION_BUDGET_MAX_*_TOKENS hold a COUNT of language-model tokens (a digits-only integer the
     daemon re-validates at boot), not an authentication token. Nothing else is exempt: every other
-    match, including a look-alike built from an exempt name, still fails. RED ON REVERT: widen
+    match, including a look-alike built from an exempt name, still fails. T2 removed the third exempt
+    name, DASHBOARD_WEBAUTHN_CREDENTIALS, along with the channel it provisioned. RED ON REVERT: widen
     CREDENTIAL_ENV_EXEMPT and the pinned set below fails; narrow it and the first half fails."""
     for exempt in sorted(validate_vm_runtime.CREDENTIAL_ENV_EXEMPT):
         validate_vm_runtime.validate_environment({exempt: "anything"})
     assert validate_vm_runtime.CREDENTIAL_ENV_EXEMPT == frozenset({
-        "DASHBOARD_WEBAUTHN_CREDENTIALS",
         "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
         "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
     })
     for name in (
-        "DASHBOARD_WEBAUTHN_CREDENTIALS_PRIVATE",
-        "DASHBOARD_PASSKEY_SECRET",
+        "DASHBOARD_WEBAUTHN_CREDENTIALS",
         "MY_CREDENTIAL",
         "KB_EXECUTION_BUDGET_TOKEN",
         "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS_SECRET",

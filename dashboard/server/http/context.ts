@@ -1,23 +1,23 @@
 /**
  * U2 — the shared context every governed-write route registrar receives. It bundles the resolved
- * security config (session signing, origin allowlist, rate-limit guard, WebAuthn RP config + registered
- * credentials) plus the SAME injectable side-effect runners each gate module already exposes for its
- * own hermetic unit tests. In production every runner field is left `undefined` and each module falls
- * back to its real default (shell git/py/claude); route tests inject recording fakes so no real
- * subprocess, git remote, or `queue/` tree is ever touched — the security chain itself is never faked.
+ * security config (session signing, origin allowlist, rate-limit guard) plus the SAME injectable
+ * side-effect runners each gate module already exposes for its own hermetic unit tests. In production
+ * every runner field is left `undefined` and each module falls back to its real default (shell
+ * git/py/claude); route tests inject recording fakes so no real subprocess, git remote, or `queue/`
+ * tree is ever touched — the security chain itself is never faked.
  */
 import { join, resolve } from 'node:path';
 import { NamingRegistry, defaultNamingRegistry } from '../naming.ts';
 import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts';
 import type { AuthMode } from '../auth/mode.ts';
+import type { RunnableRef } from '../control/p2Contracts.ts';
+import type { DesktopPeerCheck } from '../auth/win32DesktopPeer.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
 import type { HostNodeMapLoad } from '../auth/hostNodeMap.ts';
 import type { V1SurfaceDeps } from '../api/v1/routes.ts';
-import type { WebAuthnConfig } from '../auth/webauthn.ts';
-import type { WebAuthnCredential } from '@simplewebauthn/server';
 import { appendAudit as realAppendAudit } from '../audit/log.ts';
 import type { AppendAuditOptions, AuditEvent, AuditRow, OpsGitRunner } from '../audit/log.ts';
 import type { GitRunner, PrOpener } from '../write/branch.ts';
@@ -46,6 +46,7 @@ import type { RunControlTransactions } from '../control/runTransactions.ts';
 import type { ExecutionLatch } from '../control/activation.ts';
 import type { PaidActionExecutor } from '../control/paidActionWiring.ts';
 import type { SpendGrant } from '../control/spendGrant.ts';
+import type { BudgetOverrideStore } from '../control/budgetOverride.ts';
 import type { SessionHost } from '../pty/contracts.ts';
 import type { AttemptSessionPublicRow } from '../control/p2Contracts.ts';
 import type { DeploymentSessionCloser, SessionRecordRegistry } from '../pty/sessionRecord.ts';
@@ -60,6 +61,8 @@ import type { AdmissionDecision, AdmissionKind } from '../control/admission.ts';
 import type { RuntimeCapabilities } from '../runtime/capabilities.ts';
 import type { ReconciliationPublisher } from '../reconciliation/realPorts.ts';
 import type { ActivationReaderPort } from '../home/project.ts';
+import type { SshsigVerifier } from '../authority/sshsig.ts';
+import type { NonceStore } from '../authority/nonceStore.ts';
 
 /** How a route records exactly one audit row. Injected as a recording fake in tests. Widened to allow a
  *  `Promise` so the real (now async, off-the-event-loop) `appendAudit` and synchronous test fakes both fit;
@@ -105,6 +108,24 @@ export interface SurfaceContext {
   /** Deployment authentication mode resolved once at the HTTP composition root. */
   authMode: AuthMode;
   /**
+   * The governing `publish`/`spend` tag set for a runnable, derived AT LAUNCH and persisted on the run
+   * (`control/ownerTags.ts#deriveOwnerTags`; see BLOCKER-1 in that module's header for why it is not a
+   * resolve-time read). Bound in `makeSurfaceContext`, where the workflow scanner and the agent roster
+   * are both reachable — `control/launch.ts` cannot import the scanner itself without a module cycle.
+   *
+   * Optional so the many hand-built test contexts need not supply one; `control/launch.ts` falls back to
+   * the maximal fail-closed set when it is absent, never to "untagged".
+   */
+  ownerTags?: (owner: RunnableRef) => string[];
+  /**
+   * BLOCKER-2 — the `win32-desktop` operator proof: "did this request arrive on loopback from a process
+   * owned by the SAME Windows account as this daemon?" (`auth/win32DesktopPeer.ts`). Present ONLY in
+   * that mode, where it guards the one route that mints a session; `tailnet` mode leaves it undefined
+   * and keeps proving its operator through `sessionConfig.operatorAuth` instead. Undefined is a
+   * refusal, never a pass: the mint route answers 401 with no proof installed.
+   */
+  desktopPeer?: DesktopPeerCheck;
+  /**
    * P5 W6.1 [P5-C30]: the ONE shared installed-release activation reader, constructed exactly once in
    * `makeSurfaceContext` and threaded through this context. Home (D13 chip), Health (ReleaseRow), and the
    * Inbox deploy-ready gate all read the live release SHA/activation time through THIS instance — never a
@@ -143,12 +164,18 @@ export interface SurfaceContext {
    * governed route does. Absent leaves the v1 surface unregistered (fail-closed).
    */
   v1?: V1SurfaceDeps;
-  /** Lazy — `auth/webauthn.ts#resolveWebAuthnConfig` THROWS when `DASHBOARD_RP_ORIGIN` is unset, so it
-   *  is only ever called inside a handler (which the origin guard already blocked when the allowlist is
-   *  empty), never at registration time. */
-  webAuthnConfig: () => WebAuthnConfig;
-  /** The fail-closed registered-credential store (`[]` until a human provisions a passkey). */
-  credentials: () => WebAuthnCredential[];
+  /**
+   * T3 signed channel (`authority/gate.ts#requireAuthority`, spec §4.2): the path to the root-owned
+   * `ssh-keygen -Y verify` allowed-signers file for the `kb-human-approval` namespace. Resolved ONCE in
+   * `makeSurfaceContext` from `DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS`. Empty/unset means the channel
+   * is not configured on this deployment — every `signed`-class route then answers
+   * `503 approval-unavailable` rather than trusting anything about the request.
+   */
+  humanApproverAllowedSigners?: string;
+  /** Injectable `ssh-keygen -Y verify` runner; production falls back to `sshsig.ts#defaultSshsigVerifier`. */
+  sshsigVerifier?: SshsigVerifier;
+  /** Injectable nonce-replay store; production falls back to `nonceStore.ts#createNonceStore(stateRoot)`. */
+  approvalNonces?: NonceStore;
 
   // --- injectable side-effect runners (undefined => each module's real default) ---
   appendAudit?: AppendAuditFn;
@@ -178,7 +205,7 @@ export interface SurfaceContext {
   attemptPort?: AttemptExecutionPort;
   /**
    * The runtime execution unlock latch. The daemon boots LOCKED (no wiring constructed) and the
-   * passkey-gated unlock route asks this to construct it, which rebinds the executor fields below IN
+   * session-gated unlock route asks this to construct it, which rebinds the executor fields below IN
    * PLACE on this same context object — so every route that already checks `ctx.runAutomatic` observes
    * the current posture without a second lookup path. Absent only when a test injects the executor.
    */
@@ -192,6 +219,11 @@ export interface SurfaceContext {
   /** The durable spend-grant resolver the paid-action route validates a worker's bearer token against.
    *  Bound with {@link paidActionService}; the raw token never leaves the worker, only its hash is stored. */
   spendGrantStore?: { resolve(token: string, now?: Date): SpendGrant | null };
+  /** T6: the signed budget-override store, built once over this context's `stateRoot` (unlike
+   *  {@link paidActionService}/{@link spendGrantStore} above, present whether or not the execution
+   *  latch is unlocked — a human can raise tomorrow's ceiling before the daemon ever arms). Absent only
+   *  when a test deliberately omits it, in which case the override route fails closed 503. */
+  budgetOverrides?: BudgetOverrideStore;
   /** The one platform PTY host for `/api/pty` (Windows `node-pty`, Linux broker client), already wrapped
    *  in the fleet-preamble gate. Absent when the runtime reports no PTY capability. */
   ptySessionHost?: SessionHost;

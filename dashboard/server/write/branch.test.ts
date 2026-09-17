@@ -542,10 +542,10 @@ describe('publishPreparedCoordinationCommit', () => {
     };
     const failure = await publishPreparedCoordinationCommit('/fake/repo', settlement, {
       runGit: runner, relpaths: paths,
-      assertAuthorized: () => { if (pushed) throw new Error('passkey latch changed'); },
+      assertAuthorized: () => { if (pushed) throw new Error('operator-unlock latch changed'); },
     }).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(PublishedCoordinationCommitError);
-    expect((failure as PublishedCoordinationCommitError).message).toBe('passkey latch changed');
+    expect((failure as PublishedCoordinationCommitError).message).toBe('operator-unlock latch changed');
     expect(calls.filter((args) => args[0] === 'push')).toHaveLength(1);
     expect(calls.some((args) => args[0] === 'reset')).toBe(false);
   });

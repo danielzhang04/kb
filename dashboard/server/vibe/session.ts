@@ -10,7 +10,7 @@
  *      refuse identically, and nothing downstream (session check, rate limiter, spawner) is even
  *      evaluated. Mirrors `dashboard/server/write/launch.ts`'s `gate()` ordering exactly — a frozen
  *      fleet must not be re-activated by an RCE-equivalent spawn regardless of who is asking.
- *   2. **WebAuthn session gate** — `verifySession()` (D2.1, imported verbatim). Missing, malformed,
+ *   2. **session gate** — `verifySession()` (D2.1, imported verbatim). Missing, malformed,
  *      expired, or bad-signature tokens are all rejected the same way, before any spawn.
  *   3. **Rate-limit + lockout** (D2.9's `rateLimit`/`lockout`, imported verbatim from
  *      `server/security/ratelimit.ts`), keyed by the verified session subject — a burst of vibe-spawns
@@ -243,9 +243,9 @@ export async function spawnVibe(
     return await audited({ ok: false, reason: 'fleet-frozen', problems: preambleResult.problems });
   }
 
-  // 2. WebAuthn session gate — checked only after the preamble passes.
+  // 2. Session gate — checked only after the preamble passes.
   if (!session.token) {
-    return await audited({ ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' });
+    return await audited({ ok: false, reason: 'unauthenticated', detail: 'no session token supplied' });
   }
   const check = verifySession(session.token, session.config);
   if (!check.ok) {

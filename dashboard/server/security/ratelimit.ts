@@ -120,7 +120,7 @@ export interface RateLimitRequestLike {
 
 /**
  * A Fastify `onRequest`/`preHandler` hook enforcing a {@link LockoutGuard}. `keyOf` derives the
- * limiter key from the request (e.g. the WebAuthn session id, falling back to the peer IP) — callers
+ * limiter key from the request (e.g. the session id, falling back to the peer IP) — callers
  * on a write-endpoint scope are expected to key by session so throttling survives IP churn.
  */
 export function rateLimitHook(guard: LockoutGuard, keyOf: (req: FastifyRequest) => string) {

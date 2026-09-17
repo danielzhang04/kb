@@ -673,7 +673,7 @@ select option {
 }
 
 /* The app's ONE unlock affordance — a quiet chip in the topbar, same visual weight as the glance.
- * Locked it is a button (click = the single passkey ceremony); unlocked it is an inert readout. */
+ * Locked it is a button (click = the single unlock action); unlocked it is an inert readout. */
 .mc-session-chip {
   flex: 0 0 auto;
   display: inline-flex;

@@ -3,6 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { AsyncLocalStorage } from 'node:async_hooks';
 import {
   AUDIT_REL_PATH,
   appendAudit,
@@ -10,6 +11,7 @@ import {
   commitAuditToOps,
 } from './log.ts';
 import type { AuditEvent, OpsGitRunner } from './log.ts';
+import { bindAttribution, resetAttribution } from '../auth/operator.ts';
 
 const tmpDirs: string[] = [];
 async function scratch(): Promise<string> {
@@ -91,6 +93,46 @@ describe('appendAuditRowLocal (pure local append)', () => {
     expect(after).toHaveLength(3);
     expect(after[0]).toEqual(before[0]);
     expect(after[1]).toEqual(before[1]);
+  });
+});
+
+/** `bindAttribution` uses `enterWith`, which marks the CURRENT async context — each case runs inside its
+ *  own island (see `audit/attribution.test.ts`'s identical helper) so a binding never bleeds into an
+ *  unrelated test in this file. */
+function inIsolatedContext<T>(fn: () => T): T {
+  return new AsyncLocalStorage<null>().run(null, fn);
+}
+
+describe('actor attribution on the audit row (T4 design:4.3)', () => {
+  it('stamps the bound actor on the row', async () => {
+    const repo = await scratch();
+    inIsolatedContext(() => {
+      bindAttribution({ actor: 'boss', login: 'daniel@example', node: 'desk' } as never);
+      const row = appendAuditRowLocal(repo, { action: 'test' });
+      expect(row.actor).toBe('boss');
+      expect((row.detail as Record<string, unknown>).tailnetIdentity).toBeTruthy();
+      resetAttribution();
+    });
+  });
+
+  it('is byte-identical to today with no attribution bound', async () => {
+    const repo = await scratch();
+    inIsolatedContext(() => {
+      resetAttribution();
+      const row = appendAuditRowLocal(repo, { action: 'test' });
+      expect(Object.keys(row).sort()).toEqual(['action', 'ts']);
+    });
+  });
+
+  it('stamps only actor (no detail.tailnetIdentity) for a win32-desktop-shaped attribution', async () => {
+    const repo = await scratch();
+    inIsolatedContext(() => {
+      bindAttribution({ actor: 'worker:sonnet-01', tailnetIdentity: null });
+      const row = appendAuditRowLocal(repo, { action: 'test' });
+      expect(row.actor).toBe('worker:sonnet-01');
+      expect(row.detail).toBeUndefined();
+      resetAttribution();
+    });
   });
 });
 

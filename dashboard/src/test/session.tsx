@@ -8,16 +8,12 @@ import {
 import {
   SessionProvider,
   useSession,
-  type SessionProviderDeps,
 } from '../lib/sessionContext';
 
-const TEST_AUTH_CONTEXT = { mode: 'win32-desktop' as const, ceremonyAvailable: true };
-
-type TestSignIn = NonNullable<SessionProviderDeps['signIn']>;
+const TEST_AUTH_CONTEXT = { mode: 'win32-desktop' as const };
 
 interface TestSessionProviderProps {
   children: ReactNode;
-  signIn?: TestSignIn;
 }
 
 function SessionReadinessProbe(): JSX.Element {
@@ -28,12 +24,10 @@ function SessionReadinessProbe(): JSX.Element {
 /** A desktop-mode SessionProvider for component and hook tests. */
 export function TestSessionProvider({
   children,
-  signIn,
 }: TestSessionProviderProps): JSX.Element {
   return (
     <SessionProvider deps={{
       fetchAuthContext: async () => TEST_AUTH_CONTEXT,
-      ...(signIn ? { signIn } : {}),
     }}>
       <SessionReadinessProbe />
       {children}
@@ -41,18 +35,16 @@ export function TestSessionProvider({
   );
 }
 
-export interface RenderWithTestSessionOptions extends Omit<RenderOptions, 'wrapper'> {
-  signIn?: TestSignIn;
-}
+export interface RenderWithTestSessionOptions extends Omit<RenderOptions, 'wrapper'> {}
 
 /** Render only after SessionProvider has committed its injected desktop auth mode. */
 export async function renderWithTestSession(
   ui: ReactElement,
   options: RenderWithTestSessionOptions = {},
 ): Promise<RenderResult> {
-  const { signIn, ...renderOptions } = options;
+  const renderOptions = options;
   const Wrapper = ({ children }: { children: ReactNode }): JSX.Element => (
-    <TestSessionProvider signIn={signIn}>
+    <TestSessionProvider>
       {children}
     </TestSessionProvider>
   );

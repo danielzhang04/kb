@@ -109,7 +109,7 @@ interface SessionInput {
   token: string | null | undefined;
   config: SessionConfig;
   /**
-   * A sanctioned internal service caller (the activation-gated queue bridge), in lieu of a WebAuthn token.
+   * A sanctioned internal service caller (the activation-gated queue bridge), in lieu of a session token.
    * Never set by any HTTP route — those build their launch input explicitly and pass only `token`. When
    * present and well-formed it authorizes the launch as an internal service; the token path is otherwise
    * byte-for-byte unchanged.
@@ -586,13 +586,13 @@ function parseSuccess(stdout: string, expectedRunId: string, expectedStageIds: s
 export async function launchWorkflowRun(input: unknown, session: SessionInput, deps: WorkflowRunDeps): Promise<WorkflowRunOutcome> {
   const preamble = assertFleetRunnable(deps.repoRoot, deps.runPreamble ?? defaultPreambleRunner);
   if (!preamble.ok) return { ok: false, reason: 'fleet-frozen', problems: preamble.problems };
-  // Authenticate the launch caller. HTTP surfaces supply a WebAuthn-minted session token — that path (the
+  // Authenticate the launch caller. HTTP surfaces supply a session token — that path (the
   // two checks below) is byte-for-byte unchanged. A sanctioned internal service caller (the
   // activation-gated queue bridge, never reachable from HTTP) authorizes in lieu of a token: it is an
   // in-process principal, not a forgeable bearer, and a strict shape match (never loose truthiness) so a
   // hostile HTTP body cannot smuggle a bypass object through.
   if (!isInternalServiceCaller(session.internalService)) {
-    if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' };
+    if (!session.token) return { ok: false, reason: 'unauthenticated', detail: 'no session token supplied' };
     const verified = verifySession(session.token, session.config);
     if (!verified.ok) return { ok: false, reason: 'unauthenticated', detail: verified.reason };
   }

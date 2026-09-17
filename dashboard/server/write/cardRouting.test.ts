@@ -15,7 +15,7 @@ import type { LocalAuditAppend } from './cardRouting.ts';
 
 const SECRET = Buffer.from('unit-test-secret-do-not-reuse');
 const CONFIG: SessionConfig = { secret: SECRET, now: () => 1_700_000_000_000 };
-const token = (): string => mintSession('daniel@webauthn', CONFIG).token;
+const token = (): string => mintSession('daniel@session', CONFIG).token;
 const BASE_SHA = 'a'.repeat(40);
 const COMMIT_SHA = 'b'.repeat(40);
 
@@ -89,7 +89,7 @@ function fakePy(seen: { code: string; op: any }[]): PyRunner {
 }
 
 describe('setCardRouting — session gate', () => {
-  it('rejects a setCardRouting without a WebAuthn session (401); no py, no git', async () => {
+  it('rejects a setCardRouting without a valid session (401); no py, no git', async () => {
     const seen: { code: string; op: any }[] = [];
     const { runner, calls } = recorder();
     const r = await setCardRouting(
@@ -178,7 +178,7 @@ describe('setCardRouting — governed write via scripts/cards.py + ops commit', 
       { runPy: fakePy([]), runGit: recorder().runner, appendAudit: audit },
     );
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ action: 'card-routing', cardId: 'card-1', owner: 'daniel@webauthn' });
+    expect(rows[0]).toMatchObject({ action: 'card-routing', cardId: 'card-1', owner: 'daniel@session' });
   });
 
   it('clearCardRouting stamps null routing and commits (idempotent-safe)', async () => {

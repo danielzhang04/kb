@@ -34,6 +34,7 @@ import { registerStatic } from './static/routes.ts';
 import { registerPtyRoute, makePtyRouteContext } from './pty/route.ts';
 import { createRawSessionReplayReader } from './pty/replayReader.ts';
 import { originPlugin } from './security/origin.ts';
+import { requireAuthority } from './authority/gate.ts';
 import { assertAuthModeBoot } from './auth/mode.ts';
 import { installShutdownHandlers } from './shutdown.ts';
 import { startHumanRequestSweeper } from './control/humanRequestSweep.ts';
@@ -139,7 +140,7 @@ export function humanRequestSweepLogLine(result: HumanRequestSweepResult): strin
  * Every other matched data route — repository/state reads, hub streams, PTY,
  * and writes — is in an Origin/Host- + rate-limit-guarded scope with a session pre-handler. It is
  * fail-closed by default: with no `DASHBOARD_RP_ORIGIN` the origin allowlist is empty and every governed
- * route 403s; with an RP origin but no provisioned passkey, no session can be minted and every governed
+ * route 403s; with no session bearer, no session can be minted and every governed
  * route 401s.
  */
 export interface BuildAppOptions {
@@ -176,6 +177,22 @@ export interface BuildAppOptions {
    *  binds it to the pinned `/api/v1` VM origin. When absent in Desktop mode the two proxy routes still
    *  register (the inventory is stable) but answer `503` until a client is configured. */
   desktopReadProxyClient?: DesktopClient;
+  /** T3 signed channel test seams (`authority/gate.ts`); production always resolves
+   *  `humanApproverAllowedSigners` from the real env (see `surface.ts#makeSurfaceContext`), so this exists
+   *  only so a fixture can exercise a `signed`-class route end to end without a real ssh key. */
+  /**
+   * BLOCKER-2 test seam: the `win32-desktop` loopback peer-owner proof. Production ALWAYS builds the
+   * real one in `makeSurfaceContext` (and only in that mode); this exists so a fixture can drive the
+   * desktop mint path over `app.inject`, which has no real socket to prove anything about.
+   */
+  desktopPeer?: SurfaceContext['desktopPeer'];
+  humanApproverAllowedSigners?: SurfaceContext['humanApproverAllowedSigners'];
+  sshsigVerifier?: SurfaceContext['sshsigVerifier'];
+  approvalNonces?: SurfaceContext['approvalNonces'];
+  /** Test seam only: routed straight to `makeSurfaceContext`'s `appendAudit` override so a fixture can
+   *  record (or simply avoid ever really committing) the rows `authority/gate.ts#requireAuthority`
+   *  appends on every refusal, instead of falling through to the real, git-committing default. */
+  appendAudit?: SurfaceContext['appendAudit'];
 }
 
 export type DaemonMode = 'vm' | 'desktop';
@@ -232,6 +249,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     ...(options.browserSessionRefs ? { browserSessionRefs: options.browserSessionRefs } : {}),
     controlStore: options.controlStore,
     fileControlAccess: options.fileControlAccess,
+    ...(options.desktopPeer ? { desktopPeer: options.desktopPeer } : {}),
+    humanApproverAllowedSigners: options.humanApproverAllowedSigners,
+    sshsigVerifier: options.sshsigVerifier,
+    approvalNonces: options.approvalNonces,
+    appendAudit: options.appendAudit,
   });
 
   app.get('/healthz', async () => {
@@ -280,6 +302,14 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     originPlugin(scope, { allowedOrigins: surfaceCtx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(surfaceCtx.readRateGuard, surfaceCtx.rateGuard));
     scope.addHook('preHandler', requireSession(surfaceCtx.sessionConfig));
+    // T3 (spec §4.1 "the gate"): this scope is named for its reads but ALSO registers mutating routes —
+    // registerAgents, the schedule routes (including the SIGNED `DELETE /api/schedules/:id`), the inbox
+    // deployment/asset-pull actions (also signed), and registerWorkflows' launch/create/update. Those
+    // routes are a SIBLING of `http/surface.ts#registerWriteSurface`'s authenticated scope, not inside
+    // it, so `requireAuthority` needs its OWN install here — installing it only in `surface.ts` left every
+    // route below unreached (see `authority/policy.test.ts`'s "outside the gate's reach" coverage test,
+    // which pinned this exact gap before this hook existed). GETs pass straight through either way.
+    scope.addHook('preHandler', requireAuthority(surfaceCtx));
     scope.get('/api/runtime/capabilities', async () => surfaceCtx.runtimeCapabilities);
     scope.register(kbBrowserRoutes, { repoRoot });
     registerPlaneA(scope, repoRoot);
@@ -352,8 +382,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         ...(surfaceCtx.browserSessionRefs ? { browserSessionRefs: surfaceCtx.browserSessionRefs } : {}),
       });
       // `registerPtyRoute` installs this scope's own hooks in the pinned order
-      // (origin -> rate limit -> session -> browser principal), so nothing else is added here.
+      // (origin -> rate limit -> session -> browser principal).
+      //
+      // T3's gate needs its OWN install here too (security review 2026-09-16, MEDIUM-1): this is a
+      // THIRD scope, a sibling of the two `requireAuthority` already sits on, and `DELETE
+      // /api/pty/sessions/:sessionId` IS in `ROUTE_AUTHORITY` (as `open`) while never reaching the gate
+      // that is supposed to enforce the table. No security loss today — it is `open` either way — but
+      // the table asserted a coverage it did not have, and the fail-closed property that makes the
+      // whole design work (a NEW mutating route nobody classified answers `403 route-unclassified`
+      // instead of shipping ungated and silent) was absent in this scope.
+      //
+      // A `preHandler`, deliberately, so it runs AFTER the route's own `preValidation` session +
+      // browser-principal checks — the same order the other two install points have (`requireSession`
+      // first, then `requireAuthority`). Installing it earlier would answer an unauthenticated request
+      // with a route classification and append an audit row for it. GETs and the WS upgrade pass
+      // straight through (`gate.ts`'s PASS_THROUGH_METHODS).
       app.register(async (scope) => {
+        scope.addHook('preHandler', requireAuthority(surfaceCtx));
         await registerPtyRoute(scope, ptyCtx);
       });
     }

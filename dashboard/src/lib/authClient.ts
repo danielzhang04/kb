@@ -1,34 +1,17 @@
 /**
- * U2 — the browser sign-in flow: a WebAuthn login assertion (via `webauthnClient.ts#performAssertion`)
- * exchanged for a short-TTL session bearer. This is the ONLY place the client mints a session; every
- * governed write then carries the returned token.
+ * U2 — session-bearer storage and the boot-time auth-context discovery call.
  *
- *   1. POST /api/auth/assert/options  -> server-issued assertion options (+ opaque ceremonyId).
- *   2. performAssertion(options)       -> the browser's signed assertion (biometric/PIN — UV required).
- *   3. POST /api/auth/assert/verify   -> server verifies against the registered credential and, ONLY on
- *                                        a positively-verified assertion, returns { token, expiresAt }.
- *
- * Fail-closed: with no provisioned passkey the server 401s at step 3 and this rejects — no token is ever
- * fabricated client-side. `fetch` and the WebAuthn browser surface are injected (same DI seam as
- * `webauthnClient`/`sseClient`) so this is unit-testable with no real passkey or network.
+ * T2 removed the browser sign-in ceremony (`signIn`) end to end: in `tailnet` mode the transport
+ * itself is the credential, so there is no sign-in ceremony to run, and `mintSession` is what the
+ * session-gated routes use server-side. What remains here is session-bearer storage (a token, once a
+ * caller has one) and `fetchAuthContext`, the one boot discovery call every client makes before
+ * anything else.
  */
-import type { PublicKeyCredentialRequestOptionsJSON } from '@simplewebauthn/browser';
-import { performAssertion, realWebAuthnBrowser } from './webauthnClient';
-import type { WebAuthnBrowserLike } from './webauthnClient';
-
 export type FetchLike = typeof fetch;
 export type AuthMode = 'win32-desktop' | 'tailnet';
 
 export interface AuthContext {
   mode: AuthMode;
-  /**
-   * W47: whether the server can actually run a T3 WebAuthn ceremony right now: the server's own
-   * `ceremonyModeAdmits(mode) && credentials().length > 0`. Before this, the client inferred it as
-   * `mode === 'win32-desktop'`, which disabled Approve on every T3 gate on the tailnet VM even once a
-   * passkey was provisioned. Fail-closed: a server that omits the field (an older daemon) reads
-   * `false`, so the client can only ever be MORE restrictive than the routes, never less.
-   */
-  ceremonyAvailable: boolean;
 }
 
 export interface Session {
@@ -99,7 +82,7 @@ export function persistSession(
   try {
     store.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
   } catch {
-    // An unavailable/full storage area must not turn a valid WebAuthn login into an action failure.
+    // An unavailable/full storage area must not turn a valid sign-in into an action failure.
   }
 }
 
@@ -142,29 +125,6 @@ export async function invalidateSessionOnGovernedAuthFailure(response: Response)
   return true;
 }
 
-/** Calm, actionable operator copy without exposing server internals or implying a private key upload. */
-export function unlockErrorMessage(error: unknown): string {
-  const detail = error instanceof Error ? error.message : '';
-  if (/not supported|webauthn.+unavailable/i.test(detail)) {
-    return 'This browser cannot use passkeys. Open the dashboard in a WebAuthn-capable browser.';
-  }
-  if (/cancel|abort|notallowederror/i.test(detail)) {
-    return 'Dashboard unlock was cancelled. Try again when you are ready.';
-  }
-  if (/401|no registered|credential/i.test(detail)) {
-    return 'This passkey is not enrolled for the dashboard. Use the enrolled Windows Hello or device passkey.';
-  }
-  if (/failed to fetch|network|load failed/i.test(detail)) {
-    return 'The dashboard could not reach its authentication service. Check that localhost:5317 is running.';
-  }
-  return 'Dashboard unlock failed. Try again; if it keeps failing, check the dashboard server logs.';
-}
-
-export interface SignInDeps {
-  fetchImpl?: FetchLike;
-  browser?: WebAuthnBrowserLike;
-}
-
 async function responseFailure(label: string, response: Response): Promise<Error> {
   let detail = '';
   try {
@@ -174,6 +134,63 @@ async function responseFailure(label: string, response: Response): Promise<Error
     // A status code is still enough to fail closed and choose generic operator copy.
   }
   return new Error(`${label}: ${response.status}${detail ? ` (${detail})` : ''}`);
+}
+
+/**
+ * BLOCKER-2 — the ONE route that mints a session in `win32-desktop` mode, and the client for it.
+ *
+ * It is the same path the browser already called for its controller cookie, because in that mode the two
+ * are one act: the daemon proves the caller from the SOCKET (loopback, and a process owned by the same
+ * Windows account — `server/auth/win32DesktopPeer.ts`), then hands back both a bearer and the ref cookie.
+ * So this client presents NO credential: there is nothing it could hold that would matter, and nothing a
+ * page on another origin could do with the answer (the Origin guard refuses it, and the token rides in a
+ * body no cross-origin reader can see).
+ *
+ * The single retry mirrors `browserSessionClient.ts`: a browser holding a ref the daemon has forgotten is
+ * refused 401 and cannot drop the HttpOnly cookie itself, so the refusal carries the expiring cookie and
+ * the second call presents nothing and mints cleanly. EXACTLY one retry — a second 401 is a real refusal.
+ */
+export const DESKTOP_SESSION_ROUTE = '/api/auth/browser-session';
+
+/** One POST. A transport failure is `null`, distinct from any status the daemon actually returned. */
+async function postDesktopSession(fetchImpl: FetchLike): Promise<Response | null> {
+  try {
+    return await fetchImpl(DESKTOP_SESSION_ROUTE, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: '{}',
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** A minted session, or `null`. NEVER throws, and never fabricates: an unreadable or stale body is a
+ *  refusal, so a caller can only ever be handed a bearer the daemon really signed. */
+async function readMintedSession(response: Response): Promise<Session | null> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const candidate = body as { token?: unknown; expiresAt?: unknown };
+  const session = { token: candidate.token, expiresAt: candidate.expiresAt } as Session;
+  return isSessionFresh(session) ? { token: session.token, expiresAt: session.expiresAt } : null;
+}
+
+export async function mintDesktopSession(fetchImpl: FetchLike = fetch): Promise<Session | null> {
+  const first = await postDesktopSession(fetchImpl);
+  if (first === null) return null;
+  if (first.ok) return readMintedSession(first);
+  // 401 = the ref this browser presented was refused; the refusal carried the expiring cookie, so the
+  // retry presents nothing. Any other status is a decision about the CALLER, which a retry cannot change.
+  if (first.status !== 401) return null;
+  const second = await postDesktopSession(fetchImpl);
+  if (second === null || !second.ok) return null;
+  return readMintedSession(second);
 }
 
 /** Discover the server's single authentication mode. Any unreadable or unknown response fails closed. */
@@ -190,43 +207,5 @@ export async function fetchAuthContext(fetchImpl: FetchLike = fetch): Promise<Au
   ) {
     throw new Error('auth/context returned an invalid mode');
   }
-  return {
-    mode: (body as AuthContext).mode,
-    ceremonyAvailable: (body as Record<string, unknown>).ceremonyAvailable === true,
-  };
-}
-
-/**
- * Run the WebAuthn login flow and return the minted session. Rejects (never returns a partial/fake
- * session) when the browser lacks WebAuthn, the ceremony is cancelled, or the server refuses the
- * assertion (e.g. no registered passkey — the fail-closed pre-passkey reality).
- */
-export async function signIn(deps: SignInDeps = {}): Promise<Session> {
-  const fetchImpl = deps.fetchImpl ?? fetch;
-  const browser = deps.browser ?? realWebAuthnBrowser;
-
-  const optsRes = await fetchImpl('/api/auth/assert/options', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({}),
-  });
-  if (!optsRes.ok) throw await responseFailure('assert/options failed', optsRes);
-  const { ceremonyId, options } = (await optsRes.json()) as {
-    ceremonyId: string;
-    options: PublicKeyCredentialRequestOptionsJSON;
-  };
-
-  const response = await performAssertion(options, browser);
-
-  const verifyRes = await fetchImpl('/api/auth/assert/verify', {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ ceremonyId, response }),
-  });
-  if (!verifyRes.ok) throw await responseFailure('assert/verify refused', verifyRes);
-  const body = (await verifyRes.json()) as { token?: string; expiresAt?: number };
-  if (!body.token || typeof body.expiresAt !== 'number') {
-    throw new Error('assert/verify returned no session token');
-  }
-  return { token: body.token, expiresAt: body.expiresAt };
+  return { mode: (body as AuthContext).mode };
 }

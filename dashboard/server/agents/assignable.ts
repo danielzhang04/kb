@@ -2,7 +2,7 @@
  * C7.7 — the server-side authoritative set of owner ids a launched Task may be assigned to.
  *
  * The closed set is enumerated FROM THE FILESYSTEM, never from the client (the launch `<select>` is an
- * honest preview; this is the boundary — `card-schema.md:14,18` reconciliation: the WebAuthn operator is
+ * honest preview; this is the boundary — `card-schema.md:14,18` reconciliation: the operator is
  * a trusted dispatcher-equivalent, but only over a closed registered set). It is the UNION of:
  *   1. declared agents — every `agents/<id>.md` (C7.3's `readDeclaredAgents`), ∪
  *   2. registered runtime workers — each `runtimes.<rt>.default_worker` in `governance/model-routing.yaml`

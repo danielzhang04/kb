@@ -1,9 +1,9 @@
 /**
- * D2.6 — governed card launch / rerun-as-`depends-on`, preamble-gated and WebAuthn-session-gated.
+ * D2.6 — governed card launch / rerun-as-`depends-on`, preamble-gated and session-gated.
  *
  * `assertFleetRunnable()` (preambleGate.ts) runs FIRST, before the session check — a frozen fleet
  * refuses to dispatch regardless of who is asking; on failure nothing downstream is even evaluated
- * and no subprocess is spawned. Only once that passes does the WebAuthn short-TTL session
+ * and no subprocess is spawned. Only once that passes does the short-TTL session
  * (`dashboard/server/auth/session.ts#verifySession`) get checked.
  *
  * Card creation NEVER writes `queue/*.md` bytes directly from TypeScript. Per CLAUDE.md ("all
@@ -282,7 +282,7 @@ function gate(
   if (!session.token) {
     return {
       ok: false,
-      outcome: { ok: false, reason: 'unauthenticated', detail: 'no WebAuthn session token supplied' },
+      outcome: { ok: false, reason: 'unauthenticated', detail: 'no session token supplied' },
     };
   }
   const check = verifySession(session.token, session.config);
@@ -300,7 +300,7 @@ function parseCardOpStdout(stdout: string): { id: string; path: string } {
 
 /**
  * File a brand-new card via the governed `scripts/cards.py` module path. `assertFleetRunnable()`
- * gates first; a missing/invalid WebAuthn session gates second. Neither gate spawns any subprocess.
+ * gates first; a missing/invalid session gates second. Neither gate spawns any subprocess.
  */
 export async function launchCard(spec: LaunchSpec, session: SessionInput, deps: LaunchDeps): Promise<LaunchOutcome> {
   const gated = gate(session, deps);

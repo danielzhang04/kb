@@ -2822,6 +2822,61 @@ describe('run graph, attempts, and managed sessions', () => {
       ...input, title: 'Changed' })).toMatchObject({ ok: false, reason: 'idempotency-conflict' });
   });
 
+  it('replays a legacy (pre-workflowTags) launch fingerprint byte-identically, and still conflicts on a retagged reuse (N1)', () => {
+    // `96337de728d7...` is the REAL launch fingerprint commit 920f4780's store.ts (the branch base,
+    // before `workflowTags` entered the fingerprint at all in cd1955b3) computed for this exact
+    // proposal/run/idempotencyKey shape -- captured by running that historical store.ts directly. If a
+    // caller states no tags today, the fix must reproduce this value bit-for-bit, or every pre-existing
+    // idempotency key in prod fingerprints differently after deploy and never replays again (security
+    // review 2, N1).
+    const ANCIENT_FINGERPRINT = '96337de728d74cf3b0a0c08002e82d40c2ee88f878aa8a0d516427f75c32215e';
+    const root = mkdtempSync(join(tmpdir(), 'control-n1-legacy-'));
+    roots.push(root);
+    const store = createFileControlPlaneStore(root, deterministicOptions());
+    const proposalCreated = store.createProposalRevision('alice', {
+      sourceComposerRef: 'workflow-registry', sourceTurnId: 'n1-probe', title: 'N1 probe workflow',
+      snapshot: {
+        schema: 'kb.plan-proposal/v1', title: 'N1 probe workflow', manager: {},
+        stages: [{ id: 'build', title: 'Build', dependsOn: [] }],
+      },
+    });
+    if (!proposalCreated.ok) throw new Error(proposalCreated.detail);
+    const approved = store.decideProposal('alice', proposalCreated.value.proposalRef, proposalCreated.value.revision, {
+      expectedHash: proposalCreated.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'n1-probe-approve',
+    });
+    if (!approved.ok) throw new Error(approved.detail);
+    const launchInput = {
+      owner: { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const },
+      executionHost: 'desktop' as const,
+      title: 'N1 probe workflow', proposalRef: proposalCreated.value.proposalRef,
+      proposalRevision: proposalCreated.value.revision, expectedProposalHash: proposalCreated.value.hash,
+      managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'n1-legacy-fingerprint-probe',
+      stages: [{ stageId: 'build', title: 'Build', dependsOn: [] }],
+    };
+    const launched = store.createRun('alice', launchInput);
+    if (!launched.ok) throw new Error(launched.detail);
+    const path = join(root, 'control', 'control-plane.json');
+    const persisted = (JSON.parse(readFileSync(path, 'utf8')) as { runs: Array<Record<string, unknown>> })
+      .runs.find((item) => item.runRef === launched.value.run.runRef);
+    expect(persisted).not.toHaveProperty('workflowTags');
+    expect(persisted?.launchOperationFingerprint).toBe(ANCIENT_FINGERPRINT);
+
+    // Restart the daemon (fresh store instance over the same root) and replay the SAME idempotencyKey
+    // with the SAME no-tags input: this is the exact shape of a pre-deploy card the queue bridge is
+    // still trying to reconcile. Must be a 200 replay, not idempotency-conflict.
+    const restarted = fileStores.restart(root);
+    const replay = restarted.createRun('alice', launchInput);
+    expect(replay).toMatchObject({ ok: true, replayed: true, value: { run: { runRef: launched.value.run.runRef } } });
+
+    // The SAME key reused with a DIFFERENT, non-empty governing tag set must ALSO replay, never conflict:
+    // workflowTags is intentionally not part of the fingerprint (boss ruling 2026-09-17) -- the tag set is
+    // derived from `owner`, which IS fingerprinted, and a replay writes nothing so it cannot re-tag the
+    // stored run.
+    const retagged = restarted.createRun('alice', { ...launchInput, workflowTags: ['publish'] });
+    expect(retagged).toMatchObject({ ok: true, replayed: true, value: { run: { runRef: launched.value.run.runRef } } });
+  });
+
   it('copies only the exact approved assignment snapshot into a run and its stages', () => {
     const store = createInMemoryControlPlaneStore(deterministicOptions());
     const inputAssignments = {
@@ -3130,6 +3185,55 @@ describe('run graph, attempts, and managed sessions', () => {
       idempotencyKey: 'retry-run-stale', predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version - 1,
       stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
     })).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('retries a legacy (no-stored-tags) predecessor without the tag-drop refusal, and stores the successor\'s own derived tags (N2)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    // `createRun` (the default factory) states no `workflowTags`, so this predecessor is LEGACY-shaped
+    // -- exactly the shape of every run in prod today, per security review 2.
+    const first = settleRetryPredecessor(store);
+    expect(first.run).not.toHaveProperty('workflowTags');
+    const successor = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Retry of a legacy run', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
+      expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'retry-legacy-predecessor',
+      workflowTags: ['publish'], // freshly derived from the OWNER at this launch, independent of the predecessor
+      predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
+      stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
+    });
+    expect(successor.ok && successor.value.run).toMatchObject({
+      predecessorRunRef: first.run.runRef, workflowTags: ['publish'],
+    });
+  });
+
+  it('still refuses a Retry successor that drops a tag the predecessor actually had stored (N2 control)', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const taggedProposal = createApprovedProposal(store, 'alice');
+    const taggedCreated = store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Synthetic run', proposalRef: taggedProposal.proposalRef, proposalRevision: taggedProposal.revision,
+      expectedProposalHash: taggedProposal.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'launch-tagged', workflowTags: ['publish'],
+      stages: [
+        { stageId: 'build', title: 'Build', dependsOn: [] },
+        { stageId: 'verify', title: 'Verify', dependsOn: ['build'] },
+      ],
+    });
+    if (!taggedCreated.ok) throw new Error(taggedCreated.detail);
+    const first = settleRetryPredecessor(store, 'alice', () => taggedCreated.value);
+    expect(first.run).toMatchObject({ workflowTags: ['publish'] });
+    expect(store.createRun('alice', {
+      owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      executionHost: 'desktop',
+      title: 'Untagged retry', proposalRef: first.run.proposalRef, proposalRevision: first.run.proposalRevision,
+      expectedProposalHash: first.run.proposalHash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
+      idempotencyKey: 'retry-drops-tag', workflowTags: [],
+      predecessorRunRef: first.run.runRef, expectedPredecessorVersion: first.run.version,
+      stages: first.stages.map((stage) => ({ stageId: stage.stageId, title: stage.title, dependsOn: stage.dependsOn })),
+    })).toMatchObject({ ok: false, reason: 'conflict', detail: 'Retry successor must not drop a governing workflow tag' });
   });
 
   it('treats fully quiescent interrupted descendants as settled for Retry', () => {
@@ -4015,6 +4119,30 @@ describe('Human Requests and operational events', () => {
       ok: false, reason: 'idempotency-conflict',
     });
     expect(store.reviseHumanRequest('alice', request.value.requestRef, 2, 'Again', 'No')).toMatchObject({ ok: false, reason: 'conflict' });
+  });
+
+  it('T4 [design:4.3]: persists resolvedBy when supplied, and defaults it to null when omitted', () => {
+    const store = createInMemoryControlPlaneStore(deterministicOptions());
+    const run = createRun(store);
+    const withResolvedBy = store.createHumanRequest('alice', run.run.runRef, {
+      stageRef: run.stages[0].stageRef, kind: 'input', title: 'Pick one', prompt: 'A or B',
+    });
+    if (!withResolvedBy.ok) throw new Error(withResolvedBy.detail);
+    const resolvedBy = { actor: 'boss', tailnetIdentity: null, at: '2026-09-16T00:00:00.000Z', reason: 'chose A' };
+    const responded = store.respondHumanRequest('alice', withResolvedBy.value.requestRef, {
+      expectedRevision: 1, decision: 'responded', idempotencyKey: 'resp-with-resolvedby', response: 'A',
+      resolvedBy,
+    });
+    expect(responded).toMatchObject({ ok: true, value: { response: { resolvedBy } } });
+
+    const withoutResolvedBy = store.createHumanRequest('alice', run.run.runRef, {
+      stageRef: run.stages[0].stageRef, kind: 'input', title: 'Pick another', prompt: 'C or D',
+    });
+    if (!withoutResolvedBy.ok) throw new Error(withoutResolvedBy.detail);
+    const legacyShaped = store.respondHumanRequest('alice', withoutResolvedBy.value.requestRef, {
+      expectedRevision: 1, decision: 'responded', idempotencyKey: 'resp-no-resolvedby', response: 'C',
+    });
+    expect(legacyShaped).toMatchObject({ ok: true, value: { response: { resolvedBy: null } } });
   });
 
   it('appends sanitized allowlisted events under globally monotonic cursors and replays by cursor', () => {

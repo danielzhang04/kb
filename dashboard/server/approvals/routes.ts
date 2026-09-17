@@ -3,11 +3,9 @@
  *
  *   GET  /api/approvals        -> ranked pending cards, each with its `assurance.ts#buttonsFor` gating.
  *                                 Session-gated alongside every other repository/state read.
- *   POST /api/approvals/verify -> drives the channel's verifier (`cardVerifier.ts#driveVerify` -> the fleet's
- *                                 `scripts/approvals.py` / D2.3's `scripts/webauthn_verify.py`). Session-
- *                                 gated; the WebAuthn channel additionally performs the load-bearing
- *                                 dispatcher-side assertion re-check inside that subprocess (the actual
- *                                 T3 boundary). One audit row per attempt.
+ *   POST /api/approvals/verify -> drives the channel's verifier (`cardVerifier.ts#driveVerify` -> the
+ *                                 fleet's `scripts/approvals.py`). Session-gated. One audit row per
+ *                                 attempt.
  *
  * The verify route NEVER accepts a client-supplied filesystem path — the client sends only a `cardId`,
  * which is strictly sanitized and resolved to a file WITHIN `queue/` here, so nothing a caller sends can
@@ -23,7 +21,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { auditFn } from '../http/context.ts';
 
 const QUEUE_DIRS = ['inbox', 'working', 'approvals', 'done'];
-const VALID_CHANNELS: ReadonlySet<string> = new Set(['signed', 'possession', 'webauthn']);
+const VALID_CHANNELS: ReadonlySet<string> = new Set(['signed', 'possession']);
 /** A card id must be filename-safe: no path separators, no traversal. Anything else is rejected. */
 const CARD_ID_RE = /^[A-Za-z0-9._-]+$/;
 
@@ -56,22 +54,16 @@ export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceCont
       return reply.code(400).send({ error: 'bad-card-id', reason: 'cardId must be filename-safe' });
     }
     if (!VALID_CHANNELS.has(channel)) {
-      return reply.code(400).send({ error: 'bad-channel', reason: 'channel must be signed|possession|webauthn' });
+      return reply.code(400).send({ error: 'bad-channel', reason: 'channel must be signed|possession' });
     }
     const cardPath = resolveCardPath(ctx.repoRoot, cardId);
     if (!cardPath) {
       return reply.code(404).send({ error: 'card-not-found', reason: `no card ${cardId} under queue/` });
     }
 
-    let pinned: VerifiedCardView | undefined;
     const outcome = driveVerify(cardPath, channel as ApprovalChannel, {
       repoRoot: ctx.repoRoot,
       runPy: ctx.runPy,
-      // WebAuthn-only pinned-content execute (D2.3 boundary -> D2.4 execute). Records the verified,
-      // pinned card view — never a re-read of the mutable working tree.
-      execute: (card) => {
-        pinned = card;
-      },
     });
 
     // FINDING 3: only a VERIFIED approval is a consequential action — write the ops-committed audit row
@@ -80,6 +72,7 @@ export function registerApprovalsRoutes(scope: FastifyInstance, ctx: SurfaceCont
     // attempts into unbounded pull-rebase-push commits. (Judgment call flagged in the report: rejected
     // approvals are no longer durably audited to ops; use a local log if a failed-attempt trail is wanted.)
     if (outcome.ok) {
+      const pinned: VerifiedCardView | undefined = outcome.card;
       auditFn(ctx)(ctx.repoRoot, {
         action: 'approve',
         owner: session?.claims.sub,

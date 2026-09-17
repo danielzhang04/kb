@@ -719,6 +719,7 @@ export async function launchDeclaredAgent(
     profile: 'producer',
     ...(executionProfile.role === 'manager' ? { manager: assignment } : {}),
     readScope: [],
+    tags: [],
     description: declaration.instructionMarkdown,
     stages: [{
       id: 'run', title: `Run ${declaration.id}`, action: 'draft:agent-run', target: `orgs/${project}`,

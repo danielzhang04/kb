@@ -13,7 +13,7 @@
  *      latch entirely (the daemon comes up already unlocked) and exists for hermetic tests and headless
  *      operation. It is not how a human operator turns execution on.
  *   2. An {@link ExecutionUnlockGrant} — minted ONLY by {@link createExecutionLatch}'s `unlock`, which the
- *      unlock route calls after a WebAuthn passkey assertion verifies. The grant is unforgeable by
+ *      unlock route calls once the operator gate admits the request. The grant is unforgeable by
  *      construction (a module-private brand): a shape-matching object from anywhere else fails
  *      `isExecutionUnlockGrant`, so no route, store value, or JSON body can conjure one.
  * State stays unlocked until the daemon restarts (natural re-lock: the grant and the wiring live only in
@@ -41,6 +41,7 @@ import type {
   SessionHost,
 } from '../pty/contracts.ts';
 import { createGitWorktreeAdapter, createCuratedSkillResolver, createCuratedContextResolver, createFileAccountingAdapter } from './adapters.ts';
+import type { BudgetOverrideStore } from './budgetOverride.ts';
 import { createCanonicalGitResultIntegrator } from './canonicalResultIntegrator.ts';
 import { createClaudeWorkerAdapter, createWorkflowToolPolicyResolver } from './claudeWorkerAdapter.ts';
 import { createAttemptToolPolicyIdResolver } from './claudeLaunchPolicy.ts';
@@ -94,7 +95,7 @@ export const DASHBOARD_EXECUTOR_SUBJECT = 'dashboard-engine';
  * write route is ever minted. The principal remains unforgeable by construction:
  * `brandInternalServiceCaller` is still called by this sole exported producer, so a value that satisfies
  * `isInternalServiceCaller` can ONLY originate here — a shape-matching JSON object can never pass. The queue
- * bridge presents it to `executeApprovedLaunch` in place of a WebAuthn session token to authorize the
+ * bridge presents it to `executeApprovedLaunch` in place of a session token to authorize the
  * daemon-internal launch of a run it already imported and approved under its own subject.
  */
 export function createInternalServiceCaller(
@@ -261,8 +262,8 @@ const FULL_COMMIT = /^[a-f0-9]{40}$/;
 
 /**
  * The HEADLESS/TESTING OVERRIDE. Reads exactly one variable; any value other than the literal '1' means
- * OFF, and OFF is now the normal production posture — an operator unlocks execution with a passkey
- * (`createExecutionLatch`), not with an environment variable. When it IS '1' the latch comes up already
+ * OFF, and OFF is now the normal production posture — an operator unlocks execution through the operator
+ * gate (`createExecutionLatch`), not with an environment variable. When it IS '1' the latch comes up already
  * unlocked, which is what hermetic tests and headless runs rely on.
  */
 export function isExecutionActivated(env: Record<string, string | undefined> = process.env): boolean {
@@ -273,7 +274,7 @@ export function isExecutionActivated(env: Record<string, string | undefined> = p
 const EXECUTION_UNLOCK_BRAND: unique symbol = Symbol('kb.execution-unlock-grant');
 
 /**
- * Proof that a human passkey assertion authorized execution wiring to be constructed. Unforgeable: the
+ * Proof that the operator gate authorized execution wiring to be constructed. Unforgeable: the
  * brand symbol is module-private and never exported, so a JSON body, a store value, or another module's
  * literal can never satisfy {@link isExecutionUnlockGrant}.
  */
@@ -367,7 +368,7 @@ export interface BuildActivatedExecutionOptions {
   /** Headless/testing override source. Defaults to `process.env`. */
   env?: Record<string, string | undefined>;
   /**
-   * A passkey unlock grant. Supplying a valid one authorizes construction with the env override absent —
+   * An operator unlock grant. Supplying a valid one authorizes construction with the env override absent —
    * this is the operator path. Anything that is not a grant this module minted is ignored, so the gate
    * fails closed on a forged value rather than opening on a truthy one.
    */
@@ -421,6 +422,13 @@ export interface BuildActivatedExecutionOptions {
   coordinationPublication?: CoordinationPublication;
   /** Durable local spool root used only when {@link coordinationPublication} is `outbox`. */
   outboxRoot?: string;
+  /**
+   * The signed budget-override store (T6, `control/budgetOverride.ts`), already constructed by the
+   * surface over the same `stateRoot`. Absent ⇒ no `windowBudgetFor` resolver is bound and the
+   * accounting adapter's window ceiling stays exactly `budget` — production always supplies it; only a
+   * hermetic test omits it.
+   */
+  budgetOverrides?: BudgetOverrideStore;
   deps?: Partial<ActivationDeps>;
 }
 
@@ -566,6 +574,13 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
     windowId: (at: Date) => at.toISOString().slice(0, 10),
     maxConcurrency,
     globalBudget: budget,
+    // T6: a signed override (POST /api/control/budget/override) ADDS to the window's cost ceiling
+    // only, resolved fresh on every reserve. Omitted entirely (rather than a resolver that always
+    // returns `budget`) when no store is supplied, so the pre-T6 code path is exercised bit for bit.
+    ...(options.budgetOverrides ? { windowBudgetFor: (windowId: string) => ({
+      ...budget,
+      maxCostUsdMicros: budget.maxCostUsdMicros + options.budgetOverrides!.additionalUsdMicros(windowId),
+    }) } : {}),
   });
   const results = deps.createResults({
     repoRoot,
@@ -745,26 +760,40 @@ export function buildActivatedExecution(options: BuildActivatedExecutionOptions)
   };
 }
 
-/** How an armed latch came to be armed. Distinct values because they mean different things: `passkey`
- *  proves a human just asserted (win32), `tailnet` is the deployment's arm-at-boot operator posture, and
- *  `env-override` is the headless/testing arm. */
-export type ExecutionUnlockSource = 'passkey' | 'env-override' | 'tailnet';
+/**
+ * How an armed latch came to be armed. Distinct values because they mean different things:
+ *   - `tailnet`          — the deployment's arm-at-boot (or explicit re-arm) under the pinned tailnet
+ *                          operator transport.
+ *   - `operator-session` — an explicit `POST /api/control/execution/unlock` by a verified operator
+ *                          session in a NON-tailnet auth mode.
+ *   - `env-override`     — the headless/testing arm.
+ *
+ * `operator-session` exists because the record used to lie (security review 2026-09-16, MEDIUM-7):
+ * `unlock` returned `construct(input.subject, 'tailnet')` UNCONDITIONALLY, so an unlock in any mode
+ * stamped a tailnet-operator provenance onto the latch and onto the audit row. The latch now takes the
+ * auth mode and names the source honestly.
+ */
+export type ExecutionUnlockSource = 'env-override' | 'tailnet' | 'operator-session';
 
 /**
- * True when the latch's source represents a genuine, present OPERATOR authorization — a human passkey
- * unlock (win32) or the pinned tailnet operator identity. Excludes `env-override`, the headless/testing
- * arm. The two break-glass recovery paths in `control/routes.ts` gate on this: they must stay usable
- * under EITHER operator auth mode (Daniel, 2026-08-18) but must never be reachable under a headless arm.
+ * True when the latch's source represents a genuine, present OPERATOR authorization. Both operator arms
+ * qualify — `requireSession` verified a real operator before either could happen — and `env-override`,
+ * the headless/testing arm, does not. The two break-glass recovery paths in `control/routes.ts` gate on
+ * this: they must stay usable under the operator auth mode (Daniel, 2026-08-18) but must never be
+ * reachable under a headless arm.
+ *
+ * The honest source is what the AUDIT row now carries, so an auditor can still tell the two operator
+ * arms apart — which is the part MEDIUM-7 was actually about.
  */
 export function isOperatorUnlockSource(source: ExecutionUnlockSource | null): boolean {
-  return source === 'passkey' || source === 'tailnet';
+  return source === 'tailnet' || source === 'operator-session';
 }
 
 /** What the lock/unlock routes and the UI see. Never carries the grant or any wiring reference. */
 export interface ExecutionLatchState {
   state: 'locked' | 'unlocked';
-  /** How it was unlocked: the passkey route, the headless/testing env override, or `tailnet` mode's
-   *  arm-at-boot posture (see `auth/mode.ts`). */
+  /** How it was unlocked: the headless/testing env override, or `tailnet` mode's arm-at-boot (or
+   *  explicit re-arm) posture (see `auth/mode.ts`). */
   source: ExecutionUnlockSource | null;
   unlockedAt: string | null;
   unlockedBy: string | null;
@@ -775,7 +804,7 @@ export interface ExecutionLatch {
   /** The live wiring, or `null` while locked. Never constructs anything. */
   current(): ActivatedExecution | null;
   /**
-   * Construct the execution wiring under a freshly-verified passkey assertion. Idempotent: a second
+   * Construct the execution wiring once the operator gate admits the request. Idempotent: a second
    * unlock while already unlocked returns the same wiring and does not rebuild it.
    */
   unlock(input: { subject: string }): { ok: true; state: ExecutionLatchState } | { ok: false; reason: string };
@@ -805,8 +834,8 @@ const LOCKED_STATE: ExecutionLatchState = { state: 'locked', source: null, unloc
  *
  * Boot posture is LOCKED unless the headless/testing override is set, in which case the latch comes up
  * unlocked with `source: 'env-override'` and the daemon behaves exactly as it did before this existed.
- * From locked, the ONLY way to construct execution wiring is `unlock`, which the passkey-gated route
- * calls after `verifyAssertion` returns `verified: true`; the grant it mints cannot be produced anywhere
+ * From locked, the ONLY way to construct execution wiring is `unlock`, which the session-gated route
+ * calls once the operator gate admits the request; the grant it mints cannot be produced anywhere
  * else. `lock` drains managed sessions and drops the wiring; a daemon restart does the same for
  * free, which is why nothing about the unlocked state is persisted.
  */
@@ -851,6 +880,10 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
   if (resolveAuthMode(env) === 'tailnet') construct(DASHBOARD_EXECUTOR_SUBJECT, 'tailnet');
   else if (isExecutionActivated(env)) construct(DASHBOARD_EXECUTOR_SUBJECT, 'env-override');
 
+  /** What an explicit `unlock` HAS earned, given the mode this latch is actually running under. */
+  const operatorUnlockSource = (): ExecutionUnlockSource =>
+    (resolveAuthMode(env) === 'tailnet' ? 'tailnet' : 'operator-session');
+
   return {
     snapshot: () => state,
     current: () => execution,
@@ -858,7 +891,11 @@ export function createExecutionLatch(options: ExecutionLatchOptions): ExecutionL
       if (execution) return { ok: true, state };
       if (!SAFE_PROJECT.test(input.subject)) return { ok: false, reason: 'unsafe-unlock-subject' };
       try {
-        return construct(input.subject, 'passkey');
+        // MEDIUM-7: `'tailnet'` used to be hard-coded here, so an unlock in ANY auth mode recorded a
+        // tailnet-operator provenance the request had not earned. The source is derived from the mode
+        // the latch is actually running under; `control/routes.ts` derives the audit row's `method`
+        // from the same value so the two cannot disagree.
+        return construct(input.subject, operatorUnlockSource());
       } catch (error) {
         // A construction failure must leave the daemon LOCKED, never half-wired.
         apply(null, LOCKED_STATE, null);

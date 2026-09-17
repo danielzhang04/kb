@@ -4,6 +4,8 @@ import { requireSession, verifiedSession } from '../http/middleware.ts';
 import { registerRunPtyRoutes } from './runPtyRoutes.ts';
 import { registerArtifactFileRoute } from './artifactFilesRoute.ts';
 import { readScopeForSubject } from './readScope.ts';
+import { parseActor, ACTOR_HEADER } from '../authority/actor.ts';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
 import { projectRunOutputs } from './runOutputs.ts';
 import { auditFn, namingFor, type SurfaceContext } from '../http/context.ts';
 import { visibleAssistantText } from '../composer/publicTimeline.ts';
@@ -42,12 +44,19 @@ import {
   AuthorizedFailedRunPublishedUncommittedError,
   reconcileAuthorized20260801FailedRun,
 } from './authorizedFailedRunReconciliation.ts';
-import { isOperatorUnlockSource } from './activation.ts';
+import { isOperatorUnlockSource, resolveWindowBudget } from './activation.ts';
 import type { ActivatedExecution, ExecutionUnlockSource } from './activation.ts';
+import { approvedNonceFor } from '../authority/gate.ts';
+import { APPROVAL_PRINCIPAL } from '../authority/approval.ts';
 import { MAX_OPERATOR_MESSAGE_CHARS } from './agentSessionChains.ts';
 import { withControlDeadline } from './runTransactions.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import { classifyActionRisk, evaluateExecutionPolicy } from './policy.ts';
+import { classifyRoute, routeKey } from '../authority/policy.ts';
+import { verifyApproval as verifySignedApproval } from '../authority/approval.ts';
+import { defaultSshsigVerifier } from '../authority/sshsig.ts';
+import { createNonceStore } from '../authority/nonceStore.ts';
+import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import { acceptsBoundary, compiledPolicyUnchanged, defaultWorkers, executeApprovedLaunch, statusOf, type LaunchOutcome } from './launch.ts';
 import { selectPlacementHost } from '../placement/select.ts';
 import type { CapabilityRequirement } from '../placement/contracts.ts';
@@ -63,23 +72,9 @@ import { createRunEventService, type RunEventSource } from './runEventService.ts
 import { createRunEventStream } from './runEventStream.ts';
 import {
   createHumanResponseService,
-  createIterationGateCeremonyService,
-  deployChallenge,
-  humanResponseChallenge,
-  humanResponseDigest,
-  iterationGateChallenge,
-  type CeremonyVerificationInput,
+  createIterationGateAuthorityService,
   type HumanResponseInput,
-  type IterationGateT3Preimage,
 } from './humanResponse.ts';
-import { assertionForChallenge, verifyAssertion } from '../auth/webauthn.ts';
-import { consumeChallenge, findCredential, rememberChallenge } from '../auth/credentialStore.ts';
-import { ceremonyModeAdmits } from '../auth/mode.ts';
-import {
-  parseDeploymentRef, quiescenceDigest,
-} from '../inbox/deploymentContracts.ts';
-import type { DeployT3Decision, DeployT3Preimage, DeployT3Subject } from '../deploy/contracts.ts';
-import { DEPLOY_T3_DECISIONS } from '../deploy/contracts.ts';
 import {
   listRuns as runReadServiceListRuns, getRunDetail, replayRunEvents, respondHumanRequestRoute,
   type RunReadPort, type ControlReadResult, type EventPage, type RespondPort,
@@ -95,13 +90,6 @@ import {
 const EMPTY_CAPABILITY_REQUIREMENT: CapabilityRequirement = {
   connectors: [], skills: [], filesystemRoots: [], pty: false, gpu: false, clis: [],
 };
-
-/**
- * P5 W6.3 [P5-C23, P5-C45]: the reachability gate for the SHIPPED WebAuthn ceremony. W47 MOVED the
- * definition to `auth/mode.ts` (unchanged in behaviour) so `auth/routes.ts` can report it on
- * `/api/auth/context` without importing this module; re-exported here for the existing importers.
- */
-export { ceremonyModeAdmits };
 
 export function record(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
@@ -192,6 +180,73 @@ function workflowRefIndex(ctx: SurfaceContext, sub: string, scope: ReadScope): M
     if (revision.sourceTurnId) byProposal.set(revision.proposalRef, revision.sourceTurnId);
   }
   return byProposal;
+}
+
+/**
+ * T5 [design:4.4/4.5] — the boss-intervention rule's `workflowTags` port, bound to `humanResponse.ts`'s
+ * `createHumanResponseService`/`createIterationGateAuthorityService`.
+ *
+ * Reads ONLY the tag set the run itself carries — `run.workflowTags`, derived from the run's owner at
+ * LAUNCH by `control/ownerTags.ts#deriveOwnerTags` and never rewritten. It deliberately touches NO file
+ * on disk.
+ *
+ * WHY (security review 2026-09-16, BLOCKER-1): the predecessor re-scanned the owning workflow definition
+ * from disk on every call. `POST /api/write/save` is `open` class and writes into the same tree the
+ * scanner reads, so the complete escalation was: launch the publish-tagged workflow, `save` the
+ * definition with its publish marker removed (it still parses, keeps its id/project/path, and stays
+ * `valid`, so the fail-closed arm never fired), resolve the parked gate with no approval, then `save` the
+ * original back. Worse than a silent bypass — the audit row recorded `workflowTags: []` and
+ * `signedRequired: false`, affirmatively stating this had never been a publish gate.
+ *
+ * FAIL CLOSED, in three places, exactly as spec §4.5 requires:
+ *   1. a run that cannot be read at all → `{publish, spend}`;
+ *   2. a run with no `owner` → `{publish, spend}`;
+ *   3. MIGRATION: a run persisted BEFORE `workflowTags` existed carries no such field. Absent is NOT
+ *      "untagged" — it is unknown, so it reads as `{publish, spend}` and its gates cost a signed
+ *      approval. There is no back-fill and deliberately so: the value a back-fill would write is the
+ *      same disk re-scan this finding is about.
+ * The owner TYPE is no longer consulted here at all: an agent-owned run's tags are derived from its
+ * declaration at launch like any other (MEDIUM-4), so this function has one code path for both.
+ */
+const WORKFLOW_TAGS_UNRESOLVABLE: ReadonlySet<string> = Object.freeze(new Set(FAIL_CLOSED_RUN_TAGS));
+
+function resolveRunWorkflowTags(
+  ctx: SurfaceContext, actorSubject: string, runRef: string, scope: ReadScope,
+): ReadonlySet<string> {
+  const run = ctx.controlStore.getRun(actorSubject, runRef, scope);
+  if (!run.ok) return WORKFLOW_TAGS_UNRESOLVABLE;
+  const stored = run.value.run.workflowTags;
+  if (!stored) return WORKFLOW_TAGS_UNRESOLVABLE;
+  return Object.freeze(new Set(stored));
+}
+
+/**
+ * T5 [design:4.5] — binds T3's `authority/approval.ts#verifyApproval` to ONE route + entityRef, exactly
+ * as `authority/gate.ts#requireAuthority` binds it for a `signed`-class route. Reused here (not routed
+ * through the generic gate) because `/human-requests/:requestRef/respond` and
+ * `/iteration-gates/:requestRef/resolve` are `open`-class WITH `escalate: 'workflow-tag'` (policy.ts): the
+ * escalation is a per-request, RUN-tag-conditioned decision the generic route-classification gate cannot
+ * make on its own — it has no run to look up.
+ */
+/** The route key an escalation is bound to — the registered template when the table knows it, the raw
+ *  url otherwise. Shared by {@link bindVerifyApproval} and the escalation's refusal audit row, so the
+ *  approval a caller must produce and the route the refusal names can never be two different strings. */
+function escalationRouteKey(method: 'POST', url: string): string {
+  const entry = classifyRoute(method, url);
+  return entry ? routeKey(entry) : `${method} ${url}`;
+}
+
+function bindVerifyApproval(ctx: SurfaceContext, method: 'POST', url: string, entityRef: string) {
+  const expectedRoute = escalationRouteKey(method, url);
+  return (approval: unknown) => verifySignedApproval({
+    approval,
+    expectedRoute,
+    expectedEntityRef: entityRef,
+    allowedSigners: ctx.humanApproverAllowedSigners ?? '',
+    verifier: ctx.sshsigVerifier ?? defaultSshsigVerifier,
+    nonces: ctx.approvalNonces ?? createNonceStore(ctx.stateRoot),
+    now: () => (ctx.now?.() ?? new Date()).getTime(),
+  });
 }
 
 /**
@@ -311,7 +366,7 @@ function executionLockedRefusal(ctx: SurfaceContext): { error: string; detail: s
   if (!ctx.executionLatch || ctx.executionLatch.snapshot().state !== 'locked') return null;
   return {
     error: 'execution-locked',
-    detail: 'execution is locked; unlock it with your passkey before launching a run',
+    detail: 'execution is locked; unlock it before launching a run',
     execution: executionPosture(ctx),
   };
 }
@@ -324,7 +379,7 @@ function hasExactKeys(value: Record<string, unknown>, expected: string[]): boole
 }
 
 /** Exact operator grant + in-place wiring identity required by the one authorized historical repair.
- *  Accepts EITHER operator auth mode (passkey or tailnet), never a headless env-override arm. */
+ *  Requires the tailnet operator unlock source, never a headless env-override arm. */
 function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): ActivatedExecution | null {
   const latch = ctx.executionLatch;
   const snapshot = latch?.snapshot();
@@ -339,7 +394,7 @@ function authorizedLegacyRecoveryExecution(ctx: SurfaceContext, sub: string): Ac
   return current;
 }
 
-/** The one settlement needs an active passkey grant and proves the captured wiring is inert for this run. */
+/** The one settlement needs an active operator-unlock grant and proves the captured wiring is inert for this run. */
 export type AuthorizedFailedRunReconciliationGrant = {
   latch: NonNullable<SurfaceContext['executionLatch']>;
   wiring: ActivatedExecution;
@@ -703,18 +758,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
   });
 
   // ── EXECUTION UNLOCK LATCH ─────────────────────────────────────────────────────────────────────────
-  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. Construction is authorized by the
-  // operator's WebAuthn-minted SESSION BEARER — the same one governing every other consequential control
-  // action — verified by the scope's `requireSession` preHandler before this handler runs.
-  //
-  // This route used to run a SECOND, purpose-bound WebAuthn ceremony of its own. That was removed
-  // deliberately: the platform's binding requirement is ONE dashboard unlock for the whole platform, and
-  // the second biometric prompt made an operator who had already signed in unlock twice to arm the
-  // executor. Nothing else was relaxed — origin guard, session verification, and the T3 audit row all
-  // still gate this route, and the audit still happens BEFORE anything is constructed. The latch records
-  // `source: 'passkey'` truthfully: the authorization chain still roots in a passkey assertion, just the
-  // sign-in one. Arming stays an EXPLICIT act — signing in never unlocks execution on its own; the
-  // operator must still call this route. Lock remains the fail-safe direction and is unchanged.
+  // The daemon boots LOCKED: no attempt port, no engine, no worker processes. In `tailnet` mode the latch
+  // is actually armed AT BOOT with `source: 'tailnet'` — the only proof that exists is the tailnet
+  // operator transport, verified by the scope's `requireSession` preHandler before this handler runs, so
+  // there is nothing left to unlock; this route is the explicit RE-ARM after a `lock`. Origin guard,
+  // session verification, and the T3 audit row all still gate this route, and the audit still happens
+  // BEFORE anything is constructed. Arming stays an EXPLICIT act — a session never unlocks execution on
+  // its own; the operator must still call this route. Lock remains the fail-safe direction and is
+  // unchanged.
   scope.get('/api/control/execution', { preHandler }, async (req, reply) => {
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
@@ -732,7 +783,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     try {
       await auditFn(ctx)(ctx.repoRoot, {
         action: 'control-execution-unlock-authorize', owner: sub, target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'session-bearer' },
+        // MEDIUM-7: this row used to say `tailnet-operator` in every auth mode, matching the
+        // unconditional `'tailnet'` the latch stamped on itself. Both now derive from the mode the
+        // daemon is actually running under, from the same fact, so the ledger and the latch snapshot
+        // cannot disagree about how an unlock was authorized.
+        result: 'authorized:unlock',
+        detail: { method: ctx.authMode === 'tailnet' ? 'tailnet-operator' : 'operator-session' },
       }, { runGit: ctx.opsGit, now: ctx.now });
     } catch {
       return reply.code(500).send({ error: 'execution-unlock-audit-required' });
@@ -786,7 +842,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return reply.send({ ok: true, value: preflight.value.result, replayed: true });
       }
       const beforeAudit = authorizedLegacyRecoveryExecution(ctx, sub);
-      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-passkey-bound' });
+      if (!beforeAudit) return reply.code(409).send({ error: 'legacy-recovery-execution-not-operator-bound' });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-legacy-execution-lock-reclassify-authorize',
@@ -848,7 +904,7 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       withOpsTransaction(async () => {
         const grant = authorizedFailedRunReconciliationGrant(ctx, sub);
         if (!grant) {
-          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-not-passkey-bound' });
+          return reply.code(409).send({ error: 'authorized-failed-run-reconciliation-not-operator-bound' });
         }
         const stored = ctx.controlStore.getProposalRevision(sub, AUTHORIZED_20260801_FAILED_RUN_PROPOSAL_REF, 1);
         if (!stored.ok || !exactAuthorized20260801ProposalRevision(stored.value)) {
@@ -874,11 +930,12 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
             artifactPaths: proposal.value.stages.flatMap((stage) => stage.artifacts.map((artifact) => artifact.path)),
             store: ctx.controlStore,
             // This is re-run around every filesystem/git boundary by the core.  It binds the same
-            // passkey grant (including its latch and in-place wiring identity).  It only reads the
-            // fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise drives it.
+            // operator-unlock grant (including its latch and in-place wiring identity).  It only reads
+            // the fixed run's attempt/roster liveness; it never creates, steers, stops, or otherwise
+            // drives it.
             assertAuthorized: () => {
               if (!authorizedFailedRunReconciliationGrant(ctx, sub, grant)) {
-                throw new Error('authorized reconciliation passkey latch changed');
+                throw new Error('authorized reconciliation operator-unlock latch changed');
               }
             },
             runGit: ctx.opsGit ?? defaultGitRunner,
@@ -1852,132 +1909,24 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
           await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
         },
       },
-      ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
-        ceremony: {
-          async verify(input: CeremonyVerificationInput) {
-            const assertion = record(input.assertion);
-            const expectedChallenge = consumeChallenge(
-              string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
-            );
-            if (!expectedChallenge) return false;
-            const bound = humanResponseChallenge({
-              requestRef: input.requestRef,
-              requestRevision: input.requestRevision,
-              responseDigest: input.responseDigest,
-              action: input.action,
-              origin: input.origin,
-              challengeExpiresAt: input.challengeExpiresAt,
-            });
-            if (expectedChallenge !== Buffer.from(bound, 'utf8').toString('base64url')) return false;
-            const response = record(assertion.response);
-            const credential = findCredential(ctx.credentials(), string(response.id));
-            if (!credential) return false;
-            const verified = await verifyAssertion(assertion.response as never, {
-              expectedChallenge, credential, config: ctx.webAuthnConfig(),
-            });
-            return verified.verified;
-          },
-        },
-      } : {}),
+      // T5 [design:4.4/4.5]: the boss-intervention rule. `req.routeOptions?.url ?? req.url` is the exact
+      // pattern `authority/gate.ts#requireAuthority` binds `expectedRoute` from — this handler is shared
+      // verbatim by BOTH the `/api/control/human-requests/:requestRef/respond` registration below and the
+      // v1 mirror (`api/v1/routes.ts`, wired through `ctx.v1.respondPort`), so the bound route must be
+      // read from the live request, never hardcoded to one of the two paths.
+      workflowTags: (actorSubject, runRef) => resolveRunWorkflowTags(ctx, actorSubject, runRef, scope),
+      verifyApproval: bindVerifyApproval(
+        ctx, 'POST', req.routeOptions?.url ?? req.url, (req.params as { requestRef?: string }).requestRef ?? '',
+      ),
+      // The SAME route+entity pair `verifyApproval` is bound to above, so the escalation's refusal row
+      // names exactly the approval the caller was asked for.
+      escalationBinding: {
+        route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url),
+        entityRef: (req.params as { requestRef?: string }).requestRef ?? '',
+      },
       now: () => (ctx.now?.() ?? new Date()).getTime(),
     });
   };
-
-  scope.post('/api/control/human-requests/:requestRef/respond/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    const requestRef = (req.params as { requestRef: string }).requestRef;
-    const body = record(req.body);
-    const request = ctx.controlStore.getHumanRequest(sub, requestRef, readScope(req));
-    if (!request.ok) return sendResult(reply, request);
-    if (request.value.kind !== 'approval' && request.value.kind !== 'review' && request.value.kind !== 'governance-refusal') {
-      return reply.code(409).send({ error: 'ceremony-not-required' });
-    }
-    const expectedRevision = integer(body.expectedRevision);
-    const decision = string(body.decision) as HumanResponseInput['decision'];
-    if (request.value.revision !== expectedRevision || !['approved', 'rejected', 'changes-requested'].includes(decision)) {
-      return reply.code(409).send({ error: 'request-revision-changed' });
-    }
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const response = body.response == null ? null : string(body.response);
-    const responseDigest = humanResponseDigest({ decision, response });
-    const challenge = humanResponseChallenge({
-      requestRef, requestRevision: expectedRevision, responseDigest, action: decision,
-      origin: config.origin, challengeExpiresAt,
-    });
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
-  });
-
-  // P5 W6.3 [P5-C20, P5-C23, P5-C45]: the deploy-purpose T3 challenge on the SHIPPED verifier — registered
-  // beside the human-requests challenge, on the SAME guarded scope, minting through the SAME `credentialStore`
-  // pending map and binding through the SAME deterministic-preimage path (`deployChallenge`, humanResponse.ts).
-  // It mints ONLY the four T3 decisions, each over the ref spelling its decision requires; the assertion is
-  // verified by the deploy action endpoint against a preimage RE-READ server-side (a client-carried
-  // revision/digest is only a mint-time nonce — an acknowledged oracle/DoS surface, never an authz change,
-  // since verification still needs the provisioned key). No new refusal code is minted: an unreachable
-  // ceremony is `403 ceremony-unavailable`, exactly as the shipped ladder — never a downgrade [P5-C45].
-  scope.post('/api/inbox/deployment/:ref/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    let parsedRef: { kind: 'deploy-ready' | 'deployment'; ref: string };
-    try { parsedRef = parseDeploymentRef((req.params as { ref: string }).ref); }
-    catch { return reply.code(400).send({ error: 'invalid-ref' }); }
-    const body = record(req.body);
-    const decisionRaw = string(body.decision);
-    if (!(DEPLOY_T3_DECISIONS as readonly string[]).includes(decisionRaw)) {
-      return reply.code(400).send({ error: 'invalid-decision' });
-    }
-    const decision = decisionRaw as DeployT3Decision;
-    // Ref spelling each decision requires [P5-C49, P5-C58]: deploy ⇐ deploy-ready:<sha>; confirm ⇐ either
-    // member of the two-spelling union; abort/close-ptys-and-continue ⇐ deployment:<n> only.
-    const refOk =
-      decision === 'deploy' ? parsedRef.kind === 'deploy-ready'
-        : decision === 'confirm' ? true
-          : parsedRef.kind === 'deployment';
-    if (!refOk) return reply.code(400).send({ error: 'invalid-revision' });
-    const subjectKind: DeployT3Subject = decision === 'close-ptys-and-continue' ? 'pty-quiescence' : 'deployment';
-    const revision = string(body.revision);
-    if (revision.length === 0) return reply.code(400).send({ error: 'invalid-revision' });
-    // Binding digest: close-ptys-and-continue pins sha256(sorted session ids); every other decision carries
-    // the candidate/record attestation digest, re-read and re-bound at the action endpoint [§3.3].
-    let digest: string;
-    if (decision === 'close-ptys-and-continue') {
-      const rawIds = body.sessionIds;
-      if (!Array.isArray(rawIds) || rawIds.length === 0 || !rawIds.every((id) => typeof id === 'string')) {
-        return reply.code(400).send({ error: 'invalid-session-ids' });
-      }
-      digest = quiescenceDigest(rawIds as string[]);
-    } else {
-      digest = string(body.digest);
-      if (digest.length === 0) return reply.code(400).send({ error: 'invalid-digest' });
-    }
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const preimage: DeployT3Preimage = { subject: subjectKind, ref: parsedRef.ref, revision, decision, digest };
-    let challenge: string;
-    try { challenge = deployChallenge(preimage); }
-    catch { return reply.code(400).send({ error: 'invalid-revision' }); }
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
-  });
 
   // P6 W6.2 [design:435]: THIN caller of `services/runReadService.ts#respondHumanRequestRoute` — the
   // closed body wall and the gate-service result mapping are the service's. No byte of the
@@ -1986,8 +1935,11 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const respondPort: RespondPort = {
       respond: (input) => responseService(req).respond(input as unknown as HumanResponseInput) as unknown as ReturnType<RespondPort['respond']>,
     };
+    // T4 [design:4.3] — self-asserted, never an authority input; see `authority/actor.ts`'s docstring.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
     const result = await respondHumanRequestRoute(
       respondPort, subject(req), (req.params as { requestRef: string }).requestRef, req.body, req.headers.origin,
+      actorLabel,
     );
     return reply.code(result.status).send(result.body);
   });
@@ -2052,89 +2004,23 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     return decision;
   };
 
-  /** The signed tuple, recomputed server-side from the store record on BOTH legs [baseline-A §3]. */
-  const iterationGatePreimage = (
-    binding: NonNullable<ReturnType<typeof iterationGateBinding>>,
-    decision: string,
-    origin: string,
-    challengeExpiresAt: string,
-  ): IterationGateT3Preimage => ({
-    requestRef: binding.gateRequest.requestRef,
-    requestRevision: binding.gateRequest.revision,
-    gateRef: binding.gateRequest.requestRef,
-    gateKind: binding.gateKind,
-    parkReason: binding.loop.parkReason ?? null,
-    iterationLoopRef: binding.loop.iterationLoopRef,
-    loopVersion: binding.expectedLoopVersion,
-    receiptRef: binding.receipt?.receiptRef ?? null,
-    receiptVersion: binding.expectedReceiptVersion,
-    generationRefs: [...binding.loop.activeGenerationRefs],
-    decision,
-    origin,
-    challengeExpiresAt,
-  });
-
   /**
-   * The iteration-gate ceremony, composed exactly like the shipped human-response one: the port exists
-   * only when the mode admits a ceremony AND a credential is provisioned, so an unprovisioned daemon
-   * fails CLOSED at `ceremony-unavailable` instead of degrading to the T2-strength authorization this
-   * route shipped with. Single use lives in the pending-challenge store: `consumeChallenge` spends the
-   * minted ceremony id once, so a replayed id can never re-verify.
+   * T5 [design:4.5] — the boss-intervention rule, bound to THIS route's key + `requestRef`. The resolve
+   * route's CAS and refusal ladder around this call are untouched — only the verification step differs
+   * from an ordinary route: `open`-class WITH `escalate: 'workflow-tag'` (policy.ts) means T1's generic
+   * `requireAuthority` gate passes every request straight through, and this per-request, run-tag-
+   * conditioned check is the only thing standing between a publish/spend-tagged run's gate and an
+   * unsigned decision.
    */
-  const iterationGateCeremony = () => createIterationGateCeremonyService({
-    credentials: ctx.credentials,
-    now: () => (ctx.now?.() ?? new Date()).getTime(),
-    ...(ceremonyModeAdmits(ctx.authMode) && ctx.credentials().length > 0 ? {
-      ceremony: {
-        async verify(input: { assertion: unknown; challenge: string; origin: string }) {
-          const assertion = record(input.assertion);
-          const expectedChallenge = consumeChallenge(
-            string(assertion.ceremonyId), (ctx.now?.() ?? new Date()).getTime(),
-          );
-          if (!expectedChallenge) return false;
-          if (expectedChallenge !== Buffer.from(input.challenge, 'utf8').toString('base64url')) return false;
-          let config;
-          try { config = ctx.webAuthnConfig(); } catch { return false; }
-          if (input.origin !== config.origin) return false;
-          const response = record(assertion.response);
-          const credential = findCredential(ctx.credentials(), string(response.id));
-          if (!credential) return false;
-          const verified = await verifyAssertion(assertion.response as never, {
-            expectedChallenge, credential, config,
-          });
-          return verified.verified;
-        },
+  const iterationGateAuthority = (req: FastifyRequest, requestRef: string) => createIterationGateAuthorityService({
+    workflowTags: (actorSubject, runRef) => resolveRunWorkflowTags(ctx, actorSubject, runRef, readScope(req)),
+    verifyApproval: bindVerifyApproval(ctx, 'POST', req.routeOptions?.url ?? req.url, requestRef),
+    audit: {
+      async append(event) {
+        await auditFn(ctx)(ctx.repoRoot, event, { runGit: ctx.opsGit, now: ctx.now });
       },
-    } : {}),
-  });
-
-  // F3 [baseline-A §3]: the iteration-gate T3 challenge — registered on the SAME guarded scope and
-  // `preHandler` as the resolve route, minting through the SAME `credentialStore` pending map with the
-  // same 5-minute window, and binding through the SAME deterministic preimage the resolve recomputes.
-  // The tuple is derived from the STORE, never from the body: the caller chooses only the decision.
-  scope.post('/api/control/iteration-gates/:requestRef/challenge', { preHandler }, async (req, reply) => {
-    const sub = subject(req);
-    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
-    if (!ceremonyModeAdmits(ctx.authMode) || ctx.credentials().length === 0) {
-      return reply.code(403).send({ error: 'ceremony-unavailable' });
-    }
-    const requestRef = (req.params as { requestRef: string }).requestRef;
-    const binding = iterationGateBinding(sub, requestRef, req, reply);
-    if (binding === null) return reply;
-    const decision = iterationGateDecision(record(req.body), binding.parkGate, reply);
-    if (decision === null) return reply;
-    let config;
-    try { config = ctx.webAuthnConfig(); }
-    catch { return reply.code(403).send({ error: 'ceremony-unavailable' }); }
-    if (req.headers.origin !== config.origin) return reply.code(403).send({ error: 'ceremony-invalid' });
-    const now = (ctx.now?.() ?? new Date()).getTime();
-    const challengeExpiresAt = new Date(now + 5 * 60 * 1000).toISOString();
-    const challenge = iterationGateChallenge(
-      iterationGatePreimage(binding, decision, config.origin, challengeExpiresAt),
-    );
-    const options = await assertionForChallenge(challenge, { credentials: ctx.credentials() }, config);
-    const { ceremonyId } = rememberChallenge(options.challenge, 5 * 60 * 1000, now);
-    return reply.send({ ceremonyId, options, challengeExpiresAt });
+    },
+    escalationBinding: { route: escalationRouteKey('POST', req.routeOptions?.url ?? req.url), entityRef: requestRef },
   });
 
   const resolveIterationGateRoute = async (
@@ -2144,6 +2030,16 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const sub = subject(req);
     if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
     const body = record(req.body);
+    // T4 [design:4.3/4.5] — same `reason` rule as `/human-requests/:requestRef/respond`: required
+    // (non-empty after trim, ≤2000 chars) from EVERY actor, including `daniel` and a request that sends
+    // no `X-KB-Actor` header at all (security review 2026-09-16, HIGH-1). The label is self-asserted, so
+    // it never decides anything — including whether a justification is owed.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+    const rawReason = body.reason;
+    if (typeof rawReason !== 'string' || rawReason.length > 2000 || rawReason.trim().length === 0) {
+      return reply.code(400).send({ error: 'reason-required' });
+    }
+    const reason = rawReason.trim().slice(0, 2000);
     const requestRef = (req.params as { requestRef: string }).requestRef;
     const binding = iterationGateBinding(sub, requestRef, req, reply);
     if (binding === null) return reply;
@@ -2171,18 +2067,14 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       return reply.code(409).send({ error: 'iteration-gate-cas-mismatch', detail: 'The displayed gate or artifact set changed; reload before deciding.' });
     }
     if (gateRequest.state === 'open') {
-      // F3 [baseline-A §3, item 4b]: T3 means a passkey assertion over the SAME tuple the CAS just
-      // checked — verified BEFORE the audit append, so a refused ceremony leaves no `authorized:` row
-      // and mutates nothing. A replay (state already `resolved`) is idempotent and re-verifies nothing,
-      // exactly as the shipped human-response path short-circuits its replay above its own ceremony.
-      const ceremony = await iterationGateCeremony().verify({
-        preimage: iterationGatePreimage(
-          binding, decision, string(req.headers.origin), string(body.challengeExpiresAt),
-        ),
-        assertion: body.ceremonyId == null || body.assertion == null
-          ? null : { ceremonyId: body.ceremonyId, response: body.assertion },
+      // T5 [design:4.5]: the boss-intervention rule — verified BEFORE the audit append, so a refusal
+      // leaves no `authorized:` row and mutates nothing. A replay (state already `resolved`) is
+      // idempotent and re-verifies nothing, exactly as the shipped human-response path short-circuits
+      // its replay above its own check.
+      const authority = await iterationGateAuthority(req, requestRef).verify({
+        actorSubject: sub, runRef: gateRequest.runRef, approval: body.approval, actorLabel,
       });
-      if (!ceremony.ok) return reply.code(ceremony.status).send({ error: ceremony.error });
+      if (!authority.ok) return reply.code(authority.status).send({ error: authority.error });
       try {
         await auditFn(ctx)(ctx.repoRoot, {
           action: 'control-iteration-gate-authorize', owner: sub, target: requestRef, riskTier: 'T3',
@@ -2199,6 +2091,9 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
         return reply.code(500).send({ error: 'iteration-gate-audit-required' });
       }
     }
+    const resolveAttribution = currentAttribution();
+    const resolveTailnetIdentity = resolveAttribution && 'login' in resolveAttribution
+      ? attributionLabel(resolveAttribution) : null;
     const resolved = ctx.controlStore.resolveIterationGate(sub, requestRef, {
       expectedRequestRevision: gateRequest.revision,
       expectedReceiptVersion,
@@ -2206,6 +2101,10 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
       decision,
       operationKey: string(body.idempotencyKey),
       response: body.response == null ? null : string(body.response),
+      resolvedBy: {
+        actor: actorLabel, tailnetIdentity: resolveTailnetIdentity,
+        at: (ctx.now?.() ?? new Date()).toISOString(), reason,
+      },
     }, runScope);
     if (!resolved.ok) return sendResult(reply, resolved);
     if (!resolved.replayed) {
@@ -2324,6 +2223,56 @@ export function registerControlRoutes(scope: FastifyInstance, ctx: SurfaceContex
     const restored = ctx.controlStore.restoreRun(sub, runRef, runScope);
     if (!restored.ok) return sendResult(reply, restored);
     return sendResult(reply, { ...restored, value: runDto(restored.value) });
+  });
+
+  /**
+   * T6 [design:4.6]: signed budget override. `preHandler` (`requireAuthority`, T3) already enforced the
+   * ssh-signed approval for this `signed`-class route and stripped it from `req.body` — this handler
+   * only validates the override body, records the audit row BEFORE the grant, and appends it to the
+   * durable store `windowBudgetFor` (adapters.ts, threaded via activation.ts) reads at RESERVE time.
+   * Raises `maxCostUsdMicros` for exactly one window; never attempts, tokens, or any other window.
+   */
+  scope.post('/api/control/budget/override', { preHandler }, async (req, reply) => {
+    const sub = subject(req);
+    if (!sub) return reply.code(401).send({ error: 'unauthenticated' });
+    const body = record(req.body);
+    if (!hasExactKeys(body, ['windowDay', 'additionalUsdMicros', 'idempotencyKey'])) {
+      return reply.code(400).send({ error: 'invalid-budget-override' });
+    }
+    const store = ctx.budgetOverrides;
+    if (!store) return reply.code(503).send({ error: 'budget-override-unavailable' });
+    const windowDay = string(body.windowDay);
+    const additionalUsdMicros = integer(body.additionalUsdMicros);
+    // The gate already verified the approval; this is its payload's nonce, recovered off the request
+    // rather than the (now-stripped) body — see `authority/gate.ts#approvedNonceFor`.
+    const nonce = approvedNonceFor(req);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(windowDay) || additionalUsdMicros <= 0 || nonce === null) {
+      return reply.code(400).send({ error: 'invalid-budget-override' });
+    }
+    // LOW-5 (security review 2026-09-16): this read the compiled-in DEFAULT_BUDGET, ignoring the
+    // KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS override that `resolveWindowBudget` honours and that
+    // `windowBudgetFor` actually reserves against — so on any daemon carrying that override the ceiling
+    // this row reported was simply wrong. Read the resolver, the same one the reserve path reads.
+    const resulting = resolveWindowBudget().maxCostUsdMicros + store.additionalUsdMicros(windowDay) + additionalUsdMicros;
+    try {
+      await auditFn(ctx)(ctx.repoRoot, {
+        action: 'control-budget-override-authorize', owner: sub, target: windowDay, riskTier: 'T3',
+        result: `authorized:${additionalUsdMicros}`,
+        detail: { windowDay, additionalUsdMicros, resultingCeilingUsdMicros: resulting, approvalPrincipal: APPROVAL_PRINCIPAL },
+      }, { runGit: ctx.opsGit, now: ctx.now });
+    } catch {
+      return reply.code(500).send({ error: 'budget-override-audit-required' });
+    }
+    // `grant` is idempotent on `nonce`: a retried request (the gate's own nonce store already refuses a
+    // genuine replay of the SIGNED request with 409 approval-replayed before this handler ever runs, so
+    // this branch covers only a client retry of an already-succeeded call within the same TTL window)
+    // returns 'replayed' rather than double-granting.
+    const outcome = store.grant({
+      windowDay, additionalUsdMicros, grantedAt: (ctx.now?.() ?? new Date()).toISOString(),
+      actor: 'daniel', nonce,
+    });
+    if (outcome === 'refused') return reply.code(409).send({ error: 'budget-override-ceiling-reached' });
+    return reply.send({ ok: true, windowDay, additionalUsdMicros, resultingCeilingUsdMicros: resulting, replayed: outcome === 'replayed' });
   });
 }
 

@@ -21,6 +21,7 @@ import type { SurfaceContext } from '../http/context.ts';
 import { validateServerCompiledPlanProposal } from './proposal.ts';
 import { compileApprovedProposal } from './compiler.ts';
 import type { CompiledStagePolicy } from './compiler.ts';
+import { AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT } from './authorizedIncidentRecovery.ts';
 import { loadPolicyEnvironment, loadRuntimeSkillRegistry } from './environment.ts';
 import { reconcileCanonicalPublication } from './publication.ts';
 import type { AgentWorkspaceLaunchProvenance, ControlResult, HumanRequest, JsonObject } from './types.ts';
@@ -30,6 +31,7 @@ import type { InternalServiceCaller } from '../auth/session.ts';
 import { runLifecycleKind } from './runLifecycle.ts';
 import { decodeHostKind, decodeRunnableRef } from './p2Decoders.ts';
 import type { HostKind, RunnableRef } from './p2Contracts.ts';
+import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 
 /**
  * P6 W6.2 [P6-C80]: the ONE reusable binding of `write/asyncGit.ts`'s real transaction span, exported
@@ -296,6 +298,15 @@ export async function executeApprovedLaunch(
     }
     const launchIdentity = validateTrustedLaunchIdentity(derivedIdentity);
     if (!launchIdentity.ok) return { status: 409, body: { error: launchIdentity.code } };
+    // BLOCKER-1 [security review 2026-09-16]: the governing publish/spend tag set is derived HERE, once,
+    // from the owner this launch resolved, and persisted on the run below. The gate-resolution rule
+    // (`control/routes.ts#resolveRunWorkflowTags`) reads only what is stored, so rewriting the workflow
+    // definition through the open `POST /api/write/save` after launch can no longer change whether the
+    // run's gates require a signed approval. With no derivation bound (a hand-built test context) the
+    // launch stores the maximal set rather than none: fail closed, never open.
+    const workflowTags = ctx.ownerTags
+      ? ctx.ownerTags(launchIdentity.value.owner)
+      : [...FAIL_CLOSED_RUN_TAGS];
     const created = ctx.controlStore.createRun(sub, {
       title: parsed.value.title,
       proposalRef,
@@ -306,6 +317,7 @@ export async function executeApprovedLaunch(
       managerAssignment: parsed.value.manager.assignment ?? null,
       owner: launchIdentity.value.owner,
       executionHost: launchIdentity.value.executionHost,
+      workflowTags,
       idempotencyKey,
       predecessorRunRef,
       expectedPredecessorVersion: predecessorRunRef === null ? undefined : input.expectedPredecessorVersion,
@@ -514,11 +526,14 @@ export async function executeApprovedLaunch(
         if (!waiting.ok) throw new Error(waiting.detail);
         ctx.controlStore.createHumanRequest(sub, runRef, {
           // Runtime wiring is an operationally recoverable boundary, not a verdict that the approved
-          // plan violates governance. The passkey latch still independently prevents `/activate` while
+          // plan violates governance. The operator-unlock latch still independently prevents `/activate` while
           // locked; resolving this intervention only records that the operator is ready to retry the
           // already-published run after execution has been unlocked.
           kind: 'intervention', title: 'Automatic execution activation is gated',
-          prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+          // This is the SAME text as the 2026-07-31 incident-recovery reclassification's new prompt —
+          // imported by name (not hand-copied) so it can never drift from the frozen constant a real
+          // historical recovery's fingerprint was already validated against.
+          prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
         });
         ctx.controlStore.appendEvent(sub, runRef, {
           kind: 'governance', source: 'system', status: 'waiting', summary: 'canonical run published; runtime activation remains gated',

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { buildChallenge, canonicalCardPayload, contentHash, parseChallenge, workOrderOf } from './challenge.ts';
+import { canonicalCardPayload, contentHash, workOrderOf } from './cardHash.ts';
 import type { CardMeta } from '../planeA/cards.ts';
 
 /** A representative T3 card body — only the `## Work order` section enters the hash (fence-aware). */
@@ -22,7 +22,7 @@ function baseMeta(overrides: Partial<CardMeta> = {}): CardMeta {
 it('content_hash changes when risk-tier/owner/target/action changes', () => {
   // Five cards, identical in every field + body except ONE consequential field each time — proves
   // each of action/risk-tier/owner/target is actually bound into the hash (none can be mutated
-  // post-signature without invalidating it).
+  // post-approval without invalidating it).
   const base = baseMeta();
   const actionChanged = baseMeta({ action: 'delete:skill' });
   const riskTierChanged = baseMeta({ 'risk-tier': 'T3' });
@@ -38,7 +38,7 @@ it('content_hash changes when risk-tier/owner/target/action changes', () => {
 
 it('content_hash changes when the work-order body changes (D2.11 body binding)', () => {
   // Same four fields, different `## Work order` body -> different hash. This is the whole point of
-  // D2.11: an attacker who rewrites the body an executor acts on now invalidates the signature.
+  // D2.11: an attacker who rewrites the body an executor acts on now invalidates the approval.
   const meta = baseMeta();
   const h1 = contentHash(canonicalCardPayload(meta, '## Work order\ndeploy svc-a to staging\n'));
   const h2 = contentHash(canonicalCardPayload(meta, '## Work order\ndeploy PROD-db, drop tables\n'));
@@ -105,13 +105,9 @@ it('canonicalCardPayload is order-stable', () => {
   expect(contentHash(canonicalCardPayload(a, BASE_BODY))).toBe(contentHash(canonicalCardPayload(b, BASE_BODY)));
 });
 
-it('content_hash is byte-identical to the Python verifier (pinned cross-language hex)', () => {
-  // The dashboard TS issuer (this module) and scripts/webauthn_verify.py MUST compute the exact same
-  // content_hash byte-for-byte, or a legitimately-signed challenge would be rejected. This sample
-  // deliberately carries a NON-ASCII char (proves ensure_ascii=False parity) and a fenced code block
-  // containing a fake `## heading` (proves fence-aware extraction parity). The pinned hex below is
-  // asserted against the SAME sample + SAME constant in tests/test_webauthn_verify.py; both were
-  // computed from the running TS module via node --experimental-strip-types.
+it('content_hash is a pinned regression value', () => {
+  // This sample deliberately carries a NON-ASCII char (proves ensure_ascii=False-equivalent parity)
+  // and a fenced code block containing a fake `## heading` (proves fence-aware extraction parity).
   const meta = {
     action: 'deploy',
     target: 'svc-a',
@@ -133,26 +129,4 @@ it('content_hash is byte-identical to the Python verifier (pinned cross-language
   expect(contentHash(canonicalCardPayload(meta, body))).toBe(
     '9931a82d1699104b1ed796a33b377f6c150a4a0826d825d78dc7486eea89dc59',
   );
-});
-
-it('buildChallenge/parseChallenge round-trip binds card_id + action', () => {
-  const cardId = 'aaaa0001-1111';
-  const action = 'edit:skill';
-  const hash = contentHash(canonicalCardPayload(baseMeta(), BASE_BODY));
-  const nonce = 'deadbeefcafebabe0011';
-
-  const challenge = buildChallenge(cardId, action, hash, nonce);
-  // The wire form is base64url — no '+', '/', or '=' padding — so it drops cleanly into a WebAuthn
-  // `challenge` field / URL without re-encoding.
-  expect(challenge).toMatch(/^[A-Za-z0-9_-]+$/);
-
-  const parsed = parseChallenge(challenge);
-  expect(parsed.cardId).toBe(cardId);
-  expect(parsed.action).toBe(action);
-  expect(parsed.contentHash).toBe(hash);
-  expect(parsed.nonce).toBe(nonce);
-});
-
-it('parseChallenge rejects a malformed challenge (fail closed)', () => {
-  expect(() => parseChallenge('not-a-real-challenge')).toThrow();
 });

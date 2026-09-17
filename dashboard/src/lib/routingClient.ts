@@ -2,7 +2,7 @@
  * R2 — client for the routing read projection (`GET /api/routing`) and the two governed routing writes
  * (`POST /api/write/routing-override`, `POST /api/write/card-routing`). Pure `fetch` (no node builtins,
  * kept off the server import graph); `fetchImpl` is injected for hermetic unit tests. The client NEVER
- * writes routing directly — every mutation carries the WebAuthn bearer to a governed, audited endpoint.
+ * writes routing directly — every mutation carries the session bearer to a governed, audited endpoint.
  */
 
 import { invalidateSessionOnGovernedAuthFailure } from './authClient';
@@ -90,7 +90,7 @@ export interface WriteResult {
   error?: string;
 }
 
-/** POST a per-agent (or per-scope) routing-override set/clear. Requires a WebAuthn bearer. */
+/** POST a per-agent (or per-scope) routing-override set/clear. Requires a session bearer. */
 export async function postRoutingOverride(
   body:
     | { op: 'set'; scope: 'agent' | 'card'; key: string; runtime?: string | null; model?: string | null; expires?: string | null }
@@ -108,7 +108,7 @@ export async function postRoutingOverride(
   return { ok: res.ok, reason: data.reason };
 }
 
-/** POST a per-card routing set/clear (card frontmatter — top precedence). Requires a WebAuthn bearer. */
+/** POST a per-card routing set/clear (card frontmatter — top precedence). Requires a session bearer. */
 export async function postCardRouting(
   body: { op: 'set'; cardId: string; runtime: string; model: string } | { op: 'clear'; cardId: string },
   token: string,

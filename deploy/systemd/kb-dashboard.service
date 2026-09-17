@@ -46,6 +46,12 @@ Environment=DASHBOARD_AUTH_MODE=tailnet
 # the one desktop-helper tailnet address the deploy/asset-pull client speaks to. The client fails
 # composition without it, and bootstrap_vm.py refuses to render a unit missing anything
 # validate_vm_runtime.py's EXPECTED_UNIT_ENV requires.
+# T3: the ssh-signed human-approval channel's allowed-signers file (docs/superpowers/specs/
+# 2026-09-16-authority-and-guardrails-design.md §4.2). PUBLIC ssh key material, never a credential — the
+# private key that signs against it never touches the VM. Static because the path itself is fixed across
+# every deployment (unlike the tailnet host/operator, which vary per VM); bootstrap_vm.py installs the
+# FILE at this path root:root 0644 from an operator-supplied source, but never renders this line itself.
+Environment=DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS=/usr/local/lib/kb/kb-ops-approver.allowed-signers
 UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
 ExecStartPre=/usr/bin/python3 -I -B /usr/local/lib/kb/validate_vm_runtime.py --phase static --ops-root /var/lib/kb/ops --unit kb-dashboard.service
 ExecStart=/usr/bin/node --experimental-strip-types server/index.ts

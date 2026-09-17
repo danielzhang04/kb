@@ -27,8 +27,6 @@ import {
   rerouteManagedStage,
   resolveIterationGate,
   respondToHumanRequest,
-  respondToHumanRequestWithCeremony,
-  resolveIterationGateWithCeremony,
   resumeRunAfterHumanResponse,
   steerManagerAtCheckpoint,
   unlockExecution,
@@ -73,9 +71,9 @@ const LOCKED_EXECUTION = {
   unlockedBy: null,
   unlockRoute: '/api/control/execution/unlock',
 };
-const PASSKEY_EXECUTION = {
+const TAILNET_EXECUTION = {
   state: 'unlocked' as const,
-  source: 'passkey' as const,
+  source: 'tailnet' as const,
   unlockedAt: '2026-07-31T21:00:00.000Z',
   unlockedBy: 'operator',
 };
@@ -120,12 +118,12 @@ describe('control client execution unlock ceremony', () => {
   });
 
   it('arms execution with the ONE session bearer: a single POST, no options fetch, no browser ceremony', async () => {
-    const fetchImpl = vi.fn(async () => response({ ok: true, execution: PASSKEY_EXECUTION })) as unknown as FetchLike;
+    const fetchImpl = vi.fn(async () => response({ ok: true, execution: TAILNET_EXECUTION })) as unknown as FetchLike;
 
-    await expect(unlockExecution('bearer', fetchImpl)).resolves.toEqual(PASSKEY_EXECUTION);
+    await expect(unlockExecution('bearer', fetchImpl)).resolves.toEqual(TAILNET_EXECUTION);
     const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
     expect(calls.map((call) => String(call[0]))).toEqual(['/api/control/execution/unlock']);
-    // The mandate: ONE passkey ceremony for the platform. No purpose-bound options round trip, and no
+    // The mandate: ONE sign-in for the platform. No purpose-bound options round trip, and no
     // re-authentication of any kind — the sign-in bearer is the whole authorization.
     expect(calls.some((call) => String(call[0]).includes('/unlock/options'))).toBe(false);
     expect(calls.some((call) => String(call[0]).includes('/api/auth/assert'))).toBe(false);
@@ -136,25 +134,25 @@ describe('control client execution unlock ceremony', () => {
     expect(new Headers(init.headers as HeadersInit).get('authorization')).toBe('Bearer bearer');
   });
 
-  it('rejects a 200 response unless the source is passkey', async () => {
+  it('rejects a 200 response unless the source is tailnet', async () => {
     const fetchImpl = vi.fn(async () => response({
-      ok: true, execution: { ...PASSKEY_EXECUTION, source: 'env-override' },
+      ok: true, execution: { ...TAILNET_EXECUTION, source: 'env-override' },
     })) as unknown as FetchLike;
-    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not passkey-authorized/i);
+    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not tailnet-authorized/i);
   });
 
   it('rejects a 200 response that never confirmed the unlock', async () => {
-    const fetchImpl = vi.fn(async () => response({ execution: PASSKEY_EXECUTION })) as unknown as FetchLike;
-    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not passkey-authorized/i);
+    const fetchImpl = vi.fn(async () => response({ execution: TAILNET_EXECUTION })) as unknown as FetchLike;
+    await expect(unlockExecution('bearer', fetchImpl)).rejects.toThrow(/not tailnet-authorized/i);
   });
 
   it.each([
-    { ...LOCKED_EXECUTION, source: 'passkey' },
+    { ...LOCKED_EXECUTION, source: 'tailnet' },
     { ...LOCKED_EXECUTION, unlockRoute: '/wrong-route' },
-    { ...PASSKEY_EXECUTION, source: null },
-    { ...PASSKEY_EXECUTION, unlockedAt: '1' },
-    { ...PASSKEY_EXECUTION, unlockedBy: '   ' },
-    { ...PASSKEY_EXECUTION, unlockRoute: '/api/control/execution/unlock' },
+    { ...TAILNET_EXECUTION, source: null },
+    { ...TAILNET_EXECUTION, unlockedAt: '1' },
+    { ...TAILNET_EXECUTION, unlockedBy: '   ' },
+    { ...TAILNET_EXECUTION, unlockRoute: '/api/control/execution/unlock' },
     { state: 'injected', source: 'env-override', unlockedAt: null, unlockedBy: null },
     { state: 'injected', source: null, unlockedAt: null, unlockedBy: null, unlockRoute: '/api/control/execution/unlock' },
   ])('rejects an impossible or non-canonical execution posture %#', (posture) => {
@@ -163,9 +161,9 @@ describe('control client execution unlock ceremony', () => {
 
   it('accepts each exact server posture combination', () => {
     expect(parseExecutionPosture(LOCKED_EXECUTION)).toEqual(LOCKED_EXECUTION);
-    expect(parseExecutionPosture(PASSKEY_EXECUTION)).toEqual(PASSKEY_EXECUTION);
+    expect(parseExecutionPosture(TAILNET_EXECUTION)).toEqual(TAILNET_EXECUTION);
     expect(parseExecutionPosture({
-      ...PASSKEY_EXECUTION,
+      ...TAILNET_EXECUTION,
       source: 'env-override',
       unlockedBy: 'dashboard-engine',
     })).toMatchObject({ state: 'unlocked', source: 'env-override' });
@@ -417,65 +415,6 @@ describe('control client run and retention writes', () => {
     }))).rejects.toThrow('invalid run event page');
     const attention = { revision: 'b'.repeat(64), pairs: [], agents: {}, workflows: {} };
     await expect(getAttention('bearer', recordedFetch(attention))).resolves.toEqual(attention);
-  });
-
-  it('binds a T3 response through challenge, assertion, and the final response write', async () => {
-    const options = { challenge: 'challenge', rpId: 'localhost', allowCredentials: [], userVerification: 'required' as const };
-    const assertion = { id: 'credential-1', rawId: 'credential-1', type: 'public-key' as const,
-      response: { authenticatorData: 'auth', clientDataJSON: 'client', signature: 'sig', userHandle: null },
-      clientExtensionResults: {}, authenticatorAttachment: 'platform' as const };
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith('/respond/challenge')) return response({
-        ceremonyId: 'ceremony-1', options, challengeExpiresAt: '2026-08-21T12:05:00.000Z',
-      });
-      return response({ ok: true, value: { requestRef: 'request-1' } });
-    }) as unknown as FetchLike;
-    const perform = vi.fn(async () => assertion);
-
-    await respondToHumanRequestWithCeremony('request-1', {
-      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
-    }, 'bearer', fetchImpl, perform as never);
-
-    expect(perform).toHaveBeenCalledWith(options);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    const finalBody = JSON.parse(String((fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls[1][1]?.body));
-    expect(finalBody).toMatchObject({
-      expectedRevision: 3, decision: 'approved', response: 'ship it', idempotencyKey: 'response-3',
-      ceremonyId: 'ceremony-1', challengeExpiresAt: '2026-08-21T12:05:00.000Z', assertion,
-    });
-  });
-
-  it('binds an iteration-gate decision through challenge, assertion, and the resolve write', async () => {
-    const options = { challenge: 'challenge', rpId: 'localhost', allowCredentials: [], userVerification: 'required' as const };
-    const assertion = { id: 'credential-1', rawId: 'credential-1', type: 'public-key' as const,
-      response: { authenticatorData: 'auth', clientDataJSON: 'client', signature: 'sig', userHandle: null },
-      clientExtensionResults: {}, authenticatorAttachment: 'platform' as const };
-    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).endsWith('/challenge')) return response({
-        ceremonyId: 'ceremony-9', options, challengeExpiresAt: '2026-09-15T12:05:00.000Z',
-      });
-      return response({ ok: true, value: { gate: { requestRef: 'park-1' }, loop: {}, receipt: null, receiptVersion: null, interventionRequest: null } });
-    }) as unknown as FetchLike;
-    const perform = vi.fn(async () => assertion);
-
-    await resolveIterationGateWithCeremony('park-1', {
-      expectedGateRef: 'park-1', expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
-      expectedRequestRevision: 1, expectedLoopVersion: 8, expectedGenerationRefs: ['generation-1'],
-      decision: 'approved', idempotencyKey: 'park-1:approve', response: null,
-    }, 'bearer', fetchImpl, perform as never);
-
-    expect(perform).toHaveBeenCalledWith(options);
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    const calls = (fetchImpl as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(String(calls[0][0])).toBe('/api/control/iteration-gates/park-1/challenge');
-    // The mint carries the decision ONLY: every other bound field is derived server-side from the store.
-    expect(JSON.parse(String(calls[0][1]?.body))).toEqual({ decision: 'approved' });
-    expect(String(calls[1][0])).toBe('/api/control/iteration-gates/park-1/resolve');
-    expect(JSON.parse(String(calls[1][1]?.body))).toMatchObject({
-      expectedGateRef: 'park-1', expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
-      expectedLoopVersion: 8, expectedGenerationRefs: ['generation-1'], decision: 'approved',
-      ceremonyId: 'ceremony-9', challengeExpiresAt: '2026-09-15T12:05:00.000Z', assertion,
-    });
   });
 
   it('carries run version and manager generation when checkpoint steering', async () => {

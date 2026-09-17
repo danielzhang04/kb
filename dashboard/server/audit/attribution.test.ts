@@ -41,7 +41,7 @@ describe('audit row operator attribution', () => {
   it('stamps the tailnet identity into detail without disturbing the rest of the row', () => {
     const root = repo();
     inIsolatedContext(() => {
-      bindAttribution({ login: 'daniel.zhang.t1@gmail.com', name: 'Daniel Zhang' });
+      bindAttribution({ login: 'daniel.zhang.t1@gmail.com', name: 'Daniel Zhang', actor: 'daniel' });
       appendAuditRowLocal(root, EVENT);
     });
     expect(rowsIn(root)[0]).toMatchObject({
@@ -57,7 +57,7 @@ describe('audit row operator attribution', () => {
   it('falls back to the bare login when the proxy sends no display name', () => {
     const root = repo();
     inIsolatedContext(() => {
-      bindAttribution({ login: 'op@example.com' });
+      bindAttribution({ login: 'op@example.com', actor: 'unknown' });
       appendAuditRowLocal(root, EVENT);
     });
     expect(rowsIn(root)[0].detail).toEqual({ tailnetIdentity: 'op@example.com' });
@@ -66,7 +66,7 @@ describe('audit row operator attribution', () => {
   it('preserves a route-supplied detail alongside the attribution', () => {
     const root = repo();
     inIsolatedContext(() => {
-      bindAttribution({ login: 'op@example.com' });
+      bindAttribution({ login: 'op@example.com', actor: 'unknown' });
       appendAuditRowLocal(root, { ...EVENT, detail: { method: 'session-bearer' } });
     });
     expect(rowsIn(root)[0].detail).toEqual({ method: 'session-bearer', tailnetIdentity: 'op@example.com' });

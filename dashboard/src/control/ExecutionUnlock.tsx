@@ -83,8 +83,8 @@ async function armExecution(client: ExecutionUnlockClient, token: string): Promi
   if (posture.state !== 'locked') return { ok: true, posture };
   try {
     const next = requirePosture(await client.unlock(token));
-    if (next.state !== 'unlocked' || next.source !== 'passkey') {
-      throw new Error('execution unlock response was not passkey-authorized');
+    if (next.state !== 'unlocked' || next.source !== 'tailnet') {
+      throw new Error('execution unlock response was not tailnet-authorized');
     }
     return { ok: true, posture: next };
   } catch (reason) {
@@ -110,7 +110,7 @@ interface Attempt {
  *
  * Daniel's requirement is that the first unlock unlocks everything he needs — so signing in arms
  * execution, with no second click and (since the route stopped running its own ceremony) no second
- * passkey prompt. Nothing about the server contract moved: the unlock route is still explicit, still
+ * prompt. Nothing about the server contract moved: the unlock route is still explicit, still
  * bearer-verified, and still writes its T3 audit row per arm. What changed is only who presses it.
  *
  * `enabled` is what keeps this legal AND single-owner. The panel below always calls this hook, and
@@ -199,8 +199,8 @@ export function useExecutionArming(): ExecutionArmingState | null {
 /**
  * The execution posture panel — a STATUS readout, not a control.
  *
- * There is ONE ceremony and ONE click for the whole platform: the shared dashboard sign-in. This panel
- * used to raise a second biometric prompt; that went when the unlock route dropped its own ceremony.
+ * There is ONE step and ONE click for the whole platform: the shared dashboard sign-in. This panel
+ * used to raise a second sign-in prompt; that went when the unlock route dropped its own ceremony.
  * Now the remaining CLICK is gone too — {@link ExecutionArmingProvider} arms execution off the session
  * mint, and this panel reports the result. Arming stays explicit and audited ON THE SERVER (one governed,
  * bearer-verified, T3-audited POST per arm); it just is not the operator's chore any more.

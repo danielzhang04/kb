@@ -5,7 +5,7 @@
  *   1. `security/origin.ts#originPlugin`   — Origin/Host guard (fail-closed: empty allowlist 403s all).
  *   2. `http/middleware.ts#writeRateLimitHook` — sliding-window rate-limit + lockout.
  *
- * It registers the public auth ceremonies, then a nested authenticated scope for write, composer,
+ * It registers the public auth route, then a nested authenticated scope for write, composer,
  * control, and approval routes. That scope is the fail-closed backstop; individual mutating routes keep
  * their own `requireSession` preHandlers and gates. `/healthz`, `/readyz`, static assets, and the
  * read-only data scope are composed elsewhere.
@@ -24,15 +24,18 @@ import type { FastifyInstance } from 'fastify';
 import { BROKER_SOCKET_PATH } from '../pty/fdPinnedPaths.ts';
 import { createBrowserSessionRefStore, resolveSessionSecret, resolveSessionTtlMs } from '../auth/session.ts';
 import { resolveAuthMode, resolveTailnetConfig } from '../auth/mode.ts';
+import { scanWorkflowDefs } from '../workflows/routes.ts';
+import { readDeclaredAgentDetails } from '../agents/roster.ts';
+import { deriveOwnerTags } from '../control/ownerTags.ts';
+import { WORKFLOW_EXECUTION_PROFILES } from '../control/workflowProfiles.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
+import { createDesktopPeerCheck } from '../auth/win32DesktopPeer.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
-import { resolveWebAuthnConfig } from '../auth/webauthn.ts';
-import { resolveCredentials } from '../auth/credentialStore.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
 import { registerV1NodeRoutes, registerV1Routes } from '../api/v1/routes.ts';
-import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
+import { registerAuthRoutes, registerBrowserSessionRoute, registerDesktopSessionRoute } from '../auth/routes.ts';
 import { createActivationReader } from '../home/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
@@ -49,7 +52,7 @@ import type { FileControlPlaneAccess } from '../control/writerLease.ts';
 import { createFileDefinitionAmendmentStore } from '../workflows/amendmentStore.ts';
 import { readScopeForSubject, registerControlRoutes } from '../control/routes.ts';
 import { registerPaidActionRoute } from '../control/paidActionRoute.ts';
-import { buildActivatedExecution, createExecutionLatch } from '../control/activation.ts';
+import { buildActivatedExecution, createExecutionLatch, isOperatorUnlockSource } from '../control/activation.ts';
 import { createQueueBridge, dispatchClaimedCard } from '../control/queueBridge.ts';
 import { publishAttemptIoSignal } from '../hub/bus.ts';
 import { createSessionRunStore } from '../pty/sessionRuns.ts';
@@ -74,6 +77,8 @@ import { outboxStatus } from '../write/outboxStatus.ts';
 import { composeRuntimeCapabilities, runtimeCapabilities } from '../runtime/capabilities.ts';
 import { resolveSessionRoot } from '../trace/routes.ts';
 import { createReconciliationPublisher, createReconciliationRealPorts } from '../reconciliation/realPorts.ts';
+import { requireAuthority } from '../authority/gate.ts';
+import { createBudgetOverrideStore } from '../control/budgetOverride.ts';
 
 /** dashboard/server/http/surface.ts -> ../../../ is the repo root. Overridable via env / tests. */
 export function resolveRepoRoot(): string {
@@ -167,6 +172,9 @@ export function makeSurfaceContext(
   // `tailnet` mode the operator authenticator rides on `sessionConfig` — the one object every
   // `requireSession` call site already receives — so the mode reaches all of them without a route edit.
   const authMode = resolveAuthMode(activation.env);
+  // A test may pin the mode directly; every mode-shaped decision below reads THIS value, so an override
+  // can never leave the context advertising one mode while carrying the other mode's proof.
+  const effectiveAuthMode = overrides.authMode ?? authMode;
   const tailnet = authMode === 'tailnet' ? resolveTailnetConfig(activation.env) : null;
   const sessionConfig = overrides.sessionConfig ?? {
     secret: resolveSessionSecret(),
@@ -370,6 +378,9 @@ export function makeSurfaceContext(
         : status);
     }),
     stateRoot,
+    // T6: built once, over the same `stateRoot` every other durable store in this context uses.
+    // Present regardless of the execution latch's state — see the field's doc comment in context.ts.
+    budgetOverrides: overrides.budgetOverrides ?? createBudgetOverrideStore(stateRoot, overrides.now),
     traceRoot,
     readiness: overrides.readiness ?? (async () => {
       const activation = ctx.executionLatch?.snapshot();
@@ -423,7 +434,26 @@ export function makeSurfaceContext(
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
-    authMode: overrides.authMode ?? authMode,
+    authMode: effectiveAuthMode,
+    // BLOCKER-1: the composition root is the only place that can see BOTH the workflow scanner
+    // (`workflows/routes.ts`, which itself imports `control/launch.ts`) and the agent roster, so the
+    // derivation is bound here and handed down. `control/launch.ts` calls it once, at launch, and the
+    // result is persisted on the run; nothing re-derives it afterwards.
+    ownerTags: overrides.ownerTags ?? ((owner) => deriveOwnerTags(owner, {
+      workflowDefs: () => scanWorkflowDefs(repoRoot),
+      agentDeclarations: () => readDeclaredAgentDetails(repoRoot),
+      profileTools: (profileId) => WORKFLOW_EXECUTION_PROFILES
+        .find((profile) => profile.id === profileId)?.allowedTools ?? [],
+    })),
+    // BLOCKER-2: the `win32-desktop` operator proof, resolved beside the mode itself. The MODE decides
+    // first and an override can only choose WHICH proof runs, never whether one exists: a `tailnet`
+    // context carries no desktop proof even when one is handed in, because that deployment proves its
+    // operator through `sessionConfig.operatorAuth` and must never acquire a second, weaker way in. Off
+    // win32 the constructed check refuses everything (`unsupported-platform`), so a desktop-mode daemon
+    // on a platform where this proof cannot exist has no mint path rather than an unproven one.
+    desktopPeer: effectiveAuthMode === 'win32-desktop'
+      ? (overrides.desktopPeer ?? createDesktopPeerCheck())
+      : undefined,
     // P5 W6.1 [P5-C30]: the ONE shared activation reader. Constructed exactly once here and threaded
     // through the context to Home, Health, and the Inbox deploy-ready gate. `index.test.ts` asserts a
     // single construction; deleting the `createHomeRoutePorts` default (home/routes.ts:73) makes a
@@ -442,10 +472,6 @@ export function makeSurfaceContext(
     nodeProxyUid: overrides.nodeProxyUid,
     loadHostNodeMap: overrides.loadHostNodeMap,
     v1: overrides.v1,
-    // Lazy: resolveWebAuthnConfig throws when DASHBOARD_RP_ORIGIN is unset — only called inside a handler
-    // (which the origin guard has already blocked when the allowlist is empty), never at registration.
-    webAuthnConfig: overrides.webAuthnConfig ?? (() => resolveWebAuthnConfig()),
-    credentials: overrides.credentials ?? (() => resolveCredentials()),
     appendAudit: overrides.appendAudit,
     appendAuditLocal: overrides.appendAuditLocal,
     opsGit: overrides.opsGit,
@@ -464,6 +490,13 @@ export function makeSurfaceContext(
       createFileComposerStore(stateRoot, {
         protector: createProviderIdProtector(sessionConfig.secret),
       }),
+    // T3 signed channel (spec §4.2): resolved ONCE here, exactly like every other env-sourced field on
+    // this context. Empty/unset means the channel is unconfigured — every signed route then answers
+    // 503 approval-unavailable rather than defaulting to something reachable.
+    humanApproverAllowedSigners: overrides.humanApproverAllowedSigners
+      ?? process.env.DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS ?? '',
+    sshsigVerifier: overrides.sshsigVerifier,
+    approvalNonces: overrides.approvalNonces,
     controlStore,
     ptySessionHost,
     ptySessionRegistry,
@@ -521,6 +554,10 @@ export function makeSurfaceContext(
         // The attempt port is built from the SAME probed host and v3 document the browser PTY routes
         // use, so a Run attempt and a Terminal session are the same kind of record on the same host.
         sessionHost: ptySessionHost, attemptBindings: ptySessionRegistry,
+        // T6: the SAME store instance `ctx.budgetOverrides` above, so a grant the override route just
+        // wrote is visible to the very next `reserve` call — `activation.ts` binds it to
+        // `windowBudgetFor` only when this is present.
+        budgetOverrides: ctx.budgetOverrides,
         // The ONE reconciliation publisher composed above, threaded to the canonical result integrator so
         // its coordination phase publishes serial `card-transition` intents (P4 §3.4) rather than running
         // its own cards.py mutation + git commit/push.
@@ -550,10 +587,11 @@ export function makeSurfaceContext(
             seq: event.entry.seq,
           }));
         }
-        // The queue bridge runs for a deliberately ARMED daemon: a passkey unlock (an operator just
-        // asked for it) or `tailnet` mode (armed at boot by deployment posture). `env-override` is
-        // excluded on purpose — it is the headless/testing arm and must stay inert.
-        if (execution && (state.source === 'passkey' || state.source === 'tailnet') && serviceCaller) {
+        // The queue bridge runs for a deliberately ARMED daemon: an honest operator unlock source
+        // (`tailnet`, armed at boot by deployment posture, or `operator-session`, an explicit
+        // win32-desktop operator unlock — security review 2, N0). `env-override` is excluded on
+        // purpose — it is the headless/testing arm and must stay inert.
+        if (execution && isOperatorUnlockSource(state.source) && serviceCaller) {
           const bridge = buildQueueBridge({
             repoRoot: ctx.repoRoot,
             runPy: ctx.runPy,
@@ -646,18 +684,33 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     originPlugin(scope, { allowedOrigins: ctx.allowedOrigins });
     scope.addHook('onRequest', surfaceRateLimitHook(ctx.readRateGuard, ctx.rateGuard));
 
-    // Session-minting ceremonies stay public (but origin/rate guarded). Every other route in this
-    // surface inherits this scope-level session gate, so a future GET cannot accidentally ship public.
+    // The boot-discovery auth-context route stays public (but origin/rate guarded). Every other route
+    // in this surface inherits this scope-level session gate, so a future GET cannot accidentally ship
+    // public.
     registerAuthRoutes(scope, ctx);
     // Session-less by design: its own preHandler resolves the durable spend grant.
     registerPaidActionRoute(scope, ctx);
+    // BLOCKER-2 — `win32-desktop`'s session mint path. Session-less for the same reason the tailnet
+    // operator gate is: the TRANSPORT is the credential. It sits here, on the Origin- and rate-guarded
+    // scope but OUTSIDE `requireSession`, and proves its caller with the loopback peer-owner check
+    // instead. In tailnet mode nothing is registered here and the same path stays inside the gate below.
+    if (ctx.authMode === 'win32-desktop') registerDesktopSessionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
-      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public ceremonies:
+      // T3 (spec §4.1 "the gate"): every mutating route registered inside THIS scope passes through
+      // `requireAuthority` immediately after session verification and before any `register*Routes` call.
+      // This is ONE of two install points — the sibling read/write scope `index.ts` composes directly on
+      // `app` (agents, schedules, workflows, inbox deployment/asset-pull actions) needs its own hook,
+      // installed the same way right after ITS `requireSession`; see that file for why.
+      authenticated.addHook('preHandler', requireAuthority(ctx));
+      // The controller-cookie endpoint lives INSIDE the session gate, not beside the public auth routes:
       // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
-      // the only proof that exists — no assertion is ever verified there, so the WebAuthn mint path never
-      // runs and this is the sole way the always-on deployment gets a `kb_browser_session` ref at all.
-      registerBrowserSessionRoute(authenticated, ctx);
+      // the only proof that exists — this is the sole way the always-on deployment gets a
+      // `kb_browser_session` ref at all.
+      // In `win32-desktop` this route is registered OUTSIDE this scope (above), because there it is the
+      // route that MINTS the session — gating it on one would be circular, which is exactly the loop
+      // BLOCKER-2 found. Registering it in both places would also be a duplicate-route boot failure.
+      if (ctx.authMode !== 'win32-desktop') registerBrowserSessionRoute(authenticated, ctx);
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);

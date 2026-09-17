@@ -11,7 +11,7 @@ from pathlib import Path
 
 
 FORBIDDEN_ENV = frozenset({"GITHUB_TOKEN", "GH_TOKEN", "GIT_ASKPASS", "SSH_AUTH_SOCK", "DASHBOARD_SESSION_SECRET", "KB_CANARY_SESSION"})
-CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTIAL|API_KEY|ACCESS_KEY|AUTH_SOCK|ASKPASS|COOKIE|SESSION)")
+CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|CREDENTIAL|API_KEY|ACCESS_KEY|AUTH_SOCK|ASKPASS|COOKIE|SESSION)")
 # The VM runs the tailnet-trust auth mode (docs/superpowers/specs/2026-08-18-tailnet-trust-mode-design.md).
 # DASHBOARD_AUTH_MODE is static in the repo unit; DASHBOARD_TAILNET_HOST is injected at bootstrap. Both are
 # REQUIRED — without the host the daemon refuses to start, and asserting it here turns that into one loud
@@ -26,10 +26,7 @@ CREDENTIAL_ENV_NAME = re.compile(r"(?i)(?:TOKEN|SECRET|PASSWORD|PASSKEY|CREDENTI
 # (the attested kb-node-proxy). The dashboard refuses to boot unless DASHBOARD_NODE_PROXY_UID ∉ {0,
 # DASHBOARD_TAILNET_PROXY_UID}; this validator runs the SAME pairwise check against the unit env so a bad
 # pair fails one loud ExecStartPre instead of the first node request.
-EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID"}
-# W47: the CONSTRAINED tailnet passkey channel. These two are OPTIONAL, not forbidden - see
-# PASSKEY_UNIT_ENV below and dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel, whose rules
-# this validator mirrors so a bad pair fails one loud ExecStartPre instead of the first T3 gate.
+EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_ROOT", "DASHBOARD_STATE_ROOT", "DASHBOARD_EXECUTION_ACTIVATED", "KB_COORDINATION_PUBLICATION", "KB_VM_RUNTIME", "GIT_CONFIG_GLOBAL", "DASHBOARD_AUTH_MODE", "DASHBOARD_TAILNET_HOST", "DASHBOARD_TAILNET_OPERATOR", "DASHBOARD_DESKTOP_HELPER_ORIGIN", "DASHBOARD_TAILNET_PROXY_UID", "DASHBOARD_NODE_PROXY_UID", "DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS"}
 # KB_EXECUTION_BUDGET_* : the per-field overrides for the execution accounting WINDOW ceiling
 # (dashboard/server/control/activation.ts#resolveWindowBudget). OPTIONAL, and absent is the normal
 # posture on every host including prod - absent means DEFAULT_BUDGET, and the daemon refuses to boot on
@@ -40,8 +37,6 @@ EXPECTED_UNIT_ENV = {"DASHBOARD_PLATFORM_ROOT", "PYTHONPATH", "DASHBOARD_REPO_RO
 # no authority; the cost ceiling they can move is a fail-closed guard, not a spend authorization, and
 # governance/budget.yaml remains the human cap.
 OPTIONAL_UNIT_ENV: set[str] = {
-    "DASHBOARD_RP_ORIGIN",
-    "DASHBOARD_WEBAUTHN_CREDENTIALS",
     "KB_EXECUTION_BUDGET_MAX_ATTEMPTS",
     "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
     "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
@@ -53,26 +48,7 @@ OPTIONAL_UNIT_ENV: set[str] = {
 # and under tailnet's AMBIENT auth an allowlisted dev origin would grant operator authority to any page
 # served from it. A unit that sets it fails the closed-set check.
 TAILNET_OPERATOR_PATTERN = re.compile(r"^\S+@\S+$")
-# W47 - DASHBOARD_RP_ORIGIN + DASHBOARD_WEBAUTHN_CREDENTIALS: the re-admitted, CONSTRAINED tailnet
-# passkey channel. The cutover retired both (docs/specs/2026-08-18-cutover-end-state.md:310-333), which
-# made governance/risk-tiers.md D2.13 unsatisfiable on this VM: a T3 item declaring `ceremony: webauthn`
-# needs a provisioned credential, `resolveCredentials()` reads only DASHBOARD_WEBAUTHN_CREDENTIALS, and
-# a unit carrying it could not boot. They are now OPTIONAL under exactly three rules, checked by
-# _validate_passkey_channel and mirrored from the dashboard's own boot assertion:
-#   1. Both absent is the default posture. DASHBOARD_RP_ORIGIN alone is the ENROLMENT posture and is
-#      legal (it grants nothing: the empty store means every T3 challenge still answers 403).
-#      DASHBOARD_WEBAUTHN_CREDENTIALS alone is a refusal - no RP origin means no RP-ID to verify under.
-#   2. Whenever set, DASHBOARD_RP_ORIGIN == "https://<DASHBOARD_TAILNET_HOST>" exactly.
-#   3. Whenever set, DASHBOARD_WEBAUTHN_CREDENTIALS parses to >= 1 {id, publicKey} entry.
-#
-# CREDENTIAL_ENV_NAME exemption, stated plainly because the name matches the regex: this variable holds
-# WebAuthn PUBLIC keys ONLY - the same material the pre-cutover unit carried and documented as public
-# (docs/specs/2026-08-18-cutover-end-state.md:180-181). A public key is not a secret: possessing it lets
-# nobody assert, because the assertion is signed by a private key that never leaves the authenticator
-# hardware. It is exempted by NAME, and by name only; every other CREDENTIAL_ENV_NAME match, including
-# any future DASHBOARD_*_SECRET/TOKEN, is still forbidden. Its VALUE is never printed by this module.
-PASSKEY_UNIT_ENV = ("DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS")
-# CREDENTIAL_ENV_NAME exemption #2, stated just as plainly: KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS and
+# CREDENTIAL_ENV_NAME exemption, stated just as plainly: KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS and
 # KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS match the regex on the word TOKEN, and they hold a COUNT OF
 # LANGUAGE-MODEL TOKENS - a positive integer ceiling - not an authentication token. The daemon parses
 # each with a digits-only regex and refuses to boot on anything else
@@ -80,13 +56,9 @@ PASSKEY_UNIT_ENV = ("DASHBOARD_RP_ORIGIN", "DASHBOARD_WEBAUTHN_CREDENTIALS")
 # value even by accident. Exempted by NAME and by name only; every other CREDENTIAL_ENV_NAME match,
 # including any future *_TOKEN that really is one, is still forbidden.
 CREDENTIAL_ENV_EXEMPT = frozenset({
-    "DASHBOARD_WEBAUTHN_CREDENTIALS",
     "KB_EXECUTION_BUDGET_MAX_INPUT_TOKENS",
     "KB_EXECUTION_BUDGET_MAX_OUTPUT_TOKENS",
 })
-# systemd drop-in carrying the passkey pair, so the operator installs it without editing the fragment
-# bootstrap re-renders. EXACTLY one path is trusted; any other drop-in is still untrusted drift.
-PASSKEY_DROP_IN = "/etc/systemd/system/kb-dashboard.service.d/passkey.conf"
 TAILNET_HOST_PATTERN = re.compile(r"^[a-z0-9][a-z0-9.-]*$")
 EXPECTED_AUTH_MODE = "tailnet"
 STATIC_SHOW = {"Id", "Names", "Slice", "FragmentPath", "DropInPaths", "User", "Group", "ExecStart", "WorkingDirectory", "EnvironmentFiles", "UnsetEnvironment", "KillMode", "UMask", "ReadOnlyPaths", "ReadWritePaths"}
@@ -333,85 +305,48 @@ def _validate_proxy_uid_pair(environment: dict[str, str]) -> None:
         raise RuntimeError("dashboard unit DASHBOARD_NODE_PROXY_UID must be distinct from 0 and the tailnet proxy uid")
 
 
-def _validate_passkey_drop_in(path: Path) -> None:
-    """W47: admitting a drop-in path widened the unit's trust boundary, so the FILE is pinned too, not
-    just its name. A systemd drop-in can set ANY [Service] directive - ExecStartPre=, NoNewPrivileges=,
-    SupplementaryGroups=, BindPaths=, CapabilityBoundingSet=, User= - which would let a passkey.conf
-    quietly undo the sandbox this validator spends the rest of its length proving. So the only content
-    allowed here is a [Service] header plus Environment= assignments naming PASSKEY_UNIT_ENV members
-    (blank lines and # comments ignored). Any other directive, section, or environment name refuses.
-    Values are never echoed: a refusal names the DIRECTIVE, never what it was set to."""
+# T3 (docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md §4.2): the root-owned
+# allowed-signers file for the ssh-signed human-approval channel (`kb-human-approval` namespace,
+# `kb-ops-approver` principal — dashboard/server/authority/sshsig.ts). PUBLIC ssh key material, never a
+# credential: possessing it lets nobody sign an approval, only verify one, since the private key never
+# touches the VM. Confined to these two directories so the unit env cannot point the daemon at an
+# arbitrary, possibly attacker-writable path.
+HUMAN_APPROVER_SIGNERS_DIRS = ("/usr/local/lib/kb/", "/etc/kb/")
+
+
+def _stat_human_approver_signers(path: str) -> tuple[os.stat_result, os.stat_result]:
+    """Real I/O, isolated in its own function so a test can monkeypatch exactly this call rather than
+    needing an actual root-owned file on the runner. Returns (lstat, stat) — lstat is checked FIRST so a
+    symlink is refused before its target's metadata is ever trusted."""
+    return os.lstat(path), os.stat(path)
+
+
+def _validate_human_approver_signers(environment: dict[str, str]) -> None:
+    """DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS is REQUIRED (T3): absent, relative, outside the two
+    trusted directories, or pointing at anything but a root-owned 0644 regular file fails ExecStartPre
+    loudly, rather than letting every signed-class route answer 503 at the first request. Mirrors
+    dashboard/server/auth/mode.ts#assertAuthModeBoot's own absolute-path assertion, plus the file-identity
+    checks that module has no way to make from inside the daemon's own process."""
+    raw = environment.get("DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS", "").strip()
+    if not raw.startswith("/"):
+        raise RuntimeError("dashboard unit DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS must be an absolute path")
+    if not any(raw.startswith(prefix) for prefix in HUMAN_APPROVER_SIGNERS_DIRS):
+        raise RuntimeError(
+            "dashboard unit DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS must be under "
+            + " or ".join(HUMAN_APPROVER_SIGNERS_DIRS)
+        )
     try:
-        text = path.read_text(encoding="utf-8")
+        link_info, info = _stat_human_approver_signers(raw)
     except OSError as error:
-        raise RuntimeError(f"dashboard unit passkey drop-in is unreadable: {path}") from error
-    except UnicodeDecodeError as error:
-        raise RuntimeError(f"dashboard unit passkey drop-in is not UTF-8: {path}") from error
-    seen_service = False
-    for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith("#") or line.startswith(";"):
-            continue
-        if line.startswith("["):
-            if line != "[Service]":
-                raise RuntimeError(f"passkey drop-in may only carry a [Service] section; found {line}")
-            seen_service = True
-            continue
-        if not seen_service:
-            raise RuntimeError("passkey drop-in has a directive before its [Service] header")
-        directive, separator, _value = line.partition("=")
-        if not separator or directive.strip() != "Environment":
-            raise RuntimeError(
-                "passkey drop-in may only carry Environment= assignments; found directive "
-                + (directive.strip() or line)
-            )
-        for name in _unit_environment(line):
-            if name not in PASSKEY_UNIT_ENV:
-                raise RuntimeError(f"passkey drop-in may only assign {'/'.join(PASSKEY_UNIT_ENV)}; found {name}")
-
-
-def _validate_passkey_channel(environment: dict[str, str]) -> None:
-    """The SAME posture rules the dashboard makes at boot (W47,
-    dashboard/server/auth/mode.ts#assertTailnetPasskeyChannel). Absent from the unit is the default
-    posture and passes silently. Nothing here is printed: only presence and shape are inspected."""
-    origin, credentials = (environment.get(name, "").strip() for name in PASSKEY_UNIT_ENV)
-    if not origin and not credentials:
-        return
-    # RP origin ALONE is legal: it is the enrolment posture (the register ceremony needs an RP origin,
-    # and is the only way to obtain a credential). It grants nothing - the store is empty, so the
-    # dashboard reports ceremonyAvailable false and every T3 challenge answers 403. Credentials ALONE
-    # refuse: no RP origin means no RP-ID, so nothing could ever verify against that store.
-    if credentials and not origin:
-        raise RuntimeError(
-            "dashboard unit must set DASHBOARD_RP_ORIGIN whenever DASHBOARD_WEBAUTHN_CREDENTIALS is set "
-            "(a credential store with no RP origin cannot pin an RP-ID, so no assertion could ever verify)"
-        )
-    expected = "https://" + environment["DASHBOARD_TAILNET_HOST"]
-    if origin != expected:
-        raise RuntimeError(f"dashboard unit DASHBOARD_RP_ORIGIN must equal {expected} exactly")
-    if credentials and _provisioned_credential_count(credentials) < 1:
-        raise RuntimeError(
-            "dashboard unit DASHBOARD_WEBAUTHN_CREDENTIALS must parse to at least one "
-            "{id, publicKey} credential"
-        )
-
-
-def _provisioned_credential_count(raw: str) -> int:
-    """Mirror of resolveCredentials' parse (dashboard/server/auth/credentialStore.ts): a non-array,
-    unparseable, or shape-invalid entry counts zero, so this refuses exactly the values that would
-    leave ctx.credentials() empty. Returns a COUNT; it never decodes or echoes key material."""
-    try:
-        parsed = json.loads(raw)
-    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
-        return 0
-    if not isinstance(parsed, list):
-        return 0
-    return sum(
-        1 for entry in parsed
-        if isinstance(entry, dict)
-        and isinstance(entry.get("id"), str)
-        and isinstance(entry.get("publicKey"), str)
-    )
+        raise RuntimeError(f"dashboard unit human-approver allowed-signers file is unreadable: {raw}") from error
+    if stat.S_ISLNK(link_info.st_mode):
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must not be a symlink")
+    if not stat.S_ISREG(info.st_mode):
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be a regular file")
+    if info.st_uid != 0:
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be owned by root")
+    if stat.S_IMODE(info.st_mode) != 0o644:
+        raise RuntimeError("dashboard unit human-approver allowed-signers file must be mode 0644")
 
 
 def validate_environment(env: dict[str, str]) -> None:
@@ -507,12 +442,12 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
         raise RuntimeError("static unit fields are incomplete")
     if show["FragmentPath"] != "/etc/systemd/system/kb-dashboard.service":
         raise RuntimeError("dashboard unit fragment is untrusted")
-    # W47: exactly one drop-in is trusted - the passkey pair's. Anything else is stale or hostile drift.
+    # No drop-in is trusted. The one W47 drop-in that was ever trusted carried the now-removed browser
+    # sign-in channel and is gone; a drop-in can set ANY [Service] directive, so an unexpected one is
+    # stale or hostile drift and must be a loud ExecStartPre failure.
     drop_ins = show["DropInPaths"].split()
-    if not set(drop_ins).issubset({PASSKEY_DROP_IN}):
+    if drop_ins:
         raise RuntimeError("dashboard unit drop-ins are untrusted: " + ",".join(sorted(drop_ins)))
-    if PASSKEY_DROP_IN in drop_ins:
-        _validate_passkey_drop_in(Path(PASSKEY_DROP_IN))
     if show["Id"] != "kb-dashboard.service" or set(show["Names"].split()) != {"kb-dashboard.service"} or show["Slice"] != "system.slice":
         raise RuntimeError("dashboard unit or slice naming mismatch")
     expected = {"User": "kb-dashboard", "Group": "kb-dashboard", "WorkingDirectory": "/opt/kb-releases/current/dashboard", "KillMode": "control-group"}
@@ -547,7 +482,7 @@ def validate_static_unit(show: dict[str, str], text: str) -> None:
     if TAILNET_OPERATOR_PATTERN.fullmatch(environment["DASHBOARD_TAILNET_OPERATOR"]) is None:
         raise RuntimeError("dashboard unit tailnet operator is invalid")
     _validate_proxy_uid_pair(environment)
-    _validate_passkey_channel(environment)
+    _validate_human_approver_signers(environment)
     unset = set(show["UnsetEnvironment"].split())
     missing = sorted(FORBIDDEN_ENV.difference(unset))
     if missing:

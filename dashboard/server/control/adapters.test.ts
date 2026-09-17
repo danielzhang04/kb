@@ -1067,6 +1067,86 @@ describe('file accounting adapter', () => {
       limits: DEFAULT_ATTEMPT_BUDGET,
     })).rejects.toThrow('accounting policy differs');
   });
+
+  /**
+   * T6: a signed budget override raises only `maxCostUsdMicros`, for one window, resolved at RESERVE
+   * time. Shaped after the prod defect fixture above — two held researchers at the $1.60 per-attempt
+   * cost ceiling ($3.20) plus one already-settled attempt ($0.25) would sit at $3.45 against a small
+   * window; a window narrowed to $3.00 refuses the second researcher until an override widens it.
+   */
+  it('reserves against the per-window budget when windowBudgetFor is supplied', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const narrowWindow = { maxAttempts: 300, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 3_000_000 };
+    const adapter = createFileAccountingAdapter({
+      stateRoot,
+      windowId: 'window-override',
+      maxConcurrency: 2,
+      globalBudget: narrowWindow,
+      // The override widens the window past the shortfall (0.45m micro-USD short of the second hold
+      // without it): production binds this the same way (`activation.ts`'s `budgetOverrides` wiring).
+      windowBudgetFor: () => ({ ...narrowWindow, maxCostUsdMicros: narrowWindow.maxCostUsdMicros + 5_000_000 }),
+      newId: () => `id-${++ids}`,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const settled = await reserveAttempt(1);
+    expect(settled.ok).toBe(true);
+    if (!settled.ok) throw new Error(settled.reason);
+    await adapter.settle({
+      operationKey: 'settle:attempt-1', reservationRef: settled.value.reservationRef,
+      usage: { inputTokens: 180_177, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+    const researcherA = await reserveAttempt(2);
+    const researcherB = await reserveAttempt(3);
+    expect(researcherA.ok).toBe(true);
+    // Without the override this refuses: 250_000 settled + 1_600_000 + 1_600_000 = 3_450_000 > 3_000_000.
+    expect(researcherB.ok).toBe(true);
+  });
+
+  it('refuses without the override under the same narrow window (control for the test above)', async () => {
+    const stateRoot = temporaryRoot();
+    let ids = 0;
+    const narrowWindow = { maxAttempts: 300, maxInputTokens: 6_000_000, maxOutputTokens: 400_000, maxCostUsdMicros: 3_000_000 };
+    const adapter = createFileAccountingAdapter({
+      stateRoot, windowId: 'window-no-override', maxConcurrency: 2, globalBudget: narrowWindow, newId: () => `id-${++ids}`,
+    });
+    const reserveAttempt = (attempt: number) => adapter.reserve({
+      operationKey: `reserve:attempt-${attempt}`, subject: 'operator', runRef: 'run-1',
+      attemptRef: `attempt-${attempt}`, limits: DEFAULT_ATTEMPT_BUDGET,
+    });
+    const settled = await reserveAttempt(1);
+    if (!settled.ok) throw new Error(settled.reason);
+    await adapter.settle({
+      operationKey: 'settle:attempt-1', reservationRef: settled.value.reservationRef,
+      usage: { inputTokens: 180_177, outputTokens: 1_024, costUsdMicros: 250_000 },
+    });
+    expect((await reserveAttempt(2)).ok).toBe(true);
+    expect(await reserveAttempt(3)).toEqual({ ok: false, reason: 'global token or cost budget exhausted' });
+  });
+
+  it('leaves the policy hash unchanged when windowBudgetFor is supplied', async () => {
+    const withoutResolver = temporaryRoot();
+    const withResolver = temporaryRoot();
+    const globalBudget = { maxAttempts: 10, maxInputTokens: 1_000, maxOutputTokens: 1_000, maxCostUsdMicros: 10_000 };
+    const reserveOnce = async (stateRoot: string, extra: Record<string, unknown>) => {
+      const adapter = createFileAccountingAdapter({
+        stateRoot, windowId: 'window-hash', maxConcurrency: 1, globalBudget, newId: () => 'id-1', ...extra,
+      });
+      const result = await adapter.reserve({
+        operationKey: 'reserve:1', subject: 'operator', runRef: 'run-1', attemptRef: 'attempt-1',
+        limits: { maxAttempts: 1, maxInputTokens: 1, maxOutputTokens: 1, maxCostUsdMicros: 1 },
+      });
+      expect(result.ok).toBe(true);
+      return JSON.parse(readFileSync(join(stateRoot, 'control', 'execution-accounting', 'window-hash.json'), 'utf8')) as { policyHash: string };
+    };
+    const plain = await reserveOnce(withoutResolver, {});
+    const overridden = await reserveOnce(withResolver, { windowBudgetFor: (windowId: string) => ({ ...globalBudget, maxCostUsdMicros: 999_999 + windowId.length }) });
+    expect(overridden.policyHash).toBe(plain.policyHash);
+    expect(overridden.policyHash).toBe(documentFingerprint({ maxConcurrency: 1, globalBudget }));
+  });
 });
 
 function legacyReviewCanonicalInput() {

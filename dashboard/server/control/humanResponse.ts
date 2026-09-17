@@ -3,7 +3,9 @@ import type { AuditEvent } from '../audit/log.ts';
 import type { RespondHumanRequestInput } from './store.ts';
 import type { HumanRequest, HumanRequestDecision } from './types.ts';
 import { deployT3Preimage } from '../deploy/contracts.ts';
-import type { DeployT3Preimage, T3RefusalCode } from '../deploy/contracts.ts';
+import type { DeployT3Preimage } from '../deploy/contracts.ts';
+import { attributionLabel, currentAttribution } from '../auth/operator.ts';
+import type { Actor } from '../authority/actor.ts';
 
 type Awaitable<T> = T | Promise<T>;
 type OperatorDecision = Exclude<HumanRequestDecision, 'auto-closed'>;
@@ -13,6 +15,9 @@ export interface HumanResponseActor {
   subject: string;
 }
 
+/** `reason` bound length [design:4.3/global constraints]. */
+const MAX_REASON_LENGTH = 2000;
+
 export interface HumanResponseInput {
   actor: HumanResponseActor;
   requestRef: string;
@@ -21,8 +26,15 @@ export interface HumanResponseInput {
   idempotencyKey: string;
   response?: string | null;
   origin: string;
-  ceremonyAssertion?: unknown;
-  challengeExpiresAt?: string;
+  /** Free text explaining the decision. Required (non-empty after trim, <=2000 chars) from EVERY actor,
+   *  including `daniel` and a request that sends no `X-KB-Actor` header at all. */
+  reason: string;
+  /** The `X-KB-Actor` claim for this request — self-asserted, never an authority input. */
+  actorLabel: Actor;
+  /** T5 [design:4.4/4.5]: the `{payload, signature}` signed-approval body, required only when this
+   *  request's run is `publish`/`spend`-tagged. Unvalidated here — `options.verifyApproval` (T3's
+   *  `authority/approval.ts#verifyApproval`, bound to this route + entityRef) is the sole judge. */
+  approval?: unknown;
 }
 
 export interface HumanResponseRequestContext {
@@ -47,23 +59,9 @@ export interface HumanResponseAuditPort {
   append(event: AuditEvent): Awaitable<void>;
 }
 
-export interface CeremonyVerificationInput {
-  assertion: unknown;
-  requestRef: string;
-  requestRevision: number;
-  responseDigest: string;
-  action: OperatorDecision;
-  origin: string;
-  challengeExpiresAt: string;
-}
-
-export interface HumanResponseCeremonyPort {
-  verify(input: CeremonyVerificationInput): Awaitable<boolean>;
-}
-
 export type HumanResponseResult =
   | { ok: true; status: 200; value: HumanRequest; replayed: boolean }
-  | { ok: false; status: 403 | 404 | 409 | 500; error: string; gateKind?: string; resolveUrl?: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500 | 503; error: string; gateKind?: string; resolveUrl?: string };
 
 export interface HumanResponseService {
   respond(input: HumanResponseInput): Promise<HumanResponseResult>;
@@ -76,18 +74,6 @@ export function humanResponseDigest(input: Pick<HumanResponseInput, 'decision' |
     decision: input.decision,
     response: input.response ?? null,
   }));
-}
-
-/** Purpose-bound preimage signed by WebAuthn. The wire challenge is base64url(UTF8(this string)). */
-export function humanResponseChallenge(input: Omit<CeremonyVerificationInput, 'assertion'>): string {
-  return `kb.human-response.v1.${Buffer.from(JSON.stringify({
-    requestRef: input.requestRef,
-    requestRevision: input.requestRevision,
-    responseDigest: input.responseDigest,
-    action: input.action,
-    origin: input.origin,
-    challengeExpiresAt: input.challengeExpiresAt,
-  }), 'utf8').toString('base64url')}`;
 }
 
 function accepted(request: HumanRequest): boolean {
@@ -105,7 +91,17 @@ function sameReplay(request: HumanRequest, input: HumanResponseInput): boolean {
 export function createHumanResponseService(options: {
   store: HumanResponseStorePort;
   audit: HumanResponseAuditPort;
-  ceremony?: HumanResponseCeremonyPort;
+  /** T5 [design:4.4/4.5]: the governing tag set for the run this request belongs to. REQUIRED — unlike
+   *  `verifyApproval`, this is never defaulted to "no tags": a caller that forgets to wire it would
+   *  silently exempt every publish/spend run from the signed channel, which is exactly the "fail open"
+   *  this design exists to rule out. */
+  workflowTags: (actorSubject: string, runRef: string) => Awaitable<ReadonlySet<string>>;
+  /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller.
+   *  Absent ⇒ any run whose tags actually require signing is refused `503 approval-unavailable`. */
+  verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
+  /** The route + entity this escalation is bound to, for the refusal audit row. Same pair the caller
+   *  already bound `verifyApproval` to; absent only in unit tests that assert the refusal STATUS. */
+  escalationBinding?: { route: string; entityRef: string };
   now?: () => number;
 }): HumanResponseService {
   const now = options.now ?? Date.now;
@@ -119,6 +115,23 @@ export function createHumanResponseService(options: {
   return {
     async respond(input) {
       if (input.actor.kind === 'host') return { ok: false, status: 403, error: 'host-human-response-refused' };
+      // T4 [design:4.3/4.5]: `reason` is validated here (not only at the route body wall) so every caller
+      // of this service — including a route we forget to wire, and every direct unit test — gets the same
+      // rule.
+      //
+      // REQUIRED FROM EVERY ACTOR, unconditionally (security review 2026-09-16, HIGH-1). The predecessor
+      // asked only `boss`/`worker:<id>` for one, which made the rule opt-in by the party it constrains:
+      // omit the header, misspell it, or send it twice and `parseActor` returns `unknown`, the reason
+      // wall disappears, and any gate resolves with no justification recorded at all. A self-asserted
+      // header must never change what a request is allowed to do (spec 4.3/5) — not what it is allowed
+      // to omit either. If a browser exemption is ever wanted it must key on something unforgeable
+      // (session subject, auth mode), never on a request header.
+      const reasonInput = input.reason;
+      if (typeof reasonInput !== 'string'
+        || reasonInput.length > MAX_REASON_LENGTH || reasonInput.trim().length === 0) {
+        return { ok: false, status: 400, error: 'reason-required' };
+      }
+      const reasonTrimmed = reasonInput.trim().slice(0, MAX_REASON_LENGTH);
       const context = await options.store.getHumanRequest(input.actor.subject, input.requestRef);
       if (!context) return { ok: false, status: 404, error: 'human-request-not-found' };
       const { request, runOwnerSubject } = context;
@@ -141,30 +154,60 @@ export function createHumanResponseService(options: {
         return { ok: false, status: 409, error: 'request-revision-changed' };
       }
 
+      // T3_KINDS/`t3` is RETAINED [design:4.5] — the audit row below still records that this was a
+      // T3-class decision. What changed is which channel proves it: not a per-request assertion-based ceremony
+      // keyed off `request.kind`, but the boss-intervention rule keyed off the RUN's workflow tags. A
+      // T3-kind decision on an untagged run now proceeds on the open class, exactly like an ordinary one.
       const t3 = T3_KINDS.has(request.kind);
-      if (t3) {
-        if (!options.ceremony) return { ok: false, status: 403, error: 'ceremony-unavailable' };
-        if (input.ceremonyAssertion == null) return { ok: false, status: 403, error: 'ceremony-invalid' };
-        const challengeExpiresAt = input.challengeExpiresAt ?? '';
-        const expiresAt = Date.parse(challengeExpiresAt);
-        if (!Number.isFinite(expiresAt)) return { ok: false, status: 403, error: 'ceremony-invalid' };
-        if (expiresAt <= now()) return { ok: false, status: 403, error: 'ceremony-expired' };
-        let verified: boolean;
-        try {
-          verified = await options.ceremony.verify({
-            assertion: input.ceremonyAssertion,
-            requestRef: request.requestRef,
-            requestRevision: request.revision,
-            responseDigest: humanResponseDigest(input),
-            action: input.decision,
-            origin: input.origin,
-            challengeExpiresAt,
-          });
-        } catch {
-          return { ok: false, status: 403, error: 'ceremony-invalid' };
-        }
-        if (!verified) return { ok: false, status: 403, error: 'ceremony-invalid' };
+
+      // T4 [design:4.3] — WHO resolved this, over what channel, and why. `attribution` reflects the SAME
+      // bound identity `audit/log.ts#attributed` stamps onto the row below; `tailnetIdentity` is `null`
+      // whenever there is none to attach (win32-desktop, or no request has bound one — see
+      // `auth/operator.ts#BoundAttribution`).
+      const attribution = currentAttribution();
+      const tailnetIdentity = attribution && 'login' in attribution ? attributionLabel(attribution) : null;
+
+      const tags = await options.workflowTags(input.actor.subject, request.runRef);
+      const signedRequired = tags.has('publish') || tags.has('spend');
+      if (signedRequired) {
+        const refuse = async (
+          status: 403 | 409 | 503, error: string,
+        ): Promise<HumanResponseResult> => {
+          // EVERY refusal appends one audit row (spec §4.2) — the property `authority/gate.ts#refuse`
+          // already held for a `signed`-CLASS route, and that this per-request ESCALATION did not: a
+          // tagged run's gate resolution refused for want of a signature left NO trace at all, so the
+          // one channel the design exists to protect was the one channel with no refusal trail.
+          // Best-effort by the same rule the gate uses: an audit failure must never convert a refusal
+          // into an admission.
+          try {
+            await options.audit.append({
+              action: 'authority-approval-refused',
+              owner: input.actor.subject,
+              target: request.requestRef,
+              riskTier: 'T3',
+              result: error,
+              actor: input.actorLabel,
+              detail: {
+                route: options.escalationBinding?.route ?? null,
+                entityRef: options.escalationBinding?.entityRef ?? request.requestRef,
+                runRef: request.runRef,
+                tailnetIdentity,
+                workflowTags: [...tags],
+                reason: 'signed-approval-required',
+              },
+            });
+          } catch { /* the refusal must land even when the row could not be written */ }
+          return { ok: false, status, error };
+        };
+        if (!options.verifyApproval) return await refuse(503, 'approval-unavailable');
+        if (input.approval == null) return await refuse(403, 'approval-required');
+        const checked = await options.verifyApproval(input.approval);
+        if (!checked.ok) return await refuse(checked.status, checked.error);
       }
+
+      const resolvedBy = {
+        actor: input.actorLabel, tailnetIdentity, at: new Date(now()).toISOString(), reason: reasonTrimmed,
+      };
 
       try {
         await options.audit.append({
@@ -179,6 +222,10 @@ export function createHumanResponseService(options: {
             runOwnerSubject,
             requestRevision: request.revision,
             decision: input.decision,
+            reason: reasonTrimmed,
+            actor: input.actorLabel,
+            signedRequired,
+            workflowTags: [...tags],
             ...(t3 ? { responseDigest: humanResponseDigest(input), origin: input.origin } : {}),
           },
         });
@@ -191,6 +238,7 @@ export function createHumanResponseService(options: {
         decision: input.decision,
         idempotencyKey: input.idempotencyKey,
         response: input.response ?? null,
+        resolvedBy,
       });
       await reconcile(input.actor.subject, response.request);
       return { ok: true, status: 200, value: response.request, replayed: response.replayed };
@@ -212,93 +260,11 @@ export function deployDigest(preimage: DeployT3Preimage): string {
   return sha256Hex(deployT3Preimage(preimage));
 }
 
-/** Purpose-bound deploy challenge; the wire challenge is base64url(UTF8(the recomputed preimage)). */
-export function deployChallenge(preimage: DeployT3Preimage): string {
-  return `kb.deploy-t3.v1.${Buffer.from(deployT3Preimage(preimage), 'utf8').toString('base64url')}`;
-}
-
-export interface DeployCeremonyPort {
-  verify(input: { assertion: unknown; challenge: string; origin: string }): Awaitable<boolean>;
-}
-
-export interface DeployCeremonyContext {
-  /** Absent ceremony port ⇒ `ceremony-unavailable`, exactly as `humanResponse.ts:144`. */
-  ceremony?: DeployCeremonyPort;
-  /** Provisioned WebAuthn credentials; zero ⇒ `ceremony-unavailable` and never a downgrade [P5-C45]. */
-  credentials: () => readonly unknown[];
-  /** Single-use grant CAS: `replayed` on a second consumption of the same grant ⇒ `409` [§3.3]. */
-  consume: (grantKey: string) => Awaitable<'fresh' | 'replayed'>;
-  now?: () => number;
-}
-
-export interface DeployCeremonyRequest {
-  /** The binding tuple, already recomputed server-side from the store record. */
-  preimage: DeployT3Preimage;
-  assertion: unknown;
-  origin: string;
-  challengeExpiresAt: string;
-  /** Identifies the single-use grant for the replay CAS. */
-  grantKey: string;
-}
-
-export type DeployCeremonyResult =
-  | { ok: true; status: 200; digest: string }
-  | { ok: false; status: 403; error: T3RefusalCode }
-  | { ok: false; status: 409; error: 'ceremony-replayed' };
-
-export interface DeployCeremonyService {
-  verify(request: DeployCeremonyRequest): Promise<DeployCeremonyResult>;
-}
-
-/**
- * The deploy-purpose ceremony verifier. Refusal ladder is the SHIPPED one, unchanged and never extended
- * [P5-C20]: no ceremony port or zero credentials ⇒ `403 ceremony-unavailable`; missing/unparseable/
- * unverifiable/digest-or-revision-mismatched assertion ⇒ `403 ceremony-invalid`; expired challenge ⇒
- * `403 ceremony-expired`; a replayed single-use grant ⇒ `409`. Error results carry a fixed code and the
- * attestation digest only on success — never a key, signer, challenge, or credential byte [design:527].
- */
-export function createDeployCeremonyService(context: DeployCeremonyContext): DeployCeremonyService {
-  const now = context.now ?? Date.now;
-  return {
-    async verify(request) {
-      if (!context.ceremony || context.credentials().length === 0) {
-        return { ok: false, status: 403, error: 'ceremony-unavailable' };
-      }
-      if (request.assertion == null) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      const expiresAt = Date.parse(request.challengeExpiresAt);
-      if (!Number.isFinite(expiresAt)) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      if (expiresAt <= now()) return { ok: false, status: 403, error: 'ceremony-expired' };
-      // The challenge is recomputed server-side from the store-derived preimage; client input is never used.
-      const challenge = deployChallenge(request.preimage);
-      let verified: boolean;
-      try {
-        verified = await context.ceremony.verify({
-          assertion: request.assertion,
-          challenge,
-          origin: request.origin,
-        });
-      } catch {
-        return { ok: false, status: 403, error: 'ceremony-invalid' };
-      }
-      if (!verified) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      const state = await context.consume(request.grantKey);
-      if (state === 'replayed') return { ok: false, status: 409, error: 'ceremony-replayed' };
-      return { ok: true, status: 200, digest: deployDigest(request.preimage) };
-    },
-  };
-}
-
 // =====================================================================================================
-// F3 — the ITERATION-GATE T3 PURPOSE, added beside the deploy purpose [baseline-A §3, item 4b].
-// `resolveIterationGateRoute` shipped as a T3-AUDITED route with T2-strength authorization: exact CAS,
-// owner scope and a `riskTier: 'T3'` row, but no WebAuthn call anywhere — and the generic route
-// hard-reserves these gates to it (`:125-132`), so its own ceremony could never cover them. This binds a
-// third purpose, `kb.iteration-gate-t3.v1.`, over PRECISELY the tuple that route already CASes, so the
-// signature covers the same state the decision was displayed against. It reuses the shipped refusal
-// ladder unchanged (`ceremony-unavailable | ceremony-invalid | ceremony-expired`, and `ceremony-replayed`
-// only where a single-use grant is consumed outside this service) and MINTS NO NEW CODE. Like the deploy
-// purpose, the preimage is always recomputed server-side from the store record; a client-supplied
-// challenge or digest is never accepted, and there is no possession/tap downgrade.
+// F3 — the ITERATION-GATE T3 PURPOSE, added beside the deploy purpose [baseline-A §3, item 4b]. The
+// preimage/digest below remain the canonical, order-stable encoding of exactly the tuple
+// `resolveIterationGateRoute` CASes — still used for audit detail — even though the ceremony
+// that used to verify a signature over it (T2) is gone.
 // =====================================================================================================
 
 /** The exact tuple an iteration-gate decision is signed over — the one `resolveIterationGateRoute` CASes. */
@@ -342,76 +308,80 @@ export function iterationGateT3Preimage(preimage: IterationGateT3Preimage): stri
 export function iterationGateDigest(preimage: IterationGateT3Preimage): string {
   return sha256Hex(iterationGateT3Preimage(preimage));
 }
+// =====================================================================================================
+// T5 [design:4.5] — `createIterationGateCeremonyService`'s SUCCESSOR. The iteration-gate resolve route
+// (`control/routes.ts#resolveIterationGateRoute`) keeps its existing CAS and refusal ladder byte for
+// byte; only the verification step changes — from a browser-signature ceremony assertion over the gate's preimage
+// to the SAME boss-intervention rule `createHumanResponseService#respond` enforces: an untagged run
+// proceeds; a run whose `effectiveWorkflowTags` include `publish` or `spend` requires a valid signed
+// approval for this route + `requestRef`.
+// =====================================================================================================
 
-/** Purpose-bound challenge; the wire challenge is base64url(UTF8(the recomputed preimage)). */
-export function iterationGateChallenge(preimage: IterationGateT3Preimage): string {
-  return `kb.iteration-gate-t3.v1.${Buffer.from(iterationGateT3Preimage(preimage), 'utf8').toString('base64url')}`;
+export interface IterationGateAuthorityContext {
+  /** The governing tag set for the run this gate belongs to. REQUIRED — see the same note on
+   *  `createHumanResponseService`'s `workflowTags`. */
+  workflowTags: (actorSubject: string, runRef: string) => Awaitable<ReadonlySet<string>>;
+  /** T3's `authority/approval.ts#verifyApproval`, already bound to this route + entityRef by the caller. */
+  verifyApproval?: (approval: unknown) => Awaitable<{ ok: true } | { ok: false; status: 403 | 409 | 503; error: string }>;
+  /** Appends the escalation's refusal row. Same port and same rule as `createHumanResponseService`:
+   *  every refusal on the signed channel leaves exactly one row. */
+  audit?: HumanResponseAuditPort;
+  /** The route + entity this escalation is bound to, for that row. */
+  escalationBinding?: { route: string; entityRef: string };
 }
 
-export interface IterationGateCeremonyPort {
-  /**
-   * Verifies one assertion against the server-recomputed challenge. The single-use property of the
-   * minted ceremony id lives HERE (the pending-challenge store is consumed exactly once), so a replayed
-   * ceremony id surfaces as `false` — `ceremony-invalid`, exactly as the shipped human-response path.
-   */
-  verify(input: { assertion: unknown; challenge: string; origin: string }): Awaitable<boolean>;
+export interface IterationGateAuthorityRequest {
+  actorSubject: string;
+  runRef: string;
+  /** The request body's `approval` key, unvalidated — mirrors `HumanResponseInput.approval`. */
+  approval: unknown;
+  /** The `X-KB-Actor` claim, recorded on the refusal row. Self-asserted, never an authority input. */
+  actorLabel?: Actor;
 }
 
-export interface IterationGateCeremonyContext {
-  /** Absent ceremony port ⇒ `ceremony-unavailable`, exactly as `humanResponse.ts:146`. */
-  ceremony?: IterationGateCeremonyPort;
-  /** Provisioned WebAuthn credentials; zero ⇒ `ceremony-unavailable` and never a downgrade. */
-  credentials: () => readonly unknown[];
-  now?: () => number;
+export type IterationGateAuthorityResult =
+  | { ok: true; status: 200 }
+  | { ok: false; status: 403 | 409 | 503; error: string };
+
+export interface IterationGateAuthorityService {
+  verify(request: IterationGateAuthorityRequest): Promise<IterationGateAuthorityResult>;
 }
 
-export interface IterationGateCeremonyRequest {
-  /** The binding tuple, already recomputed server-side from the store record. */
-  preimage: IterationGateT3Preimage;
-  assertion: unknown;
-}
-
-export type IterationGateCeremonyResult =
-  | { ok: true; status: 200; digest: string }
-  | { ok: false; status: 403; error: T3RefusalCode };
-
-export interface IterationGateCeremonyService {
-  verify(request: IterationGateCeremonyRequest): Promise<IterationGateCeremonyResult>;
-}
-
-/**
- * The iteration-gate-purpose ceremony verifier. Refusal ladder is the SHIPPED one, unchanged and never
- * extended: no ceremony port or zero credentials ⇒ `403 ceremony-unavailable`; missing/unparseable/
- * unverifiable/tuple-mismatched/replayed assertion ⇒ `403 ceremony-invalid`; expired challenge ⇒
- * `403 ceremony-expired`. Error results carry a fixed code and the decision digest only on success.
- */
-export function createIterationGateCeremonyService(
-  context: IterationGateCeremonyContext,
-): IterationGateCeremonyService {
-  const now = context.now ?? Date.now;
+export function createIterationGateAuthorityService(
+  context: IterationGateAuthorityContext,
+): IterationGateAuthorityService {
   return {
     async verify(request) {
-      if (!context.ceremony || context.credentials().length === 0) {
-        return { ok: false, status: 403, error: 'ceremony-unavailable' };
-      }
-      if (request.assertion == null) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      const expiresAt = Date.parse(request.preimage.challengeExpiresAt);
-      if (!Number.isFinite(expiresAt)) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      if (expiresAt <= now()) return { ok: false, status: 403, error: 'ceremony-expired' };
-      // Recomputed server-side from the store-derived preimage; client input is never used as challenge.
-      const challenge = iterationGateChallenge(request.preimage);
-      let verified: boolean;
-      try {
-        verified = await context.ceremony.verify({
-          assertion: request.assertion,
-          challenge,
-          origin: request.preimage.origin,
-        });
-      } catch {
-        return { ok: false, status: 403, error: 'ceremony-invalid' };
-      }
-      if (!verified) return { ok: false, status: 403, error: 'ceremony-invalid' };
-      return { ok: true, status: 200, digest: iterationGateDigest(request.preimage) };
+      const tags = await context.workflowTags(request.actorSubject, request.runRef);
+      if (!(tags.has('publish') || tags.has('spend'))) return { ok: true, status: 200 };
+      // Same refusal-row rule as `createHumanResponseService`: a tagged run's gate resolution refused
+      // for want of a signature used to leave no trace at all, while every `signed`-CLASS route's
+      // refusal wrote one. Best-effort — an audit failure never converts a refusal into an admission.
+      const refuse = async (status: 403 | 409 | 503, error: string): Promise<IterationGateAuthorityResult> => {
+        try {
+          await context.audit?.append({
+            action: 'authority-approval-refused',
+            owner: request.actorSubject,
+            target: context.escalationBinding?.entityRef ?? request.runRef,
+            riskTier: 'T3',
+            result: error,
+            actor: request.actorLabel ?? 'unknown',
+            detail: {
+              route: context.escalationBinding?.route ?? null,
+              entityRef: context.escalationBinding?.entityRef ?? null,
+              runRef: request.runRef,
+              workflowTags: [...tags],
+              reason: 'signed-approval-required',
+            },
+          });
+        } catch { /* the refusal must land even when the row could not be written */ }
+        return { ok: false, status, error };
+      };
+      if (!context.verifyApproval) return await refuse(503, 'approval-unavailable');
+      if (request.approval == null) return await refuse(403, 'approval-required');
+      const checked = await context.verifyApproval(request.approval);
+      if (!checked.ok) return await refuse(checked.status, checked.error);
+      return { ok: true, status: 200 };
     },
   };
 }

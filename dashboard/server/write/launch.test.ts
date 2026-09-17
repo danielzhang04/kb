@@ -137,8 +137,8 @@ describe('launchCard / rerunAsDependsOn — preamble gate (runs first, spawns no
   });
 });
 
-describe('launchCard / rerunAsDependsOn — WebAuthn session gate (checked only after the preamble passes)', async () => {
-  it('rejects launch/rerun without a WebAuthn session', async () => {
+describe('launchCard / rerunAsDependsOn — session gate (checked only after the preamble passes)', async () => {
+  it('rejects launch/rerun without a session', async () => {
     const { runner: runPy, calls } = recordingPyRunner({ exitCode: 0, stdout: '{}', stderr: '' });
     const deps = baseDeps({ runPy });
     const noSession: SessionInput = { token: null, config: SESSION_CONFIG };

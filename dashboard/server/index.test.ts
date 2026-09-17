@@ -82,7 +82,18 @@ const matrixHeaders = { origin: TEST_ORIGIN, host: 'kb.test' };
 const sessionHeaders = () => ({ ...matrixHeaders, authorization: `Bearer ${mintSession('operator', TEST_SESSION).token}` });
 const subjectHeaders = (subject: string) => ({ ...matrixHeaders, authorization: `Bearer ${mintSession(subject, TEST_SESSION).token}` });
 function buildApp(options: Parameters<typeof buildProductionApp>[0] = {}) {
-  return buildProductionApp({ controlStore: createInMemoryControlPlaneStore(), ...options });
+  return buildProductionApp({
+    controlStore: createInMemoryControlPlaneStore(),
+    // T3: `authority/gate.ts#requireAuthority` appends one audit row on every refusal, through the
+    // SAME `auditFn(ctx)` seam every other governed route already uses. Without a fake here, a route
+    // this matrix intentionally sends unauthorized/unsigned (which is most of it) falls through to the
+    // real, git-committing `appendAudit` — which resolves `repoRoot` to THIS repo (no override below
+    // sets one) and appends a real row to the tracked `ledgers/audit/dashboard-audit.ndjson`, exactly
+    // the incident `audit/log.ts`'s own module doc already warns about. A test file this size runs
+    // that path often enough to be a standing hazard, not a one-off.
+    appendAudit: (_repoRoot, event) => ({ ts: 'test-fixture', ...event }),
+    ...options,
+  });
 }
 function makeSurfaceContext(
   overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
@@ -97,7 +108,26 @@ const AVAILABLE_PTY = {
 };
 // Inject an empty-PR `gh` port so the Inbox route reaches no real `gh` subprocess in the matrix test.
 const emptyInboxGh = async () => ({ ok: true, stdout: '[]' });
-const matrixApp = () => buildApp({ validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh });
+// T3: a stub channel + verifier, so a `signed`-class route in this matrix answers `403 approval-required`
+// (the informative, intended refusal) rather than `503 approval-unavailable` (an unconfigured-channel
+// refusal that would mask whatever the test actually means to prove) — and so a test that DOES want a
+// signed route to succeed can build one real `approval` object against it (`signedApproval` below).
+const TEST_ALLOWED_SIGNERS = '/test/kb-ops-approver.allowed-signers';
+const stubSshsigVerifier = { verify: async () => true };
+function signedApproval(route: string, entityRef: string, now: number) {
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return {
+    payload: JSON.stringify({
+      schema: 'kb.human-approval/v1', route, entityRef, actor: 'daniel',
+      issuedAt: iso(now), expiresAt: iso(now + 600_000), nonce: 'a'.repeat(32),
+    }),
+    signature: 'sig',
+  };
+}
+const matrixApp = () => buildApp({
+  validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh,
+  humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS, sshsigVerifier: stubSshsigVerifier,
+});
 const ptyMatrixApp = () => buildApp({
   validateData: false,
   allowedOrigins: [TEST_ORIGIN],
@@ -481,12 +511,16 @@ describe('server', () => {
       } }),
       app.inject({ method: 'POST', url: `/api/schedules/${id}/arm`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-arm`, armed: true } }),
       app.inject({ method: 'POST', url: `/api/schedules/${id}/disarm`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-disarm`, armed: false } }),
+      // T3: DELETE is now `signed`-class (policy.ts), so this 403 comes from `requireAuthority` refusing
+      // `approval-required` BEFORE the route's own non-operator-subject check ever runs — same status,
+      // different (and now, for the CLI, stricter) reason. `X-KB-Actor`/session subject is never read by
+      // the gate (spec §4.3: authority is never a function of who claims to be asking).
       app.inject({ method: 'DELETE', url: `/api/schedules/${id}`, headers, payload: { expectedVersion: 1, idempotencyKey: `${subject}-delete` } }),
     ];
     expect((await Promise.all(attempts)).map((response) => response.statusCode)).toEqual([403, 403, 403, 403]);
   });
 
-  it('allows the operator bearer to create, arm, disarm, and delete schedules', async () => {
+  it('allows the operator bearer to create, arm, and disarm schedules on the open channel, and blocks an unsigned delete', async () => {
     app = matrixApp();
     const headers = sessionHeaders();
     const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
@@ -501,10 +535,29 @@ describe('server', () => {
     const disarmed = await app.inject({ method: 'POST', url: `/api/schedules/${row.id}/disarm`, headers, payload: {
       expectedVersion: armed.json().schedule.version, idempotencyKey: 'operator-mutation-disarm', armed: false,
     } });
-    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
-      expectedVersion: disarmed.json().schedule.version, idempotencyKey: 'operator-mutation-delete',
+    expect([armed.statusCode, disarmed.statusCode]).toEqual([200, 200]);
+    // T3: DELETE /api/schedules/:id is on the signed "never for a CLI" list — the operator bearer alone,
+    // with no `approval`, is refused exactly like every other actor (spec §5's whole point).
+    const deletedUnsigned = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: disarmed.json().schedule.version, idempotencyKey: 'operator-mutation-delete-unsigned',
     } });
-    expect([armed.statusCode, disarmed.statusCode, deleted.statusCode]).toEqual([200, 200, 200]);
+    expect(deletedUnsigned.statusCode).toBe(403);
+    expect(deletedUnsigned.json()).toEqual({ error: 'approval-required' });
+  });
+
+  it('lets a schedule delete through with a valid signed approval, over the same route the unsigned attempt above refused', async () => {
+    app = matrixApp();
+    const headers = sessionHeaders();
+    const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
+      owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'operator-mutation-signed-create',
+    } });
+    const row = created.json().schedule as { id: string; version: number };
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: row.version, idempotencyKey: 'operator-mutation-signed-delete',
+      approval: signedApproval('DELETE /api/schedules/:id', row.id, Date.now()),
+    } });
+    expect(deleted.statusCode).toBe(200);
   });
 
   it.each([
@@ -548,9 +601,7 @@ describe('server', () => {
   // own "session-less POST is 401, never 404" matrix cannot see them. They are gated by THIS file's
   // scope-level `requireSession`, and must prove the same property: gated, not missing.
   it.each([
-    '/api/schedules', '/api/schedules/example/arm', '/api/control/human-requests/example/respond/challenge',
-    // F3: the iteration-gate T3 mint sits on the same guarded scope as the human-response one.
-    '/api/control/iteration-gates/example/challenge',
+    '/api/schedules', '/api/schedules/example/arm',
   ])('rejects unauthenticated write %s (401, never 404)', async (url) => {
     app = matrixApp();
     const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
@@ -558,10 +609,23 @@ describe('server', () => {
     expect(response.statusCode).toBe(401);
   });
 
-  it.each(['/healthz', '/readyz', '/', '/api/auth/assert/options'])('keeps bootstrap route %s reachable', async (url) => {
+  // T2 removed the credential-ceremony routes end to end. These paths must not exist any more —
+  // 404, never a 401 that would imply a ceremony route is still gated and reachable.
+  it.each([
+    '/api/auth/register/options', '/api/auth/register/verify',
+    '/api/auth/assert/options', '/api/auth/assert/verify',
+    '/api/control/human-requests/example/respond/challenge',
+    '/api/control/iteration-gates/example/challenge',
+    '/api/inbox/deployment/example/challenge',
+  ])('T2: the removed ceremony route %s is gone entirely (404, never 401)', async (url) => {
     app = matrixApp();
-    const method = url.includes('/auth/') ? 'POST' : 'GET';
-    expect((await app.inject({ method, url, headers: matrixHeaders })).statusCode).not.toBe(401);
+    const response = await app.inject({ method: 'POST', url, headers: matrixHeaders, payload: {} });
+    expect(response.statusCode).toBe(404);
+  });
+
+  it.each(['/healthz', '/readyz', '/', '/api/auth/context'])('keeps bootstrap route %s reachable', async (url) => {
+    app = matrixApp();
+    expect((await app.inject({ method: 'GET', url, headers: matrixHeaders })).statusCode).not.toBe(401);
   });
 
   it.each([
@@ -1002,5 +1066,75 @@ describe('P5 W6.1 — one shared activation reader [P5-C30]', () => {
     } finally {
       await instance.close();
     }
+  });
+});
+
+/**
+ * BLOCKER-2 — the whole point of the fix, asserted against the real `buildApp`: a `win32-desktop`
+ * daemon is USABLE. Before this, `requireSession` 401'd every governed request of Daniel's always-on
+ * local daemon because T2's removal of the browser sign-in ceremony took the only path that could mint
+ * a session; the probe in the security review found `/api/home` and `/api/control/execution/unlock` answering
+ * `401 missing session token` with nothing left to fix it.
+ *
+ * What must hold together, and is checked here in one sequence:
+ *   - with no session, a governed route is still refused (the gate did not move);
+ *   - the mint route answers the loopback same-user peer proof with a real bearer;
+ *   - that bearer drives an OPEN mutating route all the way to a 201 from its handler;
+ *   - and a SIGNED route is still `403 approval-required` on the very same bearer. Minting a session
+ *     restores the surface; it grants no authority the signed channel reserves.
+ */
+describe('BLOCKER-2: a win32-desktop daemon mints a session on the peer proof and is usable end to end', () => {
+  const desktopApp = () => buildApp({
+    validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh,
+    humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS, sshsigVerifier: stubSshsigVerifier,
+    // Stands in for the real `GetExtendedTcpTable` + token-SID proof, which `app.inject` gives no socket
+    // to run against; the proof itself is exercised over a live loopback socket in `win32DesktopPeer.test.ts`.
+    desktopPeer: () => ({ ok: true, user: 'danie' }),
+  });
+
+  it('is refused before the mint, works after it, and still refuses the signed channel', async () => {
+    app = desktopApp();
+
+    const beforeMint = await app.inject({ method: 'GET', url: '/api/schedules', headers: matrixHeaders });
+    expect(beforeMint.statusCode).toBe(401);
+
+    const minted = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { ...matrixHeaders, 'content-type': 'application/json' }, payload: {},
+    });
+    expect(minted.statusCode).toBe(200);
+    const bearer = (minted.json() as { token: string }).token;
+    const headers = { ...matrixHeaders, authorization: `Bearer ${bearer}` };
+
+    expect((await app.inject({ method: 'GET', url: '/api/schedules', headers })).statusCode).toBe(200);
+
+    const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
+      owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'desktop-mint-create',
+    } });
+    expect(created.statusCode).toBe(201);
+
+    const row = created.json().schedule as { id: string; version: number };
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: row.version, idempotencyKey: 'desktop-mint-delete-unsigned',
+    } });
+    expect(deleted.statusCode).toBe(403);
+    expect(deleted.json()).toEqual({ error: 'approval-required' });
+  });
+
+  it('refuses the mint — and stays unusable — when the peer proof does not vouch for the caller', async () => {
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      desktopPeer: () => ({ ok: false, reason: 'peer-not-same-user' }),
+    });
+
+    const refused = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { ...matrixHeaders, 'content-type': 'application/json' }, payload: {},
+    });
+
+    expect(refused.statusCode).toBe(401);
+    expect(refused.json()).toEqual({ error: 'unauthenticated', reason: 'peer-not-same-user' });
+    expect((await app.inject({ method: 'GET', url: '/api/schedules', headers: matrixHeaders })).statusCode).toBe(401);
   });
 });

@@ -132,7 +132,7 @@ function SessionChip(): React.JSX.Element {
 }
 
 function SignInView(): React.JSX.Element {
-  return <main className="mc-main"><section className="code-view" aria-label="Sign in"><h2>Sign in</h2><p>Unlock this dashboard with your device passkey.</p><SessionChip /></section></main>;
+  return <main className="mc-main"><section className="code-view" aria-label="Sign in"><h2>Sign in</h2><p>Unlock this dashboard to continue.</p><SessionChip /></section></main>;
 }
 
 function BootingView(): React.JSX.Element {

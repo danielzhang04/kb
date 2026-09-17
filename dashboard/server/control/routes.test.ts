@@ -19,6 +19,7 @@ import { workflowCardId } from '../write/workflowRun.ts';
 import type { JsonObject, Run } from './types.ts';
 import type { ExecuteRunInput } from './execution.ts';
 import type { SurfaceContext } from '../http/context.ts';
+import { AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT } from './authorizedIncidentRecovery.ts';
 import {
   authorizedFailedRunReconciliationGrant,
   authorizedFailedRunReconciliationRefusal,
@@ -34,54 +35,36 @@ import { normalizedTextSha256 } from './textArtifactHash.ts';
 import { advertiseSelfOnce } from '../placement/selfAdvertise.ts';
 import { runtimeCapabilities } from '../runtime/capabilities.ts';
 
-/**
- * F3 — the WebAuthn SIGNATURE check is the only part of a ceremony a Fastify `inject` cannot produce, so
- * it is the only call stubbed here; every other export passes through untouched. Mint, purpose binding,
- * the single-use `consumeChallenge`, expiry and origin all run REAL against the shipped modules, which is
- * where this fix's security actually lives.
- *
- * R9 — the stub is OFF by default and every other call in this file reaches the REAL `verifyAssertion`.
- * A `vi.mock` factory is hoisted above the imports, so it cannot be moved inside a `describe`; the
- * equivalent narrowing is this `vi.hoisted` latch, which `signIterationGate` raises for the one test that
- * is actually performing a ceremony and the file-wide `afterEach` below drops again. Without it a
- * suite-wide "every signature verifies" would have made this file's pre-existing bad-signature and
- * unprovisioned-daemon cases pass vacuously.
- */
-const ceremonyStub = vi.hoisted(() => ({ signaturesAccepted: false }));
-vi.mock('../auth/webauthn.ts', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../auth/webauthn.ts')>();
-  return {
-    ...actual,
-    verifyAssertion: async (...args: Parameters<typeof actual.verifyAssertion>) =>
-      (ceremonyStub.signaturesAccepted ? { verified: true } : actual.verifyAssertion(...args)),
-  };
-});
-
-/** One provisioned passkey, so the iteration-gate ceremony is REACHABLE in the cases that opt in. */
-const ITERATION_CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
-
-/**
- * R9 — the provisioned-credential fixture, likewise opt-in. The surface reads it through a closure on
- * every request, so a case can raise it after its app is built; it starts EMPTY, which is what makes the
- * "an unprovisioned daemon cannot resolve a T3 gate" path real for every case that does not opt in.
- */
-let ceremonyCredentials: (typeof ITERATION_CRED)[] = [];
-
-afterEach(() => {
-  ceremonyStub.signaturesAccepted = false;
-  ceremonyCredentials = [];
-});
-
 const SESSION: SessionConfig = { secret: Buffer.from('control-route-test-secret-32-bytes!'), ttlMs: 60_000 };
 const ORIGIN = 'http://localhost:5317';
 /**
  * S3 (review r2): allowlisted at the surface's CSRF origin check (`allowedOrigins`) but distinct from
- * the WebAuthn RP `origin` the iteration-gate ceremony checks at routes.ts:2129 — the only way to reach
- * that SECOND, ceremony-specific origin check at all. A plain foreign origin (e.g. `evil.localhost`) never
- * gets that far: it is refused earlier, by the surface-wide origin allowlist preHandler, with an unrelated
- * `{ error: 'forbidden', reason: 'origin-not-allowed' }` body.
+ * `ORIGIN` — used to prove the surface-wide origin allowlist preHandler refuses a foreign origin with
+ * `{ error: 'forbidden', reason: 'origin-not-allowed' }` before any route-local logic runs.
  */
 const ALT_ALLOWED_ORIGIN = 'http://localhost:5318';
+
+// T3: a stub signed channel, shared by every describe block below that exercises a `signed`-class route
+// (the frozen incident-recovery pair, retention quarantine/restore). See `authority/gate.test.ts` and
+// `authority/approval.test.ts` for the channel's own unit coverage; this file only needs it configured
+// and needs to be able to build one real, verifier-accepted `approval` object per signed call.
+const TEST_ALLOWED_SIGNERS = '/test/kb-ops-approver.allowed-signers';
+const stubSshsigVerifier = { verify: async () => true };
+/** A fresh, random nonce every call (never a fixed one) — reusing one across multiple requests in a test
+ *  would trip T3's OWN nonce-replay refusal before the test's own, unrelated business logic ever ran. */
+function freshNonce(): string {
+  return Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+}
+function signedApproval(route: string, entityRef: string, now: number = Date.now()) {
+  const iso = (ms: number) => new Date(ms).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  return {
+    payload: JSON.stringify({
+      schema: 'kb.human-approval/v1', route, entityRef, actor: 'daniel',
+      issuedAt: iso(now), expiresAt: iso(now + 600_000), nonce: freshNonce(),
+    }),
+    signature: 'sig',
+  };
+}
 
 function makeSurfaceContext(
   overrides: Parameters<typeof makeProductionSurfaceContext>[0] = {},
@@ -118,7 +101,7 @@ describe('authorized failed-run route grant', () => {
       attemptPort, runAutomatic, cancelAutomatic, containManagerStart, verifyCanonicalResult,
     };
     const executionLatch = {
-      snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
+      snapshot: () => ({ state: 'unlocked', source: 'tailnet', unlockedBy: 'operator', unlockedAt: '2026-08-01T04:00:00.000Z' }),
       current: () => wiring,
     };
     return {
@@ -127,7 +110,7 @@ describe('authorized failed-run route grant', () => {
     } as unknown as SurfaceContext;
   }
 
-  function withSource(source: 'passkey' | 'tailnet' | 'env-override'): SurfaceContext {
+  function withSource(source: 'tailnet' | 'env-override'): SurfaceContext {
     const ctx = exactContext();
     const wiring = ctx.executionLatch!.current();
     (ctx.executionLatch as unknown as { snapshot: () => unknown }).snapshot = () => ({
@@ -143,16 +126,15 @@ describe('authorized failed-run route grant', () => {
     expect(authorizedFailedRunReconciliationGrant(ctx, 'operator')).toBeNull();
   });
 
-  it('RULING 2: accepts the grant under the tailnet operator identity, not only a passkey unlock', () => {
+  it('RULING 2: accepts the grant under the tailnet operator identity', () => {
     expect(authorizedFailedRunReconciliationGrant(withSource('tailnet'), 'operator')).not.toBeNull();
-    expect(authorizedFailedRunReconciliationGrant(withSource('passkey'), 'operator')).not.toBeNull();
   });
 
   it('RULING 2: still refuses a headless env-override arm — break-glass is operator-only', () => {
     expect(authorizedFailedRunReconciliationGrant(withSource('env-override'), 'operator')).toBeNull();
   });
 
-  it('refuses an otherwise exact passkey grant while any fixed run session is live', () => {
+  it('refuses an otherwise exact tailnet grant while any fixed run session is live', () => {
     expect(authorizedFailedRunReconciliationGrant(exactContext(true), 'operator')).toBeNull();
   });
 
@@ -237,6 +219,7 @@ function expectExactWireRun(
 it('pins the failed-run reconciliation success wire shape', () => {
   const run: Run = {
     owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+    workflowTags: [],
     executionHost: 'desktop', terminalOutcome: 'failed',
     completedAt: '2026-08-01T01:00:00.000Z', archivedFrom: null,
     runRef: 'run-reconciled', predecessorRunRef: null, title: 'Reconciled run',
@@ -304,16 +287,16 @@ describe('control proposal routes', () => {
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       stateRoot,
       sessionConfig: SESSION,
-      // S3: a second allowlisted origin, distinct from the WebAuthn RP origin below, so the
-      // ceremony's own origin check (routes.ts:2129) is reachable and separately testable from the
-      // surface-wide CSRF origin allowlist. Every other case here still sends `headers(token)`, which
-      // sends `ORIGIN`, so this is additive and changes no existing behavior.
+      // S3: a second allowlisted origin, distinct from `ORIGIN`, used to prove the surface-wide CSRF
+      // origin allowlist preHandler refuses a foreign origin with `origin-not-allowed`.
       allowedOrigins: [ORIGIN, ALT_ALLOWED_ORIGIN],
-      webAuthnConfig: () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN }),
-      // R9: empty unless the running case opted in via `signIterationGate`.
-      credentials: () => ceremonyCredentials,
       composerStore,
       controlStore,
+      // T3: a configured channel so a `signed`-class route in this describe block answers
+      // `403 approval-required` (informative) rather than `503 approval-unavailable` (unconfigured) —
+      // and so a case that needs one can build a real `approval` via `signedApproval` below.
+      humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+      sshsigVerifier: stubSshsigVerifier,
       appendAudit: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       appendAuditLocal: (_repoRoot, event) => { auditRows.push(event as unknown as Record<string, unknown>); return { ts: new Date().toISOString(), ...event }; },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -398,8 +381,12 @@ describe('control proposal routes', () => {
       { ...base, expectedProposalHash: 'f'.repeat(64) },
       { ...base, idempotencyKey: 'different-key' },
     ]) {
+      // T3: this route is `signed`-class; a FRESH (never reused — see `freshNonce`) approval per call so
+      // the request reaches the route's OWN CAS-mismatch check (what this test is actually about) instead
+      // of refusing earlier, at the gate, for a reason none of these cases mean to exercise.
+      const approval = signedApproval('POST /api/control/recovery/2026-08-01/failed-run-reconciliation', 'run-2026-08-01-failed-run');
       const response = await app.inject({
-        method: 'POST', url: '/api/control/recovery/2026-08-01/failed-run-reconciliation', headers: headers(token), payload: body,
+        method: 'POST', url: '/api/control/recovery/2026-08-01/failed-run-reconciliation', headers: headers(token), payload: { ...body, approval },
       });
       expect(response.statusCode).toBe(409);
       expect(response.json()).toEqual({ error: 'authorized-failed-run-reconciliation-cas-mismatch' });
@@ -469,13 +456,28 @@ describe('control proposal routes', () => {
     return { request, loop, iterationRequest, receipt };
   }
 
-  function mockIterationGate(reason: 'exhausted' | 'no-progress' | 'parked') {
+  /**
+   * T5 [design:4.4/4.5]: `resolveRunWorkflowTags` reads `run.owner.type` to decide whether the
+   * boss-intervention rule applies at all. Defaults to an AGENT owner — no workflow to govern it, so it
+   * stays untagged, exactly like every iteration-gate resolution here did before that design existed.
+   * `tagged: true` instead points at a workflow id this fixture repo root names no real definition for —
+   * `resolveRunWorkflowTags` fails CLOSED on an unresolvable workflow, which is the cheapest way this
+   * in-memory suite can force `signedRequired` without writing a definition file to disk.
+   */
+  function mockIterationGate(reason: 'exhausted' | 'no-progress' | 'parked', tagged = false) {
     const fixture = iterationGateFixture(reason);
+    const owner = tagged
+      ? { type: 'workflow' as const, id: 'no-such-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/no-such-workflow.md' as const }
+      : { type: 'agent' as const, id: 'grader', sourcePath: 'agents/grader.md' as const };
+    // BLOCKER-1: the governing tag set is what the RUN carries, derived at launch — not what a disk
+    // re-scan says now. An untagged run states `[]` explicitly; a tagged one states its tag. Absent
+    // would mean "legacy run", which the rule fails closed on.
+    const workflowTags = tagged ? ['publish'] : [];
     const detail = {
       ownerSubject: 'operator',
       run: { runRef: 'run-iteration', predecessorRunRef: null, title: 'Iteration run', proposalRef: 'proposal-iteration', proposalRevision: 1,
         proposalHash: '9'.repeat(64), publicationState: 'published', lifecycle: { kind: 'waiting-human', deployPause: null }, version: 11, managerSessionRef: null,
-        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '' },
+        managerGeneration: 1, managerAssignment: null, createdAt: '', updatedAt: '', owner, workflowTags },
       stages: [], attempts: [], sessions: [], humanRequests: [fixture.request], stageGenerations: [], generationSupersessions: [],
       iterationLoops: [fixture.loop], iterationRequests: [fixture.iterationRequest], iterationReceipts: fixture.receipt ? [fixture.receipt] : [],
     };
@@ -513,6 +515,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun(owner, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title,
       proposalRef: stored.value.proposalRef,
@@ -633,7 +636,7 @@ describe('control proposal routes', () => {
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
       sessionConfig: SESSION,
       allowedOrigins: [ORIGIN],
-      credentials: () => [],
+      
       composerStore,
       controlStore,
       attemptPort: fakeAttemptPort(),
@@ -696,6 +699,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: 'Generic completion gate', proposalRef: proposal.value.proposalRef, proposalRevision: proposal.value.revision,
       expectedProposalHash: proposal.value.hash, managerRuntime: 'claude', managerModel: 'claude-sonnet-5',
@@ -799,32 +803,6 @@ describe('control proposal routes', () => {
     return { runRef: created.value.run.runRef, gate, loop, receipt: detail.value.iterationReceipts[0]! };
   }
 
-  /**
-   * F3 — mint the iteration-gate T3 challenge and return the wire fields a resolve must carry. The
-   * server derives the whole signed tuple from the store record; the caller chooses only the decision.
-   */
-  /**
-   * R9 — opt THIS case into the PROVISIONED-DAEMON half of the fixture and nothing else. A case that
-   * exercises a ceremony REFUSAL (unsigned resolve, wrong decision vocabulary) needs the port attached
-   * but must still face the real `verifyAssertion`. Reverts in the file-wide `afterEach`.
-   */
-  function provisionCeremonyCredential(): void {
-    ceremonyCredentials = [ITERATION_CRED];
-  }
-
-  async function signIterationGate(requestRef: string, decision: string) {
-    // R9: opt into BOTH halves — provision the passkey and accept the signature — for this case only.
-    provisionCeremonyCredential();
-    ceremonyStub.signaturesAccepted = true;
-    const minted = await app.inject({
-      method: 'POST', url: `/api/control/iteration-gates/${requestRef}/challenge`,
-      headers: headers(token), payload: { decision },
-    });
-    if (minted.statusCode !== 200) throw new Error(`challenge refused: ${minted.statusCode} ${minted.body}`);
-    const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
-    return { ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt };
-  }
-
   it('imports only a completed visible assistant proposal and returns a hash-bound diff', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/proposals/import', headers: headers(token), payload: { composerRef, turnId },
@@ -841,7 +819,7 @@ describe('control proposal routes', () => {
   it('returns not found for the removed review completion gate endpoint', async () => {
     const response = await app.inject({
       method: 'POST', url: '/api/control/review-completion-gates/request-removed/resolve', headers: headers(token),
-      payload: { expectedRequestRevision: 1, decision: 'approved', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
+      payload: { expectedRequestRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'human:request-gate:1:approved', response: 'Approved.' },
     });
     expect(response.statusCode, response.body).toBe(404);
   });
@@ -852,7 +830,7 @@ describe('control proposal routes', () => {
     const { gate: request } = seedGenericCompletionGate();
     const response = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: 1, decision: 'approved', idempotencyKey: 'generic-bypass' },
+      payload: { expectedRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'generic-bypass' },
     });
     expect(response.statusCode).toBe(409);
     expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved' });
@@ -898,7 +876,8 @@ describe('control proposal routes', () => {
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
       expectedReceiptVersion: receipt?.version ?? null, expectedGenerationRefs: [...loop.activeGenerationRefs],
-      decision: 'approved', idempotencyKey: 'approve-exact-no-progress', response: 'Approve this displayed set.',
+      decision: 'approved', reason: 'the displayed set is the one I approved',
+      idempotencyKey: 'approve-exact-no-progress', response: 'Approve this displayed set.',
     };
     for (const stale of [
       { ...exact, expectedGateKind: 'completion' },
@@ -918,7 +897,7 @@ describe('control proposal routes', () => {
     }
     const approved = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
-      payload: { ...exact, ...await signIterationGate(request.requestRef, 'approved') },
+      payload: exact,
     });
     expect(approved.statusCode, approved.body).toBe(200);
     expect(approved.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed', acceptedGenerationRefs: loop.activeGenerationRefs } },
@@ -927,6 +906,12 @@ describe('control proposal routes', () => {
     expect(resolve).toHaveBeenCalledWith('operator', request.requestRef, {
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
       decision: 'approved', operationKey: exact.idempotencyKey, response: exact.response,
+      // HIGH-1: a reason is required from every actor, so even a header-less (`unknown`) resolve now
+      // carries one on the record instead of the empty string the conditional rule left behind.
+      resolvedBy: {
+        actor: 'unknown', tailnetIdentity: null, at: expect.any(String),
+        reason: 'the displayed set is the one I approved',
+      },
     }, 'all-subjects');
   });
 
@@ -937,8 +922,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'exhausted',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: receipt?.version ?? null,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', idempotencyKey: 'decline-exhausted',
-        ...await signIterationGate(request.requestRef, 'declined'),
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'declined', reason: 'reviewed the gate and decided', idempotencyKey: 'decline-exhausted',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -953,7 +937,7 @@ describe('control proposal routes', () => {
     const base = {
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
-      expectedGenerationRefs: [...loop.activeGenerationRefs], idempotencyKey: 'invalid-park-decision',
+      expectedGenerationRefs: [...loop.activeGenerationRefs], reason: 'reviewed the gate and decided', idempotencyKey: 'invalid-park-decision',
     };
     const changes = await app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/resolve`, headers: headers(token),
@@ -975,8 +959,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'parked',
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-explicit-park',
-        ...await signIterationGate(request.requestRef, 'approved'),
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-explicit-park',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -998,8 +981,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: request.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: request.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', idempotencyKey: 'completion-still-intervenes',
-        ...await signIterationGate(request.requestRef, 'changes-requested'),
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'changes-requested', reason: 'reviewed the gate and decided', idempotencyKey: 'completion-still-intervenes',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1019,8 +1001,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', idempotencyKey: 'approve-generic-completion-route',
-        ...await signIterationGate(gate.requestRef, 'approved'),
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-generic-completion-route',
       },
     });
     expect(response.statusCode, response.body).toBe(200);
@@ -1041,8 +1022,7 @@ describe('control proposal routes', () => {
       payload: {
         expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
         expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
-        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', idempotencyKey: 'reject-generic-completion-route',
-        ...await signIterationGate(gate.requestRef, 'rejected'),
+        expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'rejected', reason: 'reviewed the gate and decided', idempotencyKey: 'reject-generic-completion-route',
       },
     });
     expect(rejected.statusCode, rejected.body).toBe(200);
@@ -1050,7 +1030,7 @@ describe('control proposal routes', () => {
     expect(intervention).toMatchObject({ kind: 'intervention', state: 'open' });
     const answered = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${intervention.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: intervention.revision, decision: 'approved', idempotencyKey: 'answer-generic-completion-intervention' },
+      payload: { expectedRevision: intervention.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'answer-generic-completion-intervention' },
     });
     expect(answered.statusCode, answered.body).toBe(200);
     expect(answered.json()).toMatchObject({ ok: true, value: { requestRef: intervention.requestRef, state: 'resolved', response: { decision: 'approved' } } });
@@ -1065,12 +1045,60 @@ describe('control proposal routes', () => {
   });
 
   /**
-   * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so it takes a passkey assertion bound to the
-   * exact tuple the CAS just checked. Before this fix the route carried a `riskTier: 'T3'` audit row with
-   * T2-strength authorization, and the generic route reserves these gates to it (`iteration-gate-reserved`),
-   * so EVERY iteration completion/park gate was resolvable with a session bearer and no assertion at all.
+   * Regression (T4 3289c692): `resolvedBy.at` was stamped fresh on EVERY call, including a replay with
+   * the same `idempotencyKey`, and the store folded that timestamp into the idempotency fingerprint —
+   * so an honest replay of the identical resolve hashed differently each time and 409'd as a reused-key
+   * conflict instead of returning the stored 200. Fixed in store.ts#resolveIterationGate by excluding
+   * `resolvedBy.at` from the fingerprint while keeping actor/tailnetIdentity/reason in it, so a genuinely
+   * different reason under the same key still conflicts.
    */
-  describe('iteration-gate T3 ceremony', () => {
+  it('replays an iteration-gate resolve with the original resolvedBy.at, and still conflicts on a different reason', async () => {
+    const { gate, loop } = seedGenericCompletionGate();
+    const base = {
+      expectedGateRef: gate.requestRef, expectedGateKind: null, expectedParkReason: null,
+      expectedRequestRevision: gate.revision, expectedLoopVersion: loop.version,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision: 'approved' as const,
+      idempotencyKey: 'replay-generic-completion', reason: 'first pass',
+    };
+    const first = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+    const firstBody = first.json();
+    expect(firstBody).toMatchObject({ ok: true, replayed: false });
+    const firstAt = firstBody.value.gate.response.resolvedBy.at;
+    expect(typeof firstAt).toBe('string');
+
+    // Same key, same body: replays with the ORIGINAL resolvedBy.at, not a freshly stamped one.
+    const replay = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base },
+    });
+    expect(replay.statusCode, replay.body).toBe(200);
+    const replayBody = replay.json();
+    expect(replayBody).toMatchObject({ ok: true, replayed: true });
+    expect(replayBody.value.gate.response.resolvedBy.at).toBe(firstAt);
+
+    // Same key, different reason: still a genuine idempotency conflict.
+    const differentReason = await app.inject({
+      method: 'POST', url: `/api/control/iteration-gates/${gate.requestRef}/resolve`, headers: headers(token),
+      payload: { ...base, reason: 'a different reason' },
+    });
+    expect(differentReason.statusCode, differentReason.body).toBe(409);
+    expect(differentReason.json()).toMatchObject({ error: 'idempotency-conflict' });
+  });
+
+  /**
+   * F3 [baseline-A §3, item 4b] — an iteration gate is T3, so the resolve route enforces the SAME
+   * boss-intervention rule (spec §4.5) `responseService`'s `workflowTags`/`verifyApproval` enforce, via
+   * `createIterationGateAuthorityService` — the generic route reserves these gates to this one
+   * (`iteration-gate-reserved`), so EVERY iteration completion/park gate goes through it. T5 replaced the
+   * browser-signature ceremony this block used to exercise (`authority/gate.test.ts` and `authority/approval.test.ts`
+   * cover the signed channel's own crypto in isolation); this block instead proves the WIRING: an untagged
+   * run stays open, a tagged run demands a valid signed approval, and a replayed one is refused.
+   */
+  describe('iteration-gate authority (T5)', () => {
     const parkPayload = (
       request: { requestRef: string; revision: number },
       loop: { version: number; activeGenerationRefs: readonly string[] },
@@ -1079,95 +1107,62 @@ describe('control proposal routes', () => {
     ) => ({
       expectedGateRef: request.requestRef, expectedGateKind: 'iteration-park', expectedParkReason: 'no-progress',
       expectedRequestRevision: request.revision, expectedLoopVersion: loop.version, expectedReceiptVersion: null,
-      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, idempotencyKey: key,
+      expectedGenerationRefs: [...loop.activeGenerationRefs], decision, reason: 'reviewed the gate and decided', idempotencyKey: key,
     });
     const resolveGate = (requestRef: string, payload: Record<string, unknown>) => app.inject({
       method: 'POST', url: `/api/control/iteration-gates/${requestRef}/resolve`, headers: headers(token), payload,
     });
     const authorizeRows = () => auditRows.filter((row) => row.action === 'control-iteration-gate-authorize');
+    const RESOLVE_ROUTE = 'POST /api/control/iteration-gates/:requestRef/resolve';
 
-    it('refuses an unsigned resolve, mutates nothing, and writes NO T3 audit row', async () => {
-      provisionCeremonyCredential();
+    it('proceeds on the open class for an untagged (agent-owned) run — no approval sent, none required', async () => {
       const { request, loop, resolve } = mockIterationGate('no-progress');
-      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('refuses an expired challenge with ceremony-expired and no audit row', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'expired-park'),
-        ...signed, challengeExpiresAt: '2020-01-01T00:00:00.000Z',
-      });
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-expired' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('verifies once and refuses the replayed ceremonyId, writing exactly one T3 audit row', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      const payload = { ...parkPayload(request, loop, 'approved', 'replayed-park'), ...signed };
-      const first = await resolveGate(request.requestRef, payload);
-      expect(first.statusCode, first.body).toBe(200);
-      const second = await resolveGate(request.requestRef, payload);
-      expect(second.statusCode, second.body).toBe(403);
-      expect(second.json()).toEqual({ error: 'ceremony-invalid' });
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'untagged-park'));
+      expect(response.statusCode, response.body).toBe(200);
+      expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
       expect(resolve).toHaveBeenCalledTimes(1);
       expect(authorizeRows()).toHaveLength(1);
       expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
     });
 
-    it('refuses an assertion minted for generation set A replayed against set B — 403, never a 409', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      loop.activeGenerationRefs = ['generation-set-a-1', 'generation-set-a-2'];
-      const signed = await signIterationGate(request.requestRef, 'approved');
-      loop.activeGenerationRefs = ['generation-set-b-1', 'generation-set-b-2'];
-      // The CAS passes: the caller binds the CURRENT set. Only the signature still covers set A.
+    it('refuses a tagged run\'s resolve with no approval, mutates nothing, and writes a REFUSAL row (not an authorize one)', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const response = await resolveGate(request.requestRef, parkPayload(request, loop, 'approved', 'unsigned-park'));
+      expect(response.statusCode, response.body).toBe(403);
+      expect(response.json()).toEqual({ error: 'approval-required' });
+      expect(resolve).not.toHaveBeenCalled();
+      expect(authorizeRows()).toEqual([]);
+      // Rehearsal finding (2026-09-16): this refusal used to leave NO row at all, while every
+      // `signed`-CLASS route's refusal wrote `authority-approval-refused`. It carries the route and
+      // entity the approval was owed for, and the tags the RUN was pinned with.
+      const refusals = auditRows.filter((row) => row.action === 'authority-approval-refused');
+      expect(refusals).toHaveLength(1);
+      expect(refusals[0]).toMatchObject({
+        result: 'approval-required', riskTier: 'T3', target: request.requestRef,
+        detail: {
+          route: RESOLVE_ROUTE, entityRef: request.requestRef, runRef: request.runRef,
+          workflowTags: ['publish'], reason: 'signed-approval-required',
+        },
+      });
+    });
+
+    it('refuses a tagged run\'s resolve with an approval bound to the wrong entityRef — 403 approval-invalid', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
       const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'cross-set-park'), ...signed,
+        ...parkPayload(request, loop, 'approved', 'mismatched-park'),
+        approval: signedApproval(RESOLVE_ROUTE, 'some-other-request-ref'),
       });
       expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(response.json()).toEqual({ error: 'approval-invalid' });
       expect(resolve).not.toHaveBeenCalled();
       expect(authorizeRows()).toEqual([]);
     });
 
-    /**
-     * R9 — the lever. The challenge is REAL (minted, purpose-bound, single-use) and the daemon IS
-     * provisioned, but the signature stub stays down, so `verifyAssertion` runs for real against a
-     * fabricated assertion and refuses. Restore the suite-wide "every signature verifies" mock and this
-     * case goes green on a 200 — which is exactly how a bad signature would have passed vacuously.
-     */
-    it('R9: a fabricated assertion is refused by the REAL verifier, not waved through by the fixture', async () => {
-      provisionCeremonyCredential();
-      const { request, loop, resolve } = mockIterationGate('no-progress');
-      const minted = await app.inject({
-        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: headers(token), payload: { decision: 'approved' },
-      });
-      expect(minted.statusCode, minted.body).toBe(200);
-      const body = minted.json() as { ceremonyId: string; challengeExpiresAt: string };
-      const response = await resolveGate(request.requestRef, {
-        ...parkPayload(request, loop, 'approved', 'fabricated-park'),
-        ceremonyId: body.ceremonyId, assertion: { id: ITERATION_CRED.id }, challengeExpiresAt: body.challengeExpiresAt,
-      });
-      expect(response.statusCode, response.body).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-invalid' });
-      expect(resolve).not.toHaveBeenCalled();
-      expect(authorizeRows()).toEqual([]);
-    });
-
-    it('resolves on a signed decision and records the T3 row over the signed tuple', async () => {
-      const { request, loop, resolve } = mockIterationGate('no-progress');
+    it('resolves a tagged run on a valid signed approval and records the T3 row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
       const response = await resolveGate(request.requestRef, {
         ...parkPayload(request, loop, 'approved', 'signed-park'),
-        ...await signIterationGate(request.requestRef, 'approved'),
+        approval: signedApproval(RESOLVE_ROUTE, request.requestRef),
       });
       expect(response.statusCode, response.body).toBe(200);
       expect(response.json()).toMatchObject({ ok: true, value: { loop: { state: 'passed' } } });
@@ -1182,44 +1177,36 @@ describe('control proposal routes', () => {
       });
     });
 
-    it('mints only for the decision vocabulary the gate kind admits', async () => {
-      provisionCeremonyCredential();
-      const { request } = mockIterationGate('no-progress');
-      const minted = await app.inject({
-        method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: headers(token), payload: { decision: 'changes-requested' },
-      });
-      expect(minted.statusCode, minted.body).toBe(400);
-      expect(minted.json()).toMatchObject({ error: 'invalid-iteration-park-decision' });
+    it('verifies once and refuses a replayed approval nonce, writing exactly one T3 audit row', async () => {
+      const { request, loop, resolve } = mockIterationGate('no-progress', true);
+      const payload = { ...parkPayload(request, loop, 'approved', 'replayed-park'), approval: signedApproval(RESOLVE_ROUTE, request.requestRef) };
+      const first = await resolveGate(request.requestRef, payload);
+      expect(first.statusCode, first.body).toBe(200);
+      const second = await resolveGate(request.requestRef, payload);
+      expect(second.statusCode, second.body).toBe(409);
+      expect(second.json()).toEqual({ error: 'approval-replayed' });
+      expect(resolve).toHaveBeenCalledTimes(1);
+      expect(authorizeRows()).toHaveLength(1);
+      expect(authorizeRows()[0]).toMatchObject({ riskTier: 'T3', result: 'authorized:approved' });
     });
 
-    /**
-     * S3 (review r2) — without `provisionCeremonyCredential()` the daemon has no credential, so
-     * routes.ts:2119 refuses with `403 ceremony-unavailable` BEFORE the origin check at routes.ts:2129
-     * ever runs; the case passed vacuously on that unrelated 403. Provision a credential so the request
-     * reaches the origin check, and assert the origin-specific `ceremony-invalid` body — distinct from
-     * `ceremony-unavailable` — so the origin refusal is what is actually being exercised.
-     */
-    it('refuses to mint for a foreign origin', async () => {
-      provisionCeremonyCredential();
+    // T2 removed the browser-signature ceremony minting route entirely.
+    it('T2 removed the /iteration-gates/:requestRef/challenge mint route entirely (404)', async () => {
       const { request } = mockIterationGate('no-progress');
-      // ALT_ALLOWED_ORIGIN clears the surface-wide CSRF allowlist (so this request reaches the route
-      // handler at all) but does not match the WebAuthn RP `origin` configured above, so it exercises
-      // the ceremony's OWN origin check at routes.ts:2129.
       const minted = await app.inject({
         method: 'POST', url: `/api/control/iteration-gates/${request.requestRef}/challenge`,
-        headers: { ...headers(token), origin: ALT_ALLOWED_ORIGIN }, payload: { decision: 'approved' },
+        headers: headers(token), payload: { decision: 'approved' },
       });
-      expect(minted.statusCode, minted.body).toBe(403);
-      expect(minted.json()).toEqual({ error: 'ceremony-invalid' });
+      expect(minted.statusCode, minted.body).toBe(404);
     });
   });
+
 
   it('does not let the generic intervention endpoint bypass the iteration gate contract', async () => {
     const { request, resolve } = mockIterationGate('no-progress');
     const response = await app.inject({
       method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-      payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'generic-iteration-bypass' },
+      payload: { expectedRevision: request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'generic-iteration-bypass' },
     });
     expect(response.statusCode, response.body).toBe(409);
     expect(response.json()).toMatchObject({ error: 'iteration-gate-reserved', gateKind: 'iteration-park' });
@@ -1341,7 +1328,7 @@ describe('control proposal routes', () => {
     const launchApp = Fastify();
     registerWriteSurface(launchApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
-      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], composerStore, controlStore,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }), opsGit, runPy,
@@ -1374,6 +1361,7 @@ describe('control proposal routes', () => {
         payload: {
           expectedRevision: boundary.revision,
           decision: 'responded',
+          reason: 'answering the boundary so the run can resume',
           idempotencyKey: `respond:${boundary.requestRef}:${boundary.revision}`,
           response: 'Execution unlock will be completed separately.',
         },
@@ -1404,7 +1392,7 @@ describe('control proposal routes', () => {
         value: { run: { lifecycle: { kind: 'waiting-human', deployPause: null }, version: ready.value.run.version } },
       });
 
-      // Simulate the post-passkey context wiring without touching a daemon or real latch. Activation must
+      // Simulate the post-unlock context wiring without touching a daemon or real latch. Activation must
       // resume this exact published run and these exact cards; it must not call the launch publisher again.
       const wired = await activatedApp();
       try {
@@ -1517,7 +1505,7 @@ describe('control proposal routes', () => {
     const launchApp = Fastify();
     registerWriteSurface(launchApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, opsGit, runPy,
+      allowedOrigins: [ORIGIN], composerStore, controlStore, opsGit, runPy,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -1548,7 +1536,7 @@ describe('control proposal routes', () => {
         .toEqual([['build', true], ['upload', true]]);
       // The ONLY boundary is the post-publication runtime intervention. No gate, no governance refusal
       // for the T3 stage, and — decisively — nothing of kind `approval`: this operational acknowledgement
-      // cannot authorize spend or publication; the separate passkey latch still controls activation.
+      // cannot authorize spend or publication; the separate execution latch still controls activation.
       expect(detail.value.humanRequests.map((request) => [request.kind, request.title])).toEqual([
         ['intervention', 'Automatic execution activation is gated'],
       ]);
@@ -1586,7 +1574,7 @@ describe('control proposal routes', () => {
       const request = detail.value.humanRequests[0];
       await launchApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: request.revision, decision: 'approved', idempotencyKey: 'accept-refusal' },
+        payload: { expectedRevision: request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'accept-refusal' },
       });
       const replayed = await launchApp.inject({ method: 'POST', url, headers: headers(token), payload });
       expect(replayed.statusCode, replayed.body).toBe(200);
@@ -1609,6 +1597,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -1638,7 +1627,7 @@ describe('control proposal routes', () => {
     const managerApp = Fastify();
     registerWriteSurface(managerApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore, attemptPort: liveAttemptPort,
+      allowedOrigins: [ORIGIN], composerStore, controlStore, attemptPort: liveAttemptPort,
       cancelAutomatic: async () => ({ state: 'stopped', stoppedSessionRefs: [running.value.managerSessionRef], interruptedSessionRefs: [], replayed: false }),
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
@@ -1698,6 +1687,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -1826,6 +1816,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -2129,6 +2120,9 @@ describe('control proposal routes', () => {
       decision,
       idempotencyKey: `human:${request.requestRef}:${request.revision}:${decision}`,
       response: null,
+      // HIGH-1: `reason` is now required from EVERY actor, including a request that sends no
+      // `X-KB-Actor` header at all, so the ordinary payload every test here posts carries one.
+      reason: 'reviewed the gate and decided',
     };
   }
 
@@ -2942,6 +2936,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const created = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: stored.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: stored.value.hash, managerRuntime: proposal.manager.runtime,
@@ -2968,7 +2963,11 @@ describe('control proposal routes', () => {
         method: 'POST',
         url: `/api/control/runs/${created.value.run.runRef}/reconcile-publication`,
         headers: headers(token),
-        payload: { expectedRunVersion: publishing.value.version },
+        // T3: `reconcile-publication` is `signed`-class — see spec §4.1's "never for a CLI" table.
+        payload: {
+          expectedRunVersion: publishing.value.version,
+          approval: signedApproval('POST /api/control/runs/:runRef/reconcile-publication', created.value.run.runRef),
+        },
       });
       expect(response.statusCode, response.body).toBe(200);
       const current = controlStore.getRun('operator', created.value.run.runRef);
@@ -3009,6 +3008,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const create = (idempotencyKey: string) => controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: assigned.title, proposalRef: stored.value.proposalRef, proposalRevision: 1, expectedProposalHash: stored.value.hash,
       managerRuntime: assigned.manager.runtime, managerModel: assigned.manager.model, managerAssignment, idempotencyKey,
@@ -3021,7 +3021,10 @@ describe('control proposal routes', () => {
     if (!publishing.ok) throw new Error(publishing.detail);
     const reconciled = await app.inject({
       method: 'POST', url: `/api/control/runs/${publishingRun.value.run.runRef}/reconcile-publication`, headers: headers(token),
-      payload: { expectedRunVersion: publishing.value.version },
+      payload: {
+        expectedRunVersion: publishing.value.version,
+        approval: signedApproval('POST /api/control/runs/:runRef/reconcile-publication', publishingRun.value.run.runRef),
+      },
     });
     // The fixture deliberately has no on-disk canonical cards. Reaching that honest recovery error
     // proves the stored compiler snapshot passed semantic validation first.
@@ -3050,7 +3053,7 @@ describe('control proposal routes', () => {
     const activationApp = Fastify();
     registerWriteSurface(activationApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      allowedOrigins: [ORIGIN], composerStore, controlStore,
       attemptPort: fakeAttemptPort(),
       runAutomatic: (async () => ({ ok: true })) as never,
       containManagerStart: async () => {},
@@ -3086,6 +3089,7 @@ describe('control proposal routes', () => {
     if (!approved.ok) throw new Error(approved.detail);
     const run = controlStore.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: revision.revision,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -3105,7 +3109,7 @@ describe('control proposal routes', () => {
     const auditFailApp = Fastify();
     registerWriteSurface(auditFailApp, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], composerStore, controlStore,
+      allowedOrigins: [ORIGIN], composerStore, controlStore,
       appendAudit: () => { throw new Error('audit unavailable'); },
     }));
     await auditFailApp.ready();
@@ -3120,7 +3124,7 @@ describe('control proposal routes', () => {
       });
       const response = await auditFailApp.inject({
         method: 'POST', url: `/api/control/human-requests/${request.value.requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: 'response-audit-must-land' },
+        payload: { expectedRevision: 1, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: 'response-audit-must-land' },
       });
       expect(response.statusCode, response.body).toBe(500);
       expect(controlStore.getHumanRequest('operator', request.value.requestRef)).toMatchObject({
@@ -3133,16 +3137,13 @@ describe('control proposal routes', () => {
 /**
  * The runtime execution latch routes. The daemon boots LOCKED, so a launch refusal must be distinct
  * enough for the UI to raise an unlock prompt, and BOTH transitions are authorized by the operator's
- * WebAuthn-minted session bearer plus an audit row — never by a second, purpose-bound ceremony of their
- * own. That second ceremony was removed: the platform's requirement is ONE dashboard unlock, and it made
- * an already-signed-in operator unlock twice to arm the executor.
+ * session bearer plus an audit row.
  */
-const TEST_WEBAUTHN = () => ({ rpID: 'localhost', rpName: 'test', origin: ORIGIN });
 
 function fakeLatch(initial: 'locked' | 'unlocked') {
   let state = initial === 'locked'
     ? { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null }
-    : { state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
+    : { state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: '2026-07-30T00:00:00.000Z', unlockedBy: 'operator' };
   const unlock = vi.fn(() => ({ ok: true as const, state }));
   const lock = vi.fn(() => {
     state = { state: 'locked' as const, source: null, unlockedAt: null, unlockedBy: null };
@@ -3169,8 +3170,12 @@ function buildApp(overrides: Record<string, unknown> = {}) {
     sessionConfig: SESSION,
     allowedOrigins: [ORIGIN],
     controlStore: store,
-    webAuthnConfig: TEST_WEBAUTHN,
-    credentials: () => [],
+    // T3: this describe block's `execution-lock` route is `signed`-class. `buildApp` never overrides
+    // `stateRoot` either (see the identical note in the retention `surface()` helper below), so the nonce
+    // store is stubbed in-memory here too.
+    humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+    sshsigVerifier: stubSshsigVerifier,
+    approvalNonces: { claim: () => 'fresh' as const },
     appendAudit: (_root: string, event: Record<string, unknown>) => {
       audit.push(event);
       return { ts: '2026-07-30T00:00:00.000Z', action: String(event.action) } as never;
@@ -3194,6 +3199,7 @@ function seedRun(store: ReturnType<typeof createInMemoryControlPlaneStore>, key:
   }).ok) throw new Error('approval failed');
   const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
     title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
     expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -3209,7 +3215,7 @@ describe('control execution latch routes', () => {
   it('requires a session, rejects unknown agents, and returns the activated worker delivery result', async () => {
     const delivery = vi.fn(async () => 'queued' as const);
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => ({ agentMessages: { deliver: delivery } }),
       unlock: vi.fn(), lock: vi.fn(),
     };
@@ -3229,6 +3235,7 @@ describe('control execution latch routes', () => {
     }).ok) throw new Error('approval failed');
     const run = store.createRun('operator', {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: assignedProposal.title, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: assignedProposal.manager.runtime, managerModel: assignedProposal.manager.model,
@@ -3281,7 +3288,7 @@ describe('control execution latch routes', () => {
     const root = mkdtempSync(join(tmpdir(), 'attempt-io-route-'));
     const io = createAttemptIoStore({ root, flushMs: 0 });
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => ({ attemptIo: io }), unlock: vi.fn(), lock: vi.fn(),
     };
     const { app, token, store } = buildApp({ executionLatch: latch });
@@ -3321,7 +3328,7 @@ describe('control execution latch routes', () => {
 
     const unavailable = buildApp({
       executionLatch: {
-        snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+        snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
         current: () => null, unlock: vi.fn(), lock: vi.fn(),
       },
     });
@@ -3393,9 +3400,12 @@ describe('control execution latch routes', () => {
       // The bearer's own subject authorizes it — no assertion, no ceremonyId, no second biometric.
       expect(unlock).toHaveBeenCalledWith({ subject: 'operator' });
       const row = audit.find((entry) => entry.action === 'control-execution-unlock-authorize');
+      // MEDIUM-7: this row used to say `tailnet-operator` regardless of the mode the daemon was in.
+      // This surface is built with no `DASHBOARD_AUTH_MODE`, so it is NOT tailnet, and the row now says
+      // so. `activation.test.ts` pins the latch's matching half (the `source` it records).
       expect(row).toMatchObject({
         owner: 'operator', target: 'execution', riskTier: 'T3',
-        result: 'authorized:unlock', detail: { method: 'session-bearer' },
+        result: 'authorized:unlock', detail: { method: 'operator-session' },
       });
     } finally {
       await app.close();
@@ -3484,7 +3494,7 @@ describe('control execution latch routes', () => {
     const { app, token, audit } = buildApp({ executionLatch: latch });
     try {
       const before = await app.inject({ method: 'GET', url: '/api/control/execution', headers: headers(token) });
-      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'passkey', unlockedBy: 'operator' } });
+      expect(before.json()).toMatchObject({ execution: { state: 'unlocked', source: 'tailnet', unlockedBy: 'operator' } });
 
       const locked = await app.inject({ method: 'POST', url: '/api/control/execution/lock', headers: headers(token), payload: {} });
       expect(locked.statusCode).toBe(200);
@@ -3527,7 +3537,7 @@ describe('control execution latch routes', () => {
     }
   });
 
-  it('audits then invokes only the exact legacy reclassification under same-subject passkey wiring', async () => {
+  it('audits then invokes only the exact legacy reclassification under same-subject tailnet wiring', async () => {
     const order: string[] = [];
     const runAutomatic = vi.fn();
     const cancelAutomatic = vi.fn();
@@ -3542,7 +3552,7 @@ describe('control execution latch routes', () => {
       verifyCanonicalResult,
     };
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: '2026-08-01T02:30:00.000Z', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: '2026-08-01T02:30:00.000Z', unlockedBy: 'operator' }),
       current: () => execution,
       unlock: vi.fn(), lock: vi.fn(),
     };
@@ -3563,7 +3573,7 @@ describe('control execution latch routes', () => {
         runRef: 'run-0aa72053-b9d7-41fa-a034-19871b66d214', stageRef: null,
         kind: 'intervention', revision: 2, state: 'open',
         title: 'Automatic execution activation is gated',
-        prompt: 'Canonical cards are published. Unlock execution with your passkey, mark this intervention responded, then resume this same run.',
+        prompt: AUTHORIZED_20260731_EXECUTION_LOCK_NEW_PROMPT,
         response: null, createdAt: '2026-08-01T02:04:04.762Z', updatedAt: '2026-08-01T02:31:00.000Z',
       },
       event: { cursor: 2 },
@@ -3579,17 +3589,22 @@ describe('control execution latch routes', () => {
       recoveredState = true;
       return { ok: true, value: recoveryResult } as never;
     });
+    // T3: `execution-lock` is `signed`-class with a FROZEN entityRef. A FRESH approval per call — never
+    // reused — since this test's OWN business-logic idempotency (same `idempotencyKey`, second call
+    // replays the cached result) is a different concern from T3's nonce-replay refusal, and reusing one
+    // approval object across calls would trip the LATTER before the handler ever saw the former.
+    const executionLockApproval = () => signedApproval('POST /api/control/recovery/2026-07-31/execution-lock', 'run-2026-07-31-execution-lock');
     try {
       const stale = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 5, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'stale-repair' },
+        payload: { expectedRunVersion: 5, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'stale-repair', approval: executionLockApproval() },
       });
       expect(stale.statusCode).toBe(409);
       expect(order).toEqual([]);
       expect(recover).not.toHaveBeenCalled();
       const response = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair', approval: executionLockApproval() },
       });
       expect(response.statusCode, response.body).toBe(200);
       expect(order).toEqual(['audit', 'store']);
@@ -3606,7 +3621,7 @@ describe('control execution latch routes', () => {
       expect(activateManagedRoots).not.toHaveBeenCalled();
       const lostResponseReplay = await app.inject({
         method: 'POST', url: '/api/control/recovery/2026-07-31/execution-lock', headers: headers(token),
-        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' },
+        payload: { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair', approval: executionLockApproval() },
       });
       expect(lostResponseReplay.statusCode, lostResponseReplay.body).toBe(200);
       expect(lostResponseReplay.json()).toMatchObject({ ok: true, replayed: true });
@@ -3617,7 +3632,12 @@ describe('control execution latch routes', () => {
   });
 
   it('fails closed before store mutation when latch, wiring, or T3 audit is not exact', async () => {
-    const body = { expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair' };
+    // T3: `execution-lock` is `signed`-class; the nonce store this describe block wires is a permissive
+    // in-memory stub (always `fresh`), so reusing one approval object across every sub-case below is safe.
+    const body = {
+      expectedRunVersion: 4, expectedManagerGeneration: 1, expectedRequestRevision: 1, idempotencyKey: 'authorized-repair',
+      approval: signedApproval('POST /api/control/recovery/2026-07-31/execution-lock', 'run-2026-07-31-execution-lock'),
+    };
     const locked = buildApp();
     vi.spyOn(locked.store, 'preflightAuthorized20260731ExecutionLock').mockReturnValue({
       ok: true, value: { disposition: 'eligible', result: null },
@@ -3639,7 +3659,7 @@ describe('control execution latch routes', () => {
       cancelAutomatic: vi.fn(), verifyCanonicalResult: vi.fn(),
     };
     const latch = {
-      snapshot: () => ({ state: 'unlocked' as const, source: 'passkey' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
+      snapshot: () => ({ state: 'unlocked' as const, source: 'tailnet' as const, unlockedAt: 'now', unlockedBy: 'operator' }),
       current: () => execution, unlock: vi.fn(), lock: vi.fn(),
     };
     const mismatched = buildApp({
@@ -3899,6 +3919,7 @@ describe('operator cross-subject authority', () => {
     }).ok) throw new Error('approval failed');
     const run = store.createRun(subject, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
       title: `Run ${key}`, proposalRef: created.value.proposalRef, proposalRevision: 1,
       expectedProposalHash: created.value.hash, managerRuntime: 'claude', managerModel: 'claude-fable-5',
@@ -4003,7 +4024,7 @@ describe('operator cross-subject authority', () => {
       // The exact P0 symptom: the Inbox lists this gate (via the widened read) and the SPA submits here.
       const answered = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
+        payload: { expectedRevision: 1, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: `respond:${requestRef}`, response: 'ship it' },
       });
       expect(answered.statusCode, answered.body).toBe(200);
 
@@ -4036,6 +4057,51 @@ describe('operator cross-subject authority', () => {
     } finally { await app.close(); }
   });
 
+  it('T4 [design:4.3/4.5]: EVERY actor\'s respond requires a reason, and resolvedBy lands in the run DTO', async () => {
+    const { app, store, token } = buildApp();
+    try {
+      const engineRun = seedRunFor(store, 'dashboard-engine', 'resolved-by', 'daily-news');
+      const { requestRef } = parkEngineRunWithGate(store, engineRun);
+
+      // HIGH-1 (security review 2026-09-16): the requirement used to be conditional on the SELF-ASSERTED
+      // `X-KB-Actor` header — `boss`/`worker:<id>` owed a reason, `daniel`/`unknown` did not. So a worker
+      // that simply omitted the header resolved any gate with no justification at all. Every one of these
+      // must now be refused, before any mutation.
+      for (const actorHeader of [
+        { 'x-kb-actor': 'boss' }, { 'x-kb-actor': 'worker:sonnet-01' },
+        { 'x-kb-actor': 'daniel' }, { 'x-kb-actor': 'DANIEL' }, {},
+      ]) {
+        const refused = await app.inject({
+          method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
+          headers: { ...headers(token), ...actorHeader },
+          payload: { expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`, response: 'ship it' },
+        });
+        expect(refused.statusCode, `${JSON.stringify(actorHeader)} -> ${refused.body}`).toBe(400);
+        expect(refused.json()).toEqual({ error: 'reason-required' });
+        expect(store.getHumanRequest('dashboard-engine', requestRef)).toMatchObject({ ok: true, value: { state: 'open' } });
+      }
+
+      const answered = await app.inject({
+        method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`,
+        headers: { ...headers(token), 'x-kb-actor': 'boss' },
+        payload: {
+          expectedRevision: 1, decision: 'responded', idempotencyKey: `resolvedby:${requestRef}`,
+          response: 'ship it', reason: 'matches the plan',
+        },
+      });
+      expect(answered.statusCode, answered.body).toBe(200);
+
+      const owned = store.getRun('dashboard-engine', engineRun);
+      if (!owned.ok) throw new Error(owned.detail);
+      expect(owned.value.humanRequests).toEqual([expect.objectContaining({
+        requestRef,
+        response: expect.objectContaining({
+          resolvedBy: { actor: 'boss', tailnetIdentity: null, at: expect.any(String), reason: 'matches the plan' },
+        }),
+      })]);
+    } finally { await app.close(); }
+  });
+
   it('rejects a stale response revision before audit, event, or resume', async () => {
     const { app, store, audit, token } = buildApp();
     try {
@@ -4043,7 +4109,7 @@ describe('operator cross-subject authority', () => {
       const { requestRef, version } = parkEngineRunWithGate(store, engineRun);
       const response = await app.inject({
         method: 'POST', url: `/api/control/human-requests/${requestRef}/respond`, headers: headers(token),
-        payload: { expectedRevision: 2, decision: 'responded', idempotencyKey: `stale:${requestRef}`, response: 'ship it' },
+        payload: { expectedRevision: 2, decision: 'responded', reason: 'reviewed the gate and decided', idempotencyKey: `stale:${requestRef}`, response: 'ship it' },
       });
       expect(response.statusCode, response.body).toBe(409);
       expect(response.json()).toEqual({ error: 'request-revision-changed' });
@@ -4165,7 +4231,7 @@ describe('operator cross-subject authority', () => {
 
       for (const [url, payload] of [
         [`/api/control/human-requests/${requestRef}/respond`,
-          { expectedRevision: 1, decision: 'approved', idempotencyKey: 'k', response: null }],
+          { expectedRevision: 1, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'k', response: null }],
         [`/api/control/runs/${engineRun}/manager/messages`, { ...cas, idempotencyKey: 'k', message: 'hi' }],
         [`/api/control/runs/${engineRun}/manager/steer`, { ...cas, idempotencyKey: 'k', checkpoint: 'c', instruction: 'i' }],
         [`/api/control/runs/${engineRun}/manager/stop`, { ...cas, idempotencyKey: 'k' }],
@@ -4200,6 +4266,9 @@ describe('Dashboard v3 run and gate routes', () => {
       expectedHash: created.value.hash, expectedApprovalRevision: 0, decision: 'approved', idempotencyKey: 'dv3-approve',
     });
     if (!approved.ok) throw new Error(approved.detail);
+    // Deliberately states NO `workflowTags`: this is the LEGACY run shape (persisted before the field
+    // existed), which the boss-intervention rule reads as unknown and fails closed on. The
+    // `/respond/challenge` test below is that fail-closed proof.
     const run = store.createRun('dashboard-engine', {
       owner: { type: 'workflow', id: 'daily-news', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/daily-news.md' },
       executionHost: 'desktop', title: proposal.title, proposalRef: created.value.proposalRef,
@@ -4236,6 +4305,7 @@ describe('Dashboard v3 run and gate routes', () => {
     if (!ownApproval.ok) throw new Error(ownApproval.detail);
     const ownRun = store.createRun('other-agent', {
       owner: { type: 'workflow', id: 'own-workflow', project: 'kb-ops', sourcePath: 'orgs/kb-ops/workflows/own-workflow.md' },
+      workflowTags: [],
       executionHost: 'desktop', title: 'Own run', proposalRef: ownProposal.value.proposalRef,
       proposalRevision: 1, expectedProposalHash: ownProposal.value.hash,
       managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -4254,18 +4324,15 @@ describe('Dashboard v3 run and gate routes', () => {
     });
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)), sessionConfig: SESSION,
-      allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      allowedOrigins: [ORIGIN], controlStore: store,
       hubBus,
       executionLatch: {
-        snapshot: () => ({ state: 'unlocked', source: 'passkey', unlockedAt: 'now', unlockedBy: 'operator' }),
+        snapshot: () => ({ state: 'unlocked', source: 'tailnet', unlockedAt: 'now', unlockedBy: 'operator' }),
         current: () => ({ attemptIo }), unlock: vi.fn(), lock: vi.fn(),
       } as never,
       appendAudit: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       appendAuditLocal: (_root, event) => ({ ts: new Date().toISOString(), ...event }),
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
-      // W47: last, so a case can drop the `credentials: () => []` stub and fall through to the
-      // PRODUCTION default (`() => resolveCredentials()` over process.env) instead of a composition
-      // override. See the W47 describe below.
       ...contextOverrides,
     }));
     return {
@@ -4416,7 +4483,10 @@ describe('Dashboard v3 run and gate routes', () => {
     } finally { await fixture.app.close(); }
   });
 
-  it('registers challenge-bound T3 response and fails closed when the ceremony is unavailable', async () => {
+  it('T2 removed the /respond/challenge mint route entirely (404); the workflow-tag rule fails closed on '
+    + 'the respond route instead: this run carries NO stored `workflowTags` — the LEGACY shape, persisted '
+    + 'before the field existed — which is unknown rather than untagged, so the fail-closed default '
+    + '(spec §4.5) demands a signed approval nobody sent', async () => {
     const fixture = seededSurface();
     try {
       const challenge = await fixture.app.inject({
@@ -4425,187 +4495,20 @@ describe('Dashboard v3 run and gate routes', () => {
           expectedRevision: fixture.request.revision, decision: 'approved', response: null,
         },
       });
-      expect(challenge.statusCode).toBe(403);
-      expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
+      expect(challenge.statusCode).toBe(404);
 
       const response = await fixture.app.inject({
         method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond`,
         headers: headers(fixture.operatorToken), payload: {
-          expectedRevision: fixture.request.revision, decision: 'approved', idempotencyKey: 'approve-result', response: null,
+          expectedRevision: fixture.request.revision, decision: 'approved', reason: 'reviewed the gate and decided', idempotencyKey: 'approve-result', response: null,
         },
       });
       expect(response.statusCode).toBe(403);
-      expect(response.json()).toEqual({ error: 'ceremony-unavailable' });
+      expect(response.json()).toEqual({ error: 'approval-required' });
       expect(fixture.store.getHumanRequest('dashboard-engine', fixture.request.requestRef)).toMatchObject({
         ok: true, value: { state: 'open', response: null },
       });
     } finally { await fixture.app.close(); }
-  });
-
-  /**
-   * W47 - the T3 ceremony over the REAL credential store, with NO composition override.
-   *
-   * Every prior tailnet ceremony case injected `credentials: () => [CRED]`, so `ceremonyModeAdmits`
-   * was only ever proved against a stub; in production `resolveCredentials()` reads exactly one
-   * variable (auth/credentialStore.ts) that tailnet mode used to refuse to boot with, which is why the
-   * first VM acceptance run parked at a `403 ceremony-unavailable` approval gate nobody could clear.
-   * These two cases drop the stub entirely: `credentials: undefined` falls through to the production
-   * default `() => resolveCredentials()` over `process.env`, and `webAuthnConfig` likewise falls
-   * through to `resolveWebAuthnConfig()`. RED ON REVERT: restore the blanket tailnet retirement (or
-   * re-narrow `ceremonyModeAdmits` to win32-desktop) and the 200 case goes 403.
-   */
-  describe('W47 tailnet T3 ceremony over the real credential store', () => {
-    const REAL_ENV = {
-      DASHBOARD_RP_ORIGIN: ORIGIN,
-      DASHBOARD_WEBAUTHN_CREDENTIALS: '[{"id":"cred-1","publicKey":"AQID","counter":0}]',
-    };
-    let saved: Record<string, string | undefined> = {};
-
-    function realCredentialSurface(env: Record<string, string | undefined>) {
-      saved = { DASHBOARD_RP_ORIGIN: process.env.DASHBOARD_RP_ORIGIN, DASHBOARD_WEBAUTHN_CREDENTIALS: process.env.DASHBOARD_WEBAUTHN_CREDENTIALS };
-      for (const [name, value] of Object.entries(env)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-      // No `credentials` and no `webAuthnConfig` key survives: both resolve from process.env exactly
-      // as the daemon does.
-      return seededSurface({ authMode: 'tailnet', credentials: undefined, webAuthnConfig: undefined });
-    }
-
-    afterEach(() => {
-      for (const [name, value] of Object.entries(saved)) {
-        if (value === undefined) delete process.env[name];
-        else process.env[name] = value;
-      }
-    });
-
-    it('tailnet + a provisioned DASHBOARD_WEBAUTHN_CREDENTIALS issues the challenge (200 + ceremonyId)', async () => {
-      const fixture = realCredentialSurface(REAL_ENV);
-      try {
-        const challenge = await fixture.app.inject({
-          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
-          headers: headers(fixture.operatorToken), payload: {
-            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
-          },
-        });
-        expect(challenge.statusCode, challenge.body).toBe(200);
-        const body = challenge.json() as { ceremonyId: string; options: { allowCredentials?: Array<{ id: string }> }; challengeExpiresAt: string };
-        expect(typeof body.ceremonyId).toBe('string');
-        expect(body.ceremonyId.length).toBeGreaterThan(0);
-        expect(typeof body.challengeExpiresAt).toBe('string');
-        // The allowlist came from the env-provisioned store, not from a test double.
-        expect(body.options.allowCredentials?.map((entry) => entry.id)).toEqual(['cred-1']);
-      } finally { await fixture.app.close(); }
-    });
-
-    it('tailnet with NO provisioned credentials still refuses 403 ceremony-unavailable (unchanged)', async () => {
-      const fixture = realCredentialSurface({ ...REAL_ENV, DASHBOARD_WEBAUTHN_CREDENTIALS: undefined });
-      try {
-        const challenge = await fixture.app.inject({
-          method: 'POST', url: `/api/control/human-requests/${fixture.request.requestRef}/respond/challenge`,
-          headers: headers(fixture.operatorToken), payload: {
-            expectedRevision: fixture.request.revision, decision: 'approved', response: null,
-          },
-        });
-        expect(challenge.statusCode).toBe(403);
-        expect(challenge.json()).toEqual({ error: 'ceremony-unavailable' });
-      } finally { await fixture.app.close(); }
-    });
-  });
-});
-
-/**
- * P5 W6.3 — the deploy-purpose T3 challenge on the SHIPPED verifier, and the lifted `ceremonyModeAdmits`
- * gate [P5-C20, P5-C23, P5-C45]. The gate is proved BOTH ways with an injected provisioned test credential:
- * tailnet + one credential issues the challenge; tailnet + zero credentials refuses `403 ceremony-unavailable`
- * with no fallback; and a registration ceremony ALONE (which only reports material for out-of-band
- * provisioning) still leaves the challenge unavailable — the gate never downgrades on credential possession.
- */
-describe('P5 W6.3 deploy-purpose T3 challenge + lifted ceremony gate', () => {
-  const CRED = { id: 'cred-1', publicKey: new Uint8Array([1]), counter: 0 };
-  const DEPLOY_READY_REF = `deploy-ready:${'b'.repeat(40)}`;
-  const DEPLOY_READY_REVISION = `deploy-ready:${'c'.repeat(64)}`;
-  const ATTEST_DIGEST = 'a'.repeat(64);
-
-  function deployChallengeRequest(app: ReturnType<typeof Fastify>, token: string, over: Record<string, unknown> = {}) {
-    return app.inject({
-      method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
-      headers: headers(token),
-      payload: { decision: 'deploy', revision: DEPLOY_READY_REVISION, digest: ATTEST_DIGEST, ...over },
-    });
-  }
-
-  it('tailnet + one provisioned credential issues the deploy challenge on the shipped verifier', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode, res.body).toBe(200);
-      const body = res.json();
-      expect(typeof body.ceremonyId).toBe('string');
-      expect(typeof body.challengeExpiresAt).toBe('string');
-      // The minted WebAuthn challenge decodes to the purpose-bound `kb.deploy-t3` preimage — never a plain
-      // opaque login nonce, so the generic sign-in route refuses this ceremonyId (see auth/routes.test.ts).
-      const decoded = Buffer.from(String(body.options.challenge), 'base64url').toString('utf8');
-      expect(decoded.startsWith('kb.deploy-t3')).toBe(true);
-    } finally { await app.close(); }
-  });
-
-  it('tailnet + ZERO provisioned credentials refuses 403 ceremony-unavailable with no fallback path', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
-    } finally { await app.close(); }
-  });
-
-  it('win32-desktop + one provisioned credential also issues the challenge (the gate loosened, not narrowed)', async () => {
-    const { app, token } = buildApp({ authMode: 'win32-desktop', credentials: () => [CRED] });
-    try {
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode, res.body).toBe(200);
-    } finally { await app.close(); }
-  });
-
-  it('a successful /api/auth/register/options ceremony ALONE still yields 403 — registration grants nothing [P5-C45]', async () => {
-    // credentials() resolves ONLY from DASHBOARD_WEBAUTHN_CREDENTIALS (resolveCredentials); the register
-    // ceremony merely REPORTS material for a human to provision out of band. Driving a registration here
-    // does not populate credentials(), so the deploy challenge stays unavailable — no runtime-registration
-    // path can create deploy authority, and the gate never downgrades on credential possession.
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [] });
-    try {
-      const register = await app.inject({
-        method: 'POST', url: '/api/auth/register/options', headers: headers(token), payload: {},
-      });
-      expect(register.statusCode, register.body).toBe(200);
-      const res = await deployChallengeRequest(app, token);
-      expect(res.statusCode).toBe(403);
-      expect(res.json()).toEqual({ error: 'ceremony-unavailable' });
-    } finally { await app.close(); }
-  });
-
-  it('mints ONLY the four T3 decisions, each over the ref spelling it requires', async () => {
-    const { app, token } = buildApp({ authMode: 'tailnet', credentials: () => [CRED] });
-    try {
-      // An unknown decision is refused before any mint.
-      const unknown = await deployChallengeRequest(app, token, { decision: 'purge' });
-      expect(unknown.statusCode).toBe(400);
-      expect(unknown.json()).toEqual({ error: 'invalid-decision' });
-      // `abort` requires `deployment:<n>`, never the `deploy-ready:<sha>` ref.
-      const crossed = await app.inject({
-        method: 'POST', url: `/api/inbox/deployment/${DEPLOY_READY_REF}/challenge`,
-        headers: headers(token), payload: { decision: 'abort', revision: 'deployment:3', digest: ATTEST_DIGEST },
-      });
-      expect(crossed.statusCode).toBe(400);
-      expect(crossed.json()).toEqual({ error: 'invalid-revision' });
-      // `close-ptys-and-continue` binds sha256(sorted session ids) as its digest and mints for pty-quiescence.
-      const quiescence = await app.inject({
-        method: 'POST', url: `/api/inbox/deployment/deployment:7/challenge`,
-        headers: headers(token),
-        payload: { decision: 'close-ptys-and-continue', revision: 'deployment:7', sessionIds: ['s-2', 's-1'] },
-      });
-      expect(quiescence.statusCode, quiescence.body).toBe(200);
-    } finally { await app.close(); }
   });
 });
 
@@ -4634,6 +4537,10 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     appendAudit?: (repoRoot: string, event: Record<string, unknown>) => unknown,
     /** A git seam that RACES — the concurrent-ops-writer shape the launch push must survive. */
     opsGitOverride?: (repoRoot: string, args: string[]) => string,
+    /** N1: a controllable owner-tag derivation, so a test can drive TWO otherwise-identical contexts that
+     *  derive DIFFERENT governing tag sets for the same owner (the shape of a redeploy that changes
+     *  `deriveOwnerTags`, or a legacy pre-`workflowTags` replay) without needing real workflow/agent scans. */
+    ownerTagsOverride?: SurfaceContext['ownerTags'],
   ) {
     const audit: Array<Record<string, unknown>> = [];
     const routingWrites: Array<Record<string, unknown>> = [];
@@ -4645,12 +4552,20 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     const app = Fastify();
     registerWriteSurface(app, makeSurfaceContext({
       repoRoot: fileURLToPath(new URL('../../..', import.meta.url)),
-      sessionConfig: SESSION, allowedOrigins: [ORIGIN], credentials: () => [], controlStore: store,
+      sessionConfig: SESSION, allowedOrigins: [ORIGIN], controlStore: store,
+      ...(ownerTagsOverride ? { ownerTags: ownerTagsOverride } : {}),
       composerStore: createInMemoryComposerStore({
         protector: { seal: (value: string) => value, open: (value: string) => value },
         newId: () => `composer-${++composerId}`,
       }),
       appendAudit: appendAudit ?? capture, appendAuditLocal: capture,
+      // T3: this describe block's retention quarantine/restore routes are `signed`-class. This `surface()`
+      // never overrides `stateRoot` (defaults to the REAL local dashboard state root), so the nonce store
+      // is stubbed in-memory too — otherwise every signed call here would durably write a real nonce file
+      // outside the test tree, the exact hazard `audit/log.ts`'s own module doc warns about for its ledger.
+      humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS,
+      sshsigVerifier: stubSshsigVerifier,
+      approvalNonces: { claim: () => 'fresh' as const },
       runPreamble: () => ({ exitCode: 0, stdout: 'PREAMBLE OK', stderr: '' }),
       opsGit: opsGitOverride ?? ((_repoRoot: string, args: string[]) => {
         if (args.join(' ') === 'rev-parse --abbrev-ref HEAD') return 'ops\n';
@@ -4713,6 +4628,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
   ) {
     const run = store.createRun(ENGINE, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost,
       title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
       expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -4909,6 +4825,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       // run, because nothing the operator wrote can occupy `queue-bridge:<cardId>`.
       const replay = store.createRun(ENGINE, {
       owner: { type: 'agent', id: 'grader', sourcePath: 'agents/grader.md' },
+      workflowTags: [],
       executionHost: 'desktop',
         title: proposal.title, proposalRef: revision.proposalRef, proposalRevision: 1,
         expectedProposalHash: revision.hash, managerRuntime: proposal.manager.runtime, managerModel: proposal.manager.model,
@@ -5076,6 +4993,71 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     } finally { await app.close(); }
   });
 
+  /**
+   * N1 (security review 2, live-proven 2026-09-17 rehearsal p12 against run-0d56794b): `workflowTags` is
+   * DERIVED at launch (`ctx.ownerTags(owner)`) and is intentionally NOT part of the launch fingerprint.
+   * Drives the REAL production launch route end to end (not `store.createRun` directly) with two
+   * otherwise-identical contexts that derive DIFFERENT governing tag sets for the same owner — the exact
+   * shape of a redeploy that changes `deriveOwnerTags`, or a legacy (pre-`workflowTags`) key replayed
+   * after the field existed. Both must still replay the SAME run. A genuinely different launch (a second,
+   * differently-titled approved revision) reusing the same key must still 409 — unrelated fingerprint
+   * fields are untouched by this fix.
+   */
+  it('replays the SAME run when the derived owner tag set changes, but still conflicts on genuinely different launch content (N1 production path)', async () => {
+    const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `n1-prod-${++n}`; })() });
+    const revision = approvedRevisionFor(store, 'operator', 'n1-prod-path');
+    const idempotencyKey = `launch:${revision.hash}`;
+
+    // First launch: owner-tag derivation returns EMPTY (the legacy no-tags shape).
+    const first = surface(store, undefined, undefined, () => []);
+    try {
+      const launched = await first.app.inject({
+        method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`,
+        headers: headers(first.token), payload: { expectedHash: revision.hash, idempotencyKey },
+      });
+      expect(launched.statusCode, launched.body).toBe(202);
+      const runRef = launched.json().runRef as string;
+
+      // Replay the SAME idempotency key through a FRESH context whose derivation now returns a DIFFERENT,
+      // non-empty tag set. Because workflowTags is no longer part of the fingerprint, this is still a 200
+      // replay of the SAME run — before this fix it would 409 idempotency-conflict.
+      const second = surface(store, undefined, undefined, () => ['publish', 'spend']);
+      try {
+        const replayed = await second.app.inject({
+          method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/1/launch`,
+          headers: headers(second.token), payload: { expectedHash: revision.hash, idempotencyKey },
+        });
+        expect(replayed.statusCode, replayed.body).toBe(200);
+        expect(replayed.json()).toMatchObject({ runRef, replayed: true });
+      } finally { await second.app.close(); }
+
+      // A genuinely different launch — a second, differently-titled revision of the SAME proposal —
+      // reusing the SAME key is still refused: the fingerprint's other fields (title, proposalRevision)
+      // are untouched by dropping workflowTags.
+      const retitledSnapshot = { ...proposal, title: 'A retitled control route' };
+      const retitled = store.createProposalRevision('operator', {
+        proposalRef: revision.proposalRef, expectedPreviousHash: revision.hash,
+        sourceComposerRef: 'workflow-registry', sourceTurnId: 'self-lint-report',
+        title: retitledSnapshot.title, snapshot: retitledSnapshot as unknown as JsonObject,
+      });
+      if (!retitled.ok) throw new Error(retitled.detail);
+      const retitledApproved = store.decideProposal('operator', revision.proposalRef, retitled.value.revision, {
+        expectedHash: retitled.value.hash, expectedApprovalRevision: 0, decision: 'approved',
+        idempotencyKey: 'n1-prod-path-retitle-approve',
+      });
+      if (!retitledApproved.ok) throw new Error(retitledApproved.detail);
+      const third = surface(store, undefined, undefined, () => []);
+      try {
+        const conflicted = await third.app.inject({
+          method: 'POST', url: `/api/control/proposals/${revision.proposalRef}/revisions/${retitled.value.revision}/launch`,
+          headers: headers(third.token), payload: { expectedHash: retitled.value.hash, idempotencyKey },
+        });
+        expect(conflicted.statusCode, conflicted.body).toBe(409);
+        expect(conflicted.json()).toMatchObject({ error: 'idempotency-conflict' });
+      } finally { await third.app.close(); }
+    } finally { await first.app.close(); }
+  });
+
   it('refuses a third subject the launch of a foreign revision, with zero side effects', async () => {
     const store = createInMemoryControlPlaneStore({ newId: (() => { let n = 0; return () => `v-${++n}`; })() });
     const revision = approvedRevisionFor(store, ENGINE, 'engine-foreign');
@@ -5232,7 +5214,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
 
       const quarantined = await app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
-        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: plan.planHash, approval: signedApproval('POST /api/control/retention/quarantine', plan.planHash) },
       });
       expect(quarantined.statusCode, quarantined.body).toBe(200);
       expect(audit.find((row) => row.action === 'control-retention-quarantine-authorize')).toMatchObject({
@@ -5246,7 +5228,8 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       expect(store.getRun(ENGINE, runRef)).toMatchObject({ ok: false, reason: 'not-found' });
 
       const restored = await app.inject({
-        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token),
+        payload: { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) },
       });
       expect(restored.statusCode, restored.body).toBe(200);
       const restoredMetadata = store.listRuns(ENGINE).find((run) => run.runRef === runRef);
@@ -5292,7 +5275,7 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
     try {
       const quarantined = await app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(token),
-        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) },
       });
       expect(quarantined.statusCode, quarantined.body).toBe(500);
       expect(quarantined.json()).toMatchObject({ error: 'quarantine-audit-required' });
@@ -5304,13 +5287,14 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const working = surface(store);
       const ok = await working.app.inject({
         method: 'POST', url: '/api/control/retention/quarantine', headers: headers(working.token),
-        payload: { runRefs: [runRef], expectedPlanHash: planHash },
+        payload: { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) },
       });
       expect(ok.statusCode, ok.body).toBe(200);
       await working.app.close();
 
       const restored = await app.inject({
-        method: 'POST', url: '/api/control/retention/restore', headers: headers(token), payload: { runRef },
+        method: 'POST', url: '/api/control/retention/restore', headers: headers(token),
+        payload: { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) },
       });
       expect(restored.statusCode, restored.body).toBe(500);
       expect(restored.json()).toMatchObject({ error: 'restore-audit-required' });
@@ -5348,10 +5332,12 @@ describe('operator cross-subject authority — launch, reroute, retention, revis
       const planHash = (planned.json().value as { planHash: string }).planHash;
       audit.length = 0;
 
+      // T3: quarantine/restore are `signed`-class — a valid approval alone must NOT bypass the subject
+      // check below (that is exactly what this loop is proving), so each carries one anyway.
       for (const [url, payload] of [
         ['/api/control/retention/dry-run', { runRefs: [runRef] }],
-        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash }],
-        ['/api/control/retention/restore', { runRef }],
+        ['/api/control/retention/quarantine', { runRefs: [runRef], expectedPlanHash: planHash, approval: signedApproval('POST /api/control/retention/quarantine', planHash) }],
+        ['/api/control/retention/restore', { runRef, approval: signedApproval('POST /api/control/retention/restore', runRef) }],
       ] as Array<[string, Record<string, unknown>]>) {
         const response = await app.inject({ method: 'POST', url, headers: headers(otherToken), payload });
         expect(response.statusCode, `${url}: ${response.body}`).toBe(404);
@@ -5510,6 +5496,144 @@ function runSessionApp(
   registry.bindings.push({ operator: 'operator', runRef, sessionId: PTY_ONE });
   return { ...built, registry, runRef };
 }
+
+describe('control budget override route (T6)', () => {
+  const WINDOW_DAY = '2026-09-16';
+  const ROUTE = '/api/control/budget/override';
+
+  /** Isolated `stateRoot` per app — this route durably writes `authority/budget-overrides.json`, and
+   *  `buildApp`'s own default (unset `stateRoot`) resolves to the REAL local dashboard state root (see
+   *  the identical note on `buildApp`/`surface()` above); a signed grant here must never land there. */
+  function budgetApp(overrides: Record<string, unknown> = {}) {
+    const stateRoot = mkdtempSync(join(tmpdir(), 'control-routes-budget-override-'));
+    const built = buildApp({ stateRoot, ...overrides });
+    return { ...built, stateRoot };
+  }
+
+  it('refuses without an approval: 403 approval-required, and grants nothing', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: { windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1' },
+    });
+    expect(res.statusCode).toBe(403);
+    expect(res.json()).toEqual({ error: 'approval-required' });
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(0);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('accepts with a valid signed approval: 200, and the grant durably persists', async () => {
+    const { app, stateRoot, token, audit } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(200);
+    const body = res.json() as { ok: boolean; windowDay: string; additionalUsdMicros: number; resultingCeilingUsdMicros: number; replayed: boolean };
+    expect(body).toEqual({
+      ok: true, windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000,
+      resultingCeilingUsdMicros: 25_000_000, replayed: false,
+    });
+    // Audit row lands, carries the actor + the fixed approval principal, and precedes the grant.
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({
+      action: 'control-budget-override-authorize', riskTier: 'T3', result: 'authorized:5000000',
+      detail: { windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, resultingCeilingUsdMicros: 25_000_000, approvalPrincipal: 'kb-ops-approver' },
+    });
+    // Durable: a FRESH store instance over the same stateRoot reads the grant back — proves it survives
+    // the request rather than living only in this process's memory.
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(5_000_000);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('reports the ceiling the RESERVE path actually uses, honouring the window-budget env override', async () => {
+    // LOW-5, second half (security review 2026-09-16): `resultingCeilingUsdMicros` was computed from the
+    // compiled-in DEFAULT_BUDGET, ignoring KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS — which
+    // `resolveWindowBudget` honours and `windowBudgetFor` reserves against. On any daemon carrying that
+    // override, both the response and the T3 audit row stated a ceiling that was simply not the one in
+    // force. It now reads the same resolver the reserve path reads.
+    vi.stubEnv('KB_EXECUTION_BUDGET_MAX_COST_USD_MICROS', '40000000');
+    try {
+      const { app, stateRoot, token, audit } = budgetApp();
+      const res = await app.inject({
+        method: 'POST', url: ROUTE, headers: headers(token),
+        payload: {
+          windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-env',
+          approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+        },
+      });
+      expect(res.statusCode, res.body).toBe(200);
+      // 40_000_000 (overridden window ceiling) + 0 already granted + 5_000_000 — NOT
+      // DEFAULT_BUDGET.maxCostUsdMicros (20_000_000) + 5_000_000.
+      expect(res.json()).toMatchObject({ resultingCeilingUsdMicros: 45_000_000 });
+      expect(audit[0]).toMatchObject({ detail: { resultingCeilingUsdMicros: 45_000_000 } });
+      await app.close();
+      rmSync(stateRoot, { recursive: true, force: true });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it('refuses an unknown body key: 400 invalid-budget-override', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1', extra: 'nope',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.json()).toEqual({ error: 'invalid-budget-override' });
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('refuses when the audit append fails: 500 budget-override-audit-required, and grants nothing', async () => {
+    const { app, stateRoot, token } = budgetApp({
+      appendAudit: () => { throw new Error('audit sink unavailable'); },
+    });
+    const res = await app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros: 5_000_000, idempotencyKey: 'k-1',
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect(res.statusCode).toBe(500);
+    expect(res.json()).toEqual({ error: 'budget-override-audit-required' });
+    const { createBudgetOverrideStore } = await import('./budgetOverride.ts');
+    expect(createBudgetOverrideStore(stateRoot).additionalUsdMicros(WINDOW_DAY)).toBe(0);
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+
+  it('refuses once the per-day ceiling is reached: 409 budget-override-ceiling-reached', async () => {
+    const { app, stateRoot, token } = budgetApp();
+    const grantOnce = (additionalUsdMicros: number) => app.inject({
+      method: 'POST', url: ROUTE, headers: headers(token),
+      payload: {
+        windowDay: WINDOW_DAY, additionalUsdMicros, idempotencyKey: `k-${additionalUsdMicros}`,
+        approval: signedApproval(`POST ${ROUTE}`, WINDOW_DAY),
+      },
+    });
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    expect((await grantOnce(20_000_000)).statusCode).toBe(200);
+    const fourth = await grantOnce(1);
+    expect(fourth.statusCode).toBe(409);
+    expect(fourth.json()).toEqual({ error: 'budget-override-ceiling-reached' });
+    await app.close();
+    rmSync(stateRoot, { recursive: true, force: true });
+  });
+});
 
 describe('run attempt controller claim route', () => {
   it('refuses an unauthenticated claim with 401 before it touches the registry', async () => {

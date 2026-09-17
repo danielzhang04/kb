@@ -41,6 +41,7 @@ import type { EntityListPort, AgentDetailPort, WorkflowDetailPort, SubmitBuilder
 import { readEntityList, readAgentDetail, readWorkflowDetail, createAgent, updateAgent, createWorkflow, updateWorkflowBuilder } from '../../services/entityService.ts';
 import type { RunReadPort } from '../../services/runReadService.ts';
 import { listRuns, replayRunEvents, respondHumanRequestRoute, type RespondPort } from '../../services/runReadService.ts';
+import { parseActor, ACTOR_HEADER } from '../../authority/actor.ts';
 import type { ScheduleServicePort } from '../../services/scheduleService.ts';
 import { listSchedules, createSchedule, setScheduleArmed, deleteSchedule } from '../../services/scheduleService.ts';
 import type { InboxServicePort } from '../../services/inboxService.ts';
@@ -116,13 +117,12 @@ export interface V1SurfaceDeps {
   readonly schedulePort?: ScheduleServicePort;
   readonly inboxPort?: InboxServicePort;
   readonly healthPort?: HealthServicePort;
-  // deployments + asset-pulls (T3 arm reuses the shipped ceremony vocabulary — ceremonyId+assertion)
+  // deployments + asset-pulls
   readonly deploymentPort?: DeploymentActionPort;
   readonly assetPullPort?: AssetPullActionPort;
 }
 
-/** The injected deployment-action port: read-only inspect + the T3-gated transitions. The route enforces
- *  the fail-closed T3 ceremony (403 ceremony-unavailable without an assertion) BEFORE calling this. */
+/** The injected deployment-action port: read-only inspect + the mutating transitions. */
 export interface DeploymentActionPort {
   inspect(ref: string): ServiceReply;
   transition(ref: string, action: 'confirm' | 'deploy' | 'abort' | 'acknowledge' | 'close-ptys-and-continue', body: unknown): Promise<ServiceReply>;
@@ -688,19 +688,22 @@ export function registerV1OperatorMutationRoutes(scope: FastifyInstance, ctx: Su
     if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'human-response unavailable', true);
     const requestRef = (req.params as { requestRef: string }).requestRef;
     const origin = headerValue(req, 'origin') ?? '';
-    sendServiceReply(reply, 'human-response', await respondHumanRequestRoute(port, subject, requestRef, req.body, origin), null);
+    // T4 [design:4.3] — self-asserted, never an authority input.
+    const actorLabel = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+    sendServiceReply(reply, 'human-response',
+      await respondHumanRequestRoute(port, subject, requestRef, req.body, origin, actorLabel), null);
   });
 
-  // Deployment T3 arm — confirm/deploy/abort/close-ptys are T3: fail-closed 403 ceremony-unavailable
-  // WITHOUT a ceremony assertion (the shipped ceremony vocabulary: body.ceremonyId + body.assertion),
-  // NO new ceremony vocabulary. acknowledge is a non-T3 operator transition.
+  // Deployment mutating arm — confirm/deploy/abort/close-ptys. T2 removed the ceremony assertion
+  // this used to require in the body before calling the port; these are plain
+  // operator-session-gated routes now, exactly like their dashboard/server/inbox/routes.ts twins (a
+  // later task moves them onto the ssh-signed channel).
   for (const action of ['confirm', 'deploy', 'abort', 'close-ptys-and-continue'] as const) {
     scope.post(`/api/v1/deployments/:ref/${action}`, async (req, reply) => {
       if (requireOperator(req, reply) === null) return;
       if (requireIdempotencyKey(req, reply) === null) return;
       const port = ctx.v1?.deploymentPort;
       if (port === undefined) return sendError(reply, 503, 'launch-unavailable', 'deployment service unavailable', true);
-      if (!hasCeremonyAssertion(req.body)) return sendError(reply, 403, 'ceremony-unavailable', 'a passkey ceremony assertion is required for this T3 deployment action', false);
       sendServiceReply(reply, 'deployment', await port.transition((req.params as { ref: string }).ref, action, req.body), 'etag');
     });
   }
@@ -722,14 +725,6 @@ export function registerV1OperatorMutationRoutes(scope: FastifyInstance, ctx: Su
       sendServiceReply(reply, 'asset-pull', await port.transition((req.params as { intentRef: string }).intentRef, action, req.body), 'etag');
     });
   }
-}
-
-/** True when the body carries the shipped passkey ceremony assertion pair — the SAME vocabulary the
- *  human-response route uses (`ceremonyId` + `assertion`); no new ceremony field is introduced [P5 reuse]. */
-function hasCeremonyAssertion(body: unknown): boolean {
-  if (body === null || typeof body !== 'object' || Array.isArray(body)) return false;
-  const rec = body as Record<string, unknown>;
-  return rec.ceremonyId != null && rec.assertion != null;
 }
 
 /** The single composition entry the checkpoint names. `where` selects which of the three scopes to mount,

@@ -1,6 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The ONE unlock boundary: every consumer reads the same session and shares a single passkey ceremony.
+ * The ONE unlock boundary. In BOTH modes the transport is what authenticates: tailnet supplies an
+ * ambient sentinel because every request arrives through the attested proxy, and win32-desktop asks the
+ * daemon to mint a bearer against its loopback peer-owner proof (BLOCKER-2). A refused or unreachable
+ * mint still fails closed to `null` — this boundary never fabricates a session.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
@@ -13,16 +16,6 @@ import {
   type Session,
 } from './authClient';
 
-function deferred<T>(): { promise: Promise<T>; resolve(value: T): void; reject(error: unknown): void } {
-  let resolve!: (value: T) => void;
-  let reject!: (error: unknown) => void;
-  const promise = new Promise<T>((done, fail) => {
-    resolve = done;
-    reject = fail;
-  });
-  return { promise, resolve, reject };
-}
-
 type RequireSession = () => Promise<Session | null>;
 
 /** A consumer that renders the shared lock state and hands its `requireSession` back to the test. */
@@ -32,11 +25,11 @@ function Probe({ id, capture }: { id: string; capture?: (require: RequireSession
   return <span data-testid={id} data-mode={mode ?? 'loading'}>{locked ? 'locked' : `unlocked:${session?.token ?? ''}`}</span>;
 }
 
-function freshSession(token = 'ceremony-token', ttlMs = 60_000): Session {
+function freshSession(token = 'stored-token', ttlMs = 60_000): Session {
   return { token, expiresAt: Date.now() + ttlMs };
 }
 
-const win32Context = async () => ({ mode: 'win32-desktop' as const, ceremonyAvailable: true });
+const win32Context = async () => ({ mode: 'win32-desktop' as const });
 
 beforeEach(() => clearStoredSession());
 afterEach(() => {
@@ -75,43 +68,13 @@ describe('SessionProvider', () => {
     expect(window.sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
   });
 
-  it('runs ONE passkey ceremony for concurrent requireSession calls from different consumers', async () => {
-    const pending = deferred<Session>();
-    const signIn = vi.fn(() => pending.promise);
-    const requires: RequireSession[] = [];
-
-    render(
-      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
-        <Probe id="a" capture={(r) => requires.push(r)} />
-        <Probe id="b" capture={(r) => requires.push(r)} />
-      </SessionProvider>,
-    );
-    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
-    const [fromA, fromB] = [requires[0]!, requires[requires.length - 1]!];
-
-    let resultA: Session | null = null;
-    let resultB: Session | null = null;
-    await act(async () => {
-      const a = fromA().then((value) => { resultA = value; });
-      const b = fromB().then((value) => { resultB = value; });
-      pending.resolve(freshSession('shared-token'));
-      await Promise.all([a, b]);
-    });
-
-    expect(signIn).toHaveBeenCalledTimes(1);
-    expect(resultA).toEqual(resultB);
-    expect((resultA as Session | null)?.token).toBe('shared-token');
-    expect(screen.getByTestId('a').textContent).toBe('unlocked:shared-token');
-    expect(screen.getByTestId('b').textContent).toBe('unlocked:shared-token');
-  });
-
-  it('reuses a fresh session instead of minting a second one', async () => {
+  it('reuses a fresh session instead of resolving a new one', async () => {
     persistSession(freshSession('stored-token'));
-    const signIn = vi.fn(async () => freshSession('never-used'));
+    const mintDesktopSession = vi.fn(async () => freshSession('never-used'));
     let require!: RequireSession;
 
     render(
-      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
         <Probe id="a" capture={(r) => { require = r; }} />
       </SessionProvider>,
     );
@@ -119,8 +82,8 @@ describe('SessionProvider', () => {
 
     const reused = await act(async () => require());
 
-    expect(signIn).not.toHaveBeenCalled();
     expect(reused?.token).toBe('stored-token');
+    expect(mintDesktopSession).not.toHaveBeenCalled();
   });
 
   it('re-locks every consumer on the session-invalidated event', async () => {
@@ -154,12 +117,34 @@ describe('SessionProvider', () => {
     expect(() => act(() => { window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT)); })).not.toThrow();
   });
 
-  it('returns null and stays locked when the ceremony is refused', async () => {
-    const signIn = vi.fn(async () => { throw new Error('assert/verify refused: 401'); });
+  it('BLOCKER-2: win32-desktop mints a session through the daemon peer proof, and unlocks every consumer', async () => {
+    const minted = freshSession('desktop-minted');
+    const mintDesktopSession = vi.fn(async () => minted);
     let require!: RequireSession;
 
     render(
-      <SessionProvider deps={{ signIn, fetchAuthContext: win32Context }}>
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
+        <Probe id="a" capture={(r) => { require = r; }} />
+        <Probe id="b" />
+      </SessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
+
+    const result = await act(async () => require());
+
+    expect(result).toEqual(minted);
+    expect(screen.getByTestId('a').textContent).toBe('unlocked:desktop-minted');
+    expect(screen.getByTestId('b').textContent).toBe('unlocked:desktop-minted');
+    // Persisted for this tab, exactly like the bearer the removed ceremony used to hand back.
+    expect(JSON.parse(window.sessionStorage.getItem(SESSION_STORAGE_KEY) as string)).toEqual(minted);
+  });
+
+  it('stays locked - and stores nothing - when the daemon refuses to mint', async () => {
+    const mintDesktopSession = vi.fn(async () => null);
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
         <Probe id="a" capture={(r) => { require = r; }} />
       </SessionProvider>,
     );
@@ -170,9 +155,65 @@ describe('SessionProvider', () => {
     expect(result).toBeNull();
     expect(screen.getByTestId('a').textContent).toBe('locked');
     expect(window.sessionStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
-    // A refused ceremony must not wedge the shared slot — the next attempt runs a new ceremony.
-    await act(async () => require());
-    expect(signIn).toHaveBeenCalledTimes(2);
+  });
+
+  it('never fabricates a session out of an expired mint', async () => {
+    const mintDesktopSession = vi.fn(async () => ({ token: 'stale', expiresAt: Date.now() - 1 }));
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
+        <Probe id="a" capture={(r) => { require = r; }} />
+      </SessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
+
+    await expect(act(async () => require())).resolves.toBeNull();
+    expect(screen.getByTestId('a').textContent).toBe('locked');
+  });
+
+  it('two consumers unlocking at once share ONE mint request', async () => {
+    let settle!: (session: Session | null) => void;
+    const mintDesktopSession = vi.fn(() => new Promise<Session | null>((resolve) => { settle = resolve; }));
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
+        <Probe id="a" capture={(r) => { require = r; }} />
+      </SessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
+
+    const both = act(async () => {
+      const pending = Promise.all([require(), require()]);
+      await Promise.resolve();
+      settle(freshSession('shared-mint'));
+      return pending;
+    });
+
+    expect(await both).toEqual([
+      expect.objectContaining({ token: 'shared-mint' }),
+      expect.objectContaining({ token: 'shared-mint' }),
+    ]);
+    expect(mintDesktopSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks again after a failed mint - one refusal never latches the tab shut', async () => {
+    const mintDesktopSession = vi.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(freshSession('second-attempt'));
+    let require!: RequireSession;
+
+    render(
+      <SessionProvider deps={{ fetchAuthContext: win32Context, mintDesktopSession }}>
+        <Probe id="a" capture={(r) => { require = r; }} />
+      </SessionProvider>,
+    );
+    await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
+
+    await expect(act(async () => require())).resolves.toBeNull();
+    await expect(act(async () => require())).resolves.toMatchObject({ token: 'second-attempt' });
+    expect(mintDesktopSession).toHaveBeenCalledTimes(2);
   });
 
   it('re-locks when the session reaches its expiry', async () => {
@@ -196,14 +237,12 @@ describe('SessionProvider', () => {
     expect(screen.getByTestId('a').textContent).toBe('locked');
   });
 
-  it('uses an ambient session in tailnet mode without invoking the passkey ceremony', async () => {
-    const signIn = vi.fn(async () => freshSession('must-not-be-minted'));
+  it('uses an ambient session in tailnet mode — no sign-in path is ever reached', async () => {
     let require!: RequireSession;
 
     render(
       <SessionProvider deps={{
-        signIn,
-        fetchAuthContext: async () => ({ mode: 'tailnet' as const, ceremonyAvailable: false }),
+        fetchAuthContext: async () => ({ mode: 'tailnet' as const }),
       }}>
         <Probe id="a" capture={(next) => { require = next; }} />
       </SessionProvider>,
@@ -211,20 +250,16 @@ describe('SessionProvider', () => {
 
     await waitFor(() => expect(screen.getByTestId('a').textContent).toBe('unlocked:tailnet-ambient'));
     await expect(require()).resolves.toMatchObject({ token: 'tailnet-ambient' });
-    expect(signIn).not.toHaveBeenCalled();
 
     act(() => { window.dispatchEvent(new Event(SESSION_INVALIDATED_EVENT)); });
     expect(screen.getByTestId('a').textContent).toBe('unlocked:tailnet-ambient');
-    expect(signIn).not.toHaveBeenCalled();
   });
 
-  it('falls back to the desktop ceremony when auth-context discovery fails', async () => {
-    const signIn = vi.fn(async () => freshSession('fallback-token'));
+  it('falls back to win32-desktop (locked, nothing stored) when auth-context discovery fails', async () => {
     let require!: RequireSession;
 
     render(
       <SessionProvider deps={{
-        signIn,
         fetchAuthContext: async () => { throw new Error('offline'); },
       }}>
         <Probe id="a" capture={(next) => { require = next; }} />
@@ -232,8 +267,7 @@ describe('SessionProvider', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('a').getAttribute('data-mode')).toBe('win32-desktop'));
-    await expect(require()).resolves.toMatchObject({ token: 'fallback-token' });
-    expect(signIn).toHaveBeenCalledOnce();
+    await expect(require()).resolves.toBeNull();
   });
 });
 

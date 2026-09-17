@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { clearStoredSession, persistSession, type Session } from '../lib/authClient';
+import { clearStoredSession, persistSession } from '../lib/authClient';
 import { renderWithTestSession } from '../test/session';
 import { StopControls } from './stopControls';
 
-async function renderWithSession(opts: { stored?: string; signIn?: () => Promise<Session> } = {}) {
+async function renderWithSession(opts: { stored?: string } = {}) {
   if (opts.stored) persistSession({ token: opts.stored, expiresAt: Date.now() + 60_000 });
-  return renderWithTestSession(<StopControls />, { signIn: opts.signIn });
+  return renderWithTestSession(<StopControls />);
 }
 
 beforeEach(() => vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined))));
@@ -40,7 +40,7 @@ describe('P1 fleet STOP surface', () => {
     await waitFor(() => expect(screen.getByTestId('nuke-status').textContent).toContain('refused: unauthenticated'));
   });
 
-  it('mints at point of action and sends the bearer to fleet STOP', async () => {
+  it('sends the stored bearer to fleet STOP', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     vi.stubGlobal('fetch', vi.fn((url: string, init?: RequestInit) => {
       calls.push({ url, init });
@@ -48,13 +48,11 @@ describe('P1 fleet STOP surface', () => {
         ? Promise.resolve({ ok: true, json: () => Promise.resolve({ ok: true }) } as Response)
         : new Promise(() => undefined);
     }));
-    const signIn = vi.fn(async () => ({ token: 'minted-token', expiresAt: Date.now() + 60_000 }));
-    await renderWithSession({ signIn });
+    await renderWithSession({ stored: 'stored-token' });
     fireEvent.click(screen.getByLabelText('Confirm nuclear STOP'));
     fireEvent.submit(screen.getByLabelText('Nuclear STOP'));
     await waitFor(() => expect(screen.getByTestId('nuke-status').textContent).toContain('STOP written'));
-    expect(signIn).toHaveBeenCalledTimes(1);
     const call = calls.find(({ url }) => url === '/api/write/stop');
-    expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer minted-token');
+    expect((call?.init?.headers as Record<string, string>)?.authorization).toBe('Bearer stored-token');
   });
 });

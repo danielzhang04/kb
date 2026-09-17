@@ -210,6 +210,18 @@ export interface AgentWorkspaceLaunchProvenance {
 }
 
 export interface Run extends RunIdentityFields {
+  /**
+   * The governing `publish`/`spend` tag set, DERIVED ONCE AT LAUNCH from this run's owner
+   * (`control/ownerTags.ts#deriveOwnerTags`) and immutable thereafter. The boss-intervention rule
+   * (spec §4.5) reads ONLY this field.
+   *
+   * OPTIONAL because a run persisted before the field existed does not carry it. Absent is NOT "no
+   * tags": `control/routes.ts#resolveRunWorkflowTags` treats an absent field as the maximal
+   * `{publish, spend}` set, so a legacy run costs a signed approval rather than silently escaping the
+   * rule. Nothing writes it after `createRun` — that is the whole point (security review BLOCKER-1: a
+   * resolve-time re-scan of the definition was rewritable through the open `POST /api/write/save`).
+   */
+  workflowTags?: string[];
   runRef: string;
   predecessorRunRef: string | null;
   title: string;
@@ -502,6 +514,8 @@ export interface ResolveIterationGateInput {
   decision: 'approved' | 'declined' | 'rejected' | 'changes-requested';
   operationKey: string;
   response?: string | null;
+  /** See `HumanResponse.resolvedBy` [design:4.3]. Absent on a caller that predates T4. */
+  resolvedBy?: NonNullable<HumanResponse['resolvedBy']>;
 }
 
 export interface IterationGateResult extends IterationParkResult {
@@ -562,6 +576,20 @@ export interface HumanResponse {
   idempotencyKey: string;
   response: string | null;
   respondedAt: string;
+  /**
+   * T4 [design:4.3] — WHO, over what channel, and why this request was resolved. `null` on rows written
+   * before this field existed (the only tolerated absence — legacy rows are never backfilled) and on
+   * system-driven resolutions (an engine auto-close, or an `archiveRun`/auto-close sweep, neither of which
+   * is a human decision behind an actor claim). Set on every `respondHumanRequest`/`resolveIterationGate`
+   * call that IS a human decision. `actor` is self-asserted (see `authority/actor.ts`) and therefore a
+   * RECORD, never an authority input.
+   */
+  resolvedBy?: {
+    actor: string;
+    tailnetIdentity: string | null;
+    at: string;
+    reason: string;
+  } | null;
 }
 
 export interface HumanRequest {

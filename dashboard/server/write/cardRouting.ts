@@ -7,13 +7,13 @@
  * the mutation shells `py -3 -c` code that imports `scripts/cards.py` as a MODULE and calls its
  * `parse`/`stamp_routing`/`save` primitives (cards.py stays the sole schema authority), then the changed
  * card file is committed to `ops` through the D2.5 coordination route (`branch.ts#routeCoordination`:
- * pull-rebase-push). In order: WebAuthn session gate (401) -> registry validation (400) -> py stamp ->
+ * pull-rebase-push). In order: session gate (401) -> registry validation (400) -> py stamp ->
  * governed ops commit -> exactly one D2.9 audit row.
  *
  * HASH-BINDING (flagged, intentionally NOT done here): proposal §3 recommends adding `runtime`/`model`
  * to the dashboard `content_hash` preimage so a routing change is tamper-evident. That preimage lives in
- * the FROZEN WebAuthn challenge/verifier code (`auth/challenge.ts` / `webauthn_verify.py`), a separate
- * flagged decision out of R2's scope — this module deliberately does not alter it.
+ * `auth/cardHash.ts`'s frozen `canonicalCardPayload`/`contentHash`, a separate flagged decision out of
+ * R2's scope — this module deliberately does not alter it.
  */
 import { existsSync, lstatSync, readdirSync, readFileSync, realpathSync, statSync } from 'node:fs';
 import { join, resolve, relative, sep, isAbsolute } from 'node:path';

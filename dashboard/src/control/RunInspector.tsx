@@ -34,14 +34,9 @@ export interface RunInspectorProps {
   outputs: readonly OutputRef[];
   gate: RunInspectorGate | null;
   additionalGates?: readonly RunInspectorGate[];
-  ceremonyAvailable: boolean;
   details: RunInspectorDetails;
   busy?: boolean;
   onRespond(input: RunInspectorResponse): void | Promise<void>;
-}
-
-function isT3(gate: RunInspectorGate): boolean {
-  return gate.kind === 'approval' || gate.kind === 'review' || gate.kind === 'governance-refusal';
 }
 
 function outputLabel(output: OutputRef): string {
@@ -63,7 +58,6 @@ export function RunInspector(props: RunInspectorProps): React.JSX.Element {
         ? <ul>{gates.map((gate) => <li key={`${gate.requestRef}:${gate.revision}`}>
             <GateControl
               gate={gate}
-              ceremonyAvailable={props.ceremonyAvailable}
               busy={props.busy === true}
               onRespond={props.onRespond}
             />
@@ -85,7 +79,6 @@ export function RunInspector(props: RunInspectorProps): React.JSX.Element {
 
 interface GateControlProps {
   gate: RunInspectorGate;
-  ceremonyAvailable: boolean;
   busy: boolean;
   onRespond(input: RunInspectorResponse): void | Promise<void>;
 }
@@ -95,8 +88,7 @@ function GateControl(props: GateControlProps): React.JSX.Element {
   const [submitted, setSubmitted] = useState(false);
   const [responseError, setResponseError] = useState<string | null>(null);
   const gate = props.gate;
-  const unavailableT3 = isT3(gate) && !props.ceremonyAvailable;
-  const disabled = props.busy || gate.state !== 'open' || submitted || unavailableT3;
+  const disabled = props.busy || gate.state !== 'open' || submitted;
 
   const submit = (decision: OperatorDecision): void => {
     if (disabled) return;
@@ -117,7 +109,6 @@ function GateControl(props: GateControlProps): React.JSX.Element {
         <h3>{gate.title}</h3>
         <p>{gate.prompt}</p>
         <label>Response<textarea aria-label="Response" value={response} disabled={disabled} onChange={(event) => setResponse(event.target.value)} /></label>
-        {unavailableT3 ? <p role="status">Passkey ceremony unavailable</p> : null}
         {responseError ? <p role="alert">Response failed: {responseError}</p> : null}
         {gate.kind === 'input' || gate.kind === 'intervention'
           ? <button type="button" disabled={disabled} onClick={() => submit('responded')}>Respond</button>

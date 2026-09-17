@@ -1,17 +1,17 @@
 /**
  * Browser glue for governed card actions. `verifyApproval` drives `POST /api/approvals/verify` for an explicit operator
- * verify click (never on card selection). `fetch` is injected (mirrors the sseClient/webauthnClient DI
- * seam) so this is unit-testable with no network.
+ * verify click (never on card selection). `fetch` is injected (mirrors the sseClient DI seam) so this
+ * is unit-testable with no network.
  *
- * This module never runs a WebAuthn ceremony itself and never re-orders the show-then-prompt law — it
- * is called only from an already-corroborated verify click. The session bearer is minted out-of-band by
- * the WebAuthn login (`authClient.ts`); absent a session the server replies 401, which is surfaced to
- * the caller rather than hidden.
+ * This module never runs a sign-in ceremony itself and never re-orders the show-then-prompt law — it
+ * is called only from an already-corroborated verify click. The session bearer is minted out-of-band
+ * (`authClient.ts`); absent a session the server replies 401, which is surfaced to the caller rather
+ * than hidden.
  */
 import type { OwnerLiveness } from '../../server/runner/liveness';
 import { invalidateSessionOnGovernedAuthFailure } from './authClient';
 
-export type ApprovalChannel = 'signed' | 'possession' | 'webauthn';
+export type ApprovalChannel = 'signed' | 'possession';
 export type FetchLike = typeof fetch;
 
 export interface VerifyResult {
@@ -25,7 +25,7 @@ export interface VerifyResult {
 
 /**
  * POST an explicit verify to the server, driving the channel's dispatcher-side verifier. The optional
- * session `token` is sent as a bearer; without one the server 401s (the fail-closed pre-passkey path),
+ * session `token` is sent as a bearer; without one the server 401s (fail-closed, no session),
  * which this returns as `{ ok: false, status: 401 }` rather than throwing.
  */
 export async function verifyApproval(

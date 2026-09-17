@@ -30,6 +30,7 @@ import {
   CONTROL_PLANE_SCHEMA_VERSION,
 } from './generated/controlPlaneSchema.ts';
 import { decodeHostKind, decodeRun, decodeRunnableRef, decodeStoredRun } from './p2Decoders.ts';
+import { FAIL_CLOSED_RUN_TAGS } from './ownerTags.ts';
 import type {
   RunnableRef,
   Schedule,
@@ -116,6 +117,7 @@ import type {
   HumanRequest,
   HumanRequestDecision,
   HumanRequestKind,
+  HumanResponse,
   IterationLoop,
   IterationReceipt,
   IterationRequest,
@@ -190,7 +192,7 @@ const STAGE_STATES = new Set<StageState>(['blocked', 'ready', 'running', 'waitin
 const ATTEMPT_STATES = new Set<AttemptState>(['queued', 'starting', 'running', 'waiting-human', 'succeeded', 'failed', 'stopped', 'interrupted']);
 const SESSION_STATES = new Set<ManagedSessionState>(['pending', 'starting', 'running', 'waiting', 'completed', 'failed', 'stopped', 'interrupted']);
 
-/** The single human identity the daemon mints WebAuthn sessions for (`server/auth/routes.ts` OPERATOR.id).
+/** The single human identity the daemon mints sessions for (`server/auth/routes.ts` OPERATOR.id).
  *  Every other subject in this document is a machine: the dashboard engine, an executor, a test fixture. */
 export const OPERATOR_SUBJECT = 'operator';
 
@@ -641,6 +643,20 @@ function normalizeAgentWorkspaceLaunch(value: unknown): AgentWorkspaceLaunchProv
   return { composerRef, agentId, declarationPath, declarationHash };
 }
 
+/**
+ * `null` = the caller stated NO tag set (store no field: a legacy-shaped run the resolve rule fails
+ * closed on), a sorted unique array = the stated set, `undefined` = invalid input (refused).
+ * Only the two governing tags exist; anything else is a caller bug, not a tag to persist.
+ */
+function normalizeWorkflowTags(value: unknown): readonly string[] | null | undefined {
+  if (value === undefined) return null;
+  if (!Array.isArray(value)) return undefined;
+  if (value.some((tag) => typeof tag !== 'string' || !FAIL_CLOSED_RUN_TAGS.includes(tag))) return undefined;
+  const unique = [...new Set(value as string[])].sort();
+  if (unique.length !== value.length) return undefined;
+  return unique;
+}
+
 interface CheckerContractProvenance {
   workflowProfile: string | null;
   review: ProposalReview | null;
@@ -910,7 +926,10 @@ function archiveResponseKey(archiveKey: string, requestRef: string): string {
 function recordHumanResponse(
   request: StoredHumanRequest,
   subject: string,
-  input: { decision: HumanRequestDecision; idempotencyKey: string; response: string | null },
+  input: {
+    decision: HumanRequestDecision; idempotencyKey: string; response: string | null;
+    resolvedBy?: NonNullable<HumanResponse['resolvedBy']>;
+  },
   at: string,
 ): void {
   request.response = {
@@ -920,6 +939,9 @@ function recordHumanResponse(
     idempotencyKey: input.idempotencyKey,
     response: input.response,
     respondedAt: at,
+    // Only a real human decision behind an actor claim carries one; the engine-driven auto-close and the
+    // bulk archiveRun sweep never pass it, so they resolve to `null` — never a fabricated actor [design:4.3].
+    resolvedBy: input.resolvedBy ?? null,
   };
   request.state = 'resolved';
   request.updatedAt = at;
@@ -3194,6 +3216,8 @@ function makeStore(
       if (!executionHost) return fail('invalid', 'execution host is invalid');
       const agentWorkspaceLaunch = normalizeAgentWorkspaceLaunch(input.agentWorkspaceLaunch);
       if (agentWorkspaceLaunch === undefined) return fail('invalid', 'agent workspace launch provenance is invalid');
+      const workflowTags = normalizeWorkflowTags(input.workflowTags);
+      if (workflowTags === undefined) return fail('invalid', 'run workflow tags are invalid');
       if (!Array.isArray(input.stages) || input.stages.length === 0 || input.stages.length > MAX_STAGES_PER_RUN) {
         return fail('limit', `run must contain 1-${MAX_STAGES_PER_RUN} stages`);
       }
@@ -3249,6 +3273,15 @@ function makeStore(
         managerAssignment,
         owner,
         executionHost,
+        // workflowTags is intentionally NOT part of the launch fingerprint. The tag set is DERIVED at
+        // launch from `owner` (already fingerprinted above), and a replay writes nothing and cannot
+        // re-tag the stored run — so a "different tag set on replay" can only mean a different owner
+        // (already a conflict via the `owner` key) or a changed derivation function, which is not an
+        // idempotency concern. Keeping the key added no protection while permanently breaking replay of
+        // every run persisted before this field existed: the canonical launch path (launch.ts) always
+        // passes an array, so legacy runs (fingerprinted before the field existed, thus with no key at
+        // all) could never match again and would 409 idempotency-conflict forever (security review 2 N1;
+        // live-proven 2026-09-17 rehearsal p12 against run-0d56794b).
         agentWorkspaceLaunch,
         predecessorRunRef: input.predecessorRunRef ?? null,
         expectedPredecessorVersion: input.expectedPredecessorVersion ?? null,
@@ -3336,6 +3369,17 @@ function makeStore(
           || predecessor.executionHost !== executionHost) {
           return fail('conflict', 'Retry successor must preserve immutable runnable owner and execution host');
         }
+        // A Retry successor may never carry FEWER escalations than the run it succeeds: the definition
+        // could have been edited between the two launches, and a retry is not a laundering channel. This
+        // only applies when the PREDECESSOR actually stored a tag set -- a legacy predecessor (persisted
+        // before the field existed) has no set to compare against, so every retry of it would otherwise
+        // be refused forever (security review 2, N2). The predecessor's own gates already fail closed on
+        // its absent tags (`resolveRunWorkflowTags`); this successor is governed by its OWN freshly
+        // derived and stored set either way.
+        if (workflowTags !== null && predecessor.workflowTags !== undefined
+          && predecessor.workflowTags.some((tag) => !workflowTags.includes(tag))) {
+          return fail('conflict', 'Retry successor must not drop a governing workflow tag');
+        }
         if (!sameAssignment(predecessor.managerAssignment, managerAssignment)
           || input.stages.some((stage) => {
             const predecessorStage = document.stages.find((item) =>
@@ -3370,6 +3414,9 @@ function makeStore(
         lifecycle: lifecycleForKind('planned', null),
         owner: clone(owner),
         executionHost,
+        // Written ONCE, here, and by nothing else. A run launched without a stated tag set stores no
+        // field at all, which the resolve rule reads as legacy and fails closed on.
+        ...(workflowTags === null ? {} : { workflowTags: [...workflowTags] }),
         terminalOutcome: null,
         completedAt: null,
         archivedFrom: null,
@@ -4619,7 +4666,17 @@ function makeStore(
         return fail('invalid', 'iteration-park gates cannot add an in-place cycle');
       }
       const response = input.response == null ? null : cleanText(input.response, MAX_LONG_TEXT);
-      const fingerprint = sha256(canonicalJson({ requestRef, ...input, response } as unknown as JsonValue));
+      // `resolvedBy.at` is stamped fresh by the route on EVERY call, including a replay carrying the
+      // same `operationKey` -- so it must never enter the fingerprint, or a legitimate replay of the
+      // identical decision would hash differently each time and be misread as a reused-key conflict.
+      // The rest of `resolvedBy` (actor, tailnetIdentity, reason) is real content: a replay claimed by
+      // a different actor or carrying a different reason is still a genuine idempotency conflict.
+      const fingerprintResolvedBy = input.resolvedBy == null ? null : {
+        actor: input.resolvedBy.actor, tailnetIdentity: input.resolvedBy.tailnetIdentity, reason: input.resolvedBy.reason,
+      };
+      const fingerprint = sha256(canonicalJson(
+        { requestRef, ...input, response, resolvedBy: fingerprintResolvedBy } as unknown as JsonValue,
+      ));
       if (gate.response !== null) {
         if (gate.response.idempotencyKey !== input.operationKey || gate.resolutionOperationFingerprint !== fingerprint) {
           return fail('idempotency-conflict', 'iteration gate response was reused with different content');
@@ -4664,7 +4721,8 @@ function makeStore(
         if (!parkGate && !currentReceipt) return fail('conflict', 'iteration gate linkage is incomplete');
         const responseDecision: HumanRequestDecision = approved ? 'approved' : 'rejected';
         gate.response = { requestRevision: gate.revision, decision: responseDecision, respondedBy: subject,
-          idempotencyKey: input.operationKey, response, respondedAt: createdAt };
+          idempotencyKey: input.operationKey, response, respondedAt: createdAt,
+          resolvedBy: input.resolvedBy ?? null };
         gate.resolutionOperationFingerprint = fingerprint;
         gate.state = 'resolved';
         gate.updatedAt = createdAt;
@@ -5749,6 +5807,7 @@ function makeStore(
       // resolution is a fact about the run's ask, not a transfer of it.
       recordHumanResponse(request, subject, {
         decision: input.decision, idempotencyKey: input.idempotencyKey, response,
+        resolvedBy: input.resolvedBy,
       }, stamp());
       commit(document);
       return ok(publicRequest(request));

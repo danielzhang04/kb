@@ -290,7 +290,7 @@ function emitScalar(v: string | number | boolean | null | undefined): string {
  */
 export function serializeOverride(doc: { version: number; overrides: SerializableOverrideEntry[] }): string {
   const lines: string[] = [
-    '# queue/routing-override.yaml — ops-side fast routing override (dashboard-written, WebAuthn-gated,',
+    '# queue/routing-override.yaml — ops-side fast routing override (dashboard-written, session-gated,',
     '# audited). NOT governance: a coordination artifact written at runtime through the governed ops',
     '# path (pull-rebase-push). scripts/routing.py:load_override() reads it override-over-policy. Absent',
     '# / empty / malformed -> treated as {overrides: []} (fall back to policy). See',

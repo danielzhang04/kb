@@ -21,7 +21,7 @@ describe('fetchRouting', () => {
 });
 
 describe('postRoutingOverride', () => {
-  it('POSTs the set body with the WebAuthn bearer', async () => {
+  it('POSTs the set body with the session bearer', async () => {
     const fetchImpl = vi.fn(async (_url: string, _init?: RequestInit) => jsonResponse({ ok: true }));
     const res = await postRoutingOverride(
       { op: 'set', scope: 'agent', key: 'codex-worker', runtime: 'codex', model: 'gpt-5-codex', expires: null },

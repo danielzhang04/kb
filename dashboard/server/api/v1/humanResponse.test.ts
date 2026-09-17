@@ -9,7 +9,11 @@ function port(result: RespondResult): RespondPort {
   return { async respond() { return result; } };
 }
 
-const okBody = { decision: 'approved', expectedRevision: 3, idempotencyKey: 'resp-key-1', response: null };
+// HIGH-1: `reason` is required from every actor, this route's `unknown` (no `X-KB-Actor`) caller included.
+const okBody = {
+  decision: 'approved', expectedRevision: 3, idempotencyKey: 'resp-key-1', response: null,
+  reason: 'reviewed the gate and decided',
+};
 
 describe('POST .../human-requests/:requestRef/respond', () => {
   it('200 kind:human-response on an accepted response', async () => {

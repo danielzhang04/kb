@@ -23,7 +23,6 @@ import { CARD_OP_SCRIPT } from './write/launch.ts';
 import {
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
-  WEBAUTHN_VERIFY_SCRIPT,
 } from './approvals/cardVerifier.ts';
 
 const SCRIPTS: Record<string, string> = {
@@ -38,7 +37,6 @@ const SCRIPTS: Record<string, string> = {
   CARD_OP_SCRIPT,
   SIGNED_VERIFY_SCRIPT,
   POSSESSION_VERIFY_SCRIPT,
-  WEBAUTHN_VERIFY_SCRIPT,
 };
 
 const python = resolvePython();

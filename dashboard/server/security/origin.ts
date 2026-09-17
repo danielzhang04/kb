@@ -169,7 +169,7 @@ export function originPlugin(app: FastifyInstance, opts: { allowedOrigins: Allow
  * public origin is configured.
  *
  * Which variable names the origin follows the auth mode (`auth/mode.ts`):
- * - `win32-desktop` uses the WebAuthn RP origin, plus the localhost dev origin ONLY when explicitly
+ * - `win32-desktop` uses the session's RP origin, plus the localhost dev origin ONLY when explicitly
  *   enrolled (`DASHBOARD_DEV_ORIGIN`, D0.12) — localhost is never trusted by default.
  * - `tailnet` derives it from the `tailscale serve` hostname and NOTHING else. It has no relying party
  *   (a stale `DASHBOARD_RP_ORIGIN` must never quietly widen the allowlist), and — critically — no dev
