@@ -232,6 +232,46 @@ describe('the reviewer probe: the DISK tag set really does flip under a rewrite'
   });
 });
 
+describe('the production binding (`makeSurfaceContext#ownerTags`) reads both rosters', () => {
+  /** A minimal declaration `agents/roster.ts#scanAgentDeclarations` accepts. */
+  function writeAgent(root: string, id: string, tools: string[]): void {
+    mkdirSync(join(root, 'agents'), { recursive: true });
+    writeFileSync(join(root, 'agents', `${id}.md`), [
+      '---', `id: ${id}`, 'role: work', 'runtime: claude', 'model: claude-sonnet-5',
+      'default-profile: worker:claude:claude-sonnet-5',
+      'allowed-profiles: [worker:claude:claude-sonnet-5]',
+      'projects: []', `tools: [${tools.join(', ')}]`, 'skills: []', '---', '', `# ${id}`, '',
+    ].join('\n'));
+  }
+
+  function contextOver(root: string) {
+    return makeSurfaceContext({
+      repoRoot: root, sessionConfig: SESSION, allowedOrigins: [ORIGIN],
+      controlStore: createInMemoryControlPlaneStore(),
+    } as never);
+  }
+
+  it('derives an AGENT owner\'s tags from its declaration, and fails closed on an unknown one', () => {
+    // MEDIUM-4: an agent-owned run used to be unconditionally untagged -- the one arm of the rule that
+    // failed OPEN. It is derived like any other owner now, through the same `makeSurfaceContext` binding
+    // production uses, so the agent roster really is wired in and not just accepted as a parameter.
+    const root = tempRepo(true);
+    writeAgent(root, 'publisher', ['upload_video']);
+    writeAgent(root, 'reader', ['Read']);
+    const ctx = contextOver(root);
+    expect(ctx.ownerTags?.({ type: 'agent', id: 'publisher', sourcePath: 'agents/publisher.md' })).toEqual(['publish']);
+    expect(ctx.ownerTags?.({ type: 'agent', id: 'reader', sourcePath: 'agents/reader.md' })).toEqual([]);
+    expect(ctx.ownerTags?.({ type: 'agent', id: 'nobody', sourcePath: 'agents/nobody.md' })).toEqual(['publish', 'spend']);
+  });
+
+  it('derives a WORKFLOW owner\'s tags from the definition through the same binding', () => {
+    const root = tempRepo(true);
+    expect(contextOver(root).ownerTags?.(OWNER)).toEqual(['publish']);
+    writeDefinition(root, false);
+    expect(contextOver(root).ownerTags?.(OWNER)).toEqual([]);
+  });
+});
+
 describe('the governing tag set is pinned on the run at launch, not re-read at resolve', () => {
   it('still refuses an unsigned gate resolution after the definition is rewritten to drop publish', async () => {
     const root = tempRepo(true);
