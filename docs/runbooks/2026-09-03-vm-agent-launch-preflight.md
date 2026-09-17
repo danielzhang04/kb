@@ -1,5 +1,15 @@
 # VM agent-launch preflight (2026-09-03)
 
+> **SUPERSEDED IN PART (2026-09-16, `claude/authority-guardrails`).** Everything below about the
+> WebAuthn/passkey channel is GONE: the four `/api/auth/register|assert` ceremony routes,
+> `DASHBOARD_RP_ORIGIN`, `DASHBOARD_WEBAUTHN_CREDENTIALS`, `credentialStore.ts`, `webauthn.ts`,
+> `scripts/webauthn_verify.py`, and the `assertTailnetPasskeyChannel` postures. A T3 decision now
+> travels the ssh-signed human-approval channel (`kb.human-approval/v1`, namespace
+> `kb-human-approval`, principal `kb-ops-approver`, verified with `ssh-keygen -Y verify` against
+> `DASHBOARD_HUMAN_APPROVER_ALLOWED_SIGNERS`) — see
+> `docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md` §4.2. The dated
+> post-mortem below is left verbatim on purpose: it is the record of one specific failed run.
+
 Read this before opening a Gate window on the VM, and before any deploy touching
 `dashboard/server/pty/**`, `dashboard/server/control/attemptSessionAdapter.ts`, or the broker unit
 files. It exists because Gate 4 (proving a real `claude`/`codex` launch through the broker) took four

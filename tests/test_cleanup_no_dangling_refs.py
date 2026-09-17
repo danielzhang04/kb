@@ -65,6 +65,23 @@ ARCHIVAL_ALLOWLIST = {
     # entries above: the citation was true when written, and a snapshot that gets edited every
     # time the repo moves is no longer a snapshot.
     "docs/research/_ig-saved/analysis/lifecycle-hooks-hygiene.md",
+    # --- surfaced by the authority-and-guardrails WebAuthn deletion (T2, caught by T9) ---------
+    # Closed, shipped plan. Its D2 sections are the build record of the WebAuthn/passkey channel
+    # AS BUILT ("Files touched: dashboard/server/auth/webauthn.ts ...", "Failing tests first:
+    # webauthn.test.ts > ..."). Those sentences were true when written and are the only account
+    # of how that channel came to exist; rewriting them to name files that never held the code
+    # would falsify the record -- the same principle as every entry above.
+    "docs/plans/2026-07-16-dashboard-implementation.md",
+    # Dated incident runbook (2026-09-03). Its "Why" section reconstructs one failed acceptance
+    # run by naming the exact modules that produced `403 ceremony-unavailable`. A banner at the
+    # top of the file now says that channel is gone and points at its replacement; the narrative
+    # itself stays verbatim, because a post-mortem that gets edited is no longer a post-mortem.
+    "docs/runbooks/2026-09-03-vm-agent-launch-preflight.md",
+    # Design for the Atlas V2a wave, whose build was never authorized. Its entire approval loop is
+    # `scripts/webauthn_verify.py` behind a passkey, so it cannot be "updated" in place -- it has
+    # to be re-cut onto the ssh-signed channel before that wave starts, which is its own piece of
+    # work. A banner at the top of the file now says exactly that.
+    "docs/specs/2026-07-21-atlas-v2a-trust-design.md",
 }
 
 # The token-discipline SDD's own planning/evidence documents necessarily name the exact paths
@@ -76,6 +93,11 @@ SDD_SELF_ALLOWLIST = {
     "docs/superpowers/specs/2026-09-11-token-discipline-evidence/task0-probes.md",
     # This test file's own DELETED_PATHS literals, below, must spell out the exact dead paths.
     "tests/test_cleanup_no_dangling_refs.py",
+    # Same self-reference, one wave later: the authority-and-guardrails SDD is the document that
+    # INSTRUCTS the WebAuthn deletion and argues for it, so it has to name every file it removes.
+    "docs/superpowers/plans/2026-09-16-authority-and-guardrails-plan.md",
+    "docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md",
+    "docs/superpowers/plans/2026-09-16-authority-governance-diff.md",
 }
 
 
