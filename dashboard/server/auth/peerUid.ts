@@ -126,11 +126,21 @@ function ipv6Bytes(address: string): number[] | null {
  * that does not parse, so a caller fails closed rather than matching on a partial address.
  */
 export function ipToProcHex(address: string): string | null {
-  const v4 = ipv4Bytes(address);
-  if (v4) return leWord(v4);
-  const v6 = ipv6Bytes(address);
-  if (v6) return [0, 4, 8, 12].map((offset) => leWord(v6.slice(offset, offset + 4))).join('');
-  return null;
+  const bytes = ipAddressBytes(address);
+  if (bytes === null) return null;
+  if (bytes.length === 4) return leWord(bytes);
+  return [0, 4, 8, 12].map((offset) => leWord(bytes.slice(offset, offset + 4))).join('');
+}
+
+/**
+ * The raw bytes of an IP literal — 4 for IPv4, 16 for IPv6 (including the `::ffff:1.2.3.4` embedded-v4
+ * form) — or `null` for anything that does not parse. The one address parser both peer-owner proofs
+ * share: this module renders them into `/proc` hex for Linux, and `win32DesktopPeer.ts` compares them
+ * byte-for-byte against the rows `GetExtendedTcpTable` returns. Two parsers would be two chances to
+ * disagree about what "is this the same address" means at a trust boundary.
+ */
+export function ipAddressBytes(address: string): number[] | null {
+  return ipv4Bytes(address) ?? ipv6Bytes(address);
 }
 
 /** One little-endian hex word from 4 bytes: reverse, 2-hex-uppercase each. */

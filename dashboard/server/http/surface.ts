@@ -29,12 +29,13 @@ import { readDeclaredAgentDetails } from '../agents/roster.ts';
 import { deriveOwnerTags } from '../control/ownerTags.ts';
 import { WORKFLOW_EXECUTION_PROFILES } from '../control/workflowProfiles.ts';
 import { createTailnetOperatorAuth } from '../auth/tailnetOperator.ts';
+import { createDesktopPeerCheck } from '../auth/win32DesktopPeer.ts';
 import { resolveAllowedOrigins, originPlugin } from '../security/origin.ts';
 import { makeDefaultReadRateGuard, makeDefaultWriteRateGuard, requireSession, surfaceRateLimitHook } from './middleware.ts';
 import type { SurfaceContext } from './context.ts';
 import { makeNodeRateGuard, makeNodeReadRateGuard } from './context.ts';
 import { registerV1NodeRoutes, registerV1Routes } from '../api/v1/routes.ts';
-import { registerAuthRoutes, registerBrowserSessionRoute } from '../auth/routes.ts';
+import { registerAuthRoutes, registerBrowserSessionRoute, registerDesktopSessionRoute } from '../auth/routes.ts';
 import { createActivationReader } from '../home/routes.ts';
 import { registerWriteRoutes } from '../write/routes.ts';
 import { createProviderIdProtector } from '../composer/protector.ts';
@@ -171,6 +172,9 @@ export function makeSurfaceContext(
   // `tailnet` mode the operator authenticator rides on `sessionConfig` — the one object every
   // `requireSession` call site already receives — so the mode reaches all of them without a route edit.
   const authMode = resolveAuthMode(activation.env);
+  // A test may pin the mode directly; every mode-shaped decision below reads THIS value, so an override
+  // can never leave the context advertising one mode while carrying the other mode's proof.
+  const effectiveAuthMode = overrides.authMode ?? authMode;
   const tailnet = authMode === 'tailnet' ? resolveTailnetConfig(activation.env) : null;
   const sessionConfig = overrides.sessionConfig ?? {
     secret: resolveSessionSecret(),
@@ -430,7 +434,7 @@ export function makeSurfaceContext(
     definitionAmendmentStore,
     durableRepoRoot: overrides.durableRepoRoot ?? overrides.repoRoot ?? resolveDurableRepoRoot(),
     sessionConfig,
-    authMode: overrides.authMode ?? authMode,
+    authMode: effectiveAuthMode,
     // BLOCKER-1: the composition root is the only place that can see BOTH the workflow scanner
     // (`workflows/routes.ts`, which itself imports `control/launch.ts`) and the agent roster, so the
     // derivation is bound here and handed down. `control/launch.ts` calls it once, at launch, and the
@@ -441,6 +445,15 @@ export function makeSurfaceContext(
       profileTools: (profileId) => WORKFLOW_EXECUTION_PROFILES
         .find((profile) => profile.id === profileId)?.allowedTools ?? [],
     })),
+    // BLOCKER-2: the `win32-desktop` operator proof, resolved beside the mode itself. The MODE decides
+    // first and an override can only choose WHICH proof runs, never whether one exists: a `tailnet`
+    // context carries no desktop proof even when one is handed in, because that deployment proves its
+    // operator through `sessionConfig.operatorAuth` and must never acquire a second, weaker way in. Off
+    // win32 the constructed check refuses everything (`unsupported-platform`), so a desktop-mode daemon
+    // on a platform where this proof cannot exist has no mint path rather than an unproven one.
+    desktopPeer: effectiveAuthMode === 'win32-desktop'
+      ? (overrides.desktopPeer ?? createDesktopPeerCheck())
+      : undefined,
     // P5 W6.1 [P5-C30]: the ONE shared activation reader. Constructed exactly once here and threaded
     // through the context to Home, Health, and the Inbox deploy-ready gate. `index.test.ts` asserts a
     // single construction; deleting the `createHomeRoutePorts` default (home/routes.ts:73) makes a
@@ -676,6 +689,11 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
     registerAuthRoutes(scope, ctx);
     // Session-less by design: its own preHandler resolves the durable spend grant.
     registerPaidActionRoute(scope, ctx);
+    // BLOCKER-2 — `win32-desktop`'s session mint path. Session-less for the same reason the tailnet
+    // operator gate is: the TRANSPORT is the credential. It sits here, on the Origin- and rate-guarded
+    // scope but OUTSIDE `requireSession`, and proves its caller with the loopback peer-owner check
+    // instead. In tailnet mode nothing is registered here and the same path stays inside the gate below.
+    if (ctx.authMode === 'win32-desktop') registerDesktopSessionRoute(scope, ctx);
     scope.register(async (authenticated) => {
       authenticated.addHook('preHandler', requireSession(ctx.sessionConfig));
       // T3 (spec §4.1 "the gate"): every mutating route registered inside THIS scope passes through
@@ -688,7 +706,10 @@ export function registerWriteSurface(app: FastifyInstance, ctx: SurfaceContext):
       // its authorization is "Origin + operator" (route matrix), and in tailnet mode the operator gate is
       // the only proof that exists — this is the sole way the always-on deployment gets a
       // `kb_browser_session` ref at all.
-      registerBrowserSessionRoute(authenticated, ctx);
+      // In `win32-desktop` this route is registered OUTSIDE this scope (above), because there it is the
+      // route that MINTS the session — gating it on one would be circular, which is exactly the loop
+      // BLOCKER-2 found. Registering it in both places would also be a duplicate-route boot failure.
+      if (ctx.authMode !== 'win32-desktop') registerBrowserSessionRoute(authenticated, ctx);
       registerWriteRoutes(authenticated, ctx);
       registerControlRoutes(authenticated, ctx);
       registerApprovalsRoutes(authenticated, ctx);

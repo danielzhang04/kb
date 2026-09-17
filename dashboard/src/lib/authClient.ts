@@ -136,6 +136,63 @@ async function responseFailure(label: string, response: Response): Promise<Error
   return new Error(`${label}: ${response.status}${detail ? ` (${detail})` : ''}`);
 }
 
+/**
+ * BLOCKER-2 — the ONE route that mints a session in `win32-desktop` mode, and the client for it.
+ *
+ * It is the same path the browser already called for its controller cookie, because in that mode the two
+ * are one act: the daemon proves the caller from the SOCKET (loopback, and a process owned by the same
+ * Windows account — `server/auth/win32DesktopPeer.ts`), then hands back both a bearer and the ref cookie.
+ * So this client presents NO credential: there is nothing it could hold that would matter, and nothing a
+ * page on another origin could do with the answer (the Origin guard refuses it, and the token rides in a
+ * body no cross-origin reader can see).
+ *
+ * The single retry mirrors `browserSessionClient.ts`: a browser holding a ref the daemon has forgotten is
+ * refused 401 and cannot drop the HttpOnly cookie itself, so the refusal carries the expiring cookie and
+ * the second call presents nothing and mints cleanly. EXACTLY one retry — a second 401 is a real refusal.
+ */
+export const DESKTOP_SESSION_ROUTE = '/api/auth/browser-session';
+
+/** One POST. A transport failure is `null`, distinct from any status the daemon actually returned. */
+async function postDesktopSession(fetchImpl: FetchLike): Promise<Response | null> {
+  try {
+    return await fetchImpl(DESKTOP_SESSION_ROUTE, {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'content-type': 'application/json', accept: 'application/json' },
+      body: '{}',
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** A minted session, or `null`. NEVER throws, and never fabricates: an unreadable or stale body is a
+ *  refusal, so a caller can only ever be handed a bearer the daemon really signed. */
+async function readMintedSession(response: Response): Promise<Session | null> {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return null;
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const candidate = body as { token?: unknown; expiresAt?: unknown };
+  const session = { token: candidate.token, expiresAt: candidate.expiresAt } as Session;
+  return isSessionFresh(session) ? { token: session.token, expiresAt: session.expiresAt } : null;
+}
+
+export async function mintDesktopSession(fetchImpl: FetchLike = fetch): Promise<Session | null> {
+  const first = await postDesktopSession(fetchImpl);
+  if (first === null) return null;
+  if (first.ok) return readMintedSession(first);
+  // 401 = the ref this browser presented was refused; the refusal carried the expiring cookie, so the
+  // retry presents nothing. Any other status is a decision about the CALLER, which a retry cannot change.
+  if (first.status !== 401) return null;
+  const second = await postDesktopSession(fetchImpl);
+  if (second === null || !second.ok) return null;
+  return readMintedSession(second);
+}
+
 /** Discover the server's single authentication mode. Any unreadable or unknown response fails closed. */
 export async function fetchAuthContext(fetchImpl: FetchLike = fetch): Promise<AuthContext> {
   const response = await fetchImpl('/api/auth/context', { method: 'GET' });

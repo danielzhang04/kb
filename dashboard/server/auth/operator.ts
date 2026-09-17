@@ -33,7 +33,18 @@ export interface OperatorAttribution {
  */
 export type BoundAttribution =
   | (OperatorAttribution & { actor: Actor })
-  | { actor: Actor; tailnetIdentity: null };
+  | {
+    actor: Actor;
+    tailnetIdentity: null;
+    /**
+     * BLOCKER-2 — the Windows account the `win32-desktop` peer-owner proof resolved
+     * (`win32DesktopPeer.ts`), recorded beside the self-asserted `actor` when a desktop session is
+     * minted. Like `login` above it is ATTRIBUTION, never an authority input: it is written by the
+     * mint path from an OS fact, and nothing reads it to decide anything. Absent on the plain bearer
+     * branch, where the daemon knows only that a valid token was presented.
+     */
+    desktopUser?: string;
+  };
 
 export type OperatorAuthResult =
   | { ok: true; subject: string; attribution: OperatorAttribution }

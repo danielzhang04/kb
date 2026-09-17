@@ -180,6 +180,12 @@ export interface BuildAppOptions {
   /** T3 signed channel test seams (`authority/gate.ts`); production always resolves
    *  `humanApproverAllowedSigners` from the real env (see `surface.ts#makeSurfaceContext`), so this exists
    *  only so a fixture can exercise a `signed`-class route end to end without a real ssh key. */
+  /**
+   * BLOCKER-2 test seam: the `win32-desktop` loopback peer-owner proof. Production ALWAYS builds the
+   * real one in `makeSurfaceContext` (and only in that mode); this exists so a fixture can drive the
+   * desktop mint path over `app.inject`, which has no real socket to prove anything about.
+   */
+  desktopPeer?: SurfaceContext['desktopPeer'];
   humanApproverAllowedSigners?: SurfaceContext['humanApproverAllowedSigners'];
   sshsigVerifier?: SurfaceContext['sshsigVerifier'];
   approvalNonces?: SurfaceContext['approvalNonces'];
@@ -243,6 +249,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     ...(options.browserSessionRefs ? { browserSessionRefs: options.browserSessionRefs } : {}),
     controlStore: options.controlStore,
     fileControlAccess: options.fileControlAccess,
+    ...(options.desktopPeer ? { desktopPeer: options.desktopPeer } : {}),
     humanApproverAllowedSigners: options.humanApproverAllowedSigners,
     sshsigVerifier: options.sshsigVerifier,
     approvalNonces: options.approvalNonces,

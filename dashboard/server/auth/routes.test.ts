@@ -3,9 +3,12 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { SessionConfig } from './session.ts';
-import { registerAuthRoutes, registerBrowserSessionRoute } from './routes.ts';
+import { registerAuthRoutes, registerBrowserSessionRoute, registerDesktopSessionRoute } from './routes.ts';
+import { currentAttribution } from './operator.ts';
+import { verifySession } from './session.ts';
+import type { DesktopPeerCheck } from './win32DesktopPeer.ts';
 import { createBrowserSessionRefStore } from './session.ts';
 import { makeSurfaceContext } from '../http/surface.ts';
 import { createInMemoryControlPlaneStore } from '../control/store.ts';
@@ -252,5 +255,130 @@ describe('POST /api/auth/browser-session', () => {
 
     expect(response.statusCode).toBe(503);
     expect(setCookies(response)).toEqual([]);
+  });
+});
+
+/**
+ * BLOCKER-2 — the `win32-desktop` mint path. T2's removal of the browser sign-in ceremony took the ONLY
+ * way that mode could ever obtain a session, so the always-on desktop daemon refused every governed
+ * request. Its replacement is `POST /api/auth/browser-session` registered OUTSIDE the session gate in that mode and
+ * guarded instead by the OS-level peer-owner proof (`win32DesktopPeer.ts`): loopback + the same Windows
+ * account as the daemon, or nothing.
+ *
+ * The peer check is injected here so this matrix drives every arm; the proof itself (a real 4-tuple
+ * against `GetExtendedTcpTable`, a real token SID) is tested against a live socket in
+ * `win32DesktopPeer.test.ts`, and the route's PLACEMENT in each mode is pinned in `http/surface.test.ts`.
+ */
+describe('POST /api/auth/browser-session — the win32-desktop session mint path', () => {
+  let app: ReturnType<typeof Fastify> | undefined;
+
+  afterEach(async () => {
+    await app?.close();
+    app = undefined;
+  });
+
+  function mount(desktopPeer: DesktopPeerCheck, refs: unknown = createBrowserSessionRefStore()) {
+    const instance = Fastify();
+    const bound: Array<unknown> = [];
+    instance.addHook('onSend', async (_req, _reply, payload) => {
+      bound.push(currentAttribution());
+      return payload;
+    });
+    registerDesktopSessionRoute(instance, { browserSessionRefs: refs, sessionConfig: SESSION, desktopPeer } as never);
+    app = instance;
+    return { instance, bound };
+  }
+
+  const post = (instance: ReturnType<typeof Fastify>, headers: Record<string, string> = {}) => instance.inject({
+    method: 'POST', url: '/api/auth/browser-session', payload: {}, headers,
+  });
+
+  it('mints a REAL session for a loopback peer owned by the daemon-s own Windows account', async () => {
+    const { instance, bound } = mount(() => ({ ok: true, user: 'danie' }));
+
+    const response = await post(instance, { 'x-kb-actor': 'daniel' });
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { token: string; expiresAt: number; browserSession: string };
+    // Not a sentinel: the token verifies against the very config every governed route re-verifies with.
+    expect(verifySession(body.token, SESSION)).toEqual({ ok: true, claims: expect.objectContaining({ sub: 'operator' }) });
+    expect(body.expiresAt).toBe(SESSION.now!() + SESSION.ttlMs!);
+    expect(body.browserSession).toBe('minted');
+    // The controller cookie still rides along, so one call unlocks both the surface and the terminal.
+    expect(([] as string[]).concat(response.headers['set-cookie'] as string[])[0]).toMatch(/^kb_browser_session=[A-Za-z0-9_-]{43};/);
+    // Attribution: the self-asserted actor, no tailnet identity, and the OS account the proof resolved.
+    expect(bound[0]).toEqual({ actor: 'daniel', tailnetIdentity: null, desktopUser: 'danie' });
+  });
+
+  it('refuses a loopback peer owned by ANOTHER OS user — 401, no token, no cookie', async () => {
+    const { instance } = mount(() => ({ ok: false, reason: 'peer-not-same-user' }));
+
+    const response = await post(instance);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'unauthenticated', reason: 'peer-not-same-user' });
+    expect(response.headers['set-cookie']).toBeUndefined();
+  });
+
+  it('refuses a request that did not arrive on loopback', async () => {
+    const { instance } = mount(() => ({ ok: false, reason: 'not-loopback' }));
+
+    const response = await post(instance);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'unauthenticated', reason: 'not-loopback' });
+  });
+
+  it('refuses when the peer cannot be determined at all (the proof is unavailable)', async () => {
+    const { instance } = mount(() => ({ ok: false, reason: 'peer-lookup-unavailable' }));
+
+    expect((await post(instance)).statusCode).toBe(401);
+  });
+
+  it('refuses when no peer check is installed at all — an absent proof is never a pass', async () => {
+    const instance = Fastify();
+    registerDesktopSessionRoute(instance, { browserSessionRefs: createBrowserSessionRefStore(), sessionConfig: SESSION } as never);
+    app = instance;
+
+    const response = await post(instance);
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'unauthenticated', reason: 'peer-lookup-unavailable' });
+  });
+
+  it('never consults the peer proof twice, and never mints two sessions for one request', async () => {
+    const peer = vi.fn(() => ({ ok: true as const, user: 'danie' }));
+    const { instance } = mount(peer);
+
+    await post(instance);
+
+    expect(peer).toHaveBeenCalledTimes(1);
+  });
+
+  it('still refuses a ref this browser presented and the daemon does not know — and mints no session on it', async () => {
+    const { instance } = mount(() => ({ ok: true, user: 'danie' }));
+
+    const response = await post(instance, { cookie: `kb_browser_session=${'z'.repeat(43)}` });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.json()).toEqual({ error: 'browser-session-ref-invalid' });
+    // The eviction header, so the retry presents nothing and takes the clean mint path.
+    expect(([] as string[]).concat(response.headers['set-cookie'] as string[])[0]).toBe(
+      'kb_browser_session=; Path=/; HttpOnly; Secure; SameSite=Strict; Max-Age=0',
+    );
+  });
+
+  it('mints the session even when the ref store cannot answer — the surface never depends on the PTY table', async () => {
+    const instance = Fastify();
+    registerDesktopSessionRoute(instance, { sessionConfig: SESSION, desktopPeer: () => ({ ok: true, user: 'danie' }) } as never);
+    app = instance;
+
+    const response = await post(instance);
+
+    expect(response.statusCode).toBe(200);
+    const body = response.json() as { token: string; browserSession: string };
+    expect(verifySession(body.token, SESSION).ok).toBe(true);
+    expect(body.browserSession).toBe('unavailable');
+    expect(response.headers['set-cookie']).toBeUndefined();
   });
 });

@@ -1746,7 +1746,10 @@ describe('write surface — PTY persistence + browser-session ref composition', 
 
 describe('write surface — POST /api/auth/browser-session is Origin + operator gated', () => {
   it('403s a foreign Origin, 401s a session-less caller, and mints for an authenticated operator', async () => {
-    ({ app } = buildApp());
+    // The SESSION-GATED placement, i.e. every mode that is not `win32-desktop`. Desktop registers this
+    // same path outside the gate because there it is the route that mints the session (BLOCKER-2); that
+    // placement has its own describe below.
+    ({ app } = buildApp({ authMode: 'tailnet' }));
 
     const foreign = await app.inject({
       method: 'POST', url: '/api/auth/browser-session',
@@ -1772,5 +1775,88 @@ describe('write surface — POST /api/auth/browser-session is Origin + operator 
     expect(cookies[0]).toMatch(
       /^kb_browser_session=[A-Za-z0-9_-]{43}; Path=\/; HttpOnly; Secure; SameSite=Strict; Max-Age=2592000$/,
     );
+  });
+});
+
+/**
+ * BLOCKER-2 — WHERE the mint route sits, per mode. This is the half `auth/routes.test.ts` cannot see:
+ * that in `win32-desktop` the route is registered OUTSIDE `requireSession` (so it is reachable with no
+ * bearer, which is the entire point) while still inside the Origin guard, and that `tailnet` mode is
+ * untouched — there the same path stays inside the session gate and no desktop minting exists at all.
+ */
+describe('write surface — the win32-desktop session mint path is outside the session gate', () => {
+  const desktopHeaders = (over: Record<string, string> = {}) =>
+    ({ origin: GOOD_ORIGIN, host: GOOD_HOST, 'content-type': 'application/json', ...over });
+
+  it('mints a usable session for a same-user loopback peer with NO bearer presented', async () => {
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: () => ({ ok: true, user: 'danie' }) }));
+
+    const minted = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    expect(minted.statusCode).toBe(200);
+    const { token: bearer } = minted.json() as { token: string };
+    // End to end: the minted bearer satisfies the very gate that 401'd everything before this fix.
+    const governed = await app.inject({
+      method: 'GET', url: '/api/control/execution', headers: desktopHeaders({ authorization: `Bearer ${bearer}` }),
+    });
+    expect(governed.statusCode).not.toBe(401);
+  });
+
+  it('refuses a peer the proof cannot vouch for, and a foreign Origin never reaches the proof at all', async () => {
+    const peer = vi.fn(() => ({ ok: false as const, reason: 'peer-not-same-user' as const }));
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: peer }));
+
+    const foreign = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: desktopHeaders({ origin: 'https://evil.example' }), payload: {},
+    });
+    expect(foreign.statusCode).toBe(403);
+    expect(peer).not.toHaveBeenCalled();
+
+    const refused = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+    expect(refused.statusCode).toBe(401);
+    expect(refused.json()).toEqual({ error: 'unauthenticated', reason: 'peer-not-same-user' });
+  });
+
+  it('a win32-desktop daemon whose proof cannot run mints NOTHING — it does not fall open', async () => {
+    ({ app } = buildApp({ authMode: 'win32-desktop', desktopPeer: undefined }));
+
+    const response = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(response.body).not.toContain('token');
+  });
+
+  it('tailnet mode is UNCHANGED: the route stays session-gated and no desktop mint path exists', async () => {
+    const peer = vi.fn(() => ({ ok: true as const, user: 'danie' }));
+    ({ app } = buildApp({
+      authMode: 'tailnet',
+      // Even if a desktop proof were somehow installed, tailnet must never route through it.
+      desktopPeer: peer,
+      sessionConfig: { ...sessionConfig, operatorAuth: { authenticate: () => ({ ok: false as const, reason: 'untrusted-peer' as const }) } },
+    }));
+
+    const response = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session', headers: desktopHeaders(), payload: {},
+    });
+
+    // 403 from the tailnet operator gate — never a 200 carrying a token.
+    expect(response.statusCode).toBe(403);
+    expect(response.json()).toEqual({ error: 'forbidden', reason: 'untrusted-peer' });
+    expect(peer).not.toHaveBeenCalled();
+  });
+
+  it('installs the real peer proof in win32-desktop mode only', () => {
+    expect(makeSurfaceContext({ repoRoot: REPO_A }).desktopPeer).toBeDefined();
+    expect(makeSurfaceContext(
+      { repoRoot: REPO_A },
+      { env: { DASHBOARD_AUTH_MODE: 'tailnet', DASHBOARD_TAILNET_HOST: 'kb.command.ts.net', DASHBOARD_TAILNET_OPERATOR: 'op@example.com' } },
+    ).desktopPeer).toBeUndefined();
   });
 });

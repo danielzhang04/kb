@@ -1068,3 +1068,73 @@ describe('P5 W6.1 — one shared activation reader [P5-C30]', () => {
     }
   });
 });
+
+/**
+ * BLOCKER-2 — the whole point of the fix, asserted against the real `buildApp`: a `win32-desktop`
+ * daemon is USABLE. Before this, `requireSession` 401'd every governed request of Daniel's always-on
+ * local daemon because T2's removal of the browser sign-in ceremony took the only path that could mint
+ * a session; the probe in the security review found `/api/home` and `/api/control/execution/unlock` answering
+ * `401 missing session token` with nothing left to fix it.
+ *
+ * What must hold together, and is checked here in one sequence:
+ *   - with no session, a governed route is still refused (the gate did not move);
+ *   - the mint route answers the loopback same-user peer proof with a real bearer;
+ *   - that bearer drives an OPEN mutating route all the way to a 201 from its handler;
+ *   - and a SIGNED route is still `403 approval-required` on the very same bearer. Minting a session
+ *     restores the surface; it grants no authority the signed channel reserves.
+ */
+describe('BLOCKER-2: a win32-desktop daemon mints a session on the peer proof and is usable end to end', () => {
+  const desktopApp = () => buildApp({
+    validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION, inboxGh: emptyInboxGh,
+    humanApproverAllowedSigners: TEST_ALLOWED_SIGNERS, sshsigVerifier: stubSshsigVerifier,
+    // Stands in for the real `GetExtendedTcpTable` + token-SID proof, which `app.inject` gives no socket
+    // to run against; the proof itself is exercised over a live loopback socket in `win32DesktopPeer.test.ts`.
+    desktopPeer: () => ({ ok: true, user: 'danie' }),
+  });
+
+  it('is refused before the mint, works after it, and still refuses the signed channel', async () => {
+    app = desktopApp();
+
+    const beforeMint = await app.inject({ method: 'GET', url: '/api/schedules', headers: matrixHeaders });
+    expect(beforeMint.statusCode).toBe(401);
+
+    const minted = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { ...matrixHeaders, 'content-type': 'application/json' }, payload: {},
+    });
+    expect(minted.statusCode).toBe(200);
+    const bearer = (minted.json() as { token: string }).token;
+    const headers = { ...matrixHeaders, authorization: `Bearer ${bearer}` };
+
+    expect((await app.inject({ method: 'GET', url: '/api/schedules', headers })).statusCode).toBe(200);
+
+    const created = await app.inject({ method: 'POST', url: '/api/schedules', headers, payload: {
+      owner: { type: 'agent', id: 'hygiene' }, cadence: { kind: 'words', words: 'daily', time: '09:15' },
+      expectedCollectionRevision: 0, idempotencyKey: 'desktop-mint-create',
+    } });
+    expect(created.statusCode).toBe(201);
+
+    const row = created.json().schedule as { id: string; version: number };
+    const deleted = await app.inject({ method: 'DELETE', url: `/api/schedules/${row.id}`, headers, payload: {
+      expectedVersion: row.version, idempotencyKey: 'desktop-mint-delete-unsigned',
+    } });
+    expect(deleted.statusCode).toBe(403);
+    expect(deleted.json()).toEqual({ error: 'approval-required' });
+  });
+
+  it('refuses the mint — and stays unusable — when the peer proof does not vouch for the caller', async () => {
+    app = buildApp({
+      validateData: false, allowedOrigins: [TEST_ORIGIN], sessionConfig: TEST_SESSION,
+      desktopPeer: () => ({ ok: false, reason: 'peer-not-same-user' }),
+    });
+
+    const refused = await app.inject({
+      method: 'POST', url: '/api/auth/browser-session',
+      headers: { ...matrixHeaders, 'content-type': 'application/json' }, payload: {},
+    });
+
+    expect(refused.statusCode).toBe(401);
+    expect(refused.json()).toEqual({ error: 'unauthenticated', reason: 'peer-not-same-user' });
+    expect((await app.inject({ method: 'GET', url: '/api/schedules', headers: matrixHeaders })).statusCode).toBe(401);
+  });
+});

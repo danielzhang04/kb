@@ -6,7 +6,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   clearStoredSession,
+  DESKTOP_SESSION_ROUTE,
   fetchAuthContext,
+  mintDesktopSession,
   invalidateSessionOnGovernedAuthFailure,
   persistSession,
   readStoredSession,
@@ -104,5 +106,56 @@ describe('governed auth failure invalidation', () => {
 
     expect(await invalidateSessionOnGovernedAuthFailure(response)).toBe(false);
     expect(readStoredSession()).toEqual(session);
+  });
+});
+
+/**
+ * BLOCKER-2 — the browser half of the `win32-desktop` mint path. The daemon proves the caller from the
+ * socket (loopback + the same Windows account), so this client presents no credential at all: it POSTs,
+ * and either receives a real bearer or stays locked.
+ */
+describe('mintDesktopSession', () => {
+  const ok = (body: unknown) => ({ ok: true, status: 200, json: async () => body }) as unknown as Response;
+  const refused = (status: number) => ({ ok: false, status, json: async () => ({ error: 'unauthenticated' }) }) as unknown as Response;
+
+  it('POSTs same-origin and returns the minted bearer', async () => {
+    const expiresAt = Date.now() + 60_000;
+    const fetchImpl = vi.fn(async () => ok({ token: 'desktop-token', expiresAt }));
+
+    await expect(mintDesktopSession(fetchImpl as unknown as typeof fetch)).resolves.toEqual({ token: 'desktop-token', expiresAt });
+    expect(fetchImpl).toHaveBeenCalledWith(DESKTOP_SESSION_ROUTE, expect.objectContaining({ method: 'POST', credentials: 'same-origin' }));
+  });
+
+  it('retries EXACTLY once past a refused browser-session ref, then reports the second refusal as itself', async () => {
+    const expiresAt = Date.now() + 60_000;
+    const healing = vi.fn()
+      .mockResolvedValueOnce(refused(401))
+      .mockResolvedValueOnce(ok({ token: 'second-try', expiresAt }));
+    await expect(mintDesktopSession(healing as unknown as typeof fetch)).resolves.toEqual({ token: 'second-try', expiresAt });
+    expect(healing).toHaveBeenCalledTimes(2);
+
+    const stubborn = vi.fn(async () => refused(401));
+    await expect(mintDesktopSession(stubborn as unknown as typeof fetch)).resolves.toBeNull();
+    expect(stubborn).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not retry a refusal that is not about the ref cookie', async () => {
+    const fetchImpl = vi.fn(async () => refused(403));
+    await expect(mintDesktopSession(fetchImpl as unknown as typeof fetch)).resolves.toBeNull();
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    { token: '', expiresAt: Date.now() + 60_000 },
+    { token: 'expired', expiresAt: Date.now() - 1 },
+    { token: 'no-expiry' },
+    { expiresAt: Date.now() + 60_000 },
+    'not-an-object',
+  ])('refuses to fabricate a session out of an unusable body', async (body) => {
+    await expect(mintDesktopSession((async () => ok(body)) as unknown as typeof fetch)).resolves.toBeNull();
+  });
+
+  it('is null — never a throw — when the daemon cannot be reached at all', async () => {
+    await expect(mintDesktopSession((async () => { throw new Error('offline'); }) as unknown as typeof fetch)).resolves.toBeNull();
   });
 });

@@ -1,10 +1,16 @@
 /**
- * U2 — the browser-session-ref mint/renew route. In `tailnet` mode this is the only session-adjacent
- * route on the guarded surface: the transport itself is the credential (ambient tailnet identity), so
- * there is no separate sign-in ceremony to run. Still behind the scope's Origin/Host guard and
+ * U2 — the auth routes: boot-mode discovery, and the browser-session-ref mint/renew route. In BOTH
+ * deployment modes the transport itself is the credential, so there is no sign-in ceremony to run —
+ * only the PROOF differs, and with it where the mint route sits. `tailnet` keeps it inside the session
+ * gate (`registerBrowserSessionRoute`), where the ambient operator check has already run;
+ * `win32-desktop` registers it outside that gate (`registerDesktopSessionRoute`), because there it is
+ * the route that mints the session. Either way it stays behind the scope's Origin/Host guard and
  * rate-limiter.
  */
 import type { FastifyInstance } from 'fastify';
+import { mintSession } from './session.ts';
+import { bindAttribution, resetAttribution, OPERATOR_SUBJECT } from './operator.ts';
+import { ACTOR_HEADER, parseActor } from '../authority/actor.ts';
 import {
   BROWSER_SESSION_COOKIE_NAME,
   BROWSER_SESSION_EVICTION_COOKIE,
@@ -98,6 +104,50 @@ export function registerBrowserSessionRoute(scope: FastifyInstance, ctx: Surface
       default:
         return reply.code(503).send({ error: 'browser-session-ref-unavailable' });
     }
+  });
+}
+
+/**
+ * BLOCKER-2 — `POST /api/auth/browser-session` as `win32-desktop` mode registers it: OUTSIDE the session
+ * gate, because it is the route that MINTS the session. T2's removal of the browser sign-in ceremony
+ * took the only minting path that mode had, leaving `requireSession` to 401 every governed request of
+ * Daniel's always-on local daemon (`dashboard/pm2.config.cjs`) — a fail-closed brick, not a hole.
+ *
+ * Its authorization is the transport, exactly as in tailnet mode — only the proof differs, because the
+ * transport differs. Tailnet proves "this connection came through root-owned `tailscaled`" out of
+ * `/proc/net/tcp`; the desktop proves "this connection came from a process on this machine owned by the
+ * SAME Windows account as this daemon" out of `GetExtendedTcpTable` + the peer's token SID
+ * (`win32DesktopPeer.ts`). Both are facts about the socket that no header, cookie or body can forge.
+ * The chain is therefore: scope Origin/Host guard -> rate limiter -> peer-owner proof. An ABSENT proof
+ * (`ctx.desktopPeer` unset, e.g. off win32) refuses everything: a mode whose proof cannot run has no
+ * mint path at all.
+ *
+ * Deliberately, the SESSION does not depend on the PTY ref table: a ref store that cannot answer still
+ * yields a token (with no cookie), because a browser-session ref decides who may drive a terminal, never
+ * who the operator is. The one exception is a ref the browser PRESENTED and the daemon refused — that
+ * keeps the existing 401 + eviction-cookie answer, so the client's single retry presents nothing, mints
+ * a clean ref, and gets its session on the second call.
+ */
+export function registerDesktopSessionRoute(scope: FastifyInstance, ctx: SurfaceContext): void {
+  scope.post('/api/auth/browser-session', async (req, reply) => {
+    // This route runs OUTSIDE `requireSession`, so it is its own `resolveSession`: clear any attribution
+    // a keep-alive-shared async context carries before binding this request's own.
+    resetAttribution();
+    const actor = parseActor(req.headers[ACTOR_HEADER] as string | string[] | undefined);
+    const peer = ctx.desktopPeer?.(req) ?? { ok: false as const, reason: 'peer-lookup-unavailable' as const };
+    if (!peer.ok) return reply.code(401).send({ error: 'unauthenticated', reason: peer.reason });
+    // `desktopUser` is the OS account the proof resolved — attribution, never an authority input, and
+    // never a tailnet identity (there is none on this transport). `actor` stays self-asserted.
+    bindAttribution({ actor, tailnetIdentity: null, desktopUser: peer.user });
+
+    const outcome = await resolveBrowserSessionCookie(ctx, req.headers.cookie);
+    if (outcome.kind === 'refused') {
+      reply.header('Set-Cookie', [BROWSER_SESSION_EVICTION_COOKIE]);
+      return reply.code(401).send({ error: 'browser-session-ref-invalid' });
+    }
+    if (outcome.kind === 'minted' || outcome.kind === 'renewed') reply.header('Set-Cookie', [outcome.cookie]);
+    const { token, claims } = mintSession(OPERATOR_SUBJECT, ctx.sessionConfig);
+    return reply.code(200).send({ token, expiresAt: claims.exp, browserSession: outcome.kind });
   });
 }
 

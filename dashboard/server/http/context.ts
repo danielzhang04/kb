@@ -12,6 +12,7 @@ import { resolveDashboardStateRoot } from '../composer/store.ts';
 import type { BrowserSessionRefManager, SessionConfig } from '../auth/session.ts';
 import type { AuthMode } from '../auth/mode.ts';
 import type { RunnableRef } from '../control/p2Contracts.ts';
+import type { DesktopPeerCheck } from '../auth/win32DesktopPeer.ts';
 import type { AllowedOrigins } from '../security/origin.ts';
 import type { LockoutGuard } from '../security/ratelimit.ts';
 import { lockout, rateLimit } from '../security/ratelimit.ts';
@@ -116,6 +117,14 @@ export interface SurfaceContext {
    * the maximal fail-closed set when it is absent, never to "untagged".
    */
   ownerTags?: (owner: RunnableRef) => string[];
+  /**
+   * BLOCKER-2 — the `win32-desktop` operator proof: "did this request arrive on loopback from a process
+   * owned by the SAME Windows account as this daemon?" (`auth/win32DesktopPeer.ts`). Present ONLY in
+   * that mode, where it guards the one route that mints a session; `tailnet` mode leaves it undefined
+   * and keeps proving its operator through `sessionConfig.operatorAuth` instead. Undefined is a
+   * refusal, never a pass: the mint route answers 401 with no proof installed.
+   */
+  desktopPeer?: DesktopPeerCheck;
   /**
    * P5 W6.1 [P5-C30]: the ONE shared installed-release activation reader, constructed exactly once in
    * `makeSurfaceContext` and threaded through this context. Home (D13 chip), Health (ReleaseRow), and the
