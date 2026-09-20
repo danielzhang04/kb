@@ -1,27 +1,31 @@
 # System Handover
-_Generated: 2026-09-17T06:08:37Z_
+_Generated: 2026-09-20T06:07Z_
 
-**What happened.** The nightly cloud dispatcher ran cleanly: preamble passed, skills are in
-sync, and one `nightly-review` card was dispatched and executed to regenerate these dashboards.
-Yesterday the fleet spent $6.20 (all RunPod L40S pods for figment's Track-1 replication),
-well under the $30/day ceiling; today is $0 so far.
+The nightly cloud dispatcher ran cleanly. Preamble, the pyyaml check, and
+`sync_skills --check` all passed, and it dispatched and executed the
+`nightly-review` cadence (dashboards regenerated, this file among them). No
+money was spent — the cost ledger is empty today, so the full $30/day budget
+is intact.
 
-**One thing to know:** the nightly routine expects `scripts/sync_daemon_dirs.py`, but that file
-is absent on `ops`, so the daemon-mirror drift check could not run this time. It doesn't block
-dispatch, and a wake-me card is waiting in the queue explaining it — but the daemon-read mirror
-(agents/, workflows/, model-routing.yaml) went unverified tonight.
+**Waiting on you (two things).** First, a T3 approval sits in the queue:
+figment card `65d8f246-8a461521`, the GATE A eye-gate — you need to rule the
+creator-001 expansion-02 blind board (seven axes) before curation to 40 can
+proceed. Second, atlas's adversarially re-reviewed remediation diff on branch
+`codex/atlas-enhancements-20260820` is finished but unpushed; it exceeds 400
+lines, so the project contract holds it for your review before commit (see
+handoff `2026-08-20-atlas-omni-remediation-review.md`).
 
-**What is waiting on you.**
-1. **figment GATE A eye-gate** (`65d8f246-8a461521`, T3): a blind seven-axis board needs your
-   ruling before curation to 40 can continue.
-2. **kb-ops dashboard is still down** — the VM service has been stopped since 2026-09-06 over a
-   hydrate crash. The fix, PR #173, is reviewed and mergeable but still open; nothing recovers
-   until it's merged and recovery is run.
-3. **Restore the missing `sync_daemon_dirs.py`** (or the desktop `--sync` it points to) so the
-   nightly mirror check works again.
+**One nagging infra item.** The daemon-dir drift checker,
+`scripts/sync_daemon_dirs.py`, still exists only on `main`, not on `ops`, so
+the nightly gate can only run in refs-fallback mode. It keeps reporting one
+ops-only file (`orgs/kb-ops/workflows/acceptance-run.md`). There are now
+eleven open wake-me cards logging this. The owed desktop fix: re-add the
+script to `ops` and decide whether that one file belongs on `main` or should
+be pruned from `ops`.
 
-**What the system will do next unattended.** The single dispatcher keeps firing its scheduled
-cadences; the next nightly-review beat will regenerate these dashboards again. No agent will
-merge PR #173, run the kb-ops recovery, or rule the figment gate for you — those stay human.
-figment's replication card remains in flight under its standing daily $10 approval. One halted
-codex card is parked in `working/` awaiting the archiver.
+**What the system will do unattended.** It will keep running the nightly
+cadence: preamble/health checks, dashboard regeneration, and coordination
+writes to `ops`. It will not touch atlas, the figment live run, or the T3
+approval — those wait for you. The figment Track 1 replication and prospecting
+P1–P8 pushes are operator-driven and will not advance on their own. Nothing
+here is on fire; two decisions and one desktop cleanup are what's outstanding.
