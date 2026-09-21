@@ -28,6 +28,7 @@ const WINDOW_FILE = 'C:\\Users\\danie\\kb-rehearsal\\tooling\\PROD-WINDOW.json';
 const AUDIT = path.join(os.tmpdir(), 'prod-window-guard-test-audit-' + process.pid + '.log');
 
 const T = 'C:\\Users\\danie\\kb-rehearsal\\tooling';
+const KB = 'C:\\Users\\danie\\kb';
 const SHA = '7e09fd4fcbae5e66299af3c756041b49437fc6b3';
 const DIGEST = '4586d91930a1b4f00f350a2b5324a9347073b10d67c9cf0edfd47abe4f988c2b';
 const PS = 'powershell -NoProfile -ExecutionPolicy Bypass';
@@ -216,6 +217,20 @@ const CASES = [
   ['O3 cron with semicolons blocked', 'open', 'Bash', `${PS} -File "${T}\\prod-schedules.ps1" -CreateWorkflowSchedule self-lint-report -Cron "18;3;*;*;*"`, 2],
   ['O3 + stray extra param blocked (Create)', 'open', 'Bash', `${PS} -File "${T}\\prod-schedules.ps1" -CreateWorkflowSchedule self-lint-report -Cron "18 3 * * *" -URL https://kb.tail82dd4f.ts.net`, 2],
   ['O3 rehearsal URL always allowed, window closed (Create)', 'closed', 'Bash', `${PS} -File "${T}\\prod-schedules.ps1" -CreateWorkflowSchedule self-lint-report -Cron "18 3 * * *" -URL http://127.0.0.1:4417`, 0],
+
+  // ---- O4 prod-archive-run.ps1 — OPEN class: archive a terminal/closed-out run, no window
+  // needed. Unlike every other allowlisted script this one lives IN THE REPO
+  // (scripts/prod/prod-archive-run.ps1), not the kb-rehearsal tooling tree, hence ${KB} not ${T}.
+  ['O4 archive with a reason, window closed', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-cc508ddb -Reason "dead canary test run, cap-blocked"`, 0],
+  ['O4 archive with a reason, window open (unaffected)', 'open', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-cc508ddb -Reason "dead canary test run, cap-blocked"`, 0],
+  ['O4 archive with -Actor worker:x, window closed', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "stale rehearsal run" -Actor worker:x`, 0],
+  ['O4 reason with a semicolon blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "a; rm -rf /"`, 2],
+  ['O4 unknown extra parameter blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Force`, 2],
+  ['O4 rehearsal URL always allowed, window closed', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -URL http://127.0.0.1:4417`, 0],
+  ['O4 any -Approval token blocked (never O4, mirrors the C16 guard)', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" -Approval ${T}\\approval.json`, 2],
+  ['O4 traversal in the script path blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\..\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok"`, 2],
+  ['O4 still subject to standing blocks (D)', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1 -Reason "ok" && rm -rf /`, 2],
+  ['O4 missing -Reason blocked', 'closed', 'Bash', `${PS} -File "${KB}\\scripts\\prod\\prod-archive-run.ps1" -Run run-1`, 2],
 
   // ---- O2 prod-respond.ps1 — OPEN class (T7): resolve a gate/intervention, no window needed ----
   ['O2 approve with a reason, window closed', 'closed', 'Bash', `${PS} -File "${T}\\prod-respond.ps1" -Run run-cc508ddb -Request req-1 -Decision approve -Reason "sources added, brief is correct"`, 0],

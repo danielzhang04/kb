@@ -19,8 +19,9 @@
  *
  * Prod-targeting scripts fall into three classes:
  *   OPEN class    — monitoring, launching workflows, resolving gates/interventions,
- *                   and schedule management. Runs with NO window, still only in its
- *                   reviewed argument shape, still subject to the standing blocks.
+ *                   schedule management, and archiving a closed-out run (prod-archive-run.ps1,
+ *                   O4). Runs with NO window, still only in its reviewed argument shape, still
+ *                   subject to the standing blocks.
  *   WINDOWED class — deploy, drain, canary, stop, preflight, anything that drives a
  *                   signing key (prod-sign-approval.ps1, the kb-human-approval
  *                   ssh-keygen sign command), and anything that PLACES a signed call
@@ -211,6 +212,25 @@ const CRON_ARG = '("[0-9*/,\\s-]{9,40}"|\'[0-9*/,\\s-]{9,40}\')';
 const O3_CREATE = new RegExp(PRE + PS + '-file\\s+' + P('prod-schedules.ps1')
   + '\\s+-createworkflowschedule\\s+self-lint-report\\s+-cron\\s+' + CRON_ARG + '$');
 
+// O4 — prod-archive-run.ps1, OPEN class: archive a terminal/closed-out run with an audited
+// reason. Mirrors O2's grammar exactly (same REASON/ACTOR_ARG classes as prod-respond.ps1's plain
+// shape). Unlike every other allowlisted script this one lives IN THE REPO (scripts/prod/), not
+// the kb-rehearsal tooling tree, so it gets its own KBDIR-anchored path matcher (PKB) instead of
+// reusing P() (which is hard-coded to T).
+function PKB(rel) {
+  const body = rel.split('/').map(function (seg) { return seg.replace(/\./g, '\\.'); }).join(B);
+  return '["\']?' + KBDIR + B + body + '["\']?';
+}
+const O4 = new RegExp(PRE + PS + '-file\\s+' + PKB('scripts/prod/prod-archive-run.ps1')
+  + '\\s+-run\\s+([a-z0-9-]{1,80})\\s+-reason\\s+' + REASON
+  + '(?:\\s+-actor\\s+' + ACTOR_ARG + ')?$');
+
+// The classifier signal that guards O4 the same way PROD_RESPOND_APPROVAL_SCRIPT guards O2/C16:
+// prod-archive-run.ps1 named alongside a genuine -Approval token must NEVER be treated as O4.
+// O4's grammar has no -Approval branch at all, so this never actually matches today — it exists so
+// the invariant is explicit rather than incidental if O4 is ever extended.
+const PROD_ARCHIVE_APPROVAL_GUARD = /prod-archive-run\.ps1\b[\s\S]*(?:^|\s)-approval(?:\s|$)/;
+
 // A quoted "<METHOD> /api/..." route template, shared by the two signed-channel helpers below.
 const ROUTE_ARG = '("[a-z]+ /api/[a-z0-9/:_-]{1,120}"|\'[a-z]+ /api/[a-z0-9/:_-]{1,120}\')';
 
@@ -329,7 +349,7 @@ function isReadVerb(raw) {
 // Scripts in T whose DEFAULTS point at prod. Invoking one is prod-targeting even
 // though the command string names neither the host nor the URL. Split into the
 // two authority classes (spec §4.7): OPEN needs no window; WINDOWED still does.
-const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1)/;
+const OPEN_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-archive-run\.ps1)/;
 const WINDOWED_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1)/;
 // prod-window.ps1 is its own class (G): no window requirement, but only its three exact shapes.
 const WINDOW_MGMT_SCRIPT = /prod-window\.ps1/;
@@ -356,7 +376,7 @@ function isKbReaderRead(n) {
 const VM_TARGET_SCRIPTS = /(kb-deploy\.ps1|drain-step[12]-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1)/;
 // HTTP-only scripts: they carry no -VM at all, so their rehearsal signal is a genuine `-URL`
 // pointing at the rehearsal daemon or its Windows-side proxy.
-const URL_TARGET_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-signed-call\.ps1)/;
+const URL_TARGET_SCRIPTS = /(prod-run-workflow\.ps1|prod-respond\.ps1|prod-schedules\.ps1|prod-signed-call\.ps1|prod-archive-run\.ps1)/;
 const VM_LOCALHOST_ARG = /(?:^|\s)-vm\s+["']?root@localhost["']?(?=\s|$)/;
 const URL_REHEARSAL_ARG = /(?:^|\s)-url\s+["']?https?:\/\/(?:127\.0\.0\.1|localhost):(?:4317|4417)["']?(?=\s|$)/;
 
@@ -583,6 +603,10 @@ function openMatch(n) {
   if (O3_LIST.test(n) || O3_DISARM.test(n) || O3_ARM.test(n) || O3_CREATE.test(n)) {
     return { rule: 'O3', actor: null };
   }
+  if (!PROD_ARCHIVE_APPROVAL_GUARD.test(n)) {
+    const arch = n.match(O4);
+    if (arch) return { rule: 'O4', actor: arch[3] || null };
+  }
   return null;
 }
 
@@ -597,7 +621,7 @@ function block(reason, tool, ruleId, command, shouldAudit) {
 // Shared "does this unparsed/unreadable payload smell like prod" check — used both when the
 // payload cannot be parsed as JSON at all and by the outer fail-closed catch for a genuine
 // exception. One source of truth so the two paths cannot drift apart.
-const PROD_SMELLS = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|prod-window\.ps1|outbox-approval-current|kb-ops-instructions|kb-human-approval/i;
+const PROD_SMELLS = /100\.89\.73\.118|kb\.tail82dd4f\.ts\.net|root@|kb-deploy\.ps1|drain-step\d-v2\.ps1|ops-refresh\.ps1|vm-preflight-prod\.ps1|prod-stop-run\.ps1|prod-canary-launch\.ps1|prod-run-workflow\.ps1|prod-schedules\.ps1|prod-respond\.ps1|prod-sign-approval\.ps1|prod-signed-call\.ps1|prod-window\.ps1|prod-archive-run\.ps1|outbox-approval-current|kb-ops-instructions|kb-human-approval/i;
 function looksProdSmelling(text) {
   return PROD_SMELLS.test(String(text == null ? '' : text));
 }
@@ -696,8 +720,8 @@ function decide(raw, oversize) {
       block('this is an open-class prod script, but the command is not one of its reviewed shapes '
         + '(prod-run-workflow -Workflow <safe-id> [-Topic <safe-id>] / prod-respond -Run -Request '
         + '-Decision -Reason [-Actor] / prod-schedules -List|-DisarmAgentCadences|-ArmFromSnapshot|'
-        + '-CreateWorkflowSchedule). Fix the arguments, or add the shape to '
-        + 'scripts/hooks/prod_window_guard.js and its tests first.',
+        + '-CreateWorkflowSchedule / prod-archive-run -Run -Reason [-Actor]). Fix the arguments, or '
+        + 'add the shape to scripts/hooks/prod_window_guard.js and its tests first.',
         tool, prodRule, command, true);
     }
     audit('ALLOW', tool, open.rule, command, open.actor);
