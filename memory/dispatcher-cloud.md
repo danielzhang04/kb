@@ -941,3 +941,18 @@
   09-17) — the old "VM dashboard STOPPED / PR #173" handover line is stale, dropped it.
 - atlas remediation diff (>400 lines, codex/atlas-enhancements-20260820) still waiting on
   Daniel; figment T3 GATE A eye-gate 65d8f246 still top of Action-required.
+
+## 2026-09-21 nightly cloud run
+- Clean run: preamble OK, pyyaml OK, sync_skills --check OK (exit 0). Dispatched+executed
+  nightly-review card 6ab0cbac-04057314; dashboards regenerated. Cost $0.00 vs $30 budget.
+- sync_daemon_dirs recurring (12th night): script still ONLY on origin/main, absent from ops
+  → literal step-2b command fails [Errno 2]. Ran main's copy in refs-fallback: same single
+  ops-only file orgs/kb-ops/workflows/acceptance-run.md (exit 1). Filed
+  wake-daniel-2026-09-21-sync-daemon-dirs-drift; 12 open cards now track this. Owed DESKTOP
+  fix (re-add script to ops + decide the file + amend step 2b to stop re-filing).
+- Queue snapshot: inbox 111, working 3, approvals 1, done 1603, archived 10. Clone mtimes all
+  clone-time (06:15) — judged working/ staleness from git last-commit, not fs mtime.
+- Anomalies (none mine to sweep): d126c410 figment track1:replicate idle in working since
+  2026-09-07 (~14d); 6a6bc3dd kb-ops iter-smoke state:halted stranded in working since 07-30.
+- Action-required carried: figment T3 GATE A eye-gate 65d8f246 (open since 09-03); atlas
+  remediation diff >400 lines on codex/atlas-enhancements-20260820 awaiting Daniel review.
