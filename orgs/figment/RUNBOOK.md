@@ -329,6 +329,24 @@ run is not eligible (any of the checks above fails), dry-run falls back to its o
 `dry-run:<stage>` preview — the live invocation is what raises the specific refusal
 reason.
 
+**Operator-invoked exception (2026-09-21): `--retry-after-fix "<what you fixed>"`.**
+`pipeline`/`run` gain the same admission `apply-rulings --retry-caption-after-fix`
+already gives the caption sub-job, extended to a planned stage run (dataset, gen,
+detail, video, ... including a downstream plan `pipeline` planned itself) — a
+JOB-class failure (verified pod teardown, zero output, but a pod-side error that
+doesn't name a transport/placement failure, e.g. `HarnessError: ComfyUI job ...
+failed`) never qualifies for `--retry-failed` on its own. `--retry-after-fix` admits it
+once you've actually fixed the underlying cause: it works even without `--retry-failed`
+set, is bounded by the wider `MAX_RETRY_AFTER_FIX` (4) real retries instead of the
+tighter `MAX_RUN_RETRIES` (2) (never-created capacity failures still bound separately
+at 8), and records `{"reason": ..., "git_head": ...}` on the retried attempt's own
+`attempts` entry. Every other check above (verified termination, zero output, journal
+verification, the retry-count caps) still applies unchanged — the flag only relaxes the
+final error-class match. `pipeline --dry-run --retry-after-fix "<reason>"` previews the
+retry it would admit as `dry-run:retry-after-fix <key>` (falling back to the ordinary
+`dry-run:retry <key>`/`dry-run:<stage>` preview when the reason isn't what actually
+admitted it); without the flag, behavior is byte-for-byte unchanged.
+
 ## A budget/arc-cap refusal before launch
 
 A harness preflight refusal (daily budget, arc cap, or any other check the harness runs

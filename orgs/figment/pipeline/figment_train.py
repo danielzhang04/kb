@@ -4488,6 +4488,7 @@ def _out_dir_retry_eligibility_reason(
 
 def _retry_ineligibility_reason(
     root: Path, run: dict[str, Any], *, attempts: list[dict[str, Any]] | None = None,
+    skip_error_class_check: bool = False,
 ) -> str | None:
     """`None` when a failed planned `run` is safe for `--retry-failed` to re-launch, else
     the human-readable reason it refuses. Reads only the prior attempt's own harness
@@ -4500,7 +4501,12 @@ def _retry_ineligibility_reason(
     renamed to `.failed-N` -- because this is re-checking a `status: "retrying"` record
     left by an interrupted earlier `--retry-failed` call -- `out_dir` itself no longer
     has a `run.json`. Fall back to the rename target recorded on the last completed
-    attempt (`out_renamed`, LOW-1) rather than reporting a false "no run.json"."""
+    attempt (`out_renamed`, LOW-1) rather than reporting a false "no run.json".
+
+    `skip_error_class_check` (`--retry-after-fix`, 2026-09-21): forwarded verbatim to
+    `_out_dir_retry_eligibility_reason` -- see that function's own docstring. Every
+    caller except the explicit `--retry-after-fix` admission check in
+    `run_planned_stage`/`_dry_run_retry_preview` leaves this at the default."""
     out_dir = root / run["out"]
     run_json_path = out_dir / "run.json"
     if not run_json_path.is_file() and attempts:
@@ -4509,7 +4515,7 @@ def _retry_ineligibility_reason(
             candidate_dir = Path(renamed)
             if (candidate_dir / "run.json").is_file():
                 out_dir = candidate_dir
-    return _out_dir_retry_eligibility_reason(out_dir)
+    return _out_dir_retry_eligibility_reason(out_dir, skip_error_class_check=skip_error_class_check)
 
 
 def _run_never_launched(out_dir: Path) -> bool:
@@ -4550,13 +4556,24 @@ def _stderr_tail(text: str, *, lines: int = 5) -> str:
 
 def run_planned_stage(
     creator_id: str, stage: str, plan_path: Path, *, retry_failed: bool = False,
+    retry_after_fix_reason: str | None = None,
 ) -> dict[str, Any]:
     """Run one stage (or the bounded chain), recording progress and never retrying --
     unless `retry_failed` (`--retry-failed`) is set, in which case a `failed` prior run
     is retried exactly when `_retry_ineligibility_reason` clears it and the recorded
     prior attempts (`_count_prior_retry_attempts`) are still under both caps: fewer than
     `MAX_RUN_RETRIES` REAL retries, and fewer than `MAX_NEVER_CREATED_RETRIES`
-    never-created (RunPod capacity, spent nothing) retries, for that manifest key."""
+    never-created (RunPod capacity, spent nothing) retries, for that manifest key.
+
+    `retry_after_fix_reason` (`--retry-after-fix`, 2026-09-21): the same operator-
+    statement admission `plan_qwen3vl_caption`'s `--retry-caption-after-fix` already
+    gives the caption sub-job, extended to a planned stage run. Works even without
+    `retry_failed` set -- a JOB-class failure (verified teardown, zero output, but an
+    `error` that doesn't match `RETRY_ELIGIBLE_ERROR_SUBSTRINGS`) is admitted for retry
+    when `_retry_ineligibility_reason(..., skip_error_class_check=True)` clears it,
+    counted as a REAL prior attempt against the wider `MAX_RETRY_AFTER_FIX` (never-
+    created attempts still bound by `MAX_NEVER_CREATED_RETRIES` unchanged). Without
+    this reason, behavior is byte-for-byte identical to today's `--retry-failed`."""
     if stage not in (*STAGES, "all"):
         raise FigmentTrainError(f"unknown stage {stage!r}")
     plan, root = _load_plan(creator_id, plan_path)
@@ -4621,7 +4638,7 @@ def run_planned_stage(
                     )
                 prior = None
             elif prior_status in ("failed", "retrying"):
-                if not retry_failed:
+                if not retry_failed and not retry_after_fix_reason:
                     verb = (
                         "already failed" if prior_status == "failed"
                         else 'is mid-retry (status "retrying")'
@@ -4629,13 +4646,18 @@ def run_planned_stage(
                     raise FigmentTrainError(
                         f"planned run {key} {verb}; create a reviewed new plan to retry"
                     )
+                # `--retry-after-fix` (2026-09-21): an operator-flagged retry is bounded
+                # by the wider MAX_RETRY_AFTER_FIX instead of the tight MAX_RUN_RETRIES
+                # every other, unflagged retry shares -- same rule `plan_qwen3vl_caption`
+                # already applies for `--retry-caption-after-fix`.
+                real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
                 never_created_count, real_count = _count_prior_retry_attempts(
                     [a.get("out_renamed") for a in attempts]
                 )
-                if real_count >= MAX_RUN_RETRIES:
+                if real_count >= real_retry_limit:
                     raise FigmentTrainError(
                         f"planned run {key} has already been retried {real_count} time(s) "
-                        f"(limit {MAX_RUN_RETRIES}); create a reviewed new plan to retry further"
+                        f"(limit {real_retry_limit}); create a reviewed new plan to retry further"
                     )
                 if never_created_count >= MAX_NEVER_CREATED_RETRIES:
                     raise FigmentTrainError(
@@ -4646,6 +4668,22 @@ def run_planned_stage(
                 out_dir = root / run["out"]
                 if prior_status == "failed":
                     reason = _retry_ineligibility_reason(root, run)
+                    used_retry_after_fix = False
+                    # `--retry-after-fix <reason>` (2026-09-21): a prior attempt that
+                    # fails ONLY the error-class-substring check -- verified pod
+                    # teardown, every placement/journal verified, zero job/artifact
+                    # output, but its recorded `error` doesn't match
+                    # `RETRY_ELIGIBLE_ERROR_SUBSTRINGS` (a JOB-class failure) -- is
+                    # admitted here ONLY when the operator explicitly names a reason
+                    # the underlying cause is fixed. An attempt with real output, an
+                    # unverified teardown, or already over `real_retry_limit` still
+                    # refuses the same way whether or not the flag is set.
+                    if reason is not None and retry_after_fix_reason:
+                        if _retry_ineligibility_reason(
+                            root, run, skip_error_class_check=True,
+                        ) is None:
+                            reason = None
+                            used_retry_after_fix = True
                     if reason:
                         raise FigmentTrainError(
                             f"planned run {key} already failed and --retry-failed refuses to "
@@ -4658,6 +4696,10 @@ def run_planned_stage(
                     completed_attempt = {k: v for k, v in prior.items() if k != "attempts"}
                     if renamed is not None:
                         completed_attempt["out_renamed"] = str(renamed)
+                    if used_retry_after_fix:
+                        completed_attempt["retry_after_fix"] = {
+                            "reason": retry_after_fix_reason, "git_head": _git_head_sha(),
+                        }
                     attempts.append(completed_attempt)
                     # MEDIUM-1: record "retrying" (never a bare `{"attempts": [...]}`
                     # with no status) BEFORE the rename below, and durably (state write
@@ -4676,11 +4718,16 @@ def run_planned_stage(
                         # termination, so only DEAD journals are ever moved this way.
                         out_dir.rename(renamed)
                 else:
-                    # A previous --retry-failed call's bookkeeping committed (above)
-                    # but crashed before relaunch could happen. Re-verify eligibility
-                    # against the renamed prior attempt rather than assuming the
-                    # earlier check still holds.
+                    # A previous --retry-failed/--retry-after-fix call's bookkeeping
+                    # committed (above) but crashed before relaunch could happen.
+                    # Re-verify eligibility against the renamed prior attempt rather
+                    # than assuming the earlier check still holds.
                     reason = _retry_ineligibility_reason(root, run, attempts=attempts)
+                    if reason is not None and retry_after_fix_reason:
+                        if _retry_ineligibility_reason(
+                            root, run, attempts=attempts, skip_error_class_check=True,
+                        ) is None:
+                            reason = None
                     if reason:
                         raise FigmentTrainError(
                             f"planned run {key} is mid-retry and --retry-failed refuses "
@@ -6849,17 +6896,23 @@ def _build_deliverable(
 
 def _dry_run_retry_preview(
     root: Path, plan: dict[str, Any], stage: str, state: dict[str, Any],
+    *, retry_after_fix_reason: str | None = None,
 ) -> dict[str, Any] | None:
     """`pipeline --dry-run --retry-failed`'s preview of the one retry `run_planned_stage`
     would actually attempt for this stage: the same manifest a live invocation would hit
     first (in plan order), only when it is `failed` or `retrying` (MEDIUM-1: a `retrying`
     record left by an interrupted earlier retry is guarded exactly like `failed`) and
-    `_retry_ineligibility_reason` clears it, and both retry caps (`MAX_RUN_RETRIES` for
-    real attempts, `MAX_NEVER_CREATED_RETRIES` for never-created ones,
+    `_retry_ineligibility_reason` clears it, and both retry caps (`MAX_RUN_RETRIES` (or
+    the wider `MAX_RETRY_AFTER_FIX` when `retry_after_fix_reason` is given) for real
+    attempts, `MAX_NEVER_CREATED_RETRIES` for never-created ones,
     `_count_prior_retry_attempts`) still have room. Read-only -- never renames a dir or
-    invokes the harness. The preview message reports both counts. Returns `None` when
+    invokes the harness. The preview message reports both counts, and its `status` is
+    `dry-run:retry-after-fix <key>` (instead of `dry-run:retry <key>`) exactly when the
+    reason is what actually admitted the prior attempt -- the same
+    `skip_error_class_check` overlay `run_planned_stage` applies. Returns `None` when
     there is nothing eligible to retry here, so the caller falls back to the ordinary
     `dry-run:<stage>` preview."""
+    real_retry_limit = MAX_RETRY_AFTER_FIX if retry_after_fix_reason else MAX_RUN_RETRIES
     for run in plan["stages"][stage]["runs"]:
         key = run["manifest"]
         prior = state["runs"].get(key)
@@ -6872,20 +6925,31 @@ def _dry_run_retry_preview(
         never_created_count, real_count = _count_prior_retry_attempts(
             [a.get("out_renamed") for a in attempts]
         )
-        if real_count >= MAX_RUN_RETRIES or never_created_count >= MAX_NEVER_CREATED_RETRIES:
+        if real_count >= real_retry_limit or never_created_count >= MAX_NEVER_CREATED_RETRIES:
             return None
-        reason = _retry_ineligibility_reason(
-            root, run, attempts=attempts if status == "retrying" else None,
-        )
+        retry_attempts = attempts if status == "retrying" else None
+        reason = _retry_ineligibility_reason(root, run, attempts=retry_attempts)
+        used_retry_after_fix = False
+        if reason is not None and retry_after_fix_reason:
+            if _retry_ineligibility_reason(
+                root, run, attempts=retry_attempts, skip_error_class_check=True,
+            ) is None:
+                reason = None
+                used_retry_after_fix = True
         if reason:
             return None
+        status_key = "retry-after-fix" if used_retry_after_fix else "retry"
         return {
-            "status": f"dry-run:retry {key}",
+            "status": f"dry-run:{status_key} {key}",
             "message": (
-                f"would retry {key} (real retries {real_count}/{MAX_RUN_RETRIES}, "
+                f"would retry {key} (real retries {real_count}/{real_retry_limit}, "
                 f"never-created retries {never_created_count}/{MAX_NEVER_CREATED_RETRIES}): "
-                "prior attempt's run.json showed a retry-eligible transport/placement or "
-                "never-created capacity failure"
+                + (
+                    f"--retry-after-fix admitted a JOB-class failure ({retry_after_fix_reason!r})"
+                    if used_retry_after_fix else
+                    "prior attempt's run.json showed a retry-eligible transport/placement or "
+                    "never-created capacity failure"
+                )
             ),
         }
     return None
@@ -6908,6 +6972,7 @@ def command_pipeline(
     import_checkpoints: Path | None = None,
     import_training_config: Path | None = None,
     retry_failed: bool = False,
+    retry_after_fix_reason: str | None = None,
 ) -> dict[str, Any]:
     """One resumable driver across anchor -> dataset -> smoke -> train -> tester
     -> gen -> detail. Dispatches to the EXISTING `run_planned_stage`, `build_grade`,
@@ -7095,15 +7160,21 @@ def command_pipeline(
         state = _stage_state(active_root / "stage.json", creator_id, active_plan_path)
         if stage not in state.get("completed_stages", []):
             if dry_run:
-                if retry_failed:
-                    preview = _dry_run_retry_preview(active_root, active_plan, stage, state)
+                if retry_failed or retry_after_fix_reason:
+                    preview = _dry_run_retry_preview(
+                        active_root, active_plan, stage, state,
+                        retry_after_fix_reason=retry_after_fix_reason,
+                    )
                     if preview is not None:
                         return preview
                 return {
                     "status": f"dry-run:{stage}",
                     "message": f"would run stage {stage!r} for plan {active_plan_path}",
                 }
-            run_planned_stage(creator_id, stage, active_plan_path, retry_failed=retry_failed)
+            run_planned_stage(
+                creator_id, stage, active_plan_path, retry_failed=retry_failed,
+                retry_after_fix_reason=retry_after_fix_reason,
+            )
 
         if stage in GRADEABLE_STAGES:
             grade_dir = active_root / "grade" / stage
@@ -7232,6 +7303,11 @@ def build_parser() -> argparse.ArgumentParser:
              "own current training.yaml)",
     )
 
+    def _non_empty_reason_arg(value: str) -> str:
+        if not value.strip():
+            raise argparse.ArgumentTypeError("reason must not be empty")
+        return value
+
     pipeline = commands.add_parser(
         "pipeline",
         help="resumable driver across anchor..video; halts at every gate, "
@@ -7296,6 +7372,19 @@ def build_parser() -> argparse.ArgumentParser:
              "failed run always requires a fresh, reviewed plan. See RUNBOOK.md "
              "Resume/recovery.",
     )
+    pipeline.add_argument(
+        "--retry-after-fix", type=_non_empty_reason_arg, default=None,
+        help=(
+            "admit a prior JOB-class (not transport/placement) planned-run failure for "
+            "retry -- same mechanism as `apply-rulings --retry-caption-after-fix`, "
+            "extended to a planned stage run: works even without --retry-failed. "
+            "Requires a non-empty reason naming what was fixed; recorded on the "
+            f"retried attempt's own `retry_after_fix` block. Bounded by the wider "
+            f"{MAX_RETRY_AFTER_FIX} real retries (never-created retries still bound by "
+            f"{MAX_NEVER_CREATED_RETRIES}) instead of the tight {MAX_RUN_RETRIES}. See "
+            "RUNBOOK.md Resume/recovery."
+        ),
+    )
 
     run = commands.add_parser("run", help="run one planned stage without retries")
     run.add_argument("--creator", required=True)
@@ -7304,6 +7393,10 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--retry-failed", action="store_true",
         help="see `pipeline --retry-failed`",
+    )
+    run.add_argument(
+        "--retry-after-fix", type=_non_empty_reason_arg, default=None,
+        help="see `pipeline --retry-after-fix`",
     )
 
     grade = commands.add_parser("grade", help="build a full-resolution grading board")
@@ -7319,13 +7412,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--judge-backend", choices=("claude", "codex-diagnostic", "local-research"), default="claude",
         help="stage-2 backend; local-research omits external judging and cannot pass the gate",
     )
-
-    def _non_empty_reason_arg(value: str) -> str:
-        if not value.strip():
-            raise argparse.ArgumentTypeError(
-                "--retry-caption-after-fix requires a non-empty reason"
-            )
-        return value
 
     apply = commands.add_parser("apply-rulings", help="validate and apply operator rulings")
     apply.add_argument("--creator", required=True)
@@ -7452,11 +7538,13 @@ def main(argv: list[str] | None = None) -> int:
                 import_checkpoints=args.import_checkpoints,
                 import_training_config=args.import_training_config,
                 retry_failed=args.retry_failed,
+                retry_after_fix_reason=args.retry_after_fix,
             )
             print(f"pipeline: {result['status']}")
         elif args.command == "run":
             result = run_planned_stage(
                 args.creator, args.stage, args.plan, retry_failed=args.retry_failed,
+                retry_after_fix_reason=args.retry_after_fix,
             )
             print(f"stage state: {result['status']}")
         elif args.command == "grade":

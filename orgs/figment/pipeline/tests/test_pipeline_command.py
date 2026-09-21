@@ -1193,6 +1193,183 @@ def test_retry_failed_refuses_past_the_retry_limit(command, tmp_path, monkeypatc
         command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
 
 
+# ---------------------------------------------------------------------------------
+# `--retry-after-fix` (2026-09-21, creator-001 live-20260916b gen JOB-class failure):
+# the same operator-statement admission `--retry-caption-after-fix` already gives the
+# caption sub-job, extended to `run_planned_stage`/`pipeline`/`run` for a planned stage
+# run whose prior failure is a verified-teardown, zero-output JOB-class failure (not
+# transport/placement).
+# ---------------------------------------------------------------------------------
+
+_COMFYUI_JOB_ERROR = (
+    "HarnessError: ComfyUI job 'creator-001-tensor-gen' failed: execution_error at "
+    "node 23 (KSampler): CUDA out of memory"
+)
+
+
+def test_retry_after_fix_job_class_failure_refused_with_retry_failed_only(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, error=_COMFYUI_JOB_ERROR,
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*not a recognized transport/placement failure",
+    ):
+        command.run_planned_stage("creator-002", "dataset", plan_path, retry_failed=True)
+
+
+def test_retry_after_fix_admits_a_job_class_failure_without_retry_failed(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, error=_COMFYUI_JOB_ERROR,
+    )
+    root = plan_path.parent
+    fullbody_run = next(
+        r for r in plan["stages"]["dataset"]["runs"] if r["manifest"] == flaky_manifest
+    )
+    original_out_dir = root / fullbody_run["out"]
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    reason = "harness now reports ComfyUI execution_error (5405301b); retry to capture it"
+    state = command.run_planned_stage(
+        "creator-002", "dataset", plan_path, retry_after_fix_reason=reason,
+    )
+    renamed = original_out_dir.with_name(f"{original_out_dir.name}.failed-1")
+    assert state["status"] == "complete"
+    assert state["runs"][flaky_manifest]["status"] == "complete"
+    attempts = state["runs"][flaky_manifest]["attempts"]
+    assert len(attempts) == 1
+    assert attempts[0]["status"] == "failed"
+    assert attempts[0]["out_renamed"] == str(renamed)
+    retry_after_fix = attempts[0]["retry_after_fix"]
+    assert retry_after_fix["reason"] == reason
+    assert isinstance(retry_after_fix["git_head"], str) and retry_after_fix["git_head"]
+
+    assert renamed.is_dir()
+    assert original_out_dir.is_dir()
+    retried_receipt = load_json(original_out_dir / "run.json")
+    assert not retried_receipt.get("error")
+
+
+def test_retry_after_fix_refuses_when_prior_attempt_recorded_outputs(
+    command, tmp_path, monkeypatch,
+):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, error=_COMFYUI_JOB_ERROR,
+        jobs=[{"job": 1, "output_name": "x", "files": [{"path": "x.png", "bytes": 12}]}],
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*recorded job outputs",
+    ):
+        command.run_planned_stage(
+            "creator-002", "dataset", plan_path, retry_after_fix_reason="fixed it",
+        )
+
+
+def test_retry_after_fix_refuses_when_teardown_unverified(command, tmp_path, monkeypatch):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, error=_COMFYUI_JOB_ERROR,
+        extra_receipt_fields={"termination_verified": False},
+    )
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match="refuses to re-launch it:.*verified pod termination",
+    ):
+        command.run_planned_stage(
+            "creator-002", "dataset", plan_path, retry_after_fix_reason="fixed it",
+        )
+
+
+def test_retry_after_fix_refuses_past_max_retry_after_fix(command, tmp_path, monkeypatch):
+    plan, plan_path, flaky_manifest, _ledger_dir = _build_flaky_dataset_plan(
+        command, tmp_path, monkeypatch, error=_COMFYUI_JOB_ERROR, fails_every_time=True,
+    )
+
+    with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+        command.run_planned_stage("creator-002", "dataset", plan_path)
+
+    for expected_attempts in (1, 2, 3, 4):
+        with pytest.raises(command.FigmentTrainError, match="exit code 1"):
+            command.run_planned_stage(
+                "creator-002", "dataset", plan_path, retry_after_fix_reason="fixed it",
+            )
+        state = load_json(plan_path.parent / "stage.json")
+        assert len(state["runs"][flaky_manifest]["attempts"]) == expected_attempts
+
+    with pytest.raises(
+        command.FigmentTrainError,
+        match=r"already been retried 4 time\(s\) \(limit 4\)",
+    ):
+        command.run_planned_stage(
+            "creator-002", "dataset", plan_path, retry_after_fix_reason="fixed it",
+        )
+
+
+def test_retry_after_fix_rejects_an_empty_reason(command):
+    """argparse itself refuses an empty `--retry-after-fix` reason, for both `pipeline`
+    and `run`, before `command_pipeline`/`run_planned_stage` ever runs."""
+    parser = command.build_parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "pipeline", "--creator", "creator-002", "--plan", "plan.json",
+            "--retry-after-fix", "",
+        ])
+    with pytest.raises(SystemExit):
+        parser.parse_args([
+            "run", "--creator", "creator-002", "--stage", "dataset", "--plan", "plan.json",
+            "--retry-after-fix", "",
+        ])
+
+
+def test_pipeline_threads_retry_after_fix_reason_to_run_planned_stage(
+    command, tmp_path, monkeypatch,
+):
+    """`command_pipeline` calls `run_planned_stage` from ONE shared call site for every
+    stage (primary dataset..tester AND downstream gen/detail/video, per the loop in
+    `command_pipeline`; a promoted persona's plan never contains `anchor`), so a spy on
+    the primary `dataset` stage proves the threading for every stage that reaches that
+    call site, downstream included."""
+    personas = tmp_path / "personas"
+    _promoted_persona(personas, creator_id="creator-002")
+    ledger_dir = tmp_path / "ledger"
+    out = tmp_path / "primary"
+    calls = []
+    real_run_planned_stage = command.run_planned_stage
+
+    def spy(creator_id, stage, plan_path, *, retry_failed=False, retry_after_fix_reason=None):
+        calls.append((stage, retry_failed, retry_after_fix_reason))
+        return real_run_planned_stage(
+            creator_id, stage, plan_path, retry_failed=retry_failed,
+            retry_after_fix_reason=retry_after_fix_reason,
+        )
+
+    monkeypatch.setattr(command, "run_planned_stage", spy)
+    _install_fake_harness(command, monkeypatch, ledger_dir)
+    reason = "harness fix verified"
+    result = command.command_pipeline(
+        "creator-002", out=out, personas_root=personas, skip_pin_verify=True,
+        skip_judge=True, ledger_dir=ledger_dir, retry_after_fix_reason=reason,
+    )
+    assert calls, "expected command_pipeline to invoke run_planned_stage at least once"
+    assert all(call[2] == reason for call in calls)
+    assert result["status"] == "GATE dataset"
+
+
 def test_pipeline_dry_run_retry_failed_previews_without_renaming(
     command, tmp_path, monkeypatch,
 ):
