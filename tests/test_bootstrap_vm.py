@@ -509,6 +509,35 @@ def test_bootstrap_provisions_the_node_proxy(tmp_path, monkeypatch):
     assert seen == ["provisioned"]
 
 
+def test_provision_dispatch_timer_installs_the_pair_and_enables_only_the_timer(tmp_path):
+    """Ruling queue/inbox/2c3d4e5f-708192a3.md: install + enable, never `--now` -- starting the
+    timer is the boss's gated production-window step (proven afterward by `systemctl list-timers`)."""
+    commands = []
+
+    def run(argv, **kwargs):
+        commands.append(argv)
+        return subprocess.CompletedProcess(argv, 0)
+
+    bootstrap_vm.provision_dispatch_timer(run=run)
+    for unit in bootstrap_vm.DISPATCH_UNITS:
+        assert any(c[:6] == [INSTALL, "-o", "root", "-g", "root", "-m"] and c[-1] == f"/etc/systemd/system/{unit}" for c in commands)
+    assert [SYSTEMCTL, "daemon-reload"] in commands
+    assert [SYSTEMCTL, "enable", "kb-dispatch.timer"] in commands
+    assert not any(c[0] == SYSTEMCTL and "kb-dispatch" in c and "--now" in c for c in commands)
+    assert not any(c[0] == SYSTEMCTL and c[:2] == [SYSTEMCTL, "start"] for c in commands)
+
+
+def test_bootstrap_provisions_the_dispatch_timer(tmp_path, monkeypatch):
+    key_path = tmp_path / "release.pub"
+    key_path.write_text(generated_public_key(tmp_path), encoding="ascii")
+    seen = []
+    monkeypatch.setattr(bootstrap_vm, "install_root_validators", lambda *a, **k: None)
+    monkeypatch.setattr(bootstrap_vm, "provision_dispatch_timer", lambda run: seen.append("provisioned"))
+    bootstrap_vm.bootstrap(tmp_path / "ops.bundle", key_path, TAILNET_HOST, TAILNET_OPERATOR, HELPER_ORIGIN,
+                           run=lambda argv, **k: subprocess.CompletedProcess(argv, 0, "", ""))
+    assert seen == ["provisioned"]
+
+
 @pytest.mark.parametrize("value", ["", "not-an-email", "has space@x.com"])
 def test_bootstrap_refuses_invalid_operator_before_running_commands(tmp_path, value):
     commands = []
