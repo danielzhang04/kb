@@ -4525,3 +4525,368 @@ def test_minimum_runtime_minutes_includes_upload_allowance_and_job_wait_for(tmp_
 
     expected = 600 / 60 + (900 + 300 * 2 + 180) / 60 + 5
     assert minimum == pytest.approx(expected)
+
+
+# --- transient local-network (DNS) tolerance on polling paths -------------------
+
+
+requests = pytest.importorskip("requests")
+urllib3 = pytest.importorskip("urllib3")
+
+
+def dns_connection_error(host="rest.runpod.io"):
+    """The exact shape requests raises when this host's DNS drops for ~10-30 s."""
+    import socket
+
+    reason = urllib3.exceptions.NameResolutionError(
+        host, None, socket.gaierror(11001, "getaddrinfo failed"),
+    )
+    return requests.exceptions.ConnectionError(
+        urllib3.exceptions.MaxRetryError(None, f"https://{host}/v1/pods/x", reason=reason)
+    )
+
+
+class RecordingSleep:
+    def __init__(self):
+        self.delays = []
+
+    def __call__(self, seconds):
+        self.delays.append(seconds)
+
+
+def test_transient_poll_tolerance_retries_dns_failures_then_returns():
+    calls = {"n": 0}
+
+    def operation():
+        calls["n"] += 1
+        if calls["n"] <= 2:
+            raise dns_connection_error()
+        return "ok"
+
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+
+    result = rr.poll_through_transient_network_errors(
+        operation, "pod status poll",
+        logger=logger, sleep=sleeper, monotonic=iter([0.0, 2.0]).__next__,
+    )
+
+    assert result == "ok"
+    assert calls["n"] == 3
+    assert sleeper.delays == [2.0, 4.0]
+    logs = stream.getvalue()
+    assert logs.count("transient network failure") == 2
+    assert "retrying in 2s" in logs and "retrying in 4s" in logs
+
+
+def test_transient_poll_tolerance_resets_its_window_after_a_success():
+    # One outage that nearly exhausts the window, a success, then another outage:
+    # the second outage must get a fresh window, never the leftover of the first.
+    clock = {"now": 0.0}
+    logger, _ = logger_and_stream()
+
+    def run_one(fail_for):
+        attempts = {"n": 0}
+
+        def operation():
+            attempts["n"] += 1
+            if attempts["n"] <= fail_for:
+                raise dns_connection_error()
+            return "ok"
+
+        def sleep(seconds):
+            clock["now"] += seconds
+
+        return rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+        )
+
+    assert run_one(8) == "ok"
+    assert clock["now"] > 60.0
+    assert run_one(8) == "ok"
+
+
+def test_transient_poll_tolerance_reraises_the_same_error_once_the_window_closes():
+    clock = {"now": 0.0}
+
+    def operation():
+        raise dns_connection_error()
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    logger, stream = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+        )
+
+    # Bounded: never longer than the tolerance window itself.
+    assert clock["now"] <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+    assert "tolerance window" in stream.getvalue()
+
+
+def test_transient_poll_tolerance_never_extends_the_callers_deadline():
+    clock = {"now": 0.0}
+    deadline = 5.0
+
+    def operation():
+        raise dns_connection_error()
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    logger, stream = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleep, monotonic=lambda: clock["now"],
+            remaining=lambda: deadline - clock["now"],
+        )
+
+    # The caller's 5 s deadline fires, not the 180 s tolerance window.
+    assert clock["now"] <= deadline
+    assert clock["now"] < rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def test_transient_poll_tolerance_honours_the_watchdog_between_retries():
+    class FiringWatchdog:
+        def __init__(self):
+            self.checks = 0
+
+        def check(self):
+            self.checks += 1
+            if self.checks > 1:
+                raise rr.RunCancelled("maximum runtime reached")
+
+    def operation():
+        raise dns_connection_error()
+
+    watchdog = FiringWatchdog()
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(rr.RunCancelled):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=lambda _seconds: None, monotonic=lambda: 0.0,
+            watchdog=watchdog,
+        )
+
+
+@pytest.mark.parametrize("factory", [
+    lambda: rr.HarnessError("pod 404"),
+    lambda: requests.exceptions.SSLError("certificate verify failed"),
+    lambda: ValueError("bad json"),
+], ids=["harness-error", "ssl-error", "value-error"])
+def test_transient_poll_tolerance_does_not_retry_a_non_transient_error(factory):
+    expected = factory()
+    calls = {"n": 0}
+
+    def operation():
+        calls["n"] += 1
+        raise expected
+
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(type(expected)):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=lambda _seconds: None, monotonic=lambda: 0.0,
+        )
+
+    assert calls["n"] == 1
+
+
+def test_readiness_polling_survives_a_dns_outage_without_tearing_the_pod_down():
+    class FlakyDnsAPI:
+        def __init__(self):
+            self.get_calls = 0
+            self.deletes = 0
+
+        def get_pod(self, _pod_id):
+            self.get_calls += 1
+            if self.get_calls <= 2:
+                raise dns_connection_error()
+            return ready_pod()
+
+        def delete_pod(self, _pod_id):
+            self.deletes += 1
+
+    class Proxy:
+        def health_status(self):
+            return 200
+
+        def fetch_artifact(self, _filename):
+            return 404, ""
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    api = FlakyDnsAPI()
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+
+    ready = rr.wait_ready(
+        api, "pod-123", 600, QuietWatchdog(), logger, Proxy(),
+        sleep=sleeper, bootstrap_log_every_polls=1,
+    )
+
+    assert ready == ready_pod()
+    assert api.get_calls == 3
+    assert api.deletes == 0
+    assert sleeper.delays == [2.0, 4.0]
+    assert "transient network failure" in stream.getvalue()
+
+
+def test_comfy_history_polling_survives_a_dns_outage_then_returns_outputs():
+    class FlakyHistorySession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, _url, **_kwargs):
+            self.calls += 1
+            if self.calls <= 2:
+                raise dns_connection_error("pod-123-8188.proxy.runpod.net")
+            return StubResponse(200, {
+                "prompt": {
+                    "status": {"completed": True, "status_str": "success"},
+                    "outputs": {"9": {"images": [{"filename": "done.png", "type": "output"}]}},
+                }
+            })
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    session = FlakyHistorySession()
+    logger, stream = logger_and_stream()
+    sleeper = RecordingSleep()
+    comfy = rr.ComfyClient(
+        "http://comfy", session=session, logger=logger,
+        sleep=sleeper, monotonic=iter([0.0, 2.0]).__next__,
+    )
+
+    outputs = comfy.wait_outputs("prompt", 600, QuietWatchdog())
+
+    assert outputs[0]["filename"] == "done.png"
+    assert session.calls == 3
+    assert sleeper.delays == [2.0, 4.0]
+    assert "transient network failure" in stream.getvalue()
+
+
+def test_comfy_history_polling_fails_as_today_when_the_outage_outlasts_the_window():
+    class DeadDnsSession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def get(self, _url, **_kwargs):
+            self.calls += 1
+            raise dns_connection_error("pod-123-8188.proxy.runpod.net")
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    clock = {"now": 0.0}
+
+    def sleep(seconds):
+        clock["now"] += seconds
+
+    session = DeadDnsSession()
+    logger, _ = logger_and_stream()
+    comfy = rr.ComfyClient(
+        "http://comfy", session=session, logger=logger,
+        sleep=sleep, monotonic=lambda: clock["now"],
+    )
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        comfy.wait_outputs("prompt", 600, QuietWatchdog())
+
+    assert clock["now"] <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS
+
+
+def test_create_and_terminate_requests_are_never_wrapped_in_poll_tolerance():
+    class DeadDnsSession:
+        headers = {}
+
+        def __init__(self):
+            self.calls = 0
+
+        def request(self, _method, _url, **_kwargs):
+            self.calls += 1
+            raise dns_connection_error()
+
+    session = DeadDnsSession()
+    api = rr.RunPodAPI(session)
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        api.create_pod({"name": "figment-test", "gpuTypeIds": ["x"], "gpuCount": 1})
+    assert session.calls == 1
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        api.delete_pod("pod-123")
+    assert session.calls == 2
+
+
+def test_verified_teardown_keeps_its_own_retry_loop_and_never_gives_up_polling():
+    # GUARDRAILS #6: a DNS outage during teardown must still produce the
+    # unverified-termination banner through the existing 5-attempt path, and the
+    # poll-tolerance helper must not be involved.
+    class DeadDnsAPI:
+        def __init__(self):
+            self.deletes = 0
+            self.gets = 0
+
+        def create_pod(self, payload):
+            return ready_pod(payload["name"])
+
+        def get_pod(self, _pod_id):
+            self.gets += 1
+            raise dns_connection_error()
+
+        def list_pods(self):
+            raise dns_connection_error()
+
+        def delete_pod(self, _pod_id):
+            self.deletes += 1
+            raise dns_connection_error()
+
+    api = DeadDnsAPI()
+    logger, stream = logger_and_stream()
+    lease = rr.PodLease(
+        api, {"name": "figment-test"}, logger, sleep=lambda _seconds: None,
+    )
+    lease.__enter__()
+
+    with pytest.raises(rr.PodStillRunning):
+        lease.close()
+
+    assert api.deletes == rr.TERMINATE_ATTEMPTS
+    assert "terminate attempt 5/5" in stream.getvalue()
+
+
+def test_transient_poll_tolerance_terminates_even_if_the_clock_never_advances():
+    # A stalled/coarse monotonic() must not turn the window into an endless loop.
+    sleeper = RecordingSleep()
+
+    def operation():
+        raise dns_connection_error()
+
+    logger, _ = logger_and_stream()
+
+    with pytest.raises(requests.exceptions.ConnectionError):
+        rr.poll_through_transient_network_errors(
+            operation, "pod status poll",
+            logger=logger, sleep=sleeper, monotonic=lambda: 7.0,
+        )
+
+    assert sum(sleeper.delays) <= rr.TRANSIENT_NETWORK_TOLERANCE_SECONDS

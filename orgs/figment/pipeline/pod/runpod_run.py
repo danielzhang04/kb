@@ -117,6 +117,30 @@ TRANSIENT_MARKER_ERROR_TYPES = {
     "Timeout", "TimeoutError",
 }
 PERSISTENT_MARKER_502_SECONDS = 5 * 60.0
+# This Windows host drops local DNS for ~10-30 s at a time; three live runs died when a
+# single polling GET's requests.ConnectionError (already retried inside urllib3) was
+# treated as fatal and the pod was torn down. Polling GETs made while a pod is alive
+# therefore tolerate one such outage for this long before failing exactly as before.
+# The window is per outage (it is scoped to one poll call, so any success resets it) and
+# is never allowed to push past a job/readiness deadline or the Watchdog.
+TRANSIENT_NETWORK_TOLERANCE_SECONDS = 180.0
+TRANSIENT_NETWORK_BACKOFF_SECONDS = (2.0, 4.0, 8.0, 15.0)
+# Judged like TRANSIENT_MARKER_ERROR_TYPES, but read over the whole cause chain:
+# requests reports a DNS drop as ConnectionError wrapping urllib3's
+# MaxRetryError/NameResolutionError, so the outermost type name alone says nothing.
+TRANSIENT_NETWORK_CAUSE_TYPES = frozenset({
+    "ConnectionError", "ConnectionRefusedError", "ConnectionResetError",
+    "ConnectTimeout", "ConnectTimeoutError", "MaxRetryError", "NameResolutionError",
+    "NewConnectionError", "ProtocolError", "ReadTimeout", "ReadTimeoutError",
+    "Timeout", "TimeoutError", "gaierror", "timeout",
+})
+TRANSIENT_NETWORK_CAUSE_MARKERS = (
+    "getaddrinfo failed", "failed to resolve", "name or service not known",
+    "temporary failure in name resolution", "nodename nor servname",
+    "max retries exceeded", "connection refused", "connection reset",
+    "connection aborted", "read timed out", "timed out",
+)
+TRANSIENT_NETWORK_CAUSE_DEPTH = 8
 TRAINING_DIAGNOSTIC_FILENAMES = ("_training.heartbeat", "_training.log")
 # The heartbeat file can legitimately change on every poll cycle (it is a live
 # counter); throttle its "saved" log line so an unchanged-content guard alone
@@ -1413,6 +1437,121 @@ def marker_poll_is_transient(status: int | str) -> bool:
     return False
 
 
+def _exception_chain_signatures(exc: BaseException) -> list[tuple[str, str]]:
+    """(type name, lowercased message) for exc and the exceptions it wraps."""
+    seen: set[int] = set()
+    signatures: list[tuple[str, str]] = []
+    pending: list[Any] = [exc]
+    while pending and len(signatures) < TRANSIENT_NETWORK_CAUSE_DEPTH:
+        current = pending.pop(0)
+        if not isinstance(current, BaseException) or id(current) in seen:
+            continue
+        seen.add(id(current))
+        signatures.append((type(current).__name__, str(current).lower()))
+        pending.extend([
+            getattr(current, "__cause__", None),
+            getattr(current, "__context__", None),
+            # urllib3's MaxRetryError keeps the real cause here, not in __cause__.
+            getattr(current, "reason", None),
+        ])
+        pending.extend(
+            arg for arg in getattr(current, "args", ()) if isinstance(arg, BaseException)
+        )
+    return signatures
+
+
+def network_poll_is_transient(exc: BaseException) -> bool:
+    """True for a poll failure caused by a local name-resolution/connection blip.
+
+    Deliberately narrow, and the same judgement marker polling already makes: the
+    outer error must be a requests transport failure — never an SSL or proxy-config
+    error, which retrying cannot fix — and its cause chain must name resolution
+    failure, connection refusal/reset, or a read timeout.
+    """
+    if requests is not None:
+        if isinstance(exc, (requests.exceptions.SSLError, requests.exceptions.ProxyError)):
+            return False
+        if not isinstance(
+                exc, (requests.exceptions.ConnectionError, requests.exceptions.Timeout)):
+            return False
+    return any(
+        name in TRANSIENT_NETWORK_CAUSE_TYPES
+        or any(marker in message for marker in TRANSIENT_NETWORK_CAUSE_MARKERS)
+        for name, message in _exception_chain_signatures(exc)
+    )
+
+
+def poll_through_transient_network_errors(
+        operation: Callable[[], Any], label: str, *,
+        logger: logging.Logger,
+        sleep: Callable[[float], None],
+        monotonic: Callable[[], float],
+        watchdog: Any | None = None,
+        remaining: Callable[[], float] | None = None,
+        tolerance: float = TRANSIENT_NETWORK_TOLERANCE_SECONDS) -> Any:
+    """Run ONE read-only poll, retrying it through a bounded local network outage.
+
+    GUARDRAILS #6 is untouched by design. This helper only ever retries a polling
+    GET made while a pod is already alive; it is never applied to create,
+    terminate, termination-verification, ledger, upload or download calls. It
+    cannot keep a pod alive past its budget: the Watchdog and the caller's own
+    deadline are re-checked before every attempt and after every sleep, no sleep is
+    ever longer than what is left of either, and nothing here extends a deadline.
+    When the tolerance window closes (or the caller's deadline arrives first) the
+    ORIGINAL exception is re-raised, so the caller's existing exit path — verified
+    teardown with its own retry loop — runs exactly as it does today. Because the
+    window lives in this call, any successful poll resets it.
+    """
+    outage_started: float | None = None
+    # Counted as well as the clock so a coarse or stalled monotonic() can never turn
+    # the window into an unbounded retry loop.
+    slept_total = 0.0
+    attempt = 0
+    while True:
+        if watchdog is not None:
+            watchdog.check()
+        try:
+            return operation()
+        # Never BaseException: a KeyboardInterrupt/SystemExit during a poll must reach
+        # the surrounding lease's teardown immediately, exactly as it does today.
+        except Exception as exc:
+            if not network_poll_is_transient(exc):
+                raise
+            now = monotonic()
+            if outage_started is None:
+                outage_started = now
+            waited = max(0.0, now - outage_started, slept_total)
+            delay = TRANSIENT_NETWORK_BACKOFF_SECONDS[
+                min(attempt, len(TRANSIENT_NETWORK_BACKOFF_SECONDS) - 1)
+            ]
+            delay = min(delay, tolerance - waited)
+            if remaining is not None:
+                delay = min(delay, remaining())
+            if delay <= 0:
+                logger.error(
+                    "%s: network unreachable for %.0fs; giving up inside the %.0fs "
+                    "transient tolerance window and failing as before",
+                    label, waited, tolerance,
+                )
+                raise
+            logger.warning(
+                "%s: transient network failure (%s); retrying in %.0fs "
+                "(%.0fs of %.0fs tolerance used)",
+                label, type(exc).__name__, delay, waited, tolerance,
+            )
+            sleep(delay)
+            slept_total += delay
+            attempt += 1
+            if watchdog is not None:
+                watchdog.check()
+            if remaining is not None and remaining() <= 0:
+                logger.error(
+                    "%s: deadline reached during a transient network outage; "
+                    "failing as before", label,
+                )
+                raise
+
+
 def output_view_params(value: Any, label: str) -> dict[str, str]:
     path = _portable_relative_path(value, label)
     parent = path.parent.as_posix()
@@ -2472,7 +2611,16 @@ def wait_ready(api: Any, pod_id: str, timeout: float, watchdog: Watchdog,
     while time.monotonic() < deadline:
         poll_number += 1
         watchdog.check()
-        pod = initial_pod if poll_number == 1 and initial_pod is not None else api.get_pod(pod_id)
+        pod = (
+            initial_pod if poll_number == 1 and initial_pod is not None
+            # Polling GET only; a local DNS blip here used to tear the pod down.
+            else poll_through_transient_network_errors(
+                lambda: api.get_pod(pod_id),
+                f"readiness pod-status poll for {pod_id}",
+                logger=logger, sleep=sleep, monotonic=time.monotonic,
+                watchdog=watchdog, remaining=lambda: deadline - time.monotonic(),
+            )
+        )
         if pod is None:
             raise HarnessError(f"pod {pod_id} disappeared before becoming ready")
         if on_observed is not None:
@@ -3336,7 +3484,15 @@ class ComfyClient:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             watchdog.check()
-            response = self.session.get(self.base_url + f"/history/{prompt_id}", timeout=REQUEST_TIMEOUT)
+            # Polling GET only; the job's own deadline below still bounds the wait.
+            response = poll_through_transient_network_errors(
+                lambda: self.session.get(
+                    self.base_url + f"/history/{prompt_id}", timeout=REQUEST_TIMEOUT,
+                ),
+                f"ComfyUI history poll for {prompt_id}",
+                logger=self.logger, sleep=self._sleep, monotonic=self._monotonic,
+                watchdog=watchdog, remaining=lambda: deadline - time.monotonic(),
+            )
             if not 200 <= response.status_code < 300:
                 raise HarnessError(f"ComfyUI history returned HTTP {response.status_code}")
             history = response.json()
@@ -3917,7 +4073,14 @@ def run_harness(manifest: dict[str, Any], manifest_path: Path, out_dir: Path, *,
             )
             lease.__enter__()
             placement_needs_close = True
-            observed = api.get_pod(str(lease.pod_id))
+            # Polling GET only (the pod already exists and the lease already owns it);
+            # bounded by the run's own max_minutes budget, which it cannot extend.
+            observed = poll_through_transient_network_errors(
+                lambda: api.get_pod(str(lease.pod_id)),
+                f"placement pod-status poll for {lease.pod_id}",
+                logger=logger, sleep=sleep, monotonic=time.monotonic,
+                remaining=lambda: started + max_minutes * 60.0 - time.monotonic(),
+            )
             if observed is None:
                 raise HarnessError(
                     f"pod {lease.pod_id} disappeared during placement inspection"
