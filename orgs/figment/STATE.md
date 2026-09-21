@@ -1,6 +1,6 @@
 # figment — STATE
 
-_Updated: 2026-09-16_
+_Updated: 2026-09-17_
 
 ## Now
 
@@ -83,6 +83,9 @@ _Updated: 2026-09-16_
   true arc total ≈ $47.7 of the $60 `ARC_CAP_USD` (the $2.90 settled train row and the tester
   row were briefly lost from `ledgers/cost/figment-2026-09-17.tsv` by an ops-branch sync at
   19:36 that overwrote the file with only the train's provisional $15.73 row — see "Blocked").
+- `refused` covers any harness exit with no `run.json` and no recovery journal (nothing ran,
+  nothing spent), not only budget refusals — e.g. the BOM parse refusal; bounded at 8
+  (`MAX_NEVER_CREATED_RETRIES`).
 
 ## Next
 

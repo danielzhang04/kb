@@ -45,6 +45,10 @@ dataset fan-out instead of a low-denoise *edit* of an existing photo. `_dataset_
 
 **Dataset ceiling (klein-multiref, 2 shards of 15 cells each):** `pins.pod_classes.l40s.stages.dataset_multiref` sets `readiness_timeout_seconds: 1800` (matches the `anchor` stage's own readiness budget for a comparable ~16 GB pull: klein-base-4b 7.75 GB + qwen_3_4b 8.04 GB + flux2-vae 0.34 GB, vs. `dataset`/`anchor_edit`'s heavier 2700 s for a 5-model, 4-custom-node pull) and `job_timeout_seconds: 480` per cell (HIGH-1 opus-review fix, 2026-09-15). Per-cell time estimate: this exact `klein4b_multiref_api.json` graph already ran live for creator-001 -- `personas/creator-001/batches/expansion-0{2,3}/pod-runs/*/run.json` record per-job times of **154.6-164.7 s on an RTX 4090** (Ada-class, same generation as the pinned L40S, no dedicated L40S benchmark found), all BEFORE the 4x upscale tail (`ImageUpscaleWithModel` + `ImageScaleBy 0.5`) this graph now appends per the UPSCALE TAIL ruling. `job_timeout_seconds: 480` is ~2.9× the measured 164.7 s ceiling before that tail, holding real margin for the added upscale pass instead of the old 300 s pin, which undercut the shipped 360 s shard precedent and left under 2x margin once the tail is counted. `minimum_runtime_minutes` (`pod/runpod_run.py`) then derives `max_minutes = 1800/60 + (480 × 15)/60 + 5 = 155` per shard; at `$1.30/h` that is **$3.3583/shard × 2 shards = $6.7167** (the operator's $20 covers dataset+captions+train+tester+gen+detail+video for the whole live chain).
 
+**[SUPERSEDED — see the 2026-09-16 rollout paragraph below, which flips this back to
+`dataset_source: "qwen-edit"`; `grade/tester/accepted-checkpoint.json`'s
+`training_inputs.dataset_source` is `"qwen-edit"`.]**
+
 **Rollout status — creator-001's live `training.yaml` now sets `dataset_source: "klein-multiref"`
 (operator ruling 2026-09-15: the live chain must run the new source).** `expand/tests/
 test_tensor_dataset.py` (31 tests) builds its ENTIRE fixture set by planning the `dataset` stage
@@ -112,16 +116,17 @@ fix.
 python block with no missing pip deps (`transformers`/`accelerate`) and no diagnostic reaching
 the harness (it logged only to `_caption.log`, a name `pod/runpod_run.py` never fetches); fixed
 offline by pinning those specs in `tensor-pins.yaml`, installing them before the python block,
-renaming the log to `_training.log`, and adding a heartbeat, but this is still UNVERIFIED against
-a live pod.
+renaming the log to `_training.log`, and adding a heartbeat — live-proven 2026-09-16 (pod
+symlq3jynb83a8).
 
-**Rollout note (2026-09-16, fourth attempt, third caption pod, $0.15):** deps installed and
-Qwen3-VL-8B loaded, and a caption was generated — then the pod's own validator rejected it: the
-body was ~560 chars against a hardcoded 500-char cap, contradicting the pinned
+**Rollout note (2026-09-16, fourth attempt, third caption pod `d84dzamf8gccbu`, $0.084):** deps
+installed and Qwen3-VL-8B loaded, and a caption was generated — then the pod's own validator
+rejected it: the body was ~560 chars against a hardcoded 500-char cap, contradicting the pinned
 `max_new_tokens: 128` setting (up to ~900 chars of English). Fixed offline by raising the bound to
 `CAPTIONS_MAX_BODY_CHARS = 1200` (`train/build_training_set.py`), rendered into the template as
 `{{caption_max_body_chars}}` instead of a hardcoded literal; still a hard failure past the bound,
-never a silent truncation. UNVERIFIED against a live pod.
+never a silent truncation — live-proven 2026-09-16 (pod symlq3jynb83a8): pod symlq3jynb83a8
+(run.json `termination_verified: true`, $0.1234) produced 32 captions with bodies 367–647 chars.
 
 **Yield arithmetic:** the qwen-edit dataset produces 30 base cells per replicate — 15 face (`close`,
 600px floor) + 10 half-body (`half`, 300px floor) + 5 full-body (`full`; `persona.yaml`

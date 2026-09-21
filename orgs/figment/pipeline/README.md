@@ -470,13 +470,13 @@ guarantee, and the `HF_TOKEN` secret-reference mechanism are documented once, in
 | 09-07 | bake-off m1, 18-cell ablation | jm67txnsqfj662 | $1.99 + $0.23 = $2.22 (STATE 00:40) | arm B (no skin LoRA) best, facenet 0.87-0.93; skin LoRA HURTS identity |
 | 09-15 23:00-00:29 | dataset: klein-multiref, 30 cells, 2048x2560 | 8j29mc7vhpii6v + 3ot6ph140rvp8n | $0.80 + $0.82 = $1.62 | gate 0/30 — identity_own median 0.61 vs floor 0.7907; root cause was the composer's text description overriding the reference latents (fixed, not re-run live). Run root `creator-001/live-20260915b` |
 | 09-16 01:13-04:50 | dataset: qwen-edit, replicates=2, 60 cells | 8 pods | ~$2.9 (1 retry via `--retry-failed`, shard-04, $0.15, never rendered) | gate 18/60 — identity_own median 0.898; all 16 close-framing and all 10 full-framing misses were the face-px floor, not identity. Run root `live-20260916` |
-| 09-16 05:11-07:46 | dataset: qwen-edit (9 face rows tightened), 60 cells | 8 pods | ~$3.1 | gate **32/60** (close 21/30 @ 570-1103px, half 10/20, full 1/10) — THE TRAINING SET. Run root `live-20260916b` |
-| 09-16 | qwen3-VL caption (4th attempt; 1st-3rd each found a distinct live-only defect, see Open defects) | symlq3jynb83a8 | $0.12 | 32 captions in <2 min, `captions.json` 18KB, dataset assembled + approval lineage written — first live success |
+| 09-16 05:11-07:46 | dataset: qwen-edit (9 face rows tightened), 60 cells | 8 pods | ~$3.1 | gate **32/60** (close 21/30, half 10/20, full 1/10) — 570-1103px is the range over all 30 close cells; close PASSERS were 624-977px (n=21). THE TRAINING SET. Run root `live-20260916b` |
+| 09-16 | qwen3-VL caption (4th pod / 6th attempt: `.failed-1`/`.failed-2` never-created $0, `xdbs4haupr95or` $0.142, `8bi3qae4icrz3t` $0.105, `d84dzamf8gccbu` $0.084, success `symlq3jynb83a8` $0.123 — caption leg total $0.455) | symlq3jynb83a8 | $0.455 (caption leg total) | 32 captions in <2 min, `captions.json` 18KB, dataset assembled + approval lineage written — first live success |
 | 09-16 | smoke train, 50-step checkpoint + final | bwdhqfvt72a0d9 | $0.27 | complete |
 | 09-16 | train, 3000 steps (ceiling $15.73) | — | $0 | REFUSED at plan-time budget preflight ($6.20 already spent today + $15.73 > $10.00 daily limit) — recorded as `refused`, no attempt consumed; waiting on operator's `governance/budget.yaml` raise (>= 22) |
 | 09-17 | train, 3000 steps (ceiling $15.73), after operator raised daily limit to 20 | g82uvbgep3ov9q | $2.90 actual | complete — 12 checkpoints (250…2750 + final, 228 MB each). Run root `live-20260916b` |
 | 09-17 | tester, 12-checkpoint ladder | mqhofpqmdvn12x | $0.43 | gate **2/12 pass**: step 2000 (identity_own 0.895, face_px 689, judge same_person 88) and final/3000 (0.900, 663, 74) — first creator-001 ladder to clear the full gate (prior best 0.78, 1250-step train-first). `--checkpoint-step 2000` chosen (equal identity to final, stronger judge); `chosen_checkpoint_step: 2000` recorded (commit ee6ce232) |
-| 09-17 | gen | — | $0 | REFUSED at plan-time budget preflight — arc ($58.04 + $4.01 > $60) and daily ($16.16 + $4.01 > $20) both tripped on a stale ledger (see Open defects: the coordination-checkout `figment-2026-09-17.tsv` lost its settled train + tester rows to an unrelated ops-branch sync at 19:36); true arc ≈ $47.7 of $60 |
+| 09-17 | gen | — | $0 | REFUSED at plan-time budget preflight — arc ($58.04 + $4.01 > $60) and daily ($16.16 + $4.01 > $20) both tripped on a stale ledger (see Open defects: the coordination-checkout `figment-2026-09-17.tsv` lost its settled train row only — the tester's row is present, re-appended on its own settle — to an unrelated ops-branch sync at 19:36); true arc ≈ $47.7 of $60 |
 
 Sources: `orgs/figment/STATE.md` 2026-09-03 23:50 through 2026-09-07 00:40, cross-checked
 against `ledgers/cost/figment-2026-09-0{3,4,6,7}.tsv` where a row is identifiable. See Open
@@ -579,8 +579,9 @@ defects below for where these two sources disagree past 09-04.
   (`ledgers/cost/figment-<date>.tsv`), and a sync from another session mid-run can clobber a
   provisional row before it's replaced by the settled one. Live-hit 2026-09-17: a 19:36
   ops-branch sync (commit `fa6803ad`) overwrote the day's ledger with only the train's
-  provisional $15.73 row; the settled $2.90 row and the tester's row were lost (the tester's
-  re-appeared only when it settled on its own), leaving the file under-reporting true spend
+  provisional $15.73 row; only the settled $2.90 TRAIN row was lost — the tester's row is
+  present (it was re-appended on its own settle, not lost), leaving the file under-reporting
+  true spend
   by ~$10.3 and causing `gen`'s plan-time budget preflight to refuse on stale numbers. The
   boss/operator restores the row (this is a shared coordination file a docs worker may not
   write); no code fix identified yet — this is a process/scheduling gap between the ops sync
