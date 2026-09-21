@@ -170,6 +170,12 @@ def test_upgrade_provisions_every_missing_piece_of_the_p6_contract(vm):
     assert any(unit_target(c).endswith("/etc/systemd/system/kb-shell-broker.service") for c in commands)
     assert any(unit_target(c).endswith("/etc/systemd/system/kb-shell-broker.socket") for c in commands)
     assert [SYSTEMCTL, "enable", bootstrap_vm.SOCKET_UNIT] in commands
+    # schedule-dispatch tick timer/service: installed + reloaded + ENABLED ONLY (never `--now` —
+    # starting is the boss's gated production-window step per queue/inbox/2c3d4e5f-708192a3.md).
+    for unit in bootstrap_vm.DISPATCH_UNITS:
+        assert any(c[-1] == f"/etc/systemd/system/{unit}" for c in commands)
+    assert [SYSTEMCTL, "enable", "kb-dispatch.timer"] in commands
+    assert not any(c[0] == SYSTEMCTL and "kb-dispatch" in " ".join(c) and "--now" in c for c in commands)
     # resident helpers refreshed from THIS deploy/ tree, read-only.
     for helper in bootstrap_vm.RESIDENT_HELPERS:
         assert any(c[:7] == [INSTALL, "-o", "root", "-g", "root", "-m", "0555"]

@@ -1,0 +1,41 @@
+[Unit]
+Description=kb schedule dispatch tick (fires due dashboard-stored schedules exactly once)
+After=kb-dashboard.service
+Requires=kb-dashboard.service
+
+[Service]
+Type=oneshot
+User=kb-dashboard
+Group=kb-dashboard
+# Same service user/group as kb-dashboard.service: dispatch.py writes queue/ cards and ledgers/ rows
+# into the SAME ops checkout the daemon owns (/var/lib/kb/ops), and it connects as a client to the
+# daemon's own Unix-socket schedule authority (scripts/schedule_store.py ->
+# /run/kb-dashboard/schedules.sock, inside RuntimeDirectory=kb-dashboard, mode 0750, owned by this
+# same user). A different identity would need a filesystem group grant to reach either.
+WorkingDirectory=/var/lib/kb/ops
+# dispatch.py's repo_root is `Path.cwd()` (scripts/dispatch.py:1235) — the code itself ships in the
+# immutable release tree (ExecStart below), but it must run with the ops checkout as its cwd so
+# queue/, ledgers/, HEARTBEAT.md resolve against LIVE coordination state, not the release tree.
+Environment=GIT_CONFIG_GLOBAL=/dev/null
+UnsetEnvironment=GITHUB_TOKEN GH_TOKEN GIT_ASKPASS SSH_AUTH_SOCK DASHBOARD_SESSION_SECRET KB_CANARY_SESSION
+# Belt-and-suspenders overlap guard. A systemd oneshot unit already refuses to start a second
+# instance while the first is still active, so this only matters if something outside systemd (a
+# manual `systemctl start`, a second timer) fires concurrently. -n = fail fast rather than queue a
+# second run behind the first; a failed tick is retried by the NEXT scheduled tick (ruling: no
+# exponential backoff), never by this unit blocking on the lock.
+ExecStart=/usr/bin/flock -n /run/kb-dispatch/tick.lock /usr/bin/python3 -B /opt/kb-releases/current/scripts/dispatch.py --tier cloud --agent dispatcher-cloud
+# RuntimeDirectory=kb-dispatch creates /run/kb-dispatch (owned by this unit's User/Group, mode
+# 0750) fresh on every start, which is where the flock lock file above lives; nothing else uses it.
+RuntimeDirectory=kb-dispatch
+RuntimeDirectoryMode=0750
+TimeoutStartSec=120
+NoNewPrivileges=true
+ProtectHome=true
+PrivateTmp=true
+# Read-only: dispatch.py is code that ships inside the release, never written to at runtime.
+ReadOnlyPaths=/opt/kb-releases
+# The ONLY path dispatch.py provably writes: queue/ cards and ledgers/ rows inside the ops checkout
+# (see scripts/dispatch.py's `cards.save` / `ledger.append` calls, both rooted at `repo_root`).
+# Deliberately narrower than kb-dashboard.service's ReadWritePaths: dispatch.py never touches
+# DASHBOARD_STATE_ROOT (/var/lib/kb/state), so that path is not granted here.
+ReadWritePaths=/var/lib/kb/ops

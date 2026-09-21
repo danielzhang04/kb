@@ -406,6 +406,73 @@ def test_all_claim_crash_boundaries_replay_once_through_real_socket(
         process.wait(timeout=10)
 
 
+def test_double_tick_dispatches_the_due_occurrence_exactly_once_over_the_real_socket(tmp_path):
+    """VM tick-source ruling (queue/inbox/2c3d4e5f-708192a3.md): a systemd timer drives
+    `scripts/dispatch.py` every 5 minutes, with a `flock` overlap guard as a belt-and-suspenders on
+    top of systemd's own oneshot serialization. This proves the guarantee the guard backstops: two
+    full `dispatch_stored_schedules` ticks for the SAME due occurrence, against the SAME live
+    schedule-store socket, produce exactly one card write and exactly one ledger row -- the daemon's
+    claim/advance state (not dispatch.py's own ledger dedup alone) is what makes the second tick a
+    no-op, so even an overlap the flock guard failed to catch could not double-dispatch.
+    """
+    if sys.platform != "linux":
+        pytest.skip("schedule Unix socket server requires Linux (scheduleSocketRuntimeCapability)")
+    schedule_id = "a" * 64
+    socket_path = tmp_path / "schedule.sock"
+    process = subprocess.Popen(
+        ["node", str(REPO_ROOT / "dashboard" / "server" / "schedules" / "socketRoutes.ts"),
+         "--fixture-socket", str(socket_path)],
+        cwd=REPO_ROOT / "dashboard", text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+    )
+    try:
+        for _ in range(100):
+            if socket_path.exists():
+                break
+            if process.poll() is not None:
+                stdout, stderr = process.communicate()
+                raise AssertionError(f"fixture Unix service exited: {stdout}\n{stderr}")
+            time.sleep(0.05)
+
+        class TickClient:
+            """Snapshot is faked (the fixture's own snapshot example is always empty schedules, so
+            nothing would ever be found due); claim/advance ride the REAL socket and REAL server-side
+            claim/advance state machine, exactly as `_LiveScheduleStoreClient` does in production."""
+
+            def snapshot(self):
+                return {"collectionRevision": 7, "schedules": [{
+                    "id": schedule_id, "armed": True, "version": 3,
+                    "cadence": {"source": "*/15 * * * *", "words": "Every 15 minutes"},
+                }]}
+
+            def claim(self, **kwargs):
+                return schedule_store.claim(socket_path, **kwargs)
+
+            def advance(self, *, phase: str, **kwargs):
+                return schedule_store.advance(socket_path, phase=phase, **kwargs)
+
+        client = TickClient()
+        now = dt.datetime.fromisoformat("2026-08-21T12:16:00-04:00")
+
+        first = dispatch.dispatch_stored_schedules(tmp_path, client, "dispatcher-cloud", now=now)
+        assert len(first) == 1 and first[0]["phase"] == "ledger-appended"
+        card_path = tmp_path / "queue" / "inbox" / f"{first[0]['card_id']}.md"
+        first_bytes = card_path.read_bytes()
+
+        # Second tick: same clock, same due occurrence -- the systemd double-fire this guards against.
+        second = dispatch.dispatch_stored_schedules(tmp_path, client, "dispatcher-cloud", now=now)
+        assert len(second) == 1 and second[0]["phase"] == "ledger-appended"
+        assert second[0]["card_id"] == first[0]["card_id"]
+        assert card_path.read_bytes() == first_bytes  # no second write
+
+        rows = ledger.read_day(tmp_path, "dispatch", dt.date.today().isoformat())
+        matches = [row for row in rows if row.get("schedule_id") == schedule_id
+                   and row.get("scheduled_for") == "2026-08-21T12:15:00-04:00"]
+        assert len(matches) == 1  # exactly one dispatch row despite two full ticks
+    finally:
+        process.terminate()
+        process.wait(timeout=10)
+
+
 def test_changed_card_bytes_are_refused_on_replay(tmp_path):
     schedule_id = "a" * 64
     scheduled_for = "2026-08-21T12:15:00-04:00"
