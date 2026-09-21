@@ -710,75 +710,6 @@ def validate_node_proxy_units(unit_root: Path = BROKER_UNIT_ROOT) -> bool:
     return True
 
 
-# --- Schedule-dispatch tick units -------------------------------------------------------------
-# Ruling queue/inbox/2c3d4e5f-708192a3.md (approved by Daniel 2026-09-17): the VM tick source for
-# dashboard-stored schedules is a systemd timer driving `scripts/dispatch.py` every 5 minutes.
-# Finding it fixes: a dashboard-stored schedule (self-lint-report, 2026-09-16) armed but never fired
-# because nothing on the VM invoked the dispatcher — the dispatcher Routine is an agent cadence, not
-# a clock, and cannot launch itself. Validated here (not via the same frozen-directive-dict apparatus
-# as the broker/node-proxy trio, whose ExactDirectives sets are pairwise-tested against a TypeScript
-# policy this pair has none of) so a drifted or hand-edited unit fails loudly at the dashboard's own
-# ExecStartPre rather than silently widening the tick's sandbox, its cadence, or its identity.
-DISPATCH_SERVICE_UNIT = "kb-dispatch.service"
-DISPATCH_TIMER_UNIT = "kb-dispatch.timer"
-DISPATCH_EXEC_START = ("/usr/bin/flock -n /run/kb-dispatch/tick.lock /usr/bin/python3 -B"
-                       " /opt/kb-releases/current/scripts/dispatch.py --tier cloud --agent dispatcher-cloud")
-DISPATCH_TIMER_CALENDAR = "*:0/5"
-
-
-def validate_dispatch_service(text: str) -> None:
-    sections = parse_unit(text)
-    if "Service" not in sections:
-        raise RuntimeError("dispatch service is missing a [Service] section")
-    service = dict(sections["Service"])
-    if service.get("User") != "kb-dashboard" or service.get("Group") != "kb-dashboard":
-        raise RuntimeError(
-            "dispatch service must run as the kb-dashboard user/group — the same identity kb-dashboard.service"
-            " already owns /var/lib/kb/ops and the schedule-store socket under")
-    if service.get("WorkingDirectory") != "/var/lib/kb/ops":
-        raise RuntimeError("dispatch service WorkingDirectory must be the ops checkout /var/lib/kb/ops")
-    if service.get("ExecStart") != DISPATCH_EXEC_START:
-        raise RuntimeError("dispatch service ExecStart drifted from the pinned release-path invocation")
-    if service.get("ReadOnlyPaths") != "/opt/kb-releases":
-        raise RuntimeError("dispatch service must mark the release tree read-only")
-    if service.get("ReadWritePaths") != "/var/lib/kb/ops":
-        raise RuntimeError(
-            "dispatch service ReadWritePaths must be exactly the ops checkout — dispatch.py never touches"
-            " DASHBOARD_STATE_ROOT, so that path (unlike kb-dashboard.service's own ReadWritePaths) is not granted")
-
-
-def validate_dispatch_timer(text: str) -> None:
-    sections = parse_unit(text)
-    if "Timer" not in sections:
-        raise RuntimeError("dispatch timer is missing a [Timer] section")
-    timer = dict(sections["Timer"])
-    if timer.get("OnCalendar") != DISPATCH_TIMER_CALENDAR:
-        raise RuntimeError(f"dispatch timer OnCalendar must be {DISPATCH_TIMER_CALENDAR!r} (every 5 minutes)")
-    if timer.get("Persistent", "").lower() != "true":
-        raise RuntimeError("dispatch timer must set Persistent=true (a tick missed while the VM was down fires once on next boot)")
-    if timer.get("Unit", DISPATCH_SERVICE_UNIT) != DISPATCH_SERVICE_UNIT:
-        raise RuntimeError("dispatch timer must target kb-dispatch.service")
-
-
-def validate_dispatch_units(unit_root: Path = BROKER_UNIT_ROOT) -> bool:
-    """Validate the installed schedule-dispatch tick units when they exist.
-
-    Absence is allowed: a VM upgraded before this ruling landed runs the dashboard with schedules
-    armed but not yet ticking — exactly the finding this pair fixes, not a broken dashboard. Presence
-    is validated strictly (the broker/node-proxy posture): a drifted or hand-edited unit must fail the
-    dashboard's own ExecStartPre rather than starting a tick with a weakened sandbox or wrong cadence.
-    """
-    service = unit_root / DISPATCH_SERVICE_UNIT
-    timer = unit_root / DISPATCH_TIMER_UNIT
-    if not service.exists() and not timer.exists():
-        return False
-    if not service.is_file() or not timer.is_file():
-        raise RuntimeError("dispatch tick units must be installed as a pair")
-    validate_dispatch_service(service.read_text(encoding="utf-8"))
-    validate_dispatch_timer(timer.read_text(encoding="utf-8"))
-    return True
-
-
 def validate_whois_runtime_dir(dir_stat: os.stat_result, sock_stat: os.stat_result, node_proxy_gid: int) -> None:
     """/run/kb-whois must be root:kb-node-proxy 0750, and whois.sock root:kb-node-proxy 0660 [P6-C62].
     Without the group, kb-node-proxy loses the traverse bit and the 0660 socket is unreachable."""
@@ -856,7 +787,6 @@ def main() -> int:
         validate_outbox_anchor(args.ops_root)
         validate_broker_units()
         validate_node_proxy_units()
-        validate_dispatch_units()
         fields = STATIC_SHOW
     else:
         show = read_live_unit(args.unit)

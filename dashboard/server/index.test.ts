@@ -46,10 +46,12 @@ vi.mock('./home/routes.ts', async (importOriginal) => {
 import {
   buildApp as buildProductionApp,
   DEFAULT_HUMAN_REQUEST_SWEEP_INTERVAL_MS,
+  DEFAULT_SCHEDULE_TICK_MS,
   DESKTOP_ROUTE_INVENTORY,
   humanRequestSweepLogLine,
   registeredRoutesOf,
   resolveHumanRequestSweepIntervalMs,
+  resolveScheduleTickIntervalMs,
   resolveSelfAdvertiseIntervalMs,
   runScheduleBootMigrations,
   start,
@@ -798,6 +800,34 @@ describe('Human Request orphan-sweep wiring — ON BY DEFAULT (data-only, no fil
       auditFailures: ['request-1'],
     });
     expect(line).toContain('AUDIT ROW FAILED for request-1');
+  });
+});
+
+describe('Schedule-dispatch tick interval resolution (review B-1) — outbox-mode only', () => {
+  it('is disabled outside outbox mode regardless of the interval env var', () => {
+    expect(resolveScheduleTickIntervalMs({}, 'direct')).toBe(0);
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: '60000' }, 'direct')).toBe(0);
+  });
+
+  it('defaults to 5 minutes in outbox mode', () => {
+    expect(DEFAULT_SCHEDULE_TICK_MS).toBe(300_000);
+    expect(resolveScheduleTickIntervalMs({}, 'outbox')).toBe(300_000);
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: '' }, 'outbox')).toBe(300_000);
+  });
+
+  it('honors an explicit interval override in outbox mode, including disabling it with 0', () => {
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: '60000' }, 'outbox')).toBe(60_000);
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: '0' }, 'outbox')).toBe(0);
+  });
+
+  it('falls back to the default on a non-numeric or negative override rather than disabling silently', () => {
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: 'nonsense' }, 'outbox')).toBe(300_000);
+    expect(resolveScheduleTickIntervalMs({ DASHBOARD_SCHEDULE_TICK_MS: '-1' }, 'outbox')).toBe(300_000);
+  });
+
+  it('derives the publication mode from KB_COORDINATION_PUBLICATION when not passed explicitly', () => {
+    expect(resolveScheduleTickIntervalMs({ KB_COORDINATION_PUBLICATION: 'outbox' })).toBe(300_000);
+    expect(resolveScheduleTickIntervalMs({})).toBe(0);
   });
 });
 

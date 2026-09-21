@@ -109,12 +109,12 @@ NODE_PROXY_USER = "kb-node-proxy"
 NODE_PROXY_UID = 987
 TAILNET_PROXY_UID = 0
 NODE_PROXY_UNITS = ("kb-node-proxy.service", "kb-whois.service", "kb-whois.socket")
-# Ruling queue/inbox/2c3d4e5f-708192a3.md (approved by Daniel 2026-09-17): the VM tick source for
-# dashboard-stored schedules is a systemd timer driving `scripts/dispatch.py` every 5 minutes, as the
-# same service user as kb-dashboard.service. No new account: DISPATCH_UNITS run as `kb-dashboard`.
-DISPATCH_SERVICE_UNIT = "kb-dispatch.service"
-DISPATCH_TIMER_UNIT = "kb-dispatch.timer"
-DISPATCH_UNITS = (DISPATCH_SERVICE_UNIT, DISPATCH_TIMER_UNIT)
+# The systemd `kb-dispatch.service`/`.timer` pair that used to live here (ruling
+# queue/inbox/2c3d4e5f-708192a3.md) was WITHDRAWN by a later ruling (review finding B-1, 2026-09-21):
+# `scripts/dispatch.py` writes bare, uncommitted filesystem changes, and a timer invoking it
+# unattended on the VM would freeze the ops-checkout drain on its first due tick. The replacement is
+# the dashboard daemon's own internal tick (`dashboard/server/schedules/tick.ts`, gated on
+# `KB_COORDINATION_PUBLICATION=outbox`) — no separate account, unit, or provisioning step.
 # The root-owned host-node map: authorization derives a node's HostKind from THIS file only [design:416].
 HOST_NODE_MAP_DIR = "/etc/kb-dashboard"
 HOST_NODE_MAP_PATH = "/etc/kb-dashboard/host-nodes.json"
@@ -259,30 +259,6 @@ def provision_node_proxy(run=subprocess.run, source_root: Path | None = None, lo
     run([SYSTEMCTL_BIN, "daemon-reload"], check=True)
     run([SYSTEMCTL_BIN, "enable", "kb-whois.socket"], check=True)
     run([SYSTEMCTL_BIN, "enable", "kb-node-proxy.service"], check=True)
-
-
-def provision_dispatch_timer(run=subprocess.run, source_root: Path | None = None) -> None:
-    """Install the schedule-dispatch tick timer/service pair and enable (never start) the timer.
-
-    Finding (2026-09-16, prod): a dashboard-stored schedule (`self-lint-report`, id 96db76e4) was
-    armed but never fired, because nothing on the VM invoked `scripts/dispatch.py`. The dispatcher
-    Routine is an agent cadence, not a clock, and cannot launch itself. This is the fix: a systemd
-    timer that runs `scripts/dispatch.py --tier cloud --agent dispatcher-cloud` against the release's
-    code and the live ops checkout every 5 minutes.
-
-    No new account: the service runs as the ALREADY-provisioned `kb-dashboard` user/group, the same
-    identity that owns /var/lib/kb/ops and the daemon's schedule-store Unix socket
-    (/run/kb-dashboard/schedules.sock) — so it can write queue/ledgers there and reach the socket
-    without a filesystem group grant. `enable` only, never `--now`: starting the timer is the
-    boss's gated production-window step (the ruling's rollout gate), proven afterward by
-    `systemctl list-timers kb-dispatch.timer`. Mirrors provision_node_proxy's unit-install shape.
-    """
-    root = source_root if source_root is not None else Path(__file__).resolve().parent
-    for unit in DISPATCH_UNITS:
-        run([INSTALL_BIN, "-o", "root", "-g", "root", "-m", "0444",
-             str(root / "systemd" / unit), f"/etc/systemd/system/{unit}"], check=True)
-    run([SYSTEMCTL_BIN, "daemon-reload"], check=True)
-    run([SYSTEMCTL_BIN, "enable", DISPATCH_TIMER_UNIT], check=True)
 
 
 def normalize_desktop_helper_origin(value: object) -> str:
@@ -726,7 +702,6 @@ def upgrade(
     | install_root_validators: daemon-reload + enable       | DO        | idempotent                                                                 |
     | provision_pty_broker(run)                             | DO        | account + units + enabled socket; no broker code until activation          |
     | provision_node_proxy(run)                             | DO        | the missing DASHBOARD_NODE_PROXY_UID identity; refuses on a uid conflict   |
-    | provision_dispatch_timer(run)                          | DO        | units + daemon-reload + enable ONLY; starting is the boss's gated preflight |
     | (not in bootstrap) host-node map                      | NEVER     | Daniel-authored; absence is WARNED about, never filled in                  |
     """
     if dry_run:
@@ -790,8 +765,6 @@ def upgrade(
                 " node-proxy units. Resolve the account by hand and re-run.")
     emit("[upgrade] PTY broker account, filesystem and units")
     provision_pty_broker(run=run)
-    emit("[upgrade] schedule-dispatch tick timer/service (installed + enabled, not started)")
-    provision_dispatch_timer(run=run)
     emit("[upgrade] from here until this run completes, a `systemctl restart"
          f" {DASHBOARD_UNIT}` WILL FAIL: the new resident validator lands before the new unit does."
          " If this run aborts, either re-run upgrade or restore the unit from"
@@ -846,7 +819,6 @@ def bootstrap(ops_bundle: Path, release_public_key: Path, tailnet_host: str, tai
     install_root_validators(release_public_key, tailnet_host, tailnet_operator, desktop_helper_origin, run=run)
     provision_pty_broker(run=run)
     provision_node_proxy(run=run)
-    provision_dispatch_timer(run=run)
 
 
 def build_parser() -> argparse.ArgumentParser:
