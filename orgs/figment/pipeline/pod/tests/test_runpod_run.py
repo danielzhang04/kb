@@ -2281,6 +2281,108 @@ def test_N9_wait_outputs_counts_only_output_images(monkeypatch):
     assert outputs == [{"filename": "final.png", "subfolder": "", "type": "output"}]
 
 
+def test_wait_outputs_execution_error_includes_node_diagnostic():
+    history = {
+        "prompt": {
+            "status": {
+                "status_str": "error",
+                "completed": False,
+                "messages": [
+                    ["execution_start", {"prompt_id": "prompt"}],
+                    ["execution_error", {
+                        "prompt_id": "prompt",
+                        "node_id": "8",
+                        "node_type": "KSampler",
+                        "exception_type": "RuntimeError",
+                        "exception_message": "CUDA out of memory. Tried to allocate 2.00 GiB\nmore text",
+                        "traceback": ["line1", "line2"],
+                    }],
+                ],
+            },
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError) as caught:
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+    message = str(caught.value)
+    assert message.startswith("ComfyUI job prompt failed: ")
+    assert "node_id=8" in message
+    assert "node_type=KSampler" in message
+    assert "exception_type=RuntimeError" in message
+    assert "CUDA out of memory. Tried to allocate 2.00 GiB more text" in message
+    assert "\n" not in message
+    assert "traceback" not in message
+    assert "line1" not in message
+
+
+def test_wait_outputs_execution_error_without_messages_keeps_plain_text():
+    history = {
+        "prompt": {
+            "status": {"status_str": "error", "completed": False},
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError, match=r"^ComfyUI job prompt failed$"):
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+
+
+def test_wait_outputs_execution_error_message_is_bounded_and_sanitized():
+    long_message = ("x" * 400) + "\ttail"
+    history = {
+        "prompt": {
+            "status": {
+                "status_str": "error",
+                "completed": False,
+                "messages": [
+                    ["execution_error", {
+                        "node_id": "3",
+                        "node_type": "VAEDecode",
+                        "exception_type": "ValueError",
+                        "exception_message": long_message,
+                    }],
+                ],
+            },
+        }
+    }
+
+    class HistorySession:
+        def get(self, _url, **_kwargs):
+            return StubResponse(200, history)
+
+    class QuietWatchdog:
+        def check(self):
+            pass
+
+    with pytest.raises(rr.HarnessError) as caught:
+        rr.ComfyClient("http://comfy", session=HistorySession()).wait_outputs(
+            "prompt", 10, QuietWatchdog()
+        )
+    message = str(caught.value)
+    assert ("x" * 300) in message
+    assert ("x" * 301) not in message
+    assert "\t" not in message
+
+
 def test_C5_comfy_start_failure_short_circuits_before_health():
     lines = rr.bootstrap_script(manifest()).splitlines()
     start_index = next(index for index, line in enumerate(lines) if line.startswith("run_required comfy-start"))

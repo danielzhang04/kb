@@ -128,6 +128,7 @@ COMFY_OUTPUT_DIR = "/workspace/output"
 COMFY_PROMPT_ERROR_BODY_MAX_BYTES = 64 * 1024
 COMFY_PROMPT_ERROR_SUMMARY_MAX_CHARS = 1024
 COMFY_PROMPT_ERROR_NODE_MAX = 8
+COMFY_EXECUTION_ERROR_MESSAGE_MAX_CHARS = 300
 COMFY_PROMPT_ERROR_TYPES = {
     "required_input_missing",
     "value_not_in_list",
@@ -3280,6 +3281,53 @@ class ComfyClient:
             pass
         return ""
 
+    @staticmethod
+    def _execution_error_diagnostic(status: Any) -> str:
+        """Return a bounded, single-line summary of ComfyUI's execution_error message.
+
+        ComfyUI's /history status carries `messages: [[type, detail], ...]`; an
+        `execution_error` entry's detail holds node_id/node_type/exception_type/
+        exception_message/traceback. Only a small, sanitized slice is surfaced here
+        (never the traceback) so a HarnessError stays diagnostic without reflecting
+        arbitrary server content.
+        """
+        try:
+            messages = status.get("messages") if isinstance(status, dict) else None
+            if not isinstance(messages, list):
+                return ""
+            for message in messages:
+                if not (
+                    isinstance(message, (list, tuple))
+                    and len(message) == 2
+                    and message[0] == "execution_error"
+                    and isinstance(message[1], dict)
+                ):
+                    continue
+                detail = message[1]
+                parts: list[str] = []
+                node_id = detail.get("node_id")
+                if isinstance(node_id, (str, int)):
+                    parts.append(f"node_id={node_id}")
+                node_type = detail.get("node_type")
+                if isinstance(node_type, str) and node_type:
+                    parts.append(f"node_type={node_type}")
+                exception_type = detail.get("exception_type")
+                if isinstance(exception_type, str) and exception_type:
+                    parts.append(f"exception_type={exception_type}")
+                exception_message = detail.get("exception_message")
+                if isinstance(exception_message, str) and exception_message:
+                    cleaned = "".join(
+                        char if char.isprintable() else " " for char in exception_message
+                    )
+                    cleaned = re.sub(r"\s+", " ", cleaned).strip()
+                    cleaned = cleaned[:COMFY_EXECUTION_ERROR_MESSAGE_MAX_CHARS]
+                    if cleaned:
+                        parts.append(f"exception_message={cleaned}")
+                return " ".join(parts)
+            return ""
+        except (AttributeError, TypeError, ValueError):
+            return ""
+
     def wait_outputs(
         self, prompt_id: str, timeout: float, watchdog: Watchdog,
         *, expected_images: int = 1,
@@ -3296,7 +3344,9 @@ class ComfyClient:
             if entry:
                 status = entry.get("status") or {}
                 if status.get("status_str") == "error":
-                    raise HarnessError(f"ComfyUI job {prompt_id} failed")
+                    diagnostic = self._execution_error_diagnostic(status)
+                    suffix = f": {diagnostic}" if diagnostic else ""
+                    raise HarnessError(f"ComfyUI job {prompt_id} failed{suffix}")
                 if status.get("completed") is False:
                     time.sleep(1)
                     continue
