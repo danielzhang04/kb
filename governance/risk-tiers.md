@@ -34,7 +34,6 @@ This carve-out names `nightly-review` only; no other cadence inherits it.
 
 ## Approval channels (D2.13, decided 2026-07-17)
 Approval tokens are tiered by channel:
-- **T3 (merge to main, external publishing, deploys) → dashboard/WebAuthn-signed channel ONLY.**
-  The weak/unsigned transport (e.g. Telegram) MUST NOT authorize a T3 action.
+- **T3 (merge to main, external publishing, deploys) → ssh-signed human approval ONLY** (kb-ops-approver key, namespace `kb-human-approval`, single-use nonce, 15-minute expiry; spec `docs/superpowers/specs/2026-09-16-authority-and-guardrails-design.md` §4.2). The weak/unsigned transport (e.g. Telegram) MUST NOT authorize a T3 action. Channel changed 2026-09-16 from WebAuthn (no passkeys on the platform).
 - T1–T2 may be approved over the weak channel.
 - T4 is never carded (unchanged).
